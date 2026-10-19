@@ -181,6 +181,8 @@ class ShortcutsModalStubComponent {
     readonly title = input('');
     readonly icon = input<string | null>(null);
     readonly sections = input<unknown[]>([]);
+    readonly flows = input<readonly GetGraphLightRequest[]>([]);
+    readonly currentFlowId = input<number | null>(null);
     readonly closed = output<void>();
 }
 
@@ -611,6 +613,26 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(unsavedChangesDialog.confirm).toHaveBeenCalledWith(
                 expect.objectContaining({ dontSaveText: 'Continue' })
             );
+        });
+    });
+
+    describe('shortcuts list', () => {
+        it('hands the shortcuts list every flow the user can see and which one is being edited', () => {
+            flowsApi['getGraphsLight'].mockReturnValue(
+                of([
+                    { id: 1, uuid: 'graph-uuid', name: 'Flow', description: '' },
+                    { id: 12, uuid: 'uuid-12', name: 'Billing', description: '' },
+                    { id: 34, uuid: 'uuid-34', name: 'Support', description: '' },
+                ])
+            );
+
+            component.refreshCurrentFlow();
+            fixture.detectChanges();
+
+            const shortcutsModal = fixture.debugElement.query(By.directive(ShortcutsModalStubComponent))
+                .componentInstance as ShortcutsModalStubComponent;
+            expect(shortcutsModal.flows().map((flow) => flow.name)).toEqual(['Flow', 'Billing', 'Support']);
+            expect(shortcutsModal.currentFlowId()).toBe(1);
         });
     });
 

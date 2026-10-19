@@ -2,20 +2,21 @@ import {
     afterNextRender,
     Component,
     computed,
-    ElementRef,
     inject,
-    Injector,
     input,
     linkedSignal,
     OnInit,
     output,
     signal,
     viewChild,
-    viewChildren,
 } from '@angular/core';
 import { ButtonComponent } from '@shared/components';
+import { ShortcutParams } from '@shared/models';
 
+import { GetGraphLightRequest } from '../../../../../../../features/flows/models/graph.model';
+import { subgraphFlowOptions } from '../../../../../../../visual-programming/core/helpers/subgraph-flows.util';
 import {
+    ACTION_PARAMS,
     EDITOR_ACTIONS,
     EditorActionId,
     EditorActionSection,
@@ -25,24 +26,15 @@ import {
     formatChord,
     KeyChord,
 } from '../../../../../../../visual-programming/core/keymap/key-chord.util';
+import { flowIdOf, flowParams } from '../../../../../../../visual-programming/core/keymap/shortcut-params';
 import {
     CustomShortcut,
     ShortcutCheck,
     ShortcutRejected,
 } from '../../../../../../../visual-programming/core/keymap/shortcut-resolution';
 import { KeymapService } from '../../../../../../../visual-programming/services/keymap.service';
-
-interface ActionOption {
-    readonly id: EditorActionId;
-    readonly label: string;
-    readonly elementId: string;
-}
-
-interface ActionGroup {
-    readonly title: EditorActionSection;
-    readonly titleId: string;
-    readonly options: readonly ActionOption[];
-}
+import { actionLabel, flowLabel, FlowLookup, shortcutLabel } from '../shortcut-label.util';
+import { PickerGroup, ShortcutPickerComponent } from '../shortcut-picker/shortcut-picker.component';
 
 interface Feedback {
     readonly severity: 'error' | 'warning';
@@ -51,58 +43,83 @@ interface Feedback {
 
 const PICKER_SECTIONS: readonly EditorActionSection[] = ['Nodes', 'Editing', 'Navigating'];
 
-const ACTION_LABELS: ReadonlyMap<EditorActionId, string> = new Map(
-    EDITOR_ACTIONS.map((action) => [action.id, action.label])
+const CUSTOMIZABLE_ACTION_IDS: ReadonlyMap<string, EditorActionId> = new Map(
+    EDITOR_ACTIONS.filter((action) => action.customizable).map((action) => [action.id, action.id])
 );
 
 let nextEditorId = 0;
 
 @Component({
     selector: 'app-shortcut-editor',
-    imports: [ButtonComponent],
+    imports: [ButtonComponent, ShortcutPickerComponent],
     templateUrl: './shortcut-editor.component.html',
     styleUrl: './shortcut-editor.component.scss',
     host: { '(keydown)': 'onKeydown($event)' },
 })
 export class ShortcutEditorComponent implements OnInit {
     readonly shortcut = input<CustomShortcut | null>(null);
+    readonly flows = input<readonly GetGraphLightRequest[]>([]);
+    readonly currentFlowId = input<number | null>(null);
 
     readonly closed = output<void>();
 
-    private readonly pickerInput = viewChild.required<ElementRef<HTMLInputElement>>('pickerInput');
-    private readonly optionElements = viewChildren<ElementRef<HTMLElement>>('optionElement');
+    private readonly actionPicker = viewChild.required<ShortcutPickerComponent>('actionPicker');
 
     protected readonly action = signal<EditorActionId | null>(null);
+    protected readonly flowId = signal<number | null>(null);
     protected readonly chord = signal<KeyChord | null>(null);
-    protected readonly query = signal('');
-    protected readonly isListOpen = signal(false);
-    protected readonly activeIndex = signal(0);
     protected readonly isRecording = signal(false);
     protected readonly announcement = signal('');
+    private readonly initialFlowId = signal<number | null>(null);
 
-    protected readonly groups = computed<readonly ActionGroup[]>(() => {
-        const action = this.action();
-        const showAll = action !== null && this.query() === ACTION_LABELS.get(action);
-        const term = showAll ? '' : this.query().trim().toLowerCase();
-        return PICKER_SECTIONS.map((title) => ({
-            title,
-            titleId: `${this.idPrefix}-group-${title}`,
-            options: EDITOR_ACTIONS.filter(
-                (candidate) =>
-                    candidate.customizable &&
-                    candidate.section === title &&
-                    candidate.label.toLowerCase().includes(term)
-            ).map((candidate) => ({
-                id: candidate.id,
-                label: candidate.label,
-                elementId: `${this.idPrefix}-option-${candidate.id}`,
-            })),
-        })).filter((group) => group.options.length > 0);
+    private readonly flowLookup = computed<FlowLookup>(() => ({
+        names: new Map(this.flows().map((flow) => [flow.id, flow.name])),
+        currentFlowId: this.currentFlowId(),
+    }));
+
+    private readonly pickableFlows = computed(() => {
+        const initialFlowId = this.initialFlowId();
+        return this.flows().filter((flow) => flow.id !== this.currentFlowId() || flow.id === initialFlowId);
     });
 
-    protected readonly options = computed(() => this.groups().flatMap((group) => group.options));
+    protected readonly actionGroups = computed<readonly PickerGroup[]>(() => {
+        const hasOtherFlows = subgraphFlowOptions(this.flows(), this.currentFlowId()).length > 0;
+        const editedAction = this.shortcut()?.action;
+        return PICKER_SECTIONS.map((title) => ({
+            title,
+            options: EDITOR_ACTIONS.filter(
+                (action) =>
+                    action.customizable &&
+                    action.section === title &&
+                    (ACTION_PARAMS.get(action.id) !== 'flow' || hasOtherFlows || action.id === editedAction)
+            ).map((action) => ({ id: action.id, label: action.label })),
+        }));
+    });
 
-    protected readonly activeOption = computed(() => (this.isListOpen() ? this.options()[this.activeIndex()] : null));
+    protected readonly flowGroups = computed<readonly PickerGroup[]>(() => [
+        {
+            title: null,
+            options: this.pickableFlows().map((flow) => ({
+                id: String(flow.id),
+                label: flowLabel(flow.id, this.flowLookup()) ?? flow.name,
+            })),
+        },
+    ]);
+
+    protected readonly selectedFlowId = computed(() => {
+        const flowId = this.flowId();
+        return flowId === null ? null : String(flowId);
+    });
+
+    protected readonly needsFlow = computed(() => {
+        const action = this.action();
+        return action !== null && ACTION_PARAMS.get(action) === 'flow';
+    });
+
+    private readonly params = computed<ShortcutParams | undefined>(() => {
+        const flowId = this.flowId();
+        return this.needsFlow() && flowId !== null ? flowParams(flowId) : undefined;
+    });
 
     protected readonly chordText = computed(() => {
         const chord = this.chord();
@@ -115,11 +132,11 @@ export class ShortcutEditorComponent implements OnInit {
         if (action === null || chord === null) {
             return null;
         }
-        return this.keymap.checkChord(chord, { action, customShortcutId: this.shortcut()?.id });
+        return this.keymap.checkChord(chord, { action, customShortcutId: this.shortcut()?.id, params: this.params() });
     });
 
     private readonly saveRejection = linkedSignal<unknown, ShortcutRejected | null>({
-        source: () => [this.action(), this.chord()],
+        source: () => [this.action(), this.chord(), this.params()],
         computation: () => null,
     });
 
@@ -132,89 +149,40 @@ export class ShortcutEditorComponent implements OnInit {
         () =>
             this.action() !== null &&
             !this.isRecording() &&
+            (!this.needsFlow() || this.params() !== undefined) &&
             (this.chord() === null || this.liveCheck()?.accepted === true)
     );
 
     protected readonly idPrefix = `shortcut-editor-${nextEditorId++}`;
 
     private readonly keymap = inject(KeymapService);
-    private readonly injector = inject(Injector);
 
     constructor() {
-        afterNextRender(() => this.pickerInput().nativeElement.focus());
+        afterNextRender(() => this.actionPicker().focus());
     }
 
     ngOnInit(): void {
         const shortcut = this.shortcut();
         if (shortcut) {
+            const flowId = flowIdOf(shortcut.params);
+            const knownFlowId = flowId !== null && this.flowLookup().names.has(flowId) ? flowId : null;
             this.action.set(shortcut.action);
+            this.initialFlowId.set(knownFlowId);
+            this.flowId.set(knownFlowId);
             this.chord.set(shortcut.chord);
-            this.query.set(ACTION_LABELS.get(shortcut.action) ?? '');
-        } else {
-            this.isListOpen.set(true);
         }
     }
 
-    protected onQueryInput(value: string): void {
-        this.query.set(value);
-        this.action.set(null);
-        this.activeIndex.set(0);
-        this.isListOpen.set(true);
+    protected onActionChange(id: string | null): void {
+        this.action.set(id === null ? null : (CUSTOMIZABLE_ACTION_IDS.get(id) ?? null));
     }
 
-    protected openPicker(): void {
-        if (!this.isListOpen()) {
-            this.activeIndex.set(this.pickedOptionIndex());
-            this.isListOpen.set(true);
-        }
-    }
-
-    protected closePicker(): void {
-        this.isListOpen.set(false);
-    }
-
-    protected onPickerKeydown(event: KeyboardEvent): void {
-        const lastIndex = this.options().length - 1;
-        switch (event.key) {
-            case 'ArrowDown':
-                event.preventDefault();
-                if (this.isListOpen()) {
-                    this.activeIndex.update((index) => Math.min(index + 1, lastIndex));
-                } else {
-                    this.openPicker();
-                }
-                this.revealActiveOption();
-                return;
-            case 'ArrowUp':
-                event.preventDefault();
-                this.activeIndex.update((index) => Math.max(index - 1, 0));
-                this.revealActiveOption();
-                return;
-            case 'Enter': {
-                const option = this.activeOption();
-                if (option) {
-                    event.preventDefault();
-                    this.pick(option);
-                }
-                return;
-            }
-            case 'Escape':
-                if (this.isListOpen()) {
-                    event.preventDefault();
-                    this.isListOpen.set(false);
-                }
-                return;
-        }
-    }
-
-    protected pick(option: ActionOption): void {
-        this.action.set(option.id);
-        this.query.set(option.label);
-        this.isListOpen.set(false);
+    protected onFlowChange(id: string | null): void {
+        this.flowId.set(id === null ? null : Number(id));
     }
 
     protected toggleRecording(): void {
-        this.isListOpen.set(false);
+        this.actionPicker().close();
         this.isRecording.update((isRecording) => !isRecording);
     }
 
@@ -272,9 +240,10 @@ export class ShortcutEditorComponent implements OnInit {
             return;
         }
         const shortcut = this.shortcut();
+        const params = this.params();
         const result = shortcut
-            ? this.keymap.updateCustom(shortcut.id, { action, chord: this.chord() })
-            : this.keymap.addCustom(action, this.chord());
+            ? this.keymap.updateCustom(shortcut.id, { action, chord: this.chord(), params })
+            : this.keymap.addCustom(action, this.chord(), params);
         if (result.accepted || result.rejection === 'missing') {
             this.closed.emit();
             return;
@@ -288,7 +257,7 @@ export class ShortcutEditorComponent implements OnInit {
             if (check.displaces === null) {
                 return null;
             }
-            const owner = ACTION_LABELS.get(check.displaces);
+            const owner = actionLabel(check.displaces);
             return warning(`${keys} is ${owner}'s key — saving moves it here; ${owner} will have no key`);
         }
         switch (check.rejection) {
@@ -304,37 +273,20 @@ export class ShortcutEditorComponent implements OnInit {
                 if (check.takenBy === null) {
                     return error("This key can't be used");
                 }
-                const owner = ACTION_LABELS.get(check.takenBy.action);
-                return check.takenBy.source === 'custom'
-                    ? error(`Already used by your ${owner} shortcut`)
-                    : error(`${keys} is already ${owner}'s key`);
+                if (check.takenBy.source === 'custom') {
+                    const owner = shortcutLabel(check.takenBy.action, check.takenBy.params, this.flowLookup()).text;
+                    return error(`Already used by your ${owner} shortcut`);
+                }
+                return error(`${keys} is already ${actionLabel(check.takenBy.action)}'s key`);
             }
             case 'invalid':
                 return error("This key can't be used");
             case 'limit':
                 return error('You can have up to 100 custom shortcuts');
             case 'missing':
+            case 'params':
                 return null;
         }
-    }
-
-    private pickedOptionIndex(): number {
-        const action = this.action();
-        return Math.max(
-            this.options().findIndex((option) => option.id === action),
-            0
-        );
-    }
-
-    private revealActiveOption(): void {
-        afterNextRender(
-            () => {
-                const activeId = this.activeOption()?.elementId;
-                const element = this.optionElements().find((option) => option.nativeElement.id === activeId);
-                element?.nativeElement.scrollIntoView?.({ block: 'nearest' });
-            },
-            { injector: this.injector }
-        );
     }
 
     private formatKeys(chord: KeyChord): string {

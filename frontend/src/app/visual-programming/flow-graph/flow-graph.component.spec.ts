@@ -1,16 +1,19 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FCreateConnectionEvent, FDragStartedEvent, FReassignConnectionEvent } from '@foblex/flow';
-import { NodeType } from '@shared/models';
-import { of } from 'rxjs';
+import { NodeType, ShortcutSettings } from '@shared/models';
+import { EMPTY, of } from 'rxjs';
 
+import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
 import { PermissionsService } from '../../services/auth/permissions.service';
+import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
 import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
 import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../core/helpers/helpers';
+import { subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
 import { ConditionGroup } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
 import { ClassificationDecisionTableNodeModel, GraphNoteModel, NodeModel } from '../core/models/node.model';
@@ -382,11 +385,13 @@ describe('FlowGraphComponent', () => {
         let flowService: FlowService;
         let nodesBefore: number;
 
-        function setUp(options: { isPreview?: boolean; canUpdateFlows?: boolean } = {}): void {
+        function setUp(
+            options: { isPreview?: boolean; canUpdateFlows?: boolean; beforeCreate?: () => void } = {}
+        ): void {
             fixture = mount(
                 options.isPreview ?? false,
                 { nodes: [createStartNode(), noteNode()], connections: [] },
-                undefined,
+                options.beforeCreate,
                 options.canUpdateFlows ?? true
             );
             TestBed.tick();
@@ -602,6 +607,116 @@ describe('FlowGraphComponent', () => {
                 [NodeType.PYTHON, { x: 100, y: 500 }],
             ]);
             expect(fixture.componentInstance['showContextMenu']()).toBe(false);
+        });
+
+        describe('Subgraph shortcuts', () => {
+            const CURRENT_FLOW: GetGraphLightRequest = { id: 1, uuid: 'uuid-1', name: 'This flow', description: '' };
+            const BILLING: GetGraphLightRequest = {
+                id: 12,
+                uuid: 'uuid-12',
+                name: 'Billing',
+                description: 'Charges the card',
+                tags: ['money'],
+                label_ids: [4],
+                save_version: 9,
+            };
+            const SUPPORT: GetGraphLightRequest = { id: 34, uuid: 'uuid-34', name: 'Support', description: '' };
+
+            const SAVED_SHORTCUTS: ShortcutSettings = {
+                custom: [
+                    { action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: BILLING.id } },
+                    { action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: SUPPORT.id } },
+                    { action: 'node.subgraph', keys: 'Alt+Digit3', params: { flowId: 99 } },
+                    { action: 'node.subgraph', keys: 'Alt+Digit4', params: { flowId: CURRENT_FLOW.id } },
+                ],
+            };
+
+            function setUpWithShortcuts(options: { canUpdateFlows?: boolean } = {}): void {
+                setUp({
+                    ...options,
+                    beforeCreate: () =>
+                        TestBed.overrideProvider(ProfileService, {
+                            useValue: {
+                                shortcutSettings: signal(SAVED_SHORTCUTS),
+                                updateShortcutSettings: () => EMPTY,
+                            },
+                        }),
+                });
+                fixture.componentRef.setInput('currentFlowId', CURRENT_FLOW.id);
+                fixture.componentRef.setInput('availableFlows', [CURRENT_FLOW, BILLING, SUPPORT]);
+                fixture.detectChanges();
+            }
+
+            function pressAltDigit(digit: number): void {
+                press({ code: `Digit${digit}`, key: String(digit), altKey: true });
+            }
+
+            function addedSubgraphs(): [NodeType, unknown, { x: number; y: number }][] {
+                return addedNodes().map((node) => [node.type, node.data, node.position]);
+            }
+
+            it('adds a Subgraph node for the flow of the pressed key where the pointer is, as the Flows tab does', () => {
+                setUpWithShortcuts();
+                hoverCanvasAt(400, 300);
+
+                pressAltDigit(1);
+                hoverCanvasAt(100, 600);
+                pressAltDigit(2);
+
+                expect(addedSubgraphs()).toEqual([
+                    [
+                        NodeType.SUBGRAPH,
+                        {
+                            id: 12,
+                            uuid: 'uuid-12',
+                            name: 'Billing',
+                            description: 'Charges the card',
+                            tags: ['money'],
+                        },
+                        { x: 400, y: 300 },
+                    ],
+                    [
+                        NodeType.SUBGRAPH,
+                        { id: 34, uuid: 'uuid-34', name: 'Support', description: '', tags: [] },
+                        { x: 100, y: 600 },
+                    ],
+                ]);
+            });
+
+            it('adds the same node data as picking the flow in the Flows tab', () => {
+                setUpWithShortcuts();
+                hoverCanvasAt(400, 300);
+                pressAltDigit(1);
+                fixture.componentInstance.onContextMenu(new MouseEvent('contextmenu', { clientX: 100, clientY: 500 }));
+
+                fixture.componentInstance.onAddNodeFromContextMenu(subgraphNodeRequest(BILLING));
+
+                const [fromKey, fromMenu] = addedNodes();
+                expect(fromKey.data).toEqual(fromMenu.data);
+            });
+
+            it.each([
+                ['a flow the user cannot see', 3],
+                ['the flow being edited', 4],
+            ])('adds nothing and says nothing for %s', (_case, digit) => {
+                setUpWithShortcuts();
+                hoverCanvasAt(400, 300);
+
+                pressAltDigit(digit);
+
+                expect(addedNodes()).toEqual([]);
+                expect(shownToasts()).toEqual([]);
+            });
+
+            it('adds nothing and says why when the flow is read-only', () => {
+                setUpWithShortcuts({ canUpdateFlows: false });
+                hoverCanvasAt(400, 300);
+
+                pressAltDigit(1);
+
+                expect(addedNodes()).toEqual([]);
+                expect(shownToasts()).toEqual(['You have read-only access to this flow.']);
+            });
         });
     });
 

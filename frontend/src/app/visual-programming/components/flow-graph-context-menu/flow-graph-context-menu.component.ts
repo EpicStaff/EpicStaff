@@ -32,6 +32,7 @@ import {
     FLOW_GRAPH_CONTEXT_MENU_ITEMS,
     FLOW_GRAPH_CONTEXT_MENU_POSITIONS,
 } from '../../core/constants/flow-graph-context-menu.constants';
+import { subgraphFlowOptions } from '../../core/helpers/subgraph-flows.util';
 import { CreateNodeRequest } from '../../core/models/node-creation.types';
 import { FlowGraphCoreMenuComponent } from './flow-graph-core-menu/flow-graph-core-menu.component';
 import { FlowsMenuComponent } from './flows-menu/flows-menu.component';
@@ -65,9 +66,7 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
 
     public readonly searchTerm = signal('');
     public readonly selectedMenu = signal<ContextMenuTab>(CONTEXT_MENU_TAB.FLOW_CORE);
-    protected readonly otherFlows = computed(() =>
-        this.availableFlows().filter((flow) => flow.id !== this.currentFlowId())
-    );
+    protected readonly otherFlows = computed(() => subgraphFlowOptions(this.availableFlows(), this.currentFlowId()));
     protected readonly visibleTabs = computed(() =>
         FLOW_GRAPH_CONTEXT_MENU_ITEMS.filter(
             (item) => item.type !== CONTEXT_MENU_TAB.FLOWS || this.otherFlows().length > 0

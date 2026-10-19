@@ -107,6 +107,8 @@
                                     @if (row.shortcut.id === editedShortcutId()) {
                                         <app-shortcut-editor
                                             [shortcut]="row.shortcut"
+                                            [flows]="flows()"
+                                            [currentFlowId]="currentFlowId()"
                                             (closed)="closeEditor()"
                                         />
                                     } @else {
@@ -116,6 +118,7 @@
                                         >
                                             <div
                                                 class="shortcuts__label"
+                                                [class.shortcuts__label--muted]="row.isMuted"
                                                 [attr.title]="row.label"
                                             >
                                                 {{ row.label }}
@@ -154,25 +157,31 @@
                     }
 
                     @if (isAdding()) {
-                        <app-shortcut-editor (closed)="closeEditor()" />
+                        <app-shortcut-editor
+                            [flows]="flows()"
+                            [currentFlowId]="currentFlowId()"
+                            (closed)="closeEditor()"
+                        />
                     } @else {
                         <div class="shortcuts__add-line">
-                            <app-button
-                                #addButton
-                                type="ghost"
-                                mod="small"
-                                leftIcon="plus"
-                                (click)="startAdding()"
-                                >Add shortcut</app-button
-                            >
                             @if (resetClearCount() > 0) {
                                 <app-button
+                                    class="shortcuts__line-button"
                                     type="outline-secondary"
                                     mod="small"
                                     (click)="confirmReset()"
                                     >Reset to defaults</app-button
                                 >
                             }
+                            <app-button
+                                #addButton
+                                class="shortcuts__line-button shortcuts__add-button"
+                                type="primary"
+                                mod="small"
+                                leftIcon="plus"
+                                (click)="startAdding()"
+                                >Add shortcut</app-button
+                            >
                         </div>
                     }
                 </div>

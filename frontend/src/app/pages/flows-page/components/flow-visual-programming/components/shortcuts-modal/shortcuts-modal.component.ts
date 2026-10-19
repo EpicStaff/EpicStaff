@@ -26,6 +26,7 @@ import {
 } from '@shared/components';
 import { BREAKPOINTS } from 'src/app/core/constants/breakpoints';
 
+import { GetGraphLightRequest } from '../../../../../../features/flows/models/graph.model';
 import {
     EDITOR_ACTIONS,
     EditorAction,
@@ -40,6 +41,7 @@ import {
 import { CustomShortcut } from '../../../../../../visual-programming/core/keymap/shortcut-resolution';
 import { KeymapService } from '../../../../../../visual-programming/services/keymap.service';
 import { ShortcutEditorComponent } from './shortcut-editor/shortcut-editor.component';
+import { shortcutLabel } from './shortcut-label.util';
 
 interface ShortcutRow {
     readonly id: string;
@@ -56,6 +58,7 @@ interface ShortcutSection {
 interface CustomShortcutRow {
     readonly shortcut: CustomShortcut;
     readonly label: string;
+    readonly isMuted: boolean;
     readonly keys: readonly string[] | null;
 }
 
@@ -64,8 +67,6 @@ type EditorTarget = { readonly kind: 'add' } | { readonly kind: 'edit'; readonly
 export const SHORTCUTS_MODAL_HEIGHT_PX = 666;
 
 const SECTION_ORDER: readonly EditorActionSection[] = ['Editing', 'Navigating', 'Selection', 'Zoom', 'Nodes'];
-
-const ACTION_LABELS: ReadonlyMap<string, string> = new Map(EDITOR_ACTIONS.map((action) => [action.id, action.label]));
 
 @Component({
     selector: 'app-shortcuts-modal',
@@ -88,6 +89,8 @@ export class ShortcutsModalComponent {
     title = input<string>('');
     icon = input<string | null>(null);
     showClose = input<boolean>(true);
+    readonly flows = input<readonly GetGraphLightRequest[]>([]);
+    readonly currentFlowId = input<number | null>(null);
 
     closed = output<void>();
 
@@ -102,7 +105,7 @@ export class ShortcutsModalComponent {
         const unboundIds = this.keymap.unboundIds();
         return SECTION_ORDER.map((title) => ({
             title,
-            rows: EDITOR_ACTIONS.filter((action) => action.section === title).map(
+            rows: EDITOR_ACTIONS.filter((action) => action.section === title && hasBuiltInKeys(action)).map(
                 (action: EditorAction): ShortcutRow => ({
                     id: action.id,
                     label: action.label,
@@ -113,13 +116,21 @@ export class ShortcutsModalComponent {
         }));
     });
 
-    protected readonly customRows = computed<readonly CustomShortcutRow[]>(() =>
-        this.keymap.customShortcuts().map((shortcut) => ({
-            shortcut,
-            label: ACTION_LABELS.get(shortcut.action) ?? shortcut.action,
-            keys: shortcut.chord === null ? null : formatChord(shortcut.chord, this.keymap.isMac),
-        }))
-    );
+    protected readonly customRows = computed<readonly CustomShortcutRow[]>(() => {
+        const flows = {
+            names: new Map(this.flows().map((flow) => [flow.id, flow.name])),
+            currentFlowId: this.currentFlowId(),
+        };
+        return this.keymap.customShortcuts().map((shortcut) => {
+            const label = shortcutLabel(shortcut.action, shortcut.params, flows);
+            return {
+                shortcut,
+                label: label.text,
+                isMuted: label.isMuted,
+                keys: shortcut.chord === null ? null : formatChord(shortcut.chord, this.keymap.isMac),
+            };
+        });
+    });
 
     protected readonly resetClearCount = computed(() => this.keymap.defaultsResetClearCount());
 
@@ -246,4 +257,8 @@ export class ShortcutsModalComponent {
         }
         return chords.map((chord) => formatChord(chord, this.keymap.isMac));
     }
+}
+
+function hasBuiltInKeys(action: EditorAction): boolean {
+    return action.defaultChords.length > 0 || action.displayKeys !== undefined;
 }

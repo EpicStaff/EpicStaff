@@ -5,6 +5,8 @@ import { KeyChord } from './key-chord.util';
 
 export type EditorActionSection = 'Nodes' | 'Editing' | 'Navigating' | 'Selection' | 'Zoom';
 
+export type EditorActionParam = 'flow';
+
 export interface EditorAction<Id extends string = EditorActionId> {
     readonly id: Id;
     readonly label: string;
@@ -12,7 +14,8 @@ export interface EditorAction<Id extends string = EditorActionId> {
     readonly defaultChords: readonly KeyChord[];
     readonly displayKeys?: readonly string[];
     readonly customizable: boolean;
-    readonly nodeType?: MenuNodeType;
+    readonly nodeType?: MenuNodeType | NodeType.SUBGRAPH;
+    readonly param?: EditorActionParam;
 }
 
 function nodeAction<const Id extends `node.${string}`>(id: Id, nodeType: MenuNodeType, chord: KeyChord) {
@@ -41,6 +44,15 @@ export const EDITOR_ACTIONS = [
     nodeAction('node.telegram-trigger', NodeType.TELEGRAM_TRIGGER, 'Shift+KeyG'),
     nodeAction('node.audio-to-text', NodeType.AUDIO_TO_TEXT, 'Shift+KeyU'),
     nodeAction('node.end', NodeType.END, 'Shift+KeyE'),
+    {
+        id: 'node.subgraph',
+        label: 'Subgraph',
+        section: 'Nodes',
+        defaultChords: [],
+        customizable: true,
+        nodeType: NodeType.SUBGRAPH,
+        param: 'flow',
+    },
     {
         id: 'editing.save',
         label: 'Save',
@@ -147,3 +159,7 @@ export const EDITOR_ACTIONS = [
 ] as const satisfies readonly EditorAction<string>[];
 
 export type EditorActionId = (typeof EDITOR_ACTIONS)[number]['id'];
+
+export const ACTION_PARAMS: ReadonlyMap<string, EditorActionParam> = new Map(
+    EDITOR_ACTIONS.flatMap((action: EditorAction) => (action.param ? [[action.id, action.param] as const] : []))
+);

@@ -302,6 +302,10 @@
     white-space: nowrap;
 }
 
+.shortcuts__label--muted {
+    color: var(--color-ks-transparent-text-60);
+}
+
 .shortcuts__keys {
     display: flex;
     align-items: center;
@@ -365,6 +369,24 @@
     gap: 8px;
     margin-top: 16px;
     break-inside: avoid;
+}
+
+.shortcuts__line-button ::ng-deep .btn {
+    min-width: 7.5rem;
+}
+
+.shortcuts__add-button {
+    --shortcuts-add-icon-inset: calc(1.1rem * 4 / 24);
+
+    margin-left: auto;
+
+    ::ng-deep .btn.btn--icon-left-small {
+        padding-left: calc(2rem - var(--shortcuts-add-icon-inset));
+    }
+
+    ::ng-deep .btn-icon.left {
+        left: calc(0.75rem - var(--shortcuts-add-icon-inset));
+    }
 }
 
 @media (max-width: bp.$breakpoint-shortcuts) {

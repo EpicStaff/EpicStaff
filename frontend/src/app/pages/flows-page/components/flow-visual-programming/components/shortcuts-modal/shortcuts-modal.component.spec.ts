@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { GetMeResponse, ShortcutSettings } from '@shared/models';
 
+import { GetGraphLightRequest } from '../../../../../../features/flows/models/graph.model';
 import { ProfileService } from '../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../services/config';
 import { ToastMessage, ToastService } from '../../../../../../services/notifications';
@@ -55,7 +56,7 @@ interface RenderedCustomRow {
     keys: string;
 }
 
-type CustomRow = { action: string; keys: string | null };
+type CustomRow = ShortcutSettings['custom'][number];
 
 class ResizeObserverStub {
     observe(): void {}
@@ -861,6 +862,247 @@ describe('ShortcutsModalComponent', () => {
 
             expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Shift P' }]);
             expect(nodeRow('Python Code Node')).toBe('Not set');
+        });
+    });
+
+    describe('Subgraph shortcuts', () => {
+        const THIS_FLOW: GetGraphLightRequest = { id: 1, uuid: 'uuid-1', name: 'Onboarding', description: '' };
+        const FLOWS: GetGraphLightRequest[] = [
+            THIS_FLOW,
+            { id: 12, uuid: 'uuid-12', name: 'Billing', description: '' },
+            { id: 34, uuid: 'uuid-34', name: 'Support', description: '' },
+        ];
+
+        function openModalWithFlows(flows: GetGraphLightRequest[] = FLOWS): void {
+            fixture = TestBed.createComponent(ShortcutsModalComponent);
+            fixture.componentRef.setInput('open', true);
+            fixture.componentRef.setInput('pos', { top: 10, left: 10 });
+            fixture.componentRef.setInput('flows', flows);
+            fixture.componentRef.setInput('currentFlowId', THIS_FLOW.id);
+            closedCount = 0;
+            fixture.componentInstance.closed.subscribe(() => (closedCount += 1));
+            render();
+        }
+
+        function flowPicker(): HTMLInputElement | null {
+            const pickers = editor()!.querySelectorAll<HTMLInputElement>('input[role="combobox"]');
+            return pickers.length > 1 ? pickers[1] : null;
+        }
+
+        function pickFlow(name: string): void {
+            const input = flowPicker()!;
+            input.focus();
+            input.value = name.slice(0, 3);
+            input.dispatchEvent(new Event('input'));
+            render();
+            const option = Array.from(input.parentElement!.querySelectorAll('[role="option"]')).find(
+                (candidate) => text(candidate) === name
+            );
+            if (!option) throw new Error(`No "${name}" flow in the picker`);
+            (option as HTMLElement).click();
+            render();
+        }
+
+        function customLabel(index: number): Element {
+            return rowElementsOf('Custom')[index].querySelector('.shortcuts__label')!;
+        }
+
+        it('is not listed among the nodes with built-in keys', () => {
+            setUp();
+            openModalWithFlows();
+
+            expect(rowsOf('Nodes').map((row) => row.label)).not.toContain('Subgraph');
+        });
+
+        it('asks for a flow only once Subgraph is picked', () => {
+            setUp();
+            openModalWithFlows();
+
+            startAdding();
+            pickAction('Agent Node');
+            expect(flowPicker()).toBeNull();
+
+            pickAction('Subgraph');
+            expect(flowPicker()).not.toBeNull();
+        });
+
+        it('keeps Save disabled until a flow is picked, then saves the row with its flow', () => {
+            setUp();
+            openModalWithFlows();
+
+            startAdding();
+            pickAction('Subgraph');
+            expect(saveButton().disabled).toBe(true);
+            press(flowPicker()!, { key: 'Enter', code: 'Enter' });
+            expect(editor()).not.toBeNull();
+            record({ key: '1', code: 'Digit1', altKey: true });
+            expect(saveButton().disabled).toBe(true);
+
+            pickFlow('Support');
+            expect(saveButton().disabled).toBe(false);
+            click(saveButton());
+
+            expect(customRows()).toEqual([{ label: 'Subgraph: Support', keys: 'Alt 1' }]);
+            const patch = nextPatch();
+            expect(patch.body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 34 } }] },
+            });
+            patch.succeed();
+        });
+
+        function flowOptions(query: string): string[] {
+            const input = flowPicker()!;
+            input.focus();
+            input.value = query;
+            input.dispatchEvent(new Event('input'));
+            render();
+            return Array.from(input.parentElement!.querySelectorAll('[role="option"]'), text);
+        }
+
+        function actionOptions(query: string): string[] {
+            const input = actionPicker();
+            input.focus();
+            input.value = query;
+            input.dispatchEvent(new Event('input'));
+            render();
+            return Array.from(editor()!.querySelectorAll('[role="option"]'), text);
+        }
+
+        it('lists the other flows, not the one being edited, and filters them by name', () => {
+            setUp();
+            openModalWithFlows();
+
+            startAdding();
+            pickAction('Subgraph');
+
+            expect(flowOptions('')).toEqual(['Billing', 'Support']);
+            expect(flowOptions('sup')).toEqual(['Support']);
+        });
+
+        it('names a row for the flow being edited as this flow, muted, and lets its edit keep or change it', () => {
+            setUp();
+            loadUser([{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: THIS_FLOW.id } }]);
+            openModalWithFlows();
+
+            expect(customRows()).toEqual([{ label: 'Subgraph: Onboarding (this flow)', keys: 'Alt 1' }]);
+            expect(customLabel(0).classList).toContain('shortcuts__label--muted');
+
+            click(buttonNamed('Edit Subgraph: Onboarding (this flow) shortcut'));
+            expect(flowPicker()!.value).toBe('Onboarding (this flow)');
+            expect(saveButton().disabled).toBe(false);
+
+            pickFlow('Billing');
+            click(saveButton());
+
+            expect(customRows()).toEqual([{ label: 'Subgraph: Billing', keys: 'Alt 1' }]);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }] },
+            });
+        });
+
+        it('does not offer Subgraph when no other flow can be picked, but keeps and edits an existing row', () => {
+            setUp();
+            loadUser([{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 99 } }]);
+            openModalWithFlows([THIS_FLOW]);
+
+            startAdding();
+            expect(actionOptions('Sub')).toEqual([]);
+            click(buttonNamed('Cancel', editor()!));
+
+            expect(customRows()).toEqual([{ label: 'Subgraph: Flow not available', keys: 'Alt 1' }]);
+            click(buttonNamed('Edit Subgraph: Flow not available shortcut'));
+            expect(actionPicker().value).toBe('Subgraph');
+        });
+
+        it('says a row whose flow is gone is not available, muted, and still edits and deletes it', () => {
+            setUp();
+            loadUser([
+                { action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 99 } },
+                { action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 12 } },
+            ]);
+            openModalWithFlows();
+
+            expect(customRows()).toEqual([
+                { label: 'Subgraph: Flow not available', keys: 'Alt 1' },
+                { label: 'Subgraph: Billing', keys: 'Alt 2' },
+            ]);
+            expect(customLabel(0).classList).toContain('shortcuts__label--muted');
+            expect(customLabel(1).classList).not.toContain('shortcuts__label--muted');
+
+            click(buttonNamed('Edit Subgraph: Flow not available shortcut'));
+            expect(flowPicker()!.value).toBe('');
+            expect(saveButton().disabled).toBe(true);
+            pickFlow('Support');
+            click(saveButton());
+            expect(customRows()[0]).toEqual({ label: 'Subgraph: Support', keys: 'Alt 1' });
+            nextPatch().succeed();
+
+            click(buttonNamed('Delete Subgraph: Billing shortcut'));
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 34 } }] },
+            });
+        });
+
+        it('opens an edited row with its flow filled in and moves it to another flow', () => {
+            setUp();
+            loadUser([{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 34 } }]);
+            openModalWithFlows();
+
+            click(buttonNamed('Edit Subgraph: Support shortcut'));
+            expect(actionPicker().value).toBe('Subgraph');
+            expect(flowPicker()!.value).toBe('Support');
+            expect(saveButton().disabled).toBe(false);
+
+            pickFlow('Billing');
+            click(saveButton());
+
+            expect(customRows()).toEqual([{ label: 'Subgraph: Billing', keys: 'Alt 1' }]);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }] },
+            });
+        });
+
+        it('names the flow of the Subgraph row that already has the recorded key, without firing it', () => {
+            setUp();
+            const subgraph = vi.fn();
+            TestBed.inject(KeymapService).register('node.subgraph', subgraph);
+            loadUser([{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }]);
+            openModalWithFlows();
+
+            startAdding();
+            pickAction('Subgraph');
+            pickFlow('Support');
+            const recorded = record({ key: '1', code: 'Digit1', altKey: true });
+
+            expect(subgraph).not.toHaveBeenCalled();
+            expect(recorded.defaultPrevented).toBe(true);
+            expect(feedback()).toBe('Already used by your Subgraph: Billing shortcut');
+            expect(saveButton().disabled).toBe(true);
+        });
+
+        it('keeps a Subgraph row and its flow on reset to defaults, clearing only the node key it took', () => {
+            setUp();
+            loadUser([
+                { action: 'node.subgraph', keys: 'Shift+KeyP', params: { flowId: 12 } },
+                { action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 34 } },
+            ]);
+            openModalWithFlows();
+
+            click(buttonNamed('Reset to defaults'));
+            click(buttonNamed('Reset', document.querySelector('app-confirmation-dialog')!));
+
+            expect(customRows()).toEqual([
+                { label: 'Subgraph: Billing', keys: 'Not set' },
+                { label: 'Subgraph: Support', keys: 'Alt 2' },
+            ]);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: {
+                    custom: [
+                        { action: 'node.subgraph', keys: null, params: { flowId: 12 } },
+                        { action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 34 } },
+                    ],
+                },
+            });
         });
     });
 });

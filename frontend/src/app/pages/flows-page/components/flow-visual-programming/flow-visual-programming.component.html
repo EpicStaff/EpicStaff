@@ -73,6 +73,8 @@
             [pos]="shortcutsPos()"
             title="Command & Shortcuts"
             icon="shortcut"
+            [flows]="availableFlowLights()"
+            [currentFlowId]="currentFlowId()"
             (closed)="closeShortcutsModal()"
         ></app-shortcuts-modal>
         <div

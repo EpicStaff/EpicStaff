@@ -1,68 +1,26 @@
-<div class="shortcut-editor__field">
-    <label
-        class="shortcut-editor__label"
-        [attr.for]="idPrefix + '-action'"
-        >Action</label
-    >
-    <input
-        #pickerInput
-        class="shortcut-editor__input"
-        type="text"
-        role="combobox"
-        autocomplete="off"
-        placeholder="Search actions"
-        [id]="idPrefix + '-action'"
-        [value]="query()"
-        [attr.aria-expanded]="isListOpen()"
-        [attr.aria-controls]="isListOpen() ? idPrefix + '-actions' : null"
-        aria-autocomplete="list"
-        [attr.aria-activedescendant]="activeOption()?.elementId ?? null"
-        (input)="onQueryInput(pickerInput.value)"
-        (click)="openPicker()"
-        (blur)="closePicker()"
-        (keydown)="onPickerKeydown($event)"
+<app-shortcut-picker
+    #actionPicker
+    label="Action"
+    placeholder="Search actions"
+    listLabel="Actions"
+    emptyText="No matching actions"
+    [groups]="actionGroups()"
+    [startOpen]="shortcut() === null"
+    [selected]="action()"
+    (selectedChange)="onActionChange($event)"
+/>
+
+@if (needsFlow()) {
+    <app-shortcut-picker
+        label="Flow"
+        placeholder="Search flows"
+        listLabel="Flows"
+        emptyText="No matching flows"
+        [groups]="flowGroups()"
+        [selected]="selectedFlowId()"
+        (selectedChange)="onFlowChange($event)"
     />
-    @if (isListOpen()) {
-        <div
-            class="shortcut-editor__list"
-            role="listbox"
-            aria-label="Actions"
-            [id]="idPrefix + '-actions'"
-            (mousedown)="$event.preventDefault()"
-        >
-            @for (group of groups(); track group.title) {
-                <div
-                    class="shortcut-editor__group"
-                    role="group"
-                    [attr.aria-labelledby]="group.titleId"
-                >
-                    <div
-                        class="shortcut-editor__group-title"
-                        role="presentation"
-                        [id]="group.titleId"
-                    >
-                        {{ group.title }}
-                    </div>
-                    @for (option of group.options; track option.id) {
-                        <div
-                            #optionElement
-                            class="shortcut-editor__option"
-                            role="option"
-                            [id]="option.elementId"
-                            [attr.aria-selected]="option.id === action()"
-                            [class.shortcut-editor__option--active]="option.elementId === activeOption()?.elementId"
-                            (click)="pick(option)"
-                        >
-                            {{ option.label }}
-                        </div>
-                    }
-                </div>
-            } @empty {
-                <div class="shortcut-editor__empty">No matching actions</div>
-            }
-        </div>
-    }
-</div>
+}
 
 <div class="shortcut-editor__field">
     <span

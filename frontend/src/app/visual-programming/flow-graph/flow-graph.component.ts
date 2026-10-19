@@ -47,7 +47,7 @@ import {
 } from '@foblex/flow';
 import { AppSvgIconComponent, AuthorshipDetailsSource } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, NodeType, ResourceCode } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode, ShortcutParams } from '@shared/models';
 import { fromEvent, Subject } from 'rxjs';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
@@ -85,7 +85,9 @@ import {
     snapPointToGrid,
 } from '../core/helpers/node-placement.utils';
 import { normalizeTableNodeSize } from '../core/helpers/node-size.util';
+import { subgraphFlowOptions, subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
 import { EDITOR_ACTIONS } from '../core/keymap/editor-actions';
+import { flowIdOf } from '../core/keymap/shortcut-params';
 import { computeLayout } from '../core/layout/compute-layout';
 import { ConnectionModel } from '../core/models/connection.model';
 import { FlowModel } from '../core/models/flow.model';
@@ -398,10 +400,21 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             options
         );
         for (const action of EDITOR_ACTIONS) {
-            if ('nodeType' in action) {
+            if ('nodeType' in action && !('param' in action)) {
                 const request: CreateNodeRequest = { type: action.nodeType };
                 this.keymap.register(action.id, () => this.onNodeShortcut(request), options);
             }
+        }
+        this.keymap.register('node.subgraph', (_event, { params }) => this.onSubgraphShortcut(params), options);
+    }
+
+    private onSubgraphShortcut(params: ShortcutParams | null): void {
+        const flowId = flowIdOf(params);
+        const flow = subgraphFlowOptions(this.availableFlows(), this.currentFlowId).find(
+            (candidate) => candidate.id === flowId
+        );
+        if (flow) {
+            this.onNodeShortcut(subgraphNodeRequest(flow));
         }
     }
 

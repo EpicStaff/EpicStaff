@@ -21,8 +21,10 @@ interface FlowGraphMenuGroup {
     blocks: FlowGraphBlock[];
 }
 
-const NODE_ACTION_BY_TYPE: ReadonlyMap<MenuNodeType, EditorActionId> = new Map(
-    EDITOR_ACTIONS.flatMap((action: EditorAction) => (action.nodeType ? [[action.nodeType, action.id] as const] : []))
+const NODE_ACTION_BY_TYPE: ReadonlyMap<NodeType, EditorActionId> = new Map(
+    EDITOR_ACTIONS.flatMap((action: EditorAction) =>
+        action.nodeType && !action.param ? [[action.nodeType, action.id] as const] : []
+    )
 );
 
 @Component({
@@ -174,7 +176,7 @@ export class FlowGraphCoreMenuComponent {
 
     private readonly keyHints = computed(() => {
         const bindings = this.keymap.bindings();
-        const keyHints = new Map<MenuNodeType, string>();
+        const keyHints = new Map<NodeType, string>();
         NODE_ACTION_BY_TYPE.forEach((actionId, type) => {
             const [chord] = bindings.get(actionId) ?? [];
             if (chord) {

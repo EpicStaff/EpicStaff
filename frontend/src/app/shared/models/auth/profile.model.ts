@@ -16,9 +16,14 @@ export interface GetMeResponse {
     custom_shortcuts: ShortcutSettings;
 }
 
+export interface ShortcutParams {
+    readonly [key: string]: number | string;
+}
+
 export interface CustomShortcutEntry {
     readonly action: string;
     readonly keys: string | null;
+    readonly params?: ShortcutParams;
 }
 
 export interface ShortcutSettings {

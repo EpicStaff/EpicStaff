@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { createEnvironmentInjector, DestroyRef, EnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { GetMeResponse, ShortcutSettings } from '@shared/models';
+import { GetMeResponse, ShortcutParams, ShortcutSettings } from '@shared/models';
 
 import { ProfileService } from '../../services/auth/profile.service';
 import { ConfigService } from '../../services/config';
@@ -658,6 +658,97 @@ describe('KeymapService', () => {
                 accepted: true,
                 displaces: null,
             });
+        });
+    });
+
+    describe('shortcuts that take a flow', () => {
+        beforeEach(() => setUp());
+
+        function loadEntries(custom: ShortcutSettings['custom']): void {
+            profile.getCurrentUser().subscribe();
+            httpMock
+                .expectOne({ method: 'GET', url: PROFILE_URL })
+                .flush({ ...BASE_USER, custom_shortcuts: { custom } });
+        }
+
+        it('hands each Subgraph key the flow of its own row', () => {
+            loadEntries([
+                { action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } },
+                { action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 34 } },
+            ]);
+            const received: (ShortcutParams | null)[] = [];
+            keymap().register('node.subgraph', (_event, match) => received.push(match.params));
+
+            press({ code: 'Digit2', key: '2', altKey: true });
+            press({ code: 'Digit1', key: '1', altKey: true });
+
+            expect(received).toEqual([{ flowId: 34 }, { flowId: 12 }]);
+        });
+
+        it('hands no params to an action bound by its built-in key', () => {
+            const received: (ShortcutParams | null)[] = [];
+            keymap().register('node.agent', (_event, match) => received.push(match.params));
+
+            press({ code: 'KeyA', key: 'A', shiftKey: true });
+
+            expect(received).toEqual([null]);
+        });
+
+        it('does not fire a stored Subgraph row whose flow is missing', () => {
+            loadEntries([{ action: 'node.subgraph', keys: 'Alt+Digit1' }]);
+            const subgraph = vi.fn();
+            keymap().register('node.subgraph', subgraph);
+
+            const event = press({ code: 'Digit1', key: '1', altKey: true });
+
+            expect(subgraph).not.toHaveBeenCalled();
+            expect(event.defaultPrevented).toBe(false);
+        });
+
+        it('saves the flow of an added Subgraph row and keeps it when only the key is edited', () => {
+            loadEntries([{ action: 'editing.save', keys: 'Alt+KeyS' }]);
+
+            const added = keymap().addCustom('node.subgraph', 'Alt+Digit1', { flowId: 12 });
+            const first = nextPatch();
+            expect(first.body).toEqual({
+                custom_shortcuts: {
+                    custom: [
+                        { action: 'editing.save', keys: 'Alt+KeyS' },
+                        { action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } },
+                    ],
+                },
+            });
+            first.succeed();
+
+            keymap().updateCustom(added.accepted ? added.customShortcutId : '', { chord: 'Alt+Digit2' });
+
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: {
+                    custom: [
+                        { action: 'editing.save', keys: 'Alt+KeyS' },
+                        { action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 12 } },
+                    ],
+                },
+            });
+        });
+
+        it('refuses a Subgraph row without a flow and saves nothing', () => {
+            loadEntries([]);
+
+            expect(keymap().addCustom('node.subgraph', 'Alt+Digit1')).toMatchObject({
+                accepted: false,
+                rejection: 'params',
+            });
+            httpMock.expectNone({ method: 'PATCH' });
+        });
+
+        it('keeps row ids when the saved flow comes back with its keys in another order', () => {
+            loadEntries([{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12, tab: 'a' } }]);
+            const [before] = keymap().customShortcuts();
+
+            loadEntries([{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { tab: 'a', flowId: 12 } }]);
+
+            expect(keymap().customShortcuts()[0].id).toBe(before.id);
         });
     });
 });

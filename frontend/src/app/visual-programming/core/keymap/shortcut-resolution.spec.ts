@@ -1,13 +1,17 @@
+import { CustomShortcutEntry, ShortcutParams } from '@shared/models';
+
 import { EditorActionId } from './editor-actions';
 import { KeyChord } from './key-chord.util';
 import {
     applyShortcutChange,
     CustomShortcutRow,
+    haveSameEntries,
     identifyRows,
     readCustomEntries,
     resolveShortcuts,
     ShortcutChange,
     ShortcutChangeResult,
+    toShortcutSettings,
 } from './shortcut-resolution';
 
 function rows(...entries: readonly (readonly [string, KeyChord | null])[]): CustomShortcutRow[] {
@@ -470,5 +474,201 @@ describe('applyShortcutChange', () => {
         ],
     ])('refuses %s as a programming error', (_case, change) => {
         expect(() => applyShortcutChange(NO_ROWS, change)).toThrow();
+    });
+});
+
+describe('shortcuts with parameters (Subgraph)', () => {
+    function subgraphRow(id: string, chord: KeyChord | null, params?: ShortcutParams): CustomShortcutRow {
+        return params === undefined
+            ? { id, action: 'node.subgraph', chord }
+            : { id, action: 'node.subgraph', chord, params };
+    }
+
+    function subgraphEntry(params: ShortcutParams | undefined): CustomShortcutEntry {
+        return params === undefined
+            ? { action: 'node.subgraph', keys: 'Alt+Digit1' }
+            : { action: 'node.subgraph', keys: 'Alt+Digit1', params };
+    }
+
+    it('binds a Subgraph row with a flow and hands its flow to whoever holds the key', () => {
+        const resolved = resolveShortcuts([subgraphRow('row-0', 'Alt+Digit1', { flowId: 12 })]);
+
+        expect(resolved.customShortcuts).toStrictEqual([
+            { id: 'row-0', action: 'node.subgraph', chord: 'Alt+Digit1', params: { flowId: 12 } },
+        ]);
+        expect(resolved.bindings.get('node.subgraph')).toEqual(['Alt+Digit1']);
+        expect(resolved.holders.get('Alt+Digit1')?.params).toEqual({ flowId: 12 });
+    });
+
+    it('gives two Subgraph rows for different flows their own key and their own flow', () => {
+        const holders = resolveShortcuts([
+            subgraphRow('row-0', 'Alt+Digit1', { flowId: 12 }),
+            subgraphRow('row-1', 'Alt+Digit2', { flowId: 34 }),
+        ]).holders;
+
+        expect([holders.get('Alt+Digit1')?.params, holders.get('Alt+Digit2')?.params]).toEqual([
+            { flowId: 12 },
+            { flowId: 34 },
+        ]);
+    });
+
+    it.each<[string, ShortcutParams | undefined]>([
+        ['no params', undefined],
+        ['no flowId', { flow: 12 }],
+        ['a flowId written as text', { flowId: '12' }],
+        ['a zero flowId', { flowId: 0 }],
+        ['a negative flowId', { flowId: -3 }],
+        ['a fractional flowId', { flowId: 1.5 }],
+    ])('keeps a Subgraph row with %s but gives it no key', (_case, params) => {
+        const resolved = resolveShortcuts([subgraphRow('row-0', 'Alt+Digit1', params)]);
+
+        expect(resolved.customShortcuts).toStrictEqual([{ id: 'row-0', action: 'node.subgraph', chord: null }]);
+        expect(resolved.holders.has('Alt+Digit1')).toBe(false);
+    });
+
+    it('keeps only the flowId of a Subgraph row', () => {
+        const resolved = resolveShortcuts([subgraphRow('row-0', 'Alt+Digit1', { flowId: 12, note: 'x' })]);
+
+        expect(resolved.customShortcuts[0].params).toStrictEqual({ flowId: 12 });
+    });
+
+    it('drops params from an action that takes none', () => {
+        const resolved = resolveShortcuts([
+            { id: 'row-0', action: 'node.agent', chord: 'Alt+KeyB', params: { flowId: 12 } },
+        ]);
+
+        expect(resolved.customShortcuts).toStrictEqual([{ id: 'row-0', action: 'node.agent', chord: 'Alt+KeyB' }]);
+        expect(resolved.holders.get('Alt+KeyB')?.params).toBeUndefined();
+    });
+
+    it.each<[string, ShortcutChange]>([
+        [
+            'an added Subgraph row without a flow',
+            { kind: 'add-custom', id: 'new', action: 'node.subgraph', chord: 'Alt+Digit1' },
+        ],
+        [
+            'an added Subgraph row without a flow or a key',
+            { kind: 'add-custom', id: 'new', action: 'node.subgraph', chord: null },
+        ],
+        [
+            'an added Subgraph row with a broken flow',
+            { kind: 'add-custom', id: 'new', action: 'node.subgraph', chord: 'Alt+Digit1', params: { flowId: 'x' } },
+        ],
+        [
+            'an edit that turns a row into Subgraph without a flow',
+            { kind: 'update-custom', id: 'row-0', action: 'node.subgraph', chord: 'Alt+KeyB' },
+        ],
+    ])('rejects %s', (_case, change) => {
+        const value: CustomShortcutRow[] = [{ id: 'row-0', action: 'node.agent', chord: 'Alt+KeyB' }];
+
+        expect(applyShortcutChange(value, change)).toMatchObject({ accepted: false, rejection: 'params' });
+    });
+
+    it('reports a key problem before a missing flow', () => {
+        expect(
+            applyShortcutChange(NO_ROWS, { kind: 'add-custom', id: 'new', action: 'node.subgraph', chord: 'Mod+KeyC' })
+        ).toMatchObject({ accepted: false, rejection: 'reserved' });
+    });
+
+    it('adds a second Subgraph row for the same flow on another key', () => {
+        const result = applyShortcutChange([subgraphRow('row-0', 'Alt+Digit1', { flowId: 12 })], {
+            kind: 'add-custom',
+            id: 'new',
+            action: 'node.subgraph',
+            chord: 'Alt+Digit2',
+            params: { flowId: 12 },
+        });
+
+        expect(rowsAfter(result)).toStrictEqual([
+            { id: 'row-0', action: 'node.subgraph', chord: 'Alt+Digit1', params: { flowId: 12 } },
+            { id: 'new', action: 'node.subgraph', chord: 'Alt+Digit2', params: { flowId: 12 } },
+        ]);
+    });
+
+    it('moves an edited row to another flow and drops the flow when it becomes another action', () => {
+        const value = [
+            subgraphRow('row-0', 'Alt+Digit1', { flowId: 12 }),
+            subgraphRow('row-1', 'Alt+Digit2', { flowId: 34 }),
+        ];
+
+        const moved = rowsAfter(
+            applyShortcutChange(value, {
+                kind: 'update-custom',
+                id: 'row-0',
+                action: 'node.subgraph',
+                chord: 'Alt+Digit1',
+                params: { flowId: 56 },
+            })
+        );
+        const retyped = rowsAfter(
+            applyShortcutChange(moved, {
+                kind: 'update-custom',
+                id: 'row-1',
+                action: 'node.agent',
+                chord: 'Alt+Digit2',
+                params: { flowId: 34 },
+            })
+        );
+
+        expect(retyped).toStrictEqual([
+            { id: 'row-0', action: 'node.subgraph', chord: 'Alt+Digit1', params: { flowId: 56 } },
+            { id: 'row-1', action: 'node.agent', chord: 'Alt+Digit2' },
+        ]);
+    });
+
+    it('keeps a Subgraph row and its flow through a reset to defaults, clearing only a node key it took', () => {
+        const value = [
+            subgraphRow('row-0', 'Shift+KeyP', { flowId: 12 }),
+            subgraphRow('row-1', 'Alt+Digit2', { flowId: 34 }),
+        ];
+
+        const reset = rowsAfter(applyShortcutChange(value, { kind: 'reset-to-defaults' }));
+
+        expect(reset).toStrictEqual([
+            { id: 'row-0', action: 'node.subgraph', chord: null, params: { flowId: 12 } },
+            { id: 'row-1', action: 'node.subgraph', chord: 'Alt+Digit2', params: { flowId: 34 } },
+        ]);
+    });
+
+    it('stores params only for rows that carry them', () => {
+        const settings = toShortcutSettings([
+            subgraphRow('row-0', 'Alt+Digit1', { flowId: 12 }),
+            { id: 'row-1', action: 'node.agent', chord: 'Alt+KeyB' },
+            { id: 'row-2', action: 'node.task', chord: null, params: {} },
+        ]);
+
+        expect(settings).toStrictEqual({
+            custom: [
+                { action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } },
+                { action: 'node.agent', keys: 'Alt+KeyB' },
+                { action: 'node.task', keys: null },
+            ],
+        });
+        expect(Number.isInteger(settings.custom[0].params?.['flowId'])).toBe(true);
+    });
+
+    it.each<[string, ShortcutParams | undefined, ShortcutParams | undefined, boolean]>([
+        ['the same params with keys in another order', { flowId: 12, tab: 'a' }, { tab: 'a', flowId: 12 }, true],
+        ['another flow', { flowId: 12 }, { flowId: 13 }, false],
+        ['a flow on one side only', { flowId: 12 }, undefined, false],
+        ['an extra key on one side', { flowId: 12 }, { flowId: 12, tab: 'a' }, false],
+    ])('compares stored and current rows with %s', (_case, stored, current, same) => {
+        const entries = [subgraphEntry(stored)];
+        const value = [subgraphRow('row-0', 'Alt+Digit1', current)];
+
+        expect(haveSameEntries(entries, value)).toBe(same);
+        expect(identifyRows(entries, value, () => 'new').map((row) => row.id)).toEqual([same ? 'row-0' : 'new']);
+    });
+
+    it.each<[string, unknown, ShortcutParams | undefined]>([
+        ['a flow', { flowId: 12 }, { flowId: 12 }],
+        ['text and number values', { flowId: 12, tab: 'a' }, { flowId: 12, tab: 'a' }],
+        ['a nested value', { flowId: { id: 12 } }, undefined],
+        ['a list', [12], undefined],
+        ['null', null, undefined],
+    ])('reads a stored row whose params are %s', (_case, params, expected) => {
+        const [entry] = readCustomEntries({ custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params }] });
+
+        expect(entry).toStrictEqual(subgraphEntry(expected));
     });
 });

@@ -222,6 +222,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
     private readonly storedGraph = computed<GraphDto | null>(() => (this.isGraphOutdated() ? null : this.graphState()));
     protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
+    protected readonly currentFlowId = computed(() => this.graphState()?.id ?? null);
     /** The as-persisted snapshot used for dirty tracking; shared so panels can compare against it. */
     private readonly savedFlowStateService = inject(SavedFlowStateService);
     protected readonly collaborationEditors = this.wsService.editors;

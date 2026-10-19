@@ -1,7 +1,8 @@
-import { CustomShortcutEntry, ShortcutSettings } from '@shared/models';
+import { CustomShortcutEntry, ShortcutParams, ShortcutSettings } from '@shared/models';
 
 import { EDITOR_ACTIONS, EditorAction, EditorActionId } from './editor-actions';
 import { checkUserChord, ChordRejection, KeyChord } from './key-chord.util';
+import { isShortcutParams, readActionParams, sameParams } from './shortcut-params';
 
 export type ChordSource = 'default' | 'custom';
 
@@ -9,12 +10,14 @@ export interface ChordHolder {
     readonly action: EditorActionId;
     readonly source: ChordSource;
     readonly customShortcutId: string | null;
+    readonly params?: ShortcutParams;
 }
 
 export interface CustomShortcutRow {
     readonly id: string;
     readonly action: string;
     readonly chord: KeyChord | null;
+    readonly params?: ShortcutParams;
 }
 
 export interface CustomShortcut extends CustomShortcutRow {
@@ -36,17 +39,19 @@ export type ShortcutChange =
           readonly id: string;
           readonly action: EditorActionId;
           readonly chord: KeyChord | null;
+          readonly params?: ShortcutParams;
       }
     | {
           readonly kind: 'update-custom';
           readonly id: string;
           readonly action: EditorActionId;
           readonly chord: KeyChord | null;
+          readonly params?: ShortcutParams;
       }
     | { readonly kind: 'remove-custom'; readonly id: string }
     | { readonly kind: 'reset-to-defaults' };
 
-export type ShortcutRejection = ChordRejection | 'missing' | 'limit';
+export type ShortcutRejection = ChordRejection | 'missing' | 'limit' | 'params';
 
 export interface ShortcutRejected {
     readonly accepted: false;
@@ -67,6 +72,8 @@ const SHORTCUTS_MAX_CUSTOM_ENTRIES = 100;
 
 const MISSING_CUSTOM_SHORTCUT: ShortcutRejected = { accepted: false, rejection: 'missing', takenBy: null };
 
+const MISSING_PARAMS: ShortcutRejected = { accepted: false, rejection: 'params', takenBy: null };
+
 const ACTIONS_BY_ID: ReadonlyMap<string, EditorAction> = new Map<string, EditorAction>(
     EDITOR_ACTIONS.map((action) => [action.id, action])
 );
@@ -81,7 +88,7 @@ const EDITOR_DEFAULT_CHORDS: ReadonlySet<KeyChord> = new Set(
 
 export function readCustomEntries(settings: unknown): readonly CustomShortcutEntry[] {
     const custom = isRecord(settings) ? settings['custom'] : undefined;
-    return Array.isArray(custom) ? custom.filter(isCustomShortcutEntry) : [];
+    return Array.isArray(custom) ? custom.flatMap(readCustomEntry) : [];
 }
 
 export function identifyRows(
@@ -91,21 +98,24 @@ export function identifyRows(
 ): CustomShortcutRow[] {
     const unclaimed = [...previousRows];
     return entries.map((entry) => {
-        const index = unclaimed.findIndex((row) => row.action === entry.action && row.chord === entry.keys);
+        const index = unclaimed.findIndex((row) => isSameEntry(entry, row));
         const id = index === -1 ? createId() : unclaimed.splice(index, 1)[0].id;
-        return { id, action: entry.action, chord: entry.keys };
+        return withParams({ id, action: entry.action, chord: entry.keys }, entry.params);
     });
 }
 
 export function toShortcutSettings(rows: readonly CustomShortcutRow[]): ShortcutSettings {
-    return { custom: rows.map((row) => ({ action: row.action, keys: row.chord })) };
+    return {
+        custom: rows.map((row) =>
+            row.params === undefined || Object.keys(row.params).length === 0
+                ? { action: row.action, keys: row.chord }
+                : { action: row.action, keys: row.chord, params: row.params }
+        ),
+    };
 }
 
 export function haveSameEntries(entries: readonly CustomShortcutEntry[], rows: readonly CustomShortcutRow[]): boolean {
-    return (
-        entries.length === rows.length &&
-        entries.every((entry, index) => entry.action === rows[index].action && entry.keys === rows[index].chord)
-    );
+    return entries.length === rows.length && entries.every((entry, index) => isSameEntry(entry, rows[index]));
 }
 
 export function resolveShortcuts(rows: readonly CustomShortcutRow[]): ResolvedShortcuts {
@@ -116,15 +126,20 @@ export function resolveShortcuts(rows: readonly CustomShortcutRow[]): ResolvedSh
         if (!action?.customizable) {
             continue;
         }
+        const params = paramsOf(action, row.params);
         const usable =
             row.chord !== null &&
+            params !== null &&
             chordRejection(row.chord) === null &&
             !action.defaultChords.includes(row.chord) &&
             !customHolders.has(row.chord);
         if (usable) {
-            customHolders.set(row.chord, { action: action.id, source: 'custom', customShortcutId: row.id });
+            customHolders.set(
+                row.chord,
+                withParams({ action: action.id, source: 'custom', customShortcutId: row.id }, params)
+            );
         }
-        customShortcuts.push({ id: row.id, action: action.id, chord: usable ? row.chord : null });
+        customShortcuts.push(withParams({ id: row.id, action: action.id, chord: usable ? row.chord : null }, params));
     }
 
     const bindings = new Map<EditorActionId, readonly KeyChord[]>();
@@ -167,19 +182,21 @@ export function applyShortcutChange(rows: readonly CustomShortcutRow[], change: 
             if (kept.length >= SHORTCUTS_MAX_CUSTOM_ENTRIES) {
                 return { accepted: false, rejection: 'limit', takenBy: null };
             }
-            const next = [...kept, { id: change.id, action: action.id, chord: change.chord }];
-            return evaluateChange(current, kept, next, action.id, change.chord);
+            const params = paramsOf(action, change.params);
+            const next = [...kept, withParams({ id: change.id, action: action.id, chord: change.chord }, params)];
+            return evaluateChange(current, kept, next, action.id, change.chord, params !== null);
         }
         case 'update-custom': {
             const action = requireCustomizable(change.action);
             if (!kept.some((row) => row.id === change.id)) {
                 return MISSING_CUSTOM_SHORTCUT;
             }
+            const params = paramsOf(action, change.params);
             const others = kept.filter((row) => row.id !== change.id);
             const next = kept.map((row) =>
-                row.id === change.id ? { id: row.id, action: action.id, chord: change.chord } : row
+                row.id === change.id ? withParams({ id: row.id, action: action.id, chord: change.chord }, params) : row
             );
-            return evaluateChange(current, others, next, action.id, change.chord);
+            return evaluateChange(current, others, next, action.id, change.chord, params !== null);
         }
         case 'remove-custom': {
             if (!kept.some((row) => row.id === change.id)) {
@@ -199,10 +216,11 @@ function evaluateChange(
     withoutTarget: readonly CustomShortcutRow[],
     next: readonly CustomShortcut[],
     actionId: EditorActionId,
-    chord: KeyChord | null
+    chord: KeyChord | null,
+    hasRequiredParams: boolean
 ): ShortcutChangeResult {
     if (chord === null) {
-        return { accepted: true, displaces: null, rows: next };
+        return hasRequiredParams ? { accepted: true, displaces: null, rows: next } : MISSING_PARAMS;
     }
 
     const rejection = chordRejection(chord);
@@ -219,10 +237,26 @@ function evaluateChange(
         return { accepted: false, rejection: 'taken', takenBy: holder };
     }
 
+    if (!hasRequiredParams) {
+        return MISSING_PARAMS;
+    }
+
     const previousHolder = current.holders.get(chord);
     const displaces =
         previousHolder?.source === 'default' && previousHolder.action !== actionId ? previousHolder.action : null;
     return { accepted: true, displaces, rows: next };
+}
+
+function paramsOf(action: EditorAction, params: ShortcutParams | undefined): ShortcutParams | undefined | null {
+    return action.param === undefined ? undefined : readActionParams(action.param, params);
+}
+
+function withParams<T extends object>(value: T, params: ShortcutParams | undefined | null): T {
+    return params ? { ...value, params } : value;
+}
+
+function isSameEntry(entry: CustomShortcutEntry, row: CustomShortcutRow): boolean {
+    return entry.action === row.action && entry.keys === row.chord && sameParams(entry.params, row.params);
 }
 
 function chordRejection(chord: KeyChord): ChordRejection | null {
@@ -253,10 +287,15 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isCustomShortcutEntry(value: unknown): value is CustomShortcutEntry {
-    return (
-        isRecord(value) &&
-        typeof value['action'] === 'string' &&
-        (typeof value['keys'] === 'string' || value['keys'] === null)
-    );
+function readCustomEntry(value: unknown): CustomShortcutEntry[] {
+    if (!isRecord(value)) {
+        return [];
+    }
+    const action = value['action'];
+    const keys = value['keys'];
+    if (typeof action !== 'string' || (typeof keys !== 'string' && keys !== null)) {
+        return [];
+    }
+    const params = value['params'];
+    return [isShortcutParams(params) ? { action, keys, params } : { action, keys }];
 }

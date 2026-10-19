@@ -23,7 +23,6 @@
     color: var(--color-ks-transparent-text-60);
 }
 
-.shortcut-editor__input,
 .shortcut-editor__recorder {
     box-sizing: border-box;
     height: 32px;
@@ -42,62 +41,6 @@
         border-color: var(--accent-color);
         outline: none;
     }
-}
-
-.shortcut-editor__input::placeholder {
-    color: var(--color-ks-transparent-text-60);
-}
-
-.shortcut-editor__list {
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 4px;
-    border: 1px solid var(--color-input-border);
-    border-radius: 4px;
-    background: var(--color-input-background);
-    scrollbar-width: thin;
-    scrollbar-color: var(--graphite-750) transparent;
-}
-
-.shortcut-editor__group:not(:first-child) {
-    margin-top: 4px;
-}
-
-.shortcut-editor__group-title {
-    padding: 4px 8px;
-    font-size: var(--text-caption-size);
-    font-weight: var(--text-caption-weight);
-    line-height: var(--text-caption-line-height);
-    color: var(--color-ks-transparent-text-60);
-}
-
-.shortcut-editor__option,
-.shortcut-editor__empty {
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: var(--text-body-small-size);
-    font-weight: var(--text-body-small-weight);
-    line-height: var(--text-body-small-line-height);
-    color: var(--color-ks-transparent-text-80);
-}
-
-.shortcut-editor__option {
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-
-    &:hover,
-    &--active {
-        background: var(--color-ks-hover-row);
-        color: var(--color-text-primary);
-    }
-
-    &[aria-selected='true'] {
-        color: var(--accent-color);
-    }
-}
-
-.shortcut-editor__empty {
-    color: var(--color-ks-transparent-text-60);
 }
 
 .shortcut-editor__keys {

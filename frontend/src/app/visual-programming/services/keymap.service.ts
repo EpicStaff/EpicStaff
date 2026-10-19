@@ -1,6 +1,6 @@
 import { computed, DestroyRef, inject, Injectable, InjectionToken, linkedSignal, NgZone, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CustomShortcutEntry, ShortcutSettings } from '@shared/models';
+import { CustomShortcutEntry, ShortcutParams, ShortcutSettings } from '@shared/models';
 import { catchError, concatMap, EMPTY, finalize, fromEvent, Subject } from 'rxjs';
 
 import { ProfileService } from '../../services/auth/profile.service';
@@ -30,6 +30,11 @@ export const PLATFORM_IS_MAC = new InjectionToken<boolean>('PLATFORM_IS_MAC', {
 export interface ShortcutTarget {
     readonly action: EditorActionId;
     readonly customShortcutId?: string;
+    readonly params?: ShortcutParams;
+}
+
+export interface ShortcutMatch {
+    readonly params: ShortcutParams | null;
 }
 
 export type CustomShortcutCheck = ShortcutRejected | (ShortcutAccepted & { readonly customShortcutId: string });
@@ -38,7 +43,7 @@ const NODE_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
     EDITOR_ACTIONS.filter((action) => action.section === 'Nodes').map((action) => action.id)
 );
 
-type KeyHandler = (event: KeyboardEvent) => void;
+type KeyHandler = (event: KeyboardEvent, match: ShortcutMatch) => void;
 
 interface Registration {
     readonly handler: KeyHandler;
@@ -133,22 +138,27 @@ export class KeymapService {
     }
 
     checkChord(chord: KeyChord, target: ShortcutTarget): ShortcutCheck {
+        const { action, params } = target;
         const change: ShortcutChange =
             target.customShortcutId === undefined
-                ? { kind: 'add-custom', id: '', action: target.action, chord }
-                : { kind: 'update-custom', id: target.customShortcutId, action: target.action, chord };
+                ? { kind: 'add-custom', id: '', action, chord, params }
+                : { kind: 'update-custom', id: target.customShortcutId, action, chord, params };
         return toCheck(applyShortcutChange(this.rows(), change));
     }
 
-    addCustom(actionId: EditorActionId, chord: KeyChord | null): CustomShortcutCheck {
+    addCustom(actionId: EditorActionId, chord: KeyChord | null, params?: ShortcutParams): CustomShortcutCheck {
         const id = this.createRowId();
-        const result = this.apply({ kind: 'add-custom', id, action: actionId, chord });
+        const result = this.apply({ kind: 'add-custom', id, action: actionId, chord, params });
         return result.accepted ? { accepted: true, displaces: result.displaces, customShortcutId: id } : result;
     }
 
     updateCustom(
         customShortcutId: string,
-        changes: { readonly action?: EditorActionId; readonly chord?: KeyChord | null }
+        changes: {
+            readonly action?: EditorActionId;
+            readonly chord?: KeyChord | null;
+            readonly params?: ShortcutParams;
+        }
     ): ShortcutCheck {
         const row = this.customShortcuts().find((candidate) => candidate.id === customShortcutId);
         if (!row) {
@@ -160,6 +170,7 @@ export class KeymapService {
                 id: customShortcutId,
                 action: changes.action ?? row.action,
                 chord: changes.chord === undefined ? row.chord : changes.chord,
+                params: changes.params ?? row.params,
             })
         );
     }
@@ -193,7 +204,8 @@ export class KeymapService {
 
     private dispatch(event: KeyboardEvent): void {
         const chord = chordFromEvent(event, this.isMac);
-        const actionId = chord === null ? undefined : this.resolved().holders.get(chord)?.action;
+        const holder = chord === null ? undefined : this.resolved().holders.get(chord);
+        const actionId = holder?.action;
         const registrations = actionId === undefined ? [] : (this.registrations.get(actionId) ?? []);
         if (!actionId || registrations.length === 0 || this.isSuppressed(actionId, event)) {
             return;
@@ -208,7 +220,8 @@ export class KeymapService {
 
         event.preventDefault();
         event.stopPropagation();
-        this.ngZone.run(() => runnable.forEach((registration) => registration.handler(event)));
+        const match: ShortcutMatch = { params: holder?.params ?? null };
+        this.ngZone.run(() => runnable.forEach((registration) => registration.handler(event, match)));
     }
 
     private isSuppressed(actionId: EditorActionId, event: KeyboardEvent): boolean {
