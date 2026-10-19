@@ -89,11 +89,14 @@ export class NaiveRagStrategy implements RagCreationStrategy {
         const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
         if (!naiveRagId || !configIds.length) return of(null);
 
-        return this.ragIndexingService.estimateIndexingOrNull({
-            rag_id: naiveRagId,
-            rag_type: 'naive',
-            document_config_ids: configIds,
-        });
+        return this.ragIndexingService.estimateIndexingOrNull(
+            {
+                rag_id: naiveRagId,
+                rag_type: 'naive',
+                document_config_ids: configIds,
+            },
+            this.documentsStorageService.buildPendingEstimateConfigs(configIds)
+        );
     }
 
     stopIndexing() {

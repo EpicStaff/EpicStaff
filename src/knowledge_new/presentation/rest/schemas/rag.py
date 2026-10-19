@@ -42,8 +42,14 @@ class MetricsOutputSchema(BaseSchema):
     avg_chunk_size: float
 
 
+class DocumentChunkingOverrideSchema(BaseSchema):
+    document_id: int
+    chunking_config: ChunkingConfig
+
+
 class IndexEstimateInputSchema(BaseSchema):
     document_ids: frozenset[int]
+    chunking_overrides: list[DocumentChunkingOverrideSchema] = Field(default_factory=list)
 
 
 class EmbeddingEstimateSchema(BaseSchema):

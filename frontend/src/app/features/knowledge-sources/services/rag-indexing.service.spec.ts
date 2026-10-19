@@ -64,4 +64,16 @@ describe('RagIndexingService estimate', () => {
         http.expectOne(ESTIMATE_URL).flush('boom', { status: 500, statusText: 'Server Error' });
         expect(error).toBeInstanceOf(HttpErrorResponse);
     });
+
+    it('sends document_configs only when given', () => {
+        service.estimateIndexing(REQUEST, [{ document_config_id: 1, chunk_size: 500 }]).subscribe();
+        const withConfigs = http.expectOne(ESTIMATE_URL).request.body;
+        expect(withConfigs).toEqual({ ...REQUEST, document_configs: [{ document_config_id: 1, chunk_size: 500 }] });
+
+        service.estimateIndexing(REQUEST, []).subscribe();
+        expect(http.expectOne(ESTIMATE_URL).request.body).toEqual(REQUEST);
+
+        service.estimateIndexing(REQUEST).subscribe();
+        expect(http.expectOne(ESTIMATE_URL).request.body).toEqual(REQUEST);
+    });
 });

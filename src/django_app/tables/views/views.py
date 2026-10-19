@@ -33,7 +33,11 @@ from rest_framework.permissions import IsAuthenticated
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import CodeRunTargetNotFoundError
+from tables.exceptions import (
+    CodeRunTargetNotFoundError,
+    DocumentConfigNotFoundException,
+    InvalidChunkParametersException,
+)
 from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -69,6 +73,7 @@ from tables.serializers.serializers import (
     BulkExportSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
+    ProcessRagIndexingEstimateSerializer,
     ProcessRagIndexingSerializer,
     RunPythonCodeSerializer,
     RunSessionSerializer,
@@ -79,6 +84,7 @@ from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.services.converter_service import ConverterService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.knowledge_services.indexing_service import IndexingService
+from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.notification_email_sender import NotificationEmailSender
 from tables.services.quickstart_service import QuickstartService
 from tables.services.realtime_service import RealtimeService
@@ -1003,20 +1009,25 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
     """Read-only token and cost estimate for an indexing run, computed by knowledge_new.
 
     Takes the same body and needs the same permission as `ProcessRagIndexingView`, so
-    the estimate is available to exactly the users who can start the indexing.
+    the estimate is available to exactly the users who can start the indexing. A naive
+    body may add `document_configs`: chunking settings the user has not saved yet, which
+    are merged into the stored configs and validated, but never persisted.
     """
 
     # Chunking whole documents in memory is slower than the indexing hand-off call.
     _KNOWLEDGE_TIMEOUT_SECONDS = 60.0
 
-    @extend_schema(request=ProcessRagIndexingSerializer, responses={200: OpenApiTypes.OBJECT})
+    @extend_schema(
+        request=ProcessRagIndexingEstimateSerializer, responses={200: OpenApiTypes.OBJECT}
+    )
     def post(self, request):
-        serializer = ProcessRagIndexingSerializer(data=request.data)
+        serializer = ProcessRagIndexingEstimateSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
         document_config_ids = serializer.validated_data["document_config_ids"]
+        document_configs = serializer.validated_data["document_configs"]
 
         model = self._RAG_MODELS[rag_type]
         # Enforces org scoping before the GraphRAG 400, so another org's RAG returns 404.
@@ -1035,11 +1046,24 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
             )
 
         try:
+            chunking_overrides = NaiveRagService.resolve_effective_document_configs(
+                rag_id, document_configs
+            )
+        except DocumentConfigNotFoundException as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except InvalidChunkParametersException as e:
+            return Response(
+                {"error": e.errors[0]["reason"], "errors": e.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
             with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
                 estimate = client.index_estimate(
                     strategy=RAGStrategy(rag_type),
                     rag_id=rag_id,
                     document_ids=frozenset(document_config_ids),
+                    chunking_overrides=chunking_overrides,
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)

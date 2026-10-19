@@ -34,6 +34,14 @@ class NaiveEstimateOrchestrator(AbstractEstimateOrchestrator):
         if not documents:
             raise DocumentNotFoundError(f"No Document found for RAG(id={rag.id}).")
 
+        # The indexer runs after the overrides are saved, so judge each document by them.
+        # Preview chunks were made with the stored settings, so an override drops them.
+        documents = [
+            d.model_copy(update={"config": command.chunking_overrides[d.id], "preview_chunks": []})
+            if d.id in command.chunking_overrides
+            else d
+            for d in documents
+        ]
         pending_documents = [d for d in documents if self._will_be_indexed(d)]
         chunk_texts: list[str] = []
         indexed_document_count = 0

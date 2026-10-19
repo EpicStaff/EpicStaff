@@ -69,7 +69,7 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
         const delete$: Observable<unknown> = hasPendingDeletes ? config.bulkDeletePending() : of(null);
 
         this.isPreparingIndexing.set(true);
-        this.confirmIndexing(indexingDocs, configIds)
+        this.confirmIndexing(indexingDocs, configIds, config.getPendingEstimateConfigsForChecked())
             .pipe(
                 filter((result) => result === true),
                 switchMap(() => delete$),

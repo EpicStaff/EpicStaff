@@ -121,7 +121,14 @@ class RagController(Controller):
         data: schemas.IndexEstimateInputSchema,
         uow: AbstractUnitOfWork,
     ) -> schemas.IndexEstimateOutputSchema:
-        command = commands.GetIndexEstimate(rag_id=rag_id, document_ids=data.document_ids)
+        command = commands.GetIndexEstimate(
+            rag_id=rag_id,
+            document_ids=data.document_ids,
+            chunking_overrides={
+                override.document_id: override.chunking_config
+                for override in data.chunking_overrides
+            },
+        )
         orchestrator = build_estimator(strategy, uow)
         result = await orchestrator.execute(command)
         return schemas.IndexEstimateOutputSchema.model_validate(result)

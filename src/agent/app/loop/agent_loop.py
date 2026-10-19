@@ -40,6 +40,10 @@ _STORE_OPT_OUT_PROVIDERS = frozenset({"openai", "azure"})
 
 _TRANSPORT_FIELDS = ("api_key", "base_url", "api_version", "deployment_id", "extra_headers")
 
+# Custom token prices: LiteLLMClient reads them to cost the usage, then strips them
+# before the provider call.
+_PRICING_FIELDS = ("input_cost_per_token", "output_cost_per_token")
+
 
 def _wrap_tool_result_for_llm(result: ToolResult) -> str:
     """Build the untrusted-data envelope fed to the LLM as the ``tool`` message.
@@ -99,13 +103,14 @@ def _build_model_config(context: AgentContext) -> dict:
     provider = _routed_provider(model)
     config = {**llm_config.to_litellm_kwargs(provider=provider), "model": model}
 
-    # Transport fields are not generation params, so to_litellm_kwargs leaves them out.
+    # Transport and pricing fields are not generation params, so to_litellm_kwargs leaves
+    # them out.
     # RouterPool reads api_key/base_url/api_version (LiteLLMClient strips them from the
     # call kwargs); deployment_id is what makes litellm route the call to Azure.
-    for transport_field in _TRANSPORT_FIELDS:
-        value = getattr(llm_config, transport_field)
+    for field_name in (*_TRANSPORT_FIELDS, *_PRICING_FIELDS):
+        value = getattr(llm_config, field_name)
         if value is not None:
-            config[transport_field] = value
+            config[field_name] = value
 
     if provider in _STORE_OPT_OUT_PROVIDERS:
         config["store"] = False

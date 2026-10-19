@@ -585,6 +585,52 @@ async def test_azure_deployment_id_and_extra_headers_reach_router_acompletion():
         assert router_owned_key not in acompletion_kwargs
 
 
+async def test_config_prices_are_in_model_config_only_when_set():
+    priced = _model_config_from_llm_config(
+        "openai",
+        LLMConfigData(
+            model="gpt-4o", api_key="sk-test", input_cost_per_token=0.001, output_cost_per_token=0.002
+        ),
+    )
+    unpriced = _model_config_from_llm_config(
+        "openai", LLMConfigData(model="gpt-4o", api_key="sk-test")
+    )
+
+    assert priced["input_cost_per_token"] == 0.001
+    assert priced["output_cost_per_token"] == 0.002
+    assert "input_cost_per_token" not in unpriced
+    assert "output_cost_per_token" not in unpriced
+
+
+async def test_llm_config_prices_cost_the_usage_and_never_reach_the_provider():
+    """Full path: LLM config -> _build_model_config -> LiteLLMClient, provider boundary mocked."""
+    model_config = _model_config_from_llm_config(
+        "openai",
+        LLMConfigData(
+            model="epicstaff-test-gateway-model-without-price",
+            api_key="sk-test",
+            input_cost_per_token=0.001,
+            output_cost_per_token=0.002,
+        ),
+    )
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok", tool_calls=None), finish_reason="stop")],
+        usage=SimpleNamespace(prompt_tokens=100, completion_tokens=20, total_tokens=120),
+    )
+    router = MagicMock()
+    router.model_list = [{"model_name": "synth-model-001"}]
+    router.acompletion = AsyncMock(return_value=response)
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router))
+
+    result = [chunk async for chunk in client.chat(MESSAGES, [], model_config, stream=False)]
+
+    usage_chunks = [c for c in result if c.usage is not None]
+    assert usage_chunks[0].usage["total_cost_usd"] == pytest.approx(0.14)
+    provider_kwargs = router.acompletion.call_args.kwargs
+    assert "input_cost_per_token" not in provider_kwargs
+    assert "output_cost_per_token" not in provider_kwargs
+
+
 # ---------------------------------------------------------------------------
 # Tests — per-config token prices
 # ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import {
     StartIndexingDtoResponse,
     StopIndexingDtoRequest,
 } from '../models/base-rag.model';
+import { EstimateDocumentConfig } from '../models/naive-rag-document.model';
 
 // The dialog no longer waits on the estimate; estimates for large selections can take several seconds.
 const ESTIMATE_TIMEOUT_MS = 30000;
@@ -23,8 +24,12 @@ export class RagIndexingService {
         return this.http.post<StartIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/`, dto);
     }
 
-    estimateIndexing(dto: StartIndexingDtoRequest): Observable<IndexingEstimate> {
-        return this.http.post<IndexingEstimate>(`${this.configService.apiUrl}process-rag-indexing/estimate/`, dto, {
+    estimateIndexing(
+        dto: StartIndexingDtoRequest,
+        documentConfigs?: EstimateDocumentConfig[]
+    ): Observable<IndexingEstimate> {
+        const body = documentConfigs?.length ? { ...dto, document_configs: documentConfigs } : dto;
+        return this.http.post<IndexingEstimate>(`${this.configService.apiUrl}process-rag-indexing/estimate/`, body, {
             context: new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true),
         });
     }
@@ -32,8 +37,11 @@ export class RagIndexingService {
     /**
      * Informational only: a failed or slow estimate resolves to null so it can never block indexing.
      */
-    estimateIndexingOrNull(dto: StartIndexingDtoRequest): Observable<IndexingEstimate | null> {
-        return this.estimateIndexing(dto).pipe(
+    estimateIndexingOrNull(
+        dto: StartIndexingDtoRequest,
+        documentConfigs?: EstimateDocumentConfig[]
+    ): Observable<IndexingEstimate | null> {
+        return this.estimateIndexing(dto, documentConfigs).pipe(
             timeout(ESTIMATE_TIMEOUT_MS),
             catchError(() => of(null))
         );

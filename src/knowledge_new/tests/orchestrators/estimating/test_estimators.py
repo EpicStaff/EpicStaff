@@ -192,6 +192,80 @@ async def test_naive_counts_outdated_and_failed_documents_even_with_unchanged_co
     assert result.embedding.tokens > 0
 
 
+async def test_naive_override_equal_to_the_last_indexed_config_is_still_skipped():
+    document = _document(1, status=DocumentStatusEnum.COMPLETED, last_indexing_config=CHUNKING)
+    orchestrator, _ = _naive([document])
+
+    result = await orchestrator.execute(
+        GetIndexEstimate(
+            rag_id=1,
+            document_ids=frozenset({1}),
+            chunking_overrides={1: CHUNKING.model_copy()},
+        )
+    )
+
+    assert (result.document_count, result.chunk_count, result.embedding.tokens) == (0, 0, 0)
+
+
+async def test_naive_override_that_changes_a_completed_document_is_counted_and_rechunked():
+    # No blank line, so the stored character config yields one chunk.
+    document = _document(
+        1,
+        content=b"word " * 100,
+        status=DocumentStatusEnum.COMPLETED,
+        last_indexing_config=CHUNKING,
+    )
+    orchestrator, _ = _naive([document])
+    token_override = ChunkingConfig(
+        chunk_strategy=ChunkStrategyEnum.TOKEN, chunk_size=20, chunk_overlap=0
+    )
+
+    result = await orchestrator.execute(
+        GetIndexEstimate(
+            rag_id=1, document_ids=frozenset({1}), chunking_overrides={1: token_override}
+        )
+    )
+
+    assert result.document_count == 1
+    assert result.chunk_count > 1
+    assert result.embedding.tokens > 0
+
+
+async def test_naive_override_ignores_preview_chunks_made_with_the_stored_config():
+    document = _document(
+        1,
+        content=b"alpha beta\n\ngamma delta",
+        preview_chunks=[PreviewChunk(text="stale preview")],
+    )
+    orchestrator, _ = _naive([document])
+    override = CHUNKING.model_copy(update={"chunk_size": 60})
+
+    result = await orchestrator.execute(
+        GetIndexEstimate(rag_id=1, document_ids=frozenset({1}), chunking_overrides={1: override})
+    )
+
+    # The two paragraphs, not the single stored preview chunk.
+    assert (result.document_count, result.chunk_count) == (1, 2)
+
+
+async def test_naive_documents_without_an_override_are_unaffected_by_other_overrides():
+    completed = _document(1, status=DocumentStatusEnum.COMPLETED, last_indexing_config=CHUNKING)
+    previewed = _document(2, preview_chunks=[PreviewChunk(text="hello world")])
+    changed = _document(3)
+    orchestrator, _ = _naive([completed, previewed, changed])
+
+    result = await orchestrator.execute(
+        GetIndexEstimate(
+            rag_id=1,
+            document_ids=frozenset({1, 2, 3}),
+            chunking_overrides={3: CHUNKING.model_copy(update={"chunk_size": 60})},
+        )
+    )
+
+    # Document 1 skipped, document 2 keeps its single preview chunk, document 3 is chunked.
+    assert (result.document_count, result.chunk_count) == (2, 3)
+
+
 async def test_naive_unpriced_model_has_null_cost_and_inexact_tokens():
     orchestrator, _ = _naive([_document(1)], embedding=UNPRICED_EMBEDDING)
 

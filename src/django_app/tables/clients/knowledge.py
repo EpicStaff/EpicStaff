@@ -56,11 +56,21 @@ class KnowledgeClient:
         strategy: RAGStrategy,
         rag_id: int,
         document_ids: frozenset[int],
+        chunking_overrides: dict[int, ChunkingConfig] | None = None,
     ) -> dict:
         response = self._request(
             method="post",
             url=f"rags/{strategy}/{rag_id}/index-estimate/",
-            json={"document_ids": list(document_ids)},
+            json={
+                "document_ids": list(document_ids),
+                "chunking_overrides": [
+                    {
+                        "document_id": document_id,
+                        "chunking_config": chunking_config.model_dump(mode="json"),
+                    }
+                    for document_id, chunking_config in (chunking_overrides or {}).items()
+                ],
+            },
         )
         return response.json()
 

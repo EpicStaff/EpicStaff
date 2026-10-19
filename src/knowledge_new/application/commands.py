@@ -64,3 +64,5 @@ class GetMetrics(Command):
 class GetIndexEstimate(Command):
     rag_id: int
     document_ids: frozenset[int]
+    # Chunking settings the user has not saved yet, by document id; they replace the stored ones.
+    chunking_overrides: dict[int, ChunkingConfig] = field(default_factory=dict)
