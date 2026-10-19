@@ -544,6 +544,7 @@ services:
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    restart: unless-stopped
     # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
     stop_grace_period: 5m
     environment:
