@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 
 from rbac.models import ApiKey, OrganizationUser
 from rbac.identity.api_keys.generator import ApiKeyGenerator
+from rbac.models.enums import Permission, ResourceType
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -93,6 +94,111 @@ def test_revoke_then_delete_a_members_key(client_as, admin_acme, acme_member, ac
 
     assert client.delete(detail_url(key.pk)).status_code == status.HTTP_204_NO_CONTENT
     assert not ApiKey.objects.filter(pk=key.pk).exists()
+
+
+_KEY_MANAGER = {ResourceType.API_KEYS.value: Permission.READ | Permission.DELETE}
+
+
+def _call(client, endpoint, key):
+    """Return (the key's serialized row, the raw response body)."""
+    response = client.get(LIST_URL) if endpoint == "list" else client.post(revoke_url(key.pk))
+    assert response.status_code == status.HTTP_200_OK
+    if endpoint == "list":
+        (row,) = response.json()["results"]
+    else:
+        row = response.json()
+    return row, response.content
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("endpoint", ["list", "revoke"])
+def test_owner_is_withheld_without_memberships_read(client_as, user_with_grants, acme, acme_member, make_key, endpoint):
+    key = make_key(acme_member, name="laptop")
+    manager = user_with_grants("key-manager@example.com", {acme: _KEY_MANAGER})
+
+    row, raw = _call(client_as(manager), endpoint, key)
+
+    assert (row["id"], row["org_ids"], row["owner"]) == (key.pk, [acme.id], None)
+    assert acme_member.email.encode() not in raw
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("endpoint", ["list", "revoke"])
+def test_owner_is_shown_with_memberships_read(client_as, user_with_grants, acme, acme_member, make_key, endpoint):
+    key = make_key(acme_member, name="laptop")
+    manager = user_with_grants(
+        "key-and-member-manager@example.com",
+        {acme: {**_KEY_MANAGER, ResourceType.MEMBERSHIPS.value: Permission.READ}},
+    )
+
+    row, _ = _call(client_as(manager), endpoint, key)
+
+    assert (row["id"], row["owner"]["id"], row["owner"]["email"]) == (key.pk, acme_member.id, acme_member.email)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("endpoint", ["list", "revoke"])
+def test_memberships_read_outside_the_api_keys_orgs_does_not_reveal_the_owner(
+    client_as, user_with_grants, acme, beta, acme_member, role_member, make_key, endpoint
+):
+    OrganizationUser.objects.create(user=acme_member, org=beta, role=role_member)
+    key = make_key(acme_member, name="laptop")
+    caller = user_with_grants(
+        "split-grants@example.com",
+        {acme: _KEY_MANAGER, beta: {ResourceType.MEMBERSHIPS.value: Permission.READ}},
+    )
+
+    row, raw = _call(client_as(caller), endpoint, key)
+
+    assert (row["org_ids"], row["owner"]) == ([acme.id], None)
+    assert acme_member.email.encode() not in raw
+
+
+@pytest.mark.django_db
+def test_owner_filter_is_refused_without_memberships_read(client_as, user_with_grants, acme, acme_member, make_key):
+    make_key(acme_member, name="laptop")
+    manager = user_with_grants("filter-no-members@example.com", {acme: _KEY_MANAGER})
+
+    response = client_as(manager).get(LIST_URL, {"user": acme_member.id})
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json()["code"] == "permission_denied"
+    assert acme_member.email.encode() not in response.content
+
+
+@pytest.mark.django_db
+def test_owner_filter_is_refused_with_memberships_read_only_outside_the_owners_orgs(
+    client_as, user_with_grants, acme, beta, acme_member, make_key
+):
+    make_key(acme_member, name="laptop")
+    caller = user_with_grants(
+        "filter-members-elsewhere@example.com",
+        {acme: _KEY_MANAGER, beta: {ResourceType.MEMBERSHIPS.value: Permission.READ}},
+    )
+
+    response = client_as(caller).get(LIST_URL, {"user": acme_member.id})
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json()["code"] == "permission_denied"
+
+
+@pytest.mark.django_db
+def test_owner_filter_works_with_memberships_read_in_the_owners_org(
+    client_as, user_with_grants, acme, acme_member, role_member, django_user_model, make_key
+):
+    other_member = django_user_model.objects.create_user(email="other-keyholder@example.com", password="StrongPass123!")
+    OrganizationUser.objects.create(user=other_member, org=acme, role=role_member)
+    make_key(other_member, name="other")
+    key = make_key(acme_member, name="laptop")
+    caller = user_with_grants(
+        "filter-with-members@example.com",
+        {acme: {**_KEY_MANAGER, ResourceType.MEMBERSHIPS.value: Permission.READ}},
+    )
+
+    response = client_as(caller).get(LIST_URL, {"user": acme_member.id})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [(row["id"], row["owner"]["email"]) for row in response.json()["results"]] == [(key.pk, acme_member.email)]
 
 
 @pytest.mark.django_db

@@ -50,7 +50,8 @@ export interface AffectedUser {
 export interface DeleteRolePreviewResponse {
     role_id: number;
     assigned_count: number;
-    affected_users: AffectedUser[];
+    /** Omitted when the caller may not read memberships in the role's organization. */
+    affected_users?: AffectedUser[];
 }
 
 /** Response for `DELETE /api/admin/roles/{id}/`. */

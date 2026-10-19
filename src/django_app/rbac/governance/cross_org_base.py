@@ -9,7 +9,7 @@ from rbac.access.cross_org_resolver import (
 )
 from rbac.access.resolver import PermissionResolver
 from rbac.exceptions import OrgMembershipRequiredError
-from rbac.models.enums import Permission
+from rbac.models.enums import Permission, ResourceType
 
 
 class CrossOrgResourceService:
@@ -22,6 +22,8 @@ class CrossOrgResourceService:
 
     - `resolve_readable_org_ids` — the set of orgs the caller may READ this
       resource in (None = superadmin / all), for cross-org lists.
+    - `resolve_identity_visible_org_ids` — the orgs where the caller may see
+      other users' email / display name (MEMBERSHIPS.READ).
     - `apply_org_scope` — filter a queryset to those orgs, honouring an
       explicit `?org_ids=` selection with a 403 fail-loud on a forbidden id.
     - `resolve_for_write` — resolve the caller's permissions in a row's org,
@@ -47,6 +49,19 @@ class CrossOrgResourceService:
     def resolve_readable_org_ids(self, actor, scopes=None) -> set | None:
         """Org ids where `actor` may READ this resource. None = superadmin
         (no filter). `scopes` may be the door gate's per-request cache."""
+        return self._org_ids_granting_read(actor, self.rbac_resource_type, scopes)
+
+    def resolve_identity_visible_org_ids(self, actor, scopes=None) -> set[int] | None:
+        """Org ids where `actor` may see other users' identity (email, display
+        name) embedded in an admin response. None = superadmin (every org).
+
+        Identity belongs to the membership list, so it follows MEMBERSHIPS.READ
+        rather than the permission of the resource being listed: a delegated
+        admin holding only e.g. roles or api_keys must not learn who the
+        members are through that side door."""
+        return self._org_ids_granting_read(actor, ResourceType.MEMBERSHIPS, scopes)
+
+    def _org_ids_granting_read(self, actor, resource_type, scopes) -> set[int] | None:
         if getattr(actor, "is_superadmin", False):
             return None
         if scopes is None:
@@ -54,7 +69,7 @@ class CrossOrgResourceService:
         return {
             scope.org.id
             for scope in scopes
-            if scope.effective.can(self.rbac_resource_type.value, Permission.READ)
+            if scope.effective.can(resource_type.value, Permission.READ)
         }
 
     def resolve_for_write(self, actor, row_org_id, action: Permission):

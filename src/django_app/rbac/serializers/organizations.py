@@ -96,9 +96,9 @@ class OrganizationListResponseSerializer(OrganizationResponseSerializer):
     """Response shape for GET /api/admin/organizations/ only.
 
     Adds `admins`: serialized from the `admins` attribute that
-    `OrganizationManagementService.list_organizations_with_admins` attaches
-    to each Organization instance (fallback already resolved by the
-    service)."""
+    `OrganizationManagementService.attach_admins` attaches to each
+    Organization instance (fallback already resolved by the service). Empty
+    for an org where the caller lacks memberships read."""
 
     admins = OrganizationAdminUserSerializer(many=True, read_only=True)
 

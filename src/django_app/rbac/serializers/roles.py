@@ -48,8 +48,11 @@ class AffectedRoleUserSerializer(serializers.Serializer):
 
 
 class RoleDeletePreviewSerializer(serializers.Serializer):
-    """Response of DELETE /api/admin/roles/{id}/?dry_run=true (no mutation)."""
+    """Response of DELETE /api/admin/roles/{id}/?dry_run=true (no mutation).
+
+    `affected_users` is omitted unless the caller holds memberships read in
+    the role's organization."""
 
     role_id = serializers.IntegerField()
     assigned_count = serializers.IntegerField()
-    affected_users = AffectedRoleUserSerializer(many=True)
+    affected_users = AffectedRoleUserSerializer(many=True, required=False)

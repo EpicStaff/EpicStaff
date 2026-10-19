@@ -27,10 +27,11 @@ export function getAdminRevokeConfirmationData(keyName: string): ConfirmationDia
 }
 
 /** Single-key delete — admin view. Same blast-radius rule as revoke. */
-export function getAdminDeleteConfirmationData(ownerName: string): ConfirmationDialogData {
+export function getAdminDeleteConfirmationData(ownerName: string | null): ConfirmationDialogData {
+    const owner = ownerName ? `<strong>${escapeHtml(ownerName)}</strong>` : 'another user';
     return {
         title: 'Delete key',
-        message: `This key belongs to <strong>${escapeHtml(ownerName)}</strong>. Deleting it removes the record and cannot be undone.`,
+        message: `This key belongs to ${owner}. Deleting it removes the record and cannot be undone.`,
         caution:
             'API keys are account-wide, so this key will stop working everywhere its owner uses it — including organizations you may not be able to see.',
         type: 'danger',

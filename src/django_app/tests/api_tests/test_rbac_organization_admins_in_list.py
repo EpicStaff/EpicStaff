@@ -6,7 +6,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
+
+from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 User = get_user_model()
 
@@ -115,6 +117,53 @@ def test_avatar_url_is_absolute_when_set_and_null_when_unset(
         u_yes.refresh_from_db()
         if u_yes.avatar:
             u_yes.avatar.delete(save=False)
+
+
+_ORG_READER = {ResourceType.ORGANIZATIONS.value: Permission.READ}
+_ORG_AND_MEMBER_READER = {**_ORG_READER, ResourceType.MEMBERSHIPS.value: Permission.READ}
+
+
+def _org_row(response, org):
+    return next(row for row in response.json()["results"] if row["id"] == org.id)
+
+
+@pytest.mark.django_db
+def test_admins_are_hidden_without_memberships_read(client_as, user_with_grants, acme, admin_acme):
+    org_reader = user_with_grants("org-reader@example.com", {acme: _ORG_READER})
+
+    response = client_as(org_reader).get(_list_url())
+
+    assert response.status_code == 200
+    assert _org_row(response, acme)["admins"] == []
+    assert admin_acme.email.encode() not in response.content
+
+
+@pytest.mark.django_db
+def test_admins_are_listed_with_memberships_read(client_as, user_with_grants, acme, admin_acme):
+    member_reader = user_with_grants("org-member-reader@example.com", {acme: _ORG_AND_MEMBER_READER})
+
+    response = client_as(member_reader).get(_list_url())
+
+    assert response.status_code == 200
+    assert [admin["email"] for admin in _org_row(response, acme)["admins"]] == [admin_acme.email]
+
+
+@pytest.mark.django_db
+def test_admins_follow_memberships_read_per_organization(
+    client_as, user_with_grants, acme, beta, admin_acme, role_org_admin, django_user_model
+):
+    beta_admin = django_user_model.objects.create_user(email="beta-admin-xorg@example.com", password="StrongPass123!")
+    OrganizationUser.objects.create(user=beta_admin, org=beta, role=role_org_admin)
+    caller = user_with_grants(
+        "members-in-acme-only@example.com", {acme: _ORG_AND_MEMBER_READER, beta: _ORG_READER}
+    )
+
+    response = client_as(caller).get(_list_url())
+
+    assert response.status_code == 200
+    assert [admin["email"] for admin in _org_row(response, acme)["admins"]] == [admin_acme.email]
+    assert _org_row(response, beta)["admins"] == []
+    assert beta_admin.email.encode() not in response.content
 
 
 @pytest.mark.django_db

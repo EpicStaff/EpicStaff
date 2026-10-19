@@ -4,6 +4,7 @@ from datetime import datetime
 from django.db.models import F, Q, QuerySet
 from django.utils import timezone
 from loguru import logger
+from rest_framework.exceptions import PermissionDenied
 
 from rbac.access.cross_org_resolver import OrgScope
 from rbac.exceptions import ApiKeyNotFoundError
@@ -34,7 +35,10 @@ class ApiKeyManagementService(CrossOrgResourceService):
         search: str | None = None,
         scopes: list[OrgScope] | None = None,
     ) -> QuerySet[ApiKey]:
-        """USER keys owned by members of the caller's readable orgs."""
+        """USER keys owned by members of the caller's readable orgs.
+
+        `owner_id` filtering is refused (403) unless the owner's identity is
+        visible to the caller — see `_assert_owner_identity_visible`."""
         base_qs: QuerySet[ApiKey] = ApiKey.objects.filter(
             key_type=ApiKey.KeyType.USER
         ).select_related("created_by")
@@ -46,6 +50,7 @@ class ApiKeyManagementService(CrossOrgResourceService):
             scopes=scopes,
         )
         if owner_id is not None:
+            self._assert_owner_identity_visible(actor, owner_id, scopes)
             qs = qs.filter(created_by_id=owner_id)
         if status_value is not None:
             qs = self._filter_status(qs, status_value)
@@ -84,11 +89,22 @@ class ApiKeyManagementService(CrossOrgResourceService):
         self, keys: list[ApiKey], actor, scopes: list[OrgScope] | None = None
     ) -> None:
         """Set `_visible_org_ids` on each key: the owner's orgs, limited to
-        those the caller may read. One query for the whole page."""
+        those where the caller may read API keys. One membership query for
+        the whole page; the caller's own scopes come from `scopes` (the door
+        gate's per-request cache) or are resolved here when it is None.
+
+        Also set `_owner_visible`: whether the caller holds MEMBERSHIPS.READ in
+        at least one of `_visible_org_ids`. Without it the serializer withholds
+        the owner entirely — even the bare user id would disclose that
+        person's membership. `list_keys` refuses an `owner_id` filter on the
+        same rule, so the id cannot be probed back in through the query."""
         owner_ids: set[int] = {key.created_by_id for key in keys}
         if not owner_ids:
             return
         readable: set[int] | None = self.resolve_readable_org_ids(actor, scopes=scopes)
+        identity_org_ids: set[int] | None = self.resolve_identity_visible_org_ids(
+            actor, scopes=scopes
+        )
         rows: QuerySet[OrganizationUser] = OrganizationUser.objects.filter(
             user_id__in=owner_ids, org__is_active=True
         )
@@ -99,6 +115,26 @@ class ApiKeyManagementService(CrossOrgResourceService):
             by_owner[user_id].append(org_id)
         for key in keys:
             key._visible_org_ids = sorted(by_owner.get(key.created_by_id, []))
+            key._owner_visible = identity_org_ids is None or not identity_org_ids.isdisjoint(
+                key._visible_org_ids
+            )
+
+    def _assert_owner_identity_visible(
+        self, actor, owner_id: int, scopes: list[OrgScope] | None
+    ) -> None:
+        """403 unless `owner_id` belongs to an org where the caller holds
+        MEMBERSHIPS.READ. Without this, filtering by an opaque user id would
+        map that id to keys and orgs the caller is not allowed to attribute.
+        The message is identical whether or not the user exists."""
+        identity_org_ids: set[int] | None = self.resolve_identity_visible_org_ids(
+            actor, scopes=scopes
+        )
+        if identity_org_ids is None:
+            return
+        if not OrganizationUser.objects.filter(
+            user_id=owner_id, org_id__in=identity_org_ids
+        ).exists():
+            raise PermissionDenied("You do not have permission to filter by this user.")
 
     @staticmethod
     def _get_key_or_404(key_id: int) -> ApiKey:

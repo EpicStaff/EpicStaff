@@ -120,7 +120,8 @@ export class ApiKeysTabComponent {
             key: 'owner',
             label: 'OWNER',
             width: 'minmax(180px, 1.5fr)',
-            filterItems: this.ownerFilterItems(),
+            // No owner seen yet (identities hidden) → no filter to offer.
+            filterItems: this.knownOwners().size ? this.ownerFilterItems() : undefined,
             filterKind: 'single',
             filterSearchable: true,
             filterServerSide: true,
@@ -159,10 +160,10 @@ export class ApiKeysTabComponent {
                 expiryUrgency: apiKeyExpiryUrgency(k),
                 lastUsedLabel: getRelativeTime(k.last_used_at),
                 status: k.status,
-                ownerId: k.owner.id,
-                ownerAvatar: k.owner.avatar_url,
-                ownerName: k.owner.display_name || k.owner.email,
-                ownerEmail: k.owner.email,
+                ownerId: k.owner?.id ?? null,
+                ownerAvatar: k.owner?.avatar_url ?? null,
+                ownerName: k.owner ? k.owner.display_name || k.owner.email : null,
+                ownerEmail: k.owner?.email ?? null,
                 orgIds: k.org_ids,
             }))
             .sort((a, b) => API_KEY_STATUS_ORDER.get(a.status)! - API_KEY_STATUS_ORDER.get(b.status)!)
@@ -340,7 +341,7 @@ export class ApiKeysTabComponent {
     onDeleteKey(row: TableRow): void {
         const id = row['id'] as number;
         this.confirmation
-            .confirm(getAdminDeleteConfirmationData(row['ownerName'] as string))
+            .confirm(getAdminDeleteConfirmationData(row['ownerName'] as string | null))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.apiKeysService.deleteApiKey(id) : EMPTY)),
                 finalize(() => this.reload()),
@@ -362,6 +363,7 @@ export class ApiKeysTabComponent {
         this.knownOwners.update((cache) => {
             const next = new Map(cache);
             for (const k of keys) {
+                if (!k.owner) continue;
                 next.set(k.owner.id, {
                     name: k.owner.display_name || k.owner.email,
                     email: k.owner.email,

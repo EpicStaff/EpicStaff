@@ -34,8 +34,15 @@ def test_org_ids_default_to_empty_when_not_attached(key):
 
 @pytest.mark.django_db
 def test_no_secret_material_is_serialized(key):
+    key._owner_visible = True
+
     data = ApiKeyAdminSerializer(key).data
 
     assert "key_hash" not in data
     assert "api_key" not in data
     assert data["owner"]["email"] == "serialized@example.com"
+
+
+@pytest.mark.django_db
+def test_owner_is_withheld_when_visibility_was_never_attached(key):
+    assert ApiKeyAdminSerializer(key).data["owner"] is None

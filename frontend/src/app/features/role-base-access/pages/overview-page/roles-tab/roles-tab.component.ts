@@ -247,10 +247,10 @@ export class RolesTabComponent implements OnInit {
             .previewDeleteRole(id)
             .pipe(
                 switchMap((preview) => {
-                    const affected = preview.affected_users;
+                    const affected = preview.affected_users ?? [];
                     const emails = affected
                         .slice(0, 5)
-                        .map((u) => u.email)
+                        .map((u) => escapeHtml(u.email))
                         .join(', ');
                     const moreCount = Math.max(0, affected.length - 5);
                     const caution =

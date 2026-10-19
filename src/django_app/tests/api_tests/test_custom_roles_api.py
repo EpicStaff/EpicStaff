@@ -3,7 +3,9 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
-from rbac.models.enums import BuiltInRole, Permission
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
+
+from tests.rbac_cross_org_fixtures import user_with_grants  # noqa: F401
 
 
 @pytest.fixture
@@ -151,6 +153,53 @@ def test_delete_dry_run_then_real(
     assert real.json()["reassigned_count"] == 1
     assert not Role.objects.filter(pk=custom.id).exists()
     assert OrganizationUser.objects.get(user=victim, org=acme).role_id == role_viewer.id
+
+
+@pytest.fixture
+def doomed_role(db, django_user_model, acme):
+    """A custom role in acme held by one member, for the dry-run delete preview."""
+    role = Role.objects.create(name="Doomed-api", org=acme, is_built_in=False)
+    holder = django_user_model.objects.create_user(
+        email="doomed-holder@example.com", password="StrongPass123!", display_name="Doomed Holder"
+    )
+    OrganizationUser.objects.create(user=holder, org=acme, role=role)
+    return role
+
+
+_ROLE_DELETER = {ResourceType.ROLES.value: Permission.READ | Permission.DELETE}
+
+
+@pytest.mark.django_db
+def test_delete_preview_without_memberships_read_omits_affected_users(
+    auth_client, user_with_grants, acme, doomed_role
+):
+    deleter = user_with_grants("role-deleter@example.com", {acme: _ROLE_DELETER})
+
+    response = auth_client(deleter).delete(f"/api/admin/roles/{doomed_role.id}/?dry_run=true")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"role_id": doomed_role.id, "assigned_count": 1}
+    assert b"doomed-holder@example.com" not in response.content
+    assert b"Doomed Holder" not in response.content
+
+
+@pytest.mark.django_db
+def test_delete_preview_with_memberships_read_lists_affected_users(
+    auth_client, user_with_grants, acme, doomed_role
+):
+    deleter = user_with_grants(
+        "role-and-member-reader@example.com",
+        {acme: {**_ROLE_DELETER, ResourceType.MEMBERSHIPS.value: Permission.READ}},
+    )
+
+    response = auth_client(deleter).delete(f"/api/admin/roles/{doomed_role.id}/?dry_run=true")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["assigned_count"] == 1
+    assert [(user["email"], user["display_name"]) for user in body["affected_users"]] == [
+        ("doomed-holder@example.com", "Doomed Holder")
+    ]
 
 
 @pytest.mark.django_db

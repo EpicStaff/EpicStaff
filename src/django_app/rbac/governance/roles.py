@@ -116,13 +116,20 @@ class RoleManagementService(CrossOrgResourceService):
         Uses the same authorization as `delete_role` — membership in the
         role's org (404 otherwise, no existence leak) plus the DELETE verb —
         so the preview never disagrees with the real delete. Read-only, so
-        the role is fetched without a row lock."""
+        the role is fetched without a row lock.
+
+        `affected_users` (who the members are) is included only when the
+        caller also holds MEMBERSHIPS.READ in the role's org; otherwise the
+        key is omitted and only `assigned_count` is reported."""
         role = self._fetch_role_or_404(role_id=role_id)
         self.assert_mutable(role)
         effective = self.resolve_for_write(actor, role.org_id, action=Permission.DELETE)
         self.assert_can(effective=effective, action=Permission.DELETE)
         self._assert_not_own_role(actor=actor, role=role)
-        memberships = OrganizationUser.objects.filter(role_id=role.id).select_related("user")
+        holders = OrganizationUser.objects.filter(role_id=role.id)
+        if not effective.can(ResourceType.MEMBERSHIPS.value, Permission.READ):
+            return {"role_id": role.id, "assigned_count": holders.count()}
+        memberships = holders.select_related("user")
         affected = [
             {
                 "user_id": m.user_id,
