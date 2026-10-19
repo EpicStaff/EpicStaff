@@ -181,7 +181,7 @@ describe('normalizeOrthogonalWaypoints', () => {
         expect(normalizeOrthogonalWaypoints(source, released, target)).toEqual(routed);
     });
 
-    it('leaves the bends of an orthogonal path alone, even around a jog of under 3 px', () => {
+    it('collapses a jog shorter than MIN_BRIDGE into a straight riser', () => {
         const waypoints = [
             { x: 100, y: 0 },
             { x: 100, y: 2 },
@@ -189,7 +189,12 @@ describe('normalizeOrthogonalWaypoints', () => {
             { x: 150, y: 100 },
         ];
 
-        expect(normalizeOrthogonalWaypoints(source, waypoints, target)).toEqual(waypoints);
+        // The 2 px vertical segment is shorter than MIN_BRIDGE (10), so collapseShortBridges
+        // folds it away, leaving just the riser at x = 150.
+        expect(normalizeOrthogonalWaypoints(source, waypoints, target)).toEqual([
+            { x: 150, y: 0 },
+            { x: 150, y: 100 },
+        ]);
     });
 
     it('removes backtracks along one line', () => {
