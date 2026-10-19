@@ -22,6 +22,7 @@ from utils.singleton_meta import SingletonMeta
 class FakePubSub:
     def __init__(self, intake: RecordingSandboxIntake):
         self._intake = intake
+        self.closed = False
 
     async def get_message(self, ignore_subscribe_messages: bool, timeout: float):
         # run_code submits before it polls; failing here beats an endless poll loop.
@@ -35,6 +36,9 @@ class FakePubSub:
         )
         return {"data": result.model_dump_json()}
 
+    async def aclose(self):
+        self.closed = True
+
 
 class FakeRedisMessagingService(IRedisMessagingService):
     """Answers the result subscription with a result for the submitted task."""
@@ -43,10 +47,13 @@ class FakeRedisMessagingService(IRedisMessagingService):
         self.intake = intake
         self.published: list[tuple[str, object]] = []
         self.subscribed_channels: list[str] = []
+        self.subscriptions: list[FakePubSub] = []
 
     async def async_subscribe(self, channel: str):
         self.subscribed_channels.append(channel)
-        return FakePubSub(self.intake)
+        pubsub = FakePubSub(self.intake)
+        self.subscriptions.append(pubsub)
+        return pubsub
 
     async def async_publish(self, channel: str, message: object) -> None:
         self.published.append((channel, message))
@@ -194,3 +201,18 @@ async def test_unreachable_sandbox_fails_the_run(sandbox_intake, captured_log_me
     assert result["returncode"] == 1
     assert "sk-live-SENTINEL" not in "".join(captured_log_messages)
     assert "ConnectError" in "".join(captured_log_messages)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [202, 500], ids=["result-arrives", "submit-refused"])
+async def test_the_result_subscription_is_closed_on_every_exit(sandbox_intake, status_code):
+    """One subscription per execution would otherwise outlive the call and pile up
+    for the process's lifetime."""
+    sandbox_intake.status_code = status_code
+    redis_service = FakeRedisMessagingService(sandbox_intake)
+    executor = PythonCodeExecutorService(redis_service, sandbox_intake.client())
+
+    await asyncio.wait_for(executor.run_code(build_python_code_data(), inputs={}), timeout=5)
+
+    [subscription] = redis_service.subscriptions
+    assert subscription.closed

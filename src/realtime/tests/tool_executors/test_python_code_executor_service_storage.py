@@ -45,6 +45,7 @@ class FakeRedisService:
 
         pubsub = MagicMock()
         pubsub.get_message = AsyncMock(side_effect=self._get_message)
+        pubsub.aclose = AsyncMock()
         self._pubsub = pubsub
         self.async_subscribe = AsyncMock(return_value=pubsub)
 

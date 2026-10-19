@@ -78,32 +78,36 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 returncode=1,
             ).model_dump()
 
-        # Subscribe before submitting so a fast result is never missed.
+        # Subscribe before submitting so a fast result is never missed. Every exit
+        # closes it: one subscription per execution would otherwise outlive the call.
         pubsub = await self.redis_service.async_subscribe(config.CODE_RESULT_CHANNEL)
         try:
-            await self.sandbox_client.submit(code_task_data)
-        except httpx.HTTPError as error:
-            # The class name, never the error: an httpx error keeps the request
-            # that raised it, and that request body carries secret plaintext.
-            # A rejected submit produces no result, so the wait below would never
-            # end -- fail the tool call now instead.
-            logger.error(
-                "Failed to submit code execution to the sandbox (execution_id={}, {})",
-                unique_task_id,
-                type(error).__name__,
-            )
-            return CodeResultData(
-                execution_id=unique_task_id,
-                stderr=self._SUBMIT_FAILED_STDERR,
-                stdout="",
-                returncode=1,
-            ).model_dump()
-        logger.info("Waiting for code_results")
+            try:
+                await self.sandbox_client.submit(code_task_data)
+            except httpx.HTTPError as error:
+                # The class name, never the error: an httpx error keeps the request
+                # that raised it, and that request body carries secret plaintext.
+                # A rejected submit produces no result, so the wait below would never
+                # end -- fail the tool call now instead.
+                logger.error(
+                    "Failed to submit code execution to the sandbox (execution_id={}, {})",
+                    unique_task_id,
+                    type(error).__name__,
+                )
+                return CodeResultData(
+                    execution_id=unique_task_id,
+                    stderr=self._SUBMIT_FAILED_STDERR,
+                    stdout="",
+                    returncode=1,
+                ).model_dump()
+            logger.info("Waiting for code_results")
 
-        while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-            if message:
-                code_result_data = CodeResultData.model_validate_json(message["data"])
-                if code_result_data.execution_id == unique_task_id:
-                    return code_result_data.model_dump()
-            await asyncio.sleep(0.1)
+            while True:
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if message:
+                    code_result_data = CodeResultData.model_validate_json(message["data"])
+                    if code_result_data.execution_id == unique_task_id:
+                        return code_result_data.model_dump()
+                await asyncio.sleep(0.1)
+        finally:
+            await pubsub.aclose()
