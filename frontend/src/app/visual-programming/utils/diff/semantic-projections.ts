@@ -316,6 +316,7 @@ export const SEMANTIC_PROJECTIONS = {
             'data.table.pre_computation.secret_ids': 'secrets are compared by their resolved names',
             'data.table.post_computation.secret_ids': 'secrets are compared by their resolved names',
             'data.table.sections[].metadata': 'section colour is layout; groups are compared by section name',
+            explanations: 'generated step explanations shown in the editor, not part of how the table routes',
         },
     },
     // Never loaded from or saved to the backend; kept so the registry covers every node type.
