@@ -95,7 +95,7 @@ class TablesConfig(AppConfig):
             redis_service=redis_service,
             converter_service=converter_service,
         )
-        RunPythonCodeService(redis_service=redis_service)
+        RunPythonCodeService()
         RealtimeService(redis_service=redis_service, converter_service=converter_service)
         webhook_trigger_service = WebhookTriggerService(
             session_manager_service=session_manager_service,

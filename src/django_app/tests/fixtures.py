@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 from typing import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 import shutil
+import httpx
 import pytest
 from django.core.management import call_command
 from django.core.cache import cache
@@ -19,6 +21,8 @@ from tables.models.llm_models import (
 from tables.models.crew_models import (
     DefaultAgentConfig,
 )
+from tables.clients import SandboxExecutionClient
+from tables.services import run_python_code_service
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
@@ -176,6 +180,42 @@ def session_data(graph: Graph) -> dict:
 def session(session_data) -> tuple[Session | dict]:
     session_manager = SessionManagerService()
     return session_manager.create_session(**session_data, trigger=TriggerSpec.manual())
+
+
+class RecordingSandboxIntake:
+    """Stands in for the sandbox HTTP intake (`POST /executions`): records every
+    submitted body and answers with `status_code`. The real client runs over a
+    mock transport, so a recorded body is the body that would go on the wire."""
+
+    BASE_URL = "http://sandbox.test"
+
+    def __init__(self, status_code: int = 202):
+        self.status_code = status_code
+        self.bodies: list[dict] = []
+
+    def client(self) -> SandboxExecutionClient:
+        return SandboxExecutionClient(
+            base_url=self.BASE_URL, transport=httpx.MockTransport(self._handle)
+        )
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/executions"
+        body = json.loads(request.content)
+        self.bodies.append(body)
+        if self.status_code >= 400:
+            return httpx.Response(self.status_code, json={"detail": "rejected"})
+        return httpx.Response(
+            self.status_code,
+            json={"execution_id": body["execution_id"], "status": "pending"},
+        )
+
+
+@pytest.fixture
+def sandbox_intake(monkeypatch) -> Generator[RecordingSandboxIntake, None, None]:
+    """Replace the sandbox the run-python-code service submits to."""
+    intake = RecordingSandboxIntake()
+    monkeypatch.setattr(run_python_code_service, "SandboxExecutionClient", intake.client)
+    yield intake
 
 
 @pytest.fixture

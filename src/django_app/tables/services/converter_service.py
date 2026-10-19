@@ -209,7 +209,7 @@ class ConverterService(metaclass=SingletonMeta):
         Allowed paths are the graph's attached files followed by `extra_paths`, the
         folders the run itself may write to (`sessions/<id>/` in a real run). Both
         are None when the slot does not use storage or there is no graph to scope
-        it by, which tells the sandbox to mint no credentials.
+        it by, which means no storage credentials are minted for this run.
         """
         if not use_storage or graph_id is None:
             return None, None
