@@ -65,6 +65,30 @@ def _submitted_tasks(sandbox_intake):
 
 
 @pytest.mark.django_db
+def test_python_node_runs_in_the_same_venv_as_a_real_run(service, org, graph, user, sandbox_intake):
+    python_code = PythonCode.objects.create(
+        code="def main(): return 1", entrypoint="main", venv_id=12
+    )
+    node = PythonNode.objects.create(graph=graph, python_code=python_code)
+    real_run_venv_id = (
+        ConverterService()
+        .convert_python_node_to_pydantic(node, graph_id=graph.pk, session_id=1)
+        .python_code.venv_id
+    )
+
+    service.run_target(
+        target_type="python_node",
+        target_id=node.pk,
+        variables={},
+        organization_id=org.id,
+        user=user,
+    )
+
+    [task] = _submitted_tasks(sandbox_intake)
+    assert task["venv_id"] == real_run_venv_id == 12
+
+
+@pytest.mark.django_db
 def test_target_in_another_org_raises_not_found(
     service, other_org, graph, user, sandbox_intake
 ):
