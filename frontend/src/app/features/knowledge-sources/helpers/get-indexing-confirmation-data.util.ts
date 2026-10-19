@@ -13,10 +13,7 @@ export interface IndexingDocumentInfo {
     wasIndexed: boolean;
 }
 
-export function getIndexingConfirmationData(
-    documents: IndexingDocumentInfo[],
-    estimateHtml = ''
-): ConfirmationDialogData {
+export function getIndexingConfirmationData(documents: IndexingDocumentInfo[]): ConfirmationDialogData {
     const newDocs = documents.filter((d) => !d.wasIndexed);
     const reindexDocs = documents.filter((d) => d.wasIndexed);
     const hasReindexDocs = reindexDocs.length > 0;
@@ -43,8 +40,7 @@ export function getIndexingConfirmationData(
         return {
             title: 'Confirm Indexing',
             message:
-                "This operation consumes <strong>tokens</strong> based on your provider's plan. Processing time varies from <strong>seconds</strong> to <strong>hours</strong> depending on data volume." +
-                estimateHtml,
+                "This operation consumes <strong>tokens</strong> based on your provider's plan. Processing time varies from <strong>seconds</strong> to <strong>hours</strong> depending on data volume.",
             caution: sections.join(''),
             type: 'warning',
             cancelText: 'Cancel',
@@ -56,7 +52,7 @@ export function getIndexingConfirmationData(
 
     return {
         title: 'Confirm Indexing',
-        message: `Initializing indexing${filesText}. This process involves document parsing, chunking, and generating vector embeddings via <strong>LLM services</strong>.${estimateHtml}`,
+        message: `Initializing indexing${filesText}. This process involves document parsing, chunking, and generating vector embeddings via <strong>LLM services</strong>.`,
         caution:
             "This operation consumes <strong>tokens</strong> based on your provider's plan. Processing time varies from <strong>seconds</strong> to <strong>hours</strong> depending on data volume.",
         type: 'warning',
@@ -74,10 +70,11 @@ export function getIndexingConfirmationDataWithEstimate(
     estimate$: Observable<IndexingEstimate | null>
 ): ConfirmationDialogData {
     return {
-        ...getIndexingConfirmationData(documents, ESTIMATING_USAGE_HTML),
-        messageUpdates: estimate$.pipe(
+        ...getIndexingConfirmationData(documents),
+        footerMessage: ESTIMATING_USAGE_HTML,
+        footerMessageUpdates: estimate$.pipe(
             catchError(() => of(null)),
-            map((estimate) => getIndexingConfirmationData(documents, getIndexingEstimateHtml(estimate)).message)
+            map((estimate) => getIndexingEstimateHtml(estimate))
         ),
     };
 }

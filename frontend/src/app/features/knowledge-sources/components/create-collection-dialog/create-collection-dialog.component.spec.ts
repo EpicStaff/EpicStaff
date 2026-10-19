@@ -6,7 +6,6 @@ import { of, Subject } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { ESTIMATING_USAGE_HTML } from '../../helpers/get-indexing-confirmation-data.util';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
 import { RagDeleteRegistryService } from '../../services/rag-delete-registry.service';
 import { CreateCollectionDialogComponent } from './create-collection-dialog.component';
@@ -97,14 +96,14 @@ describe('CreateCollectionDialogComponent indexing confirmation', () => {
         const shown = openIndexingConfirmation({});
 
         expect(shown.title).toBe('Confirm Indexing');
-        expect(shown.messageUpdates).toBeUndefined();
-        expect(shown.message).not.toContain(ESTIMATING_USAGE_HTML);
+        expect(shown.footerMessageUpdates).toBeUndefined();
+        expect(shown.footerMessage).toBeUndefined();
     });
 
     it('opens the confirmation with a live estimate when the strategy can estimate', () => {
         const shown = openIndexingConfirmation({ estimateIndexing: () => of(null) });
 
-        expect(shown.messageUpdates).toBeDefined();
-        expect(shown.message).toContain(ESTIMATING_USAGE_HTML);
+        expect(shown.footerMessageUpdates).toBeDefined();
+        expect(shown.footerMessage).toContain('Estimating usage');
     });
 });

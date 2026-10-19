@@ -220,27 +220,6 @@ describe('ConfirmationDialogComponent verification', () => {
     });
 });
 
-describe('ConfirmationDialogComponent message updates', () => {
-    it('renders data.message when no messageUpdates stream is given', () => {
-        const fixture = render(BASE_DATA);
-
-        expect(query(fixture, '.dialog-message')?.textContent).toBe('Acme will be deleted.');
-    });
-
-    it('replaces the message when an update arrives and stops listening after destroy', () => {
-        const updates = new Subject<string>();
-        const fixture = render({ ...BASE_DATA, message: 'Estimating', messageUpdates: updates });
-        expect(query(fixture, '.dialog-message')?.textContent).toContain('Estimating');
-
-        updates.next('<strong>Done</strong>');
-        fixture.detectChanges();
-        expect(query(fixture, '.dialog-message')?.textContent).toBe('Done');
-
-        fixture.destroy();
-        expect(updates.observed).toBe(false);
-    });
-});
-
 describe('ConfirmationDialogComponent appearance', () => {
     function container(fixture: ComponentFixture<ConfirmationDialogComponent>): HTMLElement {
         return query(fixture, '.dialog-container') as HTMLElement;
@@ -259,5 +238,38 @@ describe('ConfirmationDialogComponent appearance', () => {
 
         expect(classes.contains('raised')).toBe(true);
         expect(classes.contains('danger')).toBe(true);
+    });
+});
+
+describe('ConfirmationDialogComponent footer message', () => {
+    const WITH_CAUTION: ConfirmationDialogData = { ...BASE_DATA, caution: 'Careful.' };
+
+    it('renders the footer after the caution block', () => {
+        const fixture = render({ ...WITH_CAUTION, footerMessage: '<div class="dialog-callout">Estimate</div>' });
+
+        const caution = query(fixture, '.caution-block') as HTMLElement;
+        const footer = query(fixture, '.dialog-footer-message') as HTMLElement;
+        expect(footer.textContent).toContain('Estimate');
+        expect(footer.querySelector('.dialog-callout')).not.toBeNull();
+        expect(caution.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('replaces the footer as updates arrive', () => {
+        const updates = new Subject<string>();
+        const fixture = render({ ...WITH_CAUTION, footerMessage: 'Pending', footerMessageUpdates: updates });
+
+        updates.next('Done');
+        fixture.detectChanges();
+
+        expect(query(fixture, '.dialog-footer-message')?.textContent).toBe('Done');
+
+        fixture.destroy();
+        expect(updates.observed).toBe(false);
+    });
+
+    it('renders no footer when none is given', () => {
+        const fixture = render(WITH_CAUTION);
+
+        expect(query(fixture, '.dialog-footer-message')).toBeNull();
     });
 });

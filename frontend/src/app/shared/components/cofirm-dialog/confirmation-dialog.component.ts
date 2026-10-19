@@ -56,9 +56,11 @@ export interface ConfirmationDialogData {
     verification?: ConfirmationVerification;
     /** Optional checkbox shown above the action buttons. */
     checkbox?: ConfirmationCheckbox;
-    /** Optional stream of replacement messages, applied as they arrive after the dialog opened.
+    /** Optional HTML shown after the caution block, right above the action buttons. */
+    footerMessage?: string;
+    /** Optional stream of replacement footer messages, applied as they arrive after the dialog opened.
      *  Unsubscribed when the dialog closes, so it can drive a cancellable request. */
-    messageUpdates?: Observable<string>;
+    footerMessageUpdates?: Observable<string>;
 }
 
 export interface ConfirmationCheckbox {
@@ -87,7 +89,7 @@ export class ConfirmationDialogComponent {
 
     // `data` must stay above the fields below: they read it in their initializers.
     readonly data = inject<ConfirmationDialogData>(DIALOG_DATA);
-    protected readonly message = signal(this.data.message);
+    protected readonly footerMessage = signal(this.data.footerMessage ?? '');
     protected readonly checkboxChecked = signal(this.data.checkbox?.checked ?? false);
     protected readonly breakdownListId = `confirmation-breakdown-list-${nextBreakdownListId++}`;
     protected readonly breakdown = this.data.breakdown?.items.length ? this.data.breakdown : null;
@@ -101,8 +103,8 @@ export class ConfirmationDialogComponent {
     private readonly destroyRef = inject(DestroyRef);
 
     constructor() {
-        this.data.messageUpdates?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((message) => {
-            this.message.set(message);
+        this.data.footerMessageUpdates?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((message) => {
+            this.footerMessage.set(message);
         });
     }
 
