@@ -134,15 +134,20 @@ def _session_data(
     )
 
 
-def _patch_builder(monkeypatch, compiled_graph, end_node_result=None):
-    class FakeRememberedOutputsStore:
-        async def clear(self, session_id):
-            return None
+class FakeRememberedOutputsStore:
+    async def clear(self, session_id):
+        return None
 
+
+def _patch_builder(
+    monkeypatch, compiled_graph, end_node_result=None, remembered_outputs_store=None
+):
     class FakeSessionGraphBuilder:
         def __init__(self, *args, **kwargs):
             self.end_node_result = end_node_result or {}
-            self.remembered_outputs_store = FakeRememberedOutputsStore()
+            self.remembered_outputs_store = (
+                remembered_outputs_store or FakeRememberedOutputsStore()
+            )
 
         def compile_from_schema(self, session_data):
             return compiled_graph
@@ -639,3 +644,74 @@ async def test_every_audit_event_carries_the_sessions_retention_and_none_follow_
         f"No audit context for session {AUDITED_SESSION_ID}" in line
         for line in captured_logs[logs_before_late_message:]
     )
+
+
+ESCAPING_SESSION_ID = 63
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("graph_error", "failing_status"),
+    [
+        pytest.param(StopSession(status="stop"), "stop", id="stopped"),
+        pytest.param(RuntimeError("node crashed"), "error", id="failed"),
+    ],
+)
+async def test_audit_context_is_cleared_when_an_error_escapes_the_session(
+    service, monkeypatch, audit_client, captured_logs, graph_error, failing_status
+):
+    _patch_builder(monkeypatch, RaisingCompiledGraph(graph_error))
+
+    async def update_status(session_id, status, **kwargs):
+        if status == failing_status:
+            raise redis.ConnectionError("redis down")
+
+    service.redis_service.aupdate_session_status.side_effect = update_status
+
+    with pytest.raises(redis.ConnectionError):
+        await service.session_runner(_session_data(ESCAPING_SESSION_ID), StopEvent())
+    await _wait_for_audit_events(audit_client, 2)
+    events_after_session = len(audit_client.events)
+
+    logs_before_late_message = len(captured_logs)
+    _, late_message = make_finish_chunk(ESCAPING_SESSION_ID, 1)
+    emit_session_audit_event(GraphMessage.encode_payload(late_message.to_payload()))
+    await asyncio.sleep(0)
+
+    assert len(audit_client.events) == events_after_session
+    assert any(
+        f"No audit context for session {ESCAPING_SESSION_ID}" in line
+        for line in captured_logs[logs_before_late_message:]
+    )
+
+
+class FailingRememberedOutputsStore:
+    async def clear(self, session_id):
+        raise redis.ConnectionError("redis down")
+
+
+@pytest.mark.asyncio
+async def test_cleanup_failure_after_a_completed_run_audits_the_session_as_failed_last(
+    service, monkeypatch, audit_client
+):
+    _patch_builder(
+        monkeypatch,
+        FakeCompiledGraph([]),
+        remembered_outputs_store=FailingRememberedOutputsStore(),
+    )
+
+    await service.session_runner(_session_data(64, audit_retention_days=90), StopEvent())
+    # Session start (identity + event), then both end events.
+    await _wait_for_audit_events(audit_client, 4)
+
+    assert [event.name for event in audit_client.events[-2:]] == [
+        "Session End",
+        "Session Failed",
+    ]
+    assert [event.status for event in audit_client.events[-2:]] == ["completed", "failed"]
+    assert [event.retention_days for event in audit_client.events] == [90] * 4
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "end", "error"]

@@ -3,7 +3,6 @@ import json
 from dataclasses import dataclass
 from functools import lru_cache
 
-from cachetools import TTLCache
 from loguru import logger
 from settings import AUDIT_TRAIL_ENABLED, AUDITOR_INGEST_API_KEY, AUDITOR_URL
 from src.shared.audit.client import AuditClient
@@ -37,11 +36,11 @@ class SessionAuditContext:
 # deep in the call graph only have session_id. Not part of the shared
 # SessionAuditWriter - that class owns no per-caller state (see
 # shared/audit/writers/session_writer.py).
-# TTLCache, not a plain dict, as defensive insurance against a future
-# refactor accidentally skipping clear_session_audit_context on some exit
-# path - every current exit path already clears it correctly, this is a
-# backstop, not the primary mechanism.
-_context_by_session: TTLCache = TTLCache(maxsize=10_000, ttl=3600)
+# A plain dict with no expiry or size bound: an entry must live exactly as long
+# as its session, however long that runs. run_session clears it in a `finally`,
+# so no exit path leaks one. Crew runs every session in one asyncio event loop,
+# so the dict is only ever touched from one thread.
+_context_by_session: dict[int, SessionAuditContext] = {}
 
 
 def register_session_audit_context(session_id: int, context: SessionAuditContext) -> None:
@@ -51,14 +50,13 @@ def register_session_audit_context(session_id: int, context: SessionAuditContext
 def get_session_audit_context(session_id: int) -> SessionAuditContext | None:
     """Return the session's audit context, or None after logging that its events are dropped.
 
-    None means the session already ended, or ran longer than the cache TTL (one hour)
-    and its context expired.
+    None means the session is not running: it ended, or was never registered.
     """
     context = _context_by_session.get(session_id)
     if context is None:
         logger.warning(
-            "No audit context for session {} (already ended, or running past the "
-            "one-hour cache TTL); dropping its audit event.",
+            "No audit context for session {} (not running: ended or never registered); "
+            "dropping its audit event.",
             session_id,
         )
     return context

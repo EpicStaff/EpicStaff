@@ -163,8 +163,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         logger.info("Session Manager Service is now running.")
 
     async def run_session(self, session_data: SessionData, stop_event: StopEvent):
+        session_id = session_data.id
         try:
-            session_id = session_data.id
             audit_context = SessionAuditContext.from_session_data(session_data)
             register_session_audit_context(session_id, audit_context)
             _dispatch_session_audit(
@@ -297,7 +297,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
             await self.redis_service.aupdate_session_status(session_id=session_id, status="end")
 
-            clear_session_audit_context(session_id)
             await session_graph_builder.remembered_outputs_store.clear(session_id)
 
         except asyncio.CancelledError:
@@ -318,7 +317,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         retention_days=audit_context.audit_retention_days,
                     )
                 )
-            clear_session_audit_context(session_id)
         except StopSession as e:
             status_kwargs = {"reason": e.reason} if e.reason else {}
             await self.redis_service.aupdate_session_status(
@@ -340,7 +338,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         retention_days=audit_context.audit_retention_days,
                     )
                 )
-            clear_session_audit_context(session_id)
 
         except Exception as e:
             logger.exception(f"Failed to start session: {e}")
@@ -364,6 +361,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         retention_days=audit_context.audit_retention_days,
                     )
                 )
+        finally:
+            # The end paths above read the context first. Clearing here, and only
+            # here, also covers an error raised inside one of those handlers.
             clear_session_audit_context(session_id)
 
     async def _store_final_variables(self, session_id: int, variables: dict) -> None:
