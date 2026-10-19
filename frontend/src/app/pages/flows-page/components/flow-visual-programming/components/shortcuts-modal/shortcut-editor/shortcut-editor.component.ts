@@ -2,7 +2,9 @@ import {
     afterNextRender,
     Component,
     computed,
+    ElementRef,
     inject,
+    Injector,
     input,
     linkedSignal,
     OnInit,
@@ -54,7 +56,7 @@ let nextEditorId = 0;
     imports: [ButtonComponent, ShortcutPickerComponent],
     templateUrl: './shortcut-editor.component.html',
     styleUrl: './shortcut-editor.component.scss',
-    host: { '(keydown)': 'onKeydown($event)' },
+    host: { '(keydown)': 'onKeydown($event)', '(focusin)': 'onFocusIn($event)' },
 })
 export class ShortcutEditorComponent implements OnInit {
     readonly shortcut = input<CustomShortcut | null>(null);
@@ -64,6 +66,8 @@ export class ShortcutEditorComponent implements OnInit {
     readonly closed = output<void>();
 
     private readonly actionPicker = viewChild.required<ShortcutPickerComponent>('actionPicker');
+    private readonly flowPicker = viewChild<ShortcutPickerComponent>('flowPicker');
+    private readonly recorder = viewChild.required<ElementRef<HTMLButtonElement>>('recorder');
 
     protected readonly action = signal<EditorActionId | null>(null);
     protected readonly flowId = signal<number | null>(null);
@@ -156,6 +160,8 @@ export class ShortcutEditorComponent implements OnInit {
     protected readonly idPrefix = `shortcut-editor-${nextEditorId++}`;
 
     private readonly keymap = inject(KeymapService);
+    private readonly injector = inject(Injector);
+    private isTabbing = false;
 
     constructor() {
         afterNextRender(() => this.actionPicker().focus());
@@ -181,9 +187,41 @@ export class ShortcutEditorComponent implements OnInit {
         this.flowId.set(id === null ? null : Number(id));
     }
 
-    protected toggleRecording(): void {
+    protected onActionAdvance(): void {
+        if (!this.needsFlow()) {
+            this.focusKeys();
+            return;
+        }
+        const flowPicker = this.flowPicker();
+        if (flowPicker) {
+            flowPicker.focus();
+            return;
+        }
+        afterNextRender(() => this.flowPicker()?.focus(), { injector: this.injector });
+    }
+
+    protected focusKeys(): void {
+        this.recorder().nativeElement.focus();
+        this.startRecording();
+    }
+
+    protected onRecorderFocus(): void {
+        if (this.isTabbing) {
+            this.isTabbing = false;
+            this.startRecording();
+        }
+    }
+
+    protected onFocusIn(event: FocusEvent): void {
+        if (event.target !== this.recorder().nativeElement) {
+            this.isTabbing = false;
+        }
+    }
+
+    protected startRecording(): void {
         this.actionPicker().close();
-        this.isRecording.update((isRecording) => !isRecording);
+        this.flowPicker()?.close();
+        this.isRecording.set(true);
     }
 
     protected stopRecording(): void {
@@ -191,7 +229,19 @@ export class ShortcutEditorComponent implements OnInit {
     }
 
     protected onRecorderKeydown(event: KeyboardEvent): void {
+        const hasModifier = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey;
+        const isBareEnter = event.key === 'Enter' && !hasModifier;
+        if (event.repeat) {
+            if (event.key !== 'Tab') {
+                event.preventDefault();
+            }
+            return;
+        }
         if (!this.isRecording()) {
+            if (isBareEnter) {
+                event.preventDefault();
+                this.save();
+            }
             return;
         }
         if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -199,8 +249,17 @@ export class ShortcutEditorComponent implements OnInit {
             return;
         }
         event.preventDefault();
-        if (event.key === 'Escape' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        if (event.key === 'Escape' && !hasModifier) {
             this.isRecording.set(false);
+            return;
+        }
+        if (isBareEnter) {
+            if (this.chord() === null) {
+                this.announcement.set('Press keys, or click Save to save without keys');
+                return;
+            }
+            this.isRecording.set(false);
+            this.save();
             return;
         }
         const chord = chordFromEvent(event, this.keymap.isMac);
@@ -215,10 +274,12 @@ export class ShortcutEditorComponent implements OnInit {
     protected clearKeys(): void {
         this.chord.set(null);
         this.announcement.set('Keys cleared');
+        this.focusKeys();
     }
 
     protected onKeydown(event: KeyboardEvent): void {
         event.stopPropagation();
+        this.isTabbing = event.key === 'Tab';
         if (event.defaultPrevented) {
             return;
         }

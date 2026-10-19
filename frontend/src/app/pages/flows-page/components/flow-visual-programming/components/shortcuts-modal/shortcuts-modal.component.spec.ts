@@ -549,17 +549,17 @@ describe('ShortcutsModalComponent', () => {
             expect(text(keysBox())).toContain('Shift+B');
         });
 
-        it('saves on Enter once Save is enabled', () => {
+        it('saves on Enter in the keys box once Save is enabled', () => {
             setUp();
             openModal();
 
             startAdding();
             record({ key: 'm', code: 'KeyM', altKey: true });
-            press(actionPicker(), { key: 'Enter', code: 'Enter' });
+            press(keysBox(), { key: 'Enter', code: 'Enter' });
             expect(editor()).not.toBeNull();
 
             pickAction('Task Node');
-            press(actionPicker(), { key: 'Enter', code: 'Enter' });
+            press(keysBox(), { key: 'Enter', code: 'Enter' });
 
             expect(editor()).toBeNull();
             expect(customRows()).toEqual([{ label: 'Task Node', keys: 'Alt M' }]);
@@ -657,7 +657,7 @@ describe('ShortcutsModalComponent', () => {
 
             expect(actionPicker().value).toBe('Classification Decision Table');
             expect(editor()!.querySelector('[role="listbox"]')).toBeNull();
-            expect(saveButton().disabled).toBe(false);
+            expect(document.activeElement).toBe(keysBox());
         });
 
         it.each([
@@ -729,6 +729,12 @@ describe('ShortcutsModalComponent', () => {
 
             click(buttonNamed('Edit Agent Node shortcut'));
             click(buttonNamed('Clear keys', editor()!));
+
+            expect(document.activeElement).toBe(keysBox());
+            expect(text(keysBox())).toContain('Press keys');
+
+            keysBox().blur();
+            render();
             click(saveButton());
 
             expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Not set' }]);
@@ -1103,6 +1109,231 @@ describe('ShortcutsModalComponent', () => {
                     ],
                 },
             });
+        });
+    });
+
+    describe('keyboard only', () => {
+        const FLOWS: GetGraphLightRequest[] = [
+            { id: 1, uuid: 'uuid-1', name: 'Onboarding', description: '' },
+            { id: 12, uuid: 'uuid-12', name: 'Billing', description: '' },
+        ];
+
+        function openModalWithFlows(): void {
+            fixture = TestBed.createComponent(ShortcutsModalComponent);
+            fixture.componentRef.setInput('open', true);
+            fixture.componentRef.setInput('pos', { top: 10, left: 10 });
+            fixture.componentRef.setInput('flows', FLOWS);
+            fixture.componentRef.setInput('currentFlowId', 1);
+            closedCount = 0;
+            fixture.componentInstance.closed.subscribe(() => (closedCount += 1));
+            render();
+        }
+
+        function focused(): HTMLElement {
+            return document.activeElement as HTMLElement;
+        }
+
+        function type(value: string): void {
+            const input = focused() as HTMLInputElement;
+            input.value = value;
+            input.dispatchEvent(new Event('input'));
+            render();
+        }
+
+        function enter(init: KeyboardEventInit = {}): KeyboardEvent {
+            return press(focused(), { key: 'Enter', code: 'Enter', ...init });
+        }
+
+        function isRecording(): boolean {
+            return text(keysBox()).includes('Press keys');
+        }
+
+        it('adds a node shortcut: type, Enter, keys record at once, Enter saves', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            type('Agent');
+            enter();
+
+            expect(focused()).toBe(keysBox());
+            expect(isRecording()).toBe(true);
+
+            press(keysBox(), { key: '1', code: 'Digit1', altKey: true });
+            enter();
+
+            expect(editor()).toBeNull();
+            expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Alt 1' }]);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'node.agent', keys: 'Alt+Digit1' }] },
+            });
+        });
+
+        it('adds a Subgraph shortcut through the Flow field', () => {
+            setUp();
+            openModalWithFlows();
+
+            startAdding();
+            type('Subg');
+            enter();
+            const flowField = focused() as HTMLInputElement;
+            expect(flowField).not.toBe(actionPicker());
+            expect(flowField.getAttribute('role')).toBe('combobox');
+
+            type('Bill');
+            enter();
+            expect(isRecording()).toBe(true);
+            press(keysBox(), { key: '1', code: 'Digit1', altKey: true });
+            enter();
+
+            expect(customRows()).toEqual([{ label: 'Subgraph: Billing', keys: 'Alt 1' }]);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }] },
+            });
+        });
+
+        it('edits only the key when Enter is pressed through the filled fields', () => {
+            setUp();
+            loadUser([{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }]);
+            openModalWithFlows();
+
+            click(buttonNamed('Edit Subgraph: Billing shortcut'));
+            enter();
+            expect((focused() as HTMLInputElement).value).toBe('Billing');
+            enter();
+            expect(isRecording()).toBe(true);
+            press(keysBox(), { key: '2', code: 'Digit2', altKey: true });
+            enter();
+
+            expect(customRows()).toEqual([{ label: 'Subgraph: Billing', keys: 'Alt 2' }]);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 12 } }] },
+            });
+        });
+
+        it('selects the text of a search field when it gets focus', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Alt+KeyB' }]);
+            openModal();
+
+            click(buttonNamed('Edit Agent Node shortcut'));
+
+            expect(focused()).toBe(actionPicker());
+            expect([actionPicker().selectionStart, actionPicker().selectionEnd]).toEqual([0, 'Agent Node'.length]);
+        });
+
+        function announcement(): string {
+            return text(editor()!.querySelector('[aria-live="polite"]')!);
+        }
+
+        it('keeps recording on a second Enter before any key is pressed, and saves nothing', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            type('Agent');
+            enter();
+            enter();
+
+            expect(editor()).not.toBeNull();
+            expect(isRecording()).toBe(true);
+            expect(announcement()).toBe('Press keys, or click Save to save without keys');
+        });
+
+        it('ignores a held Enter, before and after a key is recorded', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            type('Agent');
+            enter();
+            enter({ repeat: true });
+            enter({ repeat: true });
+            expect(isRecording()).toBe(true);
+
+            press(keysBox(), { key: '1', code: 'Digit1', altKey: true });
+            enter({ repeat: true });
+
+            expect(editor()).not.toBeNull();
+            expect(text(keysBox())).toContain('Alt+1');
+        });
+
+        it('does not start recording when the window gives focus back to the keys box', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            type('Agent');
+            enter();
+            press(keysBox(), { key: '1', code: 'Digit1', altKey: true });
+            keysBox().blur();
+            render();
+
+            keysBox().focus();
+            render();
+
+            expect(isRecording()).toBe(false);
+            expect(text(keysBox())).toContain('Alt+1');
+        });
+
+        it('starts recording when Tab brings focus to the keys box', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Alt+KeyB' }]);
+            openModal();
+
+            click(buttonNamed('Edit Agent Node shortcut'));
+            press(actionPicker(), { key: 'Tab', code: 'Tab' });
+            keysBox().focus();
+            render();
+
+            expect(isRecording()).toBe(true);
+        });
+
+        it('does not save on Enter while the recorded key is refused', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+            type('Agent');
+            enter();
+            press(keysBox(), { key: 's', code: 'KeyS', ctrlKey: true });
+            enter();
+
+            expect(editor()).not.toBeNull();
+            expect(feedback()).toBe('Ctrl+S is reserved');
+        });
+
+        it.each([
+            ['Ctrl+Enter', { ctrlKey: true }, 'Ctrl+Enter'],
+            ['Shift+Enter, which is reserved', { shiftKey: true }, 'Shift+Enter'],
+        ])('records %s as keys', (_case, modifiers, shown) => {
+            setUp();
+            openModal();
+
+            startAdding();
+            type('Agent');
+            enter();
+            enter(modifiers);
+
+            expect(editor()).not.toBeNull();
+            expect(isRecording()).toBe(false);
+            expect(text(keysBox())).toContain(shown);
+        });
+
+        it('never fires the editor keymap while recording started by Enter', () => {
+            setUp();
+            const pythonNode = vi.fn();
+            TestBed.inject(KeymapService).register('node.python', pythonNode);
+            openModal();
+
+            startAdding();
+            type('Agent');
+            enter();
+            const recorded = press(keysBox(), { key: 'P', code: 'KeyP', shiftKey: true });
+
+            expect(pythonNode).not.toHaveBeenCalled();
+            expect(recorded.defaultPrevented).toBe(true);
+            expect(text(keysBox())).toContain('Shift+P');
         });
     });
 });

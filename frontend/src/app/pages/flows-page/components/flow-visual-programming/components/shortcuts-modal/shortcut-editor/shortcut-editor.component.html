@@ -8,10 +8,12 @@
     [startOpen]="shortcut() === null"
     [selected]="action()"
     (selectedChange)="onActionChange($event)"
+    (advance)="onActionAdvance()"
 />
 
 @if (needsFlow()) {
     <app-shortcut-picker
+        #flowPicker
         label="Flow"
         placeholder="Search flows"
         listLabel="Flows"
@@ -19,6 +21,7 @@
         [groups]="flowGroups()"
         [selected]="selectedFlowId()"
         (selectedChange)="onFlowChange($event)"
+        (advance)="focusKeys()"
     />
 }
 
@@ -30,6 +33,7 @@
     >
     <div class="shortcut-editor__keys">
         <button
+            #recorder
             type="button"
             class="shortcut-editor__recorder"
             [class.shortcut-editor__recorder--recording]="isRecording()"
@@ -38,7 +42,8 @@
             [attr.aria-labelledby]="idPrefix + '-keys-label ' + idPrefix + '-keys'"
             [attr.aria-describedby]="feedback() ? idPrefix + '-feedback' : null"
             [attr.aria-pressed]="isRecording()"
-            (click)="toggleRecording()"
+            (focus)="onRecorderFocus()"
+            (click)="startRecording()"
             (blur)="stopRecording()"
             (keydown)="onRecorderKeydown($event)"
         >

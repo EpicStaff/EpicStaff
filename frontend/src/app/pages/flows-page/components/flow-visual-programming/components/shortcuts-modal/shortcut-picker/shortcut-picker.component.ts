@@ -8,6 +8,7 @@ import {
     input,
     model,
     OnInit,
+    output,
     signal,
     viewChild,
     viewChildren,
@@ -48,6 +49,7 @@ export class ShortcutPickerComponent implements OnInit {
     readonly groups = input.required<readonly PickerGroup[]>();
     readonly startOpen = input(false);
     readonly selected = model<string | null>(null);
+    readonly advance = output<void>();
 
     private readonly pickerInput = viewChild.required<ElementRef<HTMLInputElement>>('pickerInput');
     private readonly optionElements = viewChildren<ElementRef<HTMLElement>>('optionElement');
@@ -78,6 +80,7 @@ export class ShortcutPickerComponent implements OnInit {
     protected readonly idPrefix = `shortcut-picker-${nextPickerId++}`;
 
     private readonly injector = inject(Injector);
+    private selectOnMouseUp = false;
 
     ngOnInit(): void {
         const selected = this.selected();
@@ -94,6 +97,19 @@ export class ShortcutPickerComponent implements OnInit {
 
     close(): void {
         this.isListOpen.set(false);
+    }
+
+    protected onPointerDown(): void {
+        const input = this.pickerInput().nativeElement;
+        this.selectOnMouseUp = input.ownerDocument.activeElement !== input;
+    }
+
+    protected onMouseUp(event: MouseEvent): void {
+        if (this.selectOnMouseUp) {
+            this.selectOnMouseUp = false;
+            event.preventDefault();
+            this.pickerInput().nativeElement.select();
+        }
     }
 
     protected onQueryInput(value: string): void {
@@ -132,6 +148,10 @@ export class ShortcutPickerComponent implements OnInit {
                 if (option) {
                     event.preventDefault();
                     this.pick(option);
+                    this.advance.emit();
+                } else if (!this.isListOpen() && this.selected() !== null) {
+                    event.preventDefault();
+                    this.advance.emit();
                 }
                 return;
             }
