@@ -512,7 +512,7 @@ describe('FlowVersionPreviewComponent', () => {
         });
 
         it('leaves an active multi-select to clear first', () => {
-            flowGraph().multiSelectActive.set(true);
+            flowGraph().selectionManager.multiSelectActive.set(true);
             pressEscape();
             expect(closed).not.toHaveBeenCalled();
         });

@@ -5,9 +5,9 @@ import { Subject } from 'rxjs';
 
 import { GraphDto } from '../../features/flows/models/graph.model';
 import {
+    arePortsCompatible,
     generatePortsForClassificationDecisionTableNode,
     generatePortsForDecisionTableNode,
-    isDecisionPortRole,
     parsePortId,
 } from '../core/helpers/helpers';
 import { ConnectionModel } from '../core/models/connection.model';
@@ -707,35 +707,7 @@ export class FlowService {
     }
 
     private canPortsConnect(portA: FlattenedPort, portB: FlattenedPort): boolean {
-        // Prevent connecting ports on the same node.
-        if (portA.nodeId === portB.nodeId) {
-            return false;
-        }
-
-        const a = portA.port;
-        const b = portB.port;
-        if (a.port_type === 'input' && b.port_type === 'output') {
-            return this.isAllowedRole(a.allowedConnections, b.role);
-        }
-        if (a.port_type === 'output' && b.port_type === 'input') {
-            return this.isAllowedRole(b.allowedConnections, a.role);
-        }
-        if (a.port_type === 'input-output' && b.port_type === 'input-output') {
-            return this.isAllowedRole(a.allowedConnections, b.role) || this.isAllowedRole(b.allowedConnections, a.role);
-        }
-        return false;
-    }
-
-    private isAllowedRole(allowedRoles: string[], targetRole: string): boolean {
-        return allowedRoles.some((allowedRole) => {
-            if (allowedRole === targetRole) {
-                return true;
-            }
-            if (allowedRole === 'table-out' && isDecisionPortRole(targetRole)) {
-                return true;
-            }
-            return false;
-        });
+        return arePortsCompatible(portA.nodeId, portA.port, portB.nodeId, portB.port);
     }
     public deleteSelections(selections: { fNodeIds: string[]; fConnectionIds: string[] }): void {
         this.flowSignal.update((flow: FlowModel) => {

@@ -32,6 +32,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService, SecretsStorageService } from '@shared/services';
+import { downloadBlob } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -764,7 +765,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .cdtExport(backendId, 'json')
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (blob) => this.downloadBlob(blob, this.buildFileName('json')),
+                next: (blob) => downloadBlob(blob, this.buildFileName('json')),
                 error: () => this.toastService.error('Export failed.'),
             });
     }
@@ -793,17 +794,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         });
         const csv = this.cdtExportImportService.exportToCsv(exportData);
         this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
-    }
-
-    private downloadBlob(blob: Blob, filename: string): void {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
     }
 
     private buildFileName(extension: string): string {

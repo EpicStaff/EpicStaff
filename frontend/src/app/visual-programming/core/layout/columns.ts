@@ -1,3 +1,4 @@
+import { GRID } from './layout-graph';
 import { LayeredGraph } from './long-edges';
 
 /**
@@ -6,8 +7,6 @@ import { LayeredGraph } from './long-edges';
  * allowance of 20 per lane its vertical wire runs need, capped at 160. Layer lefts are snapped up
  * to the 20-px grid. Real nodes only.
  */
-
-const GRID = 20;
 const HORIZONTAL_GAP = 100;
 const DT_EXTRA_HORIZONTAL_GAP = 0;
 const LANE_ALLOWANCE = 20;

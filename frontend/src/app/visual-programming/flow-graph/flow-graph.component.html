@@ -12,8 +12,8 @@
         (mousedown)="onFlowMouseDown($event)"
         (pointerup)="onFlowPointerUp($event)"
         fDraggable
-        [fMultiSelectTrigger]="multiSelectTrigger"
-        [fCanvasMoveTrigger]="canvasMoveTrigger"
+        [fMultiSelectTrigger]="selectionManager.multiSelectTrigger"
+        [fCanvasMoveTrigger]="selectionManager.canvasMoveTrigger"
         [fNodeMoveTrigger]="editGestureTrigger"
         [fNodeResizeTrigger]="editGestureTrigger"
         [fNodeRotateTrigger]="editGestureTrigger"
@@ -120,7 +120,7 @@
             @for (node of flowService.nodes(); track node.id) {
                 <app-flow-base-node
                     [node]="node"
-                    [multiSelectActive]="multiSelectActive()"
+                    [multiSelectActive]="selectionManager.multiSelectActive()"
                     [fMinimapClass]="getMinimapClassForNode(node)"
                     fNode
                     fDragHandle
@@ -143,7 +143,7 @@
 
             @for (
                 connection of sortedConnections();
-                track connection.id + '-' + (connectionRenderVersions()[connection.id] ?? 0)
+                track connection.id + '-' + (routingOrchestrator.connectionRenderVersions()[connection.id] ?? 0)
             ) {
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
@@ -155,12 +155,12 @@
                     (mouseleave)="hoveredConnectionId.set(null)"
                     [fReassignableStart]="true"
                     [fReassignDisabled]="
-                        flowReadOnly.isReadOnly() || reassignSuppressedConnectionIds().has(connection.id)
+                        flowReadOnly.isReadOnly() || reassignHandler.suppressedConnectionIds().has(connection.id)
                     "
                     [fSelectionDisabled]="flowReadOnly.isReadOnly()"
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
-                    [class.is-reassign-follower]="reassignFollowerIds().has(connection.id)"
+                    [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
                     [class.node-hovered]="hoveredNodeConnectionIds().has(connection.id)"
                     [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
@@ -246,7 +246,7 @@
             }
         </f-canvas>
 
-        <f-selection-area [fTrigger]="selectionAreaTrigger"></f-selection-area>
+        <f-selection-area [fTrigger]="selectionManager.selectionAreaTrigger"></f-selection-area>
         <f-minimap [fMinSize]="1000"></f-minimap>
     </f-flow>
 
@@ -284,7 +284,7 @@
                     label="S"
                     iconSize="14px"
                     [textEnd]="true"
-                    [active]="multiSelectActive()"
+                    [active]="selectionManager.multiSelectActive()"
                     matTooltip="Multi-select"
                     matTooltipPosition="right"
                     (clicked)="onToggleMultiSelect()"
@@ -310,7 +310,7 @@
 
         <div class="top-right-controls">
             <div class="top-right-actions">
-                @if (selectedNodeCount() > 0 && !isPreview) {
+                @if (selectionManager.selectedNodeCount() > 0 && !isPreview) {
                     <button
                         class="arrange-btn extract-subflow-btn"
                         matTooltip="Extract to Subflow"
@@ -322,8 +322,8 @@
                 }
                 @if (!isPreview) {
                     <app-flow-export-import-button
-                        [selectedCount]="selectedNodeCount()"
-                        [allSelectedAreCdt]="allSelectedAreCdt()"
+                        [selectedCount]="selectionManager.selectedNodeCount()"
+                        [allSelectedAreCdt]="selectionManager.allSelectedAreCdt()"
                         (exportSelectedJson)="onExportSelectedAsJson()"
                         (exportSelectedCsv)="onExportSelectedAsCsv()"
                         (exportJson)="onExportAllAsJson()"
@@ -339,7 +339,6 @@
                 }
                 @if (!flowReadOnly.isReadOnly()) {
                     <button
-                        #arrangeBtnRef
                         class="arrange-btn"
                         title="Auto arrange"
                         matTooltip="Auto arrange"

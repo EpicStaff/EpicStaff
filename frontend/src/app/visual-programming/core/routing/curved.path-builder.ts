@@ -7,6 +7,7 @@ import {
     fallbackRoutePoints,
     normalizeOrthogonalWaypoints,
 } from './orthogonal-route-shapes';
+import { clamp, isWithinStraightLineThreshold, straightLine, SVG_ENDPOINT_NUDGE } from './path-builder-shared';
 
 const STUB = 20;
 const STRAIGHT_LINE_THRESHOLD = 60;
@@ -18,8 +19,106 @@ const MIN_ARC_RADIUS = 15;
 const ARC_RADIUS_RATIO = 0.12;
 const LOOP_RADIUS_RATIO = 0.1;
 const LOOP_MAX_RADIUS = 40;
+// Higher values produce smoother obstacle-detection sampling at the cost of more
+// point-in-rect checks per connection. 16/8 keep re-routing under 1 ms on large graphs.
 const BEZIER_SAMPLES = 16;
 const ARC_SAMPLES = 8;
+
+// ── Shared geometry computation ─────────────────────────────────────────────────
+//
+// These structs and functions are shared between the SVG-path builders (which
+// produce `d` attribute strings) and the curve-sampling functions (which produce
+// polyline approximations for obstacle detection).
+
+interface SCurveGeometry {
+    radius: number;
+    exitCircleY: number;
+    entryCircleY: number;
+    tangentExitPoint: IPoint;
+    tangentEntryPoint: IPoint;
+    contactAngle: number;
+    centerDistance: number;
+}
+
+/**
+ * Computes the shared S-curve geometry: arc radius, circle centers, and tangent
+ * points. Returns `null` when the geometry degenerates and the caller should
+ * fall back to a loop.
+ */
+function computeBackwardSCurveGeometry(
+    source: IPoint,
+    target: IPoint,
+    exitX: number,
+    entryX: number,
+    verticalGap: number
+): SCurveGeometry | null {
+    const absGap = Math.abs(verticalGap);
+    const sign = verticalGap >= 0 ? 1 : -1;
+    const horizontalGap = exitX - entryX;
+    const straightDistance = Math.sqrt(horizontalGap * horizontalGap + absGap * absGap);
+
+    // R < absGap/4 guarantees the tangent line goes "\" direction.
+    const maxRadiusForSlash = Math.floor(absGap / 4) - 1;
+    if (maxRadiusForSlash < MIN_ARC_RADIUS) return null;
+
+    let radius = clamp(
+        straightDistance * ARC_RADIUS_RATIO,
+        MIN_ARC_RADIUS,
+        Math.min(MAX_ARC_RADIUS, maxRadiusForSlash)
+    );
+
+    // Circle centers: exit toward target side, entry toward source side
+    let exitCircleY = source.y - sign * radius;
+    let entryCircleY = target.y + sign * radius;
+
+    const centerDx = entryX - exitX;
+    let centerDy = entryCircleY - exitCircleY;
+    let centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
+
+    // Shrink radius if internal tangent doesn't exist (circles overlap)
+    if (centerDistance < 2 * radius) {
+        radius = Math.max(Math.floor(centerDistance / 2) - 1, MIN_ARC_RADIUS);
+        exitCircleY = source.y - sign * radius;
+        entryCircleY = target.y + sign * radius;
+        centerDy = entryCircleY - exitCircleY;
+        centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
+        if (centerDistance < 2 * radius) return null;
+    }
+
+    // Internal tangent — sign picks the correct tangent solution
+    const theta = Math.atan2(centerDy, centerDx);
+    const alpha = Math.acos(clamp((2 * radius) / centerDistance, -1, 1));
+    const contactAngle = theta + sign * alpha;
+
+    const cosContact = Math.cos(contactAngle);
+    const sinContact = Math.sin(contactAngle);
+
+    const tangentExitPoint: IPoint = {
+        x: exitX + radius * cosContact,
+        y: exitCircleY + radius * sinContact,
+    };
+    const tangentEntryPoint: IPoint = {
+        x: entryX - radius * cosContact,
+        y: entryCircleY - radius * sinContact,
+    };
+
+    return { radius, exitCircleY, entryCircleY, tangentExitPoint, tangentEntryPoint, contactAngle, centerDistance };
+}
+
+interface LoopGeometry {
+    radius: number;
+    topY: number;
+}
+
+/** Computes the shared backward-loop geometry: arc radius and top-of-loop Y coordinate. */
+function computeBackwardLoopGeometry(source: IPoint, target: IPoint, exitX: number, entryX: number): LoopGeometry {
+    const horizontalGap = exitX - entryX;
+    const verticalDiff = Math.abs(source.y - target.y);
+    const loopSpan = Math.sqrt(horizontalGap * horizontalGap + verticalDiff * verticalDiff);
+    const radius = clamp(loopSpan * LOOP_RADIUS_RATIO, MIN_ARC_RADIUS, LOOP_MAX_RADIUS);
+    const topY = Math.min(source.y, target.y) - 2 * radius;
+    return { radius, topY };
+}
 
 /**
  * Returns true when the smooth curve that `CurvedPathBuilder` would draw between
@@ -30,7 +129,7 @@ const ARC_SAMPLES = 8;
  */
 export function curveHitsObstacle(source: IPoint, target: IPoint, obstacles: Rect[]): boolean {
     if (obstacles.length === 0) return false;
-    if (isWithinStraightLineThreshold(source, target)) {
+    if (isWithinStraightLineThreshold(source, target, STRAIGHT_LINE_THRESHOLD)) {
         const relevantObstacles = excludeEndpointObstacles(obstacles, source, target);
         return relevantObstacles.length > 0 && pathHitsObstacle([source, target], relevantObstacles);
     }
@@ -72,7 +171,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             return this.fromWaypoints(source, target, waypoints);
         }
 
-        if (isWithinStraightLineThreshold(source, target)) {
+        if (isWithinStraightLineThreshold(source, target, STRAIGHT_LINE_THRESHOLD)) {
             return straightLine(source, target);
         }
 
@@ -107,7 +206,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             `M ${source.x} ${source.y}` +
             ` L ${exitPoint.x} ${exitPoint.y}` +
             ` C ${exitX + offset} ${source.y}, ${entryX - offset} ${target.y}, ${entryPoint.x} ${entryPoint.y}` +
-            ` L ${target.x + 0.0002} ${target.y + 0.0002}`;
+            ` L ${target.x + SVG_ENDPOINT_NUDGE} ${target.y + SVG_ENDPOINT_NUDGE}`;
 
         return {
             path,
@@ -152,60 +251,15 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         entryX: number,
         verticalGap: number
     ): IFConnectionBuilderResponse {
-        const exitPoint: IPoint = { x: exitX, y: source.y };
-        const entryPoint: IPoint = { x: entryX, y: target.y };
-
-        const absGap = Math.abs(verticalGap);
-        const sign = verticalGap >= 0 ? 1 : -1;
-
-        const horizontalGap = exitX - entryX;
-        const straightDistance = Math.sqrt(horizontalGap * horizontalGap + absGap * absGap);
-
-        // R < absGap/4 guarantees the tangent line goes "\" direction.
-        const maxRadiusForSlash = Math.floor(absGap / 4) - 1;
-        if (maxRadiusForSlash < MIN_ARC_RADIUS) {
+        const geometry = computeBackwardSCurveGeometry(source, target, exitX, entryX, verticalGap);
+        if (!geometry) {
             return this.backwardLoop(source, target, exitX, entryX);
         }
 
-        let radius = clamp(
-            straightDistance * ARC_RADIUS_RATIO,
-            MIN_ARC_RADIUS,
-            Math.min(MAX_ARC_RADIUS, maxRadiusForSlash)
-        );
-
-        // Circle centers: exit toward target side, entry toward source side
-        let cExitY = source.y - sign * radius;
-        let cEntryY = target.y + sign * radius;
-
-        const centerDx = entryX - exitX;
-        let centerDy = cEntryY - cExitY;
-        let centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
-
-        // Shrink radius if internal tangent doesn't exist (circles overlap)
-        if (centerDistance < 2 * radius) {
-            radius = Math.max(Math.floor(centerDistance / 2) - 1, MIN_ARC_RADIUS);
-            cExitY = source.y - sign * radius;
-            cEntryY = target.y + sign * radius;
-            centerDy = cEntryY - cExitY;
-            centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
-        }
-
-        // Internal tangent — sign picks the correct tangent solution
-        const theta = Math.atan2(centerDy, centerDx);
-        const alpha = Math.acos(clamp((2 * radius) / centerDistance, -1, 1));
-        const contactAngle = theta + sign * alpha;
-
-        const cosContact = Math.cos(contactAngle);
-        const sinContact = Math.sin(contactAngle);
-
-        const tangentExitPoint: IPoint = {
-            x: exitX + radius * cosContact,
-            y: cExitY + radius * sinContact,
-        };
-        const tangentEntryPoint: IPoint = {
-            x: entryX - radius * cosContact,
-            y: cEntryY - radius * sinContact,
-        };
+        const { radius, tangentExitPoint, tangentEntryPoint, contactAngle } = geometry;
+        const sign = verticalGap >= 0 ? 1 : -1;
+        const exitPoint: IPoint = { x: exitX, y: source.y };
+        const entryPoint: IPoint = { x: entryX, y: target.y };
 
         // Arc span — generalized for both directions
         const TAU = 2 * Math.PI;
@@ -213,7 +267,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         const largeArc = arcSpan > Math.PI ? 1 : 0;
 
         // sign=+1: exit sweep=0 (CCW), entry sweep=1 (CW)
-        // sign=−1: exit sweep=1 (CW), entry sweep=0 (CCW)
+        // sign=-1: exit sweep=1 (CW), entry sweep=0 (CCW)
         const exitSweep = sign > 0 ? 0 : 1;
         const entrySweep = 1 - exitSweep;
 
@@ -223,7 +277,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             ` A ${radius} ${radius} 0 ${largeArc} ${exitSweep} ${tangentExitPoint.x} ${tangentExitPoint.y}` +
             ` L ${tangentEntryPoint.x} ${tangentEntryPoint.y}` +
             ` A ${radius} ${radius} 0 ${largeArc} ${entrySweep} ${entryPoint.x} ${entryPoint.y}` +
-            ` L ${target.x + 0.0002} ${target.y + 0.0002}`;
+            ` L ${target.x + SVG_ENDPOINT_NUDGE} ${target.y + SVG_ENDPOINT_NUDGE}`;
 
         return {
             path,
@@ -249,14 +303,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
         const exitPoint: IPoint = { x: exitX, y: source.y };
         const entryPoint: IPoint = { x: entryX, y: target.y };
 
-        const horizontalGap = exitX - entryX;
-        const verticalDiff = Math.abs(source.y - target.y);
-        const loopSpan = Math.sqrt(horizontalGap * horizontalGap + verticalDiff * verticalDiff);
-
-        const radius = clamp(loopSpan * LOOP_RADIUS_RATIO, MIN_ARC_RADIUS, LOOP_MAX_RADIUS);
-
-        // Top of the loop: 2R above the higher node
-        const topY = Math.min(source.y, target.y) - 2 * radius;
+        const { radius, topY } = computeBackwardLoopGeometry(source, target, exitX, entryX);
 
         // Four corner arc endpoints (each arc is 90°, sweep=0):
         // 1) bottom-right: exitPoint → right side
@@ -279,7 +326,7 @@ export class CurvedPathBuilder implements IFConnectionBuilder {
             ` A ${radius} ${radius} 0 0 0 ${afterArc3.x} ${afterArc3.y}` +
             ` L ${beforeArc4.x} ${beforeArc4.y}` +
             ` A ${radius} ${radius} 0 0 0 ${entryPoint.x} ${entryPoint.y}` +
-            ` L ${target.x + 0.0002} ${target.y + 0.0002}`;
+            ` L ${target.x + SVG_ENDPOINT_NUDGE} ${target.y + SVG_ENDPOINT_NUDGE}`;
 
         return {
             path,
@@ -325,56 +372,20 @@ function backwardSCurveCurveSamplePoints(
     entryX: number,
     verticalGap: number
 ): IPoint[] {
-    const absGap = Math.abs(verticalGap);
-    const sign = verticalGap >= 0 ? 1 : -1;
-    const horizontalGap = exitX - entryX;
-    const straightDistance = Math.sqrt(horizontalGap * horizontalGap + absGap * absGap);
-    const maxRadiusForSlash = Math.floor(absGap / 4) - 1;
-
-    if (maxRadiusForSlash < MIN_ARC_RADIUS) {
+    const geometry = computeBackwardSCurveGeometry(source, target, exitX, entryX, verticalGap);
+    if (!geometry) {
         return backwardLoopCurveSamplePoints(source, target, exitX, entryX);
     }
 
-    let radius = clamp(
-        straightDistance * ARC_RADIUS_RATIO,
-        MIN_ARC_RADIUS,
-        Math.min(MAX_ARC_RADIUS, maxRadiusForSlash)
-    );
-    let cExitY = source.y - sign * radius;
-    let cEntryY = target.y + sign * radius;
-    const centerDx = entryX - exitX;
-    let centerDy = cEntryY - cExitY;
-    let centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
-
-    if (centerDistance < 2 * radius) {
-        radius = Math.max(Math.floor(centerDistance / 2) - 1, MIN_ARC_RADIUS);
-        cExitY = source.y - sign * radius;
-        cEntryY = target.y + sign * radius;
-        centerDy = cEntryY - cExitY;
-        centerDistance = Math.sqrt(centerDx * centerDx + centerDy * centerDy);
-        if (centerDistance < 2 * radius) {
-            return backwardLoopCurveSamplePoints(source, target, exitX, entryX);
-        }
-    }
-
-    const theta = Math.atan2(centerDy, centerDx);
-    const alpha = Math.acos(clamp((2 * radius) / centerDistance, -1, 1));
-    const contactAngle = theta + sign * alpha;
-
-    const exitCenter: IPoint = { x: exitX, y: cExitY };
-    const entryCenter: IPoint = { x: entryX, y: cEntryY };
-    const tangentExitPoint: IPoint = {
-        x: exitX + radius * Math.cos(contactAngle),
-        y: cExitY + radius * Math.sin(contactAngle),
-    };
-    const tangentEntryPoint: IPoint = {
-        x: entryX - radius * Math.cos(contactAngle),
-        y: cEntryY - radius * Math.sin(contactAngle),
-    };
+    const { radius, exitCircleY, entryCircleY, tangentExitPoint, tangentEntryPoint, contactAngle } = geometry;
+    const sign = verticalGap >= 0 ? 1 : -1;
 
     if (sign * (tangentExitPoint.y - tangentEntryPoint.y) <= 0) {
         return backwardLoopCurveSamplePoints(source, target, exitX, entryX);
     }
+
+    const exitCenter: IPoint = { x: exitX, y: exitCircleY };
+    const entryCenter: IPoint = { x: entryX, y: entryCircleY };
 
     const exitSweep = sign > 0 ? 0 : 1;
     const exitArcStart = sign * (Math.PI / 2);
@@ -391,11 +402,7 @@ function backwardSCurveCurveSamplePoints(
 }
 
 function backwardLoopCurveSamplePoints(source: IPoint, target: IPoint, exitX: number, entryX: number): IPoint[] {
-    const horizontalGap = exitX - entryX;
-    const verticalDiff = Math.abs(source.y - target.y);
-    const loopSpan = Math.sqrt(horizontalGap * horizontalGap + verticalDiff * verticalDiff);
-    const radius = clamp(loopSpan * LOOP_RADIUS_RATIO, MIN_ARC_RADIUS, LOOP_MAX_RADIUS);
-    const topY = Math.min(source.y, target.y) - 2 * radius;
+    const { radius, topY } = computeBackwardLoopGeometry(source, target, exitX, entryX);
 
     const c1: IPoint = { x: exitX + radius, y: source.y - radius };
     const c2: IPoint = { x: exitX, y: topY + radius };
@@ -411,29 +418,6 @@ function backwardLoopCurveSamplePoints(source: IPoint, target: IPoint, exitX: nu
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-function isWithinStraightLineThreshold(source: IPoint, target: IPoint): boolean {
-    const X_DISTANCE = target.x - source.x;
-    const Y_DISTANCE = target.y - source.y;
-    return (
-        -1 <= X_DISTANCE && X_DISTANCE <= STRAIGHT_LINE_THRESHOLD && Math.abs(Y_DISTANCE) <= STRAIGHT_LINE_THRESHOLD + 1
-    );
-}
-
-function straightLine(source: IPoint, target: IPoint): IFConnectionBuilderResponse {
-    const path = `M ${source.x} ${source.y} L ${target.x + 0.0002} ${target.y + 0.0002}`;
-    return {
-        path,
-        points: [source, target],
-        secondPoint: target,
-        penultimatePoint: source,
-        candidates: [],
-    };
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-    return Math.max(minimum, Math.min(maximum, value));
-}
 
 /** Evenly spaced points along a cubic Bézier (t = 0 … 1 inclusive). */
 function sampleCubicBezier(p0: IPoint, p1: IPoint, p2: IPoint, p3: IPoint, count: number): IPoint[] {

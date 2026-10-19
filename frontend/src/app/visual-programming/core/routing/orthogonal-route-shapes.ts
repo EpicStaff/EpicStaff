@@ -1,5 +1,7 @@
 import { IPoint } from '@foblex/2d';
 
+import { SVG_ENDPOINT_NUDGE } from './path-builder-shared';
+
 /**
  * Shapes shared by the orthogonal builder and the router's no-route fallback. Pure
  * functions over full point lists, port to port.
@@ -27,7 +29,7 @@ export function buildRoundedOrthogonalPath(points: IPoint[], radius: number): st
         if (index === 0) {
             path += `M ${point.x} ${point.y}`;
         } else if (index === points.length - 1) {
-            path += `L ${point.x + 0.0002} ${point.y + 0.0002}`;
+            path += `L ${point.x + SVG_ENDPOINT_NUDGE} ${point.y + SVG_ENDPOINT_NUDGE}`;
         } else {
             path += getBend(points[index - 1], point, points[index + 1], radius);
         }
