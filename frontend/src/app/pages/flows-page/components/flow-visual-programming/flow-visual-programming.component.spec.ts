@@ -1213,6 +1213,7 @@ describe('FlowVisualProgrammingComponent', () => {
     describe('full save of an agent node', () => {
         const SAVED_AGENT: AgentNode = {
             ...UNEDITED_NODE,
+            uuid: '00000000-0000-4000-8000-000000000041',
             id: 50,
             metadata: {},
             node_name: 'Agent #1',
@@ -1291,6 +1292,7 @@ describe('FlowVisualProgrammingComponent', () => {
         function cdtDto(id: number, name: string, routeCode: string): GetClassificationDecisionTableNodeRequest {
             return {
                 ...UNEDITED_NODE,
+                uuid: '00000000-0000-4000-8000-000000000042',
                 id,
                 graph: 1,
                 node_name: name,
@@ -1843,6 +1845,7 @@ describe('FlowVisualProgrammingComponent', () => {
         describe('unpack a subflow', () => {
             const SUBGRAPH_NODE: SubGraphNode = {
                 ...UNEDITED_NODE,
+                uuid: '00000000-0000-4000-8000-000000000043',
                 id: 41,
                 node_name: 'Inner flow',
                 graph: 1,

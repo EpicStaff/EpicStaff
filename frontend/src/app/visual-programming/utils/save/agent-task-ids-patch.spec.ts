@@ -12,6 +12,7 @@ import { patchFlowStateWithBackendIds, patchLiveFlowWithBackendIds } from './pat
  */
 
 const SAVED_AGENT: AgentNode = {
+    uuid: '00000000-0000-4000-8000-000000000045',
     created_at: '2026-01-01T00:00:00Z',
     created_by: null,
     last_edited_by: null,
