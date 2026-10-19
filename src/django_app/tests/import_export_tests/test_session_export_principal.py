@@ -28,7 +28,7 @@ def _stub_publish(monkeypatch, session_manager: SessionManagerService | None = N
     empty SessionData, so code that walks it keeps up with new fields."""
     sm = session_manager or SessionManagerService()
 
-    def empty_session_data(session, token_budget=None, run_type=""):
+    def empty_session_data(session, start_node, token_budget=None, run_type=""):
         graph = GraphData(name="g", entrypoint="__end__", end_node=None)
         return SessionData(id=session.id, org_id=session.graph.org_id, graph=graph)
 

@@ -500,3 +500,97 @@ async def test_schema_retries_come_from_the_agent_then_the_service_setting(
 
     assert answer_loop.call_count == expected_attempts
     assert isinstance(emitter.errors[0], SchemaValidationError)
+
+
+# ---------------------------------------------------------------------------
+# Tests: tools + output_schema when the main loop's final text already matches
+# ---------------------------------------------------------------------------
+
+
+class FinalTextThenAnswerLoop(AgentLoop):
+    """First run() returns ``final_text``; later runs answer via ANSWER_TOOL."""
+
+    def __init__(
+        self, final_text: str | None, answer_args: dict, stop_reason: str = "completed"
+    ) -> None:
+        self._final_text = final_text
+        self._answer_args = answer_args
+        self._stop_reason = stop_reason
+        self.call_count = 0
+
+    async def run(self, context, tools, emitter, stop) -> LoopResult:
+        self.call_count += 1
+        if self.call_count == 1:
+            return LoopResult(
+                final_text=self._final_text,
+                tool_invocations=1,
+                iterations=2,
+                stop_reason=self._stop_reason,
+                token_usage=TokenUsage(prompt_tokens=5, completion_tokens=2, total_tokens=7),
+            )
+        await tools.execute(ANSWER_TOOL, self._answer_args)
+        return LoopResult(
+            final_text=None,
+            tool_invocations=1,
+            iterations=1,
+            stop_reason="completed",
+            token_usage=TokenUsage(prompt_tokens=3, completion_tokens=1, total_tokens=4),
+        )
+
+
+Y_SCHEMA = {"type": "object", "properties": {"y": {"type": "integer"}}, "required": ["y"]}
+
+
+@pytest.mark.parametrize(
+    ("schema", "final_text", "expected"),
+    [
+        (Y_SCHEMA, '{"y": 42}', {"y": 42}),
+        ({"type": "array", "items": {"type": "string"}}, '["a", "b"]', ["a", "b"]),
+    ],
+    ids=["object", "non-object-schema"],
+)
+async def test_final_text_already_matching_the_schema_skips_enforcement(schema, final_text, expected):
+    emitter = FakeEmitter()
+    loop = FinalTextThenAnswerLoop(final_text, answer_args={"y": 7})
+    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
+
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": schema}), emitter)
+
+    assert emitter.errors == []
+    final = emitter.finals[0]
+    assert loop.call_count == 1
+    assert final.structured_output == expected
+    assert json.loads(final.final_text) == expected
+    assert final.stop_reason == "schema_satisfied"
+    assert (final.iterations, final.tool_invocations, final.token_usage.total_tokens) == (2, 1, 7)
+
+
+@pytest.mark.parametrize(
+    "final_text",
+    [None, "", "The answer is 42.", '```json\n{"y": 42}\n```', '{"y": "forty-two"}', "{}"],
+    ids=["none", "empty", "prose", "fenced-json", "wrong-type", "missing-required"],
+)
+async def test_final_text_not_matching_the_schema_is_enforced(final_text):
+    emitter = FakeEmitter()
+    loop = FinalTextThenAnswerLoop(final_text, answer_args={"y": 7})
+    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
+
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter)
+
+    assert emitter.errors == []
+    final = emitter.finals[0]
+    assert loop.call_count == 2
+    assert final.structured_output == {"y": 7}
+    assert (final.iterations, final.tool_invocations, final.token_usage.total_tokens) == (3, 2, 11)
+
+
+async def test_final_text_left_over_from_an_unfinished_tool_loop_is_enforced():
+    emitter = FakeEmitter()
+    loop = FinalTextThenAnswerLoop('{"y": 42}', answer_args={"y": 7}, stop_reason="max_iter_reached")
+    runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
+
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter)
+
+    assert emitter.errors == []
+    assert loop.call_count == 2
+    assert emitter.finals[0].structured_output == {"y": 7}

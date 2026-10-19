@@ -23,8 +23,8 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMConfigTagSerializer,
     LLMModelTagSerializer,
 )
-from tables.utils.litellm_model_info import model_reasoning_support, validate_reasoning_effort
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
+from tables.utils.litellm_model_info import model_reasoning_support, validate_reasoning_effort
 
 from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
 from ..utils.mixins import TagHandlingMixin

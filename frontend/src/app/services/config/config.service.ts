@@ -10,6 +10,8 @@ export interface AppConfig {
     type: string;
     realtimeApiUrl?: string;
     auditorUrl?: string;
+    isChatEnabled?: boolean;
+    chatApiUrl?: string;
     isAuditTrailEnabled?: boolean;
 }
 
@@ -25,6 +27,8 @@ export class ConfigService {
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
                 auditorUrl: environment.auditorUrl,
+                isChatEnabled: environment.isChatEnabled ?? false,
+                chatApiUrl: environment.chatApiUrl,
                 isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
             };
             return;
@@ -41,6 +45,8 @@ export class ConfigService {
 
                             realtimeApiUrl: environment.realtimeApiUrl,
                             auditorUrl: environment.auditorUrl,
+                            isChatEnabled: environment.isChatEnabled ?? false,
+                            chatApiUrl: environment.chatApiUrl,
                             isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
                         } as AppConfig);
                     })
@@ -55,6 +61,7 @@ export class ConfigService {
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
                 auditorUrl: environment.auditorUrl,
+                isChatEnabled: false,
                 isAuditTrailEnabled: false,
             };
         }
@@ -90,5 +97,17 @@ export class ConfigService {
 
     get isAuditTrailEnabled(): boolean {
         return this.config?.isAuditTrailEnabled ?? false;
+    }
+
+    get isChatEnabled(): boolean {
+        return this.config?.isChatEnabled ?? false;
+    }
+
+    get chatApiUrl(): string {
+        if (!this.config?.chatApiUrl) {
+            console.warn('Chat API URL not available, using fallback');
+            return environment.chatApiUrl || '/chat/';
+        }
+        return this.config.chatApiUrl;
     }
 }

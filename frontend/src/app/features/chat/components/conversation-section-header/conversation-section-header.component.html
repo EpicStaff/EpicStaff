@@ -1,0 +1,24 @@
+<button
+    #button
+    type="button"
+    class="conversation-section-header"
+    [attr.aria-expanded]="isExpanded()"
+    [attr.aria-controls]="controlsId()"
+    (click)="toggled.emit()"
+>
+    <app-svg-icon
+        class="conversation-section-header__chevron"
+        icon="chevron-down-filled"
+        size="8px"
+        [class.conversation-section-header__chevron--collapsed]="!isExpanded()"
+    />
+    <app-svg-icon
+        class="conversation-section-header__icon"
+        size="0.95rem"
+        [icon]="icon()"
+    />
+    <span class="conversation-section-header__label">{{ label() }}</span>
+    @if (count() !== null) {
+        <span class="conversation-section-header__count">{{ count() }}</span>
+    }
+</button>

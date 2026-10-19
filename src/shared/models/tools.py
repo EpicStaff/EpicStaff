@@ -174,6 +174,11 @@ class CodeTaskData(StorageScopedData):
     """{name: plaintext} for the sandbox. NOT excluded: this message is never
     persisted, and excluding it would silently deliver no secrets."""
 
+    reply_to_crew_channel: bool = False
+    """Publish the result to `crew_code_result_channel(CODE_RESULT_CHANNEL)`
+    instead of the shared `CODE_RESULT_CHANNEL`. Only crew sets it; every other
+    caller keeps listening on the shared channel."""
+
     @model_validator(mode="after")
     def _validate_storage_scope(self) -> "CodeTaskData":
         """Second echelon of defense (fail-closed):

@@ -725,6 +725,107 @@ async def test_stream_yields_tokens_and_done(
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
+async def test_stream_holds_no_database_connection_while_the_llm_replies(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    # A pooled connection held through an LLM reply is one fewer for every other
+    # request of the process, for as long as the reply takes.
+    from asgiref.sync import ThreadSensitiveContext, sync_to_async
+    from django.db import connection
+
+    user_message = "what does this flow do?"
+    org_user = await sync_to_async(OrganizationUser.objects.create)(
+        user=user_a, org=org_a, role=default_role
+    )
+    assistant = await sync_to_async(FlowAssistant.objects.create)(
+        graph=graph, llm_config=llm_config
+    )
+    conversation = await sync_to_async(_make_conversation_with_messages)(
+        assistant,
+        org_user,
+        [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": user_message},
+        ],
+    )
+    connection_held_per_llm_call = []
+
+    async def fake_stream(messages, tools):
+        # Asked in the thread the stream's queries run in, where its connection lives.
+        connection_held_per_llm_call.append(
+            await sync_to_async(lambda: connection.connection is not None)()
+        )
+        if len(connection_held_per_llm_call) == 1:
+            yield ToolCallEvent(id="call_1", name="get_flow_overview", args={})
+        yield DoneEvent()
+
+    with patch("tables.services.flow_assistant.service.get_llm_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_client.stream_completion = fake_stream
+        mock_get_client.return_value = mock_client
+
+        # Like an ASGI request: the stream's sync calls share one thread of their own.
+        async with ThreadSensitiveContext():
+            events = [
+                event
+                async for event in FlowAssistantService().stream_reply(conversation, user_message)
+            ]
+
+    assert events[-1].type == "done"
+    # Both calls: the first after the history was loaded, the second after the tool
+    # read the flow.
+    assert connection_held_per_llm_call == [False, False]
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "case, expected_detail",
+    [
+        ("no_user_message", "No pending user message found."),
+        ("assistant_without_llm_config", "has no llm_config set"),
+    ],
+)
+async def test_stream_error_frame_is_sent_without_a_database_connection(
+    graph, user_a, org_a, default_role, db, case, expected_detail
+):
+    # A client that stops reading blocks the error frame's yield, and with it any pooled
+    # connection the failed lookup still holds.
+    from asgiref.sync import ThreadSensitiveContext, sync_to_async
+    from django.db import connection
+
+    from tables.views.flow_assistant_views import FlowAssistantStreamView
+
+    org_user = await sync_to_async(OrganizationUser.objects.create)(
+        user=user_a, org=org_a, role=default_role
+    )
+    assistant = await sync_to_async(FlowAssistant.objects.create)(graph=graph, llm_config=None)
+    messages = [{"role": "system", "content": "sys"}]
+    if case != "no_user_message":
+        messages.append({"role": "user", "content": "what does this flow do?"})
+    conversation = await sync_to_async(_make_conversation_with_messages)(
+        assistant, org_user, messages
+    )
+    view = FlowAssistantStreamView()
+    view.user = user_a
+    view.kwargs = {"graph_id": graph.id, "conversation_id": conversation.pk}
+
+    frames = []
+    # Like an ASGI request: the stream's sync calls share one thread of their own.
+    async with ThreadSensitiveContext():
+        assert await view.authorize(request=None) is None
+        async for event in view.get_live_updates(pubsub=None):
+            # Asked in the thread the stream's queries run in, where its connection lives.
+            connection_open = await sync_to_async(lambda: connection.connection is not None)()
+            frames.append((event["event"], connection_open))
+            detail = event["data"]["detail"]
+
+    assert frames == [("error", False)]
+    assert expected_detail in detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_tool_call_roundtrip(graph, llm_config, user_a, org_a, default_role, db):
     """Stub LLM emits get_flow_overview tool call → service runs it → feeds result back."""
     from tables.services.flow_assistant import FlowAssistantService

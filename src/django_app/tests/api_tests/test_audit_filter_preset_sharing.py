@@ -362,7 +362,8 @@ class TestCopyAndImportNumberAmongOwnNames:
             assert response.status_code == 201
             new_name = response.json()["name"]
         else:
-            new_name = _imported_name(_import(colleague_client, long_name))
+            # A different search, or the import would reuse long_preset instead of numbering.
+            new_name = _imported_name(_import(colleague_client, long_name, {"query": "new"}))
 
         assert new_name == "n" * 146 + " (2)"
         assert len(new_name) == 150
