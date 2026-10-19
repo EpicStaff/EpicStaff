@@ -29,14 +29,24 @@ STAMPED_NODE_MODELS = tuple(
 )
 
 
-def _migrate(targets: list[tuple[str, str]]) -> None:
-    MigrationExecutor(connection).migrate(targets)
+def _apps_before_stamping():
+    """The historical models the stamping migration receives when it runs."""
+    return MigrationExecutor(connection).loader.project_state(MIGRATION_BEFORE_STAMPING).apps
+
+
+def _stamping_operation():
+    [operation] = stamping_migration.Migration.operations
+    return operation
 
 
 def _run_stamping_migration() -> None:
-    """Unapply the stamping migration (its reverse is a no-op) and apply it again."""
-    _migrate([MIGRATION_BEFORE_STAMPING])
-    _migrate(MigrationExecutor(connection).loader.graph.leaf_nodes())
+    """Run the migration's forward function on the current rows.
+
+    Called directly, not by unapplying and re-applying the migration: that round
+    trip would also re-run every later migration, and the index ones fail on rows
+    this test created in the same transaction.
+    """
+    _stamping_operation().code(_apps_before_stamping(), None)
 
 
 def _snapshot_node(node) -> dict:
@@ -236,6 +246,6 @@ def test_reverse_keeps_the_stamped_uuids(graph):
     version = _create_version(graph, [node])
     _run_stamping_migration()
 
-    _migrate([MIGRATION_BEFORE_STAMPING])
+    _stamping_operation().reverse_code(_apps_before_stamping(), None)
 
     assert _stored_snapshot(version)["nodes"][0]["uuid"] == _row_uuid(node)

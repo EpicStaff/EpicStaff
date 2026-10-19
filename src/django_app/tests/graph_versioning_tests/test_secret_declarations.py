@@ -395,7 +395,7 @@ class TestRestoreFailsClosed:
         secret = _secret(org=default_org, name="STRIPE_KEY")
         _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
         version = _save(graph=graph)
-        secret.delete()
+        _purge(secret)
 
         result = _restore(version=version, graph=graph)
 
@@ -422,7 +422,7 @@ class TestRestoreFailsClosed:
             graph=graph, node_name="TG", telegram_bot_api_key_secret=secret
         )
         version = _save(graph=graph)
-        secret.delete()
+        _purge(secret)
 
         result = _restore(version=version, graph=graph)
 
@@ -593,7 +593,7 @@ class TestPreviewResolvesDeclarationsLikeARestore:
         deleted = _secret(org=default_org, name="GONE_KEY")
         node = _python_node(graph=graph, name="STRIPE_KEY", declared=[kept, deleted])
         version = _save(graph=graph)
-        deleted.delete()
+        _purge(deleted)
 
         preview = service.preview_version(version)
 
@@ -625,7 +625,7 @@ class TestPreviewResolvesDeclarationsLikeARestore:
             graph=graph, node_name="CDT", pre_python_code=pre, post_python_code=post
         )
         version = _save(graph=graph)
-        post_secret.delete()
+        _purge(post_secret)
 
         preview = service.preview_version(version)
 
@@ -655,7 +655,7 @@ class TestPreviewResolvesDeclarationsLikeARestore:
             graph=graph, node_name="TG", telegram_bot_api_key_secret=secret
         )
         version = _save(graph=graph)
-        secret.delete()
+        _purge(secret)
 
         preview = service.preview_version(version)
 
@@ -706,7 +706,7 @@ class TestPreviewResolvesDeclarationsLikeARestore:
         secret = _secret(org=default_org, name="STRIPE_KEY")
         snapshot_node = _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
         version = _save(graph=graph)
-        secret.delete()
+        _purge(secret)
 
         [preview_warning] = service.preview_version(version)["warnings"]
         [restore_warning] = _restore(version=version, graph=graph)["warnings"]
@@ -715,6 +715,19 @@ class TestPreviewResolvesDeclarationsLikeARestore:
         assert preview_warning["node_id"] == snapshot_node.pk
         assert restore_warning["node_id"] == restored_node.pk
         assert {**preview_warning, "node_id": None} == {**restore_warning, "node_id": None}
+
+    def test_a_binned_secret_resolves_without_a_warning(self, service, graph, default_org):
+        """A restore links a binned secret again, so the preview resolves it too. Unlike
+        the restore it gives no `secret_in_recycle_bin` warning yet: a known gap."""
+        secret = _secret(org=default_org, name="STRIPE_KEY")
+        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        version = _save(graph=graph)
+        secret.delete()
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {"STRIPE_KEY": secret.pk}
+        assert preview["warnings"] == []
 
 
 @pytest.mark.django_db

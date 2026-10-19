@@ -15,7 +15,7 @@ from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.graph_versioning.services import GraphVersioningService
-from tables.models import GraphVersion, KeyValueNode, KeyValueTable, PythonCode, PythonNode
+from tables.models import GraphVersion, KeyValueNode, KeyValueTable, PythonCode, PythonNode, Secret
 from tables.models.graph_models import Edge, Graph, SubGraphNode
 from tables.services.secrets import secret_service
 from tests.api_tests.graph_version_api_fixtures import *  # noqa: F401,F403
@@ -354,6 +354,7 @@ def test_preview_resolves_declared_secrets_and_reports_a_deleted_one(client, org
     node = PythonNode.objects.create(graph=graph, node_name="Python-Node #1", python_code=python_code)
     version_id = save_version(client=client, graph=graph)
     deleted.delete()
+    Secret.all_objects.get(pk=deleted.pk).purge()  # deleting only moves it to the recycle bin
 
     response = _preview(client=client, version_id=version_id)
 
