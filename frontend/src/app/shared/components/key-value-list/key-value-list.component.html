@@ -8,52 +8,16 @@
 }
 
 <div class="kv-list">
-    <div class="kv-list__row">
-        <input
-            class="kv-list__input"
-            type="text"
-            [class.kv-list__input--error]="draftError()"
-            [placeholder]="namePlaceholder()"
-            [ngModel]="draftName()"
-            (ngModelChange)="updateDraftName($event)"
-            (keydown)="handleKeydown($event)"
-            [disabled]="isDisabled()"
-        />
-        <div class="kv-list__value-wrapper">
-            <input
-                class="kv-list__input"
-                type="text"
-                [placeholder]="valuePlaceholder()"
-                [ngModel]="displayValue(draftValue())"
-                (ngModelChange)="updateDraftValue($event)"
-                (keydown)="handleKeydown($event)"
-                (keydown.escape)="closeSuggestions()"
-                (focus)="onValueFocus($event, 'draft')"
-                [disabled]="isDisabled()"
-            />
-        </div>
-        <button
-            type="button"
-            class="kv-list__add-btn"
-            matTooltip="Add"
-            matTooltipPosition="above"
-            (click)="confirm()"
-            [disabled]="isDisabled() || !draftName().trim() || draftRowError() !== null"
-        >
-            <i class="ti ti-plus"></i>
-        </button>
-    </div>
-
-    @if (draftError(); as error) {
-        <div class="kv-list__error-message">{{ error }}</div>
-    }
-
     @for (item of items(); track $index; let i = $index) {
         <div class="kv-list__row">
             <input
                 class="kv-list__input"
                 type="text"
-                [class.kv-list__input--error]="rowErrors()[i]"
+                [class.kv-list__input--error]="hasNameError(i)"
+                [placeholder]="namePlaceholder()"
+                [attr.aria-label]="'Header name, row ' + (i + 1)"
+                [attr.aria-invalid]="hasNameError(i)"
+                [attr.aria-describedby]="hasNameError(i) ? errorId(i) : null"
                 [ngModel]="item.name"
                 (ngModelChange)="updateName(i, $event)"
                 (blur)="onNameBlur(i)"
@@ -63,7 +27,12 @@
                 <input
                     class="kv-list__input"
                     type="text"
+                    [class.kv-list__input--error]="hasValueError(i)"
                     [class.kv-list__input--has-badge]="isSecretValue(item.value)"
+                    [placeholder]="valuePlaceholder()"
+                    [attr.aria-label]="'Header value, row ' + (i + 1)"
+                    [attr.aria-invalid]="hasValueError(i)"
+                    [attr.aria-describedby]="hasValueError(i) ? errorId(i) : null"
                     [ngModel]="displayValue(item.value)"
                     (ngModelChange)="updateValue(i, $event)"
                     (keydown.escape)="closeSuggestions()"
@@ -83,7 +52,9 @@
             <button
                 type="button"
                 class="kv-list__remove-btn"
+                [class.kv-list__remove-btn--hidden]="isSpareRow(i)"
                 matTooltip="Remove"
+                [attr.aria-label]="'Remove header, row ' + (i + 1)"
                 matTooltipPosition="above"
                 (click)="removeCard(i)"
                 [disabled]="isDisabled()"
@@ -92,7 +63,12 @@
             </button>
         </div>
         @if (rowErrors()[i]; as error) {
-            <div class="kv-list__error-message">{{ error }}</div>
+            <div
+                class="kv-list__error-message"
+                [id]="errorId(i)"
+            >
+                {{ error }}
+            </div>
         }
     }
 </div>

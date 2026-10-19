@@ -4,6 +4,7 @@ import {
     HEADER_NAME_FORMAT_ERROR,
     HEADER_NAME_REQUIRED_ERROR,
     HEADER_VALUE_LINE_BREAK_ERROR,
+    HEADER_VALUE_REQUIRED_ERROR,
 } from './header-validation.util';
 
 describe('getHeaderRowError', () => {
@@ -20,8 +21,13 @@ describe('getHeaderRowError', () => {
         expect(getHeaderRowError('X:Team', 'v', [])).toBe(HEADER_NAME_FORMAT_ERROR);
     });
 
-    it('accepts HTTP token names, with an empty value', () => {
-        expect(getHeaderRowError('X-Proxy_Key.1', '', [])).toBeNull();
+    it('requires a value when a name is set', () => {
+        expect(getHeaderRowError('X-Team', '', [])).toBe(HEADER_VALUE_REQUIRED_ERROR);
+        expect(getHeaderRowError('X-Team', '   ', [])).toBe(HEADER_VALUE_REQUIRED_ERROR);
+    });
+
+    it('accepts HTTP token names with a value', () => {
+        expect(getHeaderRowError('X-Proxy_Key.1', 'v', [])).toBeNull();
     });
 
     it('rejects duplicates case-insensitively', () => {

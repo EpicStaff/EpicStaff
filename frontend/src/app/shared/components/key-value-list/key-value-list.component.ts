@@ -28,18 +28,22 @@ import { SecretsStorageService } from '@shared/services';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { SelectItem } from '../select/select.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
-import { getHeaderRowError } from './header-validation.util';
+import {
+    getHeaderRowError,
+    HEADER_VALUE_LINE_BREAK_ERROR,
+    HEADER_VALUE_REQUIRED_ERROR,
+} from './header-validation.util';
 
 interface KeyValueItem {
     name: string;
     value: string;
 }
 
-type SecretPickerTarget = number | 'draft';
+type SecretPickerTarget = number;
 
 /** Whole value is exactly an `epicstaff_secret(<name>)` marker — see secret_resolver.py. */
 const SECRET_MARKER_RE = /^epicstaff_secret\(([^)]*)\)$/;
-const DRAFT_PENDING_ERROR = 'Add or clear this header first';
+let nextInstanceId = 0;
 const toSecretMarker = (name: string): string => `epicstaff_secret(${name})`;
 
 @Component({
@@ -67,6 +71,8 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
     private readonly overlay = inject(Overlay);
     private readonly viewContainerRef = inject(ViewContainerRef);
 
+    readonly instanceId = nextInstanceId++;
+
     label = input<string>('');
     tooltipText = input<string>('');
     icon = input<string>('help_outline');
@@ -75,8 +81,6 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
     valuePlaceholder = input<string>('Value');
 
     items = signal<KeyValueItem[]>([]);
-    draftName = signal<string>('');
-    draftValue = signal<string>('');
     isDisabled = signal<boolean>(false);
 
     private readonly suggestionsTemplate = viewChild.required<TemplateRef<unknown>>('suggestionsTemplate');
@@ -103,7 +107,7 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
         const target = this.activeTarget();
         if (target === null) return [];
 
-        const text = target === 'draft' ? this.draftValue() : (this.items()[target]?.value ?? '');
+        const text = this.items()[target]?.value ?? '';
         const q = text.trim().toLowerCase();
         const all = this.secretItems();
         return q ? all.filter((item) => item.name.toLowerCase().includes(q)) : all;
@@ -123,7 +127,7 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
         return this.secretNameOf(value) ?? value;
     }
 
-    /** Error text per saved row, null when the row is valid. */
+    /** Error text per row, null when the row is valid or entirely empty (empty rows are ignored). */
     rowErrors = computed<(string | null)[]>(() => {
         const items = this.items();
         return items.map((item, index) =>
@@ -135,29 +139,10 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
         );
     });
 
-    /** Format/duplicate problem with the draft row; an untouched, empty draft has none. */
-    protected readonly draftRowError = computed<string | null>(() =>
-        getHeaderRowError(
-            this.draftName(),
-            this.draftValue(),
-            this.items().map((item) => item.name)
-        )
-    );
-
-    /** Any non-empty draft that has not been confirmed blocks validity, so typed input is never silently dropped. */
-    draftError = computed<string | null>(() => {
-        const rowError = this.draftRowError();
-        if (rowError) return rowError;
-        return this.draftName().trim() || this.draftValue().trim() ? DRAFT_PENDING_ERROR : null;
-    });
-
-    private readonly hasErrors = computed<boolean>(
-        () => this.draftError() !== null || this.rowErrors().some((error) => error !== null)
-    );
+    private readonly hasErrors = computed<boolean>(() => this.rowErrors().some((error) => error !== null));
 
     private onChange: (value: Record<string, string>) => void = () => {};
     private onTouched: () => void = () => {};
-    private onValidatorChange: () => void = () => {};
 
     constructor() {
         this.secretsStorageService
@@ -168,60 +153,41 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
         this.destroyRef.onDestroy(() => this.disposeOverlay());
     }
 
-    confirm(): void {
-        const name = this.draftName().trim();
-        if (!name || this.draftRowError()) return;
-
-        const value = this.draftValue();
-        this.items.update((items) => [...items, { name, value }]);
-
-        this.draftName.set('');
-        this.draftValue.set('');
-        this.emit();
-    }
-
-    updateDraftName(name: string): void {
-        this.draftName.set(name);
-        this.onValidatorChange();
-    }
-
-    updateDraftValue(value: string): void {
-        this.draftValue.set(value);
-        this.onValidatorChange();
-    }
-
     updateName(index: number, name: string): void {
-        this.items.update((items) => items.map((item, i) => (i === index ? { ...item, name } : item)));
-        this.emit();
+        this.updateItems((items) => items.map((item, i) => (i === index ? { ...item, name } : item)));
     }
 
     onNameBlur(index: number): void {
-        this.items.update((items) =>
-            items.map((item, i) => (i === index ? { ...item, name: item.name.trim() } : item))
-        );
-        this.emit();
+        const current = this.items()[index];
+        if (!current || current.name.trim() === current.name) return;
+        this.updateItems((items) => items.map((item, i) => (i === index ? { ...item, name: item.name.trim() } : item)));
     }
 
     updateValue(index: number, value: string): void {
-        this.items.update((items) => items.map((item, i) => (i === index ? { ...item, value } : item)));
-        this.emit();
+        this.updateItems((items) => items.map((item, i) => (i === index ? { ...item, value } : item)));
     }
 
     removeCard(index: number): void {
-        this.items.update((items) => items.filter((_, i) => i !== index));
-        this.emit();
+        this.updateItems((items) => items.filter((_, i) => i !== index));
     }
 
-    handleKeydown(event: KeyboardEvent): void {
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            this.confirm();
-        }
-        if (event.key === 'Escape') {
-            this.draftName.set('');
-            this.draftValue.set('');
-            this.onValidatorChange();
-        }
+    /** The always-present empty row at the end, where the next header is typed. */
+    isSpareRow(index: number): boolean {
+        return index === this.items().length - 1 && this.isBlank(this.items()[index]);
+    }
+
+    errorId(index: number): string {
+        return `kv-list-${this.instanceId}-error-${index}`;
+    }
+
+    hasNameError(index: number): boolean {
+        const error = this.rowErrors()[index];
+        return error !== null && error !== HEADER_VALUE_REQUIRED_ERROR && error !== HEADER_VALUE_LINE_BREAK_ERROR;
+    }
+
+    hasValueError(index: number): boolean {
+        const error = this.rowErrors()[index];
+        return error === HEADER_VALUE_REQUIRED_ERROR || error === HEADER_VALUE_LINE_BREAK_ERROR;
     }
 
     onValueFocus(event: FocusEvent, target: SecretPickerTarget): void {
@@ -235,11 +201,7 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
         if (target === null || typeof item.value !== 'string') return;
 
         const marker = toSecretMarker(item.value);
-        if (target === 'draft') {
-            this.updateDraftValue(marker);
-        } else {
-            this.updateValue(target, marker);
-        }
+        this.updateValue(target, marker);
         this.closeSuggestions();
     }
 
@@ -304,11 +266,28 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
         }
     }
 
+    private isBlank(item: KeyValueItem): boolean {
+        return !item.name.trim() && !item.value.trim();
+    }
+
+    private updateItems(update: (items: KeyValueItem[]) => KeyValueItem[]): void {
+        this.items.set(this.withSpareRow(update(this.items())));
+        this.emit();
+    }
+
+    private withSpareRow(items: KeyValueItem[]): KeyValueItem[] {
+        let end = items.length;
+        while (end > 0 && this.isBlank(items[end - 1])) end--;
+        const spare = items[end] ?? { name: '', value: '' };
+        return [...items.slice(0, end), spare];
+    }
+
+    /** Emits complete rows only; empty rows are ignored and half-filled rows are reported by validate(). */
     private emit(): void {
         const record = Object.fromEntries(
             this.items()
-                .filter((item) => item.name.trim() || item.value.trim())
-                .map((item) => [item.name, item.value])
+                .filter((item) => item.name.trim() && item.value.trim())
+                .map((item) => [item.name.trim(), item.value])
         );
         this.onChange(record);
         this.onTouched();
@@ -317,7 +296,7 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
     writeValue(value: Record<string, string> | null): void {
         const record = value ?? {};
         const items: KeyValueItem[] = Object.entries(record).map(([name, val]) => ({ name, value: val }));
-        this.items.set(items);
+        this.items.set(this.withSpareRow(items));
     }
 
     registerOnChange(fn: (value: Record<string, string>) => void): void {
@@ -330,10 +309,6 @@ export class KeyValueListComponent implements ControlValueAccessor, Validator {
 
     validate(): ValidationErrors | null {
         return this.hasErrors() ? { keyValueList: true } : null;
-    }
-
-    registerOnValidatorChange(fn: () => void): void {
-        this.onValidatorChange = fn;
     }
 
     setDisabledState(isDisabled: boolean): void {
