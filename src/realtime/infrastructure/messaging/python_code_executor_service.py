@@ -2,6 +2,7 @@ import asyncio
 import uuid
 from typing import Any
 
+import httpx
 from core import config
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
@@ -10,10 +11,17 @@ from pydantic import ValidationError
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData, StorageCredentials
 from utils.singleton_meta import SingletonMeta
 
+from infrastructure.sandbox.sandbox_client import SandboxExecutionClient
+
 
 class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonMeta):
-    def __init__(self, redis_service: IRedisMessagingService):
+    _SUBMIT_FAILED_STDERR = "Could not reach the code sandbox for this run."
+
+    def __init__(
+        self, redis_service: IRedisMessagingService, sandbox_client: SandboxExecutionClient
+    ):
         self.redis_service = redis_service
+        self.sandbox_client = sandbox_client
 
     async def run_code(
         self,
@@ -42,6 +50,7 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
             code_task_data = CodeTaskData(
                 venv_name=venv_name,
                 libraries=libraries,
+                venv_id=python_code_data.venv_id,
                 code=code,
                 execution_id=unique_task_id,
                 entrypoint=entrypoint,
@@ -69,10 +78,26 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 returncode=1,
             ).model_dump()
 
+        # Subscribe before submitting so a fast result is never missed.
         pubsub = await self.redis_service.async_subscribe(config.CODE_RESULT_CHANNEL)
-        await self.redis_service.async_publish(
-            config.CODE_EXEC_CHANNEL, code_task_data.model_dump()
-        )
+        try:
+            await self.sandbox_client.submit(code_task_data)
+        except httpx.HTTPError as error:
+            # The class name, never the error: an httpx error keeps the request
+            # that raised it, and that request body carries secret plaintext.
+            # A rejected submit produces no result, so the wait below would never
+            # end -- fail the tool call now instead.
+            logger.error(
+                "Failed to submit code execution to the sandbox (execution_id={}, {})",
+                unique_task_id,
+                type(error).__name__,
+            )
+            return CodeResultData(
+                execution_id=unique_task_id,
+                stderr=self._SUBMIT_FAILED_STDERR,
+                stdout="",
+                returncode=1,
+            ).model_dump()
         logger.info("Waiting for code_results")
 
         while True:
