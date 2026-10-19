@@ -112,9 +112,9 @@ class UserProfileService:
         if "display_name" in changes:
             user.display_name = changes["display_name"]
             update_fields.append("display_name")
-        if "shortcut_overrides" in changes:
-            user.shortcut_overrides = changes["shortcut_overrides"]
-            update_fields.append("shortcut_overrides")
+        if "custom_shortcuts" in changes:
+            user.custom_shortcuts = changes["custom_shortcuts"]
+            update_fields.append("custom_shortcuts")
         if not update_fields:
             return user
 
@@ -125,12 +125,11 @@ class UserProfileService:
                 user.id,
                 changes["display_name"] is None,
             )
-        if "shortcut_overrides" in changes:
+        if "custom_shortcuts" in changes:
             logger.info(
-                "profile.shortcut_overrides_updated user_id={} overrides={} custom={}",
+                "profile.custom_shortcuts_updated user_id={} custom={}",
                 user.id,
-                len(changes["shortcut_overrides"]["overrides"]),
-                len(changes["shortcut_overrides"]["custom"]),
+                len(changes["custom_shortcuts"]["custom"]),
             )
         return user
 

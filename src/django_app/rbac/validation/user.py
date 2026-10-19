@@ -3,7 +3,7 @@ from typing import Any
 
 from django.core.files.uploadedfile import UploadedFile
 from tables.models.user import (
-    SHORTCUTS_MAX_ENTRIES_PER_SECTION,
+    SHORTCUTS_MAX_CUSTOM_ENTRIES,
     SHORTCUTS_MAX_TEXT_LENGTH,
 )
 
@@ -197,7 +197,7 @@ class UserValidationService(BaseRBACValidator):
         `data` and that passed validation. Unknown keys are silently
         ignored — they cannot reach the service.
 
-        Mutable fields: display_name and shortcut_overrides. The view
+        Mutable fields: display_name and custom_shortcuts. The view
         writes nothing until this returns, so one invalid field rejects
         the whole PATCH.
         """
@@ -215,45 +215,42 @@ class UserValidationService(BaseRBACValidator):
             if not display_name_errors:
                 cleaned["display_name"] = display_name
 
-        if "shortcut_overrides" in data:
-            overrides_reason = self._shortcut_overrides_error(data["shortcut_overrides"])
-            if overrides_reason is None:
-                cleaned["shortcut_overrides"] = data["shortcut_overrides"]
+        if "custom_shortcuts" in data:
+            custom_shortcuts_reason = self._custom_shortcuts_error(data["custom_shortcuts"])
+            if custom_shortcuts_reason is None:
+                cleaned["custom_shortcuts"] = data["custom_shortcuts"]
             else:
-                errors.append(FieldError("shortcut_overrides", None, overrides_reason))
+                errors.append(FieldError("custom_shortcuts", None, custom_shortcuts_reason))
 
         self._raise_if_any(errors)
         return cleaned
 
     @staticmethod
-    def _shortcut_overrides_error(value: Any) -> str | None:
-        if not isinstance(value, dict) or value.keys() != {"overrides", "custom"}:
-            return 'Must be an object with exactly the keys "overrides" and "custom".'
-        overrides = value["overrides"]
+    def _custom_shortcuts_error(value: Any) -> str | None:
+        if not isinstance(value, dict) or value.keys() != {"custom"}:
+            return 'Must be an object with exactly the key "custom".'
         custom = value["custom"]
-        if not isinstance(overrides, dict):
-            return '"overrides" must be an object of action id to keys.'
         if not isinstance(custom, list):
             return '"custom" must be a list of objects with exactly the keys "action" and "keys".'
-        if max(len(overrides), len(custom)) > SHORTCUTS_MAX_ENTRIES_PER_SECTION:
-            return (
-                f'"overrides" and "custom" must each have {SHORTCUTS_MAX_ENTRIES_PER_SECTION} '
-                "entries or fewer."
-            )
+        if len(custom) > SHORTCUTS_MAX_CUSTOM_ENTRIES:
+            return f'"custom" must have {SHORTCUTS_MAX_CUSTOM_ENTRIES} entries or fewer.'
         if not all(
             isinstance(entry, dict) and entry.keys() == {"action", "keys"} for entry in custom
         ):
             return '"custom" must be a list of objects with exactly the keys "action" and "keys".'
-        texts = [*overrides.keys(), *overrides.values()]
-        texts += [text for entry in custom for text in (entry["action"], entry["keys"])]
-        if not all(_is_shortcut_text(text) for text in texts):
+        if not all(_is_shortcut_text(entry["action"]) for entry in custom):
             return (
-                "Action ids and keys must be non-empty printable ASCII strings "
+                "Action ids must be non-empty printable ASCII strings "
                 f"of {SHORTCUTS_MAX_TEXT_LENGTH} characters or fewer."
             )
-        custom_keys = [entry["keys"] for entry in custom]
-        if len(set(custom_keys)) != len(custom_keys):
-            return 'Each "custom" entry must have different keys.'
+        assigned_keys = [entry["keys"] for entry in custom if entry["keys"] is not None]
+        if not all(_is_shortcut_text(keys) for keys in assigned_keys):
+            return (
+                "Keys must be null or non-empty printable ASCII strings "
+                f"of {SHORTCUTS_MAX_TEXT_LENGTH} characters or fewer."
+            )
+        if len(set(assigned_keys)) != len(assigned_keys):
+            return 'Each "custom" entry with keys must have different keys.'
         return None
 
     def validate_avatar_upload(self, data) -> UploadedFile:

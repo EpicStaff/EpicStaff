@@ -9,11 +9,10 @@ from rbac.serializers.users import (
 
 class ShortcutCustomEntrySerializer(serializers.Serializer):
     action = serializers.CharField()
-    keys = serializers.CharField()
+    keys = serializers.CharField(allow_null=True)
 
 
-class ShortcutOverridesSerializer(serializers.Serializer):
-    overrides = serializers.DictField(child=serializers.CharField())
+class CustomShortcutsSerializer(serializers.Serializer):
     custom = ShortcutCustomEntrySerializer(many=True)
 
 
@@ -22,7 +21,7 @@ class ProfileResponseSerializer(UserResponseSerializer):
 
     Strict superset of UserResponseSerializer: same fields, plus
     `avatar_url`, `active_organization_id`, `active_permissions` and
-    `shortcut_overrides` (the user's own preference, so it stays off the
+    `custom_shortcuts` (the user's own preference, so it stays off the
     admin user directory's UserResponseSerializer). The
     `memberships` list is computed in UserProfileService.get_profile — a
     normal user's real active memberships, or (for a superadmin) every active
@@ -40,7 +39,7 @@ class ProfileResponseSerializer(UserResponseSerializer):
     active_permissions = serializers.JSONField(
         source="_active_permissions", allow_null=True, default=None, read_only=True
     )
-    shortcut_overrides = serializers.SerializerMethodField()
+    custom_shortcuts = serializers.SerializerMethodField()
 
     class Meta(UserResponseSerializer.Meta):
         fields = [
@@ -48,13 +47,13 @@ class ProfileResponseSerializer(UserResponseSerializer):
             "avatar_url",
             "active_organization_id",
             "active_permissions",
-            "shortcut_overrides",
+            "custom_shortcuts",
         ]
         read_only_fields = fields
 
-    @extend_schema_field(ShortcutOverridesSerializer)
-    def get_shortcut_overrides(self, user):
-        return user.shortcut_overrides
+    @extend_schema_field(CustomShortcutsSerializer)
+    def get_custom_shortcuts(self, user):
+        return user.custom_shortcuts
 
 
 # ---- request serializers (schema-only; validation in UserValidationService) ----
@@ -64,9 +63,9 @@ class ProfilePatchRequestSerializer(serializers.Serializer):
     """`PATCH /api/profile/` — schema for drf-spectacular only."""
 
     display_name = serializers.CharField(required=False, allow_null=True)
-    shortcut_overrides = ShortcutOverridesSerializer(
+    custom_shortcuts = CustomShortcutsSerializer(
         required=False,
-        help_text="Replaces the whole value: overrides and custom shortcuts.",
+        help_text="Replaces the whole value: the list of custom shortcuts.",
     )
 
 

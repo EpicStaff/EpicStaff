@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name='user',
-            name='shortcut_overrides',
-            field=models.JSONField(blank=True, default=tables.models.user.default_shortcut_overrides),
+            name='custom_shortcuts',
+            field=models.JSONField(blank=True, default=tables.models.user.default_custom_shortcuts),
         ),
     ]
