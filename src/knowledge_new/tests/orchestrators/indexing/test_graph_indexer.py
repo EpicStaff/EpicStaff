@@ -32,7 +32,7 @@ def _make_config(
 ) -> types.SimpleNamespace:
     """Build a fake GraphRagConfig-like object accepted by _get_config_under_uow."""
     embedding_model = types.SimpleNamespace(api_key=None)
-    completion_model = types.SimpleNamespace(api_key=None)
+    completion_model = types.SimpleNamespace(api_key=None, type="litellm")
     return types.SimpleNamespace(
         input_storage=input_storage,
         output_storage=output_storage,

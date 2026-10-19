@@ -9,16 +9,7 @@ def _endpoint_overrides(config: EmbeddingConfig) -> dict:
     """Endpoint overrides for `config`, applied to every provider when set.
 
     The embedding config's own `base_url` and `extra_headers` win; the
-    deployment-wide settings are the fallback.
-
-    The deployment-wide headers are a credential for the deployment-wide
-    endpoint, so they are sent only when the config does not point elsewhere:
-    with no config `base_url`, or one equal to the env base URL. Otherwise any
-    user who can set a model's `base_url` could send the gateway key to a host
-    of their choosing. Where both apply, headers merge with the config's value
-    winning on a name both define; HTTP header names are case-insensitive, so
-    `ApiKey` in the config replaces `apikey` from the env. The env headers are
-    parsed from JSON, so a numeric value is coerced to `str` as HTTP requires.
+    deployment-wide `CUSTOM_EMBED_BASE_URL` is the fallback base URL.
 
     `api_base` is the OpenAI-style base that litellm appends `/embeddings` to,
     not the full embeddings URL.
@@ -27,26 +18,9 @@ def _endpoint_overrides(config: EmbeddingConfig) -> dict:
     api_base = config.base_url or settings.CUSTOM_EMBED_BASE_URL
     if api_base:
         overrides["api_base"] = api_base
-    env_headers = {}
-    if _targets_env_endpoint(config.base_url):
-        config_header_names = {name.lower() for name in config.extra_headers}
-        env_headers = {
-            name: str(value)
-            for name, value in (settings.EMBEDDING_HEADERS or {}).items()
-            if name.lower() not in config_header_names
-        }
-    extra_headers = {**env_headers, **config.extra_headers}
-    if extra_headers:
-        overrides["extra_headers"] = extra_headers
+    if config.extra_headers:
+        overrides["extra_headers"] = config.extra_headers
     return overrides
-
-
-def _targets_env_endpoint(config_base_url: str | None) -> bool:
-    """Whether a config with `config_base_url` calls the deployment-wide endpoint."""
-    if not config_base_url:
-        return True
-    env_base_url = settings.CUSTOM_EMBED_BASE_URL
-    return bool(env_base_url) and config_base_url.rstrip("/") == env_base_url.rstrip("/")
 
 
 class LiteLLMEmbedder(AbstractEmbedder):

@@ -1,6 +1,9 @@
-import { formatCostUsd, formatTokens, toFiniteNumber } from '@shared/utils';
+import { escapeHtml, formatCostUsd, formatTokens, toFiniteNumber } from '@shared/utils';
 
 import { IndexingEstimate } from '../models/base-rag.model';
+
+export const ESTIMATE_DISCLAIMER = 'This is an estimate — the actual token usage and cost may differ.';
+export const ALREADY_INDEXED_MESSAGE = 'Already indexed with these settings — re-running will not use any tokens.';
 
 export function formatEmbeddingEstimate(embedding: IndexingEstimate['embedding']): string | null {
     const tokens = toFiniteNumber(embedding?.tokens);
@@ -26,10 +29,8 @@ export function formatLlmEstimate(llm: NonNullable<IndexingEstimate['llm']>): st
     return `${tokensText} · ${costText}`;
 }
 
-/** Plain-text lines (no markup) describing the estimate; a single 'Nothing new to index.' line when no documents will be indexed. Invalid values are skipped. */
+/** Plain-text lines (no markup) describing the estimate. Invalid values are skipped. */
 export function getIndexingEstimateLines(estimate: IndexingEstimate): string[] {
-    if (estimate.document_count === 0) return ['Nothing new to index.'];
-
     const lines: string[] = [];
     const embeddingText = formatEmbeddingEstimate(estimate.embedding);
     if (embeddingText) lines.push(`Embedding: ${embeddingText}`);
@@ -38,16 +39,30 @@ export function getIndexingEstimateLines(estimate: IndexingEstimate): string[] {
     return lines;
 }
 
+function renderLines(lines: string[]): string {
+    return lines.map((line) => `<div class="dialog-callout__line">${escapeHtml(line)}</div>`).join('');
+}
+
 /**
- * HTML for the confirmation dialog; every value is generated from numbers or constant text, so no user text is
- * interpolated. Never throws: a malformed estimate yields an empty string so indexing is not blocked.
+ * HTML for the confirmation dialog callout. When no documents will be indexed it is just the "already indexed"
+ * line; otherwise a titled estimate with a disclaimer. Never throws: a malformed estimate yields an empty string
+ * so indexing is not blocked.
  */
 export function getIndexingEstimateHtml(estimate: IndexingEstimate | null): string {
     if (!estimate) return '';
     try {
+        if (estimate.document_count === 0) {
+            return `<div class="dialog-callout">${renderLines([ALREADY_INDEXED_MESSAGE])}</div>`;
+        }
         const lines = getIndexingEstimateLines(estimate);
         if (!lines.length) return '';
-        return `<div><strong>Estimated usage</strong><br>${lines.join('<br>')}</div>`;
+        return (
+            '<div class="dialog-callout">' +
+            '<div class="dialog-callout__title">Estimated usage</div>' +
+            renderLines(lines) +
+            `<div class="dialog-callout__note">${escapeHtml(ESTIMATE_DISCLAIMER)}</div>` +
+            '</div>'
+        );
     } catch {
         return '';
     }

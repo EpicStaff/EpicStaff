@@ -24,7 +24,6 @@ def litellm_api():
 @pytest.fixture
 def no_endpoint_overrides(monkeypatch):
     monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
-    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
 
 
 def _embedder(provider: EmbedderProviderEnum = EmbedderProviderEnum.OPENAI, **config_overrides):
@@ -86,69 +85,27 @@ async def test_cohere_queries_are_embedded_as_search_queries(litellm_api, no_end
 
 
 @pytest.mark.parametrize("provider", [EmbedderProviderEnum.OPENAI, EmbedderProviderEnum.COHERE])
-@pytest.mark.parametrize(
-    ("base_url", "headers"),
-    [
-        ("http://gateway:8080/v1", {"apikey": "KONG_KEY"}),
-        ("http://gateway:8080/v1", None),
-        (None, {"apikey": "KONG_KEY"}),
-    ],
-    ids=["base-url-and-headers", "base-url-only", "headers-only"],
-)
-async def test_deployment_endpoint_overrides_reach_every_provider(
-    litellm_api, monkeypatch, provider, base_url, headers
-):
-    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", base_url)
-    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", headers)
+async def test_deployment_base_url_reaches_every_provider(litellm_api, monkeypatch, provider):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", ENV_URL)
 
     await _embedder(provider).embed("hi")
 
     request = litellm_api.await_args.kwargs
-    assert request.get("api_base") == base_url
-    assert request.get("extra_headers") == headers
+    assert request["api_base"] == ENV_URL
+    assert "extra_headers" not in request
 
 
 ENV_URL = "http://env-gateway:8080/v1"
 
 
-def _set_env_endpoint(monkeypatch, base_url, headers):
-    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", base_url)
-    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", headers)
-
-
-async def test_config_headers_sent_without_env_headers(litellm_api, no_endpoint_overrides):
+async def test_config_headers_are_sent(litellm_api, no_endpoint_overrides):
     await _embedder(extra_headers={"X-Config": "from-config"}).embed("hi")
 
     assert litellm_api.await_args.kwargs["extra_headers"] == {"X-Config": "from-config"}
 
 
-async def test_numeric_env_header_values_are_sent_as_strings(litellm_api, monkeypatch):
-    # KNOWLEDGE_EMBEDDING_HEADERS is parsed as JSON, so a value can arrive as a number.
-    _set_env_endpoint(monkeypatch, None, {"X-Tenant-Id": 42, "X-Flag": True})
-
-    await _embedder(extra_headers={"X-Config": "c"}).embed("hi")
-
-    sent = litellm_api.await_args.kwargs["extra_headers"]
-    assert sent == {"X-Tenant-Id": "42", "X-Flag": "True", "X-Config": "c"}
-    assert all(isinstance(value, str) for value in sent.values())
-
-
-async def test_config_headers_merge_with_env_headers_and_win_on_collision(
-    litellm_api, monkeypatch
-):
-    _set_env_endpoint(monkeypatch, None, {"apikey": "ENV_KEY", "X-Env-Only": "env"})
-
-    await _embedder(extra_headers={"apikey": "CONFIG_KEY", "X-Config": "config"}).embed("hi")
-
-    assert litellm_api.await_args.kwargs["extra_headers"] == {
-        "apikey": "CONFIG_KEY",
-        "X-Env-Only": "env",
-        "X-Config": "config",
-    }
-
-
 async def test_config_base_url_wins_over_env_base_url(litellm_api, monkeypatch):
-    _set_env_endpoint(monkeypatch, ENV_URL, None)
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", ENV_URL)
 
     await _embedder(base_url="http://config-gateway:9090/v1").embed("hi")
 
@@ -156,7 +113,7 @@ async def test_config_base_url_wins_over_env_base_url(litellm_api, monkeypatch):
 
 
 async def test_env_base_url_used_when_config_has_none(litellm_api, monkeypatch):
-    _set_env_endpoint(monkeypatch, ENV_URL, None)
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", ENV_URL)
 
     await _embedder(base_url=None).embed("hi")
 
@@ -183,49 +140,3 @@ async def test_cohere_embedder_keeps_input_type_with_config_overrides(
     assert request["api_base"] == "http://cohere-gateway/v1"
     assert request["extra_headers"] == {"X-Config": "c"}
     assert request["input_type"] == "search_query"
-
-
-async def test_config_header_replaces_env_header_differing_only_in_case(
-    litellm_api, monkeypatch
-):
-    _set_env_endpoint(monkeypatch, None, {"apikey": "ENV_KEY", "X-Env-Only": "env"})
-
-    await _embedder(extra_headers={"ApiKey": "CONFIG_KEY"}).embed("hi")
-
-    assert litellm_api.await_args.kwargs["extra_headers"] == {
-        "X-Env-Only": "env",
-        "ApiKey": "CONFIG_KEY",
-    }
-
-
-async def test_env_headers_are_not_sent_to_a_config_base_url(litellm_api, monkeypatch):
-    _set_env_endpoint(monkeypatch, ENV_URL, {"apikey": "KONG_KEY"})
-
-    await _embedder(
-        base_url="https://attacker.example/v1", extra_headers={"X-Config": "c"}
-    ).embed("hi")
-
-    request = litellm_api.await_args.kwargs
-    assert request["api_base"] == "https://attacker.example/v1"
-    assert request["extra_headers"] == {"X-Config": "c"}
-
-
-async def test_env_headers_are_not_sent_to_a_config_base_url_without_env_base_url(
-    litellm_api, monkeypatch
-):
-    _set_env_endpoint(monkeypatch, None, {"apikey": "KONG_KEY"})
-
-    await _embedder(base_url="https://attacker.example/v1").embed("hi")
-
-    assert "extra_headers" not in litellm_api.await_args.kwargs
-
-
-async def test_env_headers_merge_when_config_base_url_is_the_env_url(litellm_api, monkeypatch):
-    _set_env_endpoint(monkeypatch, ENV_URL, {"apikey": "KONG_KEY", "X-Env": "e"})
-
-    await _embedder(base_url=ENV_URL + "/", extra_headers={"ApiKey": "CONFIG_KEY"}).embed("hi")
-
-    assert litellm_api.await_args.kwargs["extra_headers"] == {
-        "X-Env": "e",
-        "ApiKey": "CONFIG_KEY",
-    }

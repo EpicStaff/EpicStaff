@@ -20,6 +20,7 @@ describe('getIndexingConfirmationDataWithEstimate', () => {
         data.messageUpdates?.subscribe((message) => messages.push(message));
 
         expect(data.message).toContain('Estimating usage');
+        expect(data.message).toContain('class="dialog-callout dialog-callout--pending"');
         estimate$.next(ESTIMATE);
         expect(messages[0]).toContain('Estimated usage');
         expect(messages[0]).not.toContain('Estimating usage');

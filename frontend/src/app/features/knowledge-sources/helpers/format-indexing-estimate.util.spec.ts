@@ -2,6 +2,8 @@ import { formatCostUsd } from '@shared/utils';
 
 import { IndexingEstimate } from '../models/base-rag.model';
 import {
+    ALREADY_INDEXED_MESSAGE,
+    ESTIMATE_DISCLAIMER,
     formatEmbeddingEstimate,
     formatLlmEstimate,
     getIndexingEstimateHtml,
@@ -63,18 +65,24 @@ describe('format-indexing-estimate.util', () => {
         expect(lines[1]).toContain('rough estimate');
     });
 
-    it('reports nothing to index when no documents will be indexed', () => {
-        expect(getIndexingEstimateLines({ ...NAIVE_ESTIMATE, document_count: 0 })).toEqual(['Nothing new to index.']);
-    });
-
     it('returns an empty string when there is no estimate', () => {
         expect(getIndexingEstimateHtml(null)).toBe('');
     });
 
     it('renders html for a naive estimate', () => {
-        expect(getIndexingEstimateHtml(NAIVE_ESTIMATE)).toBe(
-            '<div><strong>Estimated usage</strong><br>Embedding: ≈ 12,345 tokens · ≈ $0.50</div>'
-        );
+        const html = getIndexingEstimateHtml(NAIVE_ESTIMATE);
+        expect(html).toContain('class="dialog-callout"');
+        expect(html).toContain('<div class="dialog-callout__title">Estimated usage</div>');
+        expect(html).toContain('<div class="dialog-callout__line">Embedding: ≈ 12,345 tokens · ≈ $0.50</div>');
+        expect(html).toContain(`<div class="dialog-callout__note">${ESTIMATE_DISCLAIMER}</div>`);
+    });
+
+    it('renders only the message line when there is nothing to index', () => {
+        const html = getIndexingEstimateHtml({ ...NAIVE_ESTIMATE, document_count: 0 });
+        expect(html).toContain(`<div class="dialog-callout__line">${ALREADY_INDEXED_MESSAGE}</div>`);
+        expect(html).not.toContain('dialog-callout__title');
+        expect(html).not.toContain('dialog-callout__note');
+        expect(html).not.toContain(ESTIMATE_DISCLAIMER);
     });
 
     it('renders html for a graph estimate with cost min set and max null', () => {
@@ -86,6 +94,7 @@ describe('format-indexing-estimate.util', () => {
         expect(html).toContain('Embedding: ≈ 12,345 tokens · ≈ $0.50');
         expect(html).toContain('LLM extraction (rough estimate): 1,000–3,000 tokens');
         expect(html).not.toContain('$0.10');
+        expect(html).toContain('dialog-callout__note');
     });
 
     it('skips invalid values instead of throwing on a malformed estimate', () => {

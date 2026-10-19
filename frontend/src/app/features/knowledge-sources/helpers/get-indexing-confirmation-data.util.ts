@@ -5,7 +5,7 @@ import { catchError, map, Observable, of } from 'rxjs';
 import { IndexingEstimate } from '../models/base-rag.model';
 import { getIndexingEstimateHtml } from './format-indexing-estimate.util';
 
-export const ESTIMATING_USAGE_HTML = '<div><em>Estimating usage…</em></div>';
+export const ESTIMATING_USAGE_HTML = '<div class="dialog-callout dialog-callout--pending">Estimating usage…</div>';
 
 export interface IndexingDocumentInfo {
     configId: number;

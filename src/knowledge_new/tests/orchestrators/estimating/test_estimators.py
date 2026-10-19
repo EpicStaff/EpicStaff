@@ -219,6 +219,31 @@ async def test_naive_includes_completed_document_whose_config_changed():
     assert (result.document_count, result.chunk_count) == (1, 2)
 
 
+async def test_naive_all_unchanged_completed_documents_estimate_nothing_to_index():
+    """The indexer skips every one of them, so the run spends no tokens."""
+    documents = [
+        _document(1, status=DocumentStatusEnum.COMPLETED, last_indexing_config=CHUNKING),
+        _document(2, status=DocumentStatusEnum.COMPLETED, last_indexing_config=CHUNKING),
+    ]
+    orchestrator, _ = _naive(documents)
+
+    result = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1, 2})))
+
+    assert (result.document_count, result.chunk_count, result.embedding.tokens) == (0, 0, 0)
+
+
+@pytest.mark.parametrize("status", [DocumentStatusEnum.OUTDATED, DocumentStatusEnum.FAILED])
+async def test_naive_counts_outdated_and_failed_documents_even_with_unchanged_config(status):
+    """Only a COMPLETED document is skipped; an outdated one is re-embedded."""
+    document = _document(1, status=status, last_indexing_config=CHUNKING)
+    orchestrator, _ = _naive([document])
+
+    result = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1})))
+
+    assert (result.document_count, result.chunk_count) == (1, 2)
+    assert result.embedding.tokens > 0
+
+
 async def test_naive_unpriced_model_has_null_cost_and_inexact_tokens():
     orchestrator, _ = _naive([_document(1)], embedding=UNPRICED_EMBEDDING)
 
@@ -356,3 +381,16 @@ def test_build_estimator_registers_both_strategies():
     assert isinstance(build_estimator(RAGStrategy.GRAPH, uow), GraphEstimateOrchestrator)
     with pytest.raises(UnsupportedError):
         build_estimator("other", uow)
+
+
+async def test_graph_not_completed_index_counts_only_selected_documents_even_if_completed():
+    documents = [
+        _text_document(1, "alpha beta", status=DocumentStatusEnum.COMPLETED),
+        _text_document(2, "gamma delta", status=DocumentStatusEnum.COMPLETED),
+    ]
+    repo = FakeGraphRepo(documents, _graph_config(), _rag(IndexStatusEnum.OUTDATED))
+    orchestrator = GraphEstimateOrchestrator(FakeUoW(graph_rag_repo=repo))
+
+    result = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1})))
+
+    assert result.document_count == 1

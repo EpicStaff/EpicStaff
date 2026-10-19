@@ -125,7 +125,6 @@ async def test_embedding_extra_headers_reach_the_embedding_provider(
     embedding_api, monkeypatch
 ):
     monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
-    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
     repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
 
     await NaiveSearchOrchestrator(FakeUoW(repo)).execute(

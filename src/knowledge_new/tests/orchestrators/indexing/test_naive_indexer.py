@@ -402,7 +402,6 @@ async def test_outdated_reasons_are_kept_only_while_an_outdated_document_remains
 
 async def test_embedding_extra_headers_reach_the_embedding_provider(embedding_api, monkeypatch):
     monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
-    monkeypatch.setattr(litellm_embedder.settings, "EMBEDDING_HEADERS", None)
     repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
 
     await _index(repo, 7, embedding_extra_headers={"X-Gateway-Key": "resolved-value"})
