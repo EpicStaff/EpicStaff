@@ -469,8 +469,14 @@ class NextVal(Func):
 
 
 class NumberedNode(models.Model):
-    """A node that shows a graph-scoped "#N" badge. The number is display state only:
-    execution and routing identify nodes by their global id."""
+    """A node that shows a graph-scoped "#N" badge.
+
+    The number is part of the node's runtime name ("Name #N #id", see
+    `utils.graph_utils.runtime_node_name`), which is the LangGraph node key, the
+    edge and decision-table route key, `Session.entrypoint` and the key the
+    last-input lookup searches session messages by. It must not change after the
+    node is created.
+    """
 
     node_number = models.IntegerField(null=True, blank=True, db_index=True, editable=False)
 

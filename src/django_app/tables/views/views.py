@@ -125,6 +125,7 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.throttles import NotifyEmailThrottle
 from tables.utils.telegram_fields import load_telegram_trigger_fields
+from utils.graph_utils import runtime_node_name
 from utils.logger import logger
 
 from .default_config import *
@@ -1058,7 +1059,11 @@ class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):
             PythonNode, pk, org_path=self._PYTHONNODE_ORG_PATH
         )
 
-        python_node_name = f"{python_node.node_name} #{python_node.pk}"
+        python_node_name = runtime_node_name(
+            node_name=python_node.node_name,
+            node_number=python_node.node_number,
+            node_id=python_node.pk,
+        )
         found_input = (
             GraphSessionMessage.objects.filter(
                 session__graph_id=python_node.graph_id,

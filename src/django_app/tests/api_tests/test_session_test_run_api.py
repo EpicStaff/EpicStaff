@@ -44,6 +44,7 @@ def webhook_node(acme, acme_graph):
     return WebhookTriggerNode.objects.create(
         graph=acme_graph,
         node_name="Incoming order",
+        node_number=3,
         webhook_trigger=trigger,
         python_code=PythonCode.objects.create(code="def main(trigger_payload, **kwargs): ..."),
         test_payload={"marker": STORED_TEST_PAYLOAD_MARKER},
@@ -52,7 +53,9 @@ def webhook_node(acme, acme_graph):
 
 @pytest.fixture
 def telegram_node(acme_graph, mock_telegram_service):
-    node = TelegramTriggerNode.objects.create(graph=acme_graph, node_name="Bot message")
+    node = TelegramTriggerNode.objects.create(
+        graph=acme_graph, node_name="Bot message", node_number=2
+    )
     for parent, field_name in (("message", "text"), ("message", "chat"), ("callback_query", "data")):
         TelegramTriggerNodeField.objects.create(
             telegram_trigger_node=node,
@@ -100,19 +103,24 @@ class TestWebhookTriggerTestRun:
         assert response.status_code == status.HTTP_201_CREATED, response.content
         session = Session.objects.get(pk=response.data["session_id"])
         assert session.graph_id == webhook_node.graph_id
-        assert session.entrypoint == f"Incoming order #{webhook_node.id}"
+        assert session.entrypoint == f"Incoming order #3 #{webhook_node.id}"
         assert session.variables["trigger_payload"] == WEBHOOK_PAYLOAD
 
         trigger = session.trigger
         assert trigger.trigger_type == SessionTrigger.TriggerType.WEBHOOK
         assert trigger.webhook_trigger_node_id == webhook_node.id
-        assert trigger.node_name == "Incoming order"
+        assert trigger.node_name == "Incoming order #3"
         assert trigger.extra == {
             "path": "test-run-path",
             "config_id": None,
             SessionTrigger.TEST_RUN_EXTRA_KEY: True,
         }
         assert trigger.is_test_run is True
+        # The crew runtime enters the graph by this key, so it must name the trigger node.
+        published = _published_session_data(redis_client_mock)
+        [trigger_node_data] = published["graph"]["webhook_trigger_node_data_list"]
+        assert published["graph"]["entrypoint"] == trigger_node_data["node_name"]
+        assert trigger_node_data["node_name"] == session.entrypoint
 
         principal = session.principal
         assert principal.kind == SessionPrincipal.ActionKind.USER
@@ -693,14 +701,19 @@ class TestTelegramTriggerTestRun:
 
         assert response.status_code == status.HTTP_201_CREATED, response.content
         session = Session.objects.get(pk=response.data["session_id"])
-        assert session.entrypoint == f"Bot message #{telegram_node.id}"
+        assert session.entrypoint == f"Bot message #2 #{telegram_node.id}"
         assert session.variables["telegram_payload"] == payload
         trigger = session.trigger
         assert trigger.trigger_type == SessionTrigger.TriggerType.TELEGRAM
         assert trigger.telegram_trigger_node_id == telegram_node.id
         assert trigger.extra == {"chat_id": 1001, SessionTrigger.TEST_RUN_EXTRA_KEY: True}
+        assert trigger.node_name == "Bot message #2"
         published = _published_session_data(redis_client_mock)
         assert published["initial_state"]["telegram_payload"] == payload
+        # The crew runtime enters the graph by this key, so it must name the trigger node.
+        [trigger_node_data] = published["graph"]["telegram_trigger_node_data_list"]
+        assert published["graph"]["entrypoint"] == trigger_node_data["node_name"]
+        assert trigger_node_data["node_name"] == session.entrypoint
 
     @pytest.mark.parametrize(
         "payload",
