@@ -109,6 +109,20 @@ async def test_a_dispatch_failure_does_not_reach_the_caller(uow, orchestrator, d
     assert dispatcher.dispatched == []
 
 
+async def test_a_dispatch_failure_is_reported_as_a_failed_run(
+    uow, orchestrator, dispatcher, failure_sink
+):
+    """The caller was answered 202, so a result is the only way it learns the job
+    never ran -- silence would leave it waiting and its credentials unrevoked."""
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+    dispatcher.fail_next = RuntimeError("queue is gone")
+
+    await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
+
+    [(execution_id, message)] = failure_sink.failures
+    assert execution_id == "exec-1"
+    assert message == "The job could not be handed to the worker and was not run."
+
 
 async def test_flush_pending_dispatches_jobs_whose_venv_finished_building(
     uow, orchestrator, dispatcher, holding

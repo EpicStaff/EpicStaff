@@ -20,6 +20,7 @@ from manager.domain.errors import VenvNotFoundError
 from manager.domain.models import Job, Library, StorageCredentials, Venv
 
 _VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
+_DISPATCH_FAILED_MESSAGE = "The job could not be handed to the worker and was not run."
 
 __all__ = ["JobOrchestrator", "VenvBuildOrchestrator", "VenvCRUDOrchestrator"]
 
@@ -250,11 +251,17 @@ class JobOrchestrator:
                     await self._dispatch(job)
 
     async def _dispatch(self, job: Job) -> None:
-        """Hand a job to the worker; a dispatch failure is logged, not raised."""
+        """Hand a job to the worker, reporting a failed dispatch as a failed run.
+
+        The caller was already answered 202, so the only way it learns about a job
+        that never reached the worker is a result. Staying silent would leave it
+        waiting for one for good, and the credentials it issued unrevoked.
+        """
         try:
             await self.dispatcher.dispatch(job)
         except Exception:
             logger.exception("Failed to dispatch job {}", job.execution_id)
+            await self.failure_sink.fail(job.execution_id, _DISPATCH_FAILED_MESSAGE)
 
     async def _resolve_venv(self, venv_id: int | None) -> Venv:
         async with self.uow:
