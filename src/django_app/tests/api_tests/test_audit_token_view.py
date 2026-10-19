@@ -3,7 +3,7 @@ import pytest
 from django.conf import settings
 from django.urls import reverse
 
-from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models import OrganizationUser, Role, RolePermission, RoleAuditPolicy
 from rbac.models.enums import Permission, ResourceType
 from tables.views.audit_token_views import AUDIT_TOKEN_ISSUER
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -43,18 +43,16 @@ def test_audit_token_is_not_minted_for_an_org_the_caller_does_not_belong_to(
     assert "token" not in response.data
 
 
-def _audit_reader(django_user_model, org, audit_history_days):
-    role = Role.objects.create(
-        name=f"Auditor {audit_history_days}d",
-        org=org,
-        is_built_in=False,
-        audit_history_days=audit_history_days,
-    )
+def _audit_reader(django_user_model, org, history_days=None):
+    """A member whose custom role reads audit; `history_days=None` = no policy row."""
+    role = Role.objects.create(name=f"Auditor {history_days}d", org=org, is_built_in=False)
     RolePermission.objects.create(
         role=role, resource_type=ResourceType.AUDIT, permissions=int(Permission.READ)
     )
+    if history_days is not None:
+        RoleAuditPolicy.objects.create(role=role, history_days=history_days)
     user = django_user_model.objects.create_user(
-        email=f"auditor-{audit_history_days}@example.com", password="StrongPass123!"
+        email=f"auditor-{history_days}@example.com", password="StrongPass123!"
     )
     OrganizationUser.objects.create(user=user, org=org, role=role)
     return user
@@ -68,20 +66,46 @@ def _retention_days(client, org) -> int:
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("audit_history_days", [0, 30])
-def test_retention_days_comes_from_the_callers_role(
-    client_as, django_user_model, acme, audit_history_days
-):
-    user = _audit_reader(django_user_model, acme, audit_history_days)
+def test_retention_days_is_the_callers_role_limit(client_as, django_user_model, acme):
+    user = _audit_reader(django_user_model, acme, history_days=30)
 
-    assert _retention_days(client_as(user), acme) == audit_history_days
+    assert _retention_days(client_as(user), acme) == 30
 
 
 @pytest.mark.django_db
-def test_org_admin_retention_is_unlimited(client_as, admin_acme, acme):
+def test_role_without_a_policy_row_is_unlimited(client_as, django_user_model, acme):
+    user = _audit_reader(django_user_model, acme)
+
+    assert _retention_days(client_as(user), acme) == 0
+
+
+@pytest.mark.django_db
+def test_org_admin_is_unlimited_because_it_has_no_policy_row(client_as, admin_acme, acme):
     assert _retention_days(client_as(admin_acme), acme) == 0
+
+
+@pytest.mark.django_db
+def test_org_admin_limit_comes_from_data_not_from_its_name(
+    client_as, admin_acme, acme, role_org_admin
+):
+    """A policy row on the built-in Org Admin is honoured: the view decides
+    nothing by role name."""
+    RoleAuditPolicy.objects.create(role=role_org_admin, history_days=45)
+
+    assert _retention_days(client_as(admin_acme), acme) == 45
 
 
 @pytest.mark.django_db
 def test_superadmin_retention_is_unlimited(client_as, superadmin, acme):
     assert _retention_days(client_as(superadmin), acme) == 0
+
+
+@pytest.mark.django_db
+def test_changed_limit_applies_from_the_next_token(client_as, django_user_model, acme):
+    user = _audit_reader(django_user_model, acme, history_days=30)
+    client = client_as(user)
+    assert _retention_days(client, acme) == 30
+
+    RoleAuditPolicy.objects.filter(role__organization_users__user=user).update(history_days=7)
+
+    assert _retention_days(client, acme) == 7

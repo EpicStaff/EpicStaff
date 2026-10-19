@@ -1,23 +1,14 @@
-from django.core.validators import MaxValueValidator
 from django.db import models
 from django.db.models import UniqueConstraint
 from django.db.models.functions import Lower
 
 from rbac.models.enums import ResourceType
 
-# Product cap: 100 years. 0 = unlimited.
-AUDIT_HISTORY_DAYS_MAX = 36_500
-
 
 class Role(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     is_built_in = models.BooleanField(default=False)
-    # How many days back the role's holders may read audit data; 0 = unlimited.
-    # Minted into the audit token as `retention_days` (AuditTokenView).
-    audit_history_days = models.PositiveIntegerField(
-        default=0, validators=[MaxValueValidator(AUDIT_HISTORY_DAYS_MAX)]
-    )
     org = models.ForeignKey(
         "Organization",
         on_delete=models.CASCADE,

@@ -158,7 +158,7 @@
                                 </div>
                                 @if (resource.code === auditResourceCode && auditHistoryLabel()) {
                                     @if (readonly()) {
-                                        @if (canViewAudit()) {
+                                        @if (hasAuditAccess()) {
                                             <span class="audit-history-label">
                                                 <app-svg-icon
                                                     icon="vertical-sliders"
@@ -175,7 +175,7 @@
                                             leftIcon="vertical-sliders"
                                             iconSize="10px"
                                             [ariaLabel]="'Audit history visibility: ' + auditHistoryLabel()"
-                                            [disabled]="!canViewAudit()"
+                                            [disabled]="!hasAuditAccess()"
                                             (click)="openAuditHistoryDialog()"
                                             >{{ auditHistoryLabel() }}</app-button
                                         >

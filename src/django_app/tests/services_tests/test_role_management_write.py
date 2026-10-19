@@ -1,7 +1,7 @@
 import pytest
 from rest_framework.exceptions import PermissionDenied
 
-from rbac.models import Organization, OrganizationUser, Role, RolePermission
+from rbac.models import Organization, OrganizationUser, Role, RoleAuditPolicy, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from rbac.exceptions import (
     BuiltInRoleImmutableError,
@@ -67,7 +67,7 @@ def test_create_role_by_org_admin(service, org_admin, org):
         org_id=org.id,
         name="Billing Manager",
         description="d",
-        permissions=[_perm("secrets", int(Permission.READ | Permission.UPDATE))],
+        permissions=[_perm("secrets", int(Permission.READ | Permission.UPDATE))], audit_history_days=0,
     )
     assert role.org_id == org.id
     assert role.is_built_in is False
@@ -105,7 +105,7 @@ def test_create_role_ceiling_blocks_escalation(service, django_user_model, org):
             org_id=org.id,
             name="TooPowerful",
             description=None,
-            permissions=[_perm("secrets", int(Permission.READ | Permission.DELETE))],
+            permissions=[_perm("secrets", int(Permission.READ | Permission.DELETE))], audit_history_days=0,
         )
 
 
@@ -116,7 +116,7 @@ def test_create_role_superadmin_bypasses_ceiling(service, superadmin, org):
         org_id=org.id,
         name="Anything",
         description=None,
-        permissions=[_perm("secrets", int(Permission.CREATE | Permission.DELETE))],
+        permissions=[_perm("secrets", int(Permission.CREATE | Permission.DELETE))], audit_history_days=0,
     )
     assert role.pk is not None
 
@@ -131,18 +131,18 @@ def test_create_role_superadmin_nonexistent_org_is_404(service, superadmin):
             org_id=999999,
             name="Ghost",
             description=None,
-            permissions=[],
+            permissions=[], audit_history_days=0,
         )
 
 
 @pytest.mark.django_db
 def test_create_role_duplicate_name_conflict(service, org_admin, org):
     service.create_role(
-        actor=org_admin, org_id=org.id, name="Dup", description=None, permissions=[]
+        actor=org_admin, org_id=org.id, name="Dup", description=None, permissions=[], audit_history_days=0
     )
     with pytest.raises(RoleNameConflictError):
         service.create_role(
-            actor=org_admin, org_id=org.id, name="dup", description=None, permissions=[]
+            actor=org_admin, org_id=org.id, name="dup", description=None, permissions=[], audit_history_days=0
         )
 
 
@@ -159,7 +159,7 @@ def test_delete_reassigns_members_to_viewer(
     service, org_admin, org, role_viewer, django_user_model
 ):
     custom = service.create_role(
-        actor=org_admin, org_id=org.id, name="Temp", description=None, permissions=[]
+        actor=org_admin, org_id=org.id, name="Temp", description=None, permissions=[], audit_history_days=0
     )
     victim = django_user_model.objects.create_user(
         email="victim-write@example.com", password="StrongPass123!"
@@ -205,7 +205,7 @@ def test_preview_delete_lists_affected_without_mutating(
     service, org_admin, org, django_user_model
 ):
     custom = service.create_role(
-        actor=org_admin, org_id=org.id, name="Temp2", description=None, permissions=[]
+        actor=org_admin, org_id=org.id, name="Temp2", description=None, permissions=[], audit_history_days=0
     )
     victim = django_user_model.objects.create_user(
         email="victim2-write@example.com", password="StrongPass123!", display_name="Vic"
@@ -284,7 +284,7 @@ def test_update_role_replaces_name_desc_and_permissions(service, org_admin, org)
         org_id=org.id,
         name="Editable",
         description="old",
-        permissions=[_perm("secrets", int(Permission.READ))],
+        permissions=[_perm("secrets", int(Permission.READ))], audit_history_days=0,
     )
     updated = service.update_role(
         actor=org_admin,
@@ -293,6 +293,7 @@ def test_update_role_replaces_name_desc_and_permissions(service, org_admin, org)
             "name": "Renamed",
             "description": "new",
             "permissions": [_perm("secrets", int(Permission.READ | Permission.UPDATE))],
+            "audit_history_days": 0,
         },
     )
     assert updated.name == "Renamed"
@@ -323,7 +324,7 @@ def test_update_role_ceiling_blocks_added_bit(service, django_user_model, org):
         org_id=org.id,
         name="TargetUpd",
         description=None,
-        permissions=[_perm("secrets", int(Permission.READ))],
+        permissions=[_perm("secrets", int(Permission.READ))], audit_history_days=0,
     )
     # DELETE rather than UPDATE, for the reason given in
     # test_create_role_ceiling_blocks_escalation.
@@ -334,7 +335,8 @@ def test_update_role_ceiling_blocks_added_bit(service, django_user_model, org):
             changes={
                 "permissions": [
                     _perm("secrets", int(Permission.READ | Permission.DELETE))
-                ]
+                ],
+                "audit_history_days": 0,
             },
         )
 
@@ -342,10 +344,141 @@ def test_update_role_ceiling_blocks_added_bit(service, django_user_model, org):
 @pytest.mark.django_db
 def test_update_role_rename_to_existing_name_conflicts(service, org_admin, org):
     service.create_role(
-        actor=org_admin, org_id=org.id, name="Alpha", description=None, permissions=[]
+        actor=org_admin, org_id=org.id, name="Alpha", description=None, permissions=[], audit_history_days=0
     )
     beta = service.create_role(
-        actor=org_admin, org_id=org.id, name="Beta", description=None, permissions=[]
+        actor=org_admin, org_id=org.id, name="Beta", description=None, permissions=[], audit_history_days=0
     )
     with pytest.raises(RoleNameConflictError):
         service.update_role(actor=org_admin, role_id=beta.id, changes={"name": "alpha"})
+
+
+# ---- the audit history limit under the escalation ceiling ----
+#
+# Unlimited (0) is the widest limit. An actor limited to N days may hand out 1..N on
+# a role that reads audit, never unlimited and never more than N.
+
+AUDIT_READ = int(Permission.READ)
+ROLES_CRUD = int(Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE)
+
+
+def _policy_days(role):
+    policy = RoleAuditPolicy.objects.filter(role=role).first()
+    return None if policy is None else policy.history_days
+
+
+def _audit_role(org, name, history_days):
+    role = Role.objects.create(name=name, org=org, is_built_in=False)
+    RolePermission.objects.create(role=role, resource_type="audit", permissions=AUDIT_READ)
+    if history_days:
+        RoleAuditPolicy.objects.create(role=role, history_days=history_days)
+    return role
+
+
+@pytest.fixture
+def limited_manager(db, django_user_model, org):
+    """Manages roles and reads audit in `org`, limited to 30 days."""
+    role = _audit_role(org, "Limited manager", history_days=30)
+    RolePermission.objects.create(role=role, resource_type="roles", permissions=ROLES_CRUD)
+    user = django_user_model.objects.create_user(
+        email="limited-manager@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("requested", [0, 31])
+def test_update_own_role_to_a_wider_limit_is_refused(service, limited_manager, org, requested):
+    own_role = OrganizationUser.objects.get(user=limited_manager, org=org).role
+
+    with pytest.raises(PermissionEscalationError):
+        service.update_role(
+            actor=limited_manager,
+            role_id=own_role.id,
+            changes={
+                "permissions": [_perm("audit", AUDIT_READ), _perm("roles", ROLES_CRUD)],
+                "audit_history_days": requested,
+            },
+        )
+
+    assert _policy_days(own_role) == 30
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("requested", [0, 90])
+def test_create_role_with_a_wider_limit_is_refused(service, limited_manager, org, requested):
+    with pytest.raises(PermissionEscalationError):
+        service.create_role(
+            actor=limited_manager,
+            org_id=org.id,
+            name="Too wide",
+            description=None,
+            permissions=[_perm("audit", AUDIT_READ)],
+            audit_history_days=requested,
+        )
+
+    assert not Role.objects.filter(org=org, name="Too wide").exists()
+
+
+@pytest.mark.django_db
+def test_create_role_within_the_limit_stores_it(service, limited_manager, org):
+    role = service.create_role(
+        actor=limited_manager,
+        org_id=org.id,
+        name="Narrow",
+        description=None,
+        permissions=[_perm("audit", AUDIT_READ)],
+        audit_history_days=7,
+    )
+
+    assert _policy_days(role) == 7
+
+
+@pytest.mark.django_db
+def test_limit_on_a_role_without_audit_actions_is_not_stored(service, org_admin, org):
+    """The service never keeps a policy row for a role that cannot read audit,
+    even if a caller skips the validator."""
+    role = service.create_role(
+        actor=org_admin,
+        org_id=org.id,
+        name="No audit",
+        description=None,
+        permissions=[_perm("flows", AUDIT_READ)],
+        audit_history_days=30,
+    )
+
+    assert _policy_days(role) is None
+
+
+@pytest.mark.django_db
+def test_superadmin_bypasses_the_limit_ceiling(service, superadmin, org, limited_manager):
+    own_role = OrganizationUser.objects.get(user=limited_manager, org=org).role
+
+    service.update_role(
+        actor=superadmin,
+        role_id=own_role.id,
+        changes={
+            "permissions": [_perm("audit", AUDIT_READ), _perm("roles", ROLES_CRUD)],
+            "audit_history_days": 0,
+        },
+    )
+
+    assert _policy_days(own_role) is None
+
+
+@pytest.mark.django_db
+def test_assignable_picker_hides_roles_with_a_wider_limit(service, limited_manager, org):
+    narrower = _audit_role(org, "Seven days", history_days=7)
+    wider = _audit_role(org, "Ninety days", history_days=90)
+    unlimited = _audit_role(org, "Unlimited", history_days=None)
+
+    assignable_in = service.resolve_assignable_scopes(actor=limited_manager, org_ids=[org.id])
+    custom = service.list_custom_roles(
+        actor=limited_manager, org_ids=[org.id], assignable_in=assignable_in
+    )
+
+    names = {role.name for role in custom}
+    assert narrower.name in names
+    assert wider.name not in names
+    assert unlimited.name not in names

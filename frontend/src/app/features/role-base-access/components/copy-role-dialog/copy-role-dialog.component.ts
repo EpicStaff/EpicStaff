@@ -121,8 +121,8 @@ export class CopyRoleDialogComponent {
                         org_id: orgId,
                         name,
                         description: src.description,
+                        // the audit history limit already sits on the source's audit entry, so this carries it over
                         permissions: src.permissions,
-                        audit_history_days: src.audit_history_days,
                     })
                 ),
                 finalize(() => this.isSubmitting.set(false)),
@@ -140,7 +140,9 @@ export class CopyRoleDialogComponent {
     private handleError(err: HttpErrorResponse): void {
         const code: string | undefined = err.error?.code;
         if (code === 'permission_escalation_denied') {
-            this.toast.error("You can't duplicate this role — it grants permissions you don't have in the target org.");
+            this.toast.error(
+                "You can't duplicate this role — it grants permissions or an audit history range wider than your own in the target org."
+            );
             return;
         }
         this.toast.error(err.error?.message ?? 'Failed to duplicate role');

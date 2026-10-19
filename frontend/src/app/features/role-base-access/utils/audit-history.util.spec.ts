@@ -1,4 +1,42 @@
-import { auditHistoryRangeToDays, formatAuditHistoryDays, splitAuditHistoryDays } from './audit-history.util';
+import { ActionCode, RolePermission } from '@shared/models';
+
+import {
+    auditHistoryDaysOf,
+    auditHistoryRangeToDays,
+    formatAuditHistoryDays,
+    splitAuditHistoryDays,
+    withAuditHistoryDays,
+} from './audit-history.util';
+
+describe('audit history days on role permissions', () => {
+    const flows: RolePermission = { resource_type: 'flows', actions: [ActionCode.Read] };
+
+    it('reads the limit from the audit entry, unlimited when absent', () => {
+        expect(
+            auditHistoryDaysOf([flows, { resource_type: 'audit', actions: [ActionCode.Read], audit_history_days: 30 }])
+        ).toBe(30);
+        expect(auditHistoryDaysOf([flows, { resource_type: 'audit', actions: [ActionCode.Read] }])).toBe(0);
+        expect(auditHistoryDaysOf([flows])).toBe(0);
+    });
+
+    it('attaches the limit only to an audit entry that grants read or export', () => {
+        expect(withAuditHistoryDays([flows, { resource_type: 'audit', actions: [ActionCode.Export] }], 30)).toEqual([
+            flows,
+            { resource_type: 'audit', actions: [ActionCode.Export], audit_history_days: 30 },
+        ]);
+    });
+
+    it('does not attach the limit when the audit entry has no read or export', () => {
+        const permissions: RolePermission[] = [flows, { resource_type: 'audit', actions: [ActionCode.Delete] }];
+        expect(withAuditHistoryDays(permissions, 30)).toEqual(permissions);
+        expect(withAuditHistoryDays([flows], 30)).toEqual([flows]);
+    });
+
+    it('does not attach an unlimited value', () => {
+        const permissions: RolePermission[] = [{ resource_type: 'audit', actions: [ActionCode.Read] }];
+        expect(withAuditHistoryDays(permissions, 0)).toEqual(permissions);
+    });
+});
 
 describe('audit history days', () => {
     it('splits stored days into the largest unit that divides evenly', () => {

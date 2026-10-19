@@ -77,10 +77,14 @@ export class PermissionsTableComponent {
         const days = this.auditHistoryDays();
         return days === null ? '' : formatAuditHistoryDays(days);
     });
-    // the window only matters to a role that can view audit at all
-    protected readonly canViewAudit = computed(() =>
-        this.selectedPermissions().has(`${ResourceCode.Audit}:${ActionCode.Read}`)
-    );
+    // the window applies to both reading and exporting audit history, so it only matters to a role with either
+    protected readonly hasAuditAccess = computed(() => {
+        const selected = this.selectedPermissions();
+        return (
+            selected.has(`${ResourceCode.Audit}:${ActionCode.Read}`) ||
+            selected.has(`${ResourceCode.Audit}:${ActionCode.Export}`)
+        );
+    });
 
     private readonly groupedCatalog = computed<CatalogGroup[]>(() => {
         const catalog = this.catalog();
@@ -461,7 +465,7 @@ export class PermissionsTableComponent {
 
     openAuditHistoryDialog(): void {
         const days = this.auditHistoryDays();
-        if (days === null || this.readonly() || !this.canViewAudit()) return;
+        if (days === null || this.readonly() || !this.hasAuditAccess()) return;
         this.dialog
             .open<number, number>(AuditHistoryDialogComponent, { width: '560px', data: days })
             .closed.pipe(takeUntilDestroyed(this.destroyRef))

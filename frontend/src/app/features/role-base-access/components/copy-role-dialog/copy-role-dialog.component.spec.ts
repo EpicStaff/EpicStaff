@@ -1,6 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
-import { CreateRoleRequest, GetRoleResponse } from '@shared/models';
+import { ActionCode, CreateRoleRequest, GetRoleResponse } from '@shared/models';
 import { Observable, of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -18,8 +18,10 @@ const sourceRole: GetRoleResponse = {
     org_id: 2,
     org: { id: 2, name: 'Acme' },
     assigned_count: 0,
-    permissions: [{ resource_type: 'audit', actions: [] }],
-    audit_history_days: 180,
+    permissions: [
+        { resource_type: 'audit', actions: [ActionCode.Read], audit_history_days: 180 },
+        { resource_type: 'flows', actions: [ActionCode.Read] },
+    ],
 };
 
 describe('CopyRoleDialogComponent', () => {
@@ -48,6 +50,9 @@ describe('CopyRoleDialogComponent', () => {
 
         component.onCopy();
 
-        expect(createRole).toHaveBeenCalledWith(expect.objectContaining({ org_id: 2, audit_history_days: 180 }));
+        const request = createRole.mock.calls[0][0];
+        expect(request.org_id).toBe(2);
+        expect(request.permissions).toEqual(sourceRole.permissions);
+        expect(request).not.toHaveProperty('audit_history_days');
     });
 });

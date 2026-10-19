@@ -1,3 +1,5 @@
+import { ActionCode, ResourceCode, RolePermission } from '@shared/models';
+
 export type AuditHistoryUnit = 'unlimited' | 'years' | 'months' | 'days';
 
 export const AUDIT_HISTORY_DAYS_PER_UNIT: Record<AuditHistoryUnit, number> = {
@@ -39,6 +41,23 @@ export function splitAuditHistoryDays(days: number): AuditHistoryRange {
 // Unlimited is 0 days per unit, so it always comes out as 0
 export function auditHistoryRangeToDays(range: AuditHistoryRange): number {
     return range.amount * AUDIT_HISTORY_DAYS_PER_UNIT[range.unit];
+}
+
+// The limit lives on the audit permission entry; a missing entry or value means unlimited
+export function auditHistoryDaysOf(permissions: RolePermission[]): number {
+    return permissions.find((permission) => permission.resource_type === ResourceCode.Audit)?.audit_history_days ?? 0;
+}
+
+// permissions is a full replacement on write, so the limit must ride along on the audit entry or the role becomes unlimited.
+// The backend rejects a non-zero limit on an audit entry without read or export, so it is attached only when one is granted.
+export function withAuditHistoryDays(permissions: RolePermission[], days: number): RolePermission[] {
+    return permissions.map((permission) =>
+        days !== 0 &&
+        permission.resource_type === ResourceCode.Audit &&
+        (permission.actions.includes(ActionCode.Read) || permission.actions.includes(ActionCode.Export))
+            ? { ...permission, audit_history_days: days }
+            : permission
+    );
 }
 
 export function formatAuditHistoryDays(days: number): string {

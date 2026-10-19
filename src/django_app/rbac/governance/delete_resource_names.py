@@ -19,6 +19,7 @@ RBAC_RESOURCE_NAMES: dict[str, str] = {
 RBAC_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
     {
         "rbac.RolePermission",
+        "rbac.RoleAuditPolicy",
         "rbac.ResourceLastEdit",
         "rbac.Organization",
         settings.AUTH_USER_MODEL,

@@ -1,12 +1,12 @@
 from typing import Any
 
+from rbac.access.audit_history import AUDIT_HISTORY_DAYS_MAX, UNLIMITED, grants_audit
 from rbac.access.bitmask import actions_to_bitmask
 from rbac.access.catalog import (
     applicable_actions_for,
     platform_actions_for,
 )
-from rbac.models.enums import BuiltInRole
-from rbac.models.role import AUDIT_HISTORY_DAYS_MAX
+from rbac.models.enums import BuiltInRole, ResourceType
 from rbac.validation.base import BaseRBACValidator, FieldError
 
 _RESERVED_NAMES = frozenset(
@@ -20,23 +20,29 @@ _RESERVED_NAMES = frozenset(
 )
 _MAX_NAME = 255
 _MAX_DESCRIPTION = 1000
+_AUDIT_HISTORY_DAYS = "audit_history_days"
 
 
 class RoleValidationService(BaseRBACValidator):
     """Static validation for custom-role write payloads. Uniqueness and
     the ceiling/authorization rules are enforced in RoleManagementService
     (they need DB + caller context). Returns cleaned payloads with
-    action-code lists already converted to per-resource bitmasks."""
+    action-code lists already converted to per-resource bitmasks.
+
+    The audit history limit travels inside the `audit` permission entry
+    (0 or omitted = unlimited). The cleaned payload lifts it to a top-level
+    `audit_history_days`, present exactly when `permissions` is."""
 
     def validate_create(self, data: dict) -> dict:
         errors: list[FieldError] = []
         errors.extend(self._validate_positive_int_field("org_id", data.get("org_id")))
         errors.extend(self._validate_name(data.get("name")))
         errors.extend(self._validate_description(data.get("description")))
-        permissions, perm_errors = self._validate_permissions(data.get("permissions"))
+        errors.extend(self._reject_top_level_audit_history_days(data))
+        permissions, audit_history_days, perm_errors = self._validate_permissions(
+            data.get("permissions")
+        )
         errors.extend(perm_errors)
-        audit_history_days = data.get("audit_history_days", 0)
-        errors.extend(self._validate_audit_history_days(audit_history_days))
         self._raise_if_any(errors)
         return {
             "org_id": int(data["org_id"]),
@@ -48,7 +54,7 @@ class RoleValidationService(BaseRBACValidator):
 
     def validate_update(self, data: dict) -> dict:
         cleaned: dict = {}
-        errors: list[FieldError] = []
+        errors: list[FieldError] = self._reject_top_level_audit_history_days(data)
         if "name" in data:
             name_errors = self._validate_name(data.get("name"))
             errors.extend(name_errors)
@@ -60,15 +66,13 @@ class RoleValidationService(BaseRBACValidator):
             if not desc_errors:
                 cleaned["description"] = self._clean_description(data.get("description"))
         if "permissions" in data:
-            permissions, perm_errors = self._validate_permissions(data.get("permissions"))
+            permissions, audit_history_days, perm_errors = self._validate_permissions(
+                data.get("permissions")
+            )
             errors.extend(perm_errors)
             if not perm_errors:
                 cleaned["permissions"] = permissions
-        if "audit_history_days" in data:
-            days_errors = self._validate_audit_history_days(data["audit_history_days"])
-            errors.extend(days_errors)
-            if not days_errors:
-                cleaned["audit_history_days"] = data["audit_history_days"]
+                cleaned["audit_history_days"] = audit_history_days
         self._raise_if_any(errors)
         return cleaned
 
@@ -103,18 +107,46 @@ class RoleValidationService(BaseRBACValidator):
         return []
 
     @staticmethod
-    def _validate_audit_history_days(value: Any) -> list[FieldError]:
+    def _reject_top_level_audit_history_days(data: dict) -> list[FieldError]:
+        # Refused rather than ignored: a client still sending the old shape would
+        # otherwise reset the role to unlimited on every permissions save.
+        if _AUDIT_HISTORY_DAYS in data:
+            return [
+                FieldError(
+                    _AUDIT_HISTORY_DAYS,
+                    data[_AUDIT_HISTORY_DAYS],
+                    "Moved: send audit_history_days inside the audit permission entry.",
+                )
+            ]
+        return []
+
+    @staticmethod
+    def _validate_audit_history_days(
+        field: str, entry: dict, resource_type: str, bitmask: int
+    ) -> list[FieldError]:
+        if _AUDIT_HISTORY_DAYS not in entry:
+            return []
+        value = entry[_AUDIT_HISTORY_DAYS]
+        where = f"{field}.{_AUDIT_HISTORY_DAYS}"
+        if resource_type != ResourceType.AUDIT.value:
+            return [FieldError(where, value, "Only the audit entry accepts audit_history_days.")]
         # bool is an int subclass; reject it so `true` is not stored as 1 day.
         if (
             not isinstance(value, int)
             or isinstance(value, bool)
-            or not 0 <= value <= AUDIT_HISTORY_DAYS_MAX
+            or not UNLIMITED <= value <= AUDIT_HISTORY_DAYS_MAX
         ):
             return [
                 FieldError(
-                    "audit_history_days",
+                    where,
                     value,
                     f"Must be an integer from 0 (unlimited) to {AUDIT_HISTORY_DAYS_MAX}.",
+                )
+            ]
+        if value != UNLIMITED and not grants_audit({resource_type: bitmask}):
+            return [
+                FieldError(
+                    where, value, "A history limit needs the read or export action on audit."
                 )
             ]
         return []
@@ -126,13 +158,16 @@ class RoleValidationService(BaseRBACValidator):
         trimmed = value.strip()
         return trimmed or None
 
-    def _validate_permissions(self, value: Any) -> tuple[list[dict], list[FieldError]]:
+    def _validate_permissions(self, value: Any) -> tuple[list[dict], int, list[FieldError]]:
+        """Return the cleaned `[{resource_type, bitmask}]` list, the audit
+        history limit from the audit entry (0 when absent), and the errors."""
         if value is None:
-            return [], []
+            return [], UNLIMITED, []
         if not isinstance(value, list):
-            return [], [FieldError("permissions", value, "Must be a list.")]
+            return [], UNLIMITED, [FieldError("permissions", value, "Must be a list.")]
 
         cleaned: list[dict] = []
+        audit_history_days = UNLIMITED
         errors: list[FieldError] = []
         seen_resource_types: set = set()
         for index, entry in enumerate(value):
@@ -188,6 +223,12 @@ class RoleValidationService(BaseRBACValidator):
                 )
                 continue
             bitmask = actions_to_bitmask(actions)
+            days_errors = self._validate_audit_history_days(field, entry, resource_type, bitmask)
+            if days_errors:
+                errors.extend(days_errors)
+                continue
+            if resource_type == ResourceType.AUDIT.value:
+                audit_history_days = entry.get(_AUDIT_HISTORY_DAYS, UNLIMITED)
             if bitmask != 0:
                 cleaned.append({"resource_type": resource_type, "bitmask": bitmask})
-        return cleaned, errors
+        return cleaned, audit_history_days, errors

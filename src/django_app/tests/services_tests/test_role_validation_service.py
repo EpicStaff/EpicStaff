@@ -101,3 +101,58 @@ def test_invalid_role_is_rejected_naming_the_field(validator, call, field_fragme
         assert any(field_fragment in error["field"] for error in exc.value.errors), exc.value.errors
     if reason_fragment:
         assert reason_fragment in " ".join(error["reason"] for error in exc.value.errors).lower()
+
+
+# ---- the audit history limit inside the audit entry ----
+
+
+def _audit(**extra):
+    return {"resource_type": "audit", "actions": ["read"], **extra}
+
+
+def test_create_lifts_the_audit_limit_out_of_the_entry(validator):
+    cleaned = validator.validate_create(
+        {"org_id": 1, "name": "Auditor", "permissions": [_audit(audit_history_days=30)]}
+    )
+
+    assert cleaned["audit_history_days"] == 30
+    assert cleaned["permissions"] == [{"resource_type": "audit", "bitmask": int(Permission.READ)}]
+
+
+def test_create_without_a_limit_is_unlimited(validator):
+    cleaned = validator.validate_create({"org_id": 1, "name": "Auditor", "permissions": [_audit()]})
+
+    assert cleaned["audit_history_days"] == 0
+
+
+def test_update_without_permissions_carries_no_limit(validator):
+    """So the service leaves the stored limit untouched."""
+    assert validator.validate_update({"name": "Renamed"}) == {"name": "Renamed"}
+
+
+def test_update_with_permissions_always_carries_the_limit(validator):
+    cleaned = validator.validate_update({"permissions": [_audit()]})
+
+    assert cleaned["audit_history_days"] == 0
+
+
+@pytest.mark.parametrize(
+    ("data", "field"),
+    [
+        ({"audit_history_days": 30}, "audit_history_days"),
+        (
+            {"permissions": [{"resource_type": "flows", "actions": ["read"], "audit_history_days": 1}]},
+            "permissions[0].audit_history_days",
+        ),
+        (
+            {"permissions": [{"resource_type": "audit", "actions": [], "audit_history_days": 1}]},
+            "permissions[0].audit_history_days",
+        ),
+    ],
+    ids=["top-level", "non-audit entry", "no read or export"],
+)
+def test_misplaced_or_unusable_limit_is_rejected(validator, data, field):
+    with pytest.raises(FormValidationError) as error:
+        validator.validate_update(data)
+
+    assert field in [entry["field"] for entry in error.value.errors]

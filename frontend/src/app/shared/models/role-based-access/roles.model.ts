@@ -3,6 +3,8 @@ import { ActionCode } from './permissions.model';
 export interface RolePermission {
     resource_type: string;
     actions: ActionCode[];
+    /** Audit entry only: how far back members with this role see audit history; 0 or absent means unlimited. */
+    audit_history_days?: number;
 }
 
 export interface GetRoleResponse {
@@ -15,8 +17,6 @@ export interface GetRoleResponse {
     org: { id: number; name: string } | null;
     assigned_count: number;
     permissions: RolePermission[];
-    /** How far back members with this role see audit history; 0 means unlimited. */
-    audit_history_days: number;
 }
 
 /** Envelope returned by `GET /api/admin/roles/`.
@@ -34,14 +34,12 @@ export interface CreateRoleRequest {
     name: string;
     description?: string | null;
     permissions: RolePermission[];
-    audit_history_days?: number;
 }
 
 export interface UpdateRoleRequest {
     name?: string;
     description?: string | null;
     permissions?: RolePermission[];
-    audit_history_days?: number;
 }
 
 export interface AffectedUser {

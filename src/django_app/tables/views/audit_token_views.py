@@ -6,7 +6,7 @@ from drf_spectacular.utils import extend_schema
 from rbac.access.org_context import OrgContextService
 from rbac.access.resolver import PermissionResolver
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
-from rbac.models.enums import BuiltInRole, Permission, ResourceType
+from rbac.models.enums import Permission, ResourceType
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -44,17 +44,7 @@ class AuditTokenView(APIView):
         if not actions:
             raise PermissionDenied("You do not have permission to perform this action.")
 
-        # Superadmin and this org's Org Admin always see the full history;
-        # everyone else is limited by their role (0 = unlimited).
-        is_org_admin = (
-            effective.role is not None
-            and effective.role.is_built_in
-            and effective.role.name == BuiltInRole.ORG_ADMIN
-        )
-        if effective.is_superadmin or is_org_admin:
-            retention_days = 0
-        else:
-            retention_days = effective.role.audit_history_days
+        retention_days = effective.audit_history_days
 
         now = datetime.now(UTC)
         payload = {

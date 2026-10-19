@@ -1,6 +1,7 @@
 import pytest
 
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import Organization, OrganizationUser, Role, RoleAuditPolicy
+from rbac.access.resolver import PermissionResolver
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from rbac.access.effective import EffectivePermissions
 from rbac.access.cross_org_resolver import (
@@ -58,3 +59,44 @@ def test_resolve_all_returns_scope_per_active_membership(
     assert (
         beta_scope.effective.can(ResourceType.ROLES.value, Permission.CREATE) is False
     )
+
+
+@pytest.mark.django_db
+def test_resolve_all_loads_audit_limits_without_a_query_per_org(
+    django_user_model, django_assert_num_queries, role_member
+):
+    user = django_user_model.objects.create_user(
+        email="limits@example.com", password="StrongPass123!"
+    )
+    for index in range(3):
+        org = Organization.objects.create(name=f"Limited {index}")
+        role = Role.objects.create(name=f"Limited auditor {index}", org=org, is_built_in=False)
+        RoleAuditPolicy.objects.create(role=role, history_days=index + 1)
+        OrganizationUser.objects.create(user=user, org=org, role=role)
+    OrganizationUser.objects.create(
+        user=user, org=Organization.objects.create(name="Unlimited"), role=role_member
+    )
+
+    # One query for the memberships (with role, org and policy joined), one prefetch.
+    with django_assert_num_queries(2):
+        scopes = CrossOrgPermissionResolver().resolve_all(user=user)
+        limits = {scope.org.name: scope.effective.audit_history_days for scope in scopes}
+
+    assert limits == {"Limited 0": 1, "Limited 1": 2, "Limited 2": 3, "Unlimited": 0}
+
+
+@pytest.mark.django_db
+def test_resolver_carries_the_audit_limit_and_superadmin_is_unlimited(django_user_model):
+    user = django_user_model.objects.create_user(
+        email="one-limit@example.com", password="StrongPass123!"
+    )
+    org = Organization.objects.create(name="One limit")
+    role = Role.objects.create(name="One limit auditor", org=org, is_built_in=False)
+    RoleAuditPolicy.objects.create(role=role, history_days=30)
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    superadmin = django_user_model.objects.create_user(
+        email="limit-su@example.com", password="StrongPass123!", is_superadmin=True
+    )
+
+    assert PermissionResolver().resolve(user=user, org_id=org.id).audit_history_days == 30
+    assert PermissionResolver().resolve(user=superadmin, org_id=org.id).audit_history_days == 0
