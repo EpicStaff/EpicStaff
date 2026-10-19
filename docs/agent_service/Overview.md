@@ -239,6 +239,8 @@ boot.
 | `AGENT_REQUEST_STREAM` / `AGENT_RESULT_STREAM` / `AGENT_CONSUMER_GROUP` | `agent.requests` / `agent.results` / `agent-executors` | streams (`AGENT_RESULT_STREAM` is the per-run stream prefix) |
 | `AGENT_RESULT_STREAM_TTL` | `1h` | expiry set on a per-run result stream at every publish |
 | `AGENT_MAX_CONCURRENT_RUNS` | `10` | runs one replica executes concurrently; it reads only as many requests as it has free slots |
+| `AGENT_REDIS_READ_RETRY_INITIAL_DELAY` / `AGENT_REDIS_READ_RETRY_MAX_DELAY` | `1s` / `30s` | wait before re-reading the request stream after a Redis connection or timeout error; doubles up to the max, resets after a successful read |
+| `AGENT_MCP_DESCRIBE_CACHE_TTL` | `5m` | how long an MCP tool's description and schema are reused before the server is asked again; failures are not cached |
 | `AGENT_DEFAULT_MAX_ITER` | `25` | fallback tool-turn cap |
 | `AGENT_SCHEMA_MAX_RETRIES` | `2` | structured-output correction retries |
 | `AGENT_DEFAULT_MAX_RETRIES` | `5` | LLM retry policy |

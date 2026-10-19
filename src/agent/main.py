@@ -28,9 +28,6 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from shared.knowledge.client import KnowledgeClient
 from shared.redis_streams import RedisStreamClient, StreamEnvelope, StreamMessage
 
-READ_RETRY_INITIAL_DELAY_S = 1
-READ_RETRY_MAX_DELAY_S = 30
-
 
 async def _ensure_request_group(client: RedisStreamClient) -> None:
     await client.ensure_group(
@@ -102,6 +99,9 @@ async def consume_requests(
     consumer_name: str,
     max_concurrent_runs: int,
     stop: asyncio.Event,
+    *,
+    read_retry_initial_delay_s: float,
+    read_retry_max_delay_s: float,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
     """Handle request-stream messages concurrently until ``stop`` is set.
@@ -110,13 +110,13 @@ async def consume_requests(
     replica cannot start yet stay unclaimed in the stream for other replicas
     instead of waiting in this consumer's pending list. A connection or timeout
     error is logged and retried with a doubling delay capped at
-    ``READ_RETRY_MAX_DELAY_S``, so a Redis outage never ends the process; any
+    ``read_retry_max_delay_s``, so a Redis outage never ends the process; any
     other Redis error is permanent and propagates. On stop or cancellation, finishes only
     after every in-flight run has finished, so no run is cancelled before
     publishing its result.
     """
     in_flight: set[asyncio.Task] = set()
-    read_retry_delay_s = READ_RETRY_INITIAL_DELAY_S
+    read_retry_delay_s = read_retry_initial_delay_s
 
     try:
         while not stop.is_set():
@@ -133,9 +133,9 @@ async def consume_requests(
                     "reading the request stream failed, retrying in {} s", read_retry_delay_s
                 )
                 await sleep(read_retry_delay_s)
-                read_retry_delay_s = min(read_retry_delay_s * 2, READ_RETRY_MAX_DELAY_S)
+                read_retry_delay_s = min(read_retry_delay_s * 2, read_retry_max_delay_s)
                 continue
-            read_retry_delay_s = READ_RETRY_INITIAL_DELAY_S
+            read_retry_delay_s = read_retry_initial_delay_s
 
             for message in messages:
                 task = asyncio.create_task(_process_message(client, handler, message))
@@ -194,7 +194,9 @@ async def main() -> None:
     await loader.connect()
 
     llm = LiteLLMClient()
-    mcp_gateway = McpToolGateway(FastMCPClientFactory())
+    mcp_gateway = McpToolGateway(
+        FastMCPClientFactory(), describe_cache_ttl_s=settings.AGENT_MCP_DESCRIBE_CACHE_TTL
+    )
     deps = RunnerDependencies(
         resolver=AgentResolver(sandbox_client, mcp_gateway, knowledge_client),
         loop=DefaultAgentLoop(llm, settings.AGENT_CONTEXT_WARNING_RATIO),
@@ -232,7 +234,15 @@ async def main() -> None:
         settings.AGENT_MAX_CONCURRENT_RUNS,
     )
 
-    await consume_requests(client, handler, consumer_name, settings.AGENT_MAX_CONCURRENT_RUNS, stop)
+    await consume_requests(
+        client,
+        handler,
+        consumer_name,
+        settings.AGENT_MAX_CONCURRENT_RUNS,
+        stop,
+        read_retry_initial_delay_s=settings.AGENT_REDIS_READ_RETRY_INITIAL_DELAY,
+        read_retry_max_delay_s=settings.AGENT_REDIS_READ_RETRY_MAX_DELAY,
+    )
 
     await loader.close()
     await client.close()

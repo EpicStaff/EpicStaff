@@ -144,7 +144,7 @@ async def test_describe_returns_description_and_schema():
         inputSchema={"type": "object", "properties": {"query": {"type": "string"}}},
     )
     client = _make_client(list_tools_result=[tool])
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     result = await gateway.describe(_mcp_data("search"))
 
@@ -158,7 +158,7 @@ async def test_describe_returns_description_and_schema():
 async def test_describe_falls_back_to_tool_name_when_description_empty():
     tool = FakeTool(name="do_thing", description="")
     client = _make_client(list_tools_result=[tool])
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     result = await gateway.describe(_mcp_data("do_thing"))
 
@@ -168,7 +168,7 @@ async def test_describe_falls_back_to_tool_name_when_description_empty():
 async def test_describe_falls_back_to_tool_name_when_description_whitespace_only():
     tool = FakeTool(name="do_thing", description="   ")
     client = _make_client(list_tools_result=[tool])
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     result = await gateway.describe(_mcp_data("do_thing"))
 
@@ -179,7 +179,7 @@ async def test_describe_returns_empty_schema_when_input_schema_none():
     tool = FakeTool(name="no_schema", description="Tool.")
     tool.inputSchema = None
     client = _make_client(list_tools_result=[tool])
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     result = await gateway.describe(_mcp_data("no_schema"))
 
@@ -195,7 +195,7 @@ async def test_describe_truncates_long_description_strips_control_chars_and_pref
     raw_description = "A" * 2000 + "\x00\x07\x1f evil\x7f content" + "B" * 100
     tool = FakeTool(name="search", description=raw_description)
     client = _make_client(list_tools_result=[tool])
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     result = await gateway.describe(_mcp_data("search"))
 
@@ -212,7 +212,7 @@ async def test_describe_leaves_input_schema_unchanged_when_description_truncated
     schema = {"type": "object", "properties": {"q": {"type": "string"}}}
     tool = FakeTool(name="search", description="A" * 2000, inputSchema=schema)
     client = _make_client(list_tools_result=[tool])
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     result = await gateway.describe(_mcp_data("search"))
 
@@ -222,7 +222,7 @@ async def test_describe_leaves_input_schema_unchanged_when_description_truncated
 async def test_describe_raises_mcp_tool_error_when_tool_not_found():
     tool = FakeTool(name="other_tool")
     client = _make_client(list_tools_result=[tool])
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with pytest.raises(McpToolError, match="not found"):
         await gateway.describe(_mcp_data("missing_tool"))
@@ -230,7 +230,7 @@ async def test_describe_raises_mcp_tool_error_when_tool_not_found():
 
 async def test_describe_raises_mcp_tool_error_on_connection_failure():
     client = _make_client(raise_on_enter=ConnectionError("refused"))
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with pytest.raises(McpToolError, match="unreachable"):
         await gateway.describe(_mcp_data("any_tool"))
@@ -268,7 +268,7 @@ class _FakeClock:
 async def test_describe_reuses_a_result_for_five_minutes(elapsed_s, expected_connects):
     factory = _CountingFactory([[FakeTool(name="search", description="Search.")]])
     clock = _FakeClock()
-    gateway = McpToolGateway(factory, clock=clock)
+    gateway = McpToolGateway(factory, clock=clock, describe_cache_ttl_s=300)
 
     first = await gateway.describe(_mcp_data("search"))
     clock.now += elapsed_s
@@ -280,7 +280,7 @@ async def test_describe_reuses_a_result_for_five_minutes(elapsed_s, expected_con
 
 async def test_describe_does_not_share_results_between_credentials():
     factory = _CountingFactory([])
-    gateway = McpToolGateway(factory, clock=_FakeClock())
+    gateway = McpToolGateway(factory, clock=_FakeClock(), describe_cache_ttl_s=300)
     data = _mcp_data("search")
 
     await gateway.describe(data.model_copy(update={"auth": "token-org-a"}))
@@ -296,7 +296,7 @@ async def test_describe_does_not_share_results_between_credentials():
 )
 async def test_failed_describe_is_not_cached(failure):
     factory = _CountingFactory([failure])
-    gateway = McpToolGateway(factory, clock=_FakeClock())
+    gateway = McpToolGateway(factory, clock=_FakeClock(), describe_cache_ttl_s=300)
 
     with pytest.raises(McpToolError):
         await gateway.describe(_mcp_data("search"))
@@ -308,7 +308,7 @@ async def test_failed_describe_is_not_cached(failure):
 
 async def test_describe_cache_evicts_the_oldest_entry_when_full():
     factory = _CountingFactory([])
-    gateway = McpToolGateway(factory, clock=_FakeClock(), max_cached_descriptions=2)
+    gateway = McpToolGateway(factory, clock=_FakeClock(), max_cached_descriptions=2, describe_cache_ttl_s=300)
 
     for tool_name in ("a", "b", "c"):
         await gateway.describe(_mcp_data(tool_name))
@@ -320,7 +320,7 @@ async def test_describe_cache_evicts_the_oldest_entry_when_full():
 
 async def test_mutating_a_described_schema_does_not_change_the_cached_one():
     factory = _CountingFactory([])
-    gateway = McpToolGateway(factory, clock=_FakeClock())
+    gateway = McpToolGateway(factory, clock=_FakeClock(), describe_cache_ttl_s=300)
 
     for _ in range(2):
         described = await gateway.describe(_mcp_data("search"))
@@ -338,7 +338,7 @@ async def test_mutating_a_described_schema_does_not_change_the_cached_one():
 async def test_call_returns_structured_content_as_json():
     result = FakeCallResult(structured_content={"answer": 42})
     client = _make_client(call_tool_result=result)
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     output = await gateway.call(_mcp_data("search"), {"query": "hello"})
 
@@ -348,7 +348,7 @@ async def test_call_returns_structured_content_as_json():
 async def test_call_returns_text_content_joined():
     result = FakeCallResult(content=[FakeTextContent("hello"), FakeTextContent("world")])
     client = _make_client(call_tool_result=result)
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     output = await gateway.call(_mcp_data("search"), {})
 
@@ -358,7 +358,7 @@ async def test_call_returns_text_content_joined():
 async def test_call_renders_image_content_marker():
     result = FakeCallResult(content=[FakeImageContent(data="QUJDRA==")])
     client = _make_client(call_tool_result=result)
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     output = await gateway.call(_mcp_data("screenshot"), {})
 
@@ -373,7 +373,7 @@ async def test_call_renders_mixed_text_and_image():
         content=[FakeTextContent("Here is the page"), FakeImageContent(data="QUJD")]
     )
     client = _make_client(call_tool_result=result)
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     output = await gateway.call(_mcp_data("screenshot"), {})
 
@@ -384,7 +384,7 @@ async def test_call_renders_mixed_text_and_image():
 async def test_call_renders_resource_link_marker():
     result = FakeCallResult(content=[FakeResourceLink(uri="file:///x.png")])
     client = _make_client(call_tool_result=result)
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     output = await gateway.call(_mcp_data("fetch_resource"), {})
 
@@ -396,7 +396,7 @@ async def test_call_renders_resource_link_marker():
 async def test_call_falls_back_to_str_data():
     result = FakeCallResult(data={"raw": "value"})
     client = _make_client(call_tool_result=result)
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     output = await gateway.call(_mcp_data("search"), {})
 
@@ -411,7 +411,7 @@ async def test_call_falls_back_to_str_data():
 async def test_call_raises_mcp_tool_error_on_is_error():
     result = FakeCallResult(is_error=True, data="something went wrong")
     client = _make_client(call_tool_result=result)
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with pytest.raises(McpToolError, match="something went wrong"):
         await gateway.call(_mcp_data("search"), {})
@@ -419,7 +419,7 @@ async def test_call_raises_mcp_tool_error_on_is_error():
 
 async def test_call_raises_mcp_tool_error_on_connection_failure():
     client = _make_client(raise_on_enter=ConnectionError("network down"))
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with pytest.raises(McpToolError, match="MCP call failed"):
         await gateway.call(_mcp_data("search"), {})
@@ -432,7 +432,7 @@ async def test_call_raises_mcp_tool_error_on_connection_failure():
 
 async def test_call_cancels_in_flight_request_when_sdk_read_timeout_fires():
     client = _make_in_flight_client(_sdk_read_timeout())
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with pytest.raises(McpToolError, match=r"MCP call failed.*Timed out"):
         await gateway.call(_mcp_data("browse"), {})
@@ -453,7 +453,7 @@ async def test_call_pings_after_cancel_and_before_closing_the_session(
     call_tool_error, surfaced_error
 ):
     client = _make_in_flight_client(call_tool_error)
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with pytest.raises(surfaced_error):
         await gateway.call(_mcp_data("browse"), {})
@@ -466,7 +466,7 @@ async def test_call_pings_after_cancel_and_before_closing_the_session(
 
 async def test_call_cancels_in_flight_request_when_caller_cancels():
     client = _make_in_flight_client()
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     # Same shape as the agent loop's per-tool timeout: wait_for cancels the call.
     with pytest.raises(TimeoutError):
@@ -486,7 +486,7 @@ async def test_call_sends_cancel_when_cancelled_by_an_anyio_scope():
         cancels_delivered.append(args)
 
     client.cancel.side_effect = _send_cancel
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with anyio.move_on_after(0.05):
         await gateway.call(_mcp_data("browse"), {})
@@ -504,7 +504,7 @@ async def test_call_sends_cancel_when_cancelled_by_an_anyio_scope():
 )
 async def test_call_does_not_cancel_when_request_failed_without_timing_out(call_tool_error):
     client = _make_in_flight_client(call_tool_error)
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with pytest.raises(McpToolError, match="MCP call failed"):
         await gateway.call(_mcp_data("browse"), {})
@@ -517,7 +517,7 @@ async def test_call_does_not_cancel_when_request_failed_without_timing_out(call_
 async def test_call_surfaces_timeout_error_when_cancel_send_fails(failing_step):
     client = _make_in_flight_client(_sdk_read_timeout())
     getattr(client, failing_step).side_effect = ConnectionError("server gone")
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with pytest.raises(McpToolError, match="Timed out") as error_info:
         await gateway.call(_mcp_data("browse"), {})
@@ -529,7 +529,7 @@ async def test_call_surfaces_timeout_error_when_cancel_send_fails(failing_step):
 async def test_call_propagates_cancelled_error_when_cancel_send_fails(failing_step):
     client = _make_in_flight_client(asyncio.CancelledError())
     getattr(client, failing_step).side_effect = ConnectionError("server gone")
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
 
     with pytest.raises(asyncio.CancelledError):
         await gateway.call(_mcp_data("browse"), {})
@@ -554,7 +554,7 @@ async def test_call_gives_up_on_cancel_send_after_deadline(
         await asyncio.Event().wait()
 
     getattr(client, hanging_step).side_effect = _unresponsive_server
-    gateway = McpToolGateway(_factory(client))
+    gateway = McpToolGateway(_factory(client), describe_cache_ttl_s=300)
     started = time.monotonic()
 
     with pytest.raises(surfaced_error):

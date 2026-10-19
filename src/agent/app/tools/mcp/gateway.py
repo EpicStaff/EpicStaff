@@ -22,7 +22,6 @@ from shared.models.tools import McpToolData
 _MAX_MCP_DESCRIPTION_CHARS = 1024
 _C0_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _CANCEL_SEND_TIMEOUT_SECONDS = 5
-_DESCRIBE_CACHE_TTL_SECONDS = 300
 _MAX_CACHED_DESCRIPTIONS = 256
 
 
@@ -43,16 +42,19 @@ class McpToolGateway:
     def __init__(
         self,
         factory: FastMCPClientFactory,
+        *,
+        describe_cache_ttl_s: float,
         clock: Callable[[], float] = time.monotonic,
         max_cached_descriptions: int = _MAX_CACHED_DESCRIPTIONS,
     ) -> None:
         self._factory = factory
+        self._describe_cache_ttl_s = describe_cache_ttl_s
         self._clock = clock
         self._max_cached_descriptions = max_cached_descriptions
         self._describe_cache: dict[str, tuple[float, McpToolDescription]] = {}
 
     async def describe(self, data: McpToolData) -> McpToolDescription:
-        """Fetch tool metadata from the MCP server, reusing a success for five minutes.
+        """Fetch tool metadata from the MCP server, reusing a success for the cache TTL.
 
         Results are cached per (transport, auth, tool name), so a run that resolves
         several tools of one server, or back-to-back runs, do not reconnect each time.
@@ -89,7 +91,7 @@ class McpToolGateway:
             oldest_key = next(iter(self._describe_cache))
             del self._describe_cache[oldest_key]
 
-        self._describe_cache[cache_key] = (now + _DESCRIBE_CACHE_TTL_SECONDS, description)
+        self._describe_cache[cache_key] = (now + self._describe_cache_ttl_s, description)
 
     async def _fetch_description(self, data: McpToolData) -> McpToolDescription:
         client = self._factory.create(data)
