@@ -44,7 +44,7 @@ def existing_nodes(graph, default_org):
     for model in NODE_MODELS:
         soft_deleted = create_node(model, soft_deleted_graph)
         model._base_manager.filter(pk=soft_deleted.pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
+            active=False, soft_deleted_at=timezone.now()
         )
         nodes.append(soft_deleted)
     return nodes
@@ -69,4 +69,4 @@ def test_migration_gives_existing_rows_distinct_uuids_and_keeps_content_hashes(e
         uuid_before, hash_before = before[key]
         assert node.uuid != uuid_before
         assert node.generate_hash() == hash_before
-    assert any(node.is_soft_deleted for node in after.values())
+    assert any(not node.active for node in after.values())

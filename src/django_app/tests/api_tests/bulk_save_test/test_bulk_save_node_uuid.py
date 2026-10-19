@@ -327,7 +327,7 @@ def test_uuid_of_an_existing_node_in_any_table_returns_400(auth_client, graph, e
 def test_uuid_of_a_soft_deleted_node_is_accepted(auth_client, graph):
     soft_deleted_note = create_node(GraphNote, graph)
     GraphNote.all_objects.filter(id=soft_deleted_note.id).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
 
     response = _save(

@@ -8,6 +8,10 @@ every row, soft-deleted ones included, gets its own uuid.
 Never add this column with only a Python ``default=uuid4`` on a populated table:
 Django evaluates a Python default once and writes that single value into every
 existing row. The ``db_default`` below is what makes this AddField safe.
+
+The per-graph unique index is not created here: it must only count active rows,
+and the column that tells them apart differs between the branches this migration
+can run after. ``0274_node_uuid_constraint_active_flag`` adds it once both exist.
 """
 
 import uuid
@@ -49,18 +53,6 @@ class Migration(migrations.Migration):
                     db_default=django.contrib.postgres.functions.RandomUUID(),
                     default=uuid.uuid4,
                     editable=False,
-                ),
-            )
-            for model_name in NODE_MODEL_NAMES
-        ),
-        *(
-            migrations.AddConstraint(
-                model_name=model_name,
-                constraint=models.UniqueConstraint(
-                    models.F("graph"),
-                    models.F("uuid"),
-                    condition=models.Q(("is_soft_deleted", False)),
-                    name=f"tables_{model_name}_graph_uuid_unique",
                 ),
             )
             for model_name in NODE_MODEL_NAMES

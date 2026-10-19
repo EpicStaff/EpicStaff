@@ -124,7 +124,7 @@ def test_import_taking_over_a_soft_deleted_flow_uuid_gives_new_node_uuids(
     source_uuids = _all_uuids(graph)
     export_data = _export(export_service, graph)
     Graph.all_objects.filter(pk=graph.pk).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
 
     imported = _import(import_service, export_data, REPLACE_IN_PLACE)

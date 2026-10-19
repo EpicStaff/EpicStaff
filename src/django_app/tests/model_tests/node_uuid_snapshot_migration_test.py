@@ -55,7 +55,7 @@ def _create_version(graph: Graph, nodes: list, *, format_version: int = 3) -> Gr
 
 
 def _soft_delete(model, pk: int) -> None:
-    model._base_manager.filter(pk=pk).update(is_soft_deleted=True, soft_deleted_at=timezone.now())
+    model._base_manager.filter(pk=pk).update(active=False, soft_deleted_at=timezone.now())
 
 
 def _stored_snapshot(version: GraphVersion) -> dict:

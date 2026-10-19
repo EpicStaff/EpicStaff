@@ -64,7 +64,7 @@ def test_active_node_uuids_reads_every_node_table_of_the_graph_only(graph, other
 def test_active_node_uuids_leaves_out_soft_deleted_excluded_and_unasked_nodes(graph):
     kept, excluded, soft_deleted, unasked = (create_node(GraphNote, graph) for _ in range(4))
     GraphNote.all_objects.filter(pk=soft_deleted.pk).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
 
     active_uuids = NodeIdentityMixin.active_node_uuids(
@@ -81,8 +81,8 @@ def test_raw_insert_without_uuid_gets_one_from_the_database(graph):
     with connection.cursor() as cursor:
         cursor.execute(
             f"INSERT INTO {GraphNote._meta.db_table} "
-            "(graph_id, content, metadata, created_at, updated_at, is_soft_deleted) "
-            "VALUES (%s, 'raw note', '{}', now(), now(), false) RETURNING id, uuid",
+            "(graph_id, content, metadata, created_at, updated_at, active) "
+            "VALUES (%s, 'raw note', '{}', now(), now(), true) RETURNING id, uuid",
             [graph.id],
         )
         note_id, inserted_uuid = cursor.fetchone()
@@ -112,7 +112,7 @@ class TestEveryNodeModel:
 
         assert index_definition.startswith("CREATE UNIQUE INDEX")
         assert "(graph_id, uuid)" in index_definition
-        assert index_definition.endswith("WHERE (NOT is_soft_deleted)")
+        assert index_definition.endswith("WHERE active")
 
     def test_model_serializer_gets_no_uuid_uniqueness_validator(self, model):
         serializer_class = type(
@@ -168,7 +168,7 @@ class TestUniquenessInOneGraph:
     def test_soft_deleted_duplicate_is_allowed(self, model, graph):
         node = create_node(model, graph)
         model._base_manager.filter(pk=node.pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
+            active=False, soft_deleted_at=timezone.now()
         )
 
         replacement = create_node(model, graph, uuid=node.uuid)

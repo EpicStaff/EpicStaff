@@ -227,14 +227,14 @@ def test_restore_keeps_a_uuid_held_by_a_soft_deleted_node_of_the_graph(service, 
     node = create_node(PythonNode, graph)
     version = service.save_version(graph, name="v")
     PythonNode.all_objects.filter(pk=node.pk).update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
 
     _restore(service, graph, version)
 
     # The wipe removes active rows only, so the soft-deleted row is still there.
     soft_deleted = PythonNode.all_objects.get(pk=node.pk)
-    assert soft_deleted.is_soft_deleted
+    assert not soft_deleted.active
     assert PythonNode.objects.get(graph=graph).uuid == soft_deleted.uuid
 
 
