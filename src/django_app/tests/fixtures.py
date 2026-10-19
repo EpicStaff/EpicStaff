@@ -192,6 +192,9 @@ class RecordingSandboxIntake:
     def __init__(self, status_code: int = 202):
         self.status_code = status_code
         self.bodies: list[dict] = []
+        # Set to raise instead of answering: the sandbox could not be reached at all,
+        # which the transport reports as a raw httpx error rather than a ClientError.
+        self.transport_error: Exception | None = None
 
     def client(self) -> SandboxExecutionClient:
         return SandboxExecutionClient(
@@ -202,6 +205,8 @@ class RecordingSandboxIntake:
         assert request.url.path == "/executions"
         body = json.loads(request.content)
         self.bodies.append(body)
+        if self.transport_error is not None:
+            raise self.transport_error
         if self.status_code >= 400:
             return httpx.Response(self.status_code, json={"detail": "rejected"})
         return httpx.Response(
