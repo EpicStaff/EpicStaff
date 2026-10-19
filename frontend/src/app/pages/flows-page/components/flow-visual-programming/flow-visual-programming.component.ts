@@ -35,7 +35,7 @@ import {
     ResourceCode,
 } from '@shared/models';
 import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, generateUuid } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -89,7 +89,6 @@ import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
-import { formatNodeLabel } from '../../../../visual-programming/core/helpers/format-node-label.util';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
 import { renumberUnsavedNodesHolding } from '../../../../visual-programming/core/helpers/node-number.util';
 import {
@@ -233,7 +232,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
-    public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
     /** The latest save another user announced; `graphState` is outdated while its save_version is lower. */
@@ -322,8 +320,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private isDeactivating = false;
     private lastFetchedGraphId: number | null = null;
     private liveCdtStorageIds = new Set<string>();
-    // The nodeId/nodeName query opens its panel once; re-mounting the live canvas must not re-open it.
-    private lastNodeQueryKey: string | null = null;
+    // The nodeId query opens its panel once; re-mounting the live canvas must not re-open it.
+    private lastQueriedNodeId: string | null = null;
     private isNodeQueryConsumed = false;
 
     @ViewChild(FlowGraphComponent)
@@ -368,40 +366,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         effect(() => {
             const params = this.routeQueryParamMap();
-            const nodeQueryKey = [params.get('nodeId'), params.get('nodeName'), params.get('nodeType')].join('|');
-            if (nodeQueryKey !== this.lastNodeQueryKey) {
-                this.lastNodeQueryKey = nodeQueryKey;
+            const nodeId = params.get('nodeId');
+            if (nodeId !== this.lastQueriedNodeId) {
+                this.lastQueriedNodeId = nodeId;
                 this.isNodeQueryConsumed = false;
             }
-            if (this.isNodeQueryConsumed) {
+            if (this.isNodeQueryConsumed || !nodeId) {
                 this.initialNodeId = null;
                 return;
             }
-            const nodeId = params.get('nodeId');
-            if (nodeId) {
-                const match = this.currentFlowState().nodes.find(
-                    (n) => n.id === nodeId || String(n.backendId) === nodeId
-                );
-                this.initialNodeId = match?.id ?? nodeId;
-                this.initialNodeExpand = true;
-                return;
-            }
-
-            // Callers that only know a node by name (e.g. the Secret Usage dialog, whose backend
-            // response has no node id) use nodeName/nodeType instead — resolve it against the
-            // loaded graph once available. nodeType disambiguates same-named nodes of different types.
-            // This path only selects the node (small panel) rather than expanding it.
-            const nodeName = params.get('nodeName');
-            if (!nodeName) {
-                this.initialNodeId = null;
-                return;
-            }
-            const nodeType = params.get('nodeType');
             const match = this.currentFlowState().nodes.find(
-                (n) => n.node_name === nodeName && (!nodeType || n.type === nodeType)
+                (node) => node.id === nodeId || String(node.backendId) === nodeId
             );
-            this.initialNodeId = match?.id ?? null;
-            this.initialNodeExpand = false;
+            this.initialNodeId = match?.id ?? nodeId;
         });
 
         effect(() => {

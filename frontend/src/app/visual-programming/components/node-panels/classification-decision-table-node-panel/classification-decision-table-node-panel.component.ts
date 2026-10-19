@@ -36,7 +36,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { FullLLMConfigService, SecretsStorageService } from '@shared/services';
-import { getProviderIconPath } from '@shared/utils';
+import { formatNodeLabel, getProviderIconPath } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -46,7 +46,6 @@ import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
-import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import { getClassificationTableVisualHeight } from '../../../core/helpers/node-size.util';
 import { CdtSection, reconcileCdtSections } from '../../../core/models/cdt-section.model';

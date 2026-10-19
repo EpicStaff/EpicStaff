@@ -2,9 +2,10 @@ import { CommonModule, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
+import { formatNodeLabel } from '@shared/utils';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
-import { formatCanvasTitle, formatNodeLabel } from '../../../core/helpers/format-node-label.util';
+import { formatCanvasTitle } from '../../../core/helpers/format-node-label.util';
 import { DT_HEADER_HEIGHT, DT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';

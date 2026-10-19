@@ -6,6 +6,7 @@ export * from './escape-html.util';
 export * from './fetch-all-pages.util';
 export * from './flow-links';
 export * from './format-file-size.util';
+export * from './format-node-label.util';
 export * from './generate-uuid.util';
 export * from './get-provider-icon';
 export * from './get-relative-time.util';

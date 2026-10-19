@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 
-import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import {
     AgentNodeModel,
     NodeModel,

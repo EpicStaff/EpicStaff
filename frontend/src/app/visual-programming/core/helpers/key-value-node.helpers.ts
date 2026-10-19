@@ -1,9 +1,9 @@
 import { ActionCode, NodeType } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 
 import { KeyValueEntryLookup } from '../../../features/key-value-tables/models/key-value-table.model';
 import { KeyValueEntry, KeyValueMode, KeyValueNodeData } from '../models/key-value-node.model';
 import { KeyValueNodeModel, NodeModel } from '../models/node.model';
-import { formatNodeLabel } from './format-node-label.util';
 import { isPathUnder } from './variable-path.util';
 
 // Mirrors crew's key-template parsing: placeholders match this regex, and a key with braces left over

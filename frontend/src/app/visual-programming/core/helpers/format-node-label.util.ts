@@ -1,10 +1,7 @@
+import { formatNodeLabel } from '@shared/utils';
+
 import { NodeModel } from '../models/node.model';
 import { isNumberedNodeType } from './node-number.util';
-
-/** "Name #N" for lists where same-named nodes must be told apart. Display only — never stored. */
-export function formatNodeLabel(node: Pick<NodeModel, 'node_name' | 'nodeNumber'>): string {
-    return node.nodeNumber == null ? node.node_name : `${node.node_name} #${node.nodeNumber}`;
-}
 
 /** Whether `formatCanvasTitle` appends the node's number to `title`: the node is numbered and the title is a name. */
 export function canvasTitleCarriesNumber(title: string, node: Pick<NodeModel, 'type' | 'nodeNumber'>): boolean {

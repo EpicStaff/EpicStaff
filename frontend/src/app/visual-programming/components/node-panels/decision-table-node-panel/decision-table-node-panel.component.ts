@@ -9,9 +9,9 @@ import {
     SelectItem,
 } from '@shared/components';
 import { NodeType } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
-import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
 import { Condition, ConditionGroup, DecisionTableNode } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';

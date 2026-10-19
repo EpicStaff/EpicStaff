@@ -5,9 +5,10 @@ import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 import { LlmConfigStorageService } from '@shared/services';
+import { formatNodeLabel } from '@shared/utils';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
-import { formatCanvasTitle, formatNodeLabel } from '../../../core/helpers/format-node-label.util';
+import { formatCanvasTitle } from '../../../core/helpers/format-node-label.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';

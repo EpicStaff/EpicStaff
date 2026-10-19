@@ -15,11 +15,11 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/components';
 import { NodeType } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 
 import { ToastService } from '../../../../services/notifications';
 import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
-import { formatNodeLabel } from '../../../core/helpers/format-node-label.util';
 import { hasNodeDetails } from '../../../core/helpers/node-details.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';

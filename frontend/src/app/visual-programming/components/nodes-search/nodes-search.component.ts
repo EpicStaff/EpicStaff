@@ -14,8 +14,8 @@ import {
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { formatNodeLabel } from '@shared/utils';
 
-import { formatNodeLabel } from '../../core/helpers/format-node-label.util';
 import { NodeModel } from '../../core/models/node.model';
 import { SearchNodeItemComponent } from './search-node-item/search-node-item.component';
 

@@ -1,3 +1,5 @@
+import { formatNodeLabel } from '@shared/utils';
+
 /**
  * Pure builder: a Classification Decision Table snapshot → the blocks and edges of
  * its execution flowchart. No coordinates — the layout pass adds those.
@@ -6,8 +8,6 @@
  * `docs/classification_decision_table/classification_decision_table.md`, so the
  * diagram is a faithful drawing of what actually runs rather than an interpretation.
  */
-
-import { formatNodeLabel } from '../../../../core/helpers/format-node-label.util';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import {
     composeExpression,

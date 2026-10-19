@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { ButtonComponent, HelpTooltipComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -24,7 +25,6 @@ import {
     themeQuartz,
 } from 'ag-grid-community';
 
-import { formatNodeLabel } from '../../../../core/helpers/format-node-label.util';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { FlowService } from '../../../../services/flow.service';
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';

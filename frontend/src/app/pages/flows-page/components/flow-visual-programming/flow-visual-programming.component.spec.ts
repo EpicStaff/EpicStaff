@@ -116,7 +116,6 @@ class FlowGraphStubComponent {
     readonly availableFlows = input<GetGraphLightRequest[]>([]);
     readonly flowName = input<string>();
     readonly initialNodeId = input<string | null>(null);
-    readonly initialNodeExpand = input(true);
     readonly initialViewport = input<FlowViewport | null>(null);
     readonly isSaving = input(false);
     readonly hasUnsavedChanges = input(false);
@@ -215,6 +214,7 @@ describe('FlowVisualProgrammingComponent', () => {
     let unsavedChangesDialog: { confirm: ReturnType<typeof vi.fn>; confirmUnsavedChanges: ReturnType<typeof vi.fn> };
     let toast: Record<string, ReturnType<typeof vi.fn>>;
     let paramMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+    let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
     /** A signal, so FlowReadOnlyService's computed re-reads it when a test revokes Flows:Update. */
     let canUpdateFlows: WritableSignal<boolean>;
     let runGraph: Record<string, ReturnType<typeof vi.fn>>;
@@ -247,6 +247,7 @@ describe('FlowVisualProgrammingComponent', () => {
         const paramMap = convertToParamMap({ id: '1' });
         paramMap$ = new BehaviorSubject(paramMap);
         const queryParamMap = convertToParamMap({});
+        queryParamMap$ = new BehaviorSubject(queryParamMap);
 
         TestBed.configureTestingModule({
             imports: [FlowVisualProgrammingComponent],
@@ -255,7 +256,7 @@ describe('FlowVisualProgrammingComponent', () => {
                     provide: ActivatedRoute,
                     useValue: {
                         paramMap: paramMap$,
-                        queryParamMap: of(queryParamMap),
+                        queryParamMap: queryParamMap$,
                         snapshot: { paramMap, queryParamMap },
                     },
                 },
@@ -957,6 +958,28 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(toast['warning']).toHaveBeenCalledWith(REMOTE_SAVE_RELOAD_FAILED_MESSAGE);
             expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+        });
+    });
+
+    describe('a link to one node of the flow', () => {
+        it('opens the node with that backend id, not another node with the same name', () => {
+            queryParamMap$.next(convertToParamMap({ nodeId: '42' }));
+            flowsApi['getGraphById'].mockReturnValue(
+                of(
+                    graphDto({
+                        id: 5,
+                        python_node_list: [
+                            { ...livePython, id: 41, node_number: 1, node_name: 'Fetch' },
+                            { ...livePython, id: 42, node_number: 2, node_name: 'Fetch' },
+                        ],
+                    })
+                )
+            );
+            paramMap$.next(convertToParamMap({ id: '5' }));
+            fixture.detectChanges();
+
+            const linkedNode = flowService.getFlowState().nodes.find((node) => node.backendId === 42)!;
+            expect(liveCanvas()!.initialNodeId()).toBe(linkedNode.id);
         });
     });
 
