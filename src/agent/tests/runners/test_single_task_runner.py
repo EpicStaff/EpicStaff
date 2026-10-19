@@ -32,6 +32,7 @@ from shared.models.agent_service import (
     ToolResult,
 )
 from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.cancellation import never_cancelled
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -152,12 +153,13 @@ class FakeResolver:
     """Returns a ResolvedAgent with a real AgentContext and empty ToolRegistry."""
 
     async def resolve(
-        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None
+        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None, *, is_cancelled
     ) -> ResolvedAgent:
         context = AgentContext(
             agent=agent,
             attachments=[],
             correlation_id=request.correlation_id,
+            is_cancelled=is_cancelled,
         )
         return ResolvedAgent(
             agent_id=agent.id,
@@ -171,12 +173,13 @@ class FakeResolverWithTools:
     """Returns a ResolvedAgent with one registered tool so has_tools=True."""
 
     async def resolve(
-        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None
+        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None, *, is_cancelled
     ) -> ResolvedAgent:
         context = AgentContext(
             agent=agent,
             attachments=[],
             correlation_id=request.correlation_id,
+            is_cancelled=is_cancelled,
         )
         registry = ToolRegistry()
         registry.register(
@@ -195,7 +198,7 @@ class RaisingResolver:
     """Raises on resolve to simulate resolver failure."""
 
     async def resolve(
-        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None
+        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None, *, is_cancelled
     ) -> ResolvedAgent:
         raise RuntimeError("resolver exploded")
 
@@ -248,7 +251,7 @@ async def test_happy_path_single_agent():
     runner = _runner(loop=fake_loop)
     request = _request({"task_instructions": "Do X"})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.started) == 1
     assert emitter.finals == [CANNED_RESULT]
@@ -270,7 +273,7 @@ async def test_payload_uses_prompt_fallback_key():
     runner = _runner(loop=fake_loop)
     request = _request({"prompt": "Summarize."})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     messages = fake_loop.received_messages[0]
     user_message = next(m for m in messages if m["role"] == "user")
@@ -283,7 +286,7 @@ async def test_missing_task_instructions_calls_on_error():
     runner = _runner()
     request = _request({"output_schema": {"type": "object"}})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.errors) == 1
     assert isinstance(emitter.errors[0], AgentServiceError)
@@ -295,7 +298,7 @@ async def test_resolver_raises_calls_on_error():
     runner = _runner(resolver=RaisingResolver())
     request = _request({"task_instructions": "Do something."})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.errors) == 1
     assert isinstance(emitter.errors[0], RuntimeError)
@@ -308,7 +311,7 @@ async def test_on_start_called_once_before_loop():
     runner = _runner(loop=fake_loop)
     request = _request({"task_instructions": "Check this."})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.started) == 1
     assert emitter.started[0] is request
@@ -332,7 +335,7 @@ async def test_output_schema_no_tools_skips_plain_loop():
     runner = _runner(loop=answer_loop)
     request = _request({"task_instructions": "Do X", "output_schema": schema})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert emitter.errors == []
     assert len(emitter.finals) == 1
@@ -368,7 +371,7 @@ async def test_output_schema_with_tools_runs_loop_then_enforces():
     runner = _runner(resolver=FakeResolverWithTools(), loop=answer_loop)
     request = _request({"task_instructions": "Do Y", "output_schema": schema})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert emitter.errors == []
     assert len(emitter.finals) == 1
@@ -406,7 +409,7 @@ async def test_schema_validation_error_calls_on_error():
     runner = _runner(loop=answer_loop)
     request = _request({"task_instructions": "Do Z", "output_schema": schema})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert len(emitter.errors) == 1
     assert isinstance(emitter.errors[0], SchemaValidationError)
@@ -420,7 +423,7 @@ async def test_no_output_schema_uses_single_plain_loop():
     runner = _runner(loop=fake_loop)
     request = _request({"task_instructions": "Plain task"})
 
-    await runner.execute(request, emitter)
+    await runner.execute(request, emitter, is_cancelled=never_cancelled)
 
     assert emitter.errors == []
     assert emitter.finals == [CANNED_RESULT]
@@ -469,7 +472,7 @@ async def test_failed_main_loop_is_reported_without_enforcing_the_schema(stop_re
     loop = FailureLoop(stop_reason=stop_reason, error=error)
     runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
 
-    await runner.execute(_request({"task_instructions": "Do X", "output_schema": schema}), emitter)
+    await runner.execute(_request({"task_instructions": "Do X", "output_schema": schema}), emitter, is_cancelled=never_cancelled)
 
     assert [str(raised) for raised in emitter.errors] == [error]
     assert emitter.finals == []
@@ -496,7 +499,7 @@ async def test_schema_retries_come_from_the_agent_then_the_service_setting(
     runner = _runner(loop=answer_loop)
     agent = _agent_spec(schema_max_retries=agent_schema_max_retries)
 
-    await runner.execute(_request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent]), emitter)
+    await runner.execute(_request({"task_instructions": "Do X", "output_schema": schema}, agents=[agent]), emitter, is_cancelled=never_cancelled)
 
     assert answer_loop.call_count == expected_attempts
     assert isinstance(emitter.errors[0], SchemaValidationError)
@@ -554,7 +557,7 @@ async def test_final_text_already_matching_the_schema_skips_enforcement(schema, 
     loop = FinalTextThenAnswerLoop(final_text, answer_args={"y": 7})
     runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
 
-    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": schema}), emitter)
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": schema}), emitter, is_cancelled=never_cancelled)
 
     assert emitter.errors == []
     final = emitter.finals[0]
@@ -575,7 +578,7 @@ async def test_final_text_not_matching_the_schema_is_enforced(final_text):
     loop = FinalTextThenAnswerLoop(final_text, answer_args={"y": 7})
     runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
 
-    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter)
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter, is_cancelled=never_cancelled)
 
     assert emitter.errors == []
     final = emitter.finals[0]
@@ -589,7 +592,7 @@ async def test_final_text_left_over_from_an_unfinished_tool_loop_is_enforced():
     loop = FinalTextThenAnswerLoop('{"y": 42}', answer_args={"y": 7}, stop_reason="max_iter_reached")
     runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
 
-    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter)
+    await runner.execute(_request({"task_instructions": "Do Y", "output_schema": Y_SCHEMA}), emitter, is_cancelled=never_cancelled)
 
     assert emitter.errors == []
     assert loop.call_count == 2

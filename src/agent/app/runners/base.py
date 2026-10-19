@@ -19,6 +19,7 @@ from loguru import logger
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
 from app.exceptions import AgentServiceError
+from app.loop.context import CancellationCheck
 from shared.models.agent_service import AgentRequest, AgentSpec
 
 if TYPE_CHECKING:
@@ -51,12 +52,19 @@ class Runner(ABC):
         self._deps = deps
 
     @abstractmethod
-    async def execute(self, request: AgentRequest, emitter: Emitter) -> None:
+    async def execute(
+        self,
+        request: AgentRequest,
+        emitter: Emitter,
+        *,
+        is_cancelled: CancellationCheck,
+    ) -> None:
         """Execute the agent work described by ``request`` and emit results.
 
         Subclasses orchestrate 0..N ``AgentLoop`` invocations, feeding each
-        with an ``AgentContext`` built from ``request``.  Must call
-        ``emitter.on_final`` on success or ``emitter.on_error`` on failure.
+        with an ``AgentContext`` built from ``request`` and carrying
+        ``is_cancelled``.  Must call ``emitter.on_final`` on success or
+        ``emitter.on_error`` on failure; ``RunCancelled`` propagates instead.
         """
         ...
 

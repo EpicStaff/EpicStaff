@@ -10,10 +10,13 @@ pre-runner failures (load / build).  The message is always acked in finally.
 
 from __future__ import annotations
 
+from functools import partial
+
 from loguru import logger
 
 from app.data_loader import DataLoader
 from app.emitters.redis_batch import RedisStreamBatchEmitter
+from app.exceptions import RunCancelled
 from app.factory import RunnerFactory
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
@@ -105,7 +108,12 @@ class RequestHandler:
             await fallback_emitter.on_error(error)
 
         else:
-            await runner.execute(request, emitter)
+            try:
+                await runner.execute(
+                    request, emitter, is_cancelled=partial(self._loader.is_withdrawn, envelope)
+                )
+            except RunCancelled:
+                logger.info("run withdrawn by crew, stopped correlation_id={}", correlation_id)
 
         finally:
             await self._redis_client.ack(stream, self._consumer_group, message_id)
