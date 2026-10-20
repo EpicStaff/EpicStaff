@@ -119,10 +119,6 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         try:
             code_task_data = CodeTaskData(
-                venv_name=f"venv_{python_code_id}",
-                # Libraries moved off PythonCode onto the venv, which the code is
-                # addressed to by id; `libraries` is the legacy field the intake ignores.
-                libraries=[],
                 # The code's own venv: a test run must execute where the real run
                 # would, not on the sandbox's default venv.
                 venv_id=python_code.venv_id,
@@ -222,8 +218,6 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         try:
             code_task_data = CodeTaskData(
-                venv_name=resolved.venv_name,
-                libraries=resolved.libraries,
                 # The slot's real-run venv: a test run of a slot must execute where
                 # the real run would, not on the sandbox's default venv.
                 venv_id=resolved.venv_id,

@@ -87,10 +87,8 @@ def _python_tool_data(name: str = "my_tool") -> PythonCodeToolData:
         description="A tool.",
         args_schema=ArgsSchema(properties={}),
         python_code=PythonCodeData(
-            venv_name="venv_test",
             code="def run(): return 'ok'",
             entrypoint="run",
-            libraries=[],
         ),
     )
 

@@ -76,10 +76,8 @@ def service(sandbox_intake):
 
 def make_python_code_data(**overrides) -> PythonCodeData:
     defaults = dict(
-        venv_name="default",
         code="def main(**kw): return kw",
         entrypoint="main",
-        libraries=[],
         global_kwargs={},
     )
     defaults.update(overrides)

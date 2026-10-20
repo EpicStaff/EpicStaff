@@ -131,8 +131,7 @@ class TestLogSummaryIsSafe:
 
     def _task(self):
         return CodeTaskData(
-            venv_name="venv_9",
-            libraries=["requests"],
+            venv_id=9,
             code="def main(): return 1",
             execution_id="exec-42",
             entrypoint="main",
@@ -152,7 +151,7 @@ class TestLogSummaryIsSafe:
         summary = self._task().log_summary()
 
         assert "exec-42" in summary
-        assert "venv_9" in summary
+        assert "venv_id=9" in summary
         assert "main" in summary
         # "Did the node receive its declarations?" answered without disclosure.
         assert "secrets=1" in summary

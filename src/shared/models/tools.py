@@ -50,13 +50,10 @@ class McpToolData(BaseModel):
 
 
 class PythonCodeData(StorageScopedData):
-    venv_name: str
     code: str
     entrypoint: str
-    libraries: list[str]
-    # The sandbox_new venv id this code runs in; None means its default venv.
-    # Filled by the converter from PythonCode.venv. `venv_name`/`libraries` stay
-    # for producers not yet migrated off the old sandbox (agent, realtime).
+    # The venv this code runs in; None means the sandbox's default venv. The venv
+    # is the only place libraries come from, so there is nothing else to declare.
     venv_id: int | None = None
     global_kwargs: dict[str, Any] | None = None
 
@@ -158,10 +155,7 @@ class CodeResultData(BaseModel):
 
 
 class CodeTaskData(StorageScopedData):
-    venv_name: str
-    libraries: list[str]
-    # sandbox_new venv id; None means its default venv. venv_name/libraries are
-    # legacy fields the HTTP intake ignores.
+    # The venv this code runs in; None means the sandbox's default venv.
     venv_id: int | None = None
     code: str
     execution_id: str
@@ -213,8 +207,8 @@ class CodeTaskData(StorageScopedData):
         """
         creds_summary = "present" if self.storage_credentials else "none"
         return (
-            f"execution_id={self.execution_id} venv={self.venv_name} "
-            f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
+            f"execution_id={self.execution_id} venv_id={self.venv_id} "
+            f"entrypoint={self.entrypoint} "
             f"secrets={len(self.secrets)} storage_credentials={creds_summary}"
         )
 

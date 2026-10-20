@@ -25,8 +25,6 @@ SANDBOX_BASE_URL = "http://sandbox:8000"
 
 def _task(code: str = "def main(): return 'ok'", **overrides) -> CodeTaskData:
     fields = dict(
-        venv_name="venv_test",
-        libraries=[],
         code=code,
         execution_id="placeholder",
         entrypoint="main",

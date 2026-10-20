@@ -401,14 +401,10 @@ class ConverterService(metaclass=SingletonMeta):
         org_id: int | None = None,
     ):
         return PythonCodeData(
-            # The venv is resolved by sandbox_new from this id; None uses its default
-            # venv. venv_name/libraries are legacy fields the new intake ignores;
-            # per-venv library management is a later task.
+            # The venv is resolved by the sandbox from this id; None uses its default.
             venv_id=python_code.venv_id,
-            venv_name="default",
             code=python_code.code,
             entrypoint=python_code.entrypoint,
-            libraries=[],
             global_kwargs=python_code.global_kwargs,
             use_storage=use_storage,
             storage_allowed_paths=storage_allowed_paths,

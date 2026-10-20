@@ -113,10 +113,8 @@ def python_code_service(redis: FakeRedisService, sandbox_client: SandboxClient):
 def make_python_code_data():
     def make(**overrides) -> PythonCodeData:
         defaults = dict(
-            venv_name="default",
             code="def main(**kw): return kw",
             entrypoint="main",
-            libraries=[],
             global_kwargs={},
         )
         defaults.update(overrides)

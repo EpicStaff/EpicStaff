@@ -43,8 +43,6 @@ class PythonCodeToolExecutor:
         execution_id = str(uuid.uuid4())
         try:
             task = CodeTaskData(
-                venv_name=python_code.venv_name,
-                libraries=python_code.libraries,
                 venv_id=python_code.venv_id,
                 code=python_code.code,
                 execution_id=execution_id,

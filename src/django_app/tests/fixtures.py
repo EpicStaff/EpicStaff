@@ -354,7 +354,6 @@ def python_tool_data():
             "id": 9,
             "code": "def main(user_id: int): return 'ok'",
             "entrypoint": "main",
-            "libraries": "requests",
             "global_kwargs": {"state": {"input": {"user_surname": "TestUser"}}},
         },
         "name": "python tool1",
@@ -489,7 +488,6 @@ def python_code() -> PythonCode:
     return PythonCode.objects.create(
         code="def main(): return 42",
         entrypoint="main",
-        libraries="requests json",
         global_kwargs={},
     )
 

@@ -80,10 +80,8 @@ def executor(fake_redis_service, sandbox_intake):
 
 def build_python_code_data(**overrides) -> PythonCodeData:
     fields = {
-        "venv_name": "default",
         "code": "def main(): return 'ok'",
         "entrypoint": "main",
-        "libraries": [],
     }
     fields.update(overrides)
     return PythonCodeData(**fields)

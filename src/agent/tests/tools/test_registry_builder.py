@@ -141,10 +141,8 @@ def _python_tool_data(
         description="A tool.",
         args_schema=ArgsSchema(properties={}),
         python_code=PythonCodeData(
-            venv_name=f"venv_pyt_{name}",
             code="def run(): return 'ok'",
             entrypoint="run",
-            libraries=[],
             **(python_code_overrides or {}),
         ),
     )

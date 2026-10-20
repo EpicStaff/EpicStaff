@@ -327,7 +327,7 @@ async def fake_run_code_raises(
 
 
 _FAILING_CODE = PythonCodeData(
-    venv_name="default", code="def main(): pass", entrypoint="main", libraries=[]
+    code="def main(): pass", entrypoint="main"
 )
 
 

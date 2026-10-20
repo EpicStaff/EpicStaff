@@ -365,10 +365,8 @@ class ClassificationDecisionTableNodeSubgraph:
         """
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
             python_code_data=PythonCodeData(
-                venv_name="default",
                 code=_EVALUATE_UNTIL_MATCH_CODE,
                 entrypoint="main",
-                libraries=[],
             ),
             inputs={
                 "expressions": expressions,
@@ -424,10 +422,8 @@ def main(**kwargs) -> dict:
     return _from_ns(variables)
 """
         python_code_data = PythonCodeData(
-            venv_name="default",
             code=code,
             entrypoint="main",
-            libraries=[],
         )
 
         variables_dict = state["variables"].model_dump()

@@ -31,10 +31,8 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
         storage_credentials: StorageCredentials | None = None,
     ) -> dict:
         additional_global_kwargs = additional_global_kwargs or {}
-        venv_name = python_code_data.venv_name
         code = python_code_data.code
         entrypoint = python_code_data.entrypoint
-        libraries = python_code_data.libraries
 
         global_kwargs = python_code_data.global_kwargs or {}
 
@@ -48,8 +46,6 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
         unique_task_id = str(uuid.uuid4())
         try:
             code_task_data = CodeTaskData(
-                venv_name=venv_name,
-                libraries=libraries,
                 venv_id=python_code_data.venv_id,
                 code=code,
                 execution_id=unique_task_id,

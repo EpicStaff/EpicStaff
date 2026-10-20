@@ -110,10 +110,8 @@ def mock_session_data() -> SessionData:
                 PythonNodeData(
                     node_name="start_node",
                     python_code=PythonCodeData(
-                        venv_name="venv-default",
                         code="def main(): return 'next_node'",
                         entrypoint="main",
-                        libraries=[],
                         global_kwargs={},
                     ),
                     input_map={},
@@ -122,10 +120,8 @@ def mock_session_data() -> SessionData:
                 PythonNodeData(
                     node_name="end_node",
                     python_code=PythonCodeData(
-                        venv_name="venv-default",
                         code="def main(): return 'end'",
                         entrypoint="main",
-                        libraries=["requests"],
                         global_kwargs={},
                     ),
                     input_map={},
@@ -134,10 +130,8 @@ def mock_session_data() -> SessionData:
                 PythonNodeData(
                     node_name="error_node",
                     python_code=PythonCodeData(
-                        venv_name="venv-default",
                         code="def main(): return 'ERROR HANDELED'",
                         entrypoint="main",
-                        libraries=[],
                         global_kwargs={},
                     ),
                     input_map={},
@@ -379,10 +373,8 @@ def _storage_python_node_data(
     return PythonNodeData(
         node_name=node_name,
         python_code=PythonCodeData(
-            venv_name="venv-default",
             code=f"def main(): return read_from_storage('{storage_path}')",
             entrypoint="main",
-            libraries=[],
             global_kwargs={},
             use_storage=True,
             storage_allowed_paths=["org_1/"],
