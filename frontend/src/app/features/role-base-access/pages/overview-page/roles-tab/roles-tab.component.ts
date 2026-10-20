@@ -114,17 +114,6 @@ export class RolesTabComponent {
         ...this.rolesService.customRoles().map((r) => this.roleToRow(r)),
     ]);
 
-    /** Client-side search filter over already-fetched rows. */
-    readonly filteredRows = computed<TableRow[]>(() => {
-        const term = this.searchTerm().toLowerCase().trim();
-        if (!term) return this.rows();
-        return this.rows().filter(
-            (row) =>
-                (row['name'] as string)?.toLowerCase().includes(term) ||
-                (row['description'] as string)?.toLowerCase().includes(term)
-        );
-    });
-
     private readonly filters$ = combineLatest([
         toObservable(this.orgFilterIds),
         toObservable(this.searchTerm).pipe(debounceTime(300), distinctUntilChanged()),
@@ -137,10 +126,9 @@ export class RolesTabComponent {
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 tap(() => this.isLoading.set(true)),
-                switchMap(() => {
+                switchMap(([orgIds, searchTerm]) => {
                     const params: LoadRolesParams = {};
-                    const orgIds = this.orgFilterIds();
-                    const search = this.searchTerm().trim();
+                    const search = searchTerm.trim();
                     if (orgIds.length) params.orgIds = orgIds;
                     if (search) params.search = search;
                     return this.rolesService.loadRoles(params).pipe(

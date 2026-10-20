@@ -71,6 +71,7 @@ export class OrganizationsTabComponent {
     searchTerm = signal('');
     statusFilter = signal<boolean[]>([]);
     isLoading = signal(true);
+    readonly reloadTrigger = signal(0);
 
     /** Superadmin-only: create/deactivate/reactivate are platform actions per catalog. */
     readonly isSuperadmin = this.permissionsService.isSuperadmin;
@@ -97,6 +98,7 @@ export class OrganizationsTabComponent {
     private readonly filters$ = combineLatest([
         toObservable(this.statusFilter),
         toObservable(this.searchTerm).pipe(debounceTime(300), distinctUntilChanged()),
+        toObservable(this.reloadTrigger),
     ]);
 
     constructor() {
@@ -104,11 +106,11 @@ export class OrganizationsTabComponent {
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 tap(() => this.isLoading.set(true)),
-                switchMap(() =>
+                switchMap(([statusFilter, searchTerm]) =>
                     this.organizationStorage
                         .getOrganizations(true, {
-                            is_active: this.statusFilter().length ? this.statusFilter() : undefined,
-                            search: this.searchTerm() || undefined,
+                            is_active: statusFilter.length ? statusFilter : undefined,
+                            search: searchTerm || undefined,
                         })
                         .pipe(
                             catchError((err: HttpErrorResponse) => {
@@ -161,7 +163,7 @@ export class OrganizationsTabComponent {
     private refreshOnClose(ref: DialogRef<unknown, CreateOrganizationDialogComponent>): void {
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) {
-                this.organizationStorage.getOrganizations(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+                this.reloadTrigger.update((v) => v + 1);
             }
         });
     }

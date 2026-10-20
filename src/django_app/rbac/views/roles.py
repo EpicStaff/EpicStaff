@@ -76,7 +76,9 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
         self._service.attach_role_display(roles=page, scope_org_ids=scope_org_ids)
         response = paginator.get_paginated_response(RoleResponseSerializer(page, many=True).data)
         built_ins = self._service.list_built_in_roles(
-            scope_org_ids=scope_org_ids, assignable_in=assignable_in
+            scope_org_ids=scope_org_ids,
+            assignable_in=assignable_in,
+            search=request.query_params.get("search"),
         )
         response.data["built_in_roles"] = RoleResponseSerializer(built_ins, many=True).data
         return response

@@ -230,7 +230,7 @@ class RoleManagementService(CrossOrgResourceService):
 
     # ---- cross-org list ----
 
-    def list_built_in_roles(self, scope_org_ids, assignable_in=None) -> list[Role]:
+    def list_built_in_roles(self, scope_org_ids, assignable_in=None, search=None) -> list[Role]:
         """The four built-in templates. `assignable_in` (a
         {org_id: EffectivePermissions} map, or None for no filtering) keeps
         only the ones the caller may assign — by **union** across the
@@ -243,11 +243,14 @@ class RoleManagementService(CrossOrgResourceService):
         all (superadmin, count every organization), `set()` means an empty
         selection (count nothing) — the two are opposites, never test one by
         truthiness."""
-        roles = list(
+        qs = (
             Role.objects.filter(is_built_in=True, org__isnull=True)
             .order_by("name")
             .prefetch_related("permissions_set")
         )
+        if search:
+            qs = qs.filter(Q(name__icontains=search) | Q(description__icontains=search))
+        roles = list(qs)
         if assignable_in is not None:
             roles = [
                 role

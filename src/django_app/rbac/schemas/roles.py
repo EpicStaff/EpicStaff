@@ -65,9 +65,9 @@ ROLES_LIST_GET = {
         "(`results`, paginated) from every org the caller can read. Filter "
         "with ?org_ids=; omit for all readable orgs. Use "
         "?assignable_org_ids= instead to list only the roles the caller may "
-        "assign — the response shape is identical. ?search= narrows custom "
-        "roles by name or description (case-insensitive); built-in roles "
-        "are unaffected. Each role carries `assigned_count` and an "
+        "assign — the response shape is identical. ?search= narrows both "
+        "custom and built-in roles by name or description "
+        "(case-insensitive). Each role carries `assigned_count` and an "
         "`assigned_by_org` breakdown, covering the orgs in scope for this "
         "request."
     ),
@@ -103,7 +103,7 @@ ROLES_LIST_GET = {
             required=False,
             description=(
                 "Case-insensitive text search on role name or description. "
-                "Applied to custom roles only; built-in roles are unaffected."
+                "Applied to both custom and built-in roles."
             ),
         ),
         OpenApiParameter(

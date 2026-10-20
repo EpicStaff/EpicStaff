@@ -641,25 +641,30 @@ def test_search_filters_custom_roles_by_description(auth_client, admin_acme, acm
 
 
 @pytest.mark.django_db
-def test_search_is_case_insensitive(auth_client, admin_acme, acme):
+@pytest.mark.parametrize("term", ["BILLING", "Billing", "billing"])
+def test_search_is_case_insensitive(auth_client, admin_acme, acme, term):
     Role.objects.create(name="Billing Manager", org=acme, is_built_in=False)
 
-    for term in ("BILLING", "Billing", "billing"):
-        body = auth_client(admin_acme).get(f"{ROLES_URL}?search={term}").json()
-        assert len(body["results"]) == 1, f"search={term} should match"
-        assert body["results"][0]["name"] == "Billing Manager"
+    body = auth_client(admin_acme).get(f"{ROLES_URL}?search={term}").json()
+    assert len(body["results"]) == 1
+    assert body["results"][0]["name"] == "Billing Manager"
 
 
 @pytest.mark.django_db
-def test_search_does_not_affect_built_in_roles(auth_client, admin_acme, acme):
-    """Built-in roles are returned unchanged regardless of the search term."""
+def test_search_filters_built_in_roles_too(auth_client, admin_acme, acme):
+    """Search applies to both custom and built-in roles."""
     Role.objects.create(name="Custom Thing", org=acme, is_built_in=False)
 
-    body = auth_client(admin_acme).get(f"{ROLES_URL}?search=nonexistent").json()
+    body = auth_client(admin_acme).get(f"{ROLES_URL}?search=admin").json()
 
     assert body["results"] == []
     builtin_names = {r["name"] for r in body["built_in_roles"]}
-    assert {"Superadmin", "Org Admin", "Member", "Viewer"} == builtin_names
+    assert "Org Admin" in builtin_names
+    assert "Member" not in builtin_names
+
+    body_none = auth_client(admin_acme).get(f"{ROLES_URL}?search=nonexistent").json()
+    assert body_none["results"] == []
+    assert body_none["built_in_roles"] == []
 
 
 @pytest.mark.django_db
@@ -670,6 +675,19 @@ def test_search_with_empty_string_returns_all(auth_client, admin_acme, acme):
     body = auth_client(admin_acme).get(f"{ROLES_URL}?search=").json()
 
     assert len(body["results"]) == 2
+
+
+@pytest.mark.django_db
+def test_search_handles_null_description(auth_client, admin_acme, acme):
+    """Roles with description=None must not crash the icontains filter."""
+    Role.objects.create(name="NoDesc", description=None, org=acme, is_built_in=False)
+    Role.objects.create(name="HasDesc", description="billing info", org=acme, is_built_in=False)
+
+    body = auth_client(admin_acme).get(f"{ROLES_URL}?search=billing").json()
+
+    custom_names = {r["name"] for r in body["results"]}
+    assert "HasDesc" in custom_names
+    assert "NoDesc" not in custom_names
 
 
 @pytest.mark.django_db

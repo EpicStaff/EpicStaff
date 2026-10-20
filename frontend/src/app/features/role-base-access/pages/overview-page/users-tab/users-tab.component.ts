@@ -102,7 +102,7 @@ export class UsersTabComponent {
 
     private aggregatedUsers = signal<AggregatedUser[]>([]);
 
-    usersData = signal<TableRow[]>([]);
+    usersData = computed<TableRow[]>(() => this.aggregatedUsers().map((u) => this.mapToRow(u)));
     searchTerm = signal('');
     isLoading = signal(true);
     readonly orgFilterIds = signal<number[]>([]);
@@ -195,11 +195,10 @@ export class UsersTabComponent {
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 tap(() => this.isLoading.set(true)),
-                switchMap(() => {
-                    const orgIds = this.orgFilterIds();
+                switchMap(([orgIds, searchTerm]) => {
                     const source$ = this.permissionsService.isSuperadmin
-                        ? this.loadFromAdminUsers(orgIds)
-                        : this.loadFromMemberships(orgIds);
+                        ? this.loadFromAdminUsers(orgIds, searchTerm)
+                        : this.loadFromMemberships(orgIds, searchTerm);
                     return source$.pipe(
                         catchError(() => EMPTY),
                         finalize(() => this.isLoading.set(false))
@@ -208,7 +207,6 @@ export class UsersTabComponent {
             )
             .subscribe((users) => {
                 this.aggregatedUsers.set(users);
-                this.usersData.set(users.map((u) => this.mapToRow(u)));
                 this.roleFilterItems.set(this.extractRoleFilterItems(users));
             });
     }
@@ -415,18 +413,18 @@ export class UsersTabComponent {
         });
     }
 
-    private loadFromAdminUsers(orgIds: number[]): Observable<AggregatedUser[]> {
+    private loadFromAdminUsers(orgIds: number[], searchTerm: string): Observable<AggregatedUser[]> {
         const params: ListAdminUsersParams = {};
         if (orgIds.length) params.orgIds = orgIds;
-        const search = this.searchTerm().trim();
+        const search = searchTerm.trim();
         if (search) params.search = search;
         return this.adminUserService.getUsers(params).pipe(map((page) => adminUsersToAggregated(page.results)));
     }
 
-    private loadFromMemberships(orgIds: number[]): Observable<AggregatedUser[]> {
+    private loadFromMemberships(orgIds: number[], searchTerm: string): Observable<AggregatedUser[]> {
         const params: ListMembershipsParams = {};
         if (orgIds.length) params.org_ids = orgIds;
-        const search = this.searchTerm().trim();
+        const search = searchTerm.trim();
         if (search) params.search = search;
         return this.membershipsService.list(params).pipe(map((page) => aggregateMembershipsByUser(page.results)));
     }
