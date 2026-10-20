@@ -73,7 +73,7 @@ export class ExecutionTimeoutFieldComponent {
             maxSeconds === null
                 ? executionTimeoutMinimumRule(minSeconds)
                 : `${formatDurationInWords(minSeconds)} to ${formatDurationInWords(maxSeconds)}`;
-        return `How long one run of this code may take before it is stopped (${range}). Installing its libraries does not count. ${EXECUTION_TIMEOUT_INPUT_HINT}`;
+        return `Code is stopped if it runs longer than this (${range}).`;
     });
     /**
      * Below the minimum (once the input is left), or above the maximum. Only the first makes the control invalid: a
@@ -102,6 +102,14 @@ export class ExecutionTimeoutFieldComponent {
         [this.typingHintId, this.hint() ? this.hintId : '', this.messageId].filter(Boolean).join(' ')
     );
 
+    /** Follows the control of the current field: its value now, and every later change, until the field is replaced. */
+    private readonly syncWithControl = effect((onCleanup) => {
+        const { control } = this.field();
+        this.totalSeconds.set(control.value);
+        const subscription = control.valueChanges.subscribe((value) => this.totalSeconds.set(value));
+        onCleanup(() => subscription.unsubscribe());
+    });
+
     protected readonly typingHint = EXECUTION_TIMEOUT_INPUT_HINT;
     protected readonly stepSeconds = EXECUTION_TIMEOUT_STEP_SECONDS;
     protected readonly decreaseLabel = `Decrease by ${EXECUTION_TIMEOUT_STEP_SECONDS} seconds`;
@@ -109,15 +117,6 @@ export class ExecutionTimeoutFieldComponent {
     protected readonly typingHintId = `execution-timeout-typing-hint-${nextFieldId}`;
     protected readonly hintId = `execution-timeout-hint-${nextFieldId}`;
     protected readonly messageId = `execution-timeout-message-${nextFieldId++}`;
-
-    constructor() {
-        effect((onCleanup) => {
-            const { control } = this.field();
-            this.totalSeconds.set(control.value);
-            const subscription = control.valueChanges.subscribe((value) => this.totalSeconds.set(value));
-            onCleanup(() => subscription.unsubscribe());
-        });
-    }
 
     /** An `input` event; skipped while an input method composes text, which `compositionend` then masks. */
     protected onInputEvent(event: Event, input: HTMLInputElement): void {

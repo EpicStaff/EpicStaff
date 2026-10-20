@@ -1,6 +1,6 @@
 import { inject, Injectable, signal, untracked } from '@angular/core';
 import { ExecutionTimeoutLimits } from '@shared/models';
-import { map, Observable, of, tap } from 'rxjs';
+import { finalize, map, Observable, of, shareReplay, tap } from 'rxjs';
 
 import { StorageService } from '../storage-service.interface';
 import { ExecutionTimeoutLimitsApiService } from './execution-timeout-limits-api.service';
@@ -14,11 +14,14 @@ import { ExecutionTimeoutLimitsApiService } from './execution-timeout-limits-api
 export class ExecutionTimeoutLimitsStorageService implements StorageService {
     private readonly executionTimeoutLimitsApiService = inject(ExecutionTimeoutLimitsApiService);
     private readonly limitsSignal = signal<ExecutionTimeoutLimits | null>(null);
+    /** The request still waiting for its response, shared by every caller until it ends; a failed one is not kept. */
+    private pendingLoad: Observable<ExecutionTimeoutLimits> | null = null;
 
+    /** The limits, asking the backend only when they are neither loaded nor already being asked for. */
     public load(): Observable<ExecutionTimeoutLimits> {
         const loaded = this.limitsSignal();
         if (loaded) return of(loaded);
-        return this.executionTimeoutLimitsApiService.getExecutionTimeoutLimits().pipe(
+        this.pendingLoad ??= this.executionTimeoutLimitsApiService.getExecutionTimeoutLimits().pipe(
             map(
                 (response): ExecutionTimeoutLimits => ({
                     minSeconds: response.min_seconds,
@@ -26,8 +29,11 @@ export class ExecutionTimeoutLimitsStorageService implements StorageService {
                     maxSeconds: response.max_seconds,
                 })
             ),
-            tap((limits) => this.limitsSignal.set(limits))
+            tap((limits) => this.limitsSignal.set(limits)),
+            finalize(() => (this.pendingLoad = null)),
+            shareReplay(1)
         );
+        return this.pendingLoad;
     }
 
     /**

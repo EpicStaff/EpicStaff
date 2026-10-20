@@ -1,3 +1,4 @@
+import { DebugElement } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 
@@ -80,10 +81,18 @@ describe('ExecutionTimeoutFieldComponent', () => {
         fixture.detectChanges();
     }
 
+    function tooltipElement(): DebugElement {
+        return fixture.debugElement.query(By.directive(TooltipComponent));
+    }
+
     function tooltipText(): string {
-        return (
-            fixture.debugElement.query(By.directive(TooltipComponent)).componentInstance as TooltipComponent
-        ).tooltipText();
+        return (tooltipElement().componentInstance as TooltipComponent).tooltipText();
+    }
+
+    function visibleLabel(): string | undefined {
+        return (tooltipElement().nativeElement as HTMLElement)
+            .querySelector('.tooltip-label-text')
+            ?.textContent?.trim();
     }
 
     it('shows the timeout as hh:mm:ss in one numeric input', () => {
@@ -119,10 +128,11 @@ describe('ExecutionTimeoutFieldComponent', () => {
         expect(input().getAttribute('aria-invalid')).toBe('false');
     });
 
-    it('says how to type in its tooltip', () => {
+    it('says in its tooltip only that the code is stopped past the timeout, leaving how to type to screen readers', () => {
         render(new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS));
 
-        expect(tooltipText()).toContain(EXECUTION_TIMEOUT_INPUT_HINT);
+        expect(tooltipText()).toBe('Code is stopped if it runs longer than this (5 seconds to 1 hour).');
+        expect(tooltipText()).not.toContain(EXECUTION_TIMEOUT_INPUT_HINT);
     });
 
     it('gives every field its own message id', () => {
@@ -426,7 +436,7 @@ describe('ExecutionTimeoutFieldComponent', () => {
     it('names only the minimum in its tooltip when there is no maximum', () => {
         render(new ExecutionTimeoutFormField(90, { ...TEST_EXECUTION_TIMEOUT_LIMITS, maxSeconds: null }));
 
-        expect(tooltipText()).toContain('(at least 5 seconds)');
+        expect(tooltipText()).toBe('Code is stopped if it runs longer than this (at least 5 seconds).');
     });
 
     it('shows no message for a timeout within the limits', () => {
@@ -604,6 +614,20 @@ describe('ExecutionTimeoutFieldComponent', () => {
         expect(group.contains(input())).toBe(true);
         expect(group.contains(button('Decrease'))).toBe(true);
         expect(group.contains(button('Increase'))).toBe(true);
+    });
+
+    it('shows the default label above the field', () => {
+        render(new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS));
+
+        expect(visibleLabel()).toBe('Execution timeout');
+    });
+
+    it('shows the label the form gives above the field', () => {
+        render(new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS), {
+            label: 'Post-computation execution timeout',
+        });
+
+        expect(visibleLabel()).toBe('Post-computation execution timeout');
     });
 
     it('names the group and the input by the label the form gives', () => {

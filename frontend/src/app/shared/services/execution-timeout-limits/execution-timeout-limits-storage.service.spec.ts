@@ -64,6 +64,26 @@ describe('ExecutionTimeoutLimitsStorageService', () => {
         expect(again).toEqual(storage.limits());
     });
 
+    it('asks the backend once when a second caller loads before the first response', async () => {
+        const first = firstValueFrom(storage.load());
+        const second = firstValueFrom(storage.load());
+
+        http.expectOne(LIMITS_URL).flush(RESPONSE);
+
+        expect(await first).toEqual(TEST_EXECUTION_TIMEOUT_LIMITS);
+        expect(await second).toEqual(TEST_EXECUTION_TIMEOUT_LIMITS);
+    });
+
+    it('asks the backend again after a failed request', async () => {
+        const failed = firstValueFrom(storage.load());
+        http.expectOne(LIMITS_URL).flush(null, { status: 500, statusText: 'Server Error' });
+        await expect(failed).rejects.toBeDefined();
+
+        await loadWith(RESPONSE);
+
+        expect(storage.limits()).toEqual(TEST_EXECUTION_TIMEOUT_LIMITS);
+    });
+
     it('forgets the limits on logout, so the next session asks the backend again', async () => {
         await loadWith(RESPONSE);
 
