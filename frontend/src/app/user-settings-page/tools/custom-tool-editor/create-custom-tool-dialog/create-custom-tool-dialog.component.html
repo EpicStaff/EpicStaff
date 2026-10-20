@@ -322,15 +322,7 @@
                     }
                 </div>
 
-                <div class="form-section">
-                    <app-chips-input
-                        label="Library"
-                        [readOnly]="isBuiltIn()"
-                        tooltipText="Add Python libraries needed by your tool. They must be available in the Python environment that runs the tool."
-                        inputPlaceholder="Enter library name..."
-                        formControlName="libraries"
-                    ></app-chips-input>
-                </div>
+                <div class="form-section"></div>
             </section>
 
             @if (activeEditor() !== ActiveEditor.None) {

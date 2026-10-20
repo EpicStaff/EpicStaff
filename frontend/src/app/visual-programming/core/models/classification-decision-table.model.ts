@@ -5,7 +5,6 @@ export interface ComputationConfig {
     code: string;
     input_map?: Record<string, string>;
     output_variable_path?: string | null;
-    libraries?: string[];
     secret_ids?: number[];
     secret_names?: string[];
 }

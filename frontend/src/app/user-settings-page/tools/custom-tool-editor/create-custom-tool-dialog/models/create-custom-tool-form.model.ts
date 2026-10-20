@@ -4,7 +4,6 @@ export interface CreateCustomToolFormValue {
     description: string;
     pythonCode: string;
     variablesJson: string;
-    libraries: string[];
     useStorage: boolean;
 }
 
@@ -35,7 +34,6 @@ export function toCreatePayload(
         python_code: {
             code: form.pythonCode,
             entrypoint: preserved.entrypoint?.trim() || DEFAULT_ENTRYPOINT,
-            libraries: form.libraries,
             global_kwargs: {},
             secret_ids: secretIds,
         },

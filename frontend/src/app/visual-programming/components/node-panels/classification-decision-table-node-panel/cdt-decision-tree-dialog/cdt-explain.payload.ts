@@ -70,7 +70,6 @@ export function buildCdtExplainBlocks(input: CdtDecisionTreeInput): ReadonlyMap<
             code: input.preCode,
             input_map: input.preInputMap ?? {},
             output_variable_path: input.preOutputVariablePath,
-            libraries: input.preLibraries,
         });
     }
 
@@ -85,7 +84,6 @@ export function buildCdtExplainBlocks(input: CdtDecisionTreeInput): ReadonlyMap<
                 code: input.postCode,
                 input_map: input.postInputMap ?? {},
                 output_variable_path: input.postOutputVariablePath,
-                libraries: input.postLibraries,
             });
         }
     }

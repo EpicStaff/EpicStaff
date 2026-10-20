@@ -42,7 +42,7 @@ const DTO: GetWebhookTriggerNodeRequest = {
     id: 21,
     graph: 1,
     node_name: 'Webhook Trigger #1',
-    python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
+    python_code: { id: 5, code: 'def main(trigger_payload): pass', entrypoint: 'main' },
     input_map: {},
     output_variable_path: null,
     webhook_trigger_path: '',
@@ -164,7 +164,7 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
         const EDITED_PAYLOAD = { order: { id: '200' } };
 
         function invalidateForm(): void {
-            panel.form.patchValue({ node_name: '', libraries: 'requests' });
+            panel.form.patchValue({ node_name: '' });
             expect(panel.form.invalid).toBe(true);
         }
 
@@ -195,7 +195,7 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
 
             expect(toast['warning']).not.toHaveBeenCalled();
             expect(panel.isDirty()).toBe(true);
-            expect(panel.form.value).toEqual(expect.objectContaining({ node_name: '', libraries: 'requests' }));
+            expect(panel.form.value).toEqual(expect.objectContaining({ node_name: '' }));
             expect(editor().testPayload.text()).toBe(JSON.stringify(EDITED_PAYLOAD));
             expect(editor().testPayload.isEdited()).toBe(true);
             // The payload edit is still unsaved: closing the panel saves it.
@@ -247,7 +247,6 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
             const savedNode = panel.onSave();
 
             expect(savedNode!.node_name).toBe('Fixed name');
-            expect(savedNode!.data.python_code.libraries).toEqual(['requests']);
             expect(savedNode!.data.test_payload).toEqual(EDITED_PAYLOAD);
             expect(panel.isDirty()).toBe(false);
         });
@@ -594,13 +593,9 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             expect(runPanel.runCodeBlocker()).toBeNull();
         });
 
-        it('asks to save after a libraries or secrets edit', () => {
+        it('asks to save after a secrets edit', () => {
             const runPanel = open();
 
-            panel().form.patchValue({ libraries: 'requests' });
-            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
-
-            panel().form.patchValue({ libraries: '' });
             panel().onSecretsChange([7]);
             expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
         });
@@ -627,16 +622,14 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             expect(reopened.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
         });
 
-        it('clears once the saved graph has the edited code, libraries and secrets', () => {
+        it('clears once the saved graph has the edited code and secrets', () => {
             open();
             panel().onPythonCodeChange('def main(**kwargs): return 2');
-            panel().form.patchValue({ libraries: 'requests, pandas' });
             panel().onSecretsChange([9, 7]);
 
             bindStoredGraph(
                 asStored(DTO, {
                     code: 'def main(**kwargs): return 2',
-                    libraries: ['requests', 'pandas'],
                     secrets: [
                         { id: 7, name: 'A' },
                         { id: 9, name: 'B' },
@@ -768,12 +761,11 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             expect(runPanel.runCodeBlocker()).toBeNull();
         });
 
-        it('is offered after a code, libraries or secrets edit and saves the edited node', () => {
+        it('is offered after a code or secrets edit and saves the edited node', () => {
             const runPanel = open();
             expect(panel().needsSave()).toBe(false);
 
             panel().onPythonCodeChange('def main(**kwargs): return 2\n');
-            panel().form.patchValue({ libraries: 'requests' });
             panel().onSecretsChange([7]);
             expect(panel().isDirty()).toBe(true);
             expect(panel().needsSave()).toBe(true);
@@ -784,7 +776,6 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             expect(savedNode.data.python_code).toEqual(
                 expect.objectContaining({
                     code: 'def main(**kwargs): return 2\n',
-                    libraries: ['requests'],
                     secret_ids: [7],
                 })
             );
@@ -794,7 +785,6 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             bindStoredGraph(
                 asStored(DTO, {
                     code: 'def main(**kwargs): return 2\n',
-                    libraries: ['requests'],
                     secrets: [{ id: 7, name: 'A' }],
                 })
             );

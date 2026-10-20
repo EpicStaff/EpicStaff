@@ -107,7 +107,6 @@ export const livePython: PythonNode = {
         id: 0,
         code: 'def main(): pass',
         entrypoint: 'main',
-        libraries: ['requests', 'pandas'],
         secrets: [{ id: 101, name: 'API_KEY' }],
     },
 };
@@ -176,7 +175,7 @@ export const liveWebhook: GetWebhookTriggerNodeRequest = {
     node_name: 'Webhook',
     webhook_trigger_path: '',
     webhook_trigger: LIVE_WEBHOOK_TRIGGER_ID, // a bare id, in the graph response and in the export alike
-    python_code: { id: 0, code: 'def main(): pass', entrypoint: 'main', libraries: [], secrets: [] },
+    python_code: { id: 0, code: 'def main(): pass', entrypoint: 'main', secrets: [] },
     test_payload: { id: '104' },
     use_storage: false,
 };
@@ -243,7 +242,6 @@ export const liveClassificationTable: GetClassificationDecisionTableNodeRequest 
     pre_python_code: {
         code: 'def main(): pass',
         entrypoint: 'main',
-        libraries: ['numpy'],
         global_kwargs: {},
         secrets: [{ id: 101, name: 'API_KEY' }],
     },

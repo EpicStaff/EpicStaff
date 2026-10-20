@@ -16,7 +16,6 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
         nodeNumber: ui.nodeNumber,
         data: {
             name: pn.node_name,
-            libraries: pn.python_code.libraries,
             code: pn.python_code.code,
             entrypoint: pn.python_code.entrypoint,
             use_storage: pn.use_storage ?? false,

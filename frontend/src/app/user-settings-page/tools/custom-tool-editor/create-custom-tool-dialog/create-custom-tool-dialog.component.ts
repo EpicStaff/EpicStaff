@@ -188,7 +188,6 @@ export class CreateCustomToolDialogComponent {
             Validators.required,
         ]),
         variablesJson: this.fb.control(this.initialVariablesJson(), [Validators.required]),
-        libraries: this.fb.control<string[]>(this.selectedTool()?.python_code?.libraries ?? []),
         useStorage: this.fb.control(this.selectedTool()?.use_storage ?? false),
     });
 
@@ -621,12 +620,11 @@ export class CreateCustomToolDialogComponent {
     }
 
     private computeSnapshot(): string {
-        const { name, description, pythonCode, libraries, useStorage } = this.form.getRawValue();
+        const { name, description, pythonCode, useStorage } = this.form.getRawValue();
         return JSON.stringify({
             name,
             description,
             pythonCode,
-            libraries: [...libraries].sort(),
             useStorage,
             variables: this.snapshotVariables(),
             secretIds: [...this.selectedSecretIds()].sort(),

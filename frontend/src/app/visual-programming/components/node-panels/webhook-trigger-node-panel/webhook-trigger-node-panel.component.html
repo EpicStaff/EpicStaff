@@ -132,15 +132,6 @@
                         (valueChange)="onSecretsChange($event)"
                     />
 
-                    <app-custom-input
-                        label="Libraries"
-                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                        formControlName="libraries"
-                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                        [activeColor]="activeColor"
-                        [readonly]="isReadOnly()"
-                    ></app-custom-input>
-
                     <app-node-storage-section
                         [readonly]="isReadOnly()"
                         [useStorage]="useStorage()"

@@ -205,7 +205,6 @@ function buildCdtNodePayload(
                 ? null
                 : {
                       code: preCodeValue,
-                      libraries: preComp?.libraries ?? [],
                       entrypoint: 'main',
                       global_kwargs: {},
                       secret_ids: preSecretIds,
@@ -218,7 +217,6 @@ function buildCdtNodePayload(
                 ? null
                 : {
                       code: postCodeValue,
-                      libraries: postComp?.libraries ?? [],
                       entrypoint: 'main',
                       global_kwargs: {},
                       secret_ids: postSecretIds,

@@ -33,7 +33,6 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { describeTestRunBlocker, formatTestPayload } from '../../../utils/test-run';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
-import { parseCommaSeparatedList } from '../node-panel-form.utils';
 import { PythonTerminalComponent } from '../python-node-panel/python-terminal/python-terminal.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
@@ -274,7 +273,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     initializeForm(): FormGroup {
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
-            libraries: [this.node().data.python_code.libraries?.join(', ') || ''],
             webhook_trigger: [this.node().data.webhook_trigger ?? null],
         });
         this.pythonCode = this.node().data.python_code.code || '';
@@ -302,7 +300,6 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
                     name: this.node().data.python_code.name || 'Python Code',
                     code: this.pythonCode,
                     entrypoint: 'main',
-                    libraries: this.libraries(),
                     secret_ids: this.selectedSecretIds(),
                     secret_names: this.secretNames(),
                 },
@@ -358,19 +355,15 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.copied.set(true);
     }
 
-    /** The code, libraries, secrets or storage flag in the panel are not the ones the backend has stored. */
+    /** The code, secrets or storage flag in the panel are not the ones the backend has stored. */
     private differsFromSaved(savedNode: GetWebhookTriggerNodeRequest): boolean {
         this.dirtyCheckTick();
         if (!this.form) return true;
         const savedCode = savedNode.python_code;
-        const saved = pythonCodeSignature(savedCode.code, savedCode.libraries, toSecretIds(savedCode.secrets));
+        const saved = pythonCodeSignature(savedCode.code, toSecretIds(savedCode.secrets));
         return (
-            saved !== pythonCodeSignature(this.pythonCode, this.libraries(), this.selectedSecretIds()) ||
+            saved !== pythonCodeSignature(this.pythonCode, this.selectedSecretIds()) ||
             (savedNode.use_storage ?? false) !== this.useStorage()
         );
-    }
-
-    private libraries(): string[] {
-        return parseCommaSeparatedList(this.form.value.libraries);
     }
 }

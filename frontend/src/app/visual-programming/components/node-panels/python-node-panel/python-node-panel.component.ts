@@ -26,12 +26,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
-import {
-    createInputMapFromPairs,
-    getValidInputPairs,
-    initializeInputMap,
-    parseCommaSeparatedList,
-} from '../node-panel-form.utils';
+import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { parseTestInputValues, PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     NODE_SAVING_MESSAGE,
@@ -130,7 +125,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
     public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
     private wasSaving = false;
-    /** How the panel's code, libraries, secrets and storage flag relate to the ones the backend stores for the node. */
+    /** How the panel's code, secrets and storage flag relate to the ones the backend stores for the node. */
     private readonly storedCodeState = computed<StoredCodeState>(() =>
         resolveStoredCodeState(
             this.flowService.hasSavedGraph(),
@@ -306,7 +301,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
-            libraries: [this.node().data.libraries?.join(', ') || ''],
             venv: [this.node().data.venv_id ?? null],
             test_input: this.fb.array([]),
         });
@@ -348,8 +342,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 }
             }
         }
-        const librariesArray = parseCommaSeparatedList(this.form.value.libraries);
-
         return {
             ...this.node(),
             node_name: this.form.value.node_name,
@@ -360,7 +352,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 name: this.form.value.node_name || 'Python Code',
                 code: this.pythonCode,
                 entrypoint: 'main',
-                libraries: librariesArray,
                 venv_id: this.form.value.venv ?? null,
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
@@ -422,17 +413,13 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         });
     }
 
-    /** The code, libraries, secrets or storage flag in the panel are not the ones the backend stores. */
+    /** The code, secrets or storage flag in the panel are not the ones the backend stores. */
     private differsFromSaved(savedNode: PythonNode): boolean {
         this.formDirtyTick();
         if (!this.form) return true;
         const savedCode = savedNode.python_code;
-        const saved = pythonCodeSignature(savedCode.code, savedCode.libraries, toSecretIds(savedCode.secrets));
-        const current = pythonCodeSignature(
-            this.pythonCode,
-            parseCommaSeparatedList(this.form.value.libraries),
-            this.selectedSecretIds()
-        );
+        const saved = pythonCodeSignature(savedCode.code, toSecretIds(savedCode.secrets));
+        const current = pythonCodeSignature(this.pythonCode, this.selectedSecretIds());
         return saved !== current || (savedNode.use_storage ?? false) !== this.useStorage();
     }
 }

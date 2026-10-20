@@ -14,7 +14,6 @@ const LOADED_TOOL: GetPythonCodeToolRequest = {
         id: 70,
         code: 'def main():\n    return 1\n',
         entrypoint: 'main',
-        libraries: ['requests'],
         secrets: [{ id: 4, name: 'API_TOKEN' }],
     },
     name: 'Fetch orders',
@@ -71,7 +70,6 @@ describe('toCreatePayload sent through CustomToolsService', () => {
                 description: LOADED_TOOL.description,
                 pythonCode: LOADED_TOOL.python_code.code,
                 variablesJson: JSON.stringify(LOADED_TOOL.variables),
-                libraries: LOADED_TOOL.python_code.libraries,
                 useStorage: LOADED_TOOL.use_storage ?? false,
             },
             toSecretIds(LOADED_TOOL.python_code.secrets),
@@ -90,7 +88,6 @@ describe('toCreatePayload sent through CustomToolsService', () => {
             python_code: {
                 code: 'def main():\n    return 1\n',
                 entrypoint: 'main',
-                libraries: ['requests'],
                 global_kwargs: {},
                 secret_ids: [4],
             },

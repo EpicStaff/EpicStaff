@@ -576,7 +576,7 @@ describe('FlowVisualProgrammingComponent', () => {
             id: 21,
             graph: 1,
             node_name: 'Webhook Trigger #1',
-            python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
+            python_code: { id: 5, code: 'def main(trigger_payload): pass', entrypoint: 'main' },
             input_map: {},
             output_variable_path: null,
             webhook_trigger_path: '',
@@ -766,7 +766,7 @@ describe('FlowVisualProgrammingComponent', () => {
     });
 
     describe('stored graph for the editor', () => {
-        const STORED_PYTHON_CODE = { id: 55, code: 'def main(**kwargs): pass', entrypoint: 'main', libraries: [] };
+        const STORED_PYTHON_CODE = { id: 55, code: 'def main(**kwargs): pass', entrypoint: 'main' };
 
         function loadFlowWithWebhookNode(graphId: number): void {
             flowsApi['getGraphById'].mockReturnValue(

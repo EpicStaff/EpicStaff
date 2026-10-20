@@ -191,7 +191,6 @@ export class FlowGraphCoreMenuComponent {
         if (type === NodeType.PYTHON) {
             data = {
                 name: 'Python Code Node',
-                libraries: [],
                 code: 'def main(arg1: str, arg2: str) -> dict:\n    return {\n        "result": arg1 + arg2,\n    }\n',
                 entrypoint: 'main',
             };
@@ -231,7 +230,6 @@ export class FlowGraphCoreMenuComponent {
                 webhook_trigger: null,
                 python_code: {
                     name: 'Webhook trigger Node',
-                    libraries: [],
                     code: 'def main(trigger_payload: dict, **kwargs: dict) -> dict:\n    """\n    Main handler for processing webhook-triggered events.\n\n    Parameters\n    ----------\n    trigger_payload : dict\n        The data received from a third-party service via a webhook.\n    **kwargs : dict\n        Additional domain variables passed to the function.\n\n    Returns\n    -------\n    dict\n        A dictionary containing the updated values for domain variables.\n        The returned structure must include all changes that should be\n        applied to the domain.\n    """\n    return {\n        "new_data": trigger_payload,\n    }\n',
                     entrypoint: 'main',
                 },

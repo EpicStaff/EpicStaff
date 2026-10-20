@@ -30,7 +30,6 @@ const pythonNode = {
     data: {
         code: 'def main(): pass',
         entrypoint: 'main',
-        libraries: [],
         secret_ids: [7],
         secret_names: ['STRIPE_KEY'],
     },
@@ -78,7 +77,7 @@ const STORED_NODE: PythonNode = {
     id: 31,
     node_name: 'Python #1',
     graph: 1,
-    python_code: { id: 5, libraries: ['requests'], code: 'def main(count): return count', entrypoint: 'main' },
+    python_code: { id: 5, code: 'def main(count): return count', entrypoint: 'main' },
     input_map: {},
     test_input: { count: '3' },
     output_variable_path: null,
@@ -201,18 +200,15 @@ describe('PythonNodePanelComponent test run', () => {
         });
     });
 
-    it('blocks the run after a code, libraries or secrets edit', () => {
+    it('blocks the run after a code or secrets edit', () => {
         open();
 
         panel.onPythonCodeChange('def main(count): return count + 1');
         expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
 
         panel.onPythonCodeChange(STORED_NODE.python_code.code);
-        panel.form.patchValue({ libraries: 'requests, pandas' });
-        expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
-
-        panel.form.patchValue({ libraries: 'requests' });
         expect(blocker()).toBeNull();
+
         panel.onSecretsChange([7]);
         expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
     });

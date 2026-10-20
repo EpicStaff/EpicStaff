@@ -13,21 +13,18 @@ export function toSecretNames(secrets: DeclaredSecretRef[] | undefined): string[
 
 export interface GetPythonCodeRequest {
     id: number;
-    libraries: string[];
     code: string;
     entrypoint: string;
     secrets?: DeclaredSecretRef[];
 }
 
 export interface CreatePythonCodeRequest {
-    libraries: string[];
     code: string;
     entrypoint: string;
 }
 
 export interface UpdatePythonCodeRequest {
     id: number;
-    libraries: string[];
     code: string;
     entrypoint: string;
 }
@@ -36,7 +33,6 @@ export interface UpdatePythonCodeRequest {
 export interface CustomPythonCode {
     id?: number | null;
     name: string;
-    libraries: string[];
     code: string;
     entrypoint: string;
     use_storage?: boolean;
