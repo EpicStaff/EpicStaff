@@ -179,7 +179,7 @@ describe('FlowGraphCoreMenuComponent key hint', () => {
     it('shows the key with mac symbols on a Mac', () => {
         openMenu(true);
 
-        expect(keyHint('Python Code Node')).toBe('⇧P');
+        expect(keyHint('Python Code Node')).toBe('⇧\u2009P');
     });
 
     it('shows the plus at once when a new custom shortcut takes the node key', () => {

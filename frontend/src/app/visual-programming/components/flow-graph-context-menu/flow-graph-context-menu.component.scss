@@ -1,6 +1,7 @@
 .context-menu {
-    width: 320px;
-    min-width: 320px;
+    // Fits the longest node name next to its key, e.g. "Classification Decision Table  Shift+C".
+    width: 360px;
+    min-width: 360px;
     background: var(--graphite-1005);
 
     box-shadow: 0 4px 8px var(--black-alpha-30);

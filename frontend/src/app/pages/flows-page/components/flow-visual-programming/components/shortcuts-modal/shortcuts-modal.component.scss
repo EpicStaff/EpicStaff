@@ -452,8 +452,8 @@
     gap: 4px;
 
     app-edit-button ::ng-deep .edit-btn {
-        border-color: var(--color-ks-transparent-text-60);
-        color: var(--color-text-primary);
+        border-color: var(--accent-color);
+        color: var(--accent-color);
         transition:
             background-color 0.15s ease,
             border-color 0.15s ease,
@@ -461,8 +461,7 @@
 
         &:hover:not(:disabled),
         &:focus-visible {
-            border-color: var(--color-text-primary);
-            background: var(--transparent-white-8);
+            background: var(--color-ghost-btn-active);
             outline: none;
         }
     }

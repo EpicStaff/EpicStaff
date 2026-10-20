@@ -27,6 +27,9 @@ const NODE_ACTION_BY_TYPE: ReadonlyMap<NodeType, EditorActionId> = new Map(
     )
 );
 
+// A thin space: mac key symbols written side by side (⇧P) run together at the hint's small size.
+const MAC_KEY_GAP = '\u2009';
+
 @Component({
     selector: 'app-flow-graph-core-menu',
     template: `
@@ -81,8 +84,7 @@ const NODE_ACTION_BY_TYPE: ReadonlyMap<NodeType, EditorActionId> = new Map(
                 justify-content: space-between;
                 padding: 12px 16px;
                 border-radius: 8px;
-                --row-gap: 14px;
-                gap: var(--row-gap);
+                gap: 14px;
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;
@@ -128,26 +130,16 @@ const NODE_ACTION_BY_TYPE: ReadonlyMap<NodeType, EditorActionId> = new Map(
 
             .key-hint {
                 flex-shrink: 0;
-                max-width: 0;
-                margin-left: calc(-1 * var(--row-gap));
-                overflow: hidden;
                 white-space: nowrap;
                 color: var(--color-ks-transparent-text-60);
                 font-size: var(--text-body-small-size);
                 font-weight: var(--text-body-small-weight);
                 line-height: var(--text-body-small-line-height);
-                opacity: 0;
-                transition:
-                    opacity 0.2s ease,
-                    max-width 0s linear 0.2s,
-                    margin-left 0s linear 0.2s;
+                transition: color 0.2s ease;
             }
 
             li:hover .key-hint {
-                opacity: 1;
-                max-width: 12em;
-                margin-left: 0;
-                transition: opacity 0.2s ease;
+                color: inherit;
             }
 
             li.disabled {
@@ -180,7 +172,7 @@ export class FlowGraphCoreMenuComponent {
         NODE_ACTION_BY_TYPE.forEach((actionId, type) => {
             const [chord] = bindings.get(actionId) ?? [];
             if (chord) {
-                keyHints.set(type, formatChord(chord, this.keymap.isMac).join(this.keymap.isMac ? '' : '+'));
+                keyHints.set(type, formatChord(chord, this.keymap.isMac).join(this.keymap.isMac ? MAC_KEY_GAP : '+'));
             }
         });
         return keyHints;
