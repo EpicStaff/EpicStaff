@@ -3,6 +3,7 @@ export * from './days-until.util';
 export * from './deep-equal.util';
 export * from './download-blob.util';
 export * from './escape-html.util';
+export * from './export-exclusion-warning.util';
 export * from './fetch-all-pages.util';
 export * from './flow-links';
 export * from './format-file-size.util';

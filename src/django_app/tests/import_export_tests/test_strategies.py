@@ -23,6 +23,7 @@ from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.utils import nest_owned_surface_entries
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.fixture
@@ -81,8 +82,10 @@ def agent_definition(rich_seeded_db, default_org):
 class TestAgentDefinitionStrategy:
     def test_find_existing_match(self, agent_definition, export_service):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
@@ -105,8 +108,10 @@ class TestAgentDefinitionStrategy:
         self, agent_definition, export_service, field, value
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
@@ -116,8 +121,10 @@ class TestAgentDefinitionStrategy:
 
     def test_find_existing_miss_on_llm_config(self, agent_definition, export_service):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
@@ -129,8 +136,10 @@ class TestAgentDefinitionStrategy:
         self, agent_definition, export_service
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
@@ -142,8 +151,10 @@ class TestAgentDefinitionStrategy:
         self, agent_definition, export_service
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         exported = export_data[EntityType.AGENT_DEFINITION][0]
 
         assert exported["instruction_list"] == [
@@ -155,8 +166,10 @@ class TestAgentDefinitionStrategy:
         self, agent_definition, export_service
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
@@ -185,8 +198,10 @@ class TestAgentDefinitionStrategy:
         expected_instruction_list,
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
@@ -204,8 +219,10 @@ class TestAgentDefinitionStrategy:
         self, agent_definition, export_service, default_org
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
@@ -230,8 +247,10 @@ class TestAgentDefinitionStrategy:
         )
 
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
@@ -249,8 +268,10 @@ class TestAgentDefinitionStrategy:
         )
 
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = nest_owned_surface_entries(export_data)[EntityType.AGENT_DEFINITION][0]
@@ -276,8 +297,10 @@ class TestAgentDefinitionStrategy:
             max_iter=agent_definition.max_iter,
         )
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = nest_owned_surface_entries(export_data)[EntityType.AGENT_DEFINITION][0]
@@ -291,8 +314,10 @@ class TestAgentDefinitionStrategy:
             org=default_org, name="owned_surface_x", owner_agent=agent_definition
         )
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         # After export the original is renamed and a copy takes the exact name,
         # so the copy sorts first. It owns as many surfaces as the file, in the
         # same name family but with other content, so only the content pairing
@@ -323,8 +348,10 @@ class TestAgentDefinitionStrategy:
     def test_find_existing_no_reuse_across_orgs(self, agent_definition, export_service):
         other_org = Organization.objects.create(name="Other Org")
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.AGENT_DEFINITION)
         data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
@@ -366,8 +393,10 @@ LEGACY_SINGLETON_VALUES = {
 
 def _legacy_agent_definition_payload(export_service, agent_definition, **overrides):
     export_data = export_service.export_entities(
-        EntityType.AGENT_DEFINITION, [agent_definition.id]
-    )
+        EntityType.AGENT_DEFINITION,
+        [agent_definition.id],
+        policy=UNRESTRICTED_EXPORT_POLICY,
+    ).data
     data = deepcopy(export_data[EntityType.AGENT_DEFINITION][0])
     data.update(overrides)
     return data, _build_identity_mapper(export_data)
@@ -501,8 +530,10 @@ def surface_with_tools(rich_seeded_db, default_org, mcp_tool):
 class TestSurfaceStrategy:
     def test_find_existing_match(self, surface_with_tools, export_service):
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [surface_with_tools.id]
-        )
+            EntityType.SURFACE,
+            [surface_with_tools.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.SURFACE)
         data = deepcopy(export_data[EntityType.SURFACE][0])
@@ -515,8 +546,10 @@ class TestSurfaceStrategy:
         self, surface_with_tools, export_service
     ):
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [surface_with_tools.id]
-        )
+            EntityType.SURFACE,
+            [surface_with_tools.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.SURFACE)
         data = deepcopy(export_data[EntityType.SURFACE][0])
@@ -526,8 +559,10 @@ class TestSurfaceStrategy:
 
     def test_find_existing_miss_on_tool_set(self, surface_with_tools, export_service):
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [surface_with_tools.id]
-        )
+            EntityType.SURFACE,
+            [surface_with_tools.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.SURFACE)
         data = deepcopy(export_data[EntityType.SURFACE][0])
@@ -537,8 +572,10 @@ class TestSurfaceStrategy:
 
     def test_find_existing_miss_on_tool_mode(self, surface_with_tools, export_service):
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [surface_with_tools.id]
-        )
+            EntityType.SURFACE,
+            [surface_with_tools.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.SURFACE)
         data = deepcopy(export_data[EntityType.SURFACE][0])
@@ -582,8 +619,10 @@ class TestAgentDefinitionAndSurfaceDedupOnReimport:
         self, graph_with_agent_node, export_service, import_service, default_org
     ):
         export_data = export_service.export_entities(
-            EntityType.GRAPH, [graph_with_agent_node.id]
-        )
+            EntityType.GRAPH,
+            [graph_with_agent_node.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         import_service.import_data(
             deepcopy(export_data), EntityType.GRAPH, org_id=default_org.id
@@ -629,7 +668,9 @@ class TestGraphStrategy:
 
     def test_create_entity(self, rich_seeded_db, export_service, default_org):
         graph = rich_seeded_db["graph"]
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.GRAPH)
@@ -712,8 +753,10 @@ class TestLLMConfigStrategy:
         self, exportable_agent_definition, export_service, default_org
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         strategy = _get_strategy(EntityType.LLM_CONFIG)
         config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
@@ -738,8 +781,10 @@ class TestLLMConfigStrategy:
             model=reasoning_model, reasoning_effort="high"
         )
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
         assert config_data["reasoning_effort"] == "high"
 
@@ -755,8 +800,10 @@ class TestLLMConfigStrategy:
         self, exportable_agent_definition, export_service, default_org
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
         config_data["extra_headers"] = {"X-Retry": 3}
 
@@ -771,8 +818,10 @@ class TestLLMConfigStrategy:
         self, exportable_agent_definition, export_service, default_org
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
         config_data["reasoning_effort"] = "low"
 
@@ -786,8 +835,10 @@ class TestLLMConfigStrategy:
         self, rich_seeded_db, exportable_agent_definition, export_service
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         mapper = _build_identity_mapper(export_data)
         strategy = _get_strategy(EntityType.LLM_CONFIG)
@@ -807,7 +858,9 @@ SOURCE_CREATED_AT = datetime(2001, 1, 1, tzinfo=dt_timezone.utc)
 
 def _exported_with_old_creation_time(export_service, entity_type, instance) -> dict:
     type(instance).objects.filter(pk=instance.pk).update(created_at=SOURCE_CREATED_AT)
-    return export_service.export_entities(entity_type, [instance.id])
+    return export_service.export_entities(
+        entity_type, [instance.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
 
 
 @pytest.mark.django_db

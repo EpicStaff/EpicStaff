@@ -16,6 +16,7 @@ from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.import_export.utils import nest_owned_surface_entries
 from tables.models import McpTool, PythonCode, PythonCodeTool
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.fixture
@@ -149,7 +150,9 @@ def test_agent_reused_exactly_when_owned_surfaces_match(
     if case is not None:
         next(case)
 
-    export_data = export_service.export_entities(EntityType.AGENT_DEFINITION, [agent.id])
+    export_data = export_service.export_entities(
+        EntityType.AGENT_DEFINITION, [agent.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
     entry = nest_owned_surface_entries(export_data)[EntityType.AGENT_DEFINITION][0]
     id_mapper = IDMapper()
     for entity_type in (EntityType.PYTHON_CODE_TOOL, EntityType.MCP_TOOL):

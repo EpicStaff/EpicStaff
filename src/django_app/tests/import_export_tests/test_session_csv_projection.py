@@ -18,6 +18,7 @@ from tables.import_export.strategies.session import _node_types_by_name
 from tables.models.graph_models import Graph, GraphSessionMessage
 from tables.models.session_models import Session
 from tables.services.graph_message_store import GraphMessageStore
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 ANSWER = "FastAPI is a modern, high-performance web framework."
 USAGE = {
@@ -525,7 +526,11 @@ def test_exported_session_csv_carries_flow_and_node_type(default_org):
             uuid=uuid.uuid4(),
         )
 
-    data = ExportService(entity_registry).export_entities(EntityType.SESSION, [session.id])
+    data = (
+        ExportService(entity_registry)
+        .export_entities(EntityType.SESSION, [session.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
     start, finish = _render_csv(data)
 
     assert (start["flow_id"], start["flow_name"], start["session_status"]) == (str(graph.id), "csv flow", "end")
@@ -668,7 +673,13 @@ def test_root_export_drops_subflow_copies_and_child_copy_keeps_node_type(default
         )
     GraphMessageStore(fakeredis.FakeRedis()).create_subgraph_sessions(root.id)
     child = Session.objects.get(parent_session=root)
-    export = ExportService(entity_registry).export_entities
+
+    def export(entity_type, ids):
+        return (
+            ExportService(entity_registry)
+            .export_entities(entity_type, ids, policy=UNRESTRICTED_EXPORT_POLICY)
+            .data
+        )
 
     root_rows = _render_csv(export(EntityType.SESSION, [root.id]))
     [child_row] = _render_csv(export(EntityType.SESSION, [child.id]))

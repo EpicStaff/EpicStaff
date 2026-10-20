@@ -18,7 +18,7 @@ import pytest
 from django.db.models import Model
 from django.urls import reverse
 
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 from agents.models import AgentDefinition, Surface
@@ -140,8 +140,12 @@ def flow_file_carrying(beta, export_service, openai_realtime_builtin_model):
         StartNode.objects.create(graph=graph, variables={})
         source_entity = case.create_source(beta)
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
-        carried = export_service.export_entities(case.entity_type, [source_entity.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
+        carried = export_service.export_entities(
+            case.entity_type, [source_entity.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         export_data[case.entity_type] = carried[case.entity_type]
         return data_to_json_file(data=export_data, filename="flow.json")
 

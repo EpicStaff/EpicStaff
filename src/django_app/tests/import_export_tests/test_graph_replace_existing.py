@@ -31,7 +31,7 @@ from tables.models.graph_models import GraphNote
 from tables.models.label_models import Label
 from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
 from tables.services.secrets import secret_service
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
@@ -42,7 +42,11 @@ def _flow(org, name):
 
 
 def _export(graph):
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _flow_edited_after_export(org, name="My Flow"):

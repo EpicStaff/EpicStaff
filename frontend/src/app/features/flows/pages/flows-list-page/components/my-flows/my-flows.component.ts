@@ -25,6 +25,7 @@ import {
 } from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
+import { showExportExclusionWarning } from '@shared/utils';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications';
@@ -362,7 +363,7 @@ export class MyFlowsComponent implements AfterViewChecked {
 
     private exportFlow(flow: GetGraphLightRequest): void {
         this.importExportService.exportFlow(flow.id.toString()).subscribe({
-            next: (blob) => {
+            next: ({ blob, excluded }) => {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -371,6 +372,8 @@ export class MyFlowsComponent implements AfterViewChecked {
                 window.URL.revokeObjectURL(url);
 
                 this.toastService.success(`Flow "${flow.name}" exported successfully`);
+
+                showExportExclusionWarning(this.toastService, excluded);
             },
             error: (error) => {
                 console.error('Export failed:', error);
