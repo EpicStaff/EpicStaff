@@ -449,6 +449,8 @@ export class ShortcutsModalComponent {
             };
         }
         // Wider columns never make a row taller, so rows that fit three of the four columns fit three columns.
+        // That holds while a three-column column is at least as wide as a four-column one: the panel widths and
+        // the column gap in the stylesheet keep both at 300px.
         if (!isEditorOpen && this.columnCount() > MAX_COLUMNS - 1 && usedColumns <= MAX_COLUMNS - 1) {
             return () => this.columnCount.set(MAX_COLUMNS - 1);
         }
@@ -489,6 +491,7 @@ export class ShortcutsModalComponent {
             clearTimeout(this.reflowTimer);
             this.reflowTimer = null;
         }
+        this.isReflowing.set(false);
     }
 
     private revealOpenEditor(): void {

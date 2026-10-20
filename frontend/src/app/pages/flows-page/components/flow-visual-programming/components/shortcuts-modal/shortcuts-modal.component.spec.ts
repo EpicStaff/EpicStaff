@@ -1567,6 +1567,24 @@ describe('ShortcutsModalComponent', () => {
             expect([isFading(), columnLayout()]).toEqual([false, '3 columns']);
         });
 
+        it('shows the rows again when Expand cuts a column change short', () => {
+            setUp();
+            openModal();
+            layOut(() => 3);
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+            ResizeObserverStub.resize(root().querySelector('.shortcuts__content')!);
+            render();
+            click(root().querySelector('.shortcuts__size-btn')!);
+            render();
+            pass(120);
+
+            click(root().querySelector('.shortcuts__size-btn')!);
+            render();
+            pass(200);
+
+            expect([isFading(), columnLayout()]).toEqual([false, '4 columns']);
+        });
+
         it('drops a column change that was still fading when the list closed', () => {
             setUp();
             openModal();
