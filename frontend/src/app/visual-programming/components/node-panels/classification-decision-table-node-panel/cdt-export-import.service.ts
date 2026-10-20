@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { downloadBlob } from '@shared/utils';
 
 import { CdtSection, normalizeCdtSectionColor } from '../../../core/models/cdt-section.model';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
@@ -150,15 +151,7 @@ export class CdtExportImportService {
     }
 
     public downloadFile(content: string, filename: string, mimeType: string): void {
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        URL.revokeObjectURL(url);
+        downloadBlob(new Blob([content], { type: mimeType }), filename);
     }
 
     public parseJson(content: string): CdtParseResult {

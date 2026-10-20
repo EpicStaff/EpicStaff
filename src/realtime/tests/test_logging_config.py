@@ -85,9 +85,37 @@ def test_configure_logging_twice_writes_each_record_once(unconfigured_logging, c
     assert stderr.count("single stderr handler probe") == 1
 
 
+def test_configure_logging_uses_realtime_log_level_outside_debug_mode(
+    unconfigured_logging, capsys, monkeypatch
+):
+    monkeypatch.setattr(config, "REALTIME_DEBUG_MODE", False)
+    monkeypatch.setattr(config, "LOG_LEVEL", "WARNING")
+    configure_logging()
+
+    logger.info("info record must be filtered")
+    logger.warning("warning record must be written")
+
+    stderr = capsys.readouterr().err
+    assert "info record must be filtered" not in stderr
+    assert "warning record must be written" in stderr
+
+
+def test_configure_logging_debug_mode_overrides_realtime_log_level(
+    unconfigured_logging, capsys, monkeypatch
+):
+    monkeypatch.setattr(config, "REALTIME_DEBUG_MODE", True)
+    monkeypatch.setattr(config, "LOG_LEVEL", "WARNING")
+    configure_logging()
+
+    logger.debug("debug record must be written")
+
+    assert "debug record must be written" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("debug_mode", [False, True], ids=["normal", "debug-mode"])
 def test_exceptions_are_logged_without_local_variable_values(unconfigured_logging, capsys, monkeypatch, debug_mode):
     monkeypatch.setattr(config, "REALTIME_DEBUG_MODE", debug_mode)
+    monkeypatch.setattr(config, "LOG_LEVEL", "INFO")
     configure_logging()
 
     logger.debug("debug record")

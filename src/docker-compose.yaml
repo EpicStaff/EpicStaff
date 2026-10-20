@@ -65,6 +65,7 @@ x-communication-env: &communication-env
 
 services:
   django_app:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
     build:
       context: .
@@ -172,6 +173,7 @@ services:
       retries: 100
 
   realtime:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/realtime:${IMAGE_TAG:?}
     container_name: realtime
     build:
@@ -183,6 +185,7 @@ services:
       REALTIME_PORT: ${REALTIME_PORT:?}
       REALTIME_SGI_WORKERS: ${REALTIME_SGI_WORKERS:?}
       REALTIME_PERSIST_RAW_AUDIO: ${REALTIME_PERSIST_RAW_AUDIO:?}
+      REALTIME_LOG_LEVEL: ${REALTIME_LOG_LEVEL:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       DJANGO_API_URL: ${DJANGO_API_URL:?}
@@ -207,6 +210,7 @@ services:
         condition: service_healthy
 
   manager:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/manager:${IMAGE_TAG:?}
     build:
       context: .
@@ -216,6 +220,7 @@ services:
       <<: [*docker-env, *database-env, *redis-env, *communication-env, *retention-env]
       MANAGER_DB_USER: ${MANAGER_DB_USER:?}
       MANAGER_DB_PASSWORD: ${MANAGER_DB_PASSWORD:?}
+      MANAGER_LOG_LEVEL: ${MANAGER_LOG_LEVEL:?}
       AUDITOR_REDIS_DB: ${AUDITOR_REDIS_DB:?}
       AUDITOR_EXPORT_DATA_DIR: ${AUDITOR_EXPORT_DATA_DIR:?}
       AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS: ${AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS:?}
@@ -243,6 +248,7 @@ services:
         condition: service_healthy
 
   crewdb:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/crewdb:${IMAGE_TAG:?}
     build:
       context: ./crewdb
@@ -308,6 +314,7 @@ services:
       start_period: 5s
 
   crew:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/crew:${IMAGE_TAG:?}
     build:
       context: .
@@ -348,6 +355,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   sandbox:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/sandbox:${IMAGE_TAG:?}
     build:
       context: .
@@ -370,6 +378,7 @@ services:
       SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
       SANDBOX_BLOCK_PRIVATE_NETWORK: ${SANDBOX_BLOCK_PRIVATE_NETWORK:?}
       SANDBOX_EXECUTION_TIMEOUT: ${SANDBOX_EXECUTION_TIMEOUT:?}
+      SANDBOX_LOG_LEVEL: ${SANDBOX_LOG_LEVEL:?}
       STORAGE_HOST: ${STORAGE_HOST:?}
       STORAGE_PORT: ${STORAGE_PORT:?}
       STORAGE_SSL: ${STORAGE_SSL:?}
@@ -445,6 +454,7 @@ services:
     restart: on-failure
 
   frontend:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/frontend:${IMAGE_TAG:?}
     build:
       context: ../frontend
@@ -462,6 +472,7 @@ services:
       - frontend-network
 
   webhook:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?}
     container_name: webhook
     build:
@@ -555,6 +566,7 @@ services:
     build:
       context: .
       dockerfile: ./agent/Dockerfile.agent
+    restart: unless-stopped
     # SIGTERM lets in-flight runs finish before exit; Docker's 10s default would kill them.
     stop_grace_period: 5m
     environment:
@@ -567,11 +579,14 @@ services:
       AGENT_RESULT_STREAM_TTL: ${AGENT_RESULT_STREAM_TTL:?}
       AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:?}
       AGENT_MAX_CONCURRENT_RUNS: ${AGENT_MAX_CONCURRENT_RUNS:?}
+      AGENT_REDIS_READ_RETRY_INITIAL_DELAY: ${AGENT_REDIS_READ_RETRY_INITIAL_DELAY:?}
+      AGENT_REDIS_READ_RETRY_MAX_DELAY: ${AGENT_REDIS_READ_RETRY_MAX_DELAY:?}
       AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:?}
       AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:?}
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:?}
       AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:?}
       AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:?}
+      AGENT_MCP_DESCRIBE_CACHE_TTL: ${AGENT_MCP_DESCRIBE_CACHE_TTL:?}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT:?}
     depends_on:
@@ -584,6 +599,7 @@ services:
   # COMPOSE_PROFILES includes "auditor"; AUDIT_TRAIL_ENABLED=true then makes them do work.
   # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
+    restart: unless-stopped
     image: opensearchproject/opensearch:2.19.1
     container_name: opensearch
     profiles: ["auditor"]
@@ -614,6 +630,7 @@ services:
       start_period: 30s
 
   auditor:
+    restart: unless-stopped
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
     container_name: auditor
     profiles: ["auditor"]
@@ -657,6 +674,7 @@ services:
       start_period: 5s
 
   knowledge_new:
+    restart: unless-stopped
     container_name: knowledge_new
     image: ghcr.io/epicstaff/knowledge_new:${IMAGE_TAG:?}
     build:
@@ -676,6 +694,7 @@ services:
       KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
       KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       KNOWLEDGE_DEBUG: ${KNOWLEDGE_DEBUG:?}
+      KNOWLEDGE_LOG_LEVEL: ${KNOWLEDGE_LOG_LEVEL:?}
       KNOWLEDGE_DB_USER: ${KNOWLEDGE_DB_USER:?}
       KNOWLEDGE_DB_PASSWORD: ${KNOWLEDGE_DB_PASSWORD:?}
       KNOWLEDGE_MAX_PROCESS_WORKERS: ${KNOWLEDGE_MAX_PROCESS_WORKERS:?}

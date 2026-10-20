@@ -93,14 +93,17 @@
             }
         }
 
-        &:hover:not(.f-selected) {
+        &:hover:not(.f-selected),
+        &.node-hovered:not(.f-selected) {
             .f-connection-path {
                 stroke: var(--db-primary-1) !important;
             }
 
-            .start-marker circle,
-            .end-marker path {
-                fill: var(--db-primary-1) !important;
+            .f-marker {
+                path,
+                circle {
+                    fill: var(--db-primary-1) !important;
+                }
             }
         }
 
@@ -246,7 +249,8 @@
 
             .f-waypoint {
                 fill: transparent;
-                stroke: var(--fog-alpha-60);
+                stroke: transparent;
+                pointer-events: none;
             }
         }
     }
