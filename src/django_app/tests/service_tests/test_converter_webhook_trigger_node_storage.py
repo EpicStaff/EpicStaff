@@ -108,7 +108,9 @@ def test_session_graph_data_gives_the_node_its_session_folder(org, graph):
     )
 
     # _build_graph_data has no public wrapper; it is the unit that assembles GraphData.
-    graph_data = SessionManagerService()._build_graph_data(graph, None, session)
+    graph_data = SessionManagerService()._build_graph_data(
+        graph, None, session, start_node=start_node
+    )
 
     [node_data] = graph_data.webhook_trigger_node_data_list
     assert node_data.python_code.storage_allowed_paths == [

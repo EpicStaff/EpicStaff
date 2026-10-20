@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from rbac.models import Organization
-from tables.models import AgentNode, Graph, LLMConfig, McpTool, PythonCodeTool, WebhookTrigger
+from tables.models import AgentNode, Graph, LLMConfig, LLMModel, McpTool, PythonCodeTool, WebhookTrigger
 from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -726,6 +726,61 @@ class TestLLMConfigStrategy:
 
         assert LLMConfig.objects.count() == config_count_before + 1
         assert new_config.custom_name == "MyGPT-4o #2"
+
+    def test_reasoning_effort_round_trips(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        source_config = exportable_agent_definition.llm_config
+        reasoning_model, _ = LLMModel.objects.get_or_create(
+            name="gpt-5-mini", llm_provider=source_config.model.llm_provider, org=None
+        )
+        LLMConfig.objects.filter(pk=source_config.pk).update(
+            model=reasoning_model, reasoning_effort="high"
+        )
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        assert config_data["reasoning_effort"] == "high"
+
+        new_config = _get_strategy(EntityType.LLM_CONFIG).create_entity(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        new_config.refresh_from_db()
+        assert new_config.pk != source_config.pk
+        assert new_config.reasoning_effort == "high"
+
+    def test_create_entity_rejects_malformed_extra_headers(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        config_data["extra_headers"] = {"X-Retry": 3}
+
+        with pytest.raises(ValidationError) as excinfo:
+            _get_strategy(EntityType.LLM_CONFIG).create_entity(
+                config_data, _build_identity_mapper(export_data), org_id=default_org.id
+            )
+
+        assert "extra_headers" in excinfo.value.detail
+
+    def test_find_existing_misses_on_reasoning_effort(
+        self, exportable_agent_definition, export_service, default_org
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
+        config_data = deepcopy(export_data[EntityType.LLM_CONFIG][0])
+        config_data["reasoning_effort"] = "low"
+
+        found = _get_strategy(EntityType.LLM_CONFIG).find_existing(
+            config_data, _build_identity_mapper(export_data), org_id=default_org.id
+        )
+
+        assert found is None
 
     def test_find_existing(
         self, rich_seeded_db, exportable_agent_definition, export_service

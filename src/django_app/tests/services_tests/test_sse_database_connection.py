@@ -8,6 +8,7 @@ from django.db import connection
 from django.utils import timezone
 
 from tables.models.graph_models import Graph, GraphSessionMessage
+from src.shared.redis_keys import session_messages_channel, session_status_channel
 from tables.models.session_models import Session
 from tables.utils.mixins import SSEMixin
 from tables.views import sse_views
@@ -28,6 +29,10 @@ async def _database_connection_is_open() -> bool:
 
 
 class _StreamReportingItsConnection(SSEMixin):
+    async def authorize(self, request, *args, **kwargs):
+        # Streamed through event_stream() directly: there is no request to authorize.
+        return None
+
     async def get_initial_data(self):
         await Session.objects.acount()
         yield {"event": "initial", "data": await _database_connection_is_open()}
@@ -101,3 +106,121 @@ async def test_run_session_stream_waits_for_redis_without_a_database_connection(
 
     assert [event["data"]["uuid"] for event in events] == [stored_message.uuid]
     assert pubsub.connection_open_while_waiting is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_run_session_initial_replay_holds_no_database_connection_while_it_yields(
+    default_org,
+):
+    # A client that stops reading blocks a yield for as long as its socket stays open, so a
+    # connection held across one is a pooled connection lost to every other request.
+    graph = await sync_to_async(Graph.objects.create)(name="sse", org=default_org)
+    session = await sync_to_async(Session.objects.create)(
+        graph=graph, status=Session.SessionStatus.RUN, variables={}
+    )
+    message_count = sse_views.MESSAGE_PAGE_SIZE + 5
+    await sync_to_async(GraphSessionMessage.objects.bulk_create)(
+        [
+            GraphSessionMessage(
+                session=session,
+                created_at=timezone.now(),
+                execution_order=order,
+                message_data={"message_type": "agent"},
+                uuid=uuid4(),
+            )
+            for order in range(message_count)
+        ]
+    )
+    view = RunSessionSSEView()
+    view.kwargs = {"session_id": session.id}
+
+    connection_open_per_event = []
+    async for event in view.get_initial_data():
+        connection_open_per_event.append((event["event"], await _database_connection_is_open()))
+
+    assert connection_open_per_event == [("messages", False)] * message_count + [("status", False)]
+
+
+def _failing_query():
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT 1 / 0")
+
+
+class _StreamWhoseQueryFails(SSEMixin):
+    async def authorize(self, request, *args, **kwargs):
+        # Streamed through event_stream() directly: there is no request to authorize.
+        return None
+
+    async def get_initial_data(self):
+        await sync_to_async(_failing_query)()
+        yield {"event": "initial", "data": "never sent"}
+
+    async def get_live_updates(self, pubsub):
+        return
+        yield  # make this an async generator
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_holds_no_database_connection_while_it_sends_the_fatal_error(
+    fake_async_redis,
+):
+    connection_open_at_fatal_error = []
+    async for frame in _StreamWhoseQueryFails().event_stream():
+        if "fatal-error" in frame:
+            connection_open_at_fatal_error.append(await _database_connection_is_open())
+
+    assert connection_open_at_fatal_error == [False]
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_run_session_live_replay_holds_no_database_connection_while_it_yields(
+    fake_async_redis, default_org
+):
+    graph = await sync_to_async(Graph.objects.create)(name="sse", org=default_org)
+    session = await sync_to_async(Session.objects.create)(
+        graph=graph,
+        status=Session.SessionStatus.END,
+        variables={},
+        status_data={"variables": {"answer": 42}},
+    )
+    stored_message = await sync_to_async(GraphSessionMessage.objects.create)(
+        session=session,
+        created_at=timezone.now(),
+        execution_order=1,
+        message_data={"message_type": "agent"},
+        uuid=uuid4(),
+    )
+    view = RunSessionSSEView()
+    view.kwargs = {"session_id": session.id}
+    # Both published while the initial data was sent. The graph message is read back
+    # from the database; the end status reads its variables from the database too,
+    # since fakeredis holds no copy of them.
+    view.hold_live_message(
+        {
+            "type": "message",
+            "channel": session_messages_channel(session.id),
+            "data": json.dumps({"uuid": str(stored_message.uuid)}),
+        }
+    )
+    view.hold_live_message(
+        {
+            "type": "message",
+            "channel": session_status_channel(session.id),
+            "data": json.dumps(
+                {"session_id": session.id, "status": Session.SessionStatus.END, "status_data": {}}
+            ),
+        }
+    )
+
+    connection_open_per_event = []
+    async for event in view.get_live_updates(_PubSubReportingTheConnection()):
+        connection_open_per_event.append((event["event"], await _database_connection_is_open()))
+
+    assert connection_open_per_event == [
+        ("messages", False),
+        ("status", False),
+        ("done", False),
+    ]

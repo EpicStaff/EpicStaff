@@ -22,6 +22,7 @@ from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.tools.registry import ToolRegistry, ToolSpec
 from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.cancellation import never_cancelled
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -176,6 +177,7 @@ def make_context(
         attachments=[],
         correlation_id="test-corr",
         messages=messages,
+        is_cancelled=never_cancelled,
     )
 
 
@@ -198,7 +200,7 @@ def tool_chunks(call_id: str, name: str, args: str) -> list[LLMChunk]:
 
 async def _model_config(llm: LLMData, tool_choice=None) -> dict:
     agent = AgentSpec(id=1, name="a", instructions="i", llm=llm)
-    context = AgentContext(agent=agent, attachments=[], correlation_id="c", tool_choice=tool_choice)
+    context = AgentContext(agent=agent, attachments=[], correlation_id="c", tool_choice=tool_choice, is_cancelled=never_cancelled)
     fake_llm = FakeLLMClient([text_chunks("ok")])
 
     await DefaultAgentLoop(fake_llm).run(context, StubToolRegistry({}), RecordingEmitter(), MaxIterAndNoToolCalls(max_iter=5))
@@ -235,6 +237,77 @@ async def test_tool_choice_reaches_the_llm_only_when_set(tool_choice):
     config = await _model_config(_make_llm_data(), tool_choice=tool_choice)
 
     assert config.get("tool_choice", "absent") == (tool_choice or "absent")
+
+
+async def test_llm_call_receives_every_set_config_field():
+    llm_config = LLMConfigData(
+        model="my-deployment",
+        timeout=30,
+        temperature=0.3,
+        top_p=0.9,
+        stop=["END"],
+        max_tokens=512,
+        presence_penalty=0.1,
+        frequency_penalty=0.2,
+        logit_bias={50256: -100.0},
+        seed=7,
+        base_url="https://example.openai.azure.com",
+        api_version="2025-01-01-preview",
+        api_key="sk-test",
+        api_key_secret_id=99,
+        deployment_id="my-deployment",
+        extra_headers={"X-Team": "core"},
+        reasoning_effort="medium",
+    )
+
+    config = await _model_config(LLMData(provider="azure", config=llm_config))
+
+    assert config == {
+        "model": "azure/my-deployment",
+        "timeout": 30,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "stop": ["END"],
+        "max_tokens": 512,
+        "presence_penalty": 0.1,
+        "frequency_penalty": 0.2,
+        "logit_bias": {50256: -100.0},
+        "seed": 7,
+        "base_url": "https://example.openai.azure.com",
+        "api_version": "2025-01-01-preview",
+        "api_key": "sk-test",
+        "deployment_id": "my-deployment",
+        "extra_headers": {"X-Team": "core"},
+        "reasoning_effort": "medium",
+        "store": False,
+    }
+
+
+async def test_llm_call_receives_no_unset_config_field():
+    config = await _model_config(LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-4-5")))
+
+    assert config == {"model": "anthropic/claude-sonnet-4-5"}
+
+
+@pytest.mark.parametrize(
+    ("provider", "model", "expected_sampling"),
+    [
+        # Anthropic rejects temperature != 1 and top_p while thinking is on.
+        ("anthropic", "claude-sonnet-4-6", {}),
+        # The rules follow the provider litellm routes to (the model prefix).
+        ("openai", "anthropic/claude-sonnet-4-6", {}),
+        ("anthropic", "openai/gpt-4o", {"temperature": 0.5, "top_p": 0.9}),
+        # A provider litellm does not know is taken from the model prefix.
+        ("my_gateway", "claude-sonnet-4-6", {"temperature": 0.5, "top_p": 0.9}),
+    ],
+)
+async def test_sampling_params_follow_the_routed_provider(provider, model, expected_sampling):
+    llm_config = LLMConfigData(model=model, temperature=0.5, top_p=0.9, reasoning_effort="high")
+
+    config = await _model_config(LLMData(provider=provider, config=llm_config))
+
+    assert {key: config[key] for key in ("temperature", "top_p") if key in config} == expected_sampling
+    assert config["reasoning_effort"] == "high"
 
 
 # ---------------------------------------------------------------------------

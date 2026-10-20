@@ -93,6 +93,16 @@ def test_get_accessible_session(request, caller, target_org, make_session, outco
 
 
 @pytest.mark.django_db
+def test_accessible_session_loads_only_id_and_status(member_a, org_a):
+    session = _session(org_a)
+
+    accessible = get_accessible_session(member_a, session.pk)
+
+    assert accessible.status == Session.SessionStatus.PENDING
+    assert {"graph_schema", "variables", "status_data"} <= accessible.get_deferred_fields()
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("lookup", ["graph_id", "graph_uuid"])
 @pytest.mark.parametrize(
     ("caller", "target_org", "outcome"),

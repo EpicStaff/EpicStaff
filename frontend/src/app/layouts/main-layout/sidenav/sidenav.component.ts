@@ -1,6 +1,17 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import { PortalModule } from '@angular/cdk/portal';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    input,
+    output,
+    signal,
+    untracked,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
@@ -8,6 +19,7 @@ import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
+import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
@@ -32,6 +44,12 @@ interface NavItem {
     /** Function (not boolean) so signal reads inside happen at template-eval time.
      *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
     isPermitted: () => boolean;
+    /** Live counter rendered as a pill on the icon; read at template-eval time like `isPermitted`. */
+    badge?: () => number;
+    /** Where the badge itself leads, as its own link next to the item's; without it the badge is only a label. */
+    badgeLink?: string;
+    /** The badge link's accessible name for a count. */
+    badgeLabel?: (count: number) => string;
     action?: () => void;
     customClass?: string;
 }
@@ -104,6 +122,20 @@ export class LeftSidebarComponent {
         this.isWorkspaceRoute() ? 'Workspace' : (this.activeMembership()?.organization.name ?? '')
     );
 
+    /**
+     * The inbox stream follows the signed-in user, the active org and the `chats:read` permission; it stops with the
+     * layout (logout).
+     */
+    private readonly chatStreamEffect = effect(() => {
+        const orgId = this.activeOrgService.activeOrgId();
+        const userId = this.user()?.id;
+        const permitted =
+            this.configService.isChatEnabled && this.permissionService.can(ResourceCode.Chats, ActionCode.Read);
+        untracked(() =>
+            permitted && orgId && userId ? this.chatInboxStream.start(orgId, userId) : this.chatInboxStream.stop()
+        );
+    });
+
     /** Same fallback as the user menu header: the display name, or the email when there is none. */
     protected readonly accountLabel = computed(() => {
         const user = this.user();
@@ -113,8 +145,10 @@ export class LeftSidebarComponent {
     private readonly activeOrgService = inject(ActiveOrgService);
     private readonly configService = inject(ConfigService);
     private readonly permissionService = inject(PermissionsService);
+    private readonly chatInboxStream = inject(ChatInboxStreamService);
 
     constructor() {
+        this.destroyRef.onDestroy(() => this.chatInboxStream.stop());
         this.topNavItems = [
             {
                 id: 'agents',
@@ -159,6 +193,19 @@ export class LeftSidebarComponent {
                 icon: 'chats',
                 isPermitted: () => true,
                 label: 'Chats',
+                showTooltip: false,
+            },
+            {
+                id: 'chat',
+                routeLink: 'chat-bindings',
+                activePaths: ['/chat-bindings'],
+                icon: 'messages',
+                label: 'Conversations',
+                isPermitted: () =>
+                    this.configService.isChatEnabled && this.permissionService.can(ResourceCode.Chats, ActionCode.Read),
+                badge: () => this.chatInboxStream.waitingCount(),
+                badgeLink: '/chat-bindings/all',
+                badgeLabel: (count) => `Conversations inbox: ${count} waiting for a person`,
                 showTooltip: false,
             },
             {
@@ -230,6 +277,10 @@ export class LeftSidebarComponent {
     public isItemActive(item: NavItem): boolean {
         const path = this.currentPath();
         return (item.activePaths ?? []).some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+    }
+
+    public badgeCount(item: NavItem): number {
+        return item.badge?.() ?? 0;
     }
 
     public resolveRouteLink(item: NavItem): string | null {

@@ -120,7 +120,9 @@ def test_session_schema_carries_the_execution_timeout(slot, graph, node):
     start_node = StartNode.objects.create(graph=graph, variables={})
     Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=node.id)
 
-    graph_data = SessionManagerService()._build_graph_data(graph, None, None)
+    graph_data = SessionManagerService()._build_graph_data(
+        graph, None, None, start_node=start_node
+    )
 
     [node_data] = getattr(graph_data, slot.session_list_key)
     assert getattr(node_data, slot.code_field).execution_timeout == STORED_SECONDS

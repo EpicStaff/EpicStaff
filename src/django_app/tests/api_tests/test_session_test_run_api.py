@@ -761,7 +761,9 @@ class TestIsTestRunInSessionResponses:
         )
         assert response.status_code == status.HTTP_201_CREATED, response.content
         manual_session = SessionManagerService().create_session(
-            webhook_node.graph_id, trigger=TriggerSpec.manual()
+            webhook_node.graph,
+            start_node=StartNode.objects.filter(graph=webhook_node.graph).first(),
+            trigger=TriggerSpec.manual(),
         )
         return response.data["session_id"], manual_session.pk
 

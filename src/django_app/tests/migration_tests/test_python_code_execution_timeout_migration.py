@@ -10,8 +10,8 @@ import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
-BEFORE = [("tables", "0270_recycle_bin_soft_delete")]
-AFTER = [("tables", "0271_pythoncode_execution_timeout")]
+BEFORE = [("tables", "0272_merge_20261016_1000")]
+AFTER = [("tables", "0273_pythoncode_execution_timeout")]
 
 # Distinct from any configured default, so a value frozen into the migration would fail.
 DEFAULT_SECONDS = 45

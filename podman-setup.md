@@ -97,8 +97,10 @@ podman run -d   --name crewdb   --network backend-network   -p ${DB_PORT}:${DB_P
 ### Django App
 
 ```bash
-podman run -d   --name django_app   --network backend-network   -p 8000:8000   --env-file .env   -e DEBUG=${DEBUG:-True}   -v crew_config:/home/user/root/app/env_config   django_app ./entrypoint.sh
+podman run -d   --name django_app   --network backend-network   -p 8000:8000   --env-file .env   -v crew_config:/home/user/root/app/env_config   django_app ./entrypoint.sh
 ```
+
+Debug mode is controlled by `DJANGO_DEBUG`, which reaches the container through `--env-file .env`. `src/.env.example` sets it to `False`; keep it `False` for any deployment reachable by others. It has no fallback in code — if `.env` does not set it, `django_app` fails at startup.
 
 ---
 

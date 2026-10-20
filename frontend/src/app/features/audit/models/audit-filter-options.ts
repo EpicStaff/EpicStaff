@@ -116,7 +116,7 @@ export const TOKEN_OPERATOR_LABELS: Record<string, string> = {
 export const TOKEN_STEP = 10;
 
 export const QUERY_EXAMPLES: string[] = [
-    'status in ["failed"] or node_type in ["AGENT", "PYTHON"]',
+    'status in ["failed"] and node_type in ["AGENT", "PYTHON"]',
     'name == "Session Start"',
     'error is not empty and not session_id == 66',
     'input : order1234 and output : Greetings',

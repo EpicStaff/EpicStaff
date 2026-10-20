@@ -25,7 +25,7 @@ from app.exceptions import (
     UnknownToolRefError,
 )
 from app.knowledge.events import KnowledgeEventSink
-from app.loop.context import AgentContext
+from app.loop.context import AgentContext, CancellationCheck
 from app.resources.s3_manifest import build_s3_manifest
 from app.sandbox.client import SandboxClient
 from app.tools.mcp.gateway import McpToolGateway
@@ -94,6 +94,8 @@ class AgentResolver:
         agent: AgentSpec,
         request: AgentRequest,
         knowledge_sink: KnowledgeEventSink | None = None,
+        *,
+        is_cancelled: CancellationCheck,
     ) -> ResolvedAgent:
         """Resolve all refs for ``agent`` against the pools in ``request``.
 
@@ -132,6 +134,7 @@ class AgentResolver:
             agent=agent,
             attachments=attachments,
             correlation_id=request.correlation_id,
+            is_cancelled=is_cancelled,
         )
 
         return ResolvedAgent(

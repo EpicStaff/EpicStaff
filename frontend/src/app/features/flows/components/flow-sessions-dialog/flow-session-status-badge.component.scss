@@ -1,23 +1,13 @@
+@use '../../../../../styles/status-chip';
+
 .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    border-radius: 5px;
-    font-size: 0.85em;
-    font-weight: 400;
-    color: var(--white);
-    white-space: nowrap;
-    letter-spacing: 0.01em;
-    transition: background 0.18s;
+    @include status-chip.chip;
 }
 .status-running {
-    background: var(--blue-alpha-18);
-    color: var(--blue-400);
+    @include status-chip.running;
 }
 .status-error {
-    background: var(--red-580-alpha-18);
-    color: var(--red-580);
+    @include status-chip.error;
 }
 .status-badge.status-stop {
     height: 28px;
@@ -41,22 +31,17 @@
     background: var(--red-500);
 }
 .status-completed {
-    background: var(--mint-500-alpha-18);
-    color: var(--green-460);
+    @include status-chip.completed;
 }
 .status-waiting {
-    background: var(--gold-460-alpha-18);
-    color: var(--gold-460);
+    @include status-chip.waiting;
 }
 .status-pending {
-    background: var(--slate-400-alpha-18);
-    color: var(--slate-400);
+    @include status-chip.pending;
 }
 .status-expired {
-    background: var(--gray-540-alpha-18);
-    color: var(--gray-540);
+    @include status-chip.expired;
 }
 .status-unknown {
-    background: var(--slate-700-alpha-18);
-    color: var(--slate-400);
+    @include status-chip.unknown;
 }

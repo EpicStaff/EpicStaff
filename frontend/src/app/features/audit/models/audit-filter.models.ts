@@ -170,6 +170,9 @@ export function removeAuditCondition(
     return nonEmpty.length > 0 ? nonEmpty : next.slice(0, 1);
 }
 
+// field the backend treats as full-text search across the event
+export const FREE_TEXT_FIELD = '__text__';
+
 export const VALUE_FREE_OPS: AuditFilterOp[] = ['is_empty', 'is_not_empty', 'key_exists', 'key_not_exists'];
 
 export function isUsableCondition(condition: AuditCondition): boolean {

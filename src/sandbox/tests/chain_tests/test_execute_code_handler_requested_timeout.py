@@ -78,7 +78,7 @@ def test_effective_execution_timeout(
 def unconfined_execution(tmp_path, monkeypatch):
     """Run the child without launcher.py, with the shared libraries importable."""
     monkeypatch.setattr(chain_mod, "abi_version", lambda: 0)
-    monkeypatch.setenv("SANDBOX_REQUIRE_ISOLATION", "false")
+    monkeypatch.setattr(settings, "REQUIRE_ISOLATION", False)
     monkeypatch.setattr(settings, "BLOCK_NETWORK", False)
     shared_libs_path = copy_shared_libs_into_jail(tmp_path)
     real_build_base_env = chain_mod.build_base_env
