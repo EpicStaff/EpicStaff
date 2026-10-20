@@ -132,6 +132,55 @@ def allowed_org_values(rule: RetentionRule) -> tuple[int, ...]:
     return tuple(days for days in _CAP_CHOICES if days <= rule.max_days)
 
 
+@dataclass(frozen=True)
+class SessionTreeLink:
+    """A foreign key from ``table.column`` to ``tables_session.id``."""
+
+    table: str
+    column: str
+
+
+# The session-tree contract for the manager's retention job, which deletes expired sessions
+# with raw SQL. Django runs on_delete=CASCADE and SET_NULL in Python; in the database these
+# foreign keys are NO ACTION (deferred), except tables_graphsessionmessage.session_id, which a
+# migration turned into ON DELETE CASCADE. A raw delete must therefore do that work itself.
+# Pinned by django_app's test_session_retention_contract.py, which fails when a model relation
+# changes without this contract, and by the manager's test_crewdb_grants.py, which fails when
+# the manager role's grants in src/crewdb/custom-docker-entrypoint.sh miss a table.
+
+# Subflow sessions point at their parent through this column; deleting a session deletes
+# its whole subtree, which the job expands with a recursive query.
+SESSION_PARENT_COLUMN = "parent_session_id"
+
+# Every table whose rows are deleted with their session.
+SESSION_CHILD_TABLES: tuple[SessionTreeLink, ...] = (
+    SessionTreeLink("tables_graphsessionmessage", "session_id"),
+    SessionTreeLink("tables_usersessionmessage", "session_id"),
+    SessionTreeLink("tables_agentsessionmessage", "session_id"),
+    SessionTreeLink("tables_tasksessionmessage", "session_id"),
+    SessionTreeLink("tables_sessionwarningmessage", "session_id"),
+    SessionTreeLink("tables_sessiontrigger", "session_id"),
+    SessionTreeLink("tables_sessionprincipal", "session_id"),
+    SessionTreeLink("tables_sessioncallback", "session_id"),
+    # The session's link to a storage file; the file's own row and object are kept.
+    SessionTreeLink("tables_sessionstoragefile", "session_id"),
+    SessionTreeLink("storage_credentials_temp_account", "session_id"),
+)
+
+# Columns elsewhere that point at a session and are cleared, not deleted, with it.
+SESSION_SET_NULL_COLUMNS: tuple[SessionTreeLink, ...] = (
+    SessionTreeLink("tables_keyvaluetableentry", "updated_by_session_id"),
+    SessionTreeLink("tables_sessiontrigger", "triggered_by_session_id"),
+)
+
+# Session.SessionStatus values after which nothing runs the session again.
+TERMINAL_SESSION_STATUSES: frozenset[str] = frozenset({"end", "error", "stop", "expired"})
+
+# SessionCallback.Status values after which no delivery is attempted. Any other status
+# (registered, pending, or one added later) means the callback is still owed.
+FINAL_SESSION_CALLBACK_STATUSES: frozenset[str] = frozenset({"delivered", "failed"})
+
+
 def audit_tier(days: int) -> str:
     """Return the audit index tier name for a retention value, e.g. ``90d`` or ``unlimited``.
 

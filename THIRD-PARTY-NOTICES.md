@@ -3704,7 +3704,7 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 <!-- AUTO-GENERATED — do not edit by hand -->
 <!-- generated: 2026-10-16T15:21:02Z UTC -->
 <!-- commit: f33464084faa4e7b3ab873524790512f9eb0643a -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:77ff3de05fb35c2f, knowledge_new:3d46a714e418362f, manager:b4bef382144a5a4a, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, webhook:6e6a68286cd96f18 -->
+<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:77ff3de05fb35c2f, knowledge_new:3d46a714e418362f, manager:9ff994d896174ddd, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, webhook:6e6a68286cd96f18 -->
 
 ## Backend (Python)
 

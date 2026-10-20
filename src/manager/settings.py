@@ -33,3 +33,9 @@ AUDITOR_EXPORT_DATA_DIR = env.str("AUDITOR_EXPORT_DATA_DIR")
 AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS = env.int("AUDITOR_EXPORT_SWEEP_INTERVAL_SECONDS")
 
 RETENTION_POLICY = load_retention_policy(env)
+
+# The retention job asks the chat service to purge conversations, calling it directly:
+# nginx hides /chat/internal/ from outside the compose network.
+CHAT_ENABLED = env.bool("CHAT_ENABLED")
+CHAT_UPSTREAM_URL = env.str("CHAT_UPSTREAM_URL")
+CHAT_INTERNAL_API_KEY = env.secret("CHAT_INTERNAL_API_KEY")
