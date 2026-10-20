@@ -9,6 +9,7 @@ import { NodeAuthorshipStore } from '../../services/node-authorship.store';
 import { NodeFactoryService } from '../../services/node-factory.service';
 import { NodeNameValidatorService } from '../../services/node-name-validator.service';
 import { SavedFlowStateService } from '../../services/saved-flow-state.service';
+import { ScheduleTriggerRuntimeService } from '../../services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../services/side-panel.service';
 import { UndoRedoService } from '../../services/undo-redo.service';
 import { UniqueNodeNameValidatorService } from '../../services/unique-node-name.validator';
@@ -38,6 +39,7 @@ export const FLOW_EDITOR_STATE_PROVIDERS: Provider[] = [
     FlowReadOnlyService,
     SidePanelService,
     SavedFlowStateService,
+    ScheduleTriggerRuntimeService,
     ClipboardService,
     NodeFactoryService,
     NodeNameValidatorService,

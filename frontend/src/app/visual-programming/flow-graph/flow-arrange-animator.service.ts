@@ -1,4 +1,4 @@
-import { inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
 import { IPoint } from '@foblex/2d';
 
 import { computeLayout } from '../core/layout/compute-layout';
@@ -36,6 +36,20 @@ export class FlowArrangeAnimatorService {
     private arrangingLock = false;
 
     readonly hasUnarrangedChanges = signal(true);
+
+    /**
+     * Nodes auto arrange leaves where they are: moving a trigger node is a change of it, which needs
+     * Flows:Use. The others are arranged around them.
+     */
+    readonly pinnedNodeIds = computed<ReadonlySet<string>>(
+        () =>
+            new Set(
+                this.flowService
+                    .nodes()
+                    .filter((node) => this.flowReadOnly.isNodeTypeReadOnly(node.type))
+                    .map((node) => node.id)
+            )
+    );
     readonly isArranging = signal<boolean>(false);
 
     markUnarranged(): void {
@@ -61,7 +75,8 @@ export class FlowArrangeAnimatorService {
         }
 
         const connections = this.flowService.connections();
-        const newPositions = computeLayout(nodes, connections);
+        // Pinned nodes are left out of newPositions, so only the nodes it moves count below.
+        const newPositions = computeLayout(nodes, connections, this.pinnedNodeIds());
 
         const alreadyArranged = nodes.every((node) => {
             const target = newPositions.get(node.id);

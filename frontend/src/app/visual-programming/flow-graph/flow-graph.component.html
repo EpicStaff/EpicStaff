@@ -127,7 +127,7 @@
                     [fNodeId]="node.id"
                     [fNodeSize]="node.size"
                     [fNodePosition]="node.position"
-                    [fNodeDraggingDisabled]="flowReadOnly.isReadOnly()"
+                    [fNodeDraggingDisabled]="isNodeReadOnly(node)"
                     [style.z-index]="getNodeZIndex(node)"
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
@@ -343,7 +343,7 @@
                         title="Auto arrange"
                         matTooltip="Auto arrange"
                         matTooltipPosition="below"
-                        [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
+                        [disabled]="isAutoArrangeDisabled()"
                         (click)="onAutoArrange()"
                     >
                         <app-svg-icon

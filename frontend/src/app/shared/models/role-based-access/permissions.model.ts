@@ -4,7 +4,7 @@ export enum ActionCode {
     Update = 'update',
     Delete = 'delete',
     Export = 'export',
-    Use = 'use', // secrets management, and chat operator actions (claim, release, reply, test conversation)
+    Use = 'use', // secrets, flows (running, trigger nodes), and chat operator actions (claim, release, reply, test conversation)
     List = 'list', // unused for now
 }
 
