@@ -121,15 +121,16 @@ export class WebhookTriggersSectionComponent implements OnInit {
             )
             .subscribe((decision) => {
                 if (decision === 'edit') this.openDialog(trigger);
+                else if (decision === 'view') this.openDialog(trigger, true);
                 else if (decision === 'gone') this.refresh();
             });
     }
 
-    private openDialog(trigger: WebhookTriggerModel | null): void {
+    private openDialog(trigger: WebhookTriggerModel | null, readonly = false): void {
         this.dialog
             .open<WebhookTriggerModel | null, WebhookTriggerDialogData>(WebhookTriggerDialogComponent, {
                 disableClose: true,
-                data: { trigger },
+                data: { trigger, readonly },
             })
             .closed.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((saved) => {

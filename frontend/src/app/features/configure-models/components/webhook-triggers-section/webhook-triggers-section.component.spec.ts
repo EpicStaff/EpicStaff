@@ -178,19 +178,17 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
         httpMock: HttpTestingController;
         /** Read by the fake `can()` on every call, so a test can grant Flows:Use between presses. */
         access: { canRunFlows: boolean };
-        confirm: ReturnType<typeof vi.fn>;
         open: ReturnType<typeof vi.spyOn>;
     }
 
     function renderForEdit(canRunFlows: boolean, triggers: WebhookTriggerModel[] = [TRIGGER]): EditSetup {
         const access = { canRunFlows };
-        const confirm = vi.fn();
         TestBed.configureTestingModule({
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
-                { provide: ConfirmationDialogService, useValue: { confirm } },
+                { provide: ConfirmationDialogService, useValue: {} },
                 { provide: ToastService, useValue: {} },
                 { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 {
@@ -210,7 +208,7 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
         fixture.detectChanges();
         httpMock.expectOne(LIST_URL).flush({ results: triggers });
         fixture.detectChanges();
-        return { fixture, httpMock, access, confirm, open };
+        return { fixture, httpMock, access, open };
     }
 
     afterEach(() => TestBed.inject(HttpTestingController).verify());
@@ -239,13 +237,21 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
         fixture.detectChanges();
     }
 
-    function expectEditDialogOpened(open: ReturnType<typeof vi.spyOn>, trigger: WebhookTriggerModel = TRIGGER): void {
+    function expectDialogOpened(
+        open: ReturnType<typeof vi.spyOn>,
+        readonly: boolean,
+        trigger: WebhookTriggerModel = TRIGGER
+    ): void {
         expect(open).toHaveBeenCalledExactlyOnceWith(
             WebhookTriggerDialogComponent,
             expect.objectContaining({
-                data: { trigger: expect.objectContaining({ path: trigger.path, id: trigger.id }) },
+                data: { trigger: expect.objectContaining({ path: trigger.path, id: trigger.id }), readonly },
             })
         );
+    }
+
+    function expectEditDialogOpened(open: ReturnType<typeof vi.spyOn>, trigger: WebhookTriggerModel = TRIGGER): void {
+        expectDialogOpened(open, false, trigger);
     }
 
     it('keeps Edit visible to a user who can update webhook triggers but not run flows', () => {
@@ -255,13 +261,12 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
     });
 
     it('opens the edit dialog straight away for a user who can run flows, without asking which flows use it', () => {
-        const { fixture, httpMock, confirm, open } = renderForEdit(true);
+        const { fixture, httpMock, open } = renderForEdit(true);
 
         pressEdit(fixture);
 
         expectEditDialogOpened(open);
         httpMock.expectNone(FLOWS_URL);
-        expect(confirm).not.toHaveBeenCalled();
     });
 
     it('opens the edit dialog for a user who cannot run flows when no flow uses the trigger', () => {
@@ -272,37 +277,25 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
         answerUsageCheck(setup, NOT_IN_USE);
 
         expectEditDialogOpened(setup.open);
-        expect(setup.confirm).not.toHaveBeenCalled();
     });
 
-    // The wording for every usage is covered in the edit-permission service spec.
-    it('shows the Use permission warning instead of the edit dialog when a flow uses the trigger', () => {
+    it('opens the dialog read-only for a user who cannot run flows when a flow uses the trigger', () => {
         const setup = renderForEdit(false);
 
         pressEdit(setup.fixture);
         answerUsageCheck(setup, IN_USE);
 
-        expect(setup.confirm).toHaveBeenCalledExactlyOnceWith({
-            title: 'Use permission required',
-            message: 'This webhook is part of the flow <strong>Orders</strong>.',
-            caution:
-                "You can't <strong>edit</strong> it because you don't have the <strong>Use</strong> permission on flows.",
-            type: 'warning',
-            hideConfirm: true,
-            cancelText: 'OK',
-        });
-        expect(setup.open).not.toHaveBeenCalled();
+        expectDialogOpened(setup.open, true);
         expect(editButton(setup.fixture).disabled).toBe(false);
     });
 
-    it('opens neither dialog on a 403, which the forbidden interceptor already explained', () => {
+    it('opens no dialog on a 403, which the forbidden interceptor already explained', () => {
         const setup = renderForEdit(false);
 
         pressEdit(setup.fixture);
         failUsageCheck(setup, 403);
 
         expect(setup.open).not.toHaveBeenCalled();
-        expect(setup.confirm).not.toHaveBeenCalled();
         setup.httpMock.expectNone(LIST_URL);
         expect(editButton(setup.fixture).disabled).toBe(false);
     });
@@ -316,7 +309,6 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
         setup.fixture.detectChanges();
 
         expect(setup.open).not.toHaveBeenCalled();
-        expect(setup.confirm).not.toHaveBeenCalled();
         expect(editButton(setup.fixture)).toBeNull();
     });
 
@@ -329,7 +321,6 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
             failUsageCheck(setup, status);
 
             expectEditDialogOpened(setup.open);
-            expect(setup.confirm).not.toHaveBeenCalled();
             expect(editButton(setup.fixture).disabled).toBe(false);
         }
     );
@@ -355,30 +346,24 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
 
         pressEdit(setup.fixture);
         answerUsageCheck(setup, IN_USE);
-        expect(setup.confirm).toHaveBeenCalledTimes(1);
-        expect(setup.open).not.toHaveBeenCalled();
-
-        pressEdit(setup.fixture);
-        answerUsageCheck(setup, IN_USE);
-        expect(setup.confirm).toHaveBeenCalledTimes(2);
+        expectDialogOpened(setup.open, true);
+        setup.open.mockClear();
 
         setup.access.canRunFlows = true;
         pressEdit(setup.fixture);
 
         expectEditDialogOpened(setup.open);
         setup.httpMock.expectNone(FLOWS_URL);
-        expect(setup.confirm).toHaveBeenCalledTimes(2);
     });
 
     it('drops the check and opens nothing once the section is destroyed while the check is running', () => {
-        const { fixture, httpMock, confirm, open } = renderForEdit(false);
+        const { fixture, httpMock, open } = renderForEdit(false);
 
         pressEdit(fixture);
         const request = httpMock.expectOne(FLOWS_URL);
         fixture.destroy();
 
         expect(request.cancelled).toBe(true);
-        expect(confirm).not.toHaveBeenCalled();
         expect(open).not.toHaveBeenCalled();
     });
 

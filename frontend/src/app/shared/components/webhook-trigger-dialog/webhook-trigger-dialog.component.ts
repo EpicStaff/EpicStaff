@@ -12,6 +12,8 @@ import { WebhookTriggerFieldComponent } from '../webhook-trigger-field/webhook-t
 
 export interface WebhookTriggerDialogData {
     trigger: WebhookTriggerModel | null;
+    /** Shows the trigger without letting it be saved: the user may not edit it (see the banner in the dialog). */
+    readonly?: boolean;
 }
 
 @Component({
@@ -28,6 +30,7 @@ export class WebhookTriggerDialogComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
 
     data: WebhookTriggerDialogData = inject(DIALOG_DATA);
+    protected readonly isReadonly = this.data.readonly ?? false;
 
     isSubmitting = signal(false);
     errorMessage = signal<string | null>(null);
@@ -45,6 +48,7 @@ export class WebhookTriggerDialogComponent implements OnInit {
     }
 
     onSubmit(): void {
+        if (this.isReadonly) return;
         if (this.form.invalid) {
             this.form.markAllAsTouched();
             return;
