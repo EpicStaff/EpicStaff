@@ -8,6 +8,10 @@ value above the maximum is saved as the maximum and one below the minimum as the
 file without the field (exported before PythonCode had a timeout) gets this deployment's
 default. A value that is not a non-negative integer rejects the whole import with nothing
 created.
+
+A python tool imported as a dependency reuses an existing tool of the importing org only
+when the execution timeout it would store matches too; otherwise the imported timeout
+would be lost.
 """
 
 import copy
@@ -17,6 +21,8 @@ from rest_framework.exceptions import ValidationError
 
 from rbac.models import Organization
 from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.registry import entity_registry
 from tables.models import Graph, PythonCode, PythonCodeTool
 from tests.python_code_slots import PYTHON_CODE_SLOT_IDS, PYTHON_CODE_SLOTS
 
@@ -167,3 +173,91 @@ def test_python_tool_below_the_minimum_imports_as_the_minimum(
     [imported_id] = id_mapper.get_created_ids(EntityType.PYTHON_CODE_TOOL)
     imported_tool = PythonCodeTool.objects.select_related("python_code").get(pk=imported_id)
     assert imported_tool.python_code.execution_timeout == MIN_SECONDS
+
+
+def _python_tool_with_timeout(org, execution_timeout: int) -> PythonCodeTool:
+    return PythonCodeTool.objects.create(
+        name="execution-timeout-reuse-tool",
+        description="tool",
+        python_code=PythonCode.objects.create(
+            code="def main(): return 1", execution_timeout=execution_timeout
+        ),
+        org=org,
+    )
+
+
+def _exported_tool(export_service, tool: PythonCodeTool) -> dict:
+    export_data = export_service.export_entities(EntityType.PYTHON_CODE_TOOL, [tool.id])
+    return copy.deepcopy(export_data[EntityType.PYTHON_CODE_TOOL][0])
+
+
+def _import_tool_as_dependency(tool_data: dict, org) -> PythonCodeTool:
+    strategy = entity_registry.get_strategy(EntityType.PYTHON_CODE_TOOL)
+    return strategy.import_entity(tool_data, IDMapper(), is_main=False, org_id=org.id)
+
+
+@pytest.mark.django_db
+def test_python_tool_with_the_same_timeout_is_reused(default_org, export_service):
+    tool = _python_tool_with_timeout(default_org, STORED_SECONDS)
+    tool_data = _exported_tool(export_service, tool)
+
+    imported = _import_tool_as_dependency(tool_data, default_org)
+
+    assert imported.pk == tool.pk
+    assert PythonCodeTool.objects.filter(org=default_org).count() == 1
+
+
+@pytest.mark.django_db
+def test_python_tool_with_another_timeout_is_created_with_the_imported_timeout(
+    default_org, export_service
+):
+    tool = _python_tool_with_timeout(default_org, STORED_SECONDS)
+    tool_data = _exported_tool(export_service, tool)
+    tool_data["python_code"]["execution_timeout"] = STORED_SECONDS + 1
+
+    imported = _import_tool_as_dependency(tool_data, default_org)
+
+    assert imported.pk != tool.pk
+    imported.python_code.refresh_from_db()
+    assert imported.python_code.execution_timeout == STORED_SECONDS + 1
+
+
+@pytest.mark.django_db
+def test_python_tool_reuse_compares_the_timeout_as_the_import_stores_it(
+    default_org, export_service
+):
+    tool = _python_tool_with_timeout(default_org, MAX_SECONDS)
+    tool_data = _exported_tool(export_service, tool)
+    tool_data["python_code"]["execution_timeout"] = MAX_SECONDS * 100
+
+    imported = _import_tool_as_dependency(tool_data, default_org)
+
+    assert imported.pk == tool.pk
+
+
+@pytest.mark.django_db
+def test_python_tool_file_without_the_timeout_reuses_a_tool_with_the_default(
+    default_org, export_service
+):
+    tool = _python_tool_with_timeout(default_org, DEFAULT_SECONDS)
+    tool_data = _exported_tool(export_service, tool)
+    del tool_data["python_code"]["execution_timeout"]
+
+    imported = _import_tool_as_dependency(tool_data, default_org)
+
+    assert imported.pk == tool.pk
+
+
+@pytest.mark.django_db
+def test_python_tool_file_without_the_timeout_does_not_reuse_a_tool_with_another_timeout(
+    default_org, export_service
+):
+    tool = _python_tool_with_timeout(default_org, STORED_SECONDS)
+    tool_data = _exported_tool(export_service, tool)
+    del tool_data["python_code"]["execution_timeout"]
+
+    imported = _import_tool_as_dependency(tool_data, default_org)
+
+    assert imported.pk != tool.pk
+    imported.python_code.refresh_from_db()
+    assert imported.python_code.execution_timeout == DEFAULT_SECONDS
