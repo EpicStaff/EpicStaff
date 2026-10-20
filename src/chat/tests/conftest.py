@@ -22,6 +22,7 @@ for name, value in {
     "CHAT_DJANGO_URL": "http://django_app:8000",
     "CHAT_DJANGO_HOST_HEADER": "localhost",
     "DJANGO_API_KEY": "system-key-for-tests-0123456789ab",
+    "CHAT_INTERNAL_API_KEY": "internal-key-for-tests-0123456789",
     "CHAT_PUBLIC_BASE_URL": "http://localhost",
     "CHAT_CALLBACK_URL": "http://chat:8200/chat/internal/v1/session-callbacks",
     "CHAT_DJANGO_TIMEOUT": "10s",

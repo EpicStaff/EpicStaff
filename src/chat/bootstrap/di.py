@@ -5,6 +5,7 @@ from application.orchestrators.budgets import BindingLimits
 from application.orchestrators.conversation import ConversationOrchestrator, RunConfig
 from application.orchestrators.identity import Operator
 from application.orchestrators.operators import OperatorOrchestrator
+from application.orchestrators.retention import RetentionOrchestrator
 from application.orchestrators.streams import StreamOrchestrator
 from application.ports import AbstractTickets
 from infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
@@ -87,6 +88,11 @@ def operators(state: State) -> OperatorOrchestrator:
     return OperatorOrchestrator(
         lambda: SQLAlchemyUnitOfWork(state.session_factory), flows=state.django, fanout=state.fanout
     )
+
+
+@register
+def retention(state: State) -> RetentionOrchestrator:
+    return RetentionOrchestrator(lambda: SQLAlchemyUnitOfWork(state.session_factory))
 
 
 @register

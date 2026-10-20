@@ -141,6 +141,8 @@ class Settings(BaseModel):
     CHAT_DJANGO_HOST_HEADER: OptionalHeader
     DJANGO_API_KEY: str
     CHAT_DJANGO_TIMEOUT: PositiveFractionalSeconds
+    # The manager presents it to /chat/internal/ (retention purge); it can delete conversations.
+    CHAT_INTERNAL_API_KEY: str
 
     CHAT_PUBLIC_BASE_URL: str
     CHAT_CALLBACK_URL: str
@@ -217,7 +219,7 @@ class Settings(BaseModel):
         return list(self.CHAT_TRUSTED_PROXIES)
 
 
-_FIELDS_READ_AS_SECRETS = ("CHAT_DB_PASSWORD", "DJANGO_API_KEY")
+_FIELDS_READ_AS_SECRETS = ("CHAT_DB_PASSWORD", "DJANGO_API_KEY", "CHAT_INTERNAL_API_KEY")
 
 
 def load_settings(environment: Env = env) -> Settings:
