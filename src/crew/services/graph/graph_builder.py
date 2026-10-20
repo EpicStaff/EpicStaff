@@ -155,6 +155,7 @@ class SessionGraphBuilder:
         unique_subgraph_list: list[SubGraphData],
         stop_event,
         org_id: int,
+        audit_retention_days: int,
         storage_credentials: StorageCredentials | None = None,
     ) -> str:
         """
@@ -173,6 +174,7 @@ class SessionGraphBuilder:
             stop_event=stop_event,
             storage_credentials=storage_credentials,
             org_id=org_id,
+            audit_retention_days=audit_retention_days,
         )
 
         async def inner(state: State, writer: StreamWriter):
@@ -351,6 +353,7 @@ class SessionGraphBuilder:
                 stop_event=self.stop_event,
                 storage_credentials=session_data.storage_credentials,
                 org_id=session_data.org_id,
+                audit_retention_days=session_data.audit_retention_days,
             )
 
         for webhook_trigger_node_data in schema.webhook_trigger_node_data_list:

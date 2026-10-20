@@ -13,6 +13,7 @@ requires-python = "==3.12.10"
 dependencies = [
     "apscheduler==3.11.2",
     "asyncpg==0.30.0",
+    "httpx==0.28.1",
     "loguru==0.7.2",
     "pydantic==2.13.4",
     "redis==5.3.1",
@@ -28,6 +29,9 @@ dev = [
 ]
 transitive-pins = [
     "anyio==4.14.2",
+    "certifi==2026.7.22",
+    "h11==0.16.0",
+    "httpcore==1.0.9",
     "idna==3.18",
     "pyjwt==2.13.0",
 ]
@@ -37,6 +41,9 @@ package = false
 
 [tool.pytest.ini_options]
 pythonpath = [".", "../.."]
+markers = [
+    "integration: runs against a live crewdb (inside a rolled-back transaction) - skips itself if unreachable",
+]
 
 [tool.ruff]
 select = ["E"]

@@ -20,14 +20,12 @@ from services.redis_service import AsyncPubsubSubscriber, RedisService
 from services.run_python_code_service import RunPythonCodeService
 from settings import DEFAULT_TOKEN_BUDGET
 from src.crew.services.graph.session_audit_provider import (
-    clear_session_flow_name,
-    clear_session_org,
+    SessionAuditContext,
+    clear_session_audit_context,
     emit_session_audit_event,
+    get_session_audit_context,
     get_session_audit_writer,
-    get_session_flow_name,
-    get_session_org,
-    register_session_flow_name,
-    register_session_org,
+    register_session_audit_context,
     track_audit_task,
 )
 from src.shared.bench_log import BENCH_LEVEL
@@ -91,23 +89,26 @@ async def _audit_skipped_session(session_data: SessionData, session_status: str)
     The end event is parented to the identity document that add_session_start
     creates, so the start must be written first even though nothing ran.
     """
+    context = SessionAuditContext.from_session_data(session_data)
     audit_writer = get_session_audit_writer()
     await audit_writer.add_session_start(
         session_id=session_data.id,
-        org_id=session_data.org_id,
-        flow_name=session_data.graph.name,
+        org_id=context.org_id,
+        flow_name=context.flow_name,
         event_id=str(uuid.uuid4()),
         run_type=session_data.run_type,
+        retention_days=context.audit_retention_days,
     )
     await audit_writer.add_session_end(
         session_id=session_data.id,
-        org_id=session_data.org_id,
+        org_id=context.org_id,
         name="Session Skipped",
-        flow_name=session_data.graph.name,
+        flow_name=context.flow_name,
         event_id=str(uuid.uuid4()),
         status="failed",
         details={"reason": "stopped while queued", "session_status": session_status},
         run_type=session_data.run_type,
+        retention_days=context.audit_retention_days,
     )
 
 
@@ -163,17 +164,18 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         logger.info("Session Manager Service is now running.")
 
     async def run_session(self, session_data: SessionData, stop_event: StopEvent):
+        session_id = session_data.id
         try:
-            session_id = session_data.id
-            register_session_org(session_id, session_data.org_id)
-            register_session_flow_name(session_id, session_data.graph.name)
+            audit_context = SessionAuditContext.from_session_data(session_data)
+            register_session_audit_context(session_id, audit_context)
             _dispatch_session_audit(
                 lambda: get_session_audit_writer().add_session_start(
                     session_id=session_id,
-                    org_id=session_data.org_id,
-                    flow_name=session_data.graph.name,
+                    org_id=audit_context.org_id,
+                    flow_name=audit_context.flow_name,
                     event_id=str(uuid.uuid4()),
                     run_type=session_data.run_type,
+                    retention_days=audit_context.audit_retention_days,
                 )
             )
             # Copy so popping the reserved budget key never mutates the
@@ -281,17 +283,18 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 graph_end_payload["uuid"], GraphMessage.encode_payload(graph_end_payload)
             )
 
-            org_id = get_session_org(session_id)
-            if org_id is not None:
+            audit_context = get_session_audit_context(session_id)
+            if audit_context is not None:
                 _dispatch_session_audit(
                     lambda: get_session_audit_writer().add_session_end(
                         session_id=session_id,
-                        org_id=org_id,
-                        flow_name=get_session_flow_name(session_id) or "",
+                        org_id=audit_context.org_id,
+                        flow_name=audit_context.flow_name,
                         event_id=graph_end_payload["uuid"],
                         status="completed",
                         output=end_node_result,
                         run_type=session_data.run_type,
+                        retention_days=audit_context.audit_retention_days,
                     )
                 )
 
@@ -300,8 +303,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
             await self.redis_service.aupdate_session_status(session_id=session_id, status="end")
 
-            clear_session_org(session_id)
-            clear_session_flow_name(session_id)
             await session_graph_builder.remembered_outputs_store.clear(session_id)
             logger.log(
                 BENCH_LEVEL,
@@ -323,22 +324,21 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
             # Status updated in _handle_session_timeout
             logger.warning(f"Session {session_id} was cancelled")
-            org_id = get_session_org(session_id)
-            if org_id is not None:
+            audit_context = get_session_audit_context(session_id)
+            if audit_context is not None:
                 _dispatch_session_audit(
                     lambda: get_session_audit_writer().add_session_end(
                         session_id=session_id,
-                        org_id=org_id,
+                        org_id=audit_context.org_id,
                         name="Session Cancelled",
-                        flow_name=get_session_flow_name(session_id) or "",
+                        flow_name=audit_context.flow_name,
                         event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"reason": "timeout"},
                         run_type=session_data.run_type,
+                        retention_days=audit_context.audit_retention_days,
                     )
                 )
-            clear_session_org(session_id)
-            clear_session_flow_name(session_id)
         except StopSession as e:
             logger.log(
                 BENCH_LEVEL,
@@ -352,23 +352,22 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status=stop_event.status, **status_kwargs
             )
-            org_id = get_session_org(session_id)
+            audit_context = get_session_audit_context(session_id)
             stop_details = {"reason": e.reason or "stopped"}
-            if org_id is not None:
+            if audit_context is not None:
                 _dispatch_session_audit(
                     lambda: get_session_audit_writer().add_session_end(
                         session_id=session_id,
-                        org_id=org_id,
+                        org_id=audit_context.org_id,
                         name="Session Stopped",
-                        flow_name=get_session_flow_name(session_id) or "",
+                        flow_name=audit_context.flow_name,
                         event_id=str(uuid.uuid4()),
                         status="failed",
                         details=stop_details,
                         run_type=session_data.run_type,
+                        retention_days=audit_context.audit_retention_days,
                     )
                 )
-            clear_session_org(session_id)
-            clear_session_flow_name(session_id)
 
         except Exception as e:
             logger.exception(f"Failed to start session: {e}")
@@ -384,23 +383,26 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
             )
-            org_id = get_session_org(session_id)
+            audit_context = get_session_audit_context(session_id)
             failure_details = {"error": str(e)}
-            if org_id is not None:
+            if audit_context is not None:
                 _dispatch_session_audit(
                     lambda: get_session_audit_writer().add_session_end(
                         session_id=session_id,
-                        org_id=org_id,
+                        org_id=audit_context.org_id,
                         name="Session Failed",
-                        flow_name=get_session_flow_name(session_id) or "",
+                        flow_name=audit_context.flow_name,
                         event_id=str(uuid.uuid4()),
                         status="failed",
                         details=failure_details,
                         run_type=session_data.run_type,
+                        retention_days=audit_context.audit_retention_days,
                     )
                 )
-            clear_session_org(session_id)
-            clear_session_flow_name(session_id)
+        finally:
+            # The end paths above read the context first. Clearing here, and only
+            # here, also covers an error raised inside one of those handlers.
+            clear_session_audit_context(session_id)
 
     async def _store_final_variables(self, session_id: int, variables: dict) -> None:
         # A Redis outage must not lose the `end` status: the session still finished,

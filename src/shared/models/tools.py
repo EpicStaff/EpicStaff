@@ -65,9 +65,9 @@ class PythonCodeData(StorageScopedData):
     or not, which is what lets a computed name like get_secret(f"KEY_{env}")
     resolve.
 
-    Excluded because this model is nested in GraphData, which becomes
-    Session.graph_schema. The names are not credentials, but they are the
-    caller's data and nothing downstream of Redis needs them.
+    Excluded from every dump, so the names never reach the Redis payload or
+    anything persisted from this model. They are not credentials, but they are
+    the caller's data and nothing downstream of Redis needs them.
     """
 
     secrets: dict[str, str] = Field(default_factory=dict)
@@ -79,11 +79,11 @@ class PythonCodeData(StorageScopedData):
 
     This is safe because resolution happens only on the deep copy that
     SecretResolver.resolve_payload() returns, never on the caller's object.
-    `Session.graph_schema` is built from that original, unresolved object
-    (see session_manager_service.py), so its `secrets` is always the empty
-    default here — never plaintext. Nothing prevents future code from
-    resolving in place instead of on a copy; that discipline, not a Field
-    flag, is what keeps this field's value out of persisted storage.
+    The caller's object stays unresolved (see redis_service.publish_session_data),
+    so its `secrets` is always the empty default — never plaintext; only the
+    published copy carries values. Nothing prevents future code from resolving
+    in place instead of on a copy; that discipline, not a Field flag, is what
+    keeps plaintext off the caller's object and out of anything persisted from it.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -166,8 +166,8 @@ class CodeTaskData(StorageScopedData):
     """Ephemeral temporary storage credentials for sandbox execution.
 
     Injected by crew/django at task publication time if use_storage=True.
-    Never persisted — payload-only field, never part of graph_schema or any
-    stored state.
+    Never persisted — payload-only field, set only on the copy published to
+    Redis and never part of any stored state.
     """
 
     secrets: dict[str, str] = {}

@@ -16,6 +16,8 @@ class SessionData(BaseModel):
     storage_credentials: StorageCredentials | None = None
     run_type: str = ""
 
+    audit_retention_days: int
+
 
 class TokenUsage(BaseModel):
     prompt_tokens: int = 0

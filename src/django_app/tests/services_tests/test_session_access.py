@@ -99,7 +99,7 @@ def test_accessible_session_loads_only_id_and_status(member_a, org_a):
     accessible = get_accessible_session(member_a, session.pk)
 
     assert accessible.status == Session.SessionStatus.PENDING
-    assert {"graph_schema", "variables", "status_data"} <= accessible.get_deferred_fields()
+    assert {"variables", "status_data"} <= accessible.get_deferred_fields()
 
 
 @pytest.mark.django_db
