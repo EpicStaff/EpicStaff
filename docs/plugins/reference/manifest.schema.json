@@ -1,0 +1,644 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AccessDeclaration": {
+      "additionalProperties": false,
+      "description": "What the plugin may do in EpicStaff, in the terms of EpicStaff's permission catalog.",
+      "properties": {
+        "resource_type": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "actions": {
+          "items": {
+            "enum": [
+              "read",
+              "create",
+              "update",
+              "delete",
+              "export",
+              "use"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Actions",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_type",
+        "actions",
+        "reason"
+      ],
+      "title": "AccessDeclaration",
+      "type": "object"
+    },
+    "Backend": {
+      "additionalProperties": false,
+      "description": "The plugin's Python backend. Its files are under `backend/` in the package.",
+      "properties": {
+        "python": {
+          "enum": [
+            "3.12",
+            "3.13"
+          ],
+          "title": "Python",
+          "type": "string"
+        },
+        "entrypoint": {
+          "maxLength": 200,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Entrypoint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "python",
+        "entrypoint"
+      ],
+      "title": "Backend",
+      "type": "object"
+    },
+    "Database": {
+      "additionalProperties": false,
+      "description": "Present when the plugin needs its own database; migrations are under `database/migrations/`.",
+      "properties": {},
+      "title": "Database",
+      "type": "object"
+    },
+    "HookTimeouts": {
+      "additionalProperties": false,
+      "description": "Shorter timeouts for the lifecycle hooks, in seconds.",
+      "properties": {
+        "install": {
+          "anyOf": [
+            {
+              "maximum": 900,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Install"
+        },
+        "upgrade": {
+          "anyOf": [
+            {
+              "maximum": 1800,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upgrade"
+        },
+        "org_removed": {
+          "anyOf": [
+            {
+              "maximum": 900,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Org Removed"
+        }
+      },
+      "title": "HookTimeouts",
+      "type": "object"
+    },
+    "Hooks": {
+      "additionalProperties": false,
+      "description": "The lifecycle hooks the backend implements.",
+      "properties": {
+        "install": {
+          "default": false,
+          "title": "Install",
+          "type": "boolean"
+        },
+        "upgrade": {
+          "default": false,
+          "title": "Upgrade",
+          "type": "boolean"
+        },
+        "org_removed": {
+          "default": false,
+          "title": "Org Removed",
+          "type": "boolean"
+        },
+        "timeouts_seconds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HookTimeouts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "Hooks",
+      "type": "object"
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "description": "Resource limits the backend asks for, never above the platform's maximums.",
+      "properties": {
+        "memory_mb": {
+          "maximum": 8192,
+          "minimum": 64,
+          "title": "Memory Mb",
+          "type": "integer"
+        },
+        "db_connections": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Db Connections",
+          "type": "integer"
+        },
+        "statement_timeout_seconds": {
+          "maximum": 600,
+          "minimum": 1,
+          "title": "Statement Timeout Seconds",
+          "type": "integer"
+        },
+        "requests_per_minute": {
+          "maximum": 6000,
+          "minimum": 1,
+          "title": "Requests Per Minute",
+          "type": "integer"
+        },
+        "cpu_priority": {
+          "enum": [
+            "normal",
+            "low"
+          ],
+          "title": "Cpu Priority",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_mb",
+        "db_connections",
+        "statement_timeout_seconds",
+        "requests_per_minute",
+        "cpu_priority"
+      ],
+      "title": "Limits",
+      "type": "object"
+    },
+    "OutboundHost": {
+      "additionalProperties": false,
+      "description": "A host the backend may call over HTTPS (port 443).",
+      "properties": {
+        "host": {
+          "maxLength": 255,
+          "pattern": "^(?:\\*\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Host",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "host",
+        "reason"
+      ],
+      "title": "OutboundHost",
+      "type": "object"
+    },
+    "Platform": {
+      "additionalProperties": false,
+      "description": "The versions of the platform contracts the plugin is written against.",
+      "properties": {
+        "frame_protocol": {
+          "const": 1,
+          "title": "Frame Protocol",
+          "type": "integer"
+        },
+        "gateway_context": {
+          "const": 1,
+          "title": "Gateway Context",
+          "type": "integer"
+        },
+        "hook_api": {
+          "const": 1,
+          "title": "Hook Api",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "frame_protocol",
+        "gateway_context",
+        "hook_api"
+      ],
+      "title": "Platform",
+      "type": "object"
+    },
+    "PublicPath": {
+      "additionalProperties": false,
+      "description": "A backend path reached without an EpicStaff login.",
+      "properties": {
+        "path": {
+          "maxLength": 512,
+          "pattern": "^/api(?:/[A-Za-z0-9._~-]+)+/?$",
+          "title": "Path",
+          "type": "string"
+        },
+        "match": {
+          "enum": [
+            "exact",
+            "prefix"
+          ],
+          "title": "Match",
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "enum": [
+              "GET",
+              "HEAD",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "OPTIONS"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Methods",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "rate_limit_per_minute": {
+          "maximum": 6000,
+          "minimum": 1,
+          "title": "Rate Limit Per Minute",
+          "type": "integer"
+        },
+        "max_body_kb": {
+          "maximum": 20480,
+          "minimum": 0,
+          "title": "Max Body Kb",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "match",
+        "methods",
+        "rate_limit_per_minute",
+        "max_body_kb"
+      ],
+      "title": "PublicPath",
+      "type": "object"
+    },
+    "Publisher": {
+      "additionalProperties": false,
+      "description": "Who publishes the plugin. Shown as claimed unless the package is signed by a trusted key.",
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Publisher",
+      "type": "object"
+    },
+    "Setting": {
+      "additionalProperties": false,
+      "description": "A deployment-wide setting the SuperAdmin fills in.",
+      "properties": {
+        "key": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "text",
+            "integer",
+            "boolean",
+            "url",
+            "enum",
+            "secret"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "default": {
+          "default": null,
+          "description": "Must match `type`; never set for a secret setting.",
+          "type": [
+            "string",
+            "integer",
+            "boolean",
+            "null"
+          ],
+          "title": "Default"
+        },
+        "values": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Values"
+        }
+      },
+      "required": [
+        "key",
+        "type",
+        "label",
+        "description",
+        "required"
+      ],
+      "title": "Setting",
+      "type": "object"
+    },
+    "Spa": {
+      "additionalProperties": false,
+      "description": "The plugin's single-page app. Its files are under `spa/` in the package.",
+      "properties": {
+        "entry": {
+          "default": "index.html",
+          "title": "Entry",
+          "type": "string"
+        }
+      },
+      "title": "Spa",
+      "type": "object"
+    },
+    "UserPermission": {
+      "additionalProperties": false,
+      "description": "One action people can be given on the plugin, and what it means inside the plugin.",
+      "properties": {
+        "action": {
+          "enum": [
+            "read",
+            "create",
+            "update",
+            "delete",
+            "export",
+            "use"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "defaults": {
+          "$ref": "#/$defs/UserPermissionDefaults"
+        }
+      },
+      "required": [
+        "action",
+        "description",
+        "defaults"
+      ],
+      "title": "UserPermission",
+      "type": "object"
+    },
+    "UserPermissionDefaults": {
+      "additionalProperties": false,
+      "description": "Whether each built-in role gets the action. Custom roles start with nothing.",
+      "properties": {
+        "org_admin": {
+          "title": "Org Admin",
+          "type": "boolean"
+        },
+        "member": {
+          "title": "Member",
+          "type": "boolean"
+        },
+        "viewer": {
+          "title": "Viewer",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "org_admin",
+        "member",
+        "viewer"
+      ],
+      "title": "UserPermissionDefaults",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "An EpicStaff plugin manifest, version 1.",
+  "properties": {
+    "manifest_version": {
+      "const": 1,
+      "title": "Manifest Version",
+      "type": "integer"
+    },
+    "id": {
+      "pattern": "^[a-z][a-z0-9-]{0,30}[a-z0-9]$",
+      "title": "Id",
+      "type": "string"
+    },
+    "version": {
+      "maxLength": 64,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "title": "Version",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "publisher": {
+      "$ref": "#/$defs/Publisher"
+    },
+    "icon": {
+      "enum": [
+        "icon.svg",
+        "icon.png"
+      ],
+      "title": "Icon",
+      "type": "string"
+    },
+    "platform": {
+      "$ref": "#/$defs/Platform"
+    },
+    "spa": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Spa"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "backend": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Backend"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "database": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Database"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "access": {
+      "items": {
+        "$ref": "#/$defs/AccessDeclaration"
+      },
+      "title": "Access",
+      "type": "array"
+    },
+    "user_permissions": {
+      "items": {
+        "$ref": "#/$defs/UserPermission"
+      },
+      "minItems": 1,
+      "title": "User Permissions",
+      "type": "array"
+    },
+    "public_paths": {
+      "items": {
+        "$ref": "#/$defs/PublicPath"
+      },
+      "title": "Public Paths",
+      "type": "array"
+    },
+    "outbound_hosts": {
+      "items": {
+        "$ref": "#/$defs/OutboundHost"
+      },
+      "title": "Outbound Hosts",
+      "type": "array"
+    },
+    "settings": {
+      "items": {
+        "$ref": "#/$defs/Setting"
+      },
+      "title": "Settings",
+      "type": "array"
+    },
+    "limits": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Limits"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "hooks": {
+      "$ref": "#/$defs/Hooks"
+    }
+  },
+  "required": [
+    "manifest_version",
+    "id",
+    "version",
+    "name",
+    "description",
+    "publisher",
+    "icon",
+    "platform",
+    "user_permissions"
+  ],
+  "title": "EpicStaff plugin manifest, version 1",
+  "type": "object"
+}

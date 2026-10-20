@@ -1,0 +1,18 @@
+{
+    "manifest_version": 1,
+    "id": "weather",
+    "version": "0.1.0",
+    "name": "Weather",
+    "description": "Forecasts for the places your organization cares about.",
+    "publisher": { "name": "EpicStaff" },
+    "icon": "icon.svg",
+    "platform": { "frame_protocol": 1, "gateway_context": 1, "hook_api": 1 },
+    "spa": { "entry": "index.html" },
+    "user_permissions": [
+        {
+            "action": "read",
+            "description": "Open Weather and see forecasts.",
+            "defaults": { "org_admin": true, "member": true, "viewer": false }
+        }
+    ]
+}

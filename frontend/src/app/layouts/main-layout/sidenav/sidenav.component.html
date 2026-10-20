@@ -92,7 +92,7 @@
             }
         }
 
-        @for (item of topNavItems; track item.id) {
+        @for (item of topNavItems(); track item.id) {
             @if (item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
@@ -112,6 +112,11 @@
                                 @if (item.icon) {
                                     <app-svg-icon
                                         [icon]="item.icon"
+                                        size="1.4rem"
+                                    />
+                                } @else if (item.iconUrl) {
+                                    <app-plugin-icon
+                                        [src]="item.iconUrl"
                                         size="1.4rem"
                                     />
                                 }

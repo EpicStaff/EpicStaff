@@ -1,0 +1,130 @@
+/*
+ * Every colour comes from EpicStaff's theme tokens. The values below only apply outside EpicStaff: inside its frame
+ * the SDK sets the tokens on <html>, which wins over these defaults.
+ */
+:root {
+    --es-color-background: #1e1f22;
+    --es-color-surface: #27272b;
+    --es-color-text: #d9d9de;
+    --es-color-text-secondary: #9a9aa3;
+    --es-color-accent: #685fff;
+    --es-color-accent-hover: #574fd6;
+    --es-color-border: #c8ceda24;
+    --es-color-divider-subtle: #c8ceda14;
+    --es-color-warning: #ffcf00;
+    --es-font-family: Inter, 'Helvetica Neue', sans-serif;
+    color-scheme: dark;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--es-color-background);
+    color: var(--es-color-text);
+    font-family: var(--es-font-family);
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.app {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 880px;
+    padding: 24px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.title {
+    margin: 0;
+    font-size: 1.375rem;
+    font-weight: 500;
+}
+
+.nav {
+    display: flex;
+    gap: 8px;
+}
+
+.nav a {
+    padding: 6px 12px;
+    border: 1px solid var(--es-color-border);
+    border-radius: 8px;
+    color: var(--es-color-text);
+    text-decoration: none;
+}
+
+.nav a:hover {
+    border-color: var(--es-color-accent-hover);
+}
+
+.nav a[aria-current='page'] {
+    border-color: var(--es-color-accent);
+    color: var(--es-color-accent);
+}
+
+.muted {
+    color: var(--es-color-text-secondary);
+}
+
+.note {
+    margin: 0;
+    padding: 12px 16px;
+    border-left: 3px solid var(--es-color-warning);
+    border-radius: 4px;
+    background: var(--es-color-surface);
+}
+
+.places {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.place {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px;
+    border: 1px solid var(--es-color-divider-subtle);
+    border-radius: 10px;
+    background: var(--es-color-surface);
+}
+
+.place-name {
+    font-size: 1.125rem;
+    font-weight: 500;
+}
+
+.place-temperature {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--es-color-accent);
+}
+
+.facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 16px;
+    margin: 0;
+}
+
+.facts dt {
+    color: var(--es-color-text-secondary);
+}
+
+.facts dd {
+    margin: 0;
+}

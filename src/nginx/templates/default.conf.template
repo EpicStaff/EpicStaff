@@ -57,7 +57,9 @@ server {
     # has not been verified against it. Violations surface in the browser
     # console; there is no report collector in this stack. Promote to
     # Content-Security-Policy once the console is clean.
-    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'" always;
+    # PLUGINS_FRAME_SRC (16-normalize-plugins-enabled.envsh) is the plugin
+    # hosts' wildcard when plugins are on and empty when they are off.
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-src 'self' ${PLUGINS_FRAME_SRC}; frame-ancestors 'self'; base-uri 'self'" always;
 
     location / {
         proxy_pass http://frontend_server;
@@ -191,6 +193,8 @@ server {
 
     include /etc/nginx/conf.d/chat-${CHAT_ENABLED}.snippet;
 
+    include /etc/nginx/conf.d/plugins-main-${PLUGINS_ENABLED}.snippet;
+
     location ~ ^/auditor/api/audit/[^/]+/events/?$ {
         return 404;
     }
@@ -227,3 +231,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+
+# The plugin hosts' server. It must stay after the server above: the first server on a port is
+# the default one, so a host name that is not a valid plugin host still reaches EpicStaff.
+include /etc/nginx/conf.d/plugins-server-${PLUGINS_ENABLED}.snippet;

@@ -18,6 +18,9 @@ import {
 import { HIDE_SIDENAV_ON_PHONE } from './core/services/app-navigation-drawer.service';
 import { auditTrailEnabledGuard } from './features/audit/guards/audit-trail-enabled.guard';
 import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
+import { availablePluginGuard } from './features/plugins/guards/available-plugin.guard';
+import { pluginsEnabledGuard } from './features/plugins/guards/plugins-enabled.guard';
+import { pluginPageMatcher } from './features/plugins/pages/plugin-host-page/plugin-page.matcher';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -390,6 +393,16 @@ export const routes: Routes = [
                         ],
                     },
                     {
+                        // A plugin's own page, framed from the plugin's origin; everything below the identifier is
+                        // the page's path. Only a plugin the caller may open in the active organization.
+                        matcher: pluginPageMatcher,
+                        canActivate: [availablePluginGuard],
+                        loadComponent: () =>
+                            import('./features/plugins/pages/plugin-host-page/plugin-host-page.component').then(
+                                (m) => m.PluginHostPageComponent
+                            ),
+                    },
+                    {
                         path: 'workspace',
                         loadComponent: () =>
                             import('./features/role-base-access/pages/overview-page/overview.component').then(
@@ -446,6 +459,26 @@ export const routes: Routes = [
                                     ),
                                 canActivate: [workspacePermissionGuard],
                                 data: { permission: [ResourceCode.ApiKeys, ActionCode.Read] },
+                            },
+                            {
+                                path: 'plugins',
+                                canActivate: [pluginsEnabledGuard, superAdminGuard],
+                                children: [
+                                    {
+                                        path: '',
+                                        loadComponent: () =>
+                                            import('./features/plugins/pages/plugins-admin-page/plugins-admin-page.component').then(
+                                                (m) => m.PluginsAdminPageComponent
+                                            ),
+                                    },
+                                    {
+                                        path: ':identifier',
+                                        loadComponent: () =>
+                                            import('./features/plugins/pages/plugin-admin-detail-page/plugin-admin-detail-page.component').then(
+                                                (m) => m.PluginAdminDetailPageComponent
+                                            ),
+                                    },
+                                ],
                             },
                         ],
                     },

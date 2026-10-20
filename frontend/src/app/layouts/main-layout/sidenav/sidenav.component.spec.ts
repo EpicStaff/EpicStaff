@@ -1,10 +1,13 @@
-import { signal } from '@angular/core';
+import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse } from '@shared/models';
 
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { AvailablePlugin } from '../../../features/plugins/models/available-plugin.model';
+import { AvailablePluginsStorageService } from '../../../features/plugins/services/available-plugins-storage.service';
+import { buildAvailablePlugin } from '../../../features/plugins/testing/plugin-fixtures';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
@@ -26,13 +29,27 @@ const USER = {
     memberships: [{ organization: { id: 1, name: ORG_NAME }, role: { name: 'Admin' } }],
 } as unknown as GetMeResponse;
 
+const WEATHER = buildAvailablePlugin();
+const ATLAS = buildAvailablePlugin({
+    identifier: 'atlas',
+    name: 'Atlas',
+    icon_url: '/api/plugin-public/atlas/icon/?v=2.0.0',
+    frame_origin: 'https://atlas.plugins.example.com',
+});
+/** The fixed top items this setup shows, in order (Audit is off). */
+const STATIC_TOP_LABELS = ['Agents', 'Tools', 'Storage', 'Flows', 'Chats', 'Conversations'];
+
 describe('LeftSidebarComponent', () => {
     let fixture: ComponentFixture<LeftSidebarComponent>;
     let element: HTMLElement;
+    /** What the storage holds: the plugins available in the active organization, sorted by name. */
+    let availablePlugins: WritableSignal<AvailablePlugin[]>;
 
     beforeEach(() => {
+        availablePlugins = signal<AvailablePlugin[]>([]);
         TestBed.configureTestingModule({
             providers: [
+                { provide: AvailablePluginsStorageService, useValue: { plugins: availablePlugins } },
                 provideRouter([
                     { path: 'workspace', children: [] },
                     { path: '**', children: [] },
@@ -99,6 +116,25 @@ describe('LeftSidebarComponent', () => {
 
     function sidebarToggle(): HTMLButtonElement {
         return element.querySelector<HTMLButtonElement>('.logo-container app-sidebar-toggle-button button')!;
+    }
+
+    /** The labels of the top links, in order: the visible text when expanded, the aria-label when collapsed. */
+    function topLinkLabels(): string[] {
+        return Array.from(element.querySelectorAll<HTMLElement>('.main-nav .sidenav-nav-link')).map(
+            (link) =>
+                link.querySelector('.sidenav-row-label')?.textContent?.trim() ?? link.getAttribute('aria-label') ?? ''
+        );
+    }
+
+    function pluginLinks(): HTMLAnchorElement[] {
+        return Array.from(element.querySelectorAll<HTMLAnchorElement>('.main-nav a.sidenav-nav-link')).filter((link) =>
+            link.getAttribute('href')?.startsWith('/plugins/')
+        );
+    }
+
+    function showPlugins(plugins: AvailablePlugin[]): void {
+        availablePlugins.set(plugins);
+        fixture.detectChanges();
     }
 
     function emittedToggles(): number {
@@ -200,6 +236,77 @@ describe('LeftSidebarComponent', () => {
             expect(badgeLink.textContent!.trim()).toBe(String(WAITING_COUNT));
             expect(badgeLink.getAttribute('href')).toBe('/chat-bindings/all');
             expect(badgeLink.getAttribute('aria-label')).toBe('Conversations inbox: 4 waiting for a person');
+        });
+    });
+
+    describe('plugin items', () => {
+        it('come after the fixed items, one per available plugin, in the order the storage gives', () => {
+            render(EXPANDED_WIDTH);
+
+            showPlugins([ATLAS, WEATHER]);
+
+            expect(topLinkLabels()).toEqual([...STATIC_TOP_LABELS, 'Atlas', 'Weather']);
+        });
+
+        it("link to the plugin's page, show its name and draw its own icon as an image", () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([WEATHER]);
+
+            const [link] = pluginLinks();
+            expect(link.getAttribute('href')).toBe('/plugins/weather');
+            expect(link.querySelector('.sidenav-row-label')!.textContent!.trim()).toBe('Weather');
+            expect(link.hasAttribute('aria-label')).toBe(false);
+            expect(link.querySelector('.sidenav-link-icon img')!.getAttribute('src')).toBe(WEATHER.icon_url);
+            expect(link.querySelector('app-svg-icon')).toBeNull();
+
+            render(COLLAPSED_WIDTH);
+            expect(pluginLinks()[0].getAttribute('aria-label')).toBe('Weather');
+        });
+
+        it('stay active on every page of their own plugin, and only there', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([ATLAS, WEATHER]);
+            const router = TestBed.inject(Router);
+            const activeHrefs = (): string[] =>
+                pluginLinks()
+                    .filter((link) => link.classList.contains('active'))
+                    .map((link) => link.getAttribute('href')!);
+
+            await router.navigateByUrl('/plugins/weather/forecast?city=Rome');
+            fixture.detectChanges();
+            expect(activeHrefs()).toEqual(['/plugins/weather']);
+
+            await router.navigateByUrl('/plugins/weathers');
+            fixture.detectChanges();
+            expect(activeHrefs()).toEqual([]);
+        });
+
+        it('are absent when no plugin is available (platform off, no organization, or none granted)', () => {
+            render(EXPANDED_WIDTH);
+
+            expect(pluginLinks()).toEqual([]);
+            expect(topLinkLabels()).toEqual(STATIC_TOP_LABELS);
+        });
+
+        it('follow the list: cleared on an org switch, back when the new list arrives', () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([WEATHER]);
+            expect(pluginLinks().map((link) => link.getAttribute('href'))).toEqual(['/plugins/weather']);
+
+            showPlugins([]);
+            expect(pluginLinks()).toEqual([]);
+
+            showPlugins([ATLAS]);
+            expect(pluginLinks().map((link) => link.getAttribute('href'))).toEqual(['/plugins/atlas']);
+        });
+
+        it("show the plugin's name as a tooltip on hover when collapsed", () => {
+            render(COLLAPSED_WIDTH);
+            showPlugins([WEATHER]);
+
+            hoverItem('Weather');
+
+            expect(visibleTooltipTexts()).toContain('Weather');
         });
     });
 });

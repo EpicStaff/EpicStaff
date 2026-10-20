@@ -144,8 +144,16 @@ services:
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
       AUDIT_TOKEN_TTL_SECONDS: ${AUDIT_TOKEN_TTL_SECONDS:?}
       AUDIT_JWT_SECRET: ${AUDIT_JWT_SECRET:?}
+
+      PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
+      PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
+      PLUGINS_TRUSTED_SIGNING_KEYS: ${PLUGINS_TRUSTED_SIGNING_KEYS:?}
+      PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
+      PLUGINS_STORAGE_BUCKET: ${PLUGINS_STORAGE_BUCKET:?}
     volumes:
       - media_data:/app/media
+      # Approved plugins' SPA files, published here and served by epicstaff-nginx (read-only).
+      - plugin_spa:/srv/plugin-spa
     networks:
       backend-network:
         aliases:
@@ -457,6 +465,7 @@ services:
       CHAT_ENABLED: ${CHAT_ENABLED:?}
       CHAT_API_URL: ${CHAT_API_URL:?}
       AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:?}
+      PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
     networks:
       - frontend-network
 
@@ -516,11 +525,25 @@ services:
       AUDITOR_PORT: ${AUDITOR_PORT:?}
       CHAT_ENABLED: ${CHAT_ENABLED:?}
       CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
+      PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
+      PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
+      PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
+      # EpicStaff's public origin: the only page allowed to frame a plugin.
+      DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
       - ./nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
+      - ./nginx/docker-entrypoint.d/16-normalize-plugins-enabled.envsh:/docker-entrypoint.d/16-normalize-plugins-enabled.envsh:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - media_data:/usr/share/nginx/html/media:ro
+      - plugin_spa:/srv/plugin-spa:ro
+    # Namespaced to this container, no privileges needed. Every proxied request opens a new
+    # upstream connection (no upstream keepalive is configured, and a proxy_pass through a
+    # variable, as plugin backends need, cannot have one). Without reuse, the sockets nginx closes
+    # wait in TIME_WAIT until the local ports to one busy upstream run out, and every request to
+    # it fails with a 502.
+    sysctls:
+      net.ipv4.tcp_tw_reuse: "1"
     networks:
       - backend-network
       - frontend-network
@@ -793,6 +816,7 @@ volumes:
   rustfs_data: {}
   auditor_data: {}
   chat_pgdata: {}
+  plugin_spa: {}
 
 networks:
   backend-network:

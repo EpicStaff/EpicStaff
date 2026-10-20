@@ -1,0 +1,26 @@
+<div class="plugin-host">
+    @for (ready of frameViews(); track ready.frameKey) {
+        <!-- sandbox / referrerpolicy / allow must stay literal: Angular refuses to bind them. -->
+        <!-- No [src]: the component sets the validated address once the frame protocol listens. -->
+        <iframe
+            #pluginFrame
+            class="plugin-host__frame"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals"
+            referrerpolicy="strict-origin"
+            allow="clipboard-write"
+            [attr.data-frame-key]="ready.frameKey"
+            [title]="ready.name"
+        ></iframe>
+    } @empty {
+        @if (messageView(); as message) {
+            <div class="plugin-host__state">
+                <app-fetch-error-state
+                    [title]="message.title"
+                    [message]="message.message"
+                    retryLabel="Try again"
+                    (retry)="reload()"
+                />
+            </div>
+        }
+    }
+</div>

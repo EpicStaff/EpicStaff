@@ -1,0 +1,43 @@
+[project]
+name = "epicstaff-plugin"
+version = "0.1.0"
+description = "Contracts, package format, signing and the command-line tool for EpicStaff plugins."
+authors = [{ name = "EpicStaff" }]
+# A library for plugin authors, not a service: it supports every Python a plugin
+# backend may use, so the services' exact interpreter pin does not apply.
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "cryptography>=50",
+    "pydantic>=2.13,<3",
+]
+
+[project.scripts]
+epicstaff-plugin = "epicstaff_plugin.cli.main:run"
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+]
+# The versions django_app ships, transitive ones included. A newer version in this lock would
+# raise the shared dependency floor (.github/dependency-floor.toml) for django_app and add a
+# second copy of the package to THIRD-PARTY-NOTICES.md.
+django-app-versions = [
+    "annotated-types==0.8.0",
+    "cffi==2.1.1",
+    "cryptography==50.0.1",
+    "pycparser==3.0",
+    "pydantic-core==2.46.4",
+    "pydantic==2.13.4",
+    "typing-extensions==4.16.0",
+    "typing-inspection==0.4.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,298 @@
+@let reviewed = review();
+<article class="review">
+    <header class="review__header">
+        <app-plugin-icon
+            [src]="iconSource()"
+            size="48px"
+        />
+        <div class="review__identity">
+            <h3 class="review__name text-h4">
+                {{ reviewed.name }} <span class="review__version text-body">{{ reviewed.version }}</span>
+            </h3>
+            <span class="review__muted text-body-small">{{ reviewed.plugin_identifier }}</span>
+            <span class="review__muted text-body-small">
+                By {{ reviewed.publisher.name }}
+                @if (reviewed.publisher.url) {
+                    · {{ reviewed.publisher.url }}
+                }
+                @if (isUntrusted()) {
+                    <span class="review__claimed">(claimed, not verified)</span>
+                }
+            </span>
+        </div>
+        <app-plugin-badge
+            [label]="trustLabel()"
+            [tone]="trustTone()"
+        />
+    </header>
+
+    <p class="review__description text-body">{{ reviewed.description }}</p>
+
+    @if (isUntrusted()) {
+        <div
+            class="review__untrusted"
+            role="alert"
+        >
+            <i
+                class="ti ti-alert-triangle review__untrusted-icon"
+                aria-hidden="true"
+            ></i>
+            <p class="text-body-medium">{{ untrustedWarning }}</p>
+        </div>
+    }
+
+    @if (otherWarnings().length > 0) {
+        <ul class="review__warnings">
+            @for (warning of otherWarnings(); track warning.code + warning.message) {
+                <li class="text-body">{{ warning.message }}</li>
+            }
+        </ul>
+    }
+
+    <section class="review__section">
+        <h4 class="review__section-title text-body-bold">Signature</h4>
+        <dl class="review__facts">
+            <dt>Status</dt>
+            <dd>{{ signatureLabel() }}</dd>
+            @if (reviewed.signer; as signer) {
+                <dt>Key</dt>
+                <dd>
+                    @if (signer.key_name) {
+                        {{ signer.key_name }} ·
+                    }
+                    <code>{{ signer.key_id }}</code>
+                </dd>
+            }
+        </dl>
+    </section>
+
+    <section class="review__section">
+        <h4 class="review__section-title text-body-bold">Access to EpicStaff</h4>
+        @if (declaredAccess().length > 0) {
+            <table class="review__table">
+                <thead>
+                    <tr>
+                        <th scope="col">Resource</th>
+                        <th scope="col">Actions</th>
+                        <th scope="col">Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (entry of declaredAccess(); track entry.resource_type) {
+                        <tr>
+                            <td>{{ entry.resource_label }}</td>
+                            <td>{{ entry.actionLabels }}</td>
+                            <td>{{ entry.reason }}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        } @else {
+            <p class="review__none text-body">None. The plugin cannot read or change anything in EpicStaff.</p>
+        }
+    </section>
+
+    <section class="review__section">
+        <h4 class="review__section-title text-body-bold">Permissions for people</h4>
+        <table class="review__table">
+            <thead>
+                <tr>
+                    <th scope="col">Permission</th>
+                    <th scope="col">What it allows</th>
+                    <th scope="col">Given by default to</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (permission of reviewed.user_permissions; track permission.action) {
+                    <tr>
+                        <td>{{ permission.label }}</td>
+                        <td>{{ permission.description }}</td>
+                        <td>{{ defaultRoles(permission.defaults) }}</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+
+    <section class="review__section">
+        <h4 class="review__section-title text-body-bold">Public addresses</h4>
+        @if (reviewed.public_paths.length > 0) {
+            <table class="review__table">
+                <thead>
+                    <tr>
+                        <th scope="col">Path</th>
+                        <th scope="col">Methods</th>
+                        <th scope="col">Rate limit</th>
+                        <th scope="col">Largest body</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (publicPath of publicPaths(); track publicPath.path + publicPath.match) {
+                        <tr>
+                            <td>
+                                <code>{{ publicPath.path }}</code>
+                                {{ publicPath.matchLabel }}
+                            </td>
+                            <td>{{ publicPath.methodsLabel }}</td>
+                            <td>{{ publicPath.rate_limit_per_minute }} a minute</td>
+                            <td>{{ publicPath.max_body_kb }} KB</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        } @else {
+            <p class="review__none text-body">None. Only signed-in people reach the plugin.</p>
+        }
+    </section>
+
+    <section class="review__section">
+        <h4 class="review__section-title text-body-bold">Outbound hosts</h4>
+        @if (reviewed.outbound_hosts.length > 0) {
+            <table class="review__table">
+                <thead>
+                    <tr>
+                        <th scope="col">Host</th>
+                        <th scope="col">Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (outboundHost of reviewed.outbound_hosts; track outboundHost.host) {
+                        <tr>
+                            <td>
+                                <code>{{ outboundHost.host }}</code>
+                            </td>
+                            <td>{{ outboundHost.reason }}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        } @else {
+            <p class="review__none text-body">None. The plugin's backend cannot reach the internet.</p>
+        }
+    </section>
+
+    <section class="review__section">
+        <h4 class="review__section-title text-body-bold">Settings</h4>
+        @if (reviewed.settings.length > 0) {
+            <table class="review__table">
+                <thead>
+                    <tr>
+                        <th scope="col">Setting</th>
+                        <th scope="col">Type</th>
+                        <th scope="col">Description</th>
+                        <th scope="col">Required</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (setting of reviewed.settings; track setting.key) {
+                        <tr>
+                            <td>
+                                {{ setting.label }} <code>{{ setting.key }}</code>
+                            </td>
+                            <td>{{ setting.type }}</td>
+                            <td>{{ setting.description }}</td>
+                            <td>{{ settingRequirement(setting) }}</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        } @else {
+            <p class="review__none text-body">None.</p>
+        }
+    </section>
+
+    <section class="review__section">
+        <h4 class="review__section-title text-body-bold">Limits and hooks</h4>
+        <dl class="review__facts">
+            @if (reviewed.limits; as limits) {
+                <dt>Memory</dt>
+                <dd>{{ limits.memory_mb }} MB</dd>
+                <dt>Database connections</dt>
+                <dd>{{ limits.db_connections }}</dd>
+                <dt>Statement timeout</dt>
+                <dd>{{ limits.statement_timeout_seconds }} s</dd>
+                <dt>Requests</dt>
+                <dd>{{ limits.requests_per_minute }} a minute</dd>
+                <dt>CPU priority</dt>
+                <dd>{{ limits.cpu_priority }}</dd>
+            } @else {
+                <dt>Limits</dt>
+                <dd>None requested</dd>
+            }
+            <dt>Hooks</dt>
+            <dd>{{ hooksLabel() }}</dd>
+        </dl>
+    </section>
+
+    <section class="review__section">
+        <h4 class="review__section-title text-body-bold">Package</h4>
+        <dl class="review__facts">
+            <dt>Contents</dt>
+            <dd>
+                @if (reviewed.contents.has_spa) {
+                    Frontend: {{ reviewed.contents.spa_file_count }} files, {{ spaSize() }}.
+                }
+                @if (reviewed.contents.has_backend) {
+                    Backend: {{ reviewed.contents.wheel_count }} wheels.
+                }
+                @if (reviewed.contents.has_database) {
+                    Database: {{ reviewed.contents.migration_count }} migrations.
+                }
+            </dd>
+            <dt>Size</dt>
+            <dd>{{ packageSize() }}</dd>
+            <dt>SHA-256</dt>
+            <dd>
+                <code class="review__digest">{{ reviewed.sha256 }}</code>
+            </dd>
+            <dt>Uploaded</dt>
+            <dd>
+                {{ reviewed.uploaded_at | date: 'medium' }}
+                @if (reviewed.uploaded_by; as uploader) {
+                    by {{ uploader.email }}
+                }
+            </dd>
+            @if (reviewed.approved_at) {
+                <dt>Approved</dt>
+                <dd>
+                    {{ reviewed.approved_at | date: 'medium' }}
+                    @if (reviewed.approved_by; as approver) {
+                        by {{ approver.email }}
+                    }
+                </dd>
+            }
+        </dl>
+    </section>
+
+    @if (isPending()) {
+        <footer class="review__actions">
+            @if (isUntrusted()) {
+                <label class="review__acknowledge text-body">
+                    <app-checkbox
+                        [checked]="acknowledged()"
+                        [disabled]="busy()"
+                        (changed)="acknowledged.set($event)"
+                    />
+                    <span>I understand the risk and want to install this untrusted package.</span>
+                </label>
+            }
+            <div class="review__buttons">
+                <app-button
+                    type="outline-danger"
+                    [disabled]="busy()"
+                    (click)="reject()"
+                >
+                    Reject
+                </app-button>
+                <app-button
+                    type="primary"
+                    class="review__approve"
+                    [disabled]="!canApprove()"
+                    (click)="approve()"
+                >
+                    Approve
+                </app-button>
+            </div>
+        </footer>
+    }
+</article>

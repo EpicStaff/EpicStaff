@@ -1,0 +1,23 @@
+:host {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--plugin-icon-size);
+    height: var(--plugin-icon-size);
+}
+
+.plugin-icon {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+
+    &--placeholder {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: var(--plugin-icon-size);
+        color: var(--color-text-secondary);
+    }
+}

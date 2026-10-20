@@ -1,0 +1,36 @@
+@use '../../../role-base-access/pages/overview-page/tab-shared' as shared;
+
+@include shared.tab-base;
+
+.plugins-table {
+    cursor: pointer;
+}
+
+.cell-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+
+    &--strong {
+        font-weight: var(--text-body-medium-weight);
+    }
+
+    &--muted {
+        color: var(--color-text-secondary);
+    }
+}
+
+.empty-title {
+    margin: 0;
+    color: var(--color-text-primary);
+}
+
+.empty-subtitle {
+    margin: 0;
+    color: var(--color-text-secondary);
+}

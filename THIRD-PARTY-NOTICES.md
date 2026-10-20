@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Fri, 16 Oct 2026 09:51:57 GMT -->
-<!-- commit: 1953a0cbf00d80489df64b836a0e73da26faac24 -->
-<!-- package-lock.json sha256: c2d8878ddc7c5f09 -->
+<!-- generated: Tue, 20 Oct 2026 18:58:51 GMT -->
+<!-- commit: d61ca9fb71c84cfcb76dc0754c9eded3f6184532 -->
+<!-- package-lock.json sha256: e1b4b926b5081da6 -->
 
 ## Frontend license summary
 
@@ -3702,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-16T15:21:02Z UTC -->
-<!-- commit: f33464084faa4e7b3ab873524790512f9eb0643a -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:77ff3de05fb35c2f, knowledge_new:3d46a714e418362f, manager:b4bef382144a5a4a, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-10-20T19:18:52Z UTC -->
+<!-- commit: d61ca9fb71c84cfcb76dc0754c9eded3f6184532 -->
+<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:c635683e3d8bdfec, knowledge_new:3d46a714e418362f, manager:b4bef382144a5a4a, plugin_sdk:4c0afc65e57365aa, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, webhook:6e6a68286cd96f18 -->
 
 ## Backend (Python)
 
@@ -15851,6 +15851,45 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----
+
+The NumPy repository and source distributions bundle several libraries that are
+compatibly licensed.  We list these here.
+
+Name: lapack-lite
+Files: numpy/linalg/lapack_lite/*
+License: BSD-3-Clause
+  For details, see numpy/linalg/lapack_lite/LICENSE.txt
+
+Name: tempita
+Files: tools/npy_tempita/*
+License: MIT
+  For details, see tools/npy_tempita/license.txt
+
+Name: dragon4
+Files: numpy/core/src/multiarray/dragon4.c
+License: MIT
+  For license text, see numpy/core/src/multiarray/dragon4.c
+
+Name: libdivide
+Files: numpy/core/include/numpy/libdivide/*
+License: Zlib
+  For license text, see numpy/core/include/numpy/libdivide/LICENSE.txt
+
+
+Note that the following files are vendored in the repository and sdist but not
+installed in built numpy packages:
+
+Name: Meson
+Files: vendored-meson/meson/*
+License: Apache 2.0
+  For license text, see vendored-meson/meson/COPYING
+
+Name: spin
+Files: .spin/cmds.py
+License: BSD-3
+  For license text, see .spin/LICENSE
 
 ----
 

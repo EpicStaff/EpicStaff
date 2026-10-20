@@ -11,6 +11,7 @@ import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
+import { pluginRootUrl } from '../../../plugins/utils/plugin-root-url.util';
 import { OrgAvatarComponent } from '../org-avatar/org-avatar.component';
 
 @Component({
@@ -80,11 +81,13 @@ export class OrganizationsMenuComponent {
     /**
      * Detail routes with resource IDs are not safe to keep across an org switch —
      * the resource not exist in the new org. Map them to their list page.
+     * A plugin page keeps the plugin but drops its own path (that data belongs to the old org);
+     * the plugin page guard sends the user to the default route when the new org can't open it.
      */
     private getUrlForOrgSwitch(currentUrl: string): string {
         if (/^\/flows\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/flows/my';
         if (/^\/graph\//.test(currentUrl)) return '/sessions';
-        return currentUrl;
+        return pluginRootUrl(currentUrl) ?? currentUrl;
     }
 
     onWorkspaceClick(): void {

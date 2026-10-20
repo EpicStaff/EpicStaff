@@ -20,6 +20,9 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { PluginIconComponent } from '../../../features/plugins/components/plugin-icon/plugin-icon.component';
+import { AvailablePlugin } from '../../../features/plugins/models/available-plugin.model';
+import { AvailablePluginsStorageService } from '../../../features/plugins/services/available-plugins-storage.service';
 import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
@@ -39,6 +42,8 @@ interface NavItem {
      *  but live outside its route tree (e.g. flow sessions under Flows). */
     activePaths?: string[];
     icon?: string;
+    /** An image URL drawn as the icon when there is no sprite `icon` (a plugin's own icon). */
+    iconUrl?: string;
     label: string;
     showTooltip: boolean;
     /** Function (not boolean) so signal reads inside happen at template-eval time.
@@ -68,6 +73,7 @@ interface NavItem {
         OrgAvatarComponent,
         ClickOutsideDirective,
         SidebarToggleButtonComponent,
+        PluginIconComponent,
     ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
@@ -87,7 +93,12 @@ export class LeftSidebarComponent {
     private destroyRef = inject(DestroyRef);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
 
-    public topNavItems: NavItem[];
+    /** The fixed items, then one per plugin the user may open in the active organization (sorted by name). */
+    public readonly topNavItems = computed<NavItem[]>(() => [...this.staticTopNavItems, ...this.pluginNavItems()]);
+    private readonly pluginNavItems = computed<NavItem[]>(() =>
+        this.availablePlugins.plugins().map((plugin) => toPluginNavItem(plugin))
+    );
+    private readonly staticTopNavItems: NavItem[];
     public bottomNavItems: NavItem[];
     public recycleBinNavItem: NavItem;
     /** Shown next to the logo when expanded; names the logo image when collapsed. */
@@ -146,10 +157,11 @@ export class LeftSidebarComponent {
     private readonly configService = inject(ConfigService);
     private readonly permissionService = inject(PermissionsService);
     private readonly chatInboxStream = inject(ChatInboxStreamService);
+    private readonly availablePlugins = inject(AvailablePluginsStorageService);
 
     constructor() {
         this.destroyRef.onDestroy(() => this.chatInboxStream.stop());
-        this.topNavItems = [
+        this.staticTopNavItems = [
             {
                 id: 'agents',
                 routeLink: 'agents',
@@ -290,4 +302,18 @@ export class LeftSidebarComponent {
     private readCurrentPath(): string {
         return this.router.url.split(/[?#;]/)[0];
     }
+}
+
+function toPluginNavItem(plugin: AvailablePlugin): NavItem {
+    const route = `/plugins/${plugin.identifier}`;
+    return {
+        id: `plugin-${plugin.identifier}`,
+        routeLink: route,
+        activePaths: [route],
+        iconUrl: plugin.icon_url,
+        label: plugin.name,
+        // The available list already holds only plugins the user may open here.
+        isPermitted: () => true,
+        showTooltip: false,
+    };
 }

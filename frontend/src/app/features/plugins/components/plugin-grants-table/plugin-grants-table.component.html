@@ -1,0 +1,93 @@
+<div class="grants__toolbar">
+    <span class="grants__count text-body">{{ count() }} {{ count() === 1 ? 'organization' : 'organizations' }}</span>
+    <app-button
+        type="primary"
+        leftIcon="plus"
+        [disabled]="!canGrant()"
+        (click)="canGrant() && openGrant()"
+    >
+        Grant
+    </app-button>
+</div>
+
+@if (loadError(); as message) {
+    <div
+        class="grants__error text-body"
+        role="alert"
+    >
+        <span>{{ message }}</span>
+        <app-button
+            type="outline-primary"
+            mod="small"
+            (click)="reload()"
+        >
+            Retry
+        </app-button>
+    </div>
+}
+
+<app-table
+    [columns]="columns"
+    [data]="rows()"
+    rowId="id"
+>
+    <ng-template
+        appTableCell="organization"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.organization.name }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="state"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <app-plugin-badge
+                [label]="stateLabel(grant)"
+                [tone]="stateTone(grant)"
+            />
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="grantedBy"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.granted_by?.email ?? '—' }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="grantedAt"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.granted_at | date: 'mediumDate' }}</span>
+        }
+    </ng-template>
+
+    <div tableEmpty>
+        @if (isLoading()) {
+            <app-loading-spinner size="sm" />
+        } @else {
+            <h4 class="grants__empty-title">Not granted to any organization</h4>
+            <p class="grants__empty-subtitle text-body">
+                @if (canGrant()) {
+                    Grant it to an organization so its members can open it.
+                } @else {
+                    Approve the plugin before granting it.
+                }
+            </p>
+        }
+    </div>
+</app-table>
+
+@if (count() > pageSize) {
+    <app-pagination-controls
+        [pageSize]="pageSize"
+        [totalCount]="count()"
+        [currentPage]="page()"
+        (pageChange)="onPageChange($event)"
+    />
+}

@@ -20,6 +20,7 @@ from .database import *
 from .email import *
 from .jwt import *
 from .logging import *
+from .plugins import *
 from .redis import *
 from .rest_framework import *
 from .spectacular import *

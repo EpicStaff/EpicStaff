@@ -1,0 +1,86 @@
+# PLUGINS_ENABLED=true: the server for every plugin host, <identifier>.<PLUGINS_BASE_DOMAIN>.
+# Included at http level, after EpicStaff's own server (see default.conf.template).
+#
+# It serves each plugin's published SPA from the plugin_spa volume, which django_app writes and
+# this container mounts read-only, and the platform config the SPA loads at start-up. Nothing
+# else: /api/ is not routed anywhere yet, and the platform's own paths answer 404.
+
+# HSTS for the plugin hosts when nginx terminates TLS (NGINX_SSL_MODE=on), as EpicStaff's own
+# server does. A variable, because the header has to be repeated in every location.
+map $scheme $plugin_strict_transport_security {
+    https   "max-age=31536000; includeSubDomains";
+    default "";
+}
+
+server {
+    include /etc/nginx/conf.d/plugins-ssl-${NGINX_SSL_MODE}.snippet;
+
+    # Quoted: unquoted, nginx reads the "{" of the regex as the start of a block. The identifier
+    # pattern is the manifest's id rule, so $plugin_identifier is always a safe path segment.
+    # A host name that does not match falls through to EpicStaff's server, the default one.
+    server_name "~^(?<plugin_identifier>[a-z][a-z0-9-]{0,30}[a-z0-9])\.${PLUGINS_BASE_DOMAIN_REGEX}$";
+
+    # Plugin hosts serve files and a small JSON document; nothing here takes an upload.
+    client_max_body_size 1m;
+
+    # Also at server level, for the responses nginx gives before choosing a location (the
+    # http-to-https redirect, a malformed request).
+    include /etc/nginx/conf.d/plugins-security-headers.snippet;
+
+    # The platform config the SPA loads at start-up, served by Django's public endpoint for this
+    # plugin. Django gets only the headers set here: nothing a plugin page sends to its own host
+    # (its cookies, an Authorization or API key header, an organization header) reaches EpicStaff,
+    # and without an Accept header the response is always JSON.
+    location = /.well-known/epicstaff/config.json {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        proxy_pass http://backend_server/api/plugin-public/$plugin_identifier/config/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        proxy_pass_request_headers off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # A cookie set from a plugin host could be scoped to the parent domain and reach
+        # EpicStaff or the other plugins. Django's X-Frame-Options: DENY would stop EpicStaff
+        # from framing the response; frame-ancestors in the security headers decides that here.
+        proxy_hide_header Set-Cookie;
+        proxy_hide_header X-Frame-Options;
+    }
+
+    # The platform's other paths on every plugin host: refused here rather than left to the SPA
+    # fallback below, which would answer them with the plugin's index.html.
+    location ^~ /.well-known/epicstaff/ {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        return 404;
+    }
+
+    location ^~ /_epicstaff/ {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        return 404;
+    }
+
+    # A plugin's own API. No plugin has a backend yet, so every path is a JSON 404 in the shape
+    # of EpicStaff's API errors.
+    location ^~ /api/ {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        default_type application/json;
+        return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
+    }
+
+    # The SPA's entry page is revalidated on every load, so a newly approved version is picked up
+    # at once. "current" is a symlink django_app switches atomically to the published version.
+    location = /index.html {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Cache-Control no-cache always;
+        root /srv/plugin-spa/$plugin_identifier/current;
+    }
+
+    # The SPA's files, and its index.html for any other path (client-side routes). The fallback is
+    # an internal redirect to the location above, so every index.html response gets no-cache; a
+    # plugin that is not published answers 404 there.
+    location / {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        root /srv/plugin-spa/$plugin_identifier/current;
+        try_files $uri /index.html;
+    }
+}

@@ -23,6 +23,7 @@ jobs:
       cla: ${{ steps.filter.outputs.cla }}
       sandbox: ${{ steps.filter.outputs.be_sandbox }}
       chat: ${{ steps.filter.outputs.be_chat }}
+      plugins_js: ${{ steps.filter.outputs.plugins_js }}
       py_services: ${{ steps.filter.outputs.py_services }}
     steps:
       - name: Checkout
@@ -68,6 +69,10 @@ jobs:
 
           filter cla '^(CLA\.md$|\.github/scripts/check_cla_version\.py$|\.github/scripts/cla_version\.py$|\.github/scripts/test_check_cla_version\.py$|\.github/workflows/pr\.yml$)'
 
+          # The plugin author tooling: the JS SDK, the sample plugins, and the Python
+          # package whose CLI validates the samples.
+          filter plugins_js '^(plugin-sdk/|plugin-samples/|src/plugin_sdk/|\.github/workflows/pr\.yml$)'
+
           # Backend suites are gated per service, so a pull request touching one
           # service does not pay for the other three. Three inputs force every
           # suite to run whichever service directory changed:
@@ -78,13 +83,14 @@ jobs:
           #   this file    -- same self-testing rule as the filters above
           backend_wide='src/shared/|Makefile$|\.github/workflows/pr\.yml$'
 
-          # crew and agent need no database and nothing from the filesystem
-          # beyond an interpreter, so one matrix job covers them both and this
-          # picks its legs. `filter` leaves $result set, so the array is built
-          # from the same regex that writes each output rather than from a
-          # second copy of it.
+          # crew, agent and plugin_sdk need no database and nothing from the
+          # filesystem beyond an interpreter, so one matrix job covers them all
+          # and this picks its legs. A new service of that kind is not picked
+          # up by itself: add it to this list. `filter` leaves $result set, so
+          # the array is built from the same regex that writes each output
+          # rather than from a second copy of it.
           nodb=''
-          for svc in crew agent; do
+          for svc in crew agent plugin_sdk; do
             filter "be_$svc" "^(src/$svc/|$backend_wide)"
             if [ "$result" = true ]; then
               nodb="$nodb${nodb:+,}\"$svc\""
@@ -228,6 +234,9 @@ jobs:
   # and tables.swagger_schemas.common_schemas (a shared constants module with
   # no behaviour of its own). Anything else from tables is exactly the
   # coupling this job exists to catch before it comes back.
+  #
+  # The plugins app builds on rbac and tables and never the other way round,
+  # so both keep working with the plugin platform switched off.
   check-rbac-boundary:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -246,6 +255,17 @@ jobs:
           if [ -n "$violations" ]; then
             echo "$violations"
             echo "ERROR: rbac must not import tables (only tables.models.user and tables.swagger_schemas.common_schemas are allowed)"
+            exit 1
+          fi
+
+      - name: rbac and tables must not import plugins
+        run: |
+          violations=$(grep -rnE "^[[:space:]]*(from|import)[[:space:]]+plugins([.[:space:]]|$)" \
+            src/django_app/rbac src/django_app/tables --include=*.py \
+            || true)
+          if [ -n "$violations" ]; then
+            echo "$violations"
+            echo "ERROR: rbac and tables must not import plugins"
             exit 1
           fi
 
@@ -308,10 +328,10 @@ jobs:
         if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
-  # crew and agent: no database, no service containers, well under a minute for
-  # both. One matrix job whose legs are decided at runtime, so a pull request
-  # touching only src/agent/ runs one leg and a pull request touching neither
-  # service skips the job outright. sandbox was a third leg until it needed a
+  # crew, agent and plugin_sdk: no database, no service containers, well under
+  # a minute each. One matrix job whose legs are decided at runtime, so a pull
+  # request touching only src/agent/ runs one leg and a pull request touching
+  # none of them skips the job outright. sandbox was a leg until it needed a
   # container of its own; it has a separate job below.
   #
   # An empty `py_services` array would make `fromJSON` produce a matrix with no
@@ -503,6 +523,74 @@ jobs:
       - name: Unit tests
         run: make chat-tests
 
+  # The plugin author tooling end to end: the JS SDK's tests, the sample
+  # plugin's SPA build, and the Python CLI validating the sample by the rules
+  # Django applies on upload. The Python package's own unit tests run as a
+  # backend-tests leg.
+  plugin-sdk-checks:
+    needs: changes
+    if: needs.changes.outputs.plugins_js == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own
+      # interpreter instead of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            plugin-sdk/package-lock.json
+            plugin-samples/weather/spa/package-lock.json
+
+      # --ignore-scripts, as in frontend-checks: no install-time lifecycle hooks.
+      - name: Install the JS SDK's dependencies
+        run: npm --prefix plugin-sdk ci --ignore-scripts
+
+      # Builds the SDK too, which the sample below takes from ../../../plugin-sdk.
+      - name: JS SDK tests
+        run: npm --prefix plugin-sdk test
+
+      - name: Install the sample SPA's dependencies
+        run: npm --prefix plugin-samples/weather/spa ci --ignore-scripts
+
+      - name: Build the sample SPA
+        run: npm --prefix plugin-samples/weather/spa run build
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Cache uv downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-plugin_sdk-${{ hashFiles('src/plugin_sdk/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-plugin_sdk-
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here.
+      - name: Install plugin_sdk dependencies
+        run: make uv-sync svc=plugin_sdk
+
+      # `uv run`, not .venv/bin/epicstaff-plugin: make uv-sync installs only the
+      # dependencies (--no-install-project), and the CLI's script appears once
+      # uv run has installed the package itself. The working directory stays
+      # the repository root.
+      - name: Validate the sample plugin
+        run: >-
+          uv run --frozen --project src/plugin_sdk
+          epicstaff-plugin validate plugin-samples/weather
+          --spa-dir plugin-samples/weather/spa/dist
+
   # There is deliberately no django-tests job here. The suite takes about twenty
   # minutes -- measured on 2026-09-18, and that is already with tests/api_tests
   # left out as too slow to run here -- and that is a wait every django_app pull
@@ -547,6 +635,7 @@ jobs:
       - backend-tests
       - sandbox-tests
       - chat-tests
+      - plugin-sdk-checks
       - build
     if: always()
     runs-on: ubuntu-latest

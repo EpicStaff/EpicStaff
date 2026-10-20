@@ -1,0 +1,107 @@
+<div class="detail">
+    <a
+        class="detail__back text-body-medium"
+        [routerLink]="listRoute"
+    >
+        <app-svg-icon
+            icon="arrow-left"
+            size="16px"
+        />
+        Plugins
+    </a>
+
+    @if (plugin(); as current) {
+        <header class="detail__header">
+            <app-plugin-icon
+                [src]="current.icon_url"
+                size="40px"
+            />
+            <div class="detail__identity">
+                <h2 class="detail__name text-h2">{{ current.name }}</h2>
+                <span class="detail__muted text-body-small">
+                    <code>{{ current.identifier }}</code>
+                    @if (current.current_version) {
+                        · version {{ current.current_version }}
+                    }
+                </span>
+            </div>
+            <div class="detail__badges">
+                <app-plugin-badge
+                    [label]="stateLabel()"
+                    [tone]="stateTone()"
+                />
+                <app-plugin-badge
+                    [label]="trustLabel()"
+                    [tone]="trustTone()"
+                />
+            </div>
+        </header>
+
+        <div
+            class="detail__tabs"
+            role="tablist"
+        >
+            <app-tab-button
+                [active]="tab() === 'overview'"
+                (action)="selectTab('overview')"
+            >
+                Overview
+            </app-tab-button>
+            <app-tab-button
+                [active]="tab() === 'organizations'"
+                (action)="selectTab('organizations')"
+            >
+                Organizations
+            </app-tab-button>
+        </div>
+
+        @switch (tab()) {
+            @case ('overview') {
+                <div class="detail__overview">
+                    @if (current.pending_package; as pending) {
+                        <div class="detail__pending text-body">
+                            <span>Version {{ pending.version }} is waiting for review.</span>
+                            <app-button
+                                type="primary"
+                                mod="small"
+                                (click)="reviewPending()"
+                            >
+                                Review
+                            </app-button>
+                        </div>
+                    }
+                    <dl class="detail__facts text-body">
+                        <dt>Description</dt>
+                        <dd>{{ current.description }}</dd>
+                        <dt>Plugin address</dt>
+                        <dd>
+                            <code>{{ current.frame_origin }}</code>
+                        </dd>
+                        <dt>Active grants</dt>
+                        <dd>{{ current.grant_count }}</dd>
+                    </dl>
+                    @if (current.current_package; as approved) {
+                        <app-plugin-review-panel [review]="approved" />
+                    } @else {
+                        <p class="detail__muted text-body">No version of this plugin is approved yet.</p>
+                    }
+                </div>
+            }
+            @case ('organizations') {
+                <app-plugin-grants-table
+                    [identifier]="current.identifier"
+                    [pluginName]="current.name"
+                    [canGrant]="canGrant()"
+                />
+            }
+        }
+    } @else if (loadError(); as failure) {
+        <app-fetch-error-state
+            [title]="errorTitle()"
+            [message]="failure.message"
+            (retry)="reload()"
+        />
+    } @else if (isLoading()) {
+        <app-loading-spinner />
+    }
+</div>

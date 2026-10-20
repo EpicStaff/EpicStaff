@@ -1,0 +1,12 @@
+# Response headers of every plugin host response, included in every location of the plugin
+# server: nginx drops the server's add_header lines in a location that declares its own.
+#
+# Only EpicStaff and the plugin's own pages may frame a plugin page. EpicStaff's origin is named
+# explicitly, never left to 'self'. No X-Frame-Options: it cannot name another origin.
+add_header Content-Security-Policy "frame-ancestors 'self' ${PLUGINS_EPICSTAFF_ORIGIN}" always;
+add_header X-Content-Type-Options nosniff always;
+add_header Referrer-Policy strict-origin-when-cross-origin always;
+# Keeps each plugin in its own agent cluster even where the browser would group same-site pages.
+add_header Origin-Agent-Cluster "?1" always;
+# Empty, so not sent, unless the request came over https (map in plugins-server-true.snippet).
+add_header Strict-Transport-Security $plugin_strict_transport_security always;

@@ -1,0 +1,28 @@
+:host {
+    display: block;
+    height: 100%;
+}
+
+.plugin-host {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+
+    &__frame {
+        display: block;
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+        border: 0;
+        background-color: var(--color-background-body);
+    }
+
+    &__state {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+    }
+}

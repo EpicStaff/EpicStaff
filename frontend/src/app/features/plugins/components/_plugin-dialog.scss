@@ -1,0 +1,84 @@
+// The shell every plugin dialog shares: header with title and close button, scrolling body, footer with actions.
+@mixin plugin-dialog($width: 560px) {
+    :host {
+        display: block;
+    }
+
+    .dialog {
+        display: flex;
+        flex-direction: column;
+        width: min($width, calc(100vw - 2rem));
+        max-height: calc(100vh - 2rem);
+        background: var(--color-nodes-sidepanel-bg);
+        border: 1px solid var(--color-divider-subtle);
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .dialog__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 20px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+    }
+
+    .dialog__title {
+        margin: 0;
+        color: var(--color-text-primary);
+    }
+
+    .dialog__close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+
+        &:hover {
+            background: var(--transparent-white-8);
+            color: var(--color-text-primary);
+        }
+    }
+
+    .dialog__body {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 20px;
+        overflow-y: auto;
+        color: var(--color-text-primary);
+    }
+
+    .dialog__footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 16px 20px;
+        border-top: 1px solid var(--color-divider-subtle);
+    }
+
+    .dialog__error {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 0;
+        padding: 12px 16px;
+        border-radius: 8px;
+        background: var(--color-status-error-subtle);
+        color: var(--color-status-error);
+    }
+
+    .dialog__error-items {
+        margin: 0;
+        padding-left: 16px;
+        color: var(--color-text-primary);
+    }
+}

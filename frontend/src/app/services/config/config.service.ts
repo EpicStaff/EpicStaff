@@ -13,6 +13,8 @@ export interface AppConfig {
     isChatEnabled?: boolean;
     chatApiUrl?: string;
     isAuditTrailEnabled?: boolean;
+    /** The plugin platform is on (`PLUGINS_ENABLED`); nothing plugin-related renders while it is off. */
+    isPluginsEnabled?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -30,6 +32,7 @@ export class ConfigService {
                 isChatEnabled: environment.isChatEnabled ?? false,
                 chatApiUrl: environment.chatApiUrl,
                 isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
+                isPluginsEnabled: environment.isPluginsEnabled ?? false,
             };
             return;
         }
@@ -48,6 +51,7 @@ export class ConfigService {
                             isChatEnabled: environment.isChatEnabled ?? false,
                             chatApiUrl: environment.chatApiUrl,
                             isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
+                            isPluginsEnabled: environment.isPluginsEnabled ?? false,
                         } as AppConfig);
                     })
                 )
@@ -63,6 +67,7 @@ export class ConfigService {
                 auditorUrl: environment.auditorUrl,
                 isChatEnabled: false,
                 isAuditTrailEnabled: false,
+                isPluginsEnabled: false,
             };
         }
     }
@@ -97,6 +102,10 @@ export class ConfigService {
 
     get isAuditTrailEnabled(): boolean {
         return this.config?.isAuditTrailEnabled ?? false;
+    }
+
+    get isPluginsEnabled(): boolean {
+        return this.config?.isPluginsEnabled === true;
     }
 
     get isChatEnabled(): boolean {
