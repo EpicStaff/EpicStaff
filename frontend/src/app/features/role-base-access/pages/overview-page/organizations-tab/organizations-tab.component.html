@@ -21,8 +21,9 @@
 </div>
 <app-table
     [columns]="columns"
-    [data]="filteredOrgs()"
+    [data]="tableData()"
     rowId="id"
+    (filterChange)="onFilterChange($event)"
 >
     <!-- ORGANIZATION -->
     <ng-template
