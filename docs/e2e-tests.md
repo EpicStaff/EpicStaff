@@ -17,7 +17,7 @@ host; nothing from the suite is shipped in a service image.
 - [Environment variables](#environment-variables)
 - [Troubleshooting](#troubleshooting)
 - [Known issues](#known-issues)
-- [Later: CI](#later-ci)
+- [CI](#ci)
 
 ---
 
@@ -80,7 +80,8 @@ $DC down -v --remove-orphans           # fresh database for the next run
   - plain HTTP;
   - the e2e saved-files folder.
 - `up -d` returns once Django is healthy; `wait_for_stack.py` then also checks
-  first-setup and mock-llm.
+  first-setup and mock-llm. With `E2E_COMPOSE_CMD="$DC"` it also waits for every container
+  to be running and healthy, and stops at once when one crashes (CI sets it).
 - A full run takes about 3 minutes on a fresh stack.
 
 ## What each file covers
@@ -195,9 +196,55 @@ Each pytest invocation runs the bootstrap again, so reset the stack between invo
   the shared local libraries changes their content fingerprint, so the second run computes a
   new venv hash. Later runs reuse that venv and take about 1–2 s.
 
-## Later: CI
+## CI
 
-A manually triggered workflow will run exactly the commands above on a runner and keep
-`timings.json` and the JUnit report as artifacts. Running it on pull requests, and making it a
-required check, is a later step: add a `pull_request` trigger to that workflow, then mark the
-job as required in the branch protection rules.
+`.github/workflows/e2e.yml` runs the suite on a GitHub-hosted runner. It is manual only, and
+it is not a required check.
+
+### Starting a run
+
+Actions → **e2e** → **Run workflow**, pick the branch in "Use workflow from", fill the inputs.
+From a terminal:
+
+```bash
+gh workflow run e2e.yml --ref <branch>                                   # build images
+gh workflow run e2e.yml --ref <branch> -f images=existing -f image_tag=e2e-1a2b3c4
+gh workflow run e2e.yml --ref <branch> -f pytest_args='-m "not load"'
+```
+
+| Input | Default | Meaning |
+|---|---|---|
+| `images` | `build` | `build`: build and push every image as `ghcr.io/epicstaff/<service>:e2e-<sha7>` first (15–25 min). `existing`: skip the build and pull `image_tag`. |
+| `image_tag` | empty | Only with `images=existing`. Best is the `e2e-<sha7>` of an earlier run on the same commit. `latest` or a branch slug also work, but then the images and the checked-out compose file and tests can come from different commits. |
+| `pytest_args` | empty | Added to the pytest command, e.g. `-k sse`, `-m "not load"`. |
+
+A new run on the same branch cancels the one still running.
+
+### What it does
+
+1. Builds the images (unless `images=existing`).
+2. Frees disk space and reads the runner's Landlock ABI. Below 6 (Linux 6.12) it sets
+   `SANDBOX_REQUIRE_SIGNAL_ISOLATION=false`, the same fix as in
+   [Troubleshooting](#troubleshooting); otherwise every python run would be refused.
+3. Generates `src/.env`, pulls the images, runs `$DC up -d` with the same `DC` as above.
+4. Waits with `wait_for_stack.py` and the container check (10 min at most), then fails at once
+   if the sandbox log says executions "will be refused".
+5. Runs the suite, then always collects logs and stops the stack.
+
+### Reading the results
+
+- **Job summary** (the run's page): commit, image tag, kernel, Landlock ABI and the sandbox
+  flag; passed / failed / skipped per test file; the timings table.
+- **Artifacts** (kept 7 days):
+  - `e2e-reports`: `junit.xml`, `timings.json`, `stack_ready.json`;
+  - `e2e-logs`: `ps.txt` (`$DC ps -a`) and one `<service>.log` per service.
+- Where a red run usually fails:
+  - **Pull images**: the tag does not exist. Run with `images=build`.
+  - **Wait for the stack**: the last line names the check. `crashed: <service> ...` means that
+    container's log in `e2e-logs` has the cause.
+  - **Run e2e tests**: a test failed. Its output is in the step log; the service logs are in
+    `e2e-logs`.
+
+`e2e-*` images are deleted after 30 days, like branch-slug images (`cleanup-images.yml`).
+
+Running on pull requests or making it a required check is a later step.
