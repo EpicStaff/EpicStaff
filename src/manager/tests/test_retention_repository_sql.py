@@ -90,6 +90,31 @@ def _migrate_test_database() -> None:
         )
 
 
+PICK_INDEX = "session_root_graph_finished"
+PICK_INDEX_COLUMNS = "(graph_id, finished_at, id)"
+
+
+async def _require_pick_index(connect) -> None:
+    """Fail when the test database's pick index is not the one the migrations now define.
+
+    Migrations are compared by name only, so a database that applied an earlier definition
+    of an unreleased migration would otherwise keep testing against the stale index.
+    """
+    connection = await connect(TEST_DATABASE)
+    try:
+        definition = await connection.fetchval(
+            "SELECT indexdef FROM pg_indexes WHERE indexname = $1", PICK_INDEX
+        )
+    finally:
+        await connection.close()
+    if definition is None or PICK_INDEX_COLUMNS not in definition:
+        pytest.fail(
+            f"{TEST_DATABASE} has {PICK_INDEX} as {definition!r}, not on {PICK_INDEX_COLUMNS}. "
+            f"Rebuild it with DB_NAME={TEST_DATABASE}: make django-manage "
+            'CMD="migrate tables 0274", then make django-migrate.'
+        )
+
+
 async def _prepare_test_database() -> bool:
     """Create, migrate and grant the test database; return whether the manager role exists."""
 
@@ -128,6 +153,7 @@ async def _prepare_test_database() -> bool:
         await connection.close()
     if _pending_django_migrations(applied):
         _migrate_test_database()
+    await _require_pick_index(connect)
 
     if role_exists:
         connection = await connect(TEST_DATABASE)
@@ -199,9 +225,11 @@ class Database:
         return await self.value(
             "INSERT INTO tables_graph (name, metadata, description, time_to_live, "
             "enable_persistent_variables, created_at, updated_at, epicchat_enabled, uuid, org_id, "
-            "save_version, active, soft_deleted_at) VALUES ('retention test', '{}', '', 3600, "
+            "save_version, active, soft_deleted_at) VALUES (:name, '{}', '', 3600, "
             "false, now(), now(), false, :uuid, :org_id, 1, :active, "
             "CASE WHEN :active THEN NULL ELSE now() END) RETURNING id",
+            # Unique: an organization's active flows may not share a name.
+            name=f"retention test {uuid.uuid4()}",
             uuid=uuid.uuid4(),
             org_id=org_id,
             active=not in_recycle_bin,
@@ -508,6 +536,164 @@ async def test_a_root_kept_by_its_subflow_callback_does_not_stall_later_batches(
     assert await database.sessions_left([held_root, *later_roots]) == [held_root]
 
 
+class _RunsHookFirst:
+    """An AsyncSession context that awaits ``hook`` before the repository opens its session."""
+
+    def __init__(self, hook, session):
+        self.hook = hook
+        self.session = session
+
+    async def __aenter__(self):
+        await self.hook()
+        return await self.session.__aenter__()
+
+    async def __aexit__(self, *exc_info):
+        return await self.session.__aexit__(*exc_info)
+
+
+def _hooked_repository(engine, hook) -> RetentionRepository:
+    """A repository whose every session (graph listing and each batch) first awaits ``hook``."""
+    make_session = async_sessionmaker(engine, expire_on_commit=False)
+    return RetentionRepository(lambda: _RunsHookFirst(hook, make_session()))
+
+
+def _distinct_in_order(snapshots: list[set[int]]) -> list[set[int]]:
+    """Drop consecutive repeats: a session opened without deleting anything adds no step."""
+    return [snapshot for index, snapshot in enumerate(snapshots) if index == 0 or snapshot != snapshots[index - 1]]
+
+
+async def test_each_flow_is_purged_oldest_first_and_a_root_released_after_the_run_passed_it_waits(
+    engine, database
+):
+    org_id = await database.org()
+    first_graph = await database.graph(org_id)
+    second_graph = await database.graph(org_id)
+    # Created newest first, so id order is the reverse of finished_at order.
+    newest, fourth, held, second, oldest = [
+        await database.session(first_graph, finished_at=EXPIRED - timedelta(days=days))
+        for days in (1, 2, 3, 4, 5)
+    ]
+    # Older than every root of the first flow, yet purged after it: order is per flow.
+    other_flow_root = await database.session(second_graph, finished_at=EXPIRED - timedelta(days=9))
+    held_subflow = await database.session(first_graph, parent_session_id=held)
+    await database.callback(held_subflow, "pending")
+    roots = [oldest, second, held, fourth, newest, other_flow_root]
+    snapshots: list[set[int]] = []
+
+    async def before_session():
+        left = set(await database.sessions_left(roots))
+        snapshots.append(left)
+        if fourth not in left:
+            # The hold ends once the run has passed the root; it must not be picked again.
+            await database.execute(
+                "UPDATE tables_sessioncallback SET status = 'delivered' WHERE session_id = :id",
+                id=held_subflow,
+            )
+
+    deleted = await asyncio.wait_for(
+        _hooked_repository(engine, before_session).delete_expired_sessions(
+            org_id, CUTOFF, batch_size=2
+        ),
+        timeout=30,
+    )
+    left_after_run = await database.sessions_left([*roots, held_subflow])
+    deleted_next_run = await RetentionRepository(
+        async_sessionmaker(engine, expire_on_commit=False)
+    ).delete_expired_sessions(org_id, CUTOFF, batch_size=2)
+
+    assert _distinct_in_order(snapshots) == [
+        {oldest, second, held, fourth, newest, other_flow_root},
+        {held, fourth, newest, other_flow_root},
+        {held, newest, other_flow_root},
+        {held, other_flow_root},
+    ]
+    assert deleted == 5
+    assert left_after_run == sorted([held, held_subflow])
+    assert deleted_next_run == 2
+    assert await database.sessions_left([*roots, held_subflow]) == []
+
+
+async def test_purges_every_flow_of_the_org(repository, database):
+    org_id = await database.org()
+    full_first_batch_graph = await database.graph(org_id)
+    nothing_due_graph = await database.graph(org_id)
+    single_root_graph = await database.graph(org_id)
+    full_batch_roots = [await database.session(full_first_batch_graph) for _ in range(3)]
+    subflow = await database.session(full_first_batch_graph, parent_session_id=full_batch_roots[0])
+    not_due = await database.session(nothing_due_graph, finished_at=RECENT)
+    single_root = await database.session(single_root_graph)
+
+    deleted = await repository.delete_expired_sessions(org_id, CUTOFF, batch_size=2)
+
+    assert deleted == 5
+    assert await database.sessions_left([*full_batch_roots, subflow, not_due, single_root]) == [
+        not_due
+    ]
+
+
+async def test_a_flow_moved_to_the_recycle_bin_mid_run_is_skipped(engine, database):
+    org_id = await database.org()
+    first_graph = await database.graph(org_id)
+    binned_mid_run_graph = await database.graph(org_id)
+    first_roots = [await database.session(first_graph) for _ in range(2)]
+    binned_roots = [await database.session(binned_mid_run_graph) for _ in range(2)]
+
+    async def before_session():
+        if await database.sessions_left(first_roots) == []:
+            await database.execute(
+                "UPDATE tables_graph SET soft_deleted_at = now(), active = false WHERE id = :id",
+                id=binned_mid_run_graph,
+            )
+
+    deleted = await asyncio.wait_for(
+        _hooked_repository(engine, before_session).delete_expired_sessions(
+            org_id, CUTOFF, batch_size=5
+        ),
+        timeout=30,
+    )
+
+    assert deleted == 2
+    assert await database.sessions_left([*first_roots, *binned_roots]) == sorted(binned_roots)
+
+
+async def test_a_failure_in_the_second_flow_reports_what_the_first_deleted(engine, database):
+    org_id = await database.org()
+    first_graph = await database.graph(org_id)
+    second_graph = await database.graph(org_id)
+    first_roots = [await database.session(first_graph) for _ in range(2)]
+    second_roots = [await database.session(second_graph) for _ in range(2)]
+
+    async def before_session():
+        if await database.sessions_left(first_roots) == []:
+            raise ConnectionResetError("connection reset by peer")
+
+    with pytest.raises(RetentionInterruptedError) as raised:
+        await _hooked_repository(engine, before_session).delete_expired_sessions(
+            org_id, CUTOFF, batch_size=5
+        )
+
+    assert raised.value.deleted == 2
+    assert isinstance(raised.value.__cause__, ConnectionResetError)
+    assert await database.sessions_left([*first_roots, *second_roots]) == sorted(second_roots)
+
+
+async def test_never_touches_the_flows_of_another_org(repository, database):
+    target_org = await database.org()
+    other_org = await database.org()
+    # Interleaved, so the other org's flows sit between the target's in id order.
+    target_graphs, other_graphs = [], []
+    for _ in range(2):
+        target_graphs.append(await database.graph(target_org))
+        other_graphs.append(await database.graph(other_org))
+    target_roots = [await database.session(graph_id) for graph_id in target_graphs]
+    other_roots = [await database.session(graph_id) for graph_id in other_graphs]
+
+    deleted = await repository.delete_expired_sessions(target_org, CUTOFF)
+
+    assert deleted == 2
+    assert await database.sessions_left([*target_roots, *other_roots]) == sorted(other_roots)
+
+
 async def test_skips_a_root_locked_by_another_transaction(engine, repository, database):
     org_id = await database.org()
     graph_id = await database.graph(org_id)
@@ -576,22 +762,38 @@ async def test_gives_up_on_a_lock_timeout_instead_of_queueing(engine, database):
     assert await database.sessions_left([root]) == [root]
 
 
+async def test_a_lock_on_the_flows_fails_the_listing_before_any_batch(engine, database):
+    org_id = await database.org()
+    root = await database.session(await database.graph(org_id))
+    locker = await _hold_row_lock(engine, "LOCK TABLE tables_graph IN ACCESS EXCLUSIVE MODE")
+    repository = RetentionRepository(
+        async_sessionmaker(engine, expire_on_commit=False), lock_timeout_ms=200
+    )
+    started = time.monotonic()
+    try:
+        with pytest.raises(RetentionInterruptedError) as raised:
+            await asyncio.wait_for(repository.delete_expired_sessions(org_id, CUTOFF), timeout=30)
+    finally:
+        await locker.rollback()
+        await locker.close()
+
+    assert time.monotonic() - started < 5
+    assert raised.value.deleted == 0
+    assert "lock timeout" in str(raised.value.__cause__)
+    assert await database.sessions_left([root]) == [root]
+
+
 async def test_failure_after_a_committed_batch_reports_the_deleted_count(engine, database):
     org_id = await database.org()
     graph_id = await database.graph(org_id)
     created = [await database.session(graph_id) for _ in range(3)]
-    sessions_opened = 0
-    make_session = async_sessionmaker(engine, expire_on_commit=False)
 
-    def session_factory():
-        nonlocal sessions_opened
-        sessions_opened += 1
-        if sessions_opened > 1:
+    async def before_session():
+        if len(await database.sessions_left(created)) == 1:
             raise ConnectionResetError("connection reset by peer")
-        return make_session()
 
     with pytest.raises(RetentionInterruptedError) as raised:
-        await RetentionRepository(session_factory).delete_expired_sessions(
+        await _hooked_repository(engine, before_session).delete_expired_sessions(
             org_id, CUTOFF, batch_size=2
         )
 
@@ -623,10 +825,10 @@ async def test_logs_each_committed_batch(repository, database, batch_log_lines):
 
     cutoff = CUTOFF.isoformat()
     assert batch_log_lines == [
-        f"Retention sessions batch committed: org={org_id} cutoff={cutoff} roots_picked=2 "
-        "sessions_deleted=3",
-        f"Retention sessions batch committed: org={org_id} cutoff={cutoff} roots_picked=1 "
-        "sessions_deleted=1",
+        f"Retention sessions batch committed: org={org_id} graph={graph_id} cutoff={cutoff} "
+        "roots_picked=2 sessions_deleted=3",
+        f"Retention sessions batch committed: org={org_id} graph={graph_id} cutoff={cutoff} "
+        "roots_picked=1 sessions_deleted=1",
     ]
 
 
@@ -661,8 +863,8 @@ async def test_a_purge_cancelled_after_a_batch_leaves_that_batch_logged(
         await purge
 
     assert batch_log_lines == [
-        f"Retention sessions batch committed: org=no flow cutoff={CUTOFF.isoformat()} "
-        "roots_picked=2 sessions_deleted=2"
+        f"Retention sessions batch committed: org=no flow graph=none "
+        f"cutoff={CUTOFF.isoformat()} roots_picked=2 sessions_deleted=2"
     ]
     assert len(await database.sessions_left(created)) == 1
 

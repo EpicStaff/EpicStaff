@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from tables.models.base_models import CrewSessionMessage
@@ -71,6 +72,16 @@ class Session(models.Model):
 
     class Meta:
         get_latest_by = ["id"]
+        indexes = [
+            # The retention job's pick: finished root sessions, by flow, oldest first. id
+            # completes its keyset order, so a batch is one index range with no sort.
+            # finished_at is set once, so status and token-usage updates stay HOT-eligible.
+            models.Index(
+                fields=["graph", "finished_at", "id"],
+                name="session_root_graph_finished",
+                condition=Q(parent_session__isnull=True, finished_at__isnull=False),
+            ),
+        ]
 
 
 class UserSessionMessage(CrewSessionMessage):
