@@ -20,6 +20,7 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../../../core/helpers/helpers';
 import { CdtExplanation, CdtExplanations } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
+import { FlowModel } from '../../../core/models/flow.model';
 import { ClassificationDecisionTableNodeModel, NodeModel } from '../../../core/models/node.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
 import { CdtExplainApiService } from '../../../services/cdt-explain-api.service';
@@ -27,6 +28,8 @@ import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
+import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from '../../../utils/save/diff';
+import { buildBulkSavePayload } from '../../../utils/save/payload';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
@@ -557,9 +560,9 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         preSeconds: number | undefined,
         postSeconds: number | undefined,
         preCode = 'def main(): pass',
-        preSecretIds: number[] = []
+        isPreview = false
     ): void {
-        configurePanelTestBed();
+        configurePanelTestBed({ isPreview });
         const node = tableNode();
         const timedNode = {
             ...node,
@@ -567,7 +570,7 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
                 ...node.data,
                 table: {
                     ...node.data.table,
-                    pre_computation: { code: preCode, secret_ids: preSecretIds, execution_timeout: preSeconds },
+                    pre_computation: { code: preCode, execution_timeout: preSeconds },
                     post_computation: { code: 'def main(): pass', execution_timeout: postSeconds },
                 },
             },
@@ -663,46 +666,69 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         expect(groupLabel('postcomputation')).toBe('Post-computation execution timeout');
     });
 
-    it('shows the timeout of a code block only while it has code: the save drops the timeout of an empty one', () => {
+    /** The pre-computation code the bulk save sends for `node`, a new node of the flow. */
+    function sentPreComputation(node: NodeModel): Record<string, unknown> | null {
+        const current: FlowModel = { nodes: [node], connections: [] };
+        const idMap = buildUuidToBackendIdMap(current.nodes);
+        const payload = buildBulkSavePayload(
+            1,
+            getNodeDiff({ nodes: [], connections: [] }, current),
+            getConnectionDiff({ nodes: [], connections: [] }, current, idMap),
+            current,
+            idMap,
+            1
+        );
+        const [item] = payload['classification_decision_table_node_list'] as Record<string, unknown>[];
+        return item['pre_python_code'] as Record<string, unknown> | null;
+    }
+
+    it('shows and enables the timeout of every block, with or without code, like its libraries', () => {
         open(90, undefined, '  ');
 
-        expect(showsTimeoutOnTab('precomputation')).toBe(false);
-        expect(showsTimeoutOnTab('postcomputation')).toBe(true);
-
-        panel.activeTab.set('precomputation');
-        panel.onPreCodeChange('def main(): pass');
         expect(showsTimeoutOnTab('precomputation')).toBe(true);
+        expect(showsTimeoutOnTab('postcomputation')).toBe(true);
+        expect(fields().preExecutionTimeout.control.enabled).toBe(true);
+        expect(fields().postExecutionTimeout.control.enabled).toBe(true);
     });
 
-    it('keeps every other edit when the code of a block with an invalid timeout is cleared', () => {
-        open(90, undefined);
-        panel.form.get('node_name')?.setValue('Renamed');
+    it('checks the timeout of a block without code like any other visible field', () => {
+        open(undefined, undefined, '  ');
+
         fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
+
+        expect(panel.form.invalid).toBe(true);
         expect(panel.onSaveSilently()).toBeNull();
+    });
+
+    it('still checks the timeout once the code of its block is cleared', () => {
+        open(90, undefined);
+        fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
 
         panel.onPreCodeChange('');
 
-        expect(showsTimeoutOnTab('precomputation')).toBe(false);
-        expect(panel.onSaveSilently()?.node_name).toBe('Renamed');
-    });
-
-    it('shows and checks the timeout of a block without code but with secrets: the save keeps it', () => {
-        open(90, undefined, '  ', [3]);
-
         expect(showsTimeoutOnTab('precomputation')).toBe(true);
-        fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
         expect(panel.onSaveSilently()).toBeNull();
     });
 
-    it('checks the timeout of an empty block once enabling storage inserts its code', () => {
+    it('keeps the timeout typed into a block without code, and sends it only once the block has code', () => {
         open(undefined, undefined, '  ');
-        expect(fields().preExecutionTimeout.control.disabled).toBe(true);
+        fields().preExecutionTimeout.edit(300);
+
+        const withoutCode = panel.onSaveSilently()!;
+        expect(withoutCode.data.table.pre_computation?.execution_timeout).toBe(300);
+        expect(sentPreComputation(withoutCode)).toBeNull();
 
         panel.insertPreStorageCode('from epicstaff_storage import storage');
 
-        expect(fields().preExecutionTimeout.control.enabled).toBe(true);
-        fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
-        expect(panel.form.invalid).toBe(true);
-        expect(panel.onSaveSilently()).toBeNull();
+        const withCode = panel.onSaveSilently()!;
+        expect(withCode.data.table.pre_computation?.execution_timeout).toBe(300);
+        expect(sentPreComputation(withCode)?.['execution_timeout']).toBe(300);
+    });
+
+    it('disables both timeouts on a read-only flow', () => {
+        open(90, undefined, '  ', true);
+
+        expect(fields().preExecutionTimeout.control.disabled).toBe(true);
+        expect(fields().postExecutionTimeout.control.disabled).toBe(true);
     });
 });
