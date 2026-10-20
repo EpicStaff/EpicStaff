@@ -18,7 +18,12 @@ from app.llm.client import LLMChunk
 from app.llm.litellm_client import LiteLLMClient
 from app.llm.retry import RetryPolicy
 from app.llm.router_pool import RouterPool
+from app.loop.agent_loop import _build_model_config
+from app.loop.context import AgentContext
 from app.tools.registry import ToolSpec
+from shared.models.agent_service import AgentSpec
+from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.cancellation import never_cancelled
 
 # ---------------------------------------------------------------------------
 # Chunk builders
@@ -519,6 +524,66 @@ async def test_usage_cost_defaults_to_zero_when_price_lookup_raises():
 
     text_chunks = [c for c in result if c.delta_text]
     assert text_chunks[0].delta_text == "hi"
+
+
+def _model_config_from_llm_config(provider: str, llm_config: LLMConfigData) -> dict:
+    agent = AgentSpec(
+        id=1,
+        name="a",
+        instructions="i",
+        llm=LLMData(provider=provider, config=llm_config),
+    )
+    return _build_model_config(AgentContext(agent=agent, attachments=[], correlation_id="c", is_cancelled=never_cancelled))
+
+
+async def _acompletion_kwargs_for(model_config: dict) -> dict:
+    router = make_router([_chunk(finish_reason="stop")])
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router))
+    await collect(client, MESSAGES, [], model_config)
+    router.acompletion.assert_awaited_once()
+    return router.acompletion.call_args.kwargs
+
+
+async def test_reasoning_effort_reaches_router_acompletion():
+    model_config = _model_config_from_llm_config(
+        "openai", LLMConfigData(model="gpt-5-mini", api_key="sk-test", reasoning_effort="low")
+    )
+
+    acompletion_kwargs = await _acompletion_kwargs_for(model_config)
+
+    assert acompletion_kwargs["reasoning_effort"] == "low"
+    assert "api_key" not in acompletion_kwargs
+
+
+async def test_unset_reasoning_effort_is_not_sent_to_router_acompletion():
+    model_config = _model_config_from_llm_config(
+        "openai", LLMConfigData(model="gpt-4o", api_key="sk-test")
+    )
+
+    acompletion_kwargs = await _acompletion_kwargs_for(model_config)
+
+    assert "reasoning_effort" not in acompletion_kwargs
+
+
+async def test_azure_deployment_id_and_extra_headers_reach_router_acompletion():
+    model_config = _model_config_from_llm_config(
+        "azure",
+        LLMConfigData(
+            model="my-deployment",
+            api_key="sk-test",
+            base_url="https://example.openai.azure.com",
+            api_version="2025-01-01-preview",
+            deployment_id="my-deployment",
+            extra_headers={"X-Team": "core"},
+        ),
+    )
+
+    acompletion_kwargs = await _acompletion_kwargs_for(model_config)
+
+    assert acompletion_kwargs["deployment_id"] == "my-deployment"
+    assert acompletion_kwargs["extra_headers"] == {"X-Team": "core"}
+    for router_owned_key in ("api_key", "base_url", "api_version"):
+        assert router_owned_key not in acompletion_kwargs
 
 
 # ---------------------------------------------------------------------------

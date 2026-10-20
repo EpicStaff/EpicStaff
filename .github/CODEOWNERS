@@ -43,7 +43,7 @@
 /src/sandbox/launcher.py                                      @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /src/sandbox/seccomp.py                                       @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /src/sandbox/network_policy.py                                @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
-/src/sandbox/isolation.py                                     @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
+/src/sandbox/settings.py                                      @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /src/sandbox/egress_firewall.py                               @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /src/sandbox/secret_scrubber.py                               @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS
 /src/sandbox/utils/environment.py                             @VitaliiPovoroznykHYS @ArturDrohomeretskyiHYS

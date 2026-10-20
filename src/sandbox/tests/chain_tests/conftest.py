@@ -16,6 +16,7 @@ def _set_env_defaults() -> None:
     """
     defaults = {
         "RUN_IN_DOCKER": "true",
+        "SANDBOX_LOG_LEVEL": "INFO",
         "REDIS_HOST": "localhost",
         "REDIS_PORT": "6379",
         "REDIS_USER": "test",
@@ -34,6 +35,7 @@ def _set_env_defaults() -> None:
         "SANDBOX_MASK_SECRET": "true",
         "SANDBOX_EXECUTION_TIMEOUT": "5m",
         "SANDBOX_BLOCK_NETWORK": "false",
+        "SANDBOX_REQUIRE_ISOLATION": "true",
         "SANDBOX_REQUIRE_SIGNAL_ISOLATION": "true",
         "SANDBOX_BLOCK_PRIVATE_NETWORK": "true",
     }
@@ -55,6 +57,9 @@ def _ensure_src_shared_stub() -> None:
         stdout: str = ""
         returncode: int = 0
 
+        def model_dump(self) -> dict:
+            return dataclasses.asdict(self)
+
     @dataclasses.dataclass
     class CodeTaskData:
         venv_name: str
@@ -65,6 +70,12 @@ def _ensure_src_shared_stub() -> None:
         func_kwargs: dict = dataclasses.field(default_factory=dict)
         global_kwargs: dict = dataclasses.field(default_factory=dict)
         secrets: dict = dataclasses.field(default_factory=dict)
+        use_storage: bool = False
+        storage_allowed_paths: list | None = None
+        storage_org_prefix: str | None = None
+        storage_credentials: Any = None
+        session_id: int | None = None
+        reply_to_crew_channel: bool = False
 
     # src.shared must be a real package pointing at the actual shared/ directory
     # so that src.shared.envtools (and its `from . import humanize`) resolves.

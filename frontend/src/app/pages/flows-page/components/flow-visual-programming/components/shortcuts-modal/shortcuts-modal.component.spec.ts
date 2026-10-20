@@ -1546,6 +1546,27 @@ describe('ShortcutsModalComponent', () => {
             expect([isFading(), columnLayout()]).toEqual([false, '4 columns']);
         });
 
+        it('does not change the columns while the panel is still widening after Expand', () => {
+            setUp();
+            openModal();
+            let lastColumn = 2;
+            layOut(() => lastColumn);
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+            click(root().querySelector('.shortcuts__size-btn')!);
+            render();
+
+            click(root().querySelector('.shortcuts__size-btn')!);
+            render();
+            lastColumn = 3;
+            ResizeObserverStub.resize(root().querySelector('.shortcuts__content')!);
+            render();
+            expect([isFading(), columnLayout()]).toEqual([false, '3 columns']);
+
+            lastColumn = 2;
+            pass(200);
+            expect([isFading(), columnLayout()]).toEqual([false, '3 columns']);
+        });
+
         it('drops a column change that was still fading when the list closed', () => {
             setUp();
             openModal();
@@ -1576,10 +1597,7 @@ describe('ShortcutsModalComponent', () => {
             expect([isFading(), columnLayout()]).toEqual([false, '4 columns']);
         });
 
-        it.each([
-            ['only just fit three columns', 500, '4 columns'],
-            ['fit three columns with room to spare', 300, '3 columns'],
-        ])('goes back to three columns only when the rows %s', (_case, lastItemTop, layout) => {
+        it('goes back to three columns when the rows end in the third column, even with no room to spare', () => {
             preferReducedMotion();
             setUp();
             openModal();
@@ -1587,14 +1605,14 @@ describe('ShortcutsModalComponent', () => {
             layOut(
                 () => lastColumn,
                 400,
-                () => lastItemTop
+                () => 500
             );
             refit();
 
             lastColumn = 2;
             refit();
 
-            expect(columnLayout()).toBe(layout);
+            expect(columnLayout()).toBe('3 columns');
         });
 
         it.each([

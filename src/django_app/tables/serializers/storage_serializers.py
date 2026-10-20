@@ -93,20 +93,35 @@ class StorageRenameSerializer(serializers.Serializer):
         return value
 
 
-class StorageMoveSerializer(serializers.Serializer):
+class _StorageTransferSerializer(serializers.Serializer):
+    """Input of a move or copy: within the active organization, or across two of them.
+
+    A cross-organization transfer names both organizations and they differ; a transfer
+    within the active organization names neither. Anything in between is rejected rather
+    than silently run in the active organization.
+    """
+
     from_path = serializers.CharField(source="from", help_text="Source path")
     to_path = serializers.CharField(source="to", help_text="Destination path")
     source_org_id = serializers.IntegerField(
         required=False,
         allow_null=True,
         default=None,
-        help_text="Source organization ID (cross-org move)",
+        min_value=1,
+        help_text=(
+            "Source organization ID, for a cross-organization transfer only. "
+            "Give it together with `destination_org_id`, or omit both."
+        ),
     )
     destination_org_id = serializers.IntegerField(
         required=False,
         allow_null=True,
         default=None,
-        help_text="Destination organization ID (cross-org move)",
+        min_value=1,
+        help_text=(
+            "Destination organization ID, for a cross-organization transfer only. "
+            "Must differ from `source_org_id`; give both, or omit both."
+        ),
     )
 
     def validate_from_path(self, value: str) -> str:
@@ -115,28 +130,35 @@ class StorageMoveSerializer(serializers.Serializer):
     def validate_to_path(self, value: str) -> str:
         return _normalize_path(value)
 
+    def validate(self, attrs: dict) -> dict:
+        source_org_id = attrs["source_org_id"]
+        destination_org_id = attrs["destination_org_id"]
+        if source_org_id is None and destination_org_id is not None:
+            raise serializers.ValidationError(
+                {"source_org_id": "Required with `destination_org_id`: give both or neither."}
+            )
+        if destination_org_id is None and source_org_id is not None:
+            raise serializers.ValidationError(
+                {"destination_org_id": "Required with `source_org_id`: give both or neither."}
+            )
+        if source_org_id is not None and source_org_id == destination_org_id:
+            raise serializers.ValidationError(
+                {
+                    "destination_org_id": (
+                        "Must differ from `source_org_id`. "
+                        "Within one organization, omit both org ids."
+                    )
+                }
+            )
+        return attrs
 
-class StorageCopySerializer(serializers.Serializer):
-    from_path = serializers.CharField(source="from", help_text="Source path")
-    to_path = serializers.CharField(source="to", help_text="Destination path")
-    source_org_id = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        default=None,
-        help_text="Source organization ID (cross-org copy)",
-    )
-    destination_org_id = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        default=None,
-        help_text="Destination organization ID (cross-org copy)",
-    )
 
-    def validate_from_path(self, value: str) -> str:
-        return _normalize_source_path(value)
+class StorageMoveSerializer(_StorageTransferSerializer):
+    pass
 
-    def validate_to_path(self, value: str) -> str:
-        return _normalize_path(value)
+
+class StorageCopySerializer(_StorageTransferSerializer):
+    pass
 
 
 class StorageAddToGraphSerializer(serializers.Serializer):

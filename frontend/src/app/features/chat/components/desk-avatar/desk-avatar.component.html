@@ -1,0 +1,29 @@
+<span
+    class="desk-avatar__picture"
+    aria-hidden="true"
+    [class.desk-avatar__picture--neutral]="!fill()"
+    [style.background-color]="fill()"
+>
+    @if (pictureIcon(); as iconName) {
+        <app-svg-icon
+            [icon]="iconName"
+            size="1.125rem"
+        />
+    } @else {
+        <span class="desk-avatar__initials">{{ initials() }}</span>
+    }
+</span>
+@if (status(); as current) {
+    <span
+        class="desk-avatar__status"
+        aria-hidden="true"
+        [class]="'desk-avatar__status--' + current"
+    ></span>
+}
+@if (badge(); as text) {
+    <span
+        class="desk-avatar__badge"
+        aria-hidden="true"
+        >{{ text }}</span
+    >
+}

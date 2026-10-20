@@ -13,8 +13,10 @@ Grammar:
     unary       := "not" unary | atom
     atom        := "(" expr ")" | comparison | free_text
     comparison  := IDENT ( "=" | "!=" | ":" | "!:" | ">" | "<" | ">=" | "<=" ) value
+                 | IDENT ("starts" | "ends") "with" value
                  | IDENT ("in" | "not" "in") ("(" | "[") value ("," value)* (")" | "]")
                  | IDENT "is" ("not")? "empty"
+                 | IDENT ("not")? "exists"
     free_text   := ("text" ":")? (STRING | NUMBER | IDENT)
     value       := STRING | NUMBER | IDENT
 
@@ -70,6 +72,17 @@ _OP_ALIASES = {
 }
 
 _OP_TO_SYMBOL = {v: k for k, v in _OP_ALIASES.items() if k not in ("==",)}
+# The OpenSearch compiler treats key_not_equals exactly like not_equal, so it
+# prints as `!=` (and reads back as not_equal).
+_OP_TO_SYMBOL["key_not_equals"] = "!="
+
+_KEYWORD_OP_TO_TEXT = {"starts_with": "starts with", "ends_with": "ends with"}
+_VALUE_FREE_OP_TO_TEXT = {
+    "is_empty": "is empty",
+    "is_not_empty": "is not empty",
+    "key_exists": "exists",
+    "key_not_exists": "not exists",
+}
 
 
 @dataclass
@@ -120,6 +133,16 @@ class _Parser:
             self._advance()
             return tok.value.lower()
         return None
+
+    def _match_phrase(self, *keywords: str) -> bool:
+        """Consume the keywords only if all of them follow, so a partial
+        match (e.g. a bare word before `starts`) still backtracks to free text."""
+        for offset, keyword in enumerate(keywords):
+            tok = self._peek(offset)
+            if tok.kind != "IDENT" or tok.value.lower() != keyword:
+                return False
+        self._i += len(keywords)
+        return True
 
     def _expect_keyword(self, keyword: str) -> None:
         if self._match_keyword(keyword) is None:
@@ -184,8 +207,17 @@ class _Parser:
                 canonical = _OP_ALIASES[op_tok.value]
                 return {"field": field, "op": canonical, "value": self._value()}
 
+            if self._match_phrase("starts", "with"):
+                return {"field": field, "op": "starts_with", "value": self._value()}
+
+            if self._match_phrase("ends", "with"):
+                return {"field": field, "op": "ends_with", "value": self._value()}
+
             if self._match_keyword("in"):
                 return {"field": field, "op": "in", "value": self._bracketed_list()}
+
+            if self._match_keyword("exists"):
+                return {"field": field, "op": "key_exists"}
 
             if self._match_keyword("not"):
                 if self._match_keyword("in"):
@@ -194,7 +226,11 @@ class _Parser:
                         "op": "not_in",
                         "value": self._bracketed_list(),
                     }
-                raise FilterParseError(f"Expected 'in' after 'not' at position {self._peek().pos}")
+                if self._match_keyword("exists"):
+                    return {"field": field, "op": "key_not_exists"}
+                raise FilterParseError(
+                    f"Expected 'in' or 'exists' after 'not' at position {self._peek().pos}"
+                )
 
             if self._match_keyword("is"):
                 negate = self._match_keyword("not") is not None
@@ -283,10 +319,10 @@ def _serialize(node: FilterNode, *, top: bool = False) -> str:
         keyword = "in" if leaf_op == "in" else "not in"
         return f"{field} {keyword} ({values})"
 
-    if leaf_op == "is_empty":
-        return f"{field} is empty"
-    if leaf_op == "is_not_empty":
-        return f"{field} is not empty"
+    if leaf_op in _VALUE_FREE_OP_TO_TEXT:
+        return f"{field} {_VALUE_FREE_OP_TO_TEXT[leaf_op]}"
+    if leaf_op in _KEYWORD_OP_TO_TEXT:
+        return f"{field} {_KEYWORD_OP_TO_TEXT[leaf_op]} {_quote(node['value'])}"
 
     symbol = _OP_TO_SYMBOL.get(leaf_op)
     if symbol is None:

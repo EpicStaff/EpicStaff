@@ -8,8 +8,12 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 
+import pytest
+import settings
 from loguru import logger
 from main import consume_requests
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import ResponseError
 
 from shared.redis_streams import StreamEnvelope, StreamMessage
 
@@ -60,7 +64,7 @@ async def test_runs_overlap_free_slots_are_reused_and_stop_drains_in_flight_runs
     handler = _BlockingHandler()
     stop = asyncio.Event()
     consumer = asyncio.create_task(
-        consume_requests(client, handler, "consumer-a", max_concurrent_runs=2, stop=stop)
+        consume_requests(client, handler, "consumer-a", max_concurrent_runs=2, stop=stop, read_retry_initial_delay_s=1, read_retry_max_delay_s=30)
     )
 
     # Both runs started while neither was released, and with both slots busy
@@ -92,7 +96,7 @@ async def test_failing_run_is_logged_and_frees_its_slot():
 
     try:
         consumer = asyncio.create_task(
-            consume_requests(client, handler, "consumer-a", max_concurrent_runs=1, stop=stop)
+            consume_requests(client, handler, "consumer-a", max_concurrent_runs=1, stop=stop, read_retry_initial_delay_s=1, read_retry_max_delay_s=30)
         )
         await _until(lambda: len(handler.started) == 2)
     finally:
@@ -104,3 +108,113 @@ async def test_failing_run_is_logged_and_frees_its_slot():
     stop.set()
     handler.release["run-2-0"].set()
     await asyncio.wait_for(consumer, timeout=1)
+
+
+class _ScriptedStreamClient:
+    """Plays ``script`` one read at a time: an exception is raised, a list is returned."""
+
+    def __init__(self, script: list[Exception | list[StreamMessage]]) -> None:
+        self._script = script
+        self.ensured_groups: list[tuple[str, str]] = []
+
+    async def read(self, streams, group, consumer, count, block_ms) -> list[StreamMessage]:
+        if not self._script:
+            await asyncio.sleep(0.01)
+            return []
+        step = self._script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+    async def ensure_group(self, stream, group, start_id="$", mkstream=True) -> None:
+        self.ensured_groups.append((stream, group))
+
+
+async def test_missing_consumer_group_is_recreated_and_the_next_request_runs():
+    client = _ScriptedStreamClient(
+        [ResponseError("NOGROUP No such key 'agent.requests' or consumer group"), [_message("1-0")]]
+    )
+    handler = _BlockingHandler()
+    stop = asyncio.Event()
+    consumer = asyncio.create_task(
+        consume_requests(client, handler, "consumer-a", max_concurrent_runs=1, stop=stop, read_retry_initial_delay_s=1, read_retry_max_delay_s=30)
+    )
+
+    await _until(lambda: handler.started == ["run-1-0"])
+    assert client.ensured_groups == [
+        (settings.AGENT_REQUEST_STREAM, settings.AGENT_CONSUMER_GROUP)
+    ]
+
+    stop.set()
+    handler.release["run-1-0"].set()
+    await asyncio.wait_for(consumer, timeout=1)
+
+
+async def test_read_errors_back_off_doubling_to_a_cap_and_reset_after_a_successful_read():
+    down = RedisConnectionError("redis down")
+    client = _ScriptedStreamClient([down] * 7 + [[_message("1-0")], down, [_message("2-0")]])
+    handler = _BlockingHandler()
+    stop = asyncio.Event()
+    delays: list[float] = []
+
+    async def record_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    consumer = asyncio.create_task(
+        consume_requests(
+            client, handler, "consumer-a", max_concurrent_runs=2, stop=stop, sleep=record_sleep, read_retry_initial_delay_s=1, read_retry_max_delay_s=30
+        )
+    )
+
+    await _until(lambda: handler.started == ["run-1-0", "run-2-0"])
+    assert delays == [1, 2, 4, 8, 16, 30, 30, 1]
+
+    stop.set()
+    handler.release["run-1-0"].set()
+    handler.release["run-2-0"].set()
+    await asyncio.wait_for(consumer, timeout=1)
+
+
+class _BlockedStreamClient:
+    async def read(self, streams, group, consumer, count, block_ms) -> list[StreamMessage]:
+        await asyncio.Event().wait()
+
+
+async def test_cancelling_the_consumer_during_a_blocked_read_ends_it():
+    consumer = asyncio.create_task(
+        consume_requests(
+            _BlockedStreamClient(),
+            _BlockingHandler(),
+            "consumer-a",
+            max_concurrent_runs=1,
+            stop=asyncio.Event(),
+            read_retry_initial_delay_s=1, read_retry_max_delay_s=30,
+        )
+    )
+    await asyncio.sleep(0.05)
+
+    consumer.cancel()
+    await asyncio.wait({consumer}, timeout=1)
+
+    assert consumer.cancelled()
+
+
+async def test_a_permanent_redis_error_ends_the_consumer():
+    client = _ScriptedStreamClient([ResponseError("WRONGTYPE Operation against a key")])
+
+    async def no_sleep(delay: float) -> None:
+        pass
+
+    with pytest.raises(ResponseError, match="WRONGTYPE"):
+        await asyncio.wait_for(
+            consume_requests(
+                client,
+                _BlockingHandler(),
+                "consumer-a",
+                max_concurrent_runs=1,
+                stop=asyncio.Event(),
+                sleep=no_sleep,
+                read_retry_initial_delay_s=1, read_retry_max_delay_s=30,
+            ),
+            timeout=1,
+        )

@@ -5,6 +5,7 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse, ResourceCode } from '@shared/models';
 
+import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
@@ -16,6 +17,7 @@ const COLLAPSED_WIDTH = 60;
 const EXPANDED_WIDTH = 240;
 const ORG_NAME = 'Acme Research and Development Group';
 const DISPLAY_NAME = 'Jane Doe';
+const WAITING_COUNT = 4;
 
 const USER = {
     id: 7,
@@ -46,7 +48,11 @@ describe('LeftSidebarComponent', () => {
                         canOpenConfigureModelsDialog: () => true,
                     },
                 },
-                { provide: ConfigService, useValue: { isAuditTrailEnabled: false } },
+                { provide: ConfigService, useValue: { isAuditTrailEnabled: false, isChatEnabled: true } },
+                {
+                    provide: ChatInboxStreamService,
+                    useValue: { waitingCount: signal(WAITING_COUNT), start: vi.fn(), stop: vi.fn() },
+                },
             ],
         });
 
@@ -120,6 +126,7 @@ describe('LeftSidebarComponent', () => {
             expect(labelTexts()).toEqual([]);
             expect(navLink('Agents')!.getAttribute('aria-label')).toBe('Agents');
             expect(navLink('Settings')!.getAttribute('aria-label')).toBe('Settings');
+            expect(navLink('Recycle Bin')!.getAttribute('aria-label')).toBe('Recycle Bin');
         });
 
         it('shows the label as a tooltip on hover', () => {
@@ -144,15 +151,18 @@ describe('LeftSidebarComponent', () => {
         });
 
         it('shows the labels as text and drops the aria-label so they are not announced twice', () => {
-            expect(labelTexts()).toEqual(expect.arrayContaining(['Agents', 'Flows', 'Settings']));
+            expect(labelTexts()).toEqual(expect.arrayContaining(['Agents', 'Flows', 'Recycle Bin', 'Settings']));
             expect(navLink('Agents')!.hasAttribute('aria-label')).toBe(false);
             expect(navLink('Settings')!.hasAttribute('aria-label')).toBe(false);
+            expect(navLink('Recycle Bin')!.hasAttribute('aria-label')).toBe(false);
         });
 
         it('suppresses the hover tooltips', () => {
             hoverItem('Flows');
+            hoverItem('Recycle Bin');
 
             expect(visibleTooltipTexts()).not.toContain('Flows');
+            expect(visibleTooltipTexts()).not.toContain('Recycle Bin');
         });
 
         it('shows the full org and user names as titles for truncated labels', () => {
@@ -165,12 +175,48 @@ describe('LeftSidebarComponent', () => {
             expect(userLabel.getAttribute('title')).toBe(DISPLAY_NAME);
         });
 
+        it.each([
+            ['Recycle Bin', '/recycle-bin/flows'],
+            ['Settings', '/settings'],
+        ])('highlights %s on its pages', async (label, url) => {
+            expect(navLink(label)!.classList).not.toContain('active');
+
+            await TestBed.inject(Router).navigateByUrl(url);
+            fixture.detectChanges();
+
+            expect(navLink(label)!.classList).toContain('active');
+        });
+
         it('labels the org switcher "Workspace" on workspace pages', async () => {
             await TestBed.inject(Router).navigateByUrl('/workspace');
             fixture.detectChanges();
 
             const orgLabel = element.querySelector('.org-menu-btn .sidenav-row-label')!;
             expect(orgLabel.textContent!.trim()).toBe('Workspace');
+        });
+    });
+
+    describe('Conversations item', () => {
+        beforeEach(() => render(COLLAPSED_WIDTH));
+
+        it('opens the bindings list and stays active on every binding page', async () => {
+            const router = TestBed.inject(Router);
+
+            navLink('Conversations')!.click();
+            await fixture.whenStable();
+            expect(router.url).toBe('/chat-bindings');
+
+            await router.navigateByUrl('/chat-bindings/b-1');
+            fixture.detectChanges();
+            expect(navLink('Conversations')!.classList).toContain('active');
+        });
+
+        it('links its waiting count to the all-bindings inbox', () => {
+            const badgeLink = element.querySelector<HTMLAnchorElement>('.sidenav-badge-link')!;
+
+            expect(badgeLink.textContent!.trim()).toBe(String(WAITING_COUNT));
+            expect(badgeLink.getAttribute('href')).toBe('/chat-bindings/all');
+            expect(badgeLink.getAttribute('aria-label')).toBe('Conversations inbox: 4 waiting for a person');
         });
     });
 });

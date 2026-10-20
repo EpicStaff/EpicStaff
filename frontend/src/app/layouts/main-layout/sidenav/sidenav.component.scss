@@ -1,3 +1,5 @@
+@use '../../../../styles/count-badge';
+
 // Every row is a $row-size box. Collapsed, the box is centred in the 60px sidebar; expanded, it stretches
 // but keeps the same left edge ($row-inset) and inner padding, so icons stay put when the sidebar expands.
 $row-size: 2.5rem;
@@ -197,6 +199,41 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
             display: flex;
             justify-content: center;
 
+            // On the icon box's top-right corner, 2px inside the collapsed row; it stays on the icon when the row
+            // stretches.
+            .sidenav-badge {
+                @include count-badge.pill;
+                position: absolute;
+                top: calc(2px - #{$nav-icon-padding});
+                right: calc(2px - #{$nav-icon-padding});
+            }
+
+            // A sibling of the item's link (links cannot nest). Its 24px target (WCAG 2.5.8) sits on the icon box's
+            // top-right corner and reaches past it, clear of the icon itself; the pill inside looks like the others.
+            // Anchored to the row's left edge, which does not move when the sidebar expands.
+            .sidenav-badge-link {
+                position: absolute;
+                top: -4px;
+                left: calc(#{$row-inset} + #{$row-size} + 6px);
+                transform: translateX(-100%);
+                z-index: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 24px;
+                height: 24px;
+                text-decoration: none;
+                border-radius: 12px;
+
+                .sidenav-badge {
+                    position: static;
+                }
+
+                &:focus-visible {
+                    outline: 1px solid var(--accent-color);
+                }
+            }
+
             // Closes the bottom group with a divider like the workspace switcher's (.org-menu-wrapper
             // above): it shrinks to the button, so the line is as wide as the button.
             &.recycle-bin-block {
@@ -237,6 +274,7 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
                 }
 
                 .sidenav-link-icon {
+                    position: relative;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -328,6 +366,11 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
     .org-menu-container .org-menu-wrapper {
         flex: 1 1 auto;
         min-width: 0;
+    }
+
+    // Collapsed the divider is as wide as the button; expanded it spans the sidebar like the switcher's.
+    .sidenav-nav-item .tooltip-wrapper.recycle-bin-block {
+        width: 100%;
     }
 
     .org-menu-container .org-menu-btn,

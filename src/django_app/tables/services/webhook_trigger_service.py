@@ -192,15 +192,24 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
 
         for webhook_trigger_node in webhook_trigger_node_list:
-            # Persistent-variable merging is owned by run_session. The external
-            # payload sits under a fixed key, so it reaches a persistent path only
-            # where the flow editor declared one there.
-            self.session_manager_service.run_session(
-                graph_id=webhook_trigger_node.graph.pk,
-                variables={"trigger_payload": payload},
-                trigger=TriggerSpec.webhook(webhook_trigger_node, path, config_id),
-                allow_persistent_override=True,
-            )
+            # One flow failing to start must not keep the other flows on this path
+            # from running.
+            try:
+                # Persistent-variable merging is owned by run_session. The external
+                # payload sits under a fixed key, so it reaches a persistent path only
+                # where the flow editor declared one there.
+                self.session_manager_service.run_session(
+                    graph_id=webhook_trigger_node.graph_id,
+                    variables={"trigger_payload": payload},
+                    trigger=TriggerSpec.webhook(webhook_trigger_node, path, config_id),
+                    allow_persistent_override=True,
+                )
+            except Exception:
+                logger.exception(
+                    "Webhook trigger node {} could not start graph {}",
+                    webhook_trigger_node.pk,
+                    webhook_trigger_node.graph_id,
+                )
 
     def register_webhooks(self) -> bool:
         ngrok_configs, localhost_configs = [], []

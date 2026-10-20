@@ -10,7 +10,8 @@ from rbac.access.org_context import OrgContextService
 def resolve_active_org_id(request) -> int:
     """Active org id for the request, resolved from the X-Organization-Id header
     and cached on the request under `_rbac_active_org_id` (the same key
-    OrgScopedViewSetMixin uses), so it resolves at most once per request."""
+    HasOrgPermission and OrgScopedViewSetMixin use), so it resolves at most once
+    per request."""
     org_id = getattr(request, "_rbac_active_org_id", None)
     if org_id is None:
         org_id = OrgContextService().resolve(request=request)

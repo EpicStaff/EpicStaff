@@ -1,4 +1,5 @@
 import base64
+import time
 from collections import defaultdict
 from typing import ClassVar
 
@@ -27,12 +28,13 @@ from rbac.scoping.mixins import (
 )
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import CodeRunTargetNotFoundError, SessionNotFoundError
+from tables.exceptions import CodeRunTargetNotFoundError
 from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -212,7 +214,7 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph", "trigger", "principal").filter(
+        qs = Session.objects.select_related("graph", "trigger", "principal", "callback").filter(
             graph__org_id=self.get_active_org_id()
         )
         detailed = self.request.query_params.get("detailed", "true").lower()
@@ -410,6 +412,7 @@ class SessionViewSet(
 class RunSession(APIView):
     @extend_schema(**RUN_SESSION_POST)
     def post(self, request):
+        request_received_ts = time.time()
         logger.info("Received POST request to start a new session.")
 
         total_size = sum(f.size for f in request.FILES.values())
@@ -426,6 +429,13 @@ class RunSession(APIView):
         if not serializer.is_valid():
             logger.warning(f"Invalid data received in request: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        callback_url = serializer.validated_data.get("callback_url")
+        callback_secret = serializer.validated_data.get("callback_secret")
+        if callback_url is not None and not (
+            isinstance(request.auth, ApiKey) and request.auth.key_type == ApiKey.KeyType.SYSTEM
+        ):
+            raise PermissionDenied("Session callbacks require the system API key.")
 
         files_dict = {}
         graph_id = serializer.validated_data.get("graph_id")
@@ -474,9 +484,19 @@ class RunSession(APIView):
                 trigger=trigger,
                 parent_session_id=parent_session_id,
                 token_budget=serializer.validated_data.get("token_budget"),
+                callback_url=callback_url,
+                callback_secret=callback_secret,
                 allow_persistent_override=allow_persistent_override,
             )
             logger.info(f"Session {session_id} successfully started.")
+            # session_id exists only now, so the line is written late with the real arrival time.
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="request_received",
+                session_id=session_id,
+                arrival_ts=request_received_ts,
+            )
         except Exception as e:
             logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
@@ -550,24 +570,8 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session_id = kwargs["session_id"]
-        get_accessible_session(request.user, session_id)
-
-        try:
-            required_listeners = 2  # manager and crew
-            received_n = session_manager_service.stop_session(session_id=session_id)
-            if received_n < required_listeners:
-                logger.error(f"Stop session ({session_id}) was sent but not received.")
-                session = Session.objects.get(pk=session_id)
-                session.status = Session.SessionStatus.ERROR
-                session.status_data = {
-                    "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
-                }
-                session.save()
-
-        except Session.DoesNotExist:
-            raise SessionNotFoundError() from None
-
+        session = get_accessible_session(request.user, kwargs["session_id"])
+        session_manager_service.stop_running_session(session=session)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

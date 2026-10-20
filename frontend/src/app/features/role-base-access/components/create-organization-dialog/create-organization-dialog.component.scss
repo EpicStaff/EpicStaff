@@ -55,5 +55,25 @@
         .required {
             color: var(--accent-color);
         }
+
+        // the same top margin on both cells keeps the label centred on the controls, not on the row with the gap
+        .retention,
+        .retention__label {
+            margin-top: 16px;
+        }
+
+        .retention {
+            grid-column: 2;
+            display: flex;
+            gap: 8px;
+        }
+
+        // fixed with flex, not width alone: app-select grows to fill a flex row, and the stepper's native
+        // input keeps its default ~20-character width unless min-width lets the item shrink below it
+        .retention__unit,
+        .retention__amount {
+            flex: 0 0 160px;
+            min-width: 0;
+        }
     }
 }

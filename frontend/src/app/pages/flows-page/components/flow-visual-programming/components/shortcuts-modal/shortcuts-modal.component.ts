@@ -93,8 +93,6 @@ const REFLOW_FADE_MS = 120;
 
 const PANEL_RESIZE_MS = 200;
 
-const SHRINK_ROOM_PX = 48;
-
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
 const MAX_SETTLE_STEPS = 3;
@@ -325,6 +323,9 @@ export class ShortcutsModalComponent {
     toggleSize(): void {
         if (this.isMediaLocked()) return;
         this.size.update((s) => (s === 'wide' ? 'compact' : 'wide'));
+        if (this.size() === 'wide') {
+            this.fitAfterPanelResize();
+        }
     }
 
     protected onModalKeydown(event: KeyboardEvent): void {
@@ -447,19 +448,11 @@ export class ShortcutsModalComponent {
                 this.revealOpenEditor();
             };
         }
-        if (!isEditorOpen && this.fitsFewerColumns(flow, lastItem, usedColumns)) {
+        // Wider columns never make a row taller, so rows that fit three of the four columns fit three columns.
+        if (!isEditorOpen && this.columnCount() > MAX_COLUMNS - 1 && usedColumns <= MAX_COLUMNS - 1) {
             return () => this.columnCount.set(MAX_COLUMNS - 1);
         }
         return null;
-    }
-
-    private fitsFewerColumns(flow: HTMLElement, lastItem: Element, usedColumns: number): boolean {
-        const fewer = MAX_COLUMNS - 1;
-        if (this.columnCount() <= fewer || usedColumns > fewer) {
-            return false;
-        }
-        const roomBelowLastItem = flow.getBoundingClientRect().bottom - lastItem.getBoundingClientRect().bottom;
-        return usedColumns < fewer || roomBelowLastItem >= SHRINK_ROOM_PX;
     }
 
     private reflow(apply: () => void): void {
@@ -476,6 +469,19 @@ export class ShortcutsModalComponent {
                 requestAnimationFrame(() => this.ngZone.run(() => this.fitColumns()));
             }, PANEL_RESIZE_MS);
         }, REFLOW_FADE_MS);
+    }
+
+    // Mid-animation the panel is still narrow and the rows look like they need more columns, so fit once it has
+    // reached its full width, the same pause a column change takes.
+    private fitAfterPanelResize(): void {
+        this.cancelReflow();
+        if (this.breakpointObserver.isMatched(REDUCED_MOTION_QUERY)) {
+            return;
+        }
+        this.reflowTimer = setTimeout(() => {
+            this.reflowTimer = null;
+            this.ngZone.run(() => this.fitColumns());
+        }, PANEL_RESIZE_MS);
     }
 
     private cancelReflow(): void {

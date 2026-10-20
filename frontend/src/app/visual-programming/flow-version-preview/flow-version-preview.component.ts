@@ -148,7 +148,7 @@ export class FlowVersionPreviewComponent {
         return (
             this.dialog.openDialogs.length === 0 &&
             this.sidePanelService.selectedNodeId() === null &&
-            !this.flowGraph()?.multiSelectActive() &&
+            !this.flowGraph()?.selectionManager.multiSelectActive() &&
             !(event.target instanceof HTMLElement && isEditableTarget(event.target)) &&
             !(event.target instanceof Element && event.target.closest('app-shortcuts-modal'))
         );

@@ -131,3 +131,14 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return self.email
+
+    @property
+    def effective_display_name(self) -> str:
+        """Return the stored display name, or one derived from the email when it is blank.
+
+        `UserManager` fills `display_name` on every new user, yet it can still be NULL: never
+        set on an older user, or cleared through the profile endpoint.
+        """
+        if self.display_name and self.display_name.strip():
+            return self.display_name
+        return display_name_from_email(self.email)

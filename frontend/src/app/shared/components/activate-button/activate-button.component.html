@@ -3,6 +3,7 @@
     class="activate-btn"
     [class.activate-btn--play]="icon() === 'activate'"
     [disabled]="disabled()"
+    [attr.aria-label]="tooltip()"
     [matTooltip]="tooltip()"
     (click)="triggered.emit()"
 >

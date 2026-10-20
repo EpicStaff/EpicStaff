@@ -173,7 +173,7 @@
                                                         <button
                                                             type="button"
                                                             class="shortcuts__reset-key"
-                                                            [matTooltip]="'Reset ' + row.label"
+                                                            matTooltip="Reset"
                                                             [attr.aria-label]="'Reset ' + row.label + ' key'"
                                                             (click)="resetNodeKey(row.id)"
                                                         >
@@ -185,7 +185,7 @@
                                                     }
                                                     <app-edit-button
                                                         #nodeEdit
-                                                        [tooltip]="'Edit ' + row.label"
+                                                        tooltip="Edit"
                                                         [ariaLabel]="'Edit ' + row.label + ' key'"
                                                         (triggered)="startEditingNodeKey(row.id)"
                                                     />
@@ -251,7 +251,7 @@
                                             <div class="shortcuts__row-actions">
                                                 <app-edit-button
                                                     #customEdit
-                                                    [tooltip]="'Edit ' + row.label"
+                                                    tooltip="Edit"
                                                     [ariaLabel]="'Edit ' + row.label + ' shortcut'"
                                                     (triggered)="startEditing(row.shortcut.id)"
                                                 />

@@ -13,6 +13,7 @@ from django.db import connection
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views import View
 from rbac.identity.tickets import sse_ticket_service
+from rest_framework.exceptions import APIException
 from tables.services.redis_service import RedisService
 from tables.utils.memory_trim import read_rss_mb, start_periodic_malloc_trim
 from utils.logger import logger
@@ -42,6 +43,13 @@ class SerializedEvent:
     data: str
 
 
+def _refusal(status_code: int, code: str, message: str) -> JsonResponse:
+    # The body every refused stream answers with, in the API's error shape.
+    return JsonResponse(
+        {"status_code": status_code, "code": code, "message": message}, status=status_code
+    )
+
+
 def _close_database_connection() -> None:
     # Looked up here, in the thread the stream's queries run in: Django keeps one
     # connection per thread, so `sync_to_async(connection.close)` would bind the event
@@ -52,8 +60,8 @@ def _close_database_connection() -> None:
 class SSEMixin(View, ABC):
     """
     A reusable mixin to stream server-sent events (SSE).
-    Override `get_initial_data()` and `get_live_updates()` in your view, and
-    `get_channels()` when the live updates come from Redis pub/sub.
+    Override `authorize()`, `get_initial_data()` and `get_live_updates()` in your
+    view, and `get_channels()` when the live updates come from Redis pub/sub.
     """
 
     ping_interval = 15  # seconds
@@ -79,13 +87,6 @@ class SSEMixin(View, ABC):
         override to keep less of it.
         """
         self.held_live_messages.append(message)
-
-    async def async_orm_generator(self, queryset):
-        # NOTE: for small results only. Outside a transaction Django declares this
-        # cursor WITH HOLD, so PostgreSQL computes the whole result first, and each
-        # fetch holds chunk_size rows in memory.
-        async for entity in queryset.aiterator(chunk_size=200):
-            yield entity
 
     @abstractmethod
     async def get_initial_data(self):
@@ -217,6 +218,7 @@ class SSEMixin(View, ABC):
             raise
         except Exception as e:
             logger.error(f"Sending fatal-error event due to error: {e}")
+            await self.release_database_connection_before_error()
             yield "\n\nevent: fatal-error\ndata: unexpected error\n\n"
         finally:
             if pubsub is not None:
@@ -238,6 +240,15 @@ class SSEMixin(View, ABC):
         """
         await sync_to_async(_close_database_connection)()
 
+    async def release_database_connection_before_error(self) -> None:
+        """Release the connection before yielding an error frame, whatever state it is in.
+
+        A client that stops reading blocks that yield, and with it a pooled connection the
+        failed work may still hold. A close that fails too must not stop the frame.
+        """
+        with contextlib.suppress(Exception):
+            await self.release_database_connection()
+
     async def _hold_published_messages(self, pubsub) -> None:
         # Read what was published meanwhile rather than leaving it in Redis: past
         # client-output-buffer-limit Redis drops the subscriber, and a long initial
@@ -246,24 +257,32 @@ class SSEMixin(View, ABC):
             if message["type"] == "message":
                 self.hold_live_message(message)
 
+    @abstractmethod
     async def authorize(self, request, *args, **kwargs):
-        """Optional post-ticket authorization hook. Runs after the SSE ticket
-        resolves to `self.user`. Return an HttpResponse to deny (short-circuit
-        the stream), or None to proceed. Default: allow."""
-        return
+        """Decide whether `self.user` may open this stream; return a response to refuse it.
+
+        Runs after the SSE ticket resolves to `self.user` and before the stream
+        starts. The ticket proves only who the user is, so every view must check
+        access to what it streams (org membership and permission on the resource,
+        taken from the streamed row's org: EventSource cannot send
+        X-Organization-Id). There is deliberately no default: a view without its
+        own check cannot be instantiated, rather than streaming to every ticket
+        holder.
+
+        Returns:
+            An HttpResponse to refuse the stream, or None to open it.
+        """
+        raise NotImplementedError
+
+    def refuse(self, exc: APIException) -> JsonResponse:
+        """Return the response refusing the stream for `exc`, for `authorize()` to return."""
+        return _refusal(exc.status_code, exc.default_code, str(exc.detail))
 
     async def get(self, request, *args, **kwargs):
         ticket = request.GET.get("ticket", "")
         user = await sync_to_async(sse_ticket_service.consume)(ticket)
         if user is None:
-            return JsonResponse(
-                {
-                    "status_code": 401,
-                    "code": "invalid_sse_ticket",
-                    "message": "Invalid or expired SSE ticket.",
-                },
-                status=401,
-            )
+            return _refusal(401, "invalid_sse_ticket", "Invalid or expired SSE ticket.")
         self.user = user
 
         auth_response = await self.authorize(request, *args, **kwargs)

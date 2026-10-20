@@ -356,7 +356,7 @@ describe('FlowGraphComponent', () => {
 
             press({ code: 'Escape', key: 'Escape' });
 
-            expect(fixture.componentInstance.multiSelectActive()).toBe(false);
+            expect(fixture.componentInstance.selectionManager.multiSelectActive()).toBe(false);
         });
 
         it('ends multi-select on Escape pressed in a text field', () => {
@@ -364,7 +364,7 @@ describe('FlowGraphComponent', () => {
 
             press({ code: 'Escape', key: 'Escape' }, attachInput());
 
-            expect(fixture.componentInstance.multiSelectActive()).toBe(false);
+            expect(fixture.componentInstance.selectionManager.multiSelectActive()).toBe(false);
         });
 
         it('stops handling keys once the editor is left', () => {

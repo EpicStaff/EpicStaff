@@ -3,28 +3,36 @@ from tables.models.user import User
 
 from rbac.models import Organization, OrganizationConfig
 
-AUDIT_RETENTION_DAYS_MAX = 2_147_483_647
+# Product cap: 100 years. 0 = unlimited.
+AUDIT_RETENTION_DAYS_MAX = 36_500
 
 
 class OrganizationCreateRequestSerializer(serializers.Serializer):
     """Schema-only — real validation in OrganizationValidationService."""
 
     name = serializers.CharField(max_length=255)
+    audit_retention_days = serializers.IntegerField(
+        min_value=0, max_value=AUDIT_RETENTION_DAYS_MAX, required=False, default=0
+    )
 
 
 class OrganizationRenameRequestSerializer(serializers.Serializer):
-    """Schema-only — real validation in OrganizationValidationService."""
+    """Schema-only — real validation in OrganizationValidationService.
 
-    name = serializers.CharField(max_length=255)
+    Both fields are optional, but at least one must be sent.
+    """
+
+    name = serializers.CharField(max_length=255, required=False)
+    audit_retention_days = serializers.IntegerField(
+        min_value=0, max_value=AUDIT_RETENTION_DAYS_MAX, required=False
+    )
 
 
 class OrganizationSettingsUpdateSerializer(serializers.Serializer):
     """Validate the org self-service settings PATCH body.
 
     This serializer is the only validation: OrganizationManagementService
-    stores the value as given. 0 = unlimited (default), as the product
-    requires — free-form days with no product upper bound; max_value only
-    guards the database column's range.
+    stores the value as given. 0 = unlimited (default).
     """
 
     audit_retention_days = serializers.IntegerField(min_value=0, max_value=AUDIT_RETENTION_DAYS_MAX)

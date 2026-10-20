@@ -6,6 +6,7 @@ from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
 from app.exceptions import AgentServiceError
 from app.logging_utils import redact
+from app.loop.context import CancellationCheck
 from app.prompt.single_task import SingleTaskPromptBuilder
 from app.runners.base import Runner
 from app.runners.task_execution import (
@@ -26,7 +27,13 @@ class SingleTaskRunner(Runner):
     emitter_mode = EmitterMode.TOOL_EVENTS
     _prompt_builder = SingleTaskPromptBuilder()
 
-    async def execute(self, request: AgentRequest, emitter: Emitter) -> None:
+    async def execute(
+        self,
+        request: AgentRequest,
+        emitter: Emitter,
+        *,
+        is_cancelled: CancellationCheck,
+    ) -> None:
         await emitter.on_start(request)
 
         try:
@@ -57,7 +64,9 @@ class SingleTaskRunner(Runner):
             if output_schema:
                 logger.opt(lazy=True).debug("output_schema={}", lambda: output_schema)
 
-            resolved = await self._deps.resolver.resolve(agent, request, knowledge_sink=emitter)
+            resolved = await self._deps.resolver.resolve(
+                agent, request, knowledge_sink=emitter, is_cancelled=is_cancelled
+            )
             logger.debug(
                 "resolved tools={} attachments={}",
                 [s.name for s in resolved.tools.tool_specs()],
