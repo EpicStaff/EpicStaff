@@ -10,6 +10,10 @@ The stack is ready when all of these pass in the same poll:
                 (this one reads the database). Its value is printed, not checked: the
                 "database is not fresh" failure belongs to the bootstrap fixture.
     mock-llm    GET {E2E_MOCK_LLM_URL}/health -> 200
+    containers  only with E2E_COMPOSE_CMD: every container is running (and healthy when it
+                has a healthcheck) or has exited with 0 (one-shots such as storage-init).
+                A container that is restarting, unhealthy or exited non-zero fails the
+                wait at once instead of after the timeout.
 
 Environment:
     E2E_BASE_URL       nginx base URL, default http://localhost
@@ -18,15 +22,21 @@ Environment:
     E2E_TIMINGS_DIR    where the elapsed time is written as stack_ready.json
                        ({"stack_ready_seconds": <float>}), default tests/e2e/.timings: the
                        same directory conftest.py reads and merges into timings.json
+    E2E_COMPOSE_CMD    the stack's `docker compose ...` command without a subcommand, e.g.
+                       "docker compose -p epicstaff-e2e --env-file ... -f ..."; unset skips
+                       the container check
 
 Requests bypass any configured HTTP proxy: the stack always runs on this machine.
 
 Progress is printed when a check changes state and every 30 s while something still fails.
-Exit code 0 when ready, 1 on timeout (with the last result of every check).
+Exit code 0 when ready, 1 on timeout or a crashed container (with the last result of every
+check).
 """
 
 import json
 import os
+import shlex
+import subprocess
 import sys
 import time
 import urllib.error
@@ -52,6 +62,7 @@ def log(message: str) -> None:
 class CheckResult:
     passed: bool
     detail: str
+    fatal: bool = False
 
 
 @dataclass(frozen=True)
@@ -87,6 +98,49 @@ def run_check(check: Check) -> CheckResult:
         return CheckResult(False, f"{type(error).__name__}: {reason}")
 
 
+def classify_containers(containers: list[dict]) -> CheckResult:
+    """Ready, still starting, or crashed, from `docker compose ps --all --format json` rows."""
+    crashed = [
+        f"{container['Service']} {container['Health'] or container['State']}"
+        f" (exit {container['ExitCode']})"
+        for container in containers
+        if container["State"] in ("restarting", "dead")
+        or container["Health"] == "unhealthy"
+        or (container["State"] == "exited" and container["ExitCode"] != 0)
+    ]
+    if crashed:
+        return CheckResult(False, f"crashed: {', '.join(crashed)}", fatal=True)
+    starting = [
+        f"{container['Service']} {container['Health'] or container['State']}"
+        for container in containers
+        if container["State"] != "exited"
+        and (container["State"] != "running" or container["Health"] not in ("", "healthy"))
+    ]
+    if starting:
+        return CheckResult(False, f"starting: {', '.join(starting)}")
+    if not containers:
+        return CheckResult(False, "no containers")
+    return CheckResult(True, f"{len(containers)} containers up")
+
+
+def check_containers(compose_command: list[str]) -> CheckResult:
+    try:
+        completed = subprocess.run(
+            [*compose_command, "ps", "--all", "--format", "json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+    except subprocess.CalledProcessError as error:
+        return CheckResult(False, f"docker compose ps failed: {error.stderr.strip()}")
+    except (subprocess.SubprocessError, OSError) as error:
+        return CheckResult(False, f"docker compose ps failed: {error}")
+    # One JSON object per line (Compose 2.21+).
+    containers = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+    return classify_containers(containers)
+
+
 def build_checks(base_url: str, mock_llm_url: str) -> list[Check]:
     return [
         Check("django", f"{base_url}/ht/", status_ok),
@@ -110,11 +164,15 @@ def write_timing(timings_dir: str, elapsed_seconds: float) -> None:
     log(f"wrote {timing_file}")
 
 
-def wait_for_stack(checks: list[Check], timeout_seconds: float) -> dict[str, CheckResult] | None:
-    """Poll every check until all pass in one round or the timeout runs out.
+def wait_for_stack(
+    checks: list[Check],
+    timeout_seconds: float,
+    container_check: Callable[[], CheckResult] | None = None,
+) -> dict[str, CheckResult] | None:
+    """Poll every check until all pass in one round, the timeout runs out or a container crashes.
 
     Returns:
-        The passing results, or None on timeout (the last results are printed first).
+        The passing results, or None on timeout or crash (the last results are printed first).
     """
     started = time.monotonic()
     previous: dict[str, CheckResult] = {}
@@ -122,7 +180,13 @@ def wait_for_stack(checks: list[Check], timeout_seconds: float) -> dict[str, Che
 
     while True:
         results = {check.name: run_check(check) for check in checks}
+        if container_check is not None:
+            results["containers"] = container_check()
         elapsed = time.monotonic() - started
+
+        if any(result.fatal for result in results.values()):
+            log(f"FAILED after {elapsed:.0f}s: {format_results(results)}")
+            return None
 
         if all(result.passed for result in results.values()):
             log(f"ready after {elapsed:.1f}s: {format_results(results)}")
@@ -147,10 +211,12 @@ def main() -> int:
     mock_llm_url = os.environ.get("E2E_MOCK_LLM_URL", "http://localhost:18080").rstrip("/")
     timeout_seconds = float(os.environ.get("E2E_STACK_TIMEOUT", "600"))
     timings_dir = os.environ.get("E2E_TIMINGS_DIR") or str(DEFAULT_TIMINGS_DIR)
+    compose_command = shlex.split(os.environ.get("E2E_COMPOSE_CMD", ""))
+    container_check = (lambda: check_containers(compose_command)) if compose_command else None
 
     log(f"base={base_url} mock_llm={mock_llm_url} timeout={timeout_seconds:.0f}s")
     started = time.monotonic()
-    results = wait_for_stack(build_checks(base_url, mock_llm_url), timeout_seconds)
+    results = wait_for_stack(build_checks(base_url, mock_llm_url), timeout_seconds, container_check)
     if results is None:
         return 1
     write_timing(timings_dir, time.monotonic() - started)
