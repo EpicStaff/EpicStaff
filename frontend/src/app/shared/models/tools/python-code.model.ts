@@ -15,6 +15,7 @@ export interface GetPythonCodeRequest {
     id: number;
     code: string;
     entrypoint: string;
+    venv_id?: number | null;
     secrets?: DeclaredSecretRef[];
 }
 
