@@ -355,8 +355,6 @@ REQUIRED_TABLES=(
     "graph_rag_document"
     # realtime
     "realtime_session_items"
-    # django (memory database, owned by django_app, no dedicated crewdb role)
-    "tables_memorydatabase"
 )
 
 all_tables_exist() {
