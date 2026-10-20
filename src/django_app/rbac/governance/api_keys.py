@@ -93,11 +93,13 @@ class ApiKeyManagementService(CrossOrgResourceService):
         the whole page; the caller's own scopes come from `scopes` (the door
         gate's per-request cache) or are resolved here when it is None.
 
-        Also set `_owner_visible`: whether the caller holds MEMBERSHIPS.READ in
-        at least one of `_visible_org_ids`. Without it the serializer withholds
-        the owner entirely — even the bare user id would disclose that
-        person's membership. `list_keys` refuses an `owner_id` filter on the
-        same rule, so the id cannot be probed back in through the query."""
+        Also set `visible_owner`: the key's `created_by` when the caller holds
+        MEMBERSHIPS.READ in at least one of `_visible_org_ids`, else None. The
+        owner is withheld entirely rather than partially — even the bare user
+        id would disclose that person's membership. `list_keys` refuses an
+        `owner_id` filter on the same rule, so the id cannot be probed back in
+        through the query. Reads the already-loaded `created_by` (both
+        `list_keys` and `revoke_key` select_related it), so no extra query."""
         owner_ids: set[int] = {key.created_by_id for key in keys}
         if not owner_ids:
             return
@@ -115,9 +117,10 @@ class ApiKeyManagementService(CrossOrgResourceService):
             by_owner[user_id].append(org_id)
         for key in keys:
             key._visible_org_ids = sorted(by_owner.get(key.created_by_id, []))
-            key._owner_visible = identity_org_ids is None or not identity_org_ids.isdisjoint(
+            owner_visible = identity_org_ids is None or not identity_org_ids.isdisjoint(
                 key._visible_org_ids
             )
+            key.visible_owner = key.created_by if owner_visible else None
 
     def _assert_owner_identity_visible(
         self, actor, owner_id: int, scopes: list[OrgScope] | None

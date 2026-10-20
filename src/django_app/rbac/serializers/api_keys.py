@@ -56,8 +56,11 @@ class ApiKeyOwnerSerializer(serializers.ModelSerializer):
 
 
 class ApiKeyAdminSerializer(ApiKeySerializer):
+    # `visible_owner` is set by ApiKeyManagementService.attach_visible_orgs.
+    # With allow_null, DRF renders a missing attribute as null, so a key that
+    # skipped the service never exposes its owner.
     owner = ApiKeyOwnerSerializer(
-        source="created_by",
+        source="visible_owner",
         read_only=True,
         allow_null=True,
         help_text="Null unless the caller holds memberships read in one of `org_ids`.",
@@ -70,11 +73,3 @@ class ApiKeyAdminSerializer(ApiKeySerializer):
     def get_org_ids(self, key: ApiKey) -> list[int]:
         """Set by ApiKeyManagementService.attach_visible_orgs."""
         return getattr(key, "_visible_org_ids", [])
-
-    def to_representation(self, key: ApiKey) -> dict:
-        """Withhold the owner unless attach_visible_orgs cleared it. Fails
-        closed: a key that never went through attach_visible_orgs has no owner."""
-        data = super().to_representation(key)
-        if not getattr(key, "_owner_visible", False):
-            data["owner"] = None
-        return data
