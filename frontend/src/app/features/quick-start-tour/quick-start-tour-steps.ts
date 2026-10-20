@@ -8,7 +8,7 @@ import {
 } from './quick-start-tour-anchors';
 
 /**
- * Time to wait for a target that appears only after a user action (the Settings dialog, the provider dropdown).
+ * Time to wait for a target that appears only after a user action (the Settings page, the provider dropdown).
  * driver.js watches the DOM (children and attributes) and highlights the target as soon as it appears; on timeout
  * it shows the step centred.
  */
@@ -47,9 +47,18 @@ const RESULT_COPY: Record<QuickStartResultStatus, { title: string; description: 
 
 export interface QuickStartTourStepsDependencies {
     document: Document;
-    openSettingsDialog: () => void;
-    /** Closes the dialog as part of the tour (Back) — not treated as the user leaving the tour. */
-    closeSettingsDialog: () => void;
+    /**
+     * Brings the user to the Quickstart settings tab, following a navigation already on the way (the Settings icon's
+     * own link), and calls `onOpened` once the tab is shown; from then on, leaving it ends the tour as skipped. If the
+     * navigation does not get there (e.g. the user cancels an unsaved-changes dialog), `onOpened` is not called.
+     * Idempotent.
+     */
+    openSettings: (onOpened: () => void) => void;
+    /**
+     * Back from the Settings steps: a pending openSettings no longer moves the tour on, and leaving Settings no longer
+     * ends it. Settings itself stays open.
+     */
+    stopWatchingSettings: () => void;
     /** Records the tour as completed and ends it. Used by every explicit exit (Skip, Finish). */
     finishTour: () => void;
     /** Mounts a tour-owned element in the tour's top layer, so it paints above CDK overlays; removed with the tour. */
@@ -61,6 +70,10 @@ const movePrevious: DriverHook = (_element, _step, { driver }) => driver.movePre
 
 export function createQuickStartTourSteps(dependencies: QuickStartTourStepsDependencies): DriveStep[] {
     const finishTour: DriverHook = () => dependencies.finishTour();
+    const backFromSettings: DriverHook = (element, step, options) => {
+        dependencies.stopWatchingSettings();
+        movePrevious(element, step, options);
+    };
     let stopWatchingForResult: (() => void) | null = null;
     let stopFinishingOnResultClick: (() => void) | null = null;
 
@@ -87,20 +100,21 @@ export function createQuickStartTourSteps(dependencies: QuickStartTourStepsDepen
         },
         {
             element: tourAnchor(QUICK_START_TOUR_ANCHORS.sidenavSettings),
-            // Clicking the Settings icon opens the dialog (sidenav handler) and then runs onNextClick.
-            // A click during driver's ~400ms highlight transition is not routed to advanceOnClick; Next still
-            // recovers, because open() returns the already open dialog's ref.
+            // Clicking the Settings icon follows its link (sidenav) and then runs onNextClick, which waits for that
+            // navigation. A click during driver's ~400ms highlight transition is not routed to advanceOnClick; Next
+            // still recovers, because once the tab is shown opening Settings moves on at once.
             advanceOnClick: true,
             popover: {
                 title: 'Open Settings',
                 description:
                     'Click the Settings icon. This is where your models, secrets and integrations are configured.',
                 side: 'right',
-                onNextClick: (element, step, options) => {
-                    // Idempotent: when the user clicked the icon the dialog is already open.
-                    dependencies.openSettingsDialog();
-                    moveNext(element, step, options);
-                },
+                // Moves on only when the Quickstart tab is shown: leaving the current page may first ask about unsaved
+                // changes, and the user may choose to stay.
+                onNextClick: (element, step, options) =>
+                    dependencies.openSettings(() => moveNext(element, step, options)),
+                // A navigation still on its way (e.g. on a slow network) must not move the tour on by itself later.
+                onPrevClick: backFromSettings,
             },
         },
         {
@@ -111,10 +125,8 @@ export function createQuickStartTourSteps(dependencies: QuickStartTourStepsDepen
                 description:
                     'Quickstart is the fastest way to get going: one provider and one API key configure your default models.',
                 side: 'bottom',
-                onPrevClick: (element, step, options) => {
-                    dependencies.closeSettingsDialog();
-                    movePrevious(element, step, options);
-                },
+                // Stays on Settings: the previous step only points at the Settings icon again.
+                onPrevClick: backFromSettings,
             },
         },
         {

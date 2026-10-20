@@ -1,12 +1,23 @@
-import { DialogRef } from '@angular/cdk/dialog';
 import { DOCUMENT } from '@angular/common';
 import { computed, effect, inject, Injectable, InjectionToken } from '@angular/core';
+import {
+    containsTree,
+    Event as RouterEvent,
+    IsActiveMatchOptions,
+    Navigation,
+    NavigationCancel,
+    NavigationCancellationCode,
+    NavigationEnd,
+    NavigationError,
+    NavigationSkipped,
+    Router,
+} from '@angular/router';
 import type { Config, Driver } from 'driver.js';
-import { Subscription } from 'rxjs';
+import { filter, Subscription, take } from 'rxjs';
 
+import { SETTINGS_QUICKSTART_URL, SETTINGS_URL } from '../../core/guards/settings.guard';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
-import { ConfigureModelsDialogService } from '../configure-models/services/configure-models-dialog.service';
 import { createQuickStartTourSteps, QUICK_START_TOUR_POPOVER_CLASS } from './quick-start-tour-steps';
 import { TourTopLayer, withTopLayer } from './tour-top-layer';
 
@@ -21,17 +32,41 @@ export const QUICK_START_TOUR_FACTORY = new InjectionToken<QuickStartTourFactory
     },
 });
 
+/** Only the path decides whether the user is on the Quickstart tab. */
+const QUICKSTART_SETTINGS_MATCH: IsActiveMatchOptions = {
+    paths: 'exact',
+    queryParams: 'ignored',
+    matrixParams: 'ignored',
+    fragment: 'ignored',
+};
+/** Any URL under /settings (the index, which redirects, or one of its tabs). */
+const SETTINGS_SECTION_MATCH: IsActiveMatchOptions = { ...QUICKSTART_SETTINGS_MATCH, paths: 'subset' };
+
 const TOUR_CONFIG: Config = {
     popoverClass: QUICK_START_TOUR_POPOVER_CLASS,
     nextBtnText: 'Next',
     prevBtnText: 'Back',
-    // Arrow keys would skip the steps that wait for the user to open the dialog or the dropdown. driver.js has a
+    // Arrow keys would skip the steps that wait for the user to open Settings or the dropdown. driver.js has a
     // single switch for arrows and Esc, so Esc goes too; the close button and Skip remain.
     allowKeyboardControl: false,
     // The default ('close') would end — and record as completed — the tour on a stray click on the dimmed area.
     overlayClickBehavior: () => undefined,
     stageRadius: 8,
 };
+
+/**
+ * Whether `event` ends a navigation for good. A guard redirect (the /settings index) or a superseding navigation also
+ * cancels one, but another navigation follows, so those are not the end.
+ */
+function isNavigationSettled(event: RouterEvent): boolean {
+    if (event instanceof NavigationCancel) {
+        return (
+            event.code !== NavigationCancellationCode.Redirect &&
+            event.code !== NavigationCancellationCode.SupersededByNewNavigation
+        );
+    }
+    return event instanceof NavigationEnd || event instanceof NavigationError || event instanceof NavigationSkipped;
+}
 
 @Injectable({
     providedIn: 'root',
@@ -40,7 +75,7 @@ export class QuickStartTourService {
     private readonly document = inject(DOCUMENT);
     private readonly profileService = inject(ProfileService);
     private readonly permissionsService = inject(PermissionsService);
-    private readonly configureModelsDialogService = inject(ConfigureModelsDialogService);
+    private readonly router = inject(Router);
     private readonly createTour = inject(QUICK_START_TOUR_FACTORY);
 
     private activeTour: Driver | null = null;
@@ -48,8 +83,10 @@ export class QuickStartTourService {
     private isStarting = false;
     /** Auto-start is decided once per signed-in user; signing out re-arms it (another user may sign in). */
     private autoStartHandledForUserId: number | null = null;
-    private watchedSettingsDialog: DialogRef<void> | null = null;
-    private settingsDialogClosedSubscription: Subscription | null = null;
+    /** Set while the tour waits for a navigation to settle before it moves past the Settings icon; see openSettings. */
+    private settingsArrivalSubscription: Subscription | null = null;
+    /** Set while leaving the Quickstart settings tab ends the tour; see enterSettings. */
+    private settingsLeftSubscription: Subscription | null = null;
 
     /** The tour walks Settings → Quickstart → Activate, so it needs every permission those gate on. */
     public readonly isAvailable = computed<boolean>(
@@ -98,8 +135,8 @@ export class QuickStartTourService {
         try {
             const steps = createQuickStartTourSteps({
                 document: this.document,
-                openSettingsDialog: () => this.openSettingsDialog(tour, topLayer),
-                closeSettingsDialog: () => this.closeSettingsDialog(),
+                openSettings: (onOpened) => this.openSettings(tour, topLayer, onOpened),
+                stopWatchingSettings: () => this.stopWatchingSettings(),
                 finishTour: () => this.finish(tour, topLayer),
                 mountInTourLayer: (element) => topLayer.append(element),
             });
@@ -135,12 +172,12 @@ export class QuickStartTourService {
     public stop(): void {
         const tour = this.activeTour;
         this.activeTour = null;
-        this.stopWatchingSettingsDialog();
+        this.stopWatchingSettings();
         tour?.destroy();
         this.releaseTopLayer(this.topLayer);
     }
 
-    /** Every explicit exit (Finish, Skip, close button, Settings closed by the user) counts as completed. */
+    /** Every explicit exit (Finish, Skip, close button, the user leaving the Quickstart tab) counts as completed. */
     private finish(tour: Driver, topLayer: TourTopLayer): void {
         if (this.recordCompletion(tour)) {
             tour.destroy();
@@ -162,7 +199,7 @@ export class QuickStartTourService {
             return false;
         }
         this.activeTour = null;
-        this.stopWatchingSettingsDialog();
+        this.stopWatchingSettings();
         this.profileService.markQuickStartTourCompleted().subscribe({
             // Not worth a toast: the only effect is that the tour auto-starts again next session.
             error: (error: unknown) => console.error('[QuickStartTour] Failed to save tour completion:', error),
@@ -171,28 +208,76 @@ export class QuickStartTourService {
     }
 
     /**
-     * Opens Settings and watches it: the remaining steps all point inside the dialog, so if the user closes it
-     * (Esc, close icon) the tour cannot continue and ends as skipped.
+     * Brings the user to the Quickstart settings tab and calls `onOpened` once it is shown (at once if it already is).
+     *
+     * There is only ever one navigation into Settings. A click on the Settings icon has started its own by the time
+     * this runs (the icon's router link handles the click before driver.js's document listener), and it may be waiting
+     * on a canDeactivate guard's unsaved-changes dialog. A second navigation would supersede it and ask the guard
+     * again, so the tour follows a navigation already heading into Settings. Any other navigation in flight is
+     * superseded by the tour's own. If the navigation does not end on the tab (e.g. the user cancelled the
+     * unsaved-changes dialog), the tour stays where it is and nothing is recorded.
      */
-    private openSettingsDialog(tour: Driver, topLayer: TourTopLayer): void {
-        const dialogRef = this.configureModelsDialogService.open();
-        if (this.watchedSettingsDialog === dialogRef) {
+    private openSettings(tour: Driver, topLayer: TourTopLayer, onOpened: () => void): void {
+        if (this.settingsArrivalSubscription) {
             return;
         }
-        this.stopWatchingSettingsDialog();
-        this.watchedSettingsDialog = dialogRef;
-        this.settingsDialogClosedSubscription = dialogRef.closed.subscribe(() => this.finish(tour, topLayer));
+        const navigation = this.router.currentNavigation();
+        if (!navigation && this.isQuickstartSettingsUrl(this.router.url)) {
+            this.enterSettings(tour, topLayer, onOpened);
+            return;
+        }
+        this.settingsArrivalSubscription = this.router.events
+            .pipe(filter(isNavigationSettled), take(1))
+            .subscribe(() => {
+                this.settingsArrivalSubscription = null;
+                if (this.isQuickstartSettingsUrl(this.router.url)) {
+                    this.enterSettings(tour, topLayer, onOpened);
+                }
+            });
+        if (!navigation || !this.isHeadingIntoSettings(navigation)) {
+            void this.router.navigateByUrl(SETTINGS_QUICKSTART_URL);
+        }
     }
 
-    /** The tour's own close (Back to the Settings step) must not end the tour, so stop watching first. */
-    private closeSettingsDialog(): void {
-        this.stopWatchingSettingsDialog();
-        this.configureModelsDialogService.close();
+    /**
+     * The user is on the Quickstart tab. The remaining steps all point inside it, so from now on leaving it (another
+     * Settings tab, another page) ends the tour as skipped.
+     */
+    private enterSettings(tour: Driver, topLayer: TourTopLayer, onOpened: () => void): void {
+        this.settingsLeftSubscription ??= this.router.events
+            .pipe(
+                filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+                filter((event) => !this.isQuickstartSettingsUrl(event.urlAfterRedirects))
+            )
+            .subscribe(() => this.finish(tour, topLayer));
+        onOpened();
     }
 
-    private stopWatchingSettingsDialog(): void {
-        this.settingsDialogClosedSubscription?.unsubscribe();
-        this.settingsDialogClosedSubscription = null;
-        this.watchedSettingsDialog = null;
+    /**
+     * Stops waiting for Settings and stops ending the tour when the user leaves it (Back to the Settings icon, and
+     * every exit). Settings itself stays open.
+     */
+    private stopWatchingSettings(): void {
+        this.settingsArrivalSubscription?.unsubscribe();
+        this.settingsArrivalSubscription = null;
+        this.settingsLeftSubscription?.unsubscribe();
+        this.settingsLeftSubscription = null;
+    }
+
+    /** Recognised routes may have redirected (finalUrl); before recognition only the requested URL is known. */
+    private isHeadingIntoSettings(navigation: Navigation): boolean {
+        return containsTree(
+            navigation.finalUrl ?? navigation.extractedUrl,
+            this.router.parseUrl(SETTINGS_URL),
+            SETTINGS_SECTION_MATCH
+        );
+    }
+
+    private isQuickstartSettingsUrl(url: string): boolean {
+        return containsTree(
+            this.router.parseUrl(url),
+            this.router.parseUrl(SETTINGS_QUICKSTART_URL),
+            QUICKSTART_SETTINGS_MATCH
+        );
     }
 }

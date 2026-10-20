@@ -15,7 +15,7 @@ export const QUICK_START_TOUR_ANCHORS = {
     quickstartProviderList: 'quickstart-provider-list',
     quickstartApiKey: 'quickstart-api-key',
     quickstartActivate: 'quickstart-activate',
-    /** Present only after Activate succeeded in the current dialog — the tour waits for it to move on. */
+    /** Present only after Activate succeeded on the current visit to the Quickstart tab — the tour waits for it. */
     quickstartResult: 'quickstart-result',
 } as const;
 

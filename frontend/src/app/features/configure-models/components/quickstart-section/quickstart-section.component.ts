@@ -106,13 +106,16 @@ export class QuickstartSectionComponent implements OnInit {
     });
 
     protected readonly canApplyQuickstart = computed<boolean>(() => this.permissionService.canApplyQuickstart());
-    /** Set only by a successful Activate in this dialog; exposes the result card to the Quick Start tour. */
-    protected readonly hasActivatedInThisDialog = signal(false);
+    /**
+     * Set only by a successful Activate on this visit to the tab (the component is created per route activation);
+     * exposes the result card to the Quick Start tour.
+     */
+    protected readonly hasActivatedInThisVisit = signal(false);
     protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
     /** The tour's status attribute on the result card; only the two states a successful Activate leads to. */
     protected readonly tourResultStatus = computed<QuickStartResultStatus | null>(() => {
         const status = this.quickstartStatus();
-        return this.hasActivatedInThisDialog() && (status === 'activated' || status === 'updated') ? status : null;
+        return this.hasActivatedInThisVisit() && (status === 'activated' || status === 'updated') ? status : null;
     });
 
     protected readonly canRunActiveCardAction = computed<boolean>(() => {
@@ -178,7 +181,7 @@ export class QuickstartSectionComponent implements OnInit {
                         return this.quickstartService.applyQuickstart();
                     }
                     this.quickstartStatus.set('updated');
-                    this.hasActivatedInThisDialog.set(true);
+                    this.hasActivatedInThisVisit.set(true);
                     this.toast.success('Quickstart updated.');
                     this.onReset();
                     return EMPTY;
@@ -186,7 +189,7 @@ export class QuickstartSectionComponent implements OnInit {
                 tap(() => {
                     this.onReset();
                     this.quickstartStatus.set('activated');
-                    this.hasActivatedInThisDialog.set(true);
+                    this.hasActivatedInThisVisit.set(true);
                     this.toast.success('Quickstart created successfully.');
                 }),
                 catchError((error) => {

@@ -16,6 +16,16 @@ describe('TourTopLayer', () => {
     beforeEach(removeTourElements);
     afterEach(removeTourElements);
 
+    // A raised layer listens for keydown on the document until disposed; dispose every layer a test created.
+    const layers: TourTopLayer[] = [];
+    afterEach(() => layers.splice(0).forEach((layer) => layer.dispose()));
+
+    function createLayer(): TourTopLayer {
+        const layer = new TourTopLayer(document);
+        layers.push(layer);
+        return layer;
+    }
+
     function appendToBody(className: string): HTMLElement {
         const element = document.createElement('div');
         element.className = className;
@@ -26,7 +36,7 @@ describe('TourTopLayer', () => {
     it('moves the driver.js overlay and popover from <body> into a manual popover host', () => {
         const overlay = appendToBody('driver-overlay');
         const popover = appendToBody('driver-popover');
-        const layer = new TourTopLayer(document);
+        const layer = createLayer();
 
         layer.raise();
 
@@ -37,7 +47,7 @@ describe('TourTopLayer', () => {
     });
 
     it('reuses one host and picks up a popover re-created for the next step', () => {
-        const layer = new TourTopLayer(document);
+        const layer = createLayer();
         appendToBody('driver-popover');
         layer.raise();
 
@@ -49,7 +59,7 @@ describe('TourTopLayer', () => {
     });
 
     it('removes the host on dispose, and dispose is idempotent', () => {
-        const layer = new TourTopLayer(document);
+        const layer = createLayer();
         layer.raise();
 
         layer.dispose();
@@ -59,7 +69,7 @@ describe('TourTopLayer', () => {
     });
 
     it('raises the layer from every step hook and still runs the step’s own hooks', () => {
-        const layer = new TourTopLayer(document);
+        const layer = createLayer();
         const raise = vi.spyOn(layer, 'raise');
         const ownHighlighted = vi.fn();
         const ownPopoverRender = vi.fn();
@@ -79,7 +89,7 @@ describe('TourTopLayer', () => {
     });
 
     it('mounts appended elements in the host and removes them with it', () => {
-        const layer = new TourTopLayer(document);
+        const layer = createLayer();
         const canvas = document.createElement('canvas');
 
         layer.append(canvas);
@@ -90,7 +100,7 @@ describe('TourTopLayer', () => {
     });
 
     it('stays gone after dispose: late raise() or append() does not re-create the host', () => {
-        const layer = new TourTopLayer(document);
+        const layer = createLayer();
         layer.raise();
         layer.dispose();
 
@@ -98,6 +108,66 @@ describe('TourTopLayer', () => {
         layer.append(document.createElement('canvas'));
 
         expect(document.querySelector('.quickstart-tour-layer')).toBeNull();
+    });
+
+    // driver.js traps Tab with a keydown listener on window; `reachedDriver` stands in for it.
+    describe('Tab in a CDK overlay that opened mid-step', () => {
+        let layer: TourTopLayer;
+        let reachedDriver: ReturnType<typeof vi.fn<(event: KeyboardEvent) => void>>;
+
+        beforeEach(() => {
+            reachedDriver = vi.fn<(event: KeyboardEvent) => void>();
+            window.addEventListener('keydown', reachedDriver);
+            layer = createLayer();
+            layer.raise();
+        });
+        afterEach(() => {
+            window.removeEventListener('keydown', reachedDriver);
+            document.body.querySelectorAll('.cdk-overlay-pane, .page-button').forEach((element) => element.remove());
+        });
+
+        /** A button in a CDK overlay pane; inside the element driver.js highlights when `isHighlighted`. */
+        function buttonInOverlay({ isHighlighted }: { isHighlighted: boolean }): HTMLButtonElement {
+            const pane = appendToBody('cdk-overlay-pane');
+            const container = isHighlighted ? document.createElement('div') : pane;
+            if (isHighlighted) {
+                container.className = 'driver-active-element';
+                pane.appendChild(container);
+            }
+            const button = document.createElement('button');
+            container.appendChild(button);
+            return button;
+        }
+
+        function press(key: string, target: Element): void {
+            target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        }
+
+        it('keeps Tab in the overlay away from driver.js, and only Tab', () => {
+            const button = buttonInOverlay({ isHighlighted: false });
+
+            press('Tab', button);
+            expect(reachedDriver).not.toHaveBeenCalled();
+
+            press('Escape', button);
+            expect(reachedDriver).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves Tab to driver.js outside overlays and in the highlighted provider dropdown', () => {
+            press('Tab', appendToBody('page-button'));
+            press('Tab', buttonInOverlay({ isHighlighted: true }));
+
+            expect(reachedDriver).toHaveBeenCalledTimes(2);
+        });
+
+        it('stops intercepting Tab once disposed', () => {
+            const button = buttonInOverlay({ isHighlighted: false });
+
+            layer.dispose();
+            press('Tab', button);
+
+            expect(reachedDriver).toHaveBeenCalledTimes(1);
+        });
     });
 
     // jsdom has no Popover API; stub just enough of it to exercise the hide/show re-raise and the focus restore.
@@ -144,7 +214,7 @@ describe('TourTopLayer', () => {
         });
 
         it('shows the host, then hides and re-shows it on each raise so it is the newest top-layer entry', () => {
-            const layer = new TourTopLayer(document);
+            const layer = createLayer();
 
             layer.raise();
             layer.raise();
@@ -158,7 +228,7 @@ describe('TourTopLayer', () => {
             const popover = appendToBody('driver-popover');
             const button = document.createElement('button');
             popover.appendChild(button);
-            const layer = new TourTopLayer(document);
+            const layer = createLayer();
             layer.raise();
             button.focus();
 
@@ -168,7 +238,7 @@ describe('TourTopLayer', () => {
         });
 
         it('hides the host before removing it on dispose', () => {
-            const layer = new TourTopLayer(document);
+            const layer = createLayer();
             layer.raise();
 
             layer.dispose();

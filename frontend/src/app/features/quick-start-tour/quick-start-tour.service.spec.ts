@@ -1,13 +1,15 @@
 import { DOCUMENT } from '@angular/common';
+import { provideLocationMocks } from '@angular/common/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router, Routes } from '@angular/router';
 import { GetMeResponse } from '@shared/models';
 import type { Config, Driver, DriverHook, DriveStep, PopoverDOM } from 'driver.js';
-import { Observable, of, Subject, throwError } from 'rxjs';
+import { Observable, of, Subject, take, tap, throwError } from 'rxjs';
 
+import { SETTINGS_QUICKSTART_URL, SETTINGS_URL, settingsIndexGuard } from '../../core/guards/settings.guard';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
-import { ConfigureModelsDialogService } from '../configure-models/services/configure-models-dialog.service';
 import { QUICK_START_TOUR_FACTORY, QuickStartTourService } from './quick-start-tour.service';
 import {
     QUICK_START_RESULT_STATUS_ATTRIBUTE,
@@ -18,6 +20,33 @@ import {
 } from './quick-start-tour-anchors';
 
 type HookOptions = Parameters<DriverHook>[2];
+
+/** A page with unsaved changes; leaving it runs a canDeactivate guard, like UnsavedChangesGuard on the real pages. */
+const EDITOR_URL = '/editor';
+/** A page whose canActivate is still checking: a navigation to it stays in flight until a test answers. */
+const SLOW_PAGE_URL = '/slow-page';
+
+interface RouteGuards {
+    canLeaveEditor: () => Observable<boolean>;
+    canEnterSlowPage: () => Observable<boolean>;
+}
+
+/** The Settings routes the tour depends on (the index redirects through the real guard), plus guarded pages. */
+function createRoutes({ canLeaveEditor, canEnterSlowPage }: RouteGuards): Routes {
+    return [
+        {
+            path: 'settings',
+            children: [
+                { path: '', pathMatch: 'full', canActivate: [settingsIndexGuard], children: [] },
+                { path: 'quickstart', children: [] },
+                { path: 'secrets', children: [] },
+            ],
+        },
+        { path: 'editor', canDeactivate: [() => canLeaveEditor()], children: [] },
+        { path: 'slow-page', canActivate: [() => canEnterSlowPage()], children: [] },
+        { path: '**', children: [] },
+    ];
+}
 
 /**
  * Minimal stand-in for a driver.js Driver. Like driver.js, `destroy()` runs the highlighted step's `onDeselected`
@@ -81,8 +110,15 @@ describe('QuickStartTourService', () => {
     let currentUser: ReturnType<typeof signal<GetMeResponse | null>>;
     let markQuickStartTourCompleted: ReturnType<typeof vi.fn<() => Observable<GetMeResponse>>>;
     let isPermitted: ReturnType<typeof signal<boolean>>;
-    let dialogClosed: Subject<void>;
-    let dialogService: { open: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> };
+    let router: Router;
+    let editorHasUnsavedChanges: boolean;
+    /** The user's answer in the unsaved-changes dialog: true leaves, false stays. Pending until a test answers. */
+    let leaveEditorAnswer: Subject<boolean>;
+    /** The unsaved-changes dialog. */
+    let askToLeaveEditor: ReturnType<typeof vi.fn<() => Observable<boolean>>>;
+    /** The slow page's canActivate answer; pending until a test answers. */
+    let slowPageAccess: Subject<boolean>;
+    let canEnterSlowPage: ReturnType<typeof vi.fn<() => Observable<boolean>>>;
     let createdTours: FakeDriver[];
     let createTour: ReturnType<typeof vi.fn>;
     let firesOnDestroyed: boolean;
@@ -91,9 +127,11 @@ describe('QuickStartTourService', () => {
         currentUser = signal<GetMeResponse | null>(null);
         markQuickStartTourCompleted = vi.fn(() => of(userWith(1, true)));
         isPermitted = signal(true);
-        dialogClosed = new Subject<void>();
-        const dialogRef = { closed: dialogClosed };
-        dialogService = { open: vi.fn(() => dialogRef), close: vi.fn(() => dialogClosed.next()) };
+        editorHasUnsavedChanges = true;
+        leaveEditorAnswer = new Subject<boolean>();
+        askToLeaveEditor = vi.fn(() => leaveEditorAnswer.pipe(take(1)));
+        slowPageAccess = new Subject<boolean>();
+        canEnterSlowPage = vi.fn(() => slowPageAccess.pipe(take(1)));
         createdTours = [];
         firesOnDestroyed = true;
         createTour = vi.fn((config: Config) => {
@@ -104,6 +142,8 @@ describe('QuickStartTourService', () => {
 
         TestBed.configureTestingModule({
             providers: [
+                provideRouter(createRoutes({ canLeaveEditor, canEnterSlowPage: () => canEnterSlowPage() })),
+                provideLocationMocks(),
                 {
                     provide: ProfileService,
                     useValue: { currentUserSignal: currentUser, markQuickStartTourCompleted },
@@ -111,19 +151,71 @@ describe('QuickStartTourService', () => {
                 {
                     provide: PermissionsService,
                     useValue: {
+                        can: () => isPermitted(),
                         canOpenConfigureModelsDialog: () => isPermitted(),
                         canApplyQuickstart: () => isPermitted(),
                     },
                 },
-                { provide: ConfigureModelsDialogService, useValue: dialogService },
                 { provide: QUICK_START_TOUR_FACTORY, useValue: createTour },
             ],
         });
         service = TestBed.inject(QuickStartTourService);
+        router = TestBed.inject(Router);
     });
 
     // The step hooks raise a real top-layer host in the shared jsdom document; stop() removes it.
     afterEach(() => service.stop());
+
+    async function routerSettled(): Promise<void> {
+        await vi.waitFor(() => expect(router.currentNavigation()).toBeNull());
+    }
+
+    /** Waits until the router has settled on the Quickstart settings tab (a guard redirect is a second navigation). */
+    async function expectOnQuickstartTab(): Promise<void> {
+        await routerSettled();
+        expect(router.url).toBe(SETTINGS_QUICKSTART_URL);
+    }
+
+    function runSettingsStepNext(tour: FakeDriver): void {
+        const settingsStep = tour.stepFor(QUICK_START_TOUR_ANCHORS.sidenavSettings);
+        tour.run(settingsStep.popover?.onNextClick, settingsStep);
+    }
+
+    /** Runs the Settings step's Next and waits for the tab. */
+    async function openSettingsFromTour(tour: FakeDriver): Promise<void> {
+        runSettingsStepNext(tour);
+        await expectOnQuickstartTab();
+    }
+
+    /**
+     * Like the real pages' canDeactivate (via UnsavedChangesGuard): asks the user while there are unsaved changes; once
+     * the user chose to leave, the changes are discarded and the page lets go without asking. That matters because the
+     * /settings index redirect is a second navigation, which asks the page again.
+     */
+    function canLeaveEditor(): Observable<boolean> {
+        if (!editorHasUnsavedChanges) {
+            return of(true);
+        }
+        return askToLeaveEditor().pipe(tap((isLeaving) => (editorHasUnsavedChanges = !isLeaving)));
+    }
+
+    /**
+     * Runs the Settings step from the page with unsaved changes, until the user is asked about them. `icon` is a click
+     * on the Settings icon in the order a browser runs it: the icon's router link starts its navigation, the router
+     * gets as far as it can (to the unsaved-changes dialog), and only then does driver.js's document click listener run
+     * the step's Next. `Next` is the popover's button.
+     */
+    async function leaveEditorForSettings(tour: FakeDriver, trigger: 'icon' | 'Next'): Promise<void> {
+        const timesAsked = askToLeaveEditor.mock.calls.length;
+        if (trigger === 'icon') {
+            void router.navigateByUrl(SETTINGS_URL);
+            await vi.waitFor(() => expect(askToLeaveEditor).toHaveBeenCalledTimes(timesAsked + 1));
+            runSettingsStepNext(tour);
+        } else {
+            runSettingsStepNext(tour);
+            await vi.waitFor(() => expect(askToLeaveEditor).toHaveBeenCalledTimes(timesAsked + 1));
+        }
+    }
 
     describe('startIfNotCompleted', () => {
         it('does not start the tour for a user who already completed it', async () => {
@@ -280,29 +372,32 @@ describe('QuickStartTourService', () => {
             expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(1);
         });
 
-        it('ends the tour as skipped when the user closes Settings (e.g. Esc)', async () => {
+        it.each([
+            ['another page', '/agents'],
+            ['another Settings tab', '/settings/secrets'],
+        ])('ends the tour as skipped when the user leaves the Quickstart tab for %s', async (_target, url) => {
             await service.start();
             const tour = createdTours[0];
-            const settingsStep = tour.stepFor(QUICK_START_TOUR_ANCHORS.sidenavSettings);
-            tour.run(settingsStep.popover?.onNextClick, settingsStep);
+            await openSettingsFromTour(tour);
 
-            dialogClosed.next();
+            await router.navigateByUrl(url);
 
-            expect(tour.destroy).toHaveBeenCalled();
+            expect(tour.destroy).toHaveBeenCalledTimes(1);
             expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(1);
         });
 
-        it('keeps the tour running when it closes Settings itself (Back from the Quickstart tab)', async () => {
+        it('keeps the tour running, and stays on Settings, on Back from the Quickstart tab', async () => {
             await service.start();
             const tour = createdTours[0];
-            const settingsStep = tour.stepFor(QUICK_START_TOUR_ANCHORS.sidenavSettings);
             const tabStep = tour.stepFor(QUICK_START_TOUR_ANCHORS.quickstartTab);
-            tour.run(settingsStep.popover?.onNextClick, settingsStep);
+            await openSettingsFromTour(tour);
 
             tour.run(tabStep.popover?.onPrevClick, tabStep);
+            await expectOnQuickstartTab();
 
-            expect(dialogService.close).toHaveBeenCalled();
             expect(tour.movePrevious).toHaveBeenCalled();
+            // Back to the Settings icon: leaving Settings from there no longer ends the tour.
+            await router.navigateByUrl('/agents');
             expect(tour.destroy).not.toHaveBeenCalled();
             expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
         });
@@ -336,19 +431,76 @@ describe('QuickStartTourService', () => {
             expect(createdTours[0].destroy).toHaveBeenCalled();
             expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
         });
+
+        // A watcher left over from the previous tour would stop the next one from watching Settings at all.
+        it.each<[exit: string, completionsBefore: number, endTour: (tour: FakeDriver) => void]>([
+            ['stopped', 0, () => service.stop()],
+            ['finished', 1, (tour) => tour.run(tour.config.onCloseClick, {})],
+        ])(
+            'stops watching Settings once a tour is %s, so the next tour watches it afresh',
+            async (_exit, completionsBefore, endTour) => {
+                await service.start();
+                const firstTour = createdTours[0];
+                await openSettingsFromTour(firstTour);
+                endTour(firstTour);
+                await router.navigateByUrl('/agents');
+                expect(firstTour.destroy).toHaveBeenCalledTimes(1);
+                expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(completionsBefore);
+
+                await service.start();
+                const secondTour = createdTours[1];
+                await openSettingsFromTour(secondTour);
+                await router.navigateByUrl('/agents');
+
+                expect(secondTour.destroy).toHaveBeenCalledTimes(1);
+                expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(completionsBefore + 1);
+            }
+        );
+
+        it('stop() while waiting for Settings: a navigation that arrives afterwards changes nothing', async () => {
+            await router.navigateByUrl(EDITOR_URL);
+            await service.start();
+            const tour = createdTours[0];
+            await leaveEditorForSettings(tour, 'Next');
+
+            service.stop();
+            leaveEditorAnswer.next(true);
+            await expectOnQuickstartTab();
+            await router.navigateByUrl('/agents');
+
+            expect(tour.moveNext).not.toHaveBeenCalled();
+            expect(tour.destroy).toHaveBeenCalledTimes(1);
+            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+        });
     });
 
     describe('steps', () => {
-        it('opens Settings and advances when the Settings step moves on (Next or a click on the icon)', async () => {
+        it('on Next, opens the Quickstart settings tab and moves on only once it is shown', async () => {
+            await router.navigateByUrl('/agents');
             await service.start();
             const tour = createdTours[0];
-            const settingsStep = tour.stepFor(QUICK_START_TOUR_ANCHORS.sidenavSettings);
+            expect(tour.stepFor(QUICK_START_TOUR_ANCHORS.sidenavSettings).advanceOnClick).toBe(true);
 
-            expect(settingsStep.advanceOnClick).toBe(true);
-            tour.run(settingsStep.popover?.onNextClick, settingsStep);
+            runSettingsStepNext(tour);
+            expect(tour.moveNext).not.toHaveBeenCalled();
 
-            expect(dialogService.open).toHaveBeenCalled();
-            expect(tour.moveNext).toHaveBeenCalled();
+            await expectOnQuickstartTab();
+            expect(tour.moveNext).toHaveBeenCalledTimes(1);
+            // The tour's own navigation is not the user leaving Settings.
+            expect(tour.destroy).not.toHaveBeenCalled();
+            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+        });
+
+        it('moves on at once, without navigating, when the Quickstart tab is already shown', async () => {
+            await router.navigateByUrl(SETTINGS_QUICKSTART_URL);
+            await service.start();
+            const tour = createdTours[0];
+            const navigateByUrl = vi.spyOn(router, 'navigateByUrl');
+
+            runSettingsStepNext(tour);
+
+            expect(tour.moveNext).toHaveBeenCalledTimes(1);
+            expect(navigateByUrl).not.toHaveBeenCalled();
         });
 
         it('advances the provider steps on the user clicking the highlighted element', async () => {
@@ -399,19 +551,148 @@ describe('QuickStartTourService', () => {
         });
     });
 
-    describe('edge cases', () => {
-        it('watches Settings once when both the sidenav click and Next open it, and records one close', async () => {
-            const subscribeToClosed = vi.spyOn(dialogClosed, 'subscribe');
+    // The page the user leaves may ask about unsaved changes (a canDeactivate guard); the tour must not ask twice.
+    describe('leaving a page for Settings', () => {
+        it('moves on without navigating again when the Settings icon link already got to the tab', async () => {
+            await router.navigateByUrl('/agents');
+            await service.start();
+            const tour = createdTours[0];
+            const navigateByUrl = vi.spyOn(router, 'navigateByUrl');
+
+            // A click on the icon: with nothing to ask, the link's navigation (and the index redirect, which the
+            // router schedules itself) is done before driver.js's document click listener runs Next.
+            void router.navigateByUrl(SETTINGS_URL);
+            await routerSettled();
+            runSettingsStepNext(tour);
+
+            expect(navigateByUrl).toHaveBeenCalledTimes(1);
+            expect(navigateByUrl).toHaveBeenCalledWith(SETTINGS_URL);
+            expect(tour.moveNext).toHaveBeenCalledTimes(1);
+            expect(tour.destroy).not.toHaveBeenCalled();
+            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+        });
+
+        it.each(['icon', 'Next'] as const)(
+            'via the Settings %s: asks the page once and moves on when the user leaves it',
+            async (trigger) => {
+                await router.navigateByUrl(EDITOR_URL);
+                await service.start();
+                const tour = createdTours[0];
+
+                await leaveEditorForSettings(tour, trigger);
+                expect(tour.moveNext).not.toHaveBeenCalled();
+                leaveEditorAnswer.next(true);
+                await expectOnQuickstartTab();
+
+                expect(askToLeaveEditor).toHaveBeenCalledTimes(1);
+                expect(tour.moveNext).toHaveBeenCalledTimes(1);
+                expect(tour.destroy).not.toHaveBeenCalled();
+                expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+            }
+        );
+
+        it.each(['icon', 'Next'] as const)(
+            'via the Settings %s: stays on the Settings step, recording nothing, when the user stays',
+            async (trigger) => {
+                await router.navigateByUrl(EDITOR_URL);
+                await service.start();
+                const tour = createdTours[0];
+
+                await leaveEditorForSettings(tour, trigger);
+                leaveEditorAnswer.next(false);
+                await routerSettled();
+
+                expect(router.url).toBe(EDITOR_URL);
+                expect(askToLeaveEditor).toHaveBeenCalledTimes(1);
+                expect(tour.moveNext).not.toHaveBeenCalled();
+                expect(tour.destroy).not.toHaveBeenCalled();
+                expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+
+                // The user can try again from the same step.
+                await leaveEditorForSettings(tour, trigger);
+                leaveEditorAnswer.next(true);
+                await expectOnQuickstartTab();
+                expect(askToLeaveEditor).toHaveBeenCalledTimes(2);
+                expect(tour.moveNext).toHaveBeenCalledTimes(1);
+            }
+        );
+
+        it('ignores a second Next while the navigation to Settings is pending', async () => {
+            await router.navigateByUrl(EDITOR_URL);
+            await service.start();
+            const tour = createdTours[0];
+            await leaveEditorForSettings(tour, 'icon');
+
+            runSettingsStepNext(tour);
+            leaveEditorAnswer.next(true);
+            await expectOnQuickstartTab();
+
+            expect(askToLeaveEditor).toHaveBeenCalledTimes(1);
+            expect(tour.moveNext).toHaveBeenCalledTimes(1);
+        });
+
+        it('supersedes a navigation in flight elsewhere with its own, and moves on once on the tab', async () => {
+            await router.navigateByUrl('/agents');
+            await service.start();
+            const tour = createdTours[0];
+            void router.navigateByUrl(SLOW_PAGE_URL);
+            await vi.waitFor(() => expect(canEnterSlowPage).toHaveBeenCalled());
+            const navigateByUrl = vi.spyOn(router, 'navigateByUrl');
+
+            runSettingsStepNext(tour);
+            await expectOnQuickstartTab();
+
+            expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith(SETTINGS_QUICKSTART_URL);
+            expect(tour.moveNext).toHaveBeenCalledTimes(1);
+            // The superseded navigation's guard answering late changes nothing.
+            slowPageAccess.next(true);
+            await routerSettled();
+            expect(router.url).toBe(SETTINGS_QUICKSTART_URL);
+        });
+
+        // Stands in for a slow network: the navigation is still on its way when the user goes Back.
+        it('Back on the Settings step drops a pending navigation: arriving later does not move on', async () => {
+            await router.navigateByUrl(EDITOR_URL);
             await service.start();
             const tour = createdTours[0];
             const settingsStep = tour.stepFor(QUICK_START_TOUR_ANCHORS.sidenavSettings);
+            await leaveEditorForSettings(tour, 'Next');
 
-            tour.run(settingsStep.popover?.onNextClick, settingsStep);
-            tour.run(settingsStep.popover?.onNextClick, settingsStep);
-            dialogClosed.next();
+            tour.run(settingsStep.popover?.onPrevClick, settingsStep);
+            leaveEditorAnswer.next(true);
+            await expectOnQuickstartTab();
+            await router.navigateByUrl('/agents');
 
-            expect(subscribeToClosed).toHaveBeenCalledTimes(1);
-            expect(markQuickStartTourCompleted).toHaveBeenCalledTimes(1);
+            expect(tour.movePrevious).toHaveBeenCalledTimes(1);
+            expect(tour.moveNext).not.toHaveBeenCalled();
+            expect(tour.destroy).not.toHaveBeenCalled();
+            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('edge cases', () => {
+        it('does not treat query parameters on the Quickstart tab as leaving it', async () => {
+            await service.start();
+            const tour = createdTours[0];
+            await openSettingsFromTour(tour);
+
+            await router.navigateByUrl(`${SETTINGS_QUICKSTART_URL}?provider=openai#api-key`);
+
+            expect(tour.destroy).not.toHaveBeenCalled();
+        });
+
+        it('watches Settings once when it is opened twice, so Back stops all watching', async () => {
+            await service.start();
+            const tour = createdTours[0];
+            const tabStep = tour.stepFor(QUICK_START_TOUR_ANCHORS.quickstartTab);
+            await openSettingsFromTour(tour);
+            await openSettingsFromTour(tour);
+
+            tour.run(tabStep.popover?.onPrevClick, tabStep);
+            await router.navigateByUrl('/agents');
+
+            expect(tour.destroy).not.toHaveBeenCalled();
+            expect(markQuickStartTourCompleted).not.toHaveBeenCalled();
         });
 
         it('does not start a second tour after a successful completion updated the user', async () => {

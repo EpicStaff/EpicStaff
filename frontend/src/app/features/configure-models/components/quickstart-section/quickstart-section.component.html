@@ -118,7 +118,7 @@
         @if (activeCard) {
             <div
                 class="quickstart-section__card quickstart-section__card--success"
-                [attr.data-tour]="hasActivatedInThisDialog() ? tourAnchors.quickstartResult : null"
+                [attr.data-tour]="hasActivatedInThisVisit() ? tourAnchors.quickstartResult : null"
                 [attr.data-quickstart-status]="tourResultStatus()"
             >
                 <div class="quickstart-section__card-title quickstart-section__card-title--success">

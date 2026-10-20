@@ -1,11 +1,11 @@
 // Quick Start tour (features/quick-start-tour). driver.js renders its popover and overlay straight into <body>,
 // so they can only be styled globally. Base styles: node_modules/driver.js/dist/driver.css (angular.json).
 //
-// Stacking: CDK overlays (the Settings dialog, select dropdowns) live in the browser top layer, which paints above any
-// z-index. tour-top-layer.ts therefore moves the driver.js overlay and popover into a `popover="manual"` host of its
-// own and re-shows it on every step, so it sits above them. The dialog and the dropdown stay under the dimmed overlay
-// and show through its cut-out. While the tour runs, driver.css makes everything except the highlighted element and
-// the popover ignore pointer events.
+// Stacking: CDK overlays (select dropdowns, dialogs) live in the browser top layer, which paints above any z-index.
+// tour-top-layer.ts therefore moves the driver.js overlay and popover into a `popover="manual"` host of its own and
+// re-shows it on every step, so it sits above them. The provider dropdown stays under the dimmed overlay and shows
+// through its cut-out. While the tour runs, driver.css makes everything except the highlighted element and the popover
+// ignore pointer events — except CDK overlays (below).
 
 // The top-layer host: undo the UA [popover] box (centred, bordered, padded, opaque, scrolling) so it is an invisible
 // full-viewport layer. driver.js keeps positioning its fixed elements against the viewport.
@@ -26,12 +26,39 @@
     pointer-events: none;
 }
 
+// A CDK overlay that opens while a step is showing — e.g. the unsaved-changes dialog a canDeactivate guard shows when
+// the tour leaves a page for Settings — is shown after the tour's host, so it paints above the dimmed overlay. But
+// driver.css's page-wide lock (`.driver-active * { pointer-events: none }`) would still make its content ignore clicks,
+// leaving the user stuck. Every rule below is (0,1,1): just above the lock's (0,1,0) and CDK's own overlay rules, below
+// the overlays' component styles (0,2,0 and up).
+//
+// Panes take clicks again, as CDK makes them, and a modal backdrop catches clicks outside its dialog. Inside a pane,
+// `inherit` restores what the lock broke: content follows its pane, so a non-interactive pane (e.g. Material's
+// tooltip) keeps its content click-through.
+body.driver-active :where(.cdk-overlay-pane, .cdk-overlay-backdrop) {
+    pointer-events: auto;
+}
+
+body.driver-active :where(.cdk-overlay-pane *) {
+    pointer-events: inherit;
+}
+
+// A dropdown's transparent backdrop (click outside to close: `transparent-backdrop` here, CDK's own
+// `cdk-overlay-transparent-backdrop` elsewhere) stays inert. Otherwise a click in the padding driver.js leaves around
+// the highlighted provider list would land on the select's backdrop, close the list and strand the step. CDK's own
+// `.cdk-overlay-backdrop { pointer-events: auto }` loads after driver.css and would win the tie, hence an explicit
+// rule; it comes after the backdrop rule above, which has the same specificity.
+body.driver-active
+    :where(.cdk-overlay-backdrop.transparent-backdrop, .cdk-overlay-backdrop.cdk-overlay-transparent-backdrop) {
+    pointer-events: none;
+}
+
 // Matches .sidebar-wrapper in main-layout: the welcome card sits just right of the sidenav.
 $sidenav-width: 3.7rem;
 $card-padding: 24px;
 // Token gap (docs/design-tokens.md): the design fills the card with Figma "Line" #2B2D30, which has no exact variable.
-// --color-ks-line (#2c2c2e) is the documented closest match. The semantic surfaces do not fit: --color-modals-background
-// is the Settings dialog itself, so the card would vanish against it. --color-ks-line has no light-theme override yet.
+// --color-ks-line (#2c2c2e) is the documented closest match; the semantic surfaces (e.g. --color-modals-background,
+// #222225) are further off. --color-ks-line has no light-theme override yet.
 $card-surface: var(--color-ks-line);
 
 .driver-popover.quickstart-tour {
