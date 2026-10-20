@@ -1,4 +1,6 @@
+import asyncio
 import os
+import sys
 from pathlib import Path
 
 # Settings are read at import time by main.py; give tests a complete environment first.
@@ -60,6 +62,11 @@ from sqlalchemy import text
 from main import create_app
 from settings import Settings, load_settings
 from tests.fake_django import FakeDjango
+
+# Async psycopg cannot run on Windows' default proactor loop, which both pytest-asyncio and
+# alembic's asyncio.run would otherwise create; the service itself only runs on Linux.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 TABLES = ("visitor_token", "callback_receipt", "daily_usage", "conversation_event", "message", "conversation", "visitor_number_counter", "operator_profile", "operator_alias", "binding")
