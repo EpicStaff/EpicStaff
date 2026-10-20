@@ -10,6 +10,7 @@ from rest_framework.viewsets import GenericViewSet
 
 from proxies.sandbox.clients import SandboxVenvClient
 from proxies.sandbox.models import SandboxVenvBinding
+from proxies.sandbox.validations import assert_venv_unused
 
 
 class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
@@ -58,7 +59,16 @@ class SandboxVenvBindingViewSet(OrgScopedViewSetMixin, GenericViewSet):
         return Response(data)
 
     def destroy(self, request: Request, pk: str) -> Response:
+        """Delete a venv nothing runs in any more.
+
+        Raises:
+            NotFound: No venv with this id in the active org.
+            VenvInUseError: Some Python code still runs in it. Rendered as 409.
+        """
         binding = self._get_binding_or_404(pk)
+        # Before the upstream call: deleting there first and refusing here would
+        # leave the binding pointing at a venv that no longer exists.
+        assert_venv_unused(int(pk))
         with self.client_class() as client:
             client.remove(pk)
         binding.delete()
