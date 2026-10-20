@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from rbac.schemas.shortcuts import CustomShortcutsField, CustomShortcutsSerializer
+from rbac.schemas.profile import CustomShortcutsField, CustomShortcutsSerializer
 from rbac.serializers.users import (
     MembershipNestedSerializer,
     UserResponseSerializer,
