@@ -100,6 +100,12 @@ def test_accessor_returns_wire_shape():
     ]
 
 
+def test_running_a_flow_recommends_reading_it():
+    assert recommended_with_for("flows")["use"] == [
+        {"resource_type": "flows", "action": "read"}
+    ]
+
+
 def test_accessor_is_empty_for_unknown_resource():
     assert recommended_with_for("nonsense") == {}
 

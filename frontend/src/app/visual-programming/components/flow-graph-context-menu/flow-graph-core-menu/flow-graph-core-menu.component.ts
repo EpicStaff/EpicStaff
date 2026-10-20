@@ -6,6 +6,7 @@ import { EDITOR_ACTIONS, EditorAction, EditorActionId } from '../../../core/keym
 import { formatChord } from '../../../core/keymap/key-chord.util';
 import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 import { FlowService } from '../../../services/flow.service';
+import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { KeymapService } from '../../../services/keymap.service';
 
 interface FlowGraphBlock {
@@ -161,6 +162,7 @@ export class FlowGraphCoreMenuComponent {
         return NODE_MENU_GROUPS.map((group) => ({
             title: group.title,
             blocks: group.types
+                .filter((type) => !this.flowReadOnly.isNodeTypeReadOnly(type))
                 .map((type) => toBlock(type, keyHints.get(type) ?? null))
                 .filter((block) => block.label.toLowerCase().includes(term)),
         })).filter((group) => group.blocks.length > 0);
@@ -180,6 +182,7 @@ export class FlowGraphCoreMenuComponent {
 
     private readonly keymap = inject(KeymapService);
     private readonly flowService = inject(FlowService);
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
 
     protected onBlockClicked(type: NodeType): void {
         this.nodeSelected.emit({ type });

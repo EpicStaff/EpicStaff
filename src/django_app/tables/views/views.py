@@ -77,6 +77,7 @@ from tables.serializers.serializers import (
     SessionTestRunSerializer,
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
+from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.converter_service import ConverterService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.knowledge_services.indexing_service import IndexingService
@@ -92,6 +93,7 @@ from tables.services.session_access import (
     get_runnable_graph,
 )
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_nodes import trigger_node_owns_python_code
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
 from tables.services.trigger_test_run.service import SessionTestRunService
@@ -523,17 +525,21 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
 
     @extend_schema(**RUN_SESSION_TEST_POST)
     def post(self, request):
-        # Running a flow executes its stored code, a contributor-level action
-        # gated on FLOWS.UPDATE like RunPythonCodeAPIView. The gate runs before
-        # body validation and the node lookup, so a caller without it always
-        # gets the same 403 — whatever the body and whether or not the node
-        # exists — and never costs the payload size check.
-        assert_org_permission(
-            user=request.user,
-            org_id=self.get_active_org_id(),
-            resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
-        )
+        # A test run starts a session, so it needs FLOWS.USE; it also executes the
+        # node's stored code with a payload the caller wrote, a contributor-level
+        # action gated on FLOWS.UPDATE like RunPythonCodeAPIView. Each bit is
+        # asserted on its own because a permission check passes on any one bit.
+        # Both gates run before body validation and the node lookup, so a caller
+        # lacking either always gets the same 403 — whatever the body and whether
+        # or not the node exists — and never costs the payload size check.
+        org_id = self.get_active_org_id()
+        for required_action in (Permission.UPDATE, Permission.USE):
+            assert_org_permission(
+                user=request.user,
+                org_id=org_id,
+                resource_type=ResourceType.FLOWS,
+                action=required_action,
+            )
         serializer = SessionTestRunSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
@@ -570,7 +576,7 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session = get_accessible_session(request.user, kwargs["session_id"])
+        session = get_accessible_session(request.user, kwargs["session_id"], Permission.USE)
         session_manager_service.stop_running_session(session=session)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -621,18 +627,19 @@ class RunPythonCodeAPIView(APIView):
         variables = serializer.validated_data["variables"]
 
         # Executing stored code is a contributor-level action, gated on
-        # FLOWS.UPDATE. The code must also be visible to the active org, so a
-        # caller cannot run another org's code by passing its id (rejected like
-        # a non-existent pk — existence never leaks).
+        # FLOWS.UPDATE; code a trigger node owns also needs FLOWS.USE, as testing
+        # the trigger itself does, whichever way the request names the code. The
+        # code must also be visible to the active org, so a caller cannot run
+        # another org's code by passing its id (rejected like a non-existent pk —
+        # existence never leaks).
         org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
-        assert_org_permission(
-            user=request.user,
-            org_id=org_id,
-            resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
-        )
-        if "target" in serializer.validated_data:
-            target = serializer.validated_data["target"]
+        self._assert_flows_permission(request.user, org_id, Permission.UPDATE)
+        target = serializer.validated_data.get("target")
+        if target is not None:
+            # The slot type alone says whether a trigger owns the code, so this gate
+            # runs before the lookup and a 403 says nothing about the target.
+            if CODE_RUN_TARGETS[target["type"]].owner_is_trigger_node:
+                self._assert_flows_permission(request.user, org_id, Permission.USE)
             try:
                 execution_id = run_python_code_service.run_target(
                     target_type=target["type"],
@@ -654,6 +661,10 @@ class RunPythonCodeAPIView(APIView):
             raise ValidationError(
                 {"python_code_id": [f'Invalid pk "{python_code.pk}" - object does not exist.']}
             )
+        # After the visibility check, so the USE gate only ever speaks about code the
+        # caller's org can already see.
+        if trigger_node_owns_python_code(python_code.pk, org_id):
+            self._assert_flows_permission(request.user, org_id, Permission.USE)
 
         execution_id = run_python_code_service.run_code(
             python_code_id=python_code.id,
@@ -662,6 +673,12 @@ class RunPythonCodeAPIView(APIView):
             user=request.user,
         )
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _assert_flows_permission(user, org_id: int, action: Permission) -> None:
+        assert_org_permission(
+            user=user, org_id=org_id, resource_type=ResourceType.FLOWS, action=action
+        )
 
     @staticmethod
     def _python_code_visible_q(org_id: int) -> Q:

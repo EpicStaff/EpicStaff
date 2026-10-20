@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { GetMeResponse, NodeType } from '@shared/models';
+import { GetMeResponse, NodeType, ResourceCode } from '@shared/models';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
@@ -10,12 +10,19 @@ import { FlowService } from '../../../services/flow.service';
 import { KeymapService, PLATFORM_IS_MAC } from '../../../services/keymap.service';
 import { mapGraphDtoToFlowModel } from '../../../utils/load/map-graph-dto-to-flow-model';
 import { liveGraph } from '../../../utils/testing/live-graph.fixture';
+import {
+    FLOW_ACTIONS_WITH_USE,
+    FLOW_ACTIONS_WITHOUT_USE,
+    grantPermissions,
+} from '../../../utils/testing/permissions.fixture';
 import { FlowGraphCoreMenuComponent } from './flow-graph-core-menu.component';
 
 describe('FlowGraphCoreMenuComponent', () => {
     let fixture: ComponentFixture<FlowGraphCoreMenuComponent>;
 
     beforeEach(() => {
+        TestBed.configureTestingModule({ providers: [provideHttpClient()] });
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
         fixture = TestBed.createComponent(FlowGraphCoreMenuComponent);
         fixture.detectChanges();
     });
@@ -105,6 +112,20 @@ describe('FlowGraphCoreMenuComponent', () => {
 
         expect(emitted).toEqual([{ type: NodeType.AGENT }]);
     });
+
+    it('hides the trigger nodes, and only them, from a user who may update but not run flows', () => {
+        const offeredWithRun = itemLabels();
+
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_USE });
+        fixture.detectChanges();
+
+        expect(groupTitles()).toEqual(['Data & Code', 'Agents', 'Logic', 'Other']);
+        expect(itemLabels()).toEqual(
+            offeredWithRun.filter(
+                (label) => !['Schedule Trigger', 'Webhook Trigger', 'Telegram Trigger'].includes(label ?? '')
+            )
+        );
+    });
 });
 
 const PROFILE_URL = '/api/profile/';
@@ -136,6 +157,7 @@ describe('FlowGraphCoreMenuComponent key hint', () => {
                 { provide: PLATFORM_IS_MAC, useValue: isMac },
             ],
         });
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
         fixture = TestBed.createComponent(FlowGraphCoreMenuComponent);
         fixture.detectChanges();
     }

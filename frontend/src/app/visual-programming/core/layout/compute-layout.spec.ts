@@ -562,3 +562,65 @@ describe('computeLayout (auto-arrange intents)', () => {
         expectNoOverlap(arranged);
     });
 });
+
+describe('computeLayout with pinned nodes', () => {
+    // start → a → b, and a webhook trigger the user may not move wired into a. Every box is 330 × 100.
+    const CONNECTIONS = [
+        connect('c1', 'start', 'out', 'a'),
+        connect('c2', 'a', 'out', 'b'),
+        connect('c3', 'trigger', 'out', 'a'),
+    ];
+
+    function flowWithPinned(pinned: NodeModel[]): NodeModel[] {
+        return withPorts([start(), agent('a'), agent('b'), ...pinned], CONNECTIONS);
+    }
+
+    const trigger = (position: IPoint, id = 'trigger'): NodeModel =>
+        makeNode(id, NodeType.WEBHOOK_TRIGGER, { position });
+
+    it.each([
+        { where: 'far from the arranged nodes', pinned: [trigger({ x: 2000, y: 2000 })], startX: 100 },
+        { where: 'more than the clearance below them', pinned: [trigger({ x: 100, y: 400 })], startX: 100 },
+        { where: 'on their default spot', pinned: [trigger({ x: 0, y: 100 })], startX: 460 },
+        { where: 'within the clearance below them', pinned: [trigger({ x: 100, y: 300 })], startX: 560 },
+        {
+            where: 'on their default spot, with another right where the first shift lands',
+            pinned: [trigger({ x: 0, y: 100 }), trigger({ x: 500, y: 100 }, 'second-trigger')],
+            startX: 960,
+        },
+    ])('keeps a pinned node $where in place and shifts the rest right, as one, clear of it', ({ pinned, startX }) => {
+        const positions = computeLayout(flowWithPinned(pinned), CONNECTIONS, new Set(pinned.map((node) => node.id)));
+
+        expect([...positions.keys()].sort()).toEqual(['a', 'b', 'start']);
+        expect(positions.get('start')).toEqual({ x: startX, y: 100 });
+        expect(positions.get('a')).toEqual({ x: startX + 440, y: 100 });
+        expect(positions.get('b')).toEqual({ x: startX + 880, y: 100 });
+    });
+
+    it('lands no arranged node on a pinned one and routes no wire through a node', () => {
+        const nodes = flowWithPinned([trigger({ x: 0, y: 100 })]);
+
+        const placed = withPositions(nodes, computeLayout(nodes, CONNECTIONS, new Set(['trigger'])));
+        const report = measure(placed, wiresFromRoutes(placed, CONNECTIONS, routeAll(placed, CONNECTIONS), true));
+
+        expect(placed.find((node) => node.id === 'trigger')!.position).toEqual({ x: 0, y: 100 });
+        expect(report.nodeOverlaps).toBe(0);
+        expect(report.wireThroughNode).toBe(0);
+    });
+
+    it('is a fixed point: re-running on its own output returns identical positions', () => {
+        const nodes = flowWithPinned([trigger({ x: 0, y: 100 })]);
+        const pinnedIds = new Set(['trigger']);
+
+        const first = computeLayout(nodes, CONNECTIONS, pinnedIds);
+        const second = computeLayout(withPositions(nodes, first), CONNECTIONS, pinnedIds);
+
+        expect(second).toEqual(first);
+    });
+
+    it('arranges nothing when every node is pinned', () => {
+        const nodes = flowWithPinned([trigger({ x: 0, y: 100 })]);
+
+        expect(computeLayout(nodes, CONNECTIONS, new Set(nodes.map((node) => node.id))).size).toBe(0);
+    });
+});

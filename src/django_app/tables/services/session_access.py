@@ -48,13 +48,13 @@ def get_runnable_graph(
 ) -> Graph:
     """Fetch the graph to run by id (or uuid when no id is given) and authorize `user`.
 
-    Running a flow requires READ on FLOWS within the graph's own org. A missing graph
+    Running a flow requires USE on FLOWS within the graph's own org. A missing graph
     and a graph in an org the caller is not a member of raise the same
     GraphNotFoundError. Superadmin passes unconditionally.
 
     Raises:
         GraphNotFoundError (404): no graph the caller may know about.
-        PermissionDenied (403): a member of the owning org whose role lacks READ on FLOWS.
+        PermissionDenied (403): a member of the owning org whose role lacks USE on FLOWS.
     """
     lookup = {"id": graph_id} if graph_id else {"uuid": graph_uuid}
     graph = Graph.objects.filter(**lookup).first()
@@ -64,7 +64,7 @@ def get_runnable_graph(
         user,
         graph.org_id,
         ResourceType.FLOWS,
-        Permission.READ,
+        Permission.USE,
         not_found=GraphNotFoundError(),
     )
     return graph
