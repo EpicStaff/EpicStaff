@@ -94,6 +94,8 @@ describe('checkUserChord', () => {
         'Shift+Tab',
         'Shift+Space',
         'Shift+Enter',
+        'Alt+ArrowUp',
+        'Alt+ArrowDown',
     ])('rejects reserved %s', (chord) => {
         expect(checkUserChord(chord)).toBe('reserved');
     });

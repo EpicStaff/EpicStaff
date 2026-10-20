@@ -5,14 +5,17 @@ import { catchError, concatMap, EMPTY, finalize, fromEvent, Subject } from 'rxjs
 
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
-import { EDITOR_ACTIONS, EditorActionId } from '../core/keymap/editor-actions';
+import { EDITOR_ACTIONS, EditorAction, EditorActionId } from '../core/keymap/editor-actions';
 import { chordFromEvent, isEditableTarget, isInsideSidePanel, KeyChord } from '../core/keymap/key-chord.util';
 import {
     applyShortcutChange,
     CustomShortcutRow,
     haveSameEntries,
+    haveSameOverrides,
     identifyRows,
+    KeyOverrides,
     readCustomEntries,
+    readKeyOverrides,
     resolveShortcuts,
     ShortcutAccepted,
     ShortcutChange,
@@ -43,11 +46,22 @@ const NODE_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
     EDITOR_ACTIONS.filter((action) => action.section === 'Nodes').map((action) => action.id)
 );
 
+const PAN_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
+    EDITOR_ACTIONS.filter((action: EditorAction) => action.pan !== undefined).map((action) => action.id)
+);
+
+interface ShortcutState {
+    readonly rows: readonly CustomShortcutRow[];
+    readonly overrides: KeyOverrides;
+}
+
 type KeyHandler = (event: KeyboardEvent, match: ShortcutMatch) => void;
 
 interface Registration {
     readonly handler: KeyHandler;
     readonly allowInEditable: boolean;
+    readonly runOutsideAngular: boolean;
+    readonly when: ((event: KeyboardEvent) => boolean) | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -62,23 +76,34 @@ export class KeymapService {
     private readonly pendingSaves = signal(0);
     private lastRowId = 0;
 
-    private readonly rows = linkedSignal<
-        { saved: readonly CustomShortcutEntry[]; pending: number },
-        readonly CustomShortcutRow[]
+    private readonly state = linkedSignal<
+        { saved: readonly CustomShortcutEntry[]; savedOverrides: KeyOverrides; pending: number },
+        ShortcutState
     >({
-        source: () => ({
-            saved: readCustomEntries(this.profileService.shortcutSettings()),
-            pending: this.pendingSaves(),
-        }),
+        source: () => {
+            const settings = this.profileService.shortcutSettings();
+            return {
+                saved: readCustomEntries(settings),
+                savedOverrides: readKeyOverrides(settings),
+                pending: this.pendingSaves(),
+            };
+        },
         computation: (source, previous) => {
-            if (previous && (source.pending > 0 || haveSameEntries(source.saved, previous.value))) {
+            const isSame =
+                previous !== undefined &&
+                haveSameEntries(source.saved, previous.value.rows) &&
+                haveSameOverrides(source.savedOverrides, previous.value.overrides);
+            if (previous && (source.pending > 0 || isSame)) {
                 return previous.value;
             }
-            return identifyRows(source.saved, previous?.value ?? [], () => this.createRowId());
+            return {
+                rows: identifyRows(source.saved, previous?.value.rows ?? [], () => this.createRowId()),
+                overrides: source.savedOverrides,
+            };
         },
     });
 
-    private readonly resolved = computed(() => resolveShortcuts(this.rows()));
+    private readonly resolved = computed(() => resolveShortcuts(this.state().rows, this.state().overrides));
 
     readonly bindings = computed(() => this.resolved().bindings);
 
@@ -88,7 +113,13 @@ export class KeymapService {
 
     readonly unboundIds = computed(() => this.resolved().unboundIds);
 
+    readonly overriddenIds = computed<ReadonlySet<EditorActionId>>(() => new Set(this.resolved().overrides.keys()));
+
     readonly defaultsResetClearCount = computed(() => this.resolved().defaultsResetClearCount);
+
+    readonly canResetToDefaults = computed(
+        () => this.resolved().defaultsResetClearCount > 0 || this.resolved().overrides.size > 0
+    );
 
     private readonly registrations = new Map<EditorActionId, Registration[]>();
     private readonly saveQueue = new Subject<ShortcutSettings>();
@@ -121,9 +152,19 @@ export class KeymapService {
     register(
         actionId: EditorActionId,
         handler: KeyHandler,
-        options?: { allowInEditable?: boolean; destroyRef?: DestroyRef }
+        options?: {
+            allowInEditable?: boolean;
+            runOutsideAngular?: boolean;
+            when?: (event: KeyboardEvent) => boolean;
+            destroyRef?: DestroyRef;
+        }
     ): () => void {
-        const registration: Registration = { handler, allowInEditable: options?.allowInEditable ?? false };
+        const registration: Registration = {
+            handler,
+            allowInEditable: options?.allowInEditable ?? false,
+            runOutsideAngular: options?.runOutsideAngular ?? false,
+            when: options?.when ?? null,
+        };
         this.registrations.set(actionId, [...(this.registrations.get(actionId) ?? []), registration]);
         const unregister = (): void => {
             const remaining = (this.registrations.get(actionId) ?? []).filter((entry) => entry !== registration);
@@ -143,7 +184,19 @@ export class KeymapService {
             target.customShortcutId === undefined
                 ? { kind: 'add-custom', id: '', action, chord, params }
                 : { kind: 'update-custom', id: target.customShortcutId, action, chord, params };
-        return toCheck(applyShortcutChange(this.rows(), change));
+        return toCheck(this.preview(change));
+    }
+
+    checkNodeKey(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
+        return toCheck(this.preview({ kind: 'set-node-key', action: actionId, chord }));
+    }
+
+    setNodeKey(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
+        return toCheck(this.apply({ kind: 'set-node-key', action: actionId, chord }));
+    }
+
+    resetNodeKey(actionId: EditorActionId): ShortcutCheck {
+        return toCheck(this.apply({ kind: 'reset-node-key', action: actionId }));
     }
 
     addCustom(actionId: EditorActionId, chord: KeyChord | null, params?: ShortcutParams): CustomShortcutCheck {
@@ -183,18 +236,26 @@ export class KeymapService {
         this.apply({ kind: 'reset-to-defaults' });
     }
 
+    private preview(change: ShortcutChange): ShortcutChangeResult {
+        return applyShortcutChange(this.state().rows, change, this.state().overrides);
+    }
+
     private apply(change: ShortcutChange): ShortcutChangeResult {
-        const result = applyShortcutChange(this.rows(), change);
-        if (result.accepted && !haveSameEntries(toShortcutSettings(result.rows).custom, this.customShortcuts())) {
-            this.save(result.rows);
+        const result = this.preview(change);
+        const unchanged =
+            result.accepted &&
+            haveSameEntries(toShortcutSettings(result.rows).custom, this.customShortcuts()) &&
+            haveSameOverrides(result.overrides, this.resolved().overrides);
+        if (result.accepted && !unchanged) {
+            this.save({ rows: result.rows, overrides: result.overrides });
         }
         return result;
     }
 
-    private save(next: readonly CustomShortcutRow[]): void {
+    private save(next: ShortcutState): void {
         this.pendingSaves.update((count) => count + 1);
-        this.rows.set(next);
-        this.saveQueue.next(toShortcutSettings(next));
+        this.state.set(next);
+        this.saveQueue.next(toShortcutSettings(next.rows, next.overrides));
     }
 
     private createRowId(): string {
@@ -213,7 +274,9 @@ export class KeymapService {
 
         const target = event.target;
         const fromEditable = target instanceof HTMLElement && isEditableTarget(target);
-        const runnable = registrations.filter((registration) => !fromEditable || registration.allowInEditable);
+        const runnable = registrations.filter(
+            (registration) => (!fromEditable || registration.allowInEditable) && (registration.when?.(event) ?? true)
+        );
         if (runnable.length === 0) {
             return;
         }
@@ -221,12 +284,22 @@ export class KeymapService {
         event.preventDefault();
         event.stopPropagation();
         const match: ShortcutMatch = { params: holder?.params ?? null };
-        this.ngZone.run(() => runnable.forEach((registration) => registration.handler(event, match)));
+        runnable
+            .filter((registration) => registration.runOutsideAngular)
+            .forEach((registration) => registration.handler(event, match));
+        const inAngular = runnable.filter((registration) => !registration.runOutsideAngular);
+        if (inAngular.length > 0) {
+            this.ngZone.run(() => inAngular.forEach((registration) => registration.handler(event, match)));
+        }
     }
 
     private isSuppressed(actionId: EditorActionId, event: KeyboardEvent): boolean {
+        const fromSidePanel = event.target instanceof Element && isInsideSidePanel(event.target);
         if (NODE_ACTION_IDS.has(actionId)) {
-            return event.repeat || (event.target instanceof Element && isInsideSidePanel(event.target));
+            return event.repeat || fromSidePanel;
+        }
+        if (PAN_ACTION_IDS.has(actionId)) {
+            return fromSidePanel;
         }
         if (actionId === 'editing.copy') {
             return !!window.getSelection()?.toString();

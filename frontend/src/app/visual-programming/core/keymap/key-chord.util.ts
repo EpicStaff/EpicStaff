@@ -18,6 +18,8 @@ export const RESERVED_CHORDS: ReadonlySet<KeyChord> = new Set([
     'Shift+Tab',
     'Shift+Space',
     'Shift+Enter',
+    'Alt+ArrowUp',
+    'Alt+ArrowDown',
 ]);
 
 const MODIFIER_CODES: ReadonlySet<string> = new Set([

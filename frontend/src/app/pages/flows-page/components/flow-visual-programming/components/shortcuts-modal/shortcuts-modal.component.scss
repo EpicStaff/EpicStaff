@@ -13,6 +13,8 @@
 }
 
 .shortcuts__modal {
+    --shortcuts-modal-width: min(1028px, calc(100vw - 32px));
+
     position: fixed;
     z-index: 101;
     box-sizing: border-box;
@@ -20,8 +22,8 @@
     border: 1px solid var(--graphite-700);
     border-radius: 8px;
     box-shadow: var(--shadow-panel-elevated);
-    width: min(1028px, calc(100vw - 32px));
-    max-width: 1028px;
+    width: var(--shortcuts-modal-width);
+    max-width: 1368px;
     height: min(var(--shortcuts-modal-height), calc(100vh - 32px));
     overflow: clip;
 
@@ -99,8 +101,17 @@
     }
 }
 
+.shortcuts__modal--four-columns {
+    --shortcuts-modal-width: min(1368px, calc(100vw - 32px));
+
+    .shortcuts__flow {
+        column-count: 4;
+    }
+}
+
 .shortcuts__modal--compact {
-    width: min(376px, calc(100vw - 32px));
+    --shortcuts-modal-width: min(376px, calc(100vw - 32px));
+
     transform: scale(0.99);
     opacity: 1;
 
@@ -134,7 +145,18 @@
 .shortcuts__content {
     flex: 1 1 auto;
     min-height: 0;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.shortcuts__content--scrolling {
+    overflow-x: hidden;
+    overflow-y: auto;
+
+    .shortcuts__flow {
+        height: auto;
+        column-fill: balance;
+    }
 }
 
 .shortcuts__header {
@@ -246,7 +268,24 @@
     column-count: 3;
     column-gap: 40px;
     column-fill: auto;
-    transition: column-gap 200ms ease;
+    transition:
+        column-gap 200ms ease,
+        opacity 120ms ease;
+}
+
+.shortcuts__modal .shortcuts__flow.shortcuts__flow--reflowing {
+    opacity: 0;
+}
+
+.shortcuts__modal--settling {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shortcuts__modal,
+    .shortcuts__flow {
+        transition: none;
+    }
 }
 
 .shortcuts__card,
@@ -334,6 +373,17 @@
     color: var(--fog-200);
 }
 
+.shortcuts__arrow-keys {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.shortcuts__key--arrow {
+    min-width: 18px;
+    padding: 0;
+}
+
 .shortcuts__not-set {
     font-weight: var(--text-body-small-weight);
     font-size: var(--text-body-small-size);
@@ -352,10 +402,70 @@
     }
 }
 
+.shortcuts__row--editable {
+    gap: 8px;
+
+    .shortcuts__label {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.shortcuts__row-feedback {
+    padding: 0 4px 4px;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-error);
+    break-inside: avoid;
+}
+
+.shortcuts__reset-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--accent-color);
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+
+    &:hover,
+    &:focus-visible {
+        background: var(--color-ghost-btn-active);
+        outline: none;
+    }
+}
+
 .shortcuts__row-actions {
     display: flex;
     align-items: center;
     gap: 4px;
+
+    app-edit-button ::ng-deep .edit-btn {
+        border-color: var(--color-ks-transparent-text-60);
+        color: var(--color-text-primary);
+        transition:
+            background-color 0.15s ease,
+            border-color 0.15s ease,
+            color 0.15s ease;
+
+        &:hover:not(:disabled),
+        &:focus-visible {
+            border-color: var(--color-text-primary);
+            background: var(--transparent-white-8);
+            outline: none;
+        }
+    }
 }
 
 .shortcuts__flow > app-shortcut-editor {
@@ -380,12 +490,8 @@
 
     margin-left: auto;
 
-    ::ng-deep .btn.btn--icon-left-small {
-        padding-left: calc(2rem - var(--shortcuts-add-icon-inset));
-    }
-
-    ::ng-deep .btn-icon.left {
-        left: calc(0.75rem - var(--shortcuts-add-icon-inset));
+    ::ng-deep .btn.btn--mod-small {
+        padding-left: calc(0.5rem - var(--shortcuts-add-icon-inset));
     }
 }
 
@@ -394,7 +500,8 @@
     @include shortcutsCustomScroll();
 
     .shortcuts__modal {
-        width: min(376px, calc(100vw - 32px));
+        --shortcuts-modal-width: min(376px, calc(100vw - 32px));
+
         overflow: hidden;
         color-scheme: dark;
     }

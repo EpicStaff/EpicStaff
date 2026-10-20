@@ -35,8 +35,19 @@
     }
 }
 
+.shortcut-picker__anchor {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
 .shortcut-picker__list {
-    max-height: 200px;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    left: 0;
+    z-index: 1;
+    box-sizing: border-box;
     overflow-y: auto;
     padding: 4px;
     border: 1px solid var(--color-input-border);
@@ -44,6 +55,11 @@
     background: var(--color-input-background);
     scrollbar-width: thin;
     scrollbar-color: var(--graphite-750) transparent;
+
+    &--up {
+        top: auto;
+        bottom: calc(100% + 4px);
+    }
 }
 
 .shortcut-picker__group:not(:first-child) {

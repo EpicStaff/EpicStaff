@@ -27,7 +27,7 @@ const BASE_USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: ACTIVE_PERMISSIONS,
     avatar_url: null,
-    custom_shortcuts: { custom: [] },
+    custom_shortcuts: { custom: [], overrides: {} },
 };
 
 describe('ProfileService shortcut settings', () => {
@@ -36,9 +36,11 @@ describe('ProfileService shortcut settings', () => {
 
     const SAVED: ShortcutSettings = {
         custom: [{ action: 'editing.save', keys: 'Alt+KeyS' }],
+        overrides: {},
     };
 
     const EDITED: ShortcutSettings = {
+        overrides: { 'node.python': 'Alt+KeyP' },
         custom: [
             { action: 'editing.save', keys: 'Alt+KeyS' },
             { action: 'node.task', keys: 'Shift+KeyP' },
@@ -66,7 +68,7 @@ describe('ProfileService shortcut settings', () => {
     }
 
     it('is empty when no user is loaded', () => {
-        expect(service.shortcutSettings()).toEqual({ custom: [] });
+        expect(service.shortcutSettings()).toEqual({ custom: [], overrides: {} });
     });
 
     it('exposes the settings of the loaded user', () => {

@@ -121,7 +121,7 @@ const USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: null,
     avatar_url: null,
-    custom_shortcuts: { custom: [] },
+    custom_shortcuts: { custom: [], overrides: {} },
 };
 
 describe('FlowGraphCoreMenuComponent key hint', () => {

@@ -7,6 +7,16 @@ export type EditorActionSection = 'Nodes' | 'Editing' | 'Navigating' | 'Selectio
 
 export type EditorActionParam = 'flow';
 
+export const ARROW_KEYS = 'ArrowKeys';
+
+export const UP_DOWN_KEYS = 'UpDownKeys';
+
+export interface CanvasPan {
+    readonly x: -1 | 0 | 1;
+    readonly y: -1 | 0 | 1;
+    readonly fast: boolean;
+}
+
 export interface EditorAction<Id extends string = EditorActionId> {
     readonly id: Id;
     readonly label: string;
@@ -16,6 +26,20 @@ export interface EditorAction<Id extends string = EditorActionId> {
     readonly customizable: boolean;
     readonly nodeType?: MenuNodeType | NodeType.SUBGRAPH;
     readonly param?: EditorActionParam;
+    readonly pan?: CanvasPan;
+    readonly listed?: false;
+}
+
+function panAction<const Id extends `navigating.pan-${string}`>(id: Id, chord: KeyChord, pan: CanvasPan) {
+    return {
+        id,
+        label: 'Move canvas',
+        section: 'Navigating',
+        defaultChords: [chord],
+        customizable: false,
+        pan,
+        listed: false,
+    } as const satisfies EditorAction<Id>;
 }
 
 function nodeAction<const Id extends `node.${string}`>(id: Id, nodeType: MenuNodeType, chord: KeyChord) {
@@ -116,6 +140,38 @@ export const EDITOR_ACTIONS = [
         defaultChords: ['Mod+Slash'],
         customizable: true,
     },
+    {
+        id: 'navigating.move-canvas',
+        label: 'Move canvas',
+        section: 'Navigating',
+        defaultChords: [],
+        displayKeys: [ARROW_KEYS],
+        customizable: false,
+    },
+    {
+        id: 'navigating.move-canvas-fast',
+        label: 'Move canvas faster',
+        section: 'Navigating',
+        defaultChords: [],
+        displayKeys: ['Mod', ARROW_KEYS],
+        customizable: false,
+    },
+    {
+        id: 'navigating.switch-page',
+        label: 'Previous / next page',
+        section: 'Navigating',
+        defaultChords: [],
+        displayKeys: ['Alt', UP_DOWN_KEYS],
+        customizable: false,
+    },
+    panAction('navigating.pan-left', 'ArrowLeft', { x: -1, y: 0, fast: false }),
+    panAction('navigating.pan-right', 'ArrowRight', { x: 1, y: 0, fast: false }),
+    panAction('navigating.pan-up', 'ArrowUp', { x: 0, y: -1, fast: false }),
+    panAction('navigating.pan-down', 'ArrowDown', { x: 0, y: 1, fast: false }),
+    panAction('navigating.pan-left-fast', 'Mod+ArrowLeft', { x: -1, y: 0, fast: true }),
+    panAction('navigating.pan-right-fast', 'Mod+ArrowRight', { x: 1, y: 0, fast: true }),
+    panAction('navigating.pan-up-fast', 'Mod+ArrowUp', { x: 0, y: -1, fast: true }),
+    panAction('navigating.pan-down-fast', 'Mod+ArrowDown', { x: 0, y: 1, fast: true }),
     {
         id: 'navigating.node-menu',
         label: 'Open node create menu',

@@ -4,7 +4,7 @@ import { EDITOR_ACTIONS, EditorAction, EditorActionId } from './editor-actions';
 import { checkUserChord, ChordRejection, KeyChord } from './key-chord.util';
 import { isShortcutParams, readActionParams, sameParams } from './shortcut-params';
 
-export type ChordSource = 'default' | 'custom';
+export type ChordSource = 'default' | 'override' | 'custom';
 
 export interface ChordHolder {
     readonly action: EditorActionId;
@@ -24,10 +24,13 @@ export interface CustomShortcut extends CustomShortcutRow {
     readonly action: EditorActionId;
 }
 
+export type KeyOverrides = ReadonlyMap<string, KeyChord | null>;
+
 export interface ResolvedShortcuts {
     readonly bindings: ReadonlyMap<EditorActionId, readonly KeyChord[]>;
     readonly builtInBindings: ReadonlyMap<EditorActionId, readonly KeyChord[]>;
     readonly customShortcuts: readonly CustomShortcut[];
+    readonly overrides: ReadonlyMap<EditorActionId, KeyChord | null>;
     readonly unboundIds: ReadonlySet<EditorActionId>;
     readonly holders: ReadonlyMap<KeyChord, ChordHolder>;
     readonly defaultsResetClearCount: number;
@@ -49,6 +52,8 @@ export type ShortcutChange =
           readonly params?: ShortcutParams;
       }
     | { readonly kind: 'remove-custom'; readonly id: string }
+    | { readonly kind: 'set-node-key'; readonly action: EditorActionId; readonly chord: KeyChord | null }
+    | { readonly kind: 'reset-node-key'; readonly action: EditorActionId }
     | { readonly kind: 'reset-to-defaults' };
 
 export type ShortcutRejection = ChordRejection | 'missing' | 'limit' | 'params';
@@ -66,9 +71,16 @@ export interface ShortcutAccepted {
 
 export type ShortcutCheck = ShortcutRejected | ShortcutAccepted;
 
-export type ShortcutChangeResult = ShortcutRejected | (ShortcutAccepted & { readonly rows: readonly CustomShortcut[] });
+export type ShortcutChangeResult =
+    | ShortcutRejected
+    | (ShortcutAccepted & {
+          readonly rows: readonly CustomShortcut[];
+          readonly overrides: ReadonlyMap<EditorActionId, KeyChord | null>;
+      });
 
 const SHORTCUTS_MAX_CUSTOM_ENTRIES = 100;
+
+const NO_OVERRIDES: KeyOverrides = new Map();
 
 const MISSING_CUSTOM_SHORTCUT: ShortcutRejected = { accepted: false, rejection: 'missing', takenBy: null };
 
@@ -86,9 +98,26 @@ const EDITOR_DEFAULT_CHORDS: ReadonlySet<KeyChord> = new Set(
     EDITOR_ACTIONS.filter((action) => !isNodeAction(action)).flatMap((action) => action.defaultChords)
 );
 
+export function isNodeKeyEditable(actionId: string): boolean {
+    const action = ACTIONS_BY_ID.get(actionId);
+    return action !== undefined && isOverridable(action);
+}
+
 export function readCustomEntries(settings: unknown): readonly CustomShortcutEntry[] {
     const custom = isRecord(settings) ? settings['custom'] : undefined;
     return Array.isArray(custom) ? custom.flatMap(readCustomEntry) : [];
+}
+
+export function readKeyOverrides(settings: unknown): KeyOverrides {
+    const overrides = isRecord(settings) ? settings['overrides'] : undefined;
+    if (!isRecord(overrides)) {
+        return NO_OVERRIDES;
+    }
+    return new Map(
+        Object.entries(overrides).flatMap(([action, chord]) =>
+            typeof chord === 'string' || chord === null ? [[action, chord] as const] : []
+        )
+    );
 }
 
 export function identifyRows(
@@ -104,13 +133,17 @@ export function identifyRows(
     });
 }
 
-export function toShortcutSettings(rows: readonly CustomShortcutRow[]): ShortcutSettings {
+export function toShortcutSettings(
+    rows: readonly CustomShortcutRow[],
+    overrides: KeyOverrides = NO_OVERRIDES
+): ShortcutSettings {
     return {
         custom: rows.map((row) =>
             row.params === undefined || Object.keys(row.params).length === 0
                 ? { action: row.action, keys: row.chord }
                 : { action: row.action, keys: row.chord, params: row.params }
         ),
+        overrides: Object.fromEntries(overrides),
     };
 }
 
@@ -118,7 +151,17 @@ export function haveSameEntries(entries: readonly CustomShortcutEntry[], rows: r
     return entries.length === rows.length && entries.every((entry, index) => isSameEntry(entry, rows[index]));
 }
 
-export function resolveShortcuts(rows: readonly CustomShortcutRow[]): ResolvedShortcuts {
+export function haveSameOverrides(first: KeyOverrides, second: KeyOverrides): boolean {
+    return (
+        first.size === second.size &&
+        [...first].every(([action, chord]) => second.has(action) && second.get(action) === chord)
+    );
+}
+
+export function resolveShortcuts(
+    rows: readonly CustomShortcutRow[],
+    storedOverrides: KeyOverrides = NO_OVERRIDES
+): ResolvedShortcuts {
     const customHolders = new Map<KeyChord, ChordHolder>();
     const customShortcuts: CustomShortcut[] = [];
     for (const row of rows) {
@@ -142,15 +185,37 @@ export function resolveShortcuts(rows: readonly CustomShortcutRow[]): ResolvedSh
         customShortcuts.push(withParams({ id: row.id, action: action.id, chord: usable ? row.chord : null }, params));
     }
 
+    const overrides = new Map<EditorActionId, KeyChord | null>();
+    const overrideHolders = new Map<KeyChord, ChordHolder>();
+    for (const action of EDITOR_ACTIONS as readonly EditorAction<EditorActionId>[]) {
+        if (!isOverridable(action) || !storedOverrides.has(action.id)) {
+            continue;
+        }
+        const chord = storedOverrides.get(action.id) ?? null;
+        if (chord !== null && (action.defaultChords.includes(chord) || chordRejection(chord) !== null)) {
+            continue;
+        }
+        if (chord !== null && overrideHolders.has(chord)) {
+            continue;
+        }
+        const held = chord !== null && !customHolders.has(chord) ? chord : null;
+        overrides.set(action.id, held);
+        if (held !== null) {
+            overrideHolders.set(held, { action: action.id, source: 'override', customShortcutId: null });
+        }
+    }
+
     const bindings = new Map<EditorActionId, readonly KeyChord[]>();
     const builtInBindings = new Map<EditorActionId, readonly KeyChord[]>();
     const unboundIds = new Set<EditorActionId>();
-    const holders = new Map<KeyChord, ChordHolder>(customHolders);
+    const holders = new Map<KeyChord, ChordHolder>([...customHolders, ...overrideHolders]);
     for (const action of EDITOR_ACTIONS) {
-        const builtIn = action.defaultChords.filter((chord) => !customHolders.has(chord));
-        builtIn.forEach((chord) =>
-            holders.set(chord, { action: action.id, source: 'default', customShortcutId: null })
-        );
+        const builtIn = overrides.has(action.id)
+            ? overrideChords(overrides.get(action.id) ?? null)
+            : action.defaultChords.filter((chord) => !customHolders.has(chord) && !overrideHolders.has(chord));
+        builtIn
+            .filter((chord) => !holders.has(chord))
+            .forEach((chord) => holders.set(chord, { action: action.id, source: 'default', customShortcutId: null }));
         builtInBindings.set(action.id, builtIn);
         bindings.set(action.id, [
             ...builtIn,
@@ -167,15 +232,21 @@ export function resolveShortcuts(rows: readonly CustomShortcutRow[]): ResolvedSh
         bindings,
         builtInBindings,
         customShortcuts,
+        overrides,
         unboundIds,
         holders,
         defaultsResetClearCount: customShortcuts.filter(holdsNodeDefault).length,
     };
 }
 
-export function applyShortcutChange(rows: readonly CustomShortcutRow[], change: ShortcutChange): ShortcutChangeResult {
-    const current = resolveShortcuts(rows);
+export function applyShortcutChange(
+    rows: readonly CustomShortcutRow[],
+    change: ShortcutChange,
+    storedOverrides: KeyOverrides = NO_OVERRIDES
+): ShortcutChangeResult {
+    const current = resolveShortcuts(rows, storedOverrides);
     const kept = current.customShortcuts;
+    const overrides = current.overrides;
     switch (change.kind) {
         case 'add-custom': {
             const action = requireCustomizable(change.action);
@@ -184,7 +255,7 @@ export function applyShortcutChange(rows: readonly CustomShortcutRow[], change: 
             }
             const params = paramsOf(action, change.params);
             const next = [...kept, withParams({ id: change.id, action: action.id, chord: change.chord }, params)];
-            return evaluateChange(current, kept, next, action.id, change.chord, params !== null);
+            return evaluateCustomChange(current, kept, next, action.id, change.chord, params !== null);
         }
         case 'update-custom': {
             const action = requireCustomizable(change.action);
@@ -196,22 +267,28 @@ export function applyShortcutChange(rows: readonly CustomShortcutRow[], change: 
             const next = kept.map((row) =>
                 row.id === change.id ? withParams({ id: row.id, action: action.id, chord: change.chord }, params) : row
             );
-            return evaluateChange(current, others, next, action.id, change.chord, params !== null);
+            return evaluateCustomChange(current, others, next, action.id, change.chord, params !== null);
         }
         case 'remove-custom': {
             if (!kept.some((row) => row.id === change.id)) {
                 return MISSING_CUSTOM_SHORTCUT;
             }
-            return { accepted: true, displaces: null, rows: kept.filter((row) => row.id !== change.id) };
+            return { accepted: true, displaces: null, rows: kept.filter((row) => row.id !== change.id), overrides };
+        }
+        case 'set-node-key':
+            return evaluateNodeKeyChange(current, requireOverridable(change.action), change.chord);
+        case 'reset-node-key': {
+            const action = requireOverridable(change.action);
+            return evaluateNodeKeyChange(current, action, action.defaultChords[0] ?? null);
         }
         case 'reset-to-defaults': {
             const next = kept.map((row) => (holdsNodeDefault(row) ? { ...row, chord: null } : row));
-            return { accepted: true, displaces: null, rows: next };
+            return { accepted: true, displaces: null, rows: next, overrides: new Map() };
         }
     }
 }
 
-function evaluateChange(
+function evaluateCustomChange(
     current: ResolvedShortcuts,
     withoutTarget: readonly CustomShortcutRow[],
     next: readonly CustomShortcut[],
@@ -220,7 +297,9 @@ function evaluateChange(
     hasRequiredParams: boolean
 ): ShortcutChangeResult {
     if (chord === null) {
-        return hasRequiredParams ? { accepted: true, displaces: null, rows: next } : MISSING_PARAMS;
+        return hasRequiredParams
+            ? { accepted: true, displaces: null, rows: next, overrides: current.overrides }
+            : MISSING_PARAMS;
     }
 
     const rejection = chordRejection(chord);
@@ -232,7 +311,7 @@ function evaluateChange(
         return { accepted: false, rejection, takenBy: null };
     }
 
-    const holder = resolveShortcuts(withoutTarget).holders.get(chord);
+    const holder = resolveShortcuts(withoutTarget, current.overrides).holders.get(chord);
     if (holder && (holder.source === 'custom' || holder.action === actionId)) {
         return { accepted: false, rejection: 'taken', takenBy: holder };
     }
@@ -242,9 +321,69 @@ function evaluateChange(
     }
 
     const previousHolder = current.holders.get(chord);
-    const displaces =
-        previousHolder?.source === 'default' && previousHolder.action !== actionId ? previousHolder.action : null;
-    return { accepted: true, displaces, rows: next };
+    const displaced =
+        previousHolder?.source !== 'custom' && previousHolder?.action !== actionId ? previousHolder : undefined;
+    return {
+        accepted: true,
+        displaces: displaced?.action ?? null,
+        rows: next,
+        overrides:
+            displaced?.source === 'override'
+                ? withOverride(current.overrides, displaced.action, null)
+                : current.overrides,
+    };
+}
+
+function evaluateNodeKeyChange(
+    current: ResolvedShortcuts,
+    action: EditorAction,
+    chord: KeyChord | null
+): ShortcutChangeResult {
+    const rows = current.customShortcuts;
+    const isOwnDefault = chord !== null && action.defaultChords.includes(chord);
+    const withoutOwn = withoutOverride(current.overrides, action.id);
+    const nextOwn = isOwnDefault ? withoutOwn : withOverride(withoutOwn, action.id, chord);
+    if (chord === null) {
+        return { accepted: true, displaces: null, rows, overrides: nextOwn };
+    }
+
+    const rejection = chordRejection(chord);
+    if (rejection !== null) {
+        return { accepted: false, rejection, takenBy: null };
+    }
+
+    const holder = resolveShortcuts(rows, withOverride(withoutOwn, action.id, null)).holders.get(chord);
+    if (holder?.source === 'custom' || (isOwnDefault && holder !== undefined && holder.action !== action.id)) {
+        return { accepted: false, rejection: 'taken', takenBy: holder ?? null };
+    }
+    const displaces = holder && holder.action !== action.id ? holder.action : null;
+    return {
+        accepted: true,
+        displaces,
+        rows,
+        overrides: holder?.source === 'override' ? withOverride(nextOwn, holder.action, null) : nextOwn,
+    };
+}
+
+function withOverride(
+    overrides: ReadonlyMap<EditorActionId, KeyChord | null>,
+    actionId: EditorActionId,
+    chord: KeyChord | null
+): ReadonlyMap<EditorActionId, KeyChord | null> {
+    return new Map(overrides).set(actionId, chord);
+}
+
+function withoutOverride(
+    overrides: ReadonlyMap<EditorActionId, KeyChord | null>,
+    actionId: EditorActionId
+): ReadonlyMap<EditorActionId, KeyChord | null> {
+    const next = new Map(overrides);
+    next.delete(actionId);
+    return next;
+}
+
+function overrideChords(chord: KeyChord | null): readonly KeyChord[] {
+    return chord === null ? [] : [chord];
 }
 
 function paramsOf(action: EditorAction, params: ShortcutParams | undefined): ShortcutParams | undefined | null {
@@ -275,10 +414,22 @@ function isNodeAction(action: EditorAction): boolean {
     return action.nodeType !== undefined;
 }
 
+function isOverridable(action: EditorAction): boolean {
+    return action.customizable && isNodeAction(action) && action.defaultChords.length > 0;
+}
+
 function requireCustomizable(actionId: EditorActionId): EditorAction {
     const action = ACTIONS_BY_ID.get(actionId);
     if (!action?.customizable) {
         throw new Error(`Shortcut action "${actionId}" cannot have custom keys`);
+    }
+    return action;
+}
+
+function requireOverridable(actionId: EditorActionId): EditorAction {
+    const action = ACTIONS_BY_ID.get(actionId);
+    if (!action || !isOverridable(action)) {
+        throw new Error(`Shortcut action "${actionId}" has no node key to change`);
     }
     return action;
 }

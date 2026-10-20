@@ -2,6 +2,7 @@ import { ShortcutParams } from '@shared/models';
 
 import { ACTION_PARAMS, EDITOR_ACTIONS } from '../../../../../../visual-programming/core/keymap/editor-actions';
 import { flowIdOf } from '../../../../../../visual-programming/core/keymap/shortcut-params';
+import { ChordHolder } from '../../../../../../visual-programming/core/keymap/shortcut-resolution';
 
 export interface ShortcutLabel {
     readonly text: string;
@@ -40,4 +41,11 @@ export function shortcutLabel(action: string, params: ShortcutParams | undefined
         case undefined:
             return { text: label, isMuted: false };
     }
+}
+
+export function takenByMessage(holder: ChordHolder, keys: string, flows: FlowLookup): string {
+    if (holder.source === 'custom') {
+        return `Already used by your ${shortcutLabel(holder.action, holder.params, flows).text} shortcut`;
+    }
+    return `${keys} is already ${actionLabel(holder.action)}'s key`;
 }

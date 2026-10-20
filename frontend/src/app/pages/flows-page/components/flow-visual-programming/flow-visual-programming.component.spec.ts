@@ -178,7 +178,7 @@ class FlowHeaderStubComponent {
 class ShortcutsModalStubComponent {
     readonly open = input(false);
     readonly pos = input<unknown>(null);
-    readonly title = input('');
+    readonly heading = input('');
     readonly icon = input<string | null>(null);
     readonly sections = input<unknown[]>([]);
     readonly flows = input<readonly GetGraphLightRequest[]>([]);
@@ -617,6 +617,13 @@ describe('FlowVisualProgrammingComponent', () => {
     });
 
     describe('shortcuts list', () => {
+        it('gives the shortcuts list its heading without a native tooltip on the whole popover', () => {
+            const element = fixture.debugElement.query(By.directive(ShortcutsModalStubComponent));
+
+            expect(element.nativeElement.hasAttribute('title')).toBe(false);
+            expect((element.componentInstance as ShortcutsModalStubComponent).heading()).toBe('Command & Shortcuts');
+        });
+
         it('hands the shortcuts list every flow the user can see and which one is being edited', () => {
             flowsApi['getGraphsLight'].mockReturnValue(
                 of([

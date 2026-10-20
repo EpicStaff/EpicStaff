@@ -86,7 +86,7 @@ import {
 } from '../core/helpers/node-placement.utils';
 import { normalizeTableNodeSize } from '../core/helpers/node-size.util';
 import { subgraphFlowOptions, subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
-import { EDITOR_ACTIONS } from '../core/keymap/editor-actions';
+import { CanvasPan, EDITOR_ACTIONS } from '../core/keymap/editor-actions';
 import { flowIdOf } from '../core/keymap/shortcut-params';
 import { computeLayout } from '../core/layout/compute-layout';
 import { ConnectionModel } from '../core/models/connection.model';
@@ -126,6 +126,10 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
 
 /** How long a refused reassignment — and the same refusal when drawing a connection — stays on screen. */
 const CONNECTION_REFUSED_TOAST_MS = 5000;
+
+const CANVAS_PAN_STEP_PX = 40;
+
+const CANVAS_PAN_FAST_STEP_PX = 200;
 
 @Component({
     selector: 'app-flow-graph',
@@ -406,6 +410,35 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
         this.keymap.register('node.subgraph', (_event, { params }) => this.onSubgraphShortcut(params), options);
+        for (const action of EDITOR_ACTIONS) {
+            if ('pan' in action) {
+                const pan = action.pan;
+                this.keymap.register(action.id, () => this.onPanShortcut(pan), {
+                    ...options,
+                    runOutsideAngular: true,
+                    when: (event) => this.isCanvasKeyTarget(event.target),
+                });
+            }
+        }
+    }
+
+    private isCanvasKeyTarget(target: EventTarget | null): boolean {
+        if (!(target instanceof Node)) {
+            return false;
+        }
+        return target === target.ownerDocument?.body || this.flowHost().nativeElement.contains(target);
+    }
+
+    private onPanShortcut(pan: CanvasPan): void {
+        const canvas = this.fCanvasComponent;
+        if (!canvas || this.isDialogOpen() || this.showContextMenu()) {
+            return;
+        }
+        const step = pan.fast ? CANVAS_PAN_FAST_STEP_PX : CANVAS_PAN_STEP_PX;
+        const position = canvas.getPosition();
+        canvas.transform.position = PointExtensions.initialize(position.x - pan.x * step, position.y - pan.y * step);
+        canvas.redraw();
+        canvas.emitCanvasChangeEvent();
     }
 
     private onSubgraphShortcut(params: ShortcutParams | null): void {

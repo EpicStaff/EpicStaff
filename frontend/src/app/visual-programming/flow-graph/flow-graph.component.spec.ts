@@ -623,6 +623,7 @@ describe('FlowGraphComponent', () => {
             const SUPPORT: GetGraphLightRequest = { id: 34, uuid: 'uuid-34', name: 'Support', description: '' };
 
             const SAVED_SHORTCUTS: ShortcutSettings = {
+                overrides: {},
                 custom: [
                     { action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: BILLING.id } },
                     { action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: SUPPORT.id } },
@@ -717,6 +718,132 @@ describe('FlowGraphComponent', () => {
                 expect(addedNodes()).toEqual([]);
                 expect(shownToasts()).toEqual(['You have read-only access to this flow.']);
             });
+        });
+    });
+
+    describe('canvas panning', () => {
+        let fixture: ComponentFixture<FlowGraphComponent>;
+        let canvas: { transform: { position: { x: number; y: number } } };
+        const attached: HTMLElement[] = [];
+
+        function setUp(options: { isPreview?: boolean; canUpdateFlows?: boolean } = {}): void {
+            fixture = mount(
+                options.isPreview ?? false,
+                { nodes: [createStartNode(), noteNode()], connections: [] },
+                undefined,
+                options.canUpdateFlows ?? true
+            );
+            const fake = {
+                transform: { position: { x: 100, y: 100 } },
+                getPosition(): { x: number; y: number } {
+                    return fake.transform.position;
+                },
+                redraw: (): void => undefined,
+                emitCanvasChangeEvent: (): void => undefined,
+            };
+            canvas = fake;
+            fixture.componentInstance['fCanvasComponent'] = fake as unknown as FlowGraphComponent['fCanvasComponent'];
+        }
+
+        function press(init: KeyboardEventInit, target: EventTarget = document.body): KeyboardEvent {
+            const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+            target.dispatchEvent(event);
+            return event;
+        }
+
+        function attach<T extends HTMLElement>(element: T, parent: HTMLElement = document.body): T {
+            parent.appendChild(element);
+            attached.push(element);
+            return element;
+        }
+
+        afterEach(() => attached.splice(0).forEach((element) => element.remove()));
+
+        it.each([
+            ['ArrowRight', {}, { x: 60, y: 100 }],
+            ['ArrowLeft', {}, { x: 140, y: 100 }],
+            ['ArrowDown', {}, { x: 100, y: 60 }],
+            ['ArrowUp', {}, { x: 100, y: 140 }],
+            ['ArrowRight', { ctrlKey: true }, { x: -100, y: 100 }],
+            ['ArrowUp', { ctrlKey: true }, { x: 100, y: 300 }],
+        ] as const)('moves the canvas on %s %o', (key, modifiers, expected) => {
+            setUp();
+
+            press({ code: key, key, ...modifiers });
+
+            expect(canvas.transform.position).toEqual(expected);
+        });
+
+        it('keeps moving while the key is held', () => {
+            setUp();
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+            press({ code: 'ArrowRight', key: 'ArrowRight', repeat: true });
+            press({ code: 'ArrowRight', key: 'ArrowRight', repeat: true });
+
+            expect(canvas.transform.position).toEqual({ x: -20, y: 100 });
+        });
+
+        it.each([
+            ['the flow is read-only', { canUpdateFlows: false }],
+            ['the canvas shows a version preview', { isPreview: true }],
+        ])('still moves the canvas when %s', (_case, options) => {
+            setUp(options);
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+
+            expect(canvas.transform.position).toEqual({ x: 60, y: 100 });
+        });
+
+        it('does not move the canvas from a text field', () => {
+            setUp();
+            const input = document.createElement('input');
+            document.body.appendChild(input);
+            attached.push(input);
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' }, input);
+
+            expect(canvas.transform.position).toEqual({ x: 100, y: 100 });
+        });
+
+        it('moves the canvas when the key comes from inside the canvas', () => {
+            setUp();
+            const insideCanvas = attach(
+                document.createElement('button'),
+                fixture.nativeElement.querySelector('f-flow') as HTMLElement
+            );
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' }, insideCanvas);
+
+            expect(canvas.transform.position).toEqual({ x: 60, y: 100 });
+        });
+
+        it('leaves arrows on a focused element outside the canvas to that element', () => {
+            setUp();
+            const outside = attach(document.createElement('button'));
+
+            const event = press({ code: 'ArrowDown', key: 'ArrowDown' }, outside);
+
+            expect(canvas.transform.position).toEqual({ x: 100, y: 100 });
+            expect(event.defaultPrevented).toBe(false);
+        });
+
+        it('does not move the canvas while a dialog is open', () => {
+            setUp();
+            (TestBed.inject(Dialog).openDialogs as unknown[]).push({});
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+
+            expect(canvas.transform.position).toEqual({ x: 100, y: 100 });
+        });
+
+        it('does not move the canvas while the node menu is open', () => {
+            setUp();
+            fixture.componentInstance.onContextMenu(new MouseEvent('contextmenu', { clientX: 100, clientY: 500 }));
+
+            press({ code: 'ArrowRight', key: 'ArrowRight' });
+
+            expect(canvas.transform.position).toEqual({ x: 100, y: 100 });
         });
     });
 

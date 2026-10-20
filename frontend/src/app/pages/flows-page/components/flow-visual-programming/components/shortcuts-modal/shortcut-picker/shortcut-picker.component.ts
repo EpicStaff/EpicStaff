@@ -24,6 +24,15 @@ export interface PickerGroup {
     readonly options: readonly PickerOption[];
 }
 
+interface ListPlacement {
+    readonly opensUp: boolean;
+    readonly maxHeight: number;
+}
+
+const LIST_MAX_HEIGHT_PX = 200;
+const LIST_MIN_HEIGHT_PX = 96;
+const LIST_GAP_PX = 4;
+
 interface ShownOption extends PickerOption {
     readonly elementId: string;
 }
@@ -57,6 +66,7 @@ export class ShortcutPickerComponent implements OnInit {
     protected readonly query = signal('');
     protected readonly isListOpen = signal(false);
     protected readonly activeIndex = signal(0);
+    protected readonly listPlacement = signal<ListPlacement>({ opensUp: false, maxHeight: LIST_MAX_HEIGHT_PX });
 
     protected readonly shownGroups = computed<readonly ShownGroup[]>(() => {
         const selected = this.selected();
@@ -88,6 +98,7 @@ export class ShortcutPickerComponent implements OnInit {
             this.query.set(this.labelOf(selected));
         } else if (this.startOpen()) {
             this.isListOpen.set(true);
+            afterNextRender(() => this.placeList(), { injector: this.injector });
         }
     }
 
@@ -116,12 +127,16 @@ export class ShortcutPickerComponent implements OnInit {
         this.query.set(value);
         this.selected.set(null);
         this.activeIndex.set(0);
-        this.isListOpen.set(true);
+        if (!this.isListOpen()) {
+            this.placeList();
+            this.isListOpen.set(true);
+        }
     }
 
     protected openList(): void {
         if (!this.isListOpen()) {
             this.activeIndex.set(this.selectedOptionIndex());
+            this.placeList();
             this.isListOpen.set(true);
         }
     }
@@ -170,6 +185,24 @@ export class ShortcutPickerComponent implements OnInit {
         this.isListOpen.set(false);
     }
 
+    private placeList(): void {
+        const input = this.pickerInput().nativeElement;
+        const boundary = layoutBoundaryOf(input);
+        if (boundary === null) {
+            this.listPlacement.set({ opensUp: false, maxHeight: LIST_MAX_HEIGHT_PX });
+            return;
+        }
+        const inputRect = input.getBoundingClientRect();
+        const roomBelow = boundary.bottom - inputRect.bottom - LIST_GAP_PX;
+        const roomAbove = inputRect.top - boundary.top - LIST_GAP_PX;
+        const opensUp = roomBelow < LIST_MAX_HEIGHT_PX && roomAbove > roomBelow;
+        const room = opensUp ? roomAbove : roomBelow;
+        this.listPlacement.set({
+            opensUp,
+            maxHeight: Math.max(LIST_MIN_HEIGHT_PX, Math.min(LIST_MAX_HEIGHT_PX, room)),
+        });
+    }
+
     private labelOf(id: string): string {
         for (const group of this.groups()) {
             const option = group.options.find((candidate) => candidate.id === id);
@@ -198,4 +231,16 @@ export class ShortcutPickerComponent implements OnInit {
             { injector: this.injector }
         );
     }
+}
+
+function layoutBoundaryOf(element: HTMLElement): DOMRect | null {
+    const view = element.ownerDocument.defaultView;
+    for (let parent = element.parentElement; parent && view; parent = parent.parentElement) {
+        const style = view.getComputedStyle(parent);
+        const isColumnFlow = style.columnCount !== '' && style.columnCount !== 'auto';
+        if (isColumnFlow || style.overflowY !== 'visible') {
+            return parent.getBoundingClientRect();
+        }
+    }
+    return null;
 }

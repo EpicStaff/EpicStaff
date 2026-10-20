@@ -35,7 +35,7 @@ import {
     ShortcutRejected,
 } from '../../../../../../../visual-programming/core/keymap/shortcut-resolution';
 import { KeymapService } from '../../../../../../../visual-programming/services/keymap.service';
-import { actionLabel, flowLabel, FlowLookup, shortcutLabel } from '../shortcut-label.util';
+import { actionLabel, flowLabel, FlowLookup, takenByMessage } from '../shortcut-label.util';
 import { PickerGroup, ShortcutPickerComponent } from '../shortcut-picker/shortcut-picker.component';
 
 interface Feedback {
@@ -62,10 +62,11 @@ export class ShortcutEditorComponent implements OnInit {
     readonly shortcut = input<CustomShortcut | null>(null);
     readonly flows = input<readonly GetGraphLightRequest[]>([]);
     readonly currentFlowId = input<number | null>(null);
+    readonly nodeAction = input<EditorActionId | null>(null);
 
     readonly closed = output<void>();
 
-    private readonly actionPicker = viewChild.required<ShortcutPickerComponent>('actionPicker');
+    private readonly actionPicker = viewChild<ShortcutPickerComponent>('actionPicker');
     private readonly flowPicker = viewChild<ShortcutPickerComponent>('flowPicker');
     private readonly recorder = viewChild.required<ElementRef<HTMLButtonElement>>('recorder');
 
@@ -136,6 +137,9 @@ export class ShortcutEditorComponent implements OnInit {
         if (action === null || chord === null) {
             return null;
         }
+        if (this.nodeAction() !== null) {
+            return this.keymap.checkNodeKey(action, chord);
+        }
         return this.keymap.checkChord(chord, { action, customShortcutId: this.shortcut()?.id, params: this.params() });
     });
 
@@ -164,10 +168,23 @@ export class ShortcutEditorComponent implements OnInit {
     private isTabbing = false;
 
     constructor() {
-        afterNextRender(() => this.actionPicker().focus());
+        afterNextRender(() => {
+            const actionPicker = this.actionPicker();
+            if (actionPicker) {
+                actionPicker.focus();
+            } else {
+                this.focusKeys();
+            }
+        });
     }
 
     ngOnInit(): void {
+        const nodeAction = this.nodeAction();
+        if (nodeAction !== null) {
+            this.action.set(nodeAction);
+            this.chord.set(this.keymap.builtInBindings().get(nodeAction)?.[0] ?? null);
+            return;
+        }
         const shortcut = this.shortcut();
         if (shortcut) {
             const flowId = flowIdOf(shortcut.params);
@@ -219,7 +236,7 @@ export class ShortcutEditorComponent implements OnInit {
     }
 
     protected startRecording(): void {
-        this.actionPicker().close();
+        this.actionPicker()?.close();
         this.flowPicker()?.close();
         this.isRecording.set(true);
     }
@@ -302,9 +319,12 @@ export class ShortcutEditorComponent implements OnInit {
         }
         const shortcut = this.shortcut();
         const params = this.params();
-        const result = shortcut
-            ? this.keymap.updateCustom(shortcut.id, { action, chord: this.chord(), params })
-            : this.keymap.addCustom(action, this.chord(), params);
+        const result =
+            this.nodeAction() !== null
+                ? this.keymap.setNodeKey(action, this.chord())
+                : shortcut
+                  ? this.keymap.updateCustom(shortcut.id, { action, chord: this.chord(), params })
+                  : this.keymap.addCustom(action, this.chord(), params);
         if (result.accepted || result.rejection === 'missing') {
             this.closed.emit();
             return;
@@ -334,16 +354,12 @@ export class ShortcutEditorComponent implements OnInit {
                 if (check.takenBy === null) {
                     return error("This key can't be used");
                 }
-                if (check.takenBy.source === 'custom') {
-                    const owner = shortcutLabel(check.takenBy.action, check.takenBy.params, this.flowLookup()).text;
-                    return error(`Already used by your ${owner} shortcut`);
-                }
-                return error(`${keys} is already ${actionLabel(check.takenBy.action)}'s key`);
+                return error(takenByMessage(check.takenBy, keys, this.flowLookup()));
             }
             case 'invalid':
                 return error("This key can't be used");
             case 'limit':
-                return error('You can have up to 100 custom shortcuts');
+                return error('You can have up to 100 additional shortcuts');
             case 'missing':
             case 'params':
                 return null;

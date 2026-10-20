@@ -24,7 +24,7 @@ const BASE_USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: null,
     avatar_url: null,
-    custom_shortcuts: { custom: [] },
+    custom_shortcuts: { custom: [], overrides: {} },
 };
 
 describe('KeymapService', () => {
@@ -55,7 +55,7 @@ describe('KeymapService', () => {
     type CustomRow = readonly [string, string | null];
 
     function shortcutSettings(...custom: readonly CustomRow[]): ShortcutSettings {
-        return { custom: custom.map(([action, keys]) => ({ action, keys })) };
+        return { custom: custom.map(([action, keys]) => ({ action, keys })), overrides: {} };
     }
 
     function loadUser(...custom: readonly CustomRow[]): void {
@@ -712,6 +712,7 @@ describe('KeymapService', () => {
             const first = nextPatch();
             expect(first.body).toEqual({
                 custom_shortcuts: {
+                    overrides: {},
                     custom: [
                         { action: 'editing.save', keys: 'Alt+KeyS' },
                         { action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } },
@@ -724,6 +725,7 @@ describe('KeymapService', () => {
 
             expect(nextPatch().body).toEqual({
                 custom_shortcuts: {
+                    overrides: {},
                     custom: [
                         { action: 'editing.save', keys: 'Alt+KeyS' },
                         { action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 12 } },
@@ -749,6 +751,111 @@ describe('KeymapService', () => {
             loadEntries([{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { tab: 'a', flowId: 12 } }]);
 
             expect(keymap().customShortcuts()[0].id).toBe(before.id);
+        });
+    });
+
+    describe('node key overrides', () => {
+        beforeEach(() => setUp());
+
+        function loadSettings(settings: unknown): void {
+            profile.getCurrentUser().subscribe();
+            httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush({ ...BASE_USER, custom_shortcuts: settings });
+        }
+
+        it('gives a node a new key, PATCHes the override next to the Additional rows and fires on it', () => {
+            loadSettings({ custom: [{ action: 'editing.save', keys: 'Alt+KeyS' }] });
+            const python = vi.fn();
+            keymap().register('node.python', python);
+
+            expect(keymap().setNodeKey('node.python', 'Alt+KeyQ')).toEqual({ accepted: true, displaces: null });
+
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: {
+                    custom: [{ action: 'editing.save', keys: 'Alt+KeyS' }],
+                    overrides: { 'node.python': 'Alt+KeyQ' },
+                },
+            });
+            press({ code: 'KeyQ', key: 'q', altKey: true });
+            press({ code: 'KeyP', key: 'P', shiftKey: true });
+            expect(python).toHaveBeenCalledOnce();
+            expect(keymap().overriddenIds().has('node.python')).toBe(true);
+        });
+
+        it('resets one node key with a PATCH that drops only its override', () => {
+            loadSettings({ custom: [], overrides: { 'node.python': 'Alt+KeyQ', 'node.task': null } });
+
+            expect(keymap().resetNodeKey('node.python')).toEqual({ accepted: true, displaces: null });
+
+            expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: { 'node.task': null } } });
+            expect(keymap().builtInBindings().get('node.python')).toEqual(['Shift+KeyP']);
+        });
+
+        it('refuses to reset a node key whose default an Additional row holds, without saving', () => {
+            loadSettings({
+                custom: [{ action: 'node.agent', keys: 'Shift+KeyP' }],
+                overrides: { 'node.python': 'Alt+KeyQ' },
+            });
+
+            expect(keymap().resetNodeKey('node.python')).toMatchObject({
+                accepted: false,
+                rejection: 'taken',
+                takenBy: { action: 'node.agent', source: 'custom' },
+            });
+            httpMock.expectNone({ method: 'PATCH' });
+        });
+
+        it('clears every override on reset to defaults', () => {
+            loadSettings({ custom: [], overrides: { 'node.python': 'Alt+KeyQ' } });
+            expect(keymap().canResetToDefaults()).toBe(true);
+
+            keymap().resetToDefaults();
+
+            expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: {} } });
+            expect(keymap().canResetToDefaults()).toBe(false);
+        });
+
+        it('does not save when a node key is set to the key it already has', () => {
+            loadSettings({ custom: [], overrides: { 'node.python': 'Alt+KeyQ' } });
+
+            keymap().setNodeKey('node.python', 'Alt+KeyQ');
+
+            httpMock.expectNone({ method: 'PATCH' });
+        });
+    });
+
+    describe('canvas panning keys', () => {
+        beforeEach(() => setUp());
+
+        it('leaves the key alone when the registration does not want this event', () => {
+            const pan = vi.fn();
+            keymap().register('navigating.pan-right', pan, { when: () => false });
+
+            const event = press({ code: 'ArrowRight', key: 'ArrowRight' });
+
+            expect(pan).not.toHaveBeenCalled();
+            expect(event.defaultPrevented).toBe(false);
+        });
+
+        it.each([
+            ['an arrow', { code: 'ArrowRight', key: 'ArrowRight' }, 'navigating.pan-right'],
+            ['Ctrl and an arrow', { code: 'ArrowLeft', key: 'ArrowLeft', ctrlKey: true }, 'navigating.pan-left-fast'],
+        ] as const)('fires the pan action for %s, also while the key is held', (_case, init, action) => {
+            const pan = vi.fn();
+            keymap().register(action, pan, { runOutsideAngular: true });
+
+            press(init);
+            press({ ...init, repeat: true });
+
+            expect(pan).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not pan from inside the side panel', () => {
+            const pan = vi.fn();
+            keymap().register('navigating.pan-right', pan);
+
+            pressOn(buttonInside('app-node-panel-shell'), { code: 'ArrowRight', key: 'ArrowRight' });
+
+            expect(pan).not.toHaveBeenCalled();
         });
     });
 });

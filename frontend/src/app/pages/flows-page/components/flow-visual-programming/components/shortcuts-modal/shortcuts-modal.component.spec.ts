@@ -1,5 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { NgZone } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { GetMeResponse, ShortcutSettings } from '@shared/models';
 
@@ -24,7 +25,7 @@ const BASE_USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: null,
     avatar_url: null,
-    custom_shortcuts: { custom: [] },
+    custom_shortcuts: { overrides: {}, custom: [] },
 };
 
 const NODE_LABELS_AND_LETTERS: readonly (readonly [string, string])[] = [
@@ -59,9 +60,26 @@ interface RenderedCustomRow {
 type CustomRow = ShortcutSettings['custom'][number];
 
 class ResizeObserverStub {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
+    static observing = new Map<Element, ResizeObserverStub>();
+
+    constructor(private readonly callback: ResizeObserverCallback) {}
+
+    static resize(target: Element): void {
+        const observer = ResizeObserverStub.observing.get(target);
+        observer?.callback([], observer as unknown as ResizeObserver);
+    }
+
+    observe(target: Element): void {
+        ResizeObserverStub.observing.set(target, this);
+    }
+    unobserve(target: Element): void {
+        ResizeObserverStub.observing.delete(target);
+    }
+    disconnect(): void {
+        ResizeObserverStub.observing.forEach((observer, target) => {
+            if (observer === this) ResizeObserverStub.observing.delete(target);
+        });
+    }
 }
 
 describe('ShortcutsModalComponent', () => {
@@ -70,8 +88,18 @@ describe('ShortcutsModalComponent', () => {
     let toasts: ToastMessage[];
     let closedCount: number;
 
+    let frames = new Map<number, FrameRequestCallback>();
+    let lastFrameId = 0;
+
     function setUp(isMac = false): void {
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        frames = new Map();
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+            lastFrameId += 1;
+            frames.set(lastFrameId, callback);
+            return lastFrameId;
+        });
+        vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
         TestBed.configureTestingModule({
             imports: [ShortcutsModalComponent],
             providers: [
@@ -103,6 +131,13 @@ describe('ShortcutsModalComponent', () => {
     function render(): void {
         fixture.detectChanges();
         TestBed.tick();
+        for (let round = 0; round < 5 && frames.size > 0; round++) {
+            const due = [...frames.values()];
+            frames.clear();
+            TestBed.inject(NgZone).run(() => due.forEach((callback) => callback(0)));
+            fixture.detectChanges();
+            TestBed.tick();
+        }
     }
 
     function nextPatch(): { body: unknown; succeed: () => void; fail: () => void } {
@@ -158,6 +193,9 @@ describe('ShortcutsModalComponent', () => {
             } else if (node.classList.contains('shortcuts__key')) {
                 if (chords.length === 0) chords.push([]);
                 chords[chords.length - 1].push(text(node));
+            } else if (node.classList.contains('shortcuts__arrow-keys')) {
+                if (chords.length === 0) chords.push([]);
+                chords[chords.length - 1].push(node.getAttribute('aria-label') ?? '');
             }
         });
         return { label: text(row.querySelector('.shortcuts__label')!), chords };
@@ -169,7 +207,7 @@ describe('ShortcutsModalComponent', () => {
     }
 
     function customRows(): RenderedCustomRow[] {
-        return rowElementsOf('Custom').map((row) => ({
+        return rowElementsOf('Additional').map((row) => ({
             label: text(row.querySelector('.shortcuts__label')!),
             keys: text(row.querySelector('.shortcuts__keys')!),
         }));
@@ -251,7 +289,18 @@ describe('ShortcutsModalComponent', () => {
         } finally {
             TestBed.resetTestingModule();
             vi.unstubAllGlobals();
+            vi.restoreAllMocks();
+            vi.useRealTimers();
         }
+    });
+
+    it('shows the heading it is given', () => {
+        setUp();
+        openModal();
+        fixture.componentRef.setInput('heading', 'Command & Shortcuts');
+        render();
+
+        expect(text(root().querySelector('.shortcuts__header-title')!)).toBe('Command & Shortcuts');
     });
 
     it('shows the sections in order, Nodes last', () => {
@@ -342,6 +391,9 @@ describe('ShortcutsModalComponent', () => {
         expect(rowsOf('Navigating')).toEqual([
             { label: 'Node search', chords: [['Ctrl', 'F']] },
             { label: 'Keyboard shortcuts', chords: [['Ctrl', '/']] },
+            { label: 'Move canvas', chords: [['Arrow keys']] },
+            { label: 'Move canvas faster', chords: [['Ctrl', 'Arrow keys']] },
+            { label: 'Previous / next page', chords: [['Alt', 'Up or Down arrow']] },
             { label: 'Open node create menu', chords: [['Right click']] },
         ]);
     });
@@ -370,7 +422,7 @@ describe('ShortcutsModalComponent', () => {
     });
 
     describe('base rows', () => {
-        it('show only the built-in key; the extra key is listed under Custom', () => {
+        it('show only the built-in key; the extra key is listed under Additional', () => {
             setUp();
             loadUser([{ action: 'node.python', keys: 'Shift+KeyB' }]);
             openModal();
@@ -379,7 +431,7 @@ describe('ShortcutsModalComponent', () => {
             expect(customRows()).toEqual([{ label: 'Python Code Node', keys: 'Shift B' }]);
         });
 
-        it('say Not set for a node whose key a custom shortcut took', () => {
+        it('say Not set for a node whose key an additional shortcut took', () => {
             setUp();
             loadUser([{ action: 'node.agent', keys: 'Shift+KeyP' }]);
             openModal();
@@ -388,19 +440,19 @@ describe('ShortcutsModalComponent', () => {
             expect(nodeRow('Agent Node')).toBe('Shift A');
         });
 
-        it('have no edit, delete or reset controls', () => {
+        it('have no controls outside Nodes', () => {
             setUp();
             loadUser([{ action: 'node.agent', keys: 'Shift+KeyP' }]);
             openModal();
 
-            for (const title of BASE_SECTIONS) {
+            for (const title of BASE_SECTIONS.filter((section) => section !== 'Nodes')) {
                 expect(cardOf(title).querySelectorAll('button')).toHaveLength(0);
             }
         });
     });
 
-    describe('custom section', () => {
-        it('is hidden while the user has no custom shortcuts', () => {
+    describe('additional section', () => {
+        it('is hidden while the user has no additional shortcuts', () => {
             setUp();
             openModal();
 
@@ -408,7 +460,7 @@ describe('ShortcutsModalComponent', () => {
             expect(hasButton('Add shortcut')).toBe(true);
         });
 
-        it('lists each custom shortcut with its keys, or Not set, after Nodes', () => {
+        it('lists each additional shortcut with its keys, or Not set, after Nodes', () => {
             setUp();
             loadUser([
                 { action: 'node.agent', keys: 'Alt+KeyB' },
@@ -416,7 +468,7 @@ describe('ShortcutsModalComponent', () => {
             ]);
             openModal();
 
-            expect(sectionTitles()).toEqual([...BASE_SECTIONS, 'Custom']);
+            expect(sectionTitles()).toEqual([...BASE_SECTIONS, 'Additional']);
             expect(customRows()).toEqual([
                 { label: 'Agent Node', keys: 'Alt B' },
                 { label: 'Save', keys: 'Not set' },
@@ -436,7 +488,9 @@ describe('ShortcutsModalComponent', () => {
             expect(customRows()).toEqual([{ label: 'Task Node', keys: 'Alt K' }]);
             expect(nodeRow('Python Code Node')).toBe('Shift P');
             const patch = nextPatch();
-            expect(patch.body).toEqual({ custom_shortcuts: { custom: [{ action: 'node.task', keys: 'Alt+KeyK' }] } });
+            expect(patch.body).toEqual({
+                custom_shortcuts: { overrides: {}, custom: [{ action: 'node.task', keys: 'Alt+KeyK' }] },
+            });
             patch.succeed();
             expect(document.activeElement).toBe(buttonNamed('Add shortcut'));
         });
@@ -521,7 +575,7 @@ describe('ShortcutsModalComponent', () => {
             expect(nodeRow('Python Code Node')).toBe('Not set');
             const patch = nextPatch();
             expect(patch.body).toEqual({
-                custom_shortcuts: { custom: [{ action: 'node.agent', keys: 'Shift+KeyP' }] },
+                custom_shortcuts: { overrides: {}, custom: [{ action: 'node.agent', keys: 'Shift+KeyP' }] },
             });
             patch.succeed();
         });
@@ -592,7 +646,7 @@ describe('ShortcutsModalComponent', () => {
                 'Add a modifier key (⌘, ⌥ or ⇧)',
             ],
             [
-                'a key another custom shortcut has',
+                'a key another additional shortcut has',
                 false,
                 [{ action: 'node.task', keys: 'Alt+KeyK' }],
                 'Agent Node',
@@ -662,8 +716,8 @@ describe('ShortcutsModalComponent', () => {
 
         it.each([
             [99, ''],
-            [100, 'You can have up to 100 custom shortcuts'],
-        ])('with %i custom shortcuts saved, says "%s" about one more', (count, message) => {
+            [100, 'You can have up to 100 additional shortcuts'],
+        ])('with %i additional shortcuts saved, says "%s" about one more', (count, message) => {
             setUp();
             loadUser(Array.from({ length: count }, () => ({ action: 'node.agent', keys: null })));
             openModal();
@@ -713,6 +767,7 @@ describe('ShortcutsModalComponent', () => {
             const patch = nextPatch();
             expect(patch.body).toEqual({
                 custom_shortcuts: {
+                    overrides: {},
                     custom: [
                         { action: 'node.task', keys: 'Alt+KeyM' },
                         { action: 'editing.save', keys: 'Alt+KeyS' },
@@ -739,7 +794,9 @@ describe('ShortcutsModalComponent', () => {
 
             expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Not set' }]);
             const patch = nextPatch();
-            expect(patch.body).toEqual({ custom_shortcuts: { custom: [{ action: 'node.agent', keys: null }] } });
+            expect(patch.body).toEqual({
+                custom_shortcuts: { overrides: {}, custom: [{ action: 'node.agent', keys: null }] },
+            });
             patch.succeed();
         });
 
@@ -808,7 +865,7 @@ describe('ShortcutsModalComponent', () => {
     });
 
     describe('reset to defaults', () => {
-        it('is hidden while no custom shortcut holds a node key', () => {
+        it('is hidden while no additional shortcut holds a node key', () => {
             setUp();
             loadUser([{ action: 'node.agent', keys: 'Alt+KeyB' }]);
             openModal();
@@ -828,7 +885,7 @@ describe('ShortcutsModalComponent', () => {
             click(buttonNamed('Reset to defaults'));
             const dialog = document.querySelector('app-confirmation-dialog')!;
             expect(text(dialog.querySelector('.dialog-message')!)).toBe(
-                '2 custom shortcuts will lose their keys. Every node gets its own key back.'
+                '2 additional shortcuts will lose their keys. Every node gets its own key back.'
             );
 
             click(buttonNamed('Reset', dialog));
@@ -844,6 +901,7 @@ describe('ShortcutsModalComponent', () => {
             const patch = nextPatch();
             expect(patch.body).toEqual({
                 custom_shortcuts: {
+                    overrides: {},
                     custom: [
                         { action: 'node.agent', keys: null },
                         { action: 'node.task', keys: null },
@@ -862,7 +920,7 @@ describe('ShortcutsModalComponent', () => {
             click(buttonNamed('Reset to defaults'));
             const dialog = document.querySelector('app-confirmation-dialog')!;
             expect(text(dialog.querySelector('.dialog-message')!)).toBe(
-                '1 custom shortcut will lose its key. Every node gets its own key back.'
+                '1 additional shortcut will lose its key. Every node gets its own key back.'
             );
             click(buttonNamed('Cancel', dialog));
 
@@ -910,7 +968,7 @@ describe('ShortcutsModalComponent', () => {
         }
 
         function customLabel(index: number): Element {
-            return rowElementsOf('Custom')[index].querySelector('.shortcuts__label')!;
+            return rowElementsOf('Additional')[index].querySelector('.shortcuts__label')!;
         }
 
         it('is not listed among the nodes with built-in keys', () => {
@@ -951,7 +1009,10 @@ describe('ShortcutsModalComponent', () => {
             expect(customRows()).toEqual([{ label: 'Subgraph: Support', keys: 'Alt 1' }]);
             const patch = nextPatch();
             expect(patch.body).toEqual({
-                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 34 } }] },
+                custom_shortcuts: {
+                    overrides: {},
+                    custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 34 } }],
+                },
             });
             patch.succeed();
         });
@@ -1002,7 +1063,10 @@ describe('ShortcutsModalComponent', () => {
 
             expect(customRows()).toEqual([{ label: 'Subgraph: Billing', keys: 'Alt 1' }]);
             expect(nextPatch().body).toEqual({
-                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }] },
+                custom_shortcuts: {
+                    overrides: {},
+                    custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }],
+                },
             });
         });
 
@@ -1045,7 +1109,10 @@ describe('ShortcutsModalComponent', () => {
 
             click(buttonNamed('Delete Subgraph: Billing shortcut'));
             expect(nextPatch().body).toEqual({
-                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 34 } }] },
+                custom_shortcuts: {
+                    overrides: {},
+                    custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 34 } }],
+                },
             });
         });
 
@@ -1064,7 +1131,10 @@ describe('ShortcutsModalComponent', () => {
 
             expect(customRows()).toEqual([{ label: 'Subgraph: Billing', keys: 'Alt 1' }]);
             expect(nextPatch().body).toEqual({
-                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }] },
+                custom_shortcuts: {
+                    overrides: {},
+                    custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }],
+                },
             });
         });
 
@@ -1103,6 +1173,7 @@ describe('ShortcutsModalComponent', () => {
             ]);
             expect(nextPatch().body).toEqual({
                 custom_shortcuts: {
+                    overrides: {},
                     custom: [
                         { action: 'node.subgraph', keys: null, params: { flowId: 12 } },
                         { action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 34 } },
@@ -1165,7 +1236,7 @@ describe('ShortcutsModalComponent', () => {
             expect(editor()).toBeNull();
             expect(customRows()).toEqual([{ label: 'Agent Node', keys: 'Alt 1' }]);
             expect(nextPatch().body).toEqual({
-                custom_shortcuts: { custom: [{ action: 'node.agent', keys: 'Alt+Digit1' }] },
+                custom_shortcuts: { overrides: {}, custom: [{ action: 'node.agent', keys: 'Alt+Digit1' }] },
             });
         });
 
@@ -1188,7 +1259,10 @@ describe('ShortcutsModalComponent', () => {
 
             expect(customRows()).toEqual([{ label: 'Subgraph: Billing', keys: 'Alt 1' }]);
             expect(nextPatch().body).toEqual({
-                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }] },
+                custom_shortcuts: {
+                    overrides: {},
+                    custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params: { flowId: 12 } }],
+                },
             });
         });
 
@@ -1207,7 +1281,10 @@ describe('ShortcutsModalComponent', () => {
 
             expect(customRows()).toEqual([{ label: 'Subgraph: Billing', keys: 'Alt 2' }]);
             expect(nextPatch().body).toEqual({
-                custom_shortcuts: { custom: [{ action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 12 } }] },
+                custom_shortcuts: {
+                    overrides: {},
+                    custom: [{ action: 'node.subgraph', keys: 'Alt+Digit2', params: { flowId: 12 } }],
+                },
             });
         });
 
@@ -1334,6 +1411,417 @@ describe('ShortcutsModalComponent', () => {
             expect(pythonNode).not.toHaveBeenCalled();
             expect(recorded.defaultPrevented).toBe(true);
             expect(text(keysBox())).toContain('Shift+P');
+        });
+    });
+
+    describe('room for the editor', () => {
+        function listbox(): HTMLElement {
+            return editor()!.querySelector('[role="listbox"]')!;
+        }
+
+        it('opens the action list as a dropdown over the editor, not in its flow', () => {
+            setUp();
+            openModal();
+
+            startAdding();
+
+            expect(listbox().parentElement!.classList).toContain('shortcut-picker__anchor');
+            expect(listbox().parentElement!.querySelector('input[role="combobox"]')).toBe(actionPicker());
+            expect(getComputedStyle(listbox()).position).toBe('absolute');
+        });
+
+        it('opens the list upward when there is no room below it in the column', () => {
+            setUp();
+            openModal();
+            const content = root().querySelector<HTMLElement>('.shortcuts__content')!;
+            vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+                const isInput = this instanceof HTMLInputElement;
+                return DOMRect.fromRect(
+                    isInput ? { x: 0, y: 500, width: 200, height: 32 } : { x: 0, y: 0, width: 900, height: 560 }
+                );
+            });
+            content.style.overflowY = 'auto';
+
+            startAdding();
+
+            expect(listbox().classList).toContain('shortcut-picker__list--up');
+            expect(listbox().style.maxHeight).toBe('200px');
+        });
+
+        const FLOW_WIDTH_PX = 980;
+        const COLUMN_GAP_PX = 40;
+
+        function columnPitch(): number {
+            const isFourColumns = root().querySelector('.shortcuts__modal--four-columns') !== null;
+            return (FLOW_WIDTH_PX + COLUMN_GAP_PX) / (isFourColumns ? 4 : 3);
+        }
+
+        function layOut(
+            lastItemColumn: () => number,
+            flowScrollHeight = 400,
+            lastItemTop: () => number = () => 0
+        ): HTMLElement {
+            const content = root().querySelector<HTMLElement>('.shortcuts__content')!;
+            const flow = root().querySelector<HTMLElement>('.shortcuts__flow')!;
+            Object.defineProperty(content, 'clientHeight', { configurable: true, value: 560 });
+            Object.defineProperty(flow, 'clientWidth', { configurable: true, value: FLOW_WIDTH_PX });
+            Object.defineProperty(flow, 'scrollHeight', { configurable: true, value: flowScrollHeight });
+            const realRect = Element.prototype.getBoundingClientRect;
+            vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+                if (this === flow.lastElementChild) {
+                    return DOMRect.fromRect({
+                        x: lastItemColumn() * columnPitch(),
+                        y: lastItemTop(),
+                        width: 300,
+                        height: 40,
+                    });
+                }
+                return this === flow ? DOMRect.fromRect({ x: 0, y: 0, width: 980, height: 560 }) : realRect.call(this);
+            });
+            return content;
+        }
+
+        function columnLayout(): string {
+            const modal = root().querySelector('.shortcuts__modal')!;
+            const content = root().querySelector('.shortcuts__content')!;
+            if (content.classList.contains('shortcuts__content--scrolling')) return 'vertical scroll';
+            return modal.classList.contains('shortcuts__modal--four-columns') ? '4 columns' : '3 columns';
+        }
+
+        function refit(): void {
+            ResizeObserverStub.resize(root().querySelector('.shortcuts__content')!);
+            render();
+        }
+
+        function pass(milliseconds: number): void {
+            TestBed.inject(NgZone).run(() => vi.advanceTimersByTime(milliseconds));
+            render();
+        }
+
+        function preferReducedMotion(): void {
+            vi.stubGlobal('matchMedia', (query: string) => ({
+                matches: query === '(prefers-reduced-motion: reduce)',
+                media: query,
+                addListener: () => undefined,
+                removeListener: () => undefined,
+                addEventListener: () => undefined,
+                removeEventListener: () => undefined,
+            }));
+        }
+
+        function isFading(): boolean {
+            return root().querySelector('.shortcuts__flow')!.classList.contains('shortcuts__flow--reflowing');
+        }
+
+        it('opens with the rows hidden and shows them only once the final layout is chosen', () => {
+            setUp();
+            fixture = TestBed.createComponent(ShortcutsModalComponent);
+            fixture.componentRef.setInput('open', true);
+            fixture.componentRef.setInput('pos', { top: 10, left: 10 });
+            fixture.detectChanges();
+            TestBed.tick();
+            layOut(() => (columnLayout() === '3 columns' ? 5 : 2), 900);
+
+            expect(isFading()).toBe(true);
+
+            render();
+
+            expect([isFading(), columnLayout()]).toEqual([false, 'vertical scroll']);
+        });
+
+        it('fades the rows out, changes the columns while they are hidden, and fades them back in after the resize', () => {
+            setUp();
+            openModal();
+            layOut(() => 3);
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+            ResizeObserverStub.resize(root().querySelector('.shortcuts__content')!);
+            render();
+            expect([isFading(), columnLayout()]).toEqual([true, '3 columns']);
+
+            pass(120);
+            expect([isFading(), columnLayout()]).toEqual([true, '4 columns']);
+
+            pass(200);
+            expect([isFading(), columnLayout()]).toEqual([false, '4 columns']);
+        });
+
+        it('drops a column change that was still fading when the list closed', () => {
+            setUp();
+            openModal();
+            layOut(() => 3);
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+            ResizeObserverStub.resize(root().querySelector('.shortcuts__content')!);
+            render();
+            expect(isFading()).toBe(true);
+
+            fixture.componentRef.setInput('open', false);
+            render();
+            fixture.componentRef.setInput('open', true);
+            render();
+            pass(400);
+
+            expect([isFading(), columnLayout()]).toEqual([false, '3 columns']);
+        });
+
+        it('changes the columns at once when the user prefers reduced motion', () => {
+            preferReducedMotion();
+            setUp();
+            openModal();
+            layOut(() => 3);
+
+            ResizeObserverStub.resize(root().querySelector('.shortcuts__content')!);
+            render();
+
+            expect([isFading(), columnLayout()]).toEqual([false, '4 columns']);
+        });
+
+        it.each([
+            ['only just fit three columns', 500, '4 columns'],
+            ['fit three columns with room to spare', 300, '3 columns'],
+        ])('goes back to three columns only when the rows %s', (_case, lastItemTop, layout) => {
+            preferReducedMotion();
+            setUp();
+            openModal();
+            let lastColumn = 3;
+            layOut(
+                () => lastColumn,
+                400,
+                () => lastItemTop
+            );
+            refit();
+
+            lastColumn = 2;
+            refit();
+
+            expect(columnLayout()).toBe(layout);
+        });
+
+        it.each([
+            ['few rows', 0, '3 columns'],
+            ['rows that end in the third column', 2, '3 columns'],
+            ['rows that overflow three columns', 3, '4 columns'],
+            ['rows that overflow four columns', 4, 'vertical scroll'],
+        ])('shows %s (last item in column %i) as %s', (_case, lastColumn, layout) => {
+            preferReducedMotion();
+            setUp();
+            openModal();
+            layOut(() => lastColumn);
+
+            refit();
+
+            expect(columnLayout()).toBe(layout);
+        });
+
+        it('goes back to three columns once the rows fit again', () => {
+            preferReducedMotion();
+            setUp();
+            openModal();
+            let lastColumn = 3;
+            layOut(() => lastColumn);
+            refit();
+            expect(columnLayout()).toBe('4 columns');
+
+            lastColumn = 1;
+            refit();
+
+            expect(columnLayout()).toBe('3 columns');
+        });
+
+        it('switches to vertical scrolling instead of a sideways column when the open editor does not fit', () => {
+            preferReducedMotion();
+            setUp();
+            openModal();
+            const content = layOut(() => (editor() === null ? 2 : 5));
+            content.scrollLeft = 300;
+
+            startAdding();
+            ResizeObserverStub.resize(editor()!);
+            render();
+
+            expect(columnLayout()).toBe('vertical scroll');
+            expect(content.scrollLeft).toBe(0);
+
+            press(actionPicker(), { key: 'Escape', code: 'Escape' });
+            press(actionPicker(), { key: 'Escape', code: 'Escape' });
+            refit();
+
+            expect(editor()).toBeNull();
+            expect(columnLayout()).not.toBe('vertical scroll');
+        });
+
+        it('keeps scrolling vertically while the rows still do not fit four columns', () => {
+            preferReducedMotion();
+            setUp();
+            openModal();
+            layOut(() => 5, 900);
+            refit();
+
+            refit();
+
+            expect(columnLayout()).toBe('vertical scroll');
+        });
+
+        it('keeps the Add shortcut label when the button is clipped for a moment', () => {
+            setUp();
+            vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+                DOMRect.fromRect({ x: 5000, y: 0, width: 120, height: 28 })
+            );
+
+            openModal();
+            render();
+
+            const addButton = buttonNamed('Add shortcut');
+            expect(addButton.classList).not.toContain('btn--only-icon');
+            expect(text(addButton)).toBe('Add shortcut');
+        });
+    });
+
+    describe('node keys', () => {
+        function loadSettings(settings: unknown): void {
+            TestBed.inject(ProfileService).getCurrentUser().subscribe();
+            httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush({ ...BASE_USER, custom_shortcuts: settings });
+        }
+
+        function rowMessage(): string {
+            const message = cardOf('Nodes').querySelector('.shortcuts__row-feedback');
+            return message ? text(message) : '';
+        }
+
+        it('edits only the key of a node row and keeps its reset next to it', () => {
+            setUp();
+            openModal();
+
+            click(buttonNamed('Edit Python Code Node key'));
+
+            expect(editor()!.querySelector('input[role="combobox"]')).toBeNull();
+            expect(document.activeElement).toBe(keysBox());
+            expect(text(keysBox())).toContain('Press keys');
+            expect(hasButton('Reset Python Code Node key')).toBe(false);
+
+            press(keysBox(), { key: 'q', code: 'KeyQ', altKey: true });
+            press(keysBox(), { key: 'Enter', code: 'Enter' });
+
+            expect(editor()).toBeNull();
+            expect(nodeRow('Python Code Node')).toBe('Alt Q');
+            expect(hasButton('Reset Python Code Node key')).toBe(true);
+            expect(document.activeElement).toBe(buttonNamed('Edit Python Code Node key'));
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [], overrides: { 'node.python': 'Alt+KeyQ' } },
+            });
+        });
+
+        it("warns before taking another node's key and leaves that node Not set", () => {
+            setUp();
+            openModal();
+
+            click(buttonNamed('Edit Python Code Node key'));
+            press(keysBox(), { key: 'T', code: 'KeyT', shiftKey: true });
+
+            expect(feedback()).toBe("Shift+T is Task Node's key — saving moves it here; Task Node will have no key");
+            click(saveButton());
+
+            expect(nodeRow('Python Code Node')).toBe('Shift T');
+            expect(nodeRow('Task Node')).toBe('Not set');
+            nextPatch().succeed();
+        });
+
+        it('refuses an Additional key for a node row', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Alt+KeyB' }]);
+            openModal();
+
+            click(buttonNamed('Edit Python Code Node key'));
+            press(keysBox(), { key: 'b', code: 'KeyB', altKey: true });
+
+            expect(feedback()).toBe('Already used by your Agent Node shortcut');
+            expect(saveButton().disabled).toBe(true);
+        });
+
+        it('can clear a node key, which then shows Not set with a reset', () => {
+            setUp();
+            openModal();
+
+            click(buttonNamed('Edit Python Code Node key'));
+            press(keysBox(), { key: 'Escape', code: 'Escape' });
+            click(buttonNamed('Clear keys', editor()!));
+            keysBox().blur();
+            render();
+            click(saveButton());
+
+            expect(nodeRow('Python Code Node')).toBe('Not set');
+            expect(hasButton('Reset Python Code Node key')).toBe(true);
+            expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: { 'node.python': null } } });
+        });
+
+        it('gives a node whose key an Additional row took a new key', () => {
+            setUp();
+            loadUser([{ action: 'node.agent', keys: 'Shift+KeyP' }]);
+            openModal();
+            expect(nodeRow('Python Code Node')).toBe('Not set');
+
+            click(buttonNamed('Edit Python Code Node key'));
+            press(keysBox(), { key: 'q', code: 'KeyQ', altKey: true });
+            click(saveButton());
+
+            expect(nodeRow('Python Code Node')).toBe('Alt Q');
+            nextPatch().succeed();
+        });
+
+        it('shows reset only on changed node rows and gives the node its own key back', () => {
+            setUp();
+            loadSettings({ custom: [], overrides: { 'node.python': 'Alt+KeyQ' } });
+            openModal();
+
+            expect(hasButton('Reset Python Code Node key')).toBe(true);
+            expect(hasButton('Reset Task Node key')).toBe(false);
+
+            click(buttonNamed('Reset Python Code Node key'));
+
+            expect(nodeRow('Python Code Node')).toBe('Shift P');
+            expect(hasButton('Reset Python Code Node key')).toBe(false);
+            expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: {} } });
+        });
+
+        it('says who holds the default when a node key cannot be reset', () => {
+            setUp();
+            loadSettings({
+                custom: [{ action: 'node.agent', keys: 'Shift+KeyP' }],
+                overrides: { 'node.python': 'Alt+KeyQ' },
+            });
+            openModal();
+
+            click(buttonNamed('Reset Python Code Node key'));
+
+            expect(rowMessage()).toBe('Already used by your Agent Node shortcut');
+            expect(nodeRow('Python Code Node')).toBe('Alt Q');
+        });
+
+        it('offers Reset to defaults for changed node keys alone and clears them', () => {
+            setUp();
+            loadSettings({ custom: [], overrides: { 'node.python': 'Alt+KeyQ' } });
+            openModal();
+
+            click(buttonNamed('Reset to defaults'));
+            const dialog = document.querySelector('app-confirmation-dialog')!;
+            expect(text(dialog.querySelector('.dialog-message')!)).toBe('Every node gets its own key back.');
+            click(buttonNamed('Reset', dialog));
+
+            expect(nodeRow('Python Code Node')).toBe('Shift P');
+            expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: {} } });
+        });
+
+        it('closes the node key editor on Esc and returns focus to its edit button', () => {
+            setUp();
+            openModal();
+
+            click(buttonNamed('Edit Python Code Node key'));
+            press(keysBox(), { key: 'Escape', code: 'Escape' });
+            press(keysBox(), { key: 'Escape', code: 'Escape' });
+
+            expect(editor()).toBeNull();
+            expect(document.activeElement).toBe(buttonNamed('Edit Python Code Node key'));
+            expect(closedCount).toBe(0);
         });
     });
 });

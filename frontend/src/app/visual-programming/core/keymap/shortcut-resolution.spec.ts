@@ -6,8 +6,10 @@ import {
     applyShortcutChange,
     CustomShortcutRow,
     haveSameEntries,
+    haveSameOverrides,
     identifyRows,
     readCustomEntries,
+    readKeyOverrides,
     resolveShortcuts,
     ShortcutChange,
     ShortcutChangeResult,
@@ -126,6 +128,8 @@ describe('resolveShortcuts', () => {
         ['a malformed chord', rows(['node.agent', 'Shift+'])],
         ['a bare key', rows(['node.agent', 'KeyQ'])],
         ['a mac Ctrl chord', rows(['node.agent', 'Ctrl+KeyQ'])],
+        ['the sidebar next-page key', rows(['node.agent', 'Alt+ArrowDown'])],
+        ['the sidebar previous-page key', rows(['editing.save', 'Alt+ArrowUp'])],
     ])('keeps a stored row with %s without a key and keeps every default', (_case, value) => {
         const resolved = resolveShortcuts(value);
 
@@ -643,6 +647,7 @@ describe('shortcuts with parameters (Subgraph)', () => {
                 { action: 'node.agent', keys: 'Alt+KeyB' },
                 { action: 'node.task', keys: null },
             ],
+            overrides: {},
         });
         expect(Number.isInteger(settings.custom[0].params?.['flowId'])).toBe(true);
     });
@@ -670,5 +675,210 @@ describe('shortcuts with parameters (Subgraph)', () => {
         const [entry] = readCustomEntries({ custom: [{ action: 'node.subgraph', keys: 'Alt+Digit1', params }] });
 
         expect(entry).toStrictEqual(subgraphEntry(expected));
+    });
+});
+
+describe('node key overrides', () => {
+    function overrides(...entries: readonly (readonly [string, KeyChord | null])[]): Map<string, KeyChord | null> {
+        return new Map(entries);
+    }
+
+    function overridesAfter(result: ShortcutChangeResult): Record<string, KeyChord | null> {
+        if (!result.accepted) throw new Error(`change was rejected: ${result.rejection}`);
+        return Object.fromEntries(result.overrides);
+    }
+
+    it.each<[string, readonly CustomShortcutRow[], Map<string, KeyChord | null>, Record<string, readonly KeyChord[]>]>([
+        [
+            'an override replaces the node key',
+            NO_ROWS,
+            overrides(['node.python', 'Alt+KeyQ']),
+            { 'node.python': ['Alt+KeyQ'] },
+        ],
+        [
+            'a cleared override leaves the node without a key',
+            NO_ROWS,
+            overrides(['node.python', null]),
+            { 'node.python': [] },
+        ],
+        [
+            'an override on another node key takes it from that node',
+            NO_ROWS,
+            overrides(['node.python', 'Shift+KeyT']),
+            { 'node.python': ['Shift+KeyT'], 'node.task': [] },
+        ],
+        [
+            'an Additional row beats an override on the same key',
+            rows(['node.agent', 'Alt+KeyQ']),
+            overrides(['node.python', 'Alt+KeyQ']),
+            { 'node.python': [], 'node.agent': ['Shift+KeyA'] },
+        ],
+        [
+            'an Additional row beats the override of its own node and is added after it',
+            rows(['node.python', 'Alt+KeyW']),
+            overrides(['node.python', 'Alt+KeyQ']),
+            { 'node.python': ['Alt+KeyQ'] },
+        ],
+    ])('resolves %s', (_case, value, stored, expected) => {
+        const resolved = resolveShortcuts(value, stored);
+
+        for (const [action, chords] of Object.entries(expected)) {
+            expect(resolved.builtInBindings.get(action as EditorActionId)).toEqual(chords);
+        }
+    });
+
+    it.each<[string, KeyChord | null, string | null, 'custom' | 'override' | 'default' | null]>([
+        ['the override key', 'Alt+KeyQ', 'node.python', 'override'],
+        ['the freed default key', 'Shift+KeyP', null, null],
+        ['an Additional key', 'Alt+KeyB', 'node.agent', 'custom'],
+        ['another node default key', 'Shift+KeyT', 'node.task', 'default'],
+    ])('names who holds %s with an override set', (_case, chord, action, source) => {
+        const holder = resolveShortcuts(
+            rows(['node.agent', 'Alt+KeyB']),
+            overrides(['node.python', 'Alt+KeyQ'])
+        ).holders.get(chord!);
+
+        expect(holder?.action ?? null).toBe(action);
+        expect(holder?.source ?? null).toBe(source);
+    });
+
+    it.each<[string, Map<string, KeyChord | null>]>([
+        ['an unknown action', overrides(['node.gone', 'Alt+KeyQ'])],
+        ['an editor action', overrides(['editing.save', 'Alt+KeyQ'])],
+        ['Subgraph, which has no built-in key', overrides(['node.subgraph', 'Alt+KeyQ'])],
+        ['a reserved key', overrides(['node.python', 'Mod+KeyC'])],
+        ['a key without a modifier', overrides(['node.python', 'KeyQ'])],
+        ['the node own default', overrides(['node.python', 'Shift+KeyP'])],
+        ['the sidebar page key', overrides(['node.python', 'Alt+ArrowUp'])],
+    ])('ignores a stored override for %s', (_case, stored) => {
+        const resolved = resolveShortcuts(NO_ROWS, stored);
+
+        expect(Object.fromEntries(resolved.bindings)).toEqual(bindingsOf(NO_ROWS));
+        expect(resolved.overrides.size).toBe(0);
+    });
+
+    it('keeps the first of two overrides on the same key and gives the second node its default back', () => {
+        const resolved = resolveShortcuts(NO_ROWS, overrides(['node.python', 'Alt+KeyQ'], ['node.task', 'Alt+KeyQ']));
+
+        expect(resolved.builtInBindings.get('node.python')).toEqual(['Alt+KeyQ']);
+        expect(resolved.builtInBindings.get('node.task')).toEqual(['Shift+KeyT']);
+    });
+
+    it.each<
+        [string, Map<string, KeyChord | null>, KeyChord | null, EditorActionId | null, Record<string, KeyChord | null>]
+    >([
+        ['a free key', overrides(), 'Alt+KeyQ', null, { 'node.python': 'Alt+KeyQ' }],
+        ['no key', overrides(), null, null, { 'node.python': null }],
+        [
+            'the node own default, which drops the override',
+            overrides(['node.python', 'Alt+KeyQ']),
+            'Shift+KeyP',
+            null,
+            {},
+        ],
+        ['another node default key', overrides(), 'Shift+KeyT', 'node.task', { 'node.python': 'Shift+KeyT' }],
+        [
+            'another node override key, which leaves that node without a key',
+            overrides(['node.task', 'Alt+KeyQ']),
+            'Alt+KeyQ',
+            'node.task',
+            { 'node.python': 'Alt+KeyQ', 'node.task': null },
+        ],
+    ])('sets a node key to %s', (_case, stored, chord, displaces, expected) => {
+        const result = applyShortcutChange(NO_ROWS, { kind: 'set-node-key', action: 'node.python', chord }, stored);
+
+        expect(result).toMatchObject({ accepted: true, displaces });
+        expect(overridesAfter(result)).toEqual(expected);
+    });
+
+    it.each<[string, readonly CustomShortcutRow[], KeyChord, string, EditorActionId | null]>([
+        ['an Additional key', rows(['node.agent', 'Alt+KeyB']), 'Alt+KeyB', 'taken', 'node.agent'],
+        ['a reserved key', NO_ROWS, 'Mod+KeyC', 'reserved', null],
+        ['a key without a modifier', NO_ROWS, 'KeyQ', 'bare-key', null],
+    ])('refuses a node key on %s', (_case, value, chord, rejection, takenBy) => {
+        const result = applyShortcutChange(value, { kind: 'set-node-key', action: 'node.python', chord });
+
+        expect(result).toMatchObject({ accepted: false, rejection });
+        expect(result.accepted ? null : (result.takenBy?.action ?? null)).toBe(takenBy);
+    });
+
+    it('resets one node key and leaves the other overrides alone', () => {
+        const result = applyShortcutChange(
+            NO_ROWS,
+            { kind: 'reset-node-key', action: 'node.python' },
+            overrides(['node.python', 'Alt+KeyQ'], ['node.task', null])
+        );
+
+        expect(overridesAfter(result)).toEqual({ 'node.task': null });
+    });
+
+    it.each<[string, readonly CustomShortcutRow[], Map<string, KeyChord | null>, EditorActionId]>([
+        ['an Additional row', rows(['node.agent', 'Shift+KeyP']), overrides(['node.python', 'Alt+KeyQ']), 'node.agent'],
+        ['another override', NO_ROWS, overrides(['node.python', 'Alt+KeyQ'], ['node.task', 'Shift+KeyP']), 'node.task'],
+    ])('refuses to reset a node key whose default %s now holds', (_case, value, stored, holder) => {
+        const result = applyShortcutChange(value, { kind: 'reset-node-key', action: 'node.python' }, stored);
+
+        expect(result).toMatchObject({ accepted: false, rejection: 'taken', takenBy: { action: holder } });
+    });
+
+    it('takes an override key for an Additional row and leaves that node without a key', () => {
+        const result = applyShortcutChange(
+            NO_ROWS,
+            { kind: 'add-custom', id: 'new', action: 'editing.save', chord: 'Alt+KeyQ' },
+            overrides(['node.python', 'Alt+KeyQ'])
+        );
+
+        expect(result).toMatchObject({ accepted: true, displaces: 'node.python' });
+        expect(overridesAfter(result)).toEqual({ 'node.python': null });
+    });
+
+    it('clears every override on reset to defaults', () => {
+        const result = applyShortcutChange(
+            rows(['editing.save', 'Alt+KeyS']),
+            { kind: 'reset-to-defaults' },
+            overrides(['node.python', 'Alt+KeyQ'], ['node.task', null])
+        );
+
+        expect(overridesAfter(result)).toEqual({});
+        expect(entriesOf(rowsAfter(result))).toEqual([['editing.save', 'Alt+KeyS']]);
+    });
+
+    it('refuses an override for an action without a built-in node key as a programming error', () => {
+        expect(() =>
+            applyShortcutChange(NO_ROWS, { kind: 'set-node-key', action: 'editing.save', chord: 'Alt+KeyQ' })
+        ).toThrow();
+    });
+
+    it('stores overrides next to the Additional rows', () => {
+        expect(toShortcutSettings(rows(['editing.save', 'Alt+KeyS']), overrides(['node.python', null]))).toStrictEqual({
+            custom: [{ action: 'editing.save', keys: 'Alt+KeyS' }],
+            overrides: { 'node.python': null },
+        });
+    });
+
+    it.each<[string, unknown, Record<string, KeyChord | null>]>([
+        [
+            'overrides',
+            { custom: [], overrides: { 'node.python': 'Alt+KeyQ', 'node.task': null } },
+            { 'node.python': 'Alt+KeyQ', 'node.task': null },
+        ],
+        ['a value without overrides', { custom: [] }, {}],
+        ['entries of the wrong shape', { overrides: { 'node.python': 5, 'node.task': ['Alt+KeyQ'] } }, {}],
+        ['overrides that are a list', { overrides: ['node.python'] }, {}],
+    ])('reads %s without crashing', (_case, value, expected) => {
+        expect(Object.fromEntries(readKeyOverrides(value))).toEqual(expected);
+    });
+
+    it.each<[string, Map<string, KeyChord | null>, Map<string, KeyChord | null>, boolean]>([
+        [
+            'the same overrides in another order',
+            overrides(['a', 'X'], ['b', null]),
+            overrides(['b', null], ['a', 'X']),
+            true,
+        ],
+        ['a cleared override against none', overrides(['a', null]), overrides(), false],
+        ['another key', overrides(['a', 'X']), overrides(['a', 'Y']), false],
+    ])('compares %s', (_case, first, second, same) => {
+        expect(haveSameOverrides(first, second)).toBe(same);
     });
 });

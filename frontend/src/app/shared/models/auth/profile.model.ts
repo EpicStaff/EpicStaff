@@ -26,11 +26,16 @@ export interface CustomShortcutEntry {
     readonly params?: ShortcutParams;
 }
 
-export interface ShortcutSettings {
-    readonly custom: readonly CustomShortcutEntry[];
+export interface NodeKeyOverrides {
+    readonly [action: string]: string | null;
 }
 
-export const EMPTY_SHORTCUT_SETTINGS: ShortcutSettings = { custom: [] };
+export interface ShortcutSettings {
+    readonly custom: readonly CustomShortcutEntry[];
+    readonly overrides: NodeKeyOverrides;
+}
+
+export const EMPTY_SHORTCUT_SETTINGS: ShortcutSettings = { custom: [], overrides: {} };
 
 export interface UpdateMeRequest {
     display_name: string;
