@@ -90,7 +90,7 @@ async def _run(
     monkeypatch.setattr(settings, "STORAGE_PORT", "9000")
     monkeypatch.setattr(settings, "REQUIRE_SIGNAL_ISOLATION", require_signal_isolation)
     monkeypatch.setattr(settings, "BLOCK_PRIVATE_NETWORK", block_private_network)
-    monkeypatch.setenv("SANDBOX_REQUIRE_ISOLATION", "true" if require_isolation else "false")
+    monkeypatch.setattr(settings, "REQUIRE_ISOLATION", require_isolation)
     monkeypatch.setattr(egress_firewall, "is_active", lambda: firewall_active)
     monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: abi)
     recorded: dict = {}

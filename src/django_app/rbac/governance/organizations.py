@@ -127,13 +127,13 @@ class OrganizationManagementService(CrossOrgResourceService):
         return qs
 
     @transaction.atomic
-    def create_organization(self, name: str) -> Organization:
+    def create_organization(self, name: str, audit_retention_days: int = 0) -> Organization:
         try:
             org = Organization.objects.create(name=name)
         except IntegrityError as exc:
             raise OrganizationNameConflictError() from exc
         org_storage_provisioning_service.provision_for_organization(org)
-        OrganizationConfig.objects.create(org=org)
+        OrganizationConfig.objects.create(org=org, audit_retention_days=audit_retention_days)
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
@@ -151,11 +151,21 @@ class OrganizationManagementService(CrossOrgResourceService):
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
-    def update_audit_retention(self, org_id: int, audit_retention_days: int) -> Organization:
+    def update_audit_retention(
+        self, org_id: int, audit_retention_days: int, actor=None
+    ) -> Organization:
         """Lives on OrganizationConfig, not Organization itself. get_or_create
         is defensive insurance only - every org should already have a config
         row from create_organization (or the migration backfill, for
-        pre-existing orgs)."""
+        pre-existing orgs).
+
+        With `actor`, requires ORGANIZATIONS.UPDATE in `org_id` (404 when the
+        org is not visible to them), as `rename_organization` does. Without
+        it, the caller must already have authorized the org (the self-service
+        `/settings/` view gates on the active org)."""
+        if actor is not None:
+            effective = self.resolve_for_write(actor, org_id, action=Permission.UPDATE)
+            self.assert_can(effective, Permission.UPDATE)
         org = self._get_locked_org(org_id)
         config, _ = OrganizationConfig.objects.select_for_update().get_or_create(org=org)
         if config.audit_retention_days != audit_retention_days:

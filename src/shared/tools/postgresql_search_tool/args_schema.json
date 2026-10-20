@@ -5,7 +5,18 @@
     "sql_query": {
       "type": "string",
       "description": "SQL query that should be executed on the provided database."
+    },
+    "db_uri": {
+      "type": "string",
+      "description": "SQLAlchemy connection URI of the PostgreSQL database, e.g. postgresql+psycopg2://user:password@host:5432/database. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
+    },
+    "read_only": {
+      "type": "boolean",
+      "description": "When true (the default), only SELECT queries are allowed. Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "default": true,
+      "input_type": "user_input"
     }
   },
-  "required": ["sql_query"]
+  "required": ["sql_query", "db_uri"]
 }

@@ -1,0 +1,12 @@
+// Phone and touch details, for the screens that support phones (the chat area so far).
+
+// The smallest comfortable touch target (Apple's Human Interface Guidelines).
+$target-size: 44px;
+
+// iOS Safari zooms the page into a focused field whose text is under 16px. Never below that, and larger when the user
+// set a larger default font size.
+$input-font-size: max(1rem, 16px);
+
+// The iOS navigation push: a screen slides in from the right, a drawer from the left.
+$push-duration: 350ms;
+$push-easing: cubic-bezier(0.32, 0.72, 0, 1);

@@ -401,14 +401,15 @@ Service-to-service JWT validator. Two-layer auth: **the caller authenticates
 with an API key**, and **the token in the body is the one being inspected**.
 
 **Why it exists:**
-- Internal services / sidecars that should not hold `JWT_SECRET` can verify
+- Internal services / sidecars that should not hold the JWT signing key
+  (`DJANGO_SECRET_KEY`, see [signing-keys.md](../signing-keys.md)) can verify
   bearer tokens over HTTP instead of decoding locally.
 - Gateways or reverse proxies (Nginx + njs, edge auth) can validate incoming
   tokens with their own service API key.
 - Operational debugging — confirm a token is still valid and see who owns it
   without decoding claims by hand.
 
-`django_app` signs its own JWTs with `JWT_SECRET` and does not need this
+`django_app` signs its own JWTs with `DJANGO_SECRET_KEY` and does not need this
 endpoint internally; it is exposed for future internal / edge callers and
 for quick health-checks of the login chain.
 
@@ -423,12 +424,20 @@ for quick health-checks of the login chain.
 - **Response 200 — active token:**
   ```json
   {
-    "active":  true,
-    "user_id": 1,
-    "email":   "admin@acme.com",
-    "scopes":  []
+    "active":        true,
+    "user_id":       1,
+    "email":         "admin@acme.com",
+    "display_name":  "Admin",
+    "scopes":        [],
+    "org_ids":       [1, 4],
+    "is_superadmin": false
   }
   ```
+  `display_name` is never empty: the user's stored display name, or — when
+  that is NULL (never set on an older user, or cleared through
+  `PATCH /api/profile/`) — the name derived from the email
+  (`admin@acme.com` → `Admin`).
+  `org_ids` lists the organizations the user is a member of.
   `scopes` is always `[]` — access tokens carry no scopes claim; the field
   is kept in the response shape for forward compatibility.
 - **Response 200 — expired/invalid/tampered token:** `{ "active": false }`

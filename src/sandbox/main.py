@@ -4,14 +4,15 @@ import os
 import shutil
 
 import egress_firewall
-import isolation
 import landlock
 import settings
 from dynamic_venv_executor_chain import SANDBOX_UID, DynamicVenvExecutorChain
 from network_policy import NetworkPolicy, decide_network_policy
 from services.redis_service import RedisService
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, CodeTaskData
+from src.shared.redis_keys import crew_code_result_channel
 from utils.logger import logger
 
 # Deliberately no STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY here:
@@ -62,8 +63,8 @@ def log_secret_masking_state():
         logger.info("Secret masking is ON: secret values are redacted from output.")
     else:
         logger.warning(
-            "Secret masking is OFF (SANDBOX_MASK_SECRET=false): plaintext secret values will appear "
-            "in stdout, stderr, execution results and these logs. Do not use this "
+            "Secret masking is OFF (SANDBOX_MASK_SECRET=false): plaintext user secret values "
+            "will appear in stdout, stderr, execution results and these logs. Do not use this "
             "with real credentials."
         )
 
@@ -75,18 +76,18 @@ def log_isolation_state():
     abi = landlock.abi_version()
     if abi >= 1:
         logger.info("Filesystem isolation is ON: Landlock ABI {} enforced per execution.", abi)
-    elif isolation.isolation_required():
+    elif settings.REQUIRE_ISOLATION:
         logger.warning(
             "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
             "{} is not false: executions will be refused until this is resolved.",
-            isolation.REQUIRE_ISOLATION_ENV_VAR,
+            settings.REQUIRE_ISOLATION_ENV_VAR,
         )
     else:
         logger.warning(
             "Filesystem isolation is UNAVAILABLE (kernel lacks Landlock) and "
             "{}=false: executions will run UNCONFINED. Do not use this in "
             "production.",
-            isolation.REQUIRE_ISOLATION_ENV_VAR,
+            settings.REQUIRE_ISOLATION_ENV_VAR,
         )
 
     # Private-network isolation log
@@ -204,11 +205,30 @@ async def listen_redis():
             await asyncio.sleep(1)
 
 
+async def publish_code_result(code_task_data: CodeTaskData, result: CodeResultData) -> None:
+    """Publish the execution's result to the channel its caller listens on.
+
+    Every result goes through here, so the normal, cancelled and failed paths
+    cannot drift apart on where a caller expects its result.
+    """
+    channel = settings.CODE_RESULT_CHANNEL
+    if code_task_data.reply_to_crew_channel:
+        channel = crew_code_result_channel(channel)
+    await redis_service.async_publish(channel=channel, message=result.model_dump())
+
+
 async def run(code_task_data: CodeTaskData):
     """
     Run the dynamic virtual environment execution chain.
     """
     execution_dir = settings.OUTPUT_PATH / code_task_data.execution_id
+    logger.log(
+        BENCH_LEVEL,
+        "bench {checkpoint}",
+        checkpoint="exec_start",
+        session_id=code_task_data.session_id,
+        execution_id=code_task_data.execution_id,
+    )
     try:
         try:
             result = await executor_chain.run(
@@ -228,24 +248,23 @@ async def run(code_task_data: CodeTaskData):
         except asyncio.CancelledError:
             # A temporary storage credential may already have been minted for
             # this execution_id by django_app and handed over in the task
-            # payload. Cancellation must still reach the code_results publish
-            # below, or django_app's code_results handler never revokes it and
-            # it leaks until the TTL sweep. Publish the same way the two error
-            # paths below do, then re-raise so the task correctly reports as
-            # cancelled.
+            # payload. Cancellation must still publish a result, or
+            # django_app's code_results handler never revokes it and it leaks
+            # until the TTL sweep. Publish the same way the two paths below do,
+            # then re-raise so the task correctly reports as cancelled.
             logger.warning(
                 "Execution cancelled (execution_id={}); publishing result so any minted "
                 "storage credential is revoked",
                 code_task_data.execution_id,
             )
-            await redis_service.async_publish(
-                channel=settings.CODE_RESULT_CHANNEL,
-                message=CodeResultData(
+            await publish_code_result(
+                code_task_data,
+                CodeResultData(
                     execution_id=code_task_data.execution_id,
                     stderr="Execution cancelled.",
                     stdout="",
                     returncode=1,
-                ).model_dump(),
+                ),
             )
             raise
         except Exception as e:
@@ -253,24 +272,32 @@ async def run(code_task_data: CodeTaskData):
             # return an error CodeResultData rather than raise (see
             # dynamic_venv_executor_chain.py). This is defense in depth: if
             # something still escapes uncaught, we must still publish a
-            # code_results message so callers waiting on this execution_id
+            # result so callers waiting on this execution_id
             # don't hang, and so any temporary storage credential minted for
             # it is revoked by django_app's code_results handler.
             logger.exception(
                 "Unhandled exception running execution chain (execution_id={})",
                 code_task_data.execution_id,
             )
-            await redis_service.async_publish(
-                channel=settings.CODE_RESULT_CHANNEL,
-                message=CodeResultData(
+            await publish_code_result(
+                code_task_data,
+                CodeResultData(
                     execution_id=code_task_data.execution_id,
                     stderr=f"Unhandled exception running execution chain: {e}",
                     stdout="",
                     returncode=1,
-                ).model_dump(),
+                ),
             )
             return
 
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_end",
+            session_id=code_task_data.session_id,
+            execution_id=code_task_data.execution_id,
+            returncode=result.returncode,
+        )
         if code_task_data.use_storage and code_task_data.storage_org_prefix:
             try:
                 mutations_path = (
@@ -294,9 +321,7 @@ async def run(code_task_data: CodeTaskData):
             except Exception as e:
                 logger.warning(f"Failed to publish storage mutations: {e}")
 
-        await redis_service.async_publish(
-            channel=settings.CODE_RESULT_CHANNEL, message=result.model_dump()
-        )
+        await publish_code_result(code_task_data, result)
 
     finally:
         if execution_dir.exists():

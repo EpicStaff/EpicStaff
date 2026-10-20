@@ -1,0 +1,32 @@
+[project]
+name = "chat"
+version = "1.1.0"
+description = "EpicStaff chat service: exposes flows as chats to a widget and an operator inbox"
+authors = [{ name = "EpicStaff" }]
+requires-python = "==3.12.10"
+dependencies = [
+    "alembic==1.20.0",
+    "httpx==0.28.1",
+    "litestar==2.24.0",
+    "loguru==0.7.3",
+    "psycopg[binary]==3.3.4",
+    "pydantic==2.13.4",
+    "pyjwt==2.13.0",
+    "redis==5.3.1",
+    "sqlalchemy==2.0.51",
+    "uuid-utils==0.17.0",
+    "uvicorn==0.52.3",
+]
+
+[dependency-groups]
+dev = [
+    "fakeredis==2.39.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+transitive-pins = [
+    "idna==3.18",
+]
+
+[tool.uv]
+package = false

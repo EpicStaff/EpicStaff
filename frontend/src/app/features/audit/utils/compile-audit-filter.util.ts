@@ -10,8 +10,8 @@ import {
 } from '../models/audit-filter.models';
 import { AuditMatchScope } from '../models/audit-session.models';
 
-const TOOL_NAME_FIELD = 'details.data.name';
-const TOKENS_FIELD = 'details.data.token_usage.total_tokens';
+export const TOOL_NAME_FIELD = 'details.data.name';
+export const TOKENS_FIELD = 'details.data.token_usage.total_tokens';
 
 export interface AuditFilterQuery {
     filters?: AuditFilterNode;

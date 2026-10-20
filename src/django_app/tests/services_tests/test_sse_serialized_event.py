@@ -8,6 +8,10 @@ class _StreamOfSerializedEvents(SSEMixin):
         super().__init__(**kwargs)
         self._events = events
 
+    async def authorize(self, request, *args, **kwargs):
+        # Streamed through event_stream() directly: there is no request to authorize.
+        return None
+
     async def get_initial_data(self):
         for event in self._events:
             yield event
