@@ -1058,6 +1058,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public insertPreStorageCode(code: string): void {
         if (!this.preCode.includes('epicstaff_storage')) {
             this.preCode = code + '\n\n' + this.preCode;
+            this.syncExecutionTimeoutControls();
             this.notifyExternalChange();
             this.codeChange$.next();
             this.cdr.markForCheck();
@@ -1078,6 +1079,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public insertPostStorageCode(code: string): void {
         if (!this.postCode.includes('epicstaff_storage')) {
             this.postCode = code + '\n\n' + this.postCode;
+            this.syncExecutionTimeoutControls();
             this.notifyExternalChange();
             this.codeChange$.next();
             this.cdr.markForCheck();

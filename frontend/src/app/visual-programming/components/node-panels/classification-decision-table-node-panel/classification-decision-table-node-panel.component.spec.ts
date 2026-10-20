@@ -693,4 +693,16 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
         expect(panel.onSaveSilently()).toBeNull();
     });
+
+    it('checks the timeout of an empty block once enabling storage inserts its code', () => {
+        open(undefined, undefined, '  ');
+        expect(fields().preExecutionTimeout.control.disabled).toBe(true);
+
+        panel.insertPreStorageCode('from epicstaff_storage import storage');
+
+        expect(fields().preExecutionTimeout.control.enabled).toBe(true);
+        fields().preExecutionTimeout.edit(TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds - 1);
+        expect(panel.form.invalid).toBe(true);
+        expect(panel.onSaveSilently()).toBeNull();
+    });
 });
