@@ -15,7 +15,7 @@ import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config';
 
 export interface ListOrganizationsParams {
-    is_active?: boolean;
+    is_active?: boolean[];
     search?: string;
     ordering?: string;
     page?: number;

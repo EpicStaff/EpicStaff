@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     AppTableCellDirective,
     AppTableColumnDef,
@@ -18,7 +18,8 @@ import {
 } from '@shared/components';
 import { ActionCode, GetRoleResponse, ResourceCode } from '@shared/models';
 import { escapeHtml } from '@shared/utils';
-import { EMPTY, finalize, switchMap } from 'rxjs';
+import { combineLatest, debounceTime, EMPTY, finalize, switchMap } from 'rxjs';
+import { catchError, distinctUntilChanged, tap } from 'rxjs/operators';
 
 import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
@@ -34,7 +35,7 @@ import {
 } from '../../../components/create-role-dialog/create-role-dialog.component';
 import { RoleInfoDialogComponent } from '../../../components/role-info-dialog/role-info-dialog.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
-import { RolesService } from '../../../services/admin/roles.service';
+import { LoadRolesParams, RolesService } from '../../../services/admin/roles.service';
 import { rbacErrorMessage } from '../../../utils';
 
 @Component({
@@ -54,7 +55,7 @@ import { rbacErrorMessage } from '../../../utils';
         ViewButtonComponent,
     ],
 })
-export class RolesTabComponent implements OnInit {
+export class RolesTabComponent {
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private toast = inject(ToastService);
@@ -67,6 +68,7 @@ export class RolesTabComponent implements OnInit {
     readonly searchTerm = signal('');
     readonly isLoading = signal(true);
     readonly orgFilterIds = signal<number[]>([]);
+    readonly reloadTrigger = signal(0);
 
     /** All orgs whose custom roles the current user can list. Populated once on init. */
     readonly readableOrgs = signal<{ id: number; name: string }[]>([]);
@@ -123,9 +125,34 @@ export class RolesTabComponent implements OnInit {
         );
     });
 
-    ngOnInit(): void {
+    private readonly filters$ = combineLatest([
+        toObservable(this.orgFilterIds),
+        toObservable(this.searchTerm).pipe(debounceTime(300), distinctUntilChanged()),
+        toObservable(this.reloadTrigger),
+    ]);
+
+    constructor() {
         this.loadReadableOrgs();
-        if (!this.activeOrgDefault()) this.reloadRoles();
+        this.filters$
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                tap(() => this.isLoading.set(true)),
+                switchMap(() => {
+                    const params: LoadRolesParams = {};
+                    const orgIds = this.orgFilterIds();
+                    const search = this.searchTerm().trim();
+                    if (orgIds.length) params.orgIds = orgIds;
+                    if (search) params.search = search;
+                    return this.rolesService.loadRoles(params).pipe(
+                        catchError((err) => {
+                            this.toast.error(rbacErrorMessage(err, 'Failed to load roles'));
+                            return EMPTY;
+                        }),
+                        finalize(() => this.isLoading.set(false))
+                    );
+                })
+            )
+            .subscribe();
     }
 
     private loadReadableOrgs(): void {
@@ -139,20 +166,6 @@ export class RolesTabComponent implements OnInit {
             return;
         }
         this.readableOrgs.set(this.permissionsService.orgsWith(ResourceCode.Roles, ActionCode.Read));
-    }
-
-    private reloadRoles(): void {
-        this.isLoading.set(true);
-        const orgIds = this.orgFilterIds();
-        this.rolesService
-            .loadRoles(orgIds.length ? { orgIds } : {})
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                finalize(() => this.isLoading.set(false))
-            )
-            .subscribe({
-                error: (err) => this.toast.error(rbacErrorMessage(err, 'Failed to load roles')),
-            });
     }
 
     private roleToRow(role: GetRoleResponse): TableRow {
@@ -184,7 +197,6 @@ export class RolesTabComponent implements OnInit {
     onFilterChange(evt: { key: string; values: unknown[] }): void {
         if (evt.key !== 'organization') return;
         this.orgFilterIds.set(evt.values.map((v) => Number(v)).filter((n) => Number.isFinite(n)));
-        this.reloadRoles();
     }
 
     onCreateRole(): void {
@@ -195,7 +207,7 @@ export class RolesTabComponent implements OnInit {
             data: {},
         });
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
-            if (result?.action === 'created') this.reloadRoles();
+            if (result?.action === 'created') this.reloadTrigger.update((v) => v + 1);
         });
     }
 
@@ -223,7 +235,7 @@ export class RolesTabComponent implements OnInit {
             data: { role },
         });
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
-            if (result?.action === 'updated') this.reloadRoles();
+            if (result?.action === 'updated') this.reloadTrigger.update((v) => v + 1);
         });
     }
 
@@ -237,7 +249,7 @@ export class RolesTabComponent implements OnInit {
             data: { source: role },
         });
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
-            if (result === 'copied') this.reloadRoles();
+            if (result === 'copied') this.reloadTrigger.update((v) => v + 1);
         });
     }
 

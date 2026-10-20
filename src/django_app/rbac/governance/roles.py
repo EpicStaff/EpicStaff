@@ -6,7 +6,7 @@ in place via `assert_mutable`.
 from collections import defaultdict
 
 from django.db import IntegrityError, transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from rest_framework.exceptions import PermissionDenied
 
 from rbac.access.asserts import assert_within_ceiling
@@ -285,13 +285,14 @@ class RoleManagementService(CrossOrgResourceService):
         requested = set(org_ids)
         return {scope.org.id: scope.effective for scope in scopes if scope.org.id in requested}
 
-    def list_custom_roles(self, actor, org_ids, scopes=None, assignable_in=None):
+    def list_custom_roles(self, actor, org_ids, scopes=None, assignable_in=None, search=None):
         """Return a queryset of custom roles across the orgs the actor may
         READ. `org_ids` (list) restricts to those orgs — a forbidden id
         raises PermissionDenied (fail-loud). `org_ids=None` means every
         readable org. Superadmin reads all orgs. `scopes` is the caller's
         pre-resolved cross-org scopes (from the door gate's per-request
-        cache); when None the base resolves them itself."""
+        cache); when None the base resolves them itself. `search` applies a
+        case-insensitive filter on name and description."""
         base_qs = (
             Role.objects.filter(is_built_in=False)
             .select_related("org")
@@ -305,6 +306,8 @@ class RoleManagementService(CrossOrgResourceService):
             org_field="org_id",
             scopes=scopes,
         )
+        if search:
+            scoped = scoped.filter(Q(name__icontains=search) | Q(description__icontains=search))
         if assignable_in is None:
             return scoped
         # Each custom role lives in exactly one org, so it is compared there.

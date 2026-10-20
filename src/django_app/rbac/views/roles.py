@@ -69,6 +69,7 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
             org_ids=org_ids,
             scopes=scopes,
             assignable_in=assignable_in,
+            search=request.query_params.get("search"),
         )
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(custom_qs, request, view=self)
