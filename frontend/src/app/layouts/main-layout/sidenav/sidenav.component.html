@@ -153,6 +153,8 @@
                     <a
                         class="sidenav-nav-link"
                         [routerLink]="resolveRouteLink(recycleBinNavItem)"
+                        [class.active]="isItemActive(recycleBinNavItem)"
+                        [attr.aria-label]="isExpanded() ? null : recycleBinNavItem.label"
                     >
                         <div class="sidenav-link-icon">
                             <!-- Tabler's outline trash, from the webfont the app ships: the sprite's trash is solid. -->
@@ -161,10 +163,13 @@
                                 aria-hidden="true"
                             ></i>
                         </div>
+                        @if (isExpanded()) {
+                            <span class="sidenav-row-label text-body-medium">{{ recycleBinNavItem.label }}</span>
+                        }
                     </a>
                     <app-tooltip
                         [text]="recycleBinNavItem.label"
-                        [visible]="recycleBinNavItem.showTooltip"
+                        [visible]="recycleBinNavItem.showTooltip && !isExpanded()"
                     ></app-tooltip>
                 </div>
             </li>

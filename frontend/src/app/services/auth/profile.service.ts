@@ -5,11 +5,13 @@ import {
     AccessToken,
     CreateApiKeyRequest,
     CreateApiKeyResponse,
+    EMPTY_SHORTCUT_SETTINGS,
     GetMeResponse,
     GetMyApiKeyResponse,
     PasswordChangeConfirmRequest,
     PasswordChangeVerifyRequest,
     PasswordChangeVerifyResponse,
+    ShortcutSettings,
     UpdateMeRequest,
     UserRole,
 } from '@shared/models';
@@ -39,6 +41,10 @@ export class ProfileService {
     currentUserSignal = this.currentUser.asReadonly();
 
     isMeSuperAdmin = computed(() => this.currentUser()?.is_superadmin ?? false);
+
+    readonly shortcutSettings = computed<ShortcutSettings>(
+        () => this.currentUser()?.custom_shortcuts ?? EMPTY_SHORTCUT_SETTINGS
+    );
 
     systemRole = computed(() => {
         const user = this.currentUser();
@@ -92,6 +98,13 @@ export class ProfileService {
 
     updateCurrentUser(dto: UpdateMeRequest): Observable<GetMeResponse> {
         return this.http.patch<GetMeResponse>(this.baseUrl, dto).pipe(tap((user) => this.setUser(user)));
+    }
+
+    updateShortcutSettings(settings: ShortcutSettings): Observable<ShortcutSettings> {
+        return this.http.patch<GetMeResponse>(this.baseUrl, { custom_shortcuts: settings }).pipe(
+            map((user) => user.custom_shortcuts),
+            tap((saved) => this.updateUser({ custom_shortcuts: saved }))
+        );
     }
 
     updateAvatar(avatar: FormData): Observable<GetMeResponse> {

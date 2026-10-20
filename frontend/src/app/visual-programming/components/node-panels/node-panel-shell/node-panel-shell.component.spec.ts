@@ -262,6 +262,72 @@ describe('NodePanelShellComponent', () => {
         });
     });
 
+    describe('keyboard shortcuts', () => {
+        let fixture: ComponentFixture<NodePanelShellComponent>;
+        let emitted: NodeModel[];
+        const editedNode: EndNodeModel = { ...endNode, data: { output_map: { changed: 'value' } } };
+
+        function press(init: KeyboardEventInit, target: EventTarget = window): void {
+            target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+        }
+
+        function editPanel(): void {
+            panelOf(fixture).onOutputMapChange('{"changed": "value"}');
+            fixture.detectChanges();
+        }
+
+        function fieldInsidePanel(): HTMLInputElement {
+            document.body.appendChild(fixture.nativeElement);
+            const field = document.createElement('input');
+            (fixture.nativeElement as HTMLElement).querySelector('main')!.appendChild(field);
+            return field;
+        }
+
+        function selectedNodeId(): string | null {
+            return TestBed.inject(SidePanelService).selectedNodeId();
+        }
+
+        beforeEach(async () => {
+            fixture = await mount(false);
+            emitted = [];
+            fixture.componentInstance.save.subscribe((node) => emitted.push(node));
+        });
+
+        afterEach(() => (fixture.nativeElement as HTMLElement).remove());
+
+        it('saves an edited panel on Escape', () => {
+            editPanel();
+
+            press({ code: 'Escape', key: 'Escape' });
+
+            expect(emitted).toEqual([editedNode]);
+        });
+
+        it('saves an edited panel on Escape pressed in one of its fields', () => {
+            editPanel();
+
+            press({ code: 'Escape', key: 'Escape' }, fieldInsidePanel());
+
+            expect(emitted).toEqual([editedNode]);
+        });
+
+        it('closes an unchanged panel on Escape pressed in one of its fields', () => {
+            press({ code: 'Escape', key: 'Escape' }, fieldInsidePanel());
+
+            expect(emitted).toEqual([]);
+            expect(selectedNodeId()).toBeNull();
+        });
+
+        it('saves the panel and keeps it open on Ctrl+S', () => {
+            editPanel();
+
+            press({ code: 'KeyS', key: 's', ctrlKey: true });
+
+            expect(emitted).toEqual([editedNode]);
+            expect(selectedNodeId()).toBe(endNode.id);
+        });
+    });
+
     describe('trigger node for a user who may update but not run flows', () => {
         const scheduleNode: ScheduleTriggerNodeModel = {
             id: 'schedule-1',

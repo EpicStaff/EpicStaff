@@ -32,6 +32,8 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import { NodePanelShellComponent } from '../../../../visual-programming/components/node-panels/node-panel-shell/node-panel-shell.component';
+import { PythonNodePanelComponent } from '../../../../visual-programming/components/node-panels/python-node-panel/python-node-panel.component';
 import { AgentNode, AgentNodeTaskUi } from '../../../../visual-programming/core/models/agent-node.model';
 import {
     CdtExplanation,
@@ -185,9 +187,11 @@ class FlowHeaderStubComponent {
 class ShortcutsModalStubComponent {
     readonly open = input(false);
     readonly pos = input<unknown>(null);
-    readonly title = input('');
+    readonly heading = input('');
     readonly icon = input<string | null>(null);
     readonly sections = input<unknown[]>([]);
+    readonly flows = input<readonly GetGraphLightRequest[]>([]);
+    readonly currentFlowId = input<number | null>(null);
     readonly closed = output<void>();
 }
 
@@ -284,6 +288,7 @@ describe('FlowVisualProgrammingComponent', () => {
                         can: (_resource: ResourceCode, action: ActionCode) =>
                             action === ActionCode.Use ? canRunFlows() : canUpdateFlows(),
                         canAny: () => true,
+                        canEditSecrets: () => false,
                     },
                 },
                 { provide: LlmConfigStorageService, useValue: { getAllConfigs: () => of([]) } },
@@ -298,11 +303,19 @@ describe('FlowVisualProgrammingComponent', () => {
                         disconnect: vi.fn(),
                     },
                 },
-                { provide: ProfileService, useValue: { currentUserSignal: signal(null) } },
+                {
+                    provide: ProfileService,
+                    useValue: {
+                        currentUserSignal: signal(null),
+                        shortcutSettings: signal({ custom: [] }),
+                    },
+                },
                 { provide: FlowAssistantService, useValue: { isOpen: signal(false), toggle: vi.fn() } },
                 { provide: CdtExplanationsApiService, useValue: explanationsApi },
             ],
         });
+        TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
+        TestBed.overrideComponent(NodePanelShellComponent, { add: { providers: [NodeAuthorshipStore] } });
         TestBed.overrideComponent(FlowVisualProgrammingComponent, {
             set: {
                 imports: [
@@ -327,6 +340,22 @@ describe('FlowVisualProgrammingComponent', () => {
     function liveCanvas(): FlowGraphStubComponent | undefined {
         const element = fixture.nativeElement.querySelector('app-flow-graph');
         return element ? FlowGraphStubComponent.instances.at(-1) : undefined;
+    }
+
+    function pressCtrlS(target: EventTarget = window): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', {
+            code: 'KeyS',
+            key: 's',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        target.dispatchEvent(event);
+        return event;
+    }
+
+    function flowSaveRequestsAcrossAllCanvases(): number {
+        return FlowGraphStubComponent.instances.reduce((count, canvas) => count + canvas.emitSave.mock.calls.length, 0);
     }
 
     function makeLiveFlowDirty(): void {
@@ -410,6 +439,20 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(component.isShortcutsOpen()).toBe(true);
             expect(component.shortcutsPos()).toEqual({ top: 20, left: 48 });
+        });
+
+        it.each([
+            ['moves it up so its bottom stays on screen', 900, 218],
+            ['pins it to the top margin in a window shorter than the modal', 500, 16],
+        ])('when the shortcuts button is low, %s', (_case, windowHeight, expectedTop) => {
+            vi.stubGlobal('innerHeight', windowHeight);
+            try {
+                component.openShortcutsModal(new DOMRect(10, 700, 30, 40));
+
+                expect(component.shortcutsPos()).toEqual({ top: expectedTop, left: 48 });
+            } finally {
+                vi.unstubAllGlobals();
+            }
         });
 
         it('keeps the preview open while the restore dialog is shown and after Cancel', () => {
@@ -652,12 +695,12 @@ describe('FlowVisualProgrammingComponent', () => {
         it('tells the user to exit the preview instead of saving on Ctrl+S', () => {
             makeLiveFlowDirty();
             enterPreview();
-            const event = new KeyboardEvent('keydown', { code: 'KeyS', ctrlKey: true, cancelable: true });
 
-            component.handleCtrlS(event);
+            const event = pressCtrlS();
 
             expect(event.defaultPrevented).toBe(true);
             expect(toast['info']).toHaveBeenCalledWith('Exit preview mode to save');
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(0);
             expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
         });
 
@@ -717,6 +760,101 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(unsavedChangesDialog.confirm).toHaveBeenCalledWith(
                 expect.objectContaining({ dontSaveText: 'Continue' })
             );
+        });
+    });
+
+    describe('shortcuts list', () => {
+        it('gives the shortcuts list its heading without a native tooltip on the whole popover', () => {
+            const element = fixture.debugElement.query(By.directive(ShortcutsModalStubComponent));
+
+            expect(element.nativeElement.hasAttribute('title')).toBe(false);
+            expect((element.componentInstance as ShortcutsModalStubComponent).heading()).toBe('Command & Shortcuts');
+        });
+
+        it('hands the shortcuts list every flow the user can see and which one is being edited', () => {
+            flowsApi['getGraphsLight'].mockReturnValue(
+                of([
+                    { id: 1, uuid: 'graph-uuid', name: 'Flow', description: '' },
+                    { id: 12, uuid: 'uuid-12', name: 'Billing', description: '' },
+                    { id: 34, uuid: 'uuid-34', name: 'Support', description: '' },
+                ])
+            );
+
+            component.refreshCurrentFlow();
+            fixture.detectChanges();
+
+            const shortcutsModal = fixture.debugElement.query(By.directive(ShortcutsModalStubComponent))
+                .componentInstance as ShortcutsModalStubComponent;
+            expect(shortcutsModal.flows().map((flow) => flow.name)).toEqual(['Flow', 'Billing', 'Support']);
+            expect(shortcutsModal.currentFlowId()).toBe(1);
+        });
+    });
+
+    describe('Ctrl+S', () => {
+        const READ_ONLY_MESSAGE = 'You have read-only access to this flow.';
+
+        const pythonNode = {
+            id: 'python-1',
+            backendId: livePython.id,
+            type: NodeType.PYTHON,
+            node_name: 'Python-Node (#1)',
+            python_code_id: 12,
+            data: { code: 'def main(): pass', entrypoint: 'main', libraries: [], secret_ids: [], secret_names: [] },
+            test_input: {},
+            position: { x: 0, y: 0 },
+            ports: null,
+            color: '',
+            icon: '',
+            size: { width: 200, height: 100 },
+            input_map: {},
+            output_variable_path: null,
+        } as unknown as NodeModel;
+
+        async function openNodePanel(): Promise<NodeModel[]> {
+            flowService.setFlow({ nodes: [pythonNode], connections: [] });
+            TestBed.inject(SidePanelService).setSelectedNodeId(pythonNode.id);
+            const panelFixture = TestBed.createComponent(NodePanelShellComponent);
+            panelFixture.componentRef.setInput('node', pythonNode);
+            panelFixture.detectChanges();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            panelFixture.detectChanges();
+            const panelSaves: NodeModel[] = [];
+            panelFixture.componentInstance.save.subscribe((node) => panelSaves.push(node));
+            return panelSaves;
+        }
+
+        it('saves the flow', () => {
+            const event = pressCtrlS();
+
+            expect(event.defaultPrevented).toBe(true);
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(1);
+        });
+
+        it('saves the flow even while typing in a text field', () => {
+            const field = document.body.appendChild(document.createElement('input'));
+
+            pressCtrlS(field);
+            field.remove();
+
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(1);
+        });
+
+        it('says why and saves nothing in a read-only flow', () => {
+            canUpdateFlows.set(false);
+
+            pressCtrlS();
+
+            expect(toast['info']).toHaveBeenCalledWith(READ_ONLY_MESSAGE);
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(0);
+        });
+
+        it('saves both the open node panel and the flow', async () => {
+            const panelSaves = await openNodePanel();
+
+            pressCtrlS();
+
+            expect(panelSaves.map((node) => node.id)).toEqual([pythonNode.id]);
+            expect(flowSaveRequestsAcrossAllCanvases()).toBe(1);
         });
     });
 

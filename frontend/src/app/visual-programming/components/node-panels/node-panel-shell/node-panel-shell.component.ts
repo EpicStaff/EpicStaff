@@ -3,6 +3,7 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DestroyRef,
     effect,
     inject,
     input,
@@ -17,12 +18,12 @@ import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/com
 import { NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
-import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { hasNodeDetails } from '../../../core/helpers/node-details.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
+import { KeymapService } from '../../../services/keymap.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
 
@@ -44,16 +45,6 @@ interface PanelInstanceView {
 @Component({
     selector: 'app-node-panel-shell',
     imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
-    hostDirectives: [
-        {
-            directive: ShortcutListenerDirective,
-            outputs: ['escape: escape', 'save: saveShortcut'],
-        },
-    ],
-    host: {
-        '(escape)': 'onEscape()',
-        '(saveShortcut)': 'onShortcutSave()',
-    },
     template: `
         @if (node() && panelComponent()) {
             <aside
@@ -238,8 +229,16 @@ export class NodePanelShellComponent {
     private readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
+    private readonly keymap = inject(KeymapService);
+    private readonly destroyRef = inject(DestroyRef);
 
     constructor() {
+        this.keymap.register('editing.escape', () => this.onEscape(), {
+            allowInEditable: true,
+            destroyRef: this.destroyRef,
+        });
+        this.keymap.register('editing.save', () => this.onShortcutSave(), { destroyRef: this.destroyRef });
+
         effect(() => {
             const trigger = this.sidePanelService.autosaveTrigger();
             this.tryAutosave(trigger);

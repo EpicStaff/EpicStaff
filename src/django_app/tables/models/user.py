@@ -20,6 +20,12 @@ from django.db import models
 
 DISPLAY_NAME_MAX_LENGTH = 255
 
+SHORTCUTS_MAX_CUSTOM_ENTRIES = 100
+SHORTCUTS_MAX_OVERRIDE_ENTRIES = 100
+SHORTCUTS_MAX_TEXT_LENGTH = 64
+SHORTCUTS_MAX_PARAMS = 5
+SHORTCUTS_MAX_PARAM_INTEGER = 2**53 - 1
+
 _DIGITS = re.compile(r"\d")
 
 # Any character that is not a letter or an apostrophe starts a new word.
@@ -101,12 +107,17 @@ def _avatar_upload_path(instance, filename):
     return f"avatars/{instance.id}/{uuid.uuid4().hex}{ext}"
 
 
+def default_custom_shortcuts() -> dict:
+    return {"custom": [], "overrides": {}}
+
+
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     display_name = models.CharField(max_length=DISPLAY_NAME_MAX_LENGTH, blank=True, null=True)
     avatar = models.ImageField(upload_to=_avatar_upload_path, blank=True, null=True)
     is_superadmin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    custom_shortcuts = models.JSONField(default=default_custom_shortcuts, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

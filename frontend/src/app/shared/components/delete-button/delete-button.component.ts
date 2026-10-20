@@ -15,6 +15,7 @@ export type DeleteButtonVariant = 'danger' | 'default';
 export class DeleteButtonComponent {
     tooltip = input('Delete');
     disabled = input(false);
+    ariaLabel = input<string | null>(null);
     variant = input<DeleteButtonVariant>('danger');
 
     triggered = output<void>();
