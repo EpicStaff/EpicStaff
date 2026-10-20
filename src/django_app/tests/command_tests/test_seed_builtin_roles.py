@@ -8,8 +8,9 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from rbac.access import builtin_roles
+from rbac.access.audit_history import AUDIT_HISTORY_DAYS_MAX
 from rbac.access.builtin_roles import BUILTIN_ROLES_PATH, BuiltInRoleSeeder
-from rbac.models import Role, RolePermission
+from rbac.models import Role, RoleAuditPolicy, RolePermission
 from rbac.models.enums import BuiltInRole, Permission
 
 SHIPPED = json.loads(BUILTIN_ROLES_PATH.read_text(encoding="utf-8"))
@@ -168,6 +169,40 @@ def test_a_duplicate_built_in_row_is_warned_about(seeded):
     )
 
 
+def _history_days(role_name, value):
+    def edit(definition):
+        definition[role_name]["audit_history_days"] = value
+
+    return edit
+
+
+def _org_admin_history_days():
+    policy = RoleAuditPolicy.objects.filter(
+        role__name=BuiltInRole.ORG_ADMIN, role__is_built_in=True, role__org__isnull=True
+    ).first()
+    return None if policy is None else policy.history_days
+
+
+@pytest.mark.django_db
+def test_audit_history_days_creates_updates_and_deletes_the_policy(seeded, roles_file):
+    org_admin = BuiltInRole.ORG_ADMIN
+
+    created = BuiltInRoleSeeder(roles_file(_history_days(org_admin, 30))).seed()
+    assert _org_admin_history_days() == 30
+    assert created.changes == [f"{org_admin}.audit_history_days: unlimited -> 30"]
+
+    unchanged = BuiltInRoleSeeder(roles_file(_history_days(org_admin, 30))).seed()
+    assert unchanged.changes == []
+
+    updated = BuiltInRoleSeeder(roles_file(_history_days(org_admin, 60))).seed()
+    assert _org_admin_history_days() == 60
+    assert updated.changes == [f"{org_admin}.audit_history_days: 30 -> 60"]
+
+    removed = BuiltInRoleSeeder().seed()
+    assert _org_admin_history_days() is None
+    assert removed.changes == [f"{org_admin}.audit_history_days: 60 -> unlimited"]
+
+
 INVALID = {
     "unknown resource": _grant(BuiltInRole.MEMBER, "widgets", ["read"]),
     "action not applicable": _grant(BuiltInRole.VIEWER, "flows", ["read", "use"]),
@@ -185,6 +220,12 @@ INVALID = {
     "blank description": lambda definition: definition[BuiltInRole.MEMBER].update(
         {"description": " "}
     ),
+    "history limit without audit": _history_days(BuiltInRole.MEMBER, 30),
+    "history limit on superadmin": _history_days(BuiltInRole.SUPERADMIN, 30),
+    "history limit zero": _history_days(BuiltInRole.ORG_ADMIN, 0),
+    "history limit bool": _history_days(BuiltInRole.ORG_ADMIN, True),
+    "history limit string": _history_days(BuiltInRole.ORG_ADMIN, "30"),
+    "history limit above max": _history_days(BuiltInRole.ORG_ADMIN, AUDIT_HISTORY_DAYS_MAX + 1),
 }
 
 

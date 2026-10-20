@@ -1,7 +1,8 @@
 """Built-in roles as declarative state, reconciled into the database.
 
 `builtin_roles.json` is the complete definition of the four built-in roles: name,
-description and every permission they hold. `BuiltInRoleSeeder.seed()` makes the
+description, every permission they hold and, optionally, `audit_history_days` (1..36500)
+on a role that reads or exports audit data -- omitted means unlimited. `BuiltInRoleSeeder.seed()` makes the
 database match it exactly -- a permission absent from the file is revoked, by design.
 `manage.py seed_builtin_roles` runs it on every container start, so changing a
 built-in role never needs a data migration.
@@ -16,6 +17,13 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.db.models import Count
 
+from rbac.access.audit_history import (
+    AUDIT_HISTORY_DAYS_MAX,
+    UNLIMITED,
+    grants_audit,
+    history_days_of,
+    sync_audit_policy,
+)
 from rbac.access.bitmask import actions_to_bitmask, bitmask_to_actions
 from rbac.access.catalog import applicable_actions_for
 from rbac.models import Role, RolePermission
@@ -26,7 +34,8 @@ BUILTIN_ROLES_PATH = Path(__file__).with_name("builtin_roles.json")
 _BUILTIN_ROLE_NAMES = frozenset(
     {BuiltInRole.SUPERADMIN, BuiltInRole.ORG_ADMIN, BuiltInRole.MEMBER, BuiltInRole.VIEWER}
 )
-_ROLE_KEYS = frozenset({"description", "permissions"})
+_REQUIRED_ROLE_KEYS = frozenset({"description", "permissions"})
+_OPTIONAL_ROLE_KEYS = frozenset({"audit_history_days"})
 
 
 def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
@@ -49,6 +58,7 @@ def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
 class _RoleState(NamedTuple):
     description: str
     masks: dict[str, int]
+    audit_history_days: int = UNLIMITED
 
 
 @dataclass
@@ -69,9 +79,9 @@ class BuiltInRoleSeeder:
         """Make the built-in roles match the file exactly.
 
         The whole file is validated before anything is written, and the writes run in
-        one transaction. Creates a missing role, corrects its description, and creates,
+        one transaction. Creates a missing role, corrects its description, creates,
         updates or deletes `RolePermission` rows so each role holds exactly the listed
-        actions. A built-in role in the database that the file does not name is
+        actions, and sets its audit history limit. A built-in role in the database that the file does not name is
         reported, never deleted: memberships cascade from it.
 
         Raises:
@@ -136,8 +146,15 @@ class BuiltInRoleSeeder:
 
 
 def _parse_role(name: str, definition, errors: list[str]) -> _RoleState | None:
-    if not isinstance(definition, dict) or definition.keys() != _ROLE_KEYS:
-        errors.append(f"{name}: must have exactly the keys {sorted(_ROLE_KEYS)}")
+    if (
+        not isinstance(definition, dict)
+        or not definition.keys() >= _REQUIRED_ROLE_KEYS
+        or not definition.keys() <= _REQUIRED_ROLE_KEYS | _OPTIONAL_ROLE_KEYS
+    ):
+        errors.append(
+            f"{name}: must have the keys {sorted(_REQUIRED_ROLE_KEYS)}"
+            f" and optionally {sorted(_OPTIONAL_ROLE_KEYS)}"
+        )
         return None
     description, permissions = definition["description"], definition["permissions"]
     if not isinstance(description, str) or not description.strip():
@@ -152,7 +169,30 @@ def _parse_role(name: str, definition, errors: list[str]) -> _RoleState | None:
         mask = _parse_grant(f"{name}.{resource_type}", resource_type, actions, errors)
         if mask is not None:
             masks[resource_type] = mask
-    return _RoleState(description, masks)
+    audit_history_days = _parse_audit_history_days(name, definition, masks, errors)
+    return _RoleState(description, masks, audit_history_days)
+
+
+def _parse_audit_history_days(name: str, definition: dict, masks: dict, errors: list[str]) -> int:
+    if "audit_history_days" not in definition:
+        return UNLIMITED
+    value = definition["audit_history_days"]
+    where = f"{name}.audit_history_days"
+    if name == BuiltInRole.SUPERADMIN:
+        errors.append(f"{where}: Superadmin is always unlimited")
+    elif (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or not 1 <= value <= AUDIT_HISTORY_DAYS_MAX
+    ):
+        errors.append(
+            f"{where}: must be an integer from 1 to {AUDIT_HISTORY_DAYS_MAX}; omit it for unlimited"
+        )
+    elif not grants_audit(masks):
+        errors.append(f"{where}: the role grants no audit read or export")
+    else:
+        return value
+    return UNLIMITED
 
 
 def _parse_grant(where: str, resource_type: str, actions, errors: list[str]) -> int | None:
@@ -208,6 +248,18 @@ def _reconcile_role(name: str, state: _RoleState, result: SeedResult) -> None:
             f"{name}.{resource_type}: removed {_describe(resource_type, row.permissions)}"
         )
         row.delete()
+
+    current_days = history_days_of(role)
+    if current_days != state.audit_history_days:
+        sync_audit_policy(role, state.audit_history_days)
+        result.changes.append(
+            f"{name}.audit_history_days: {_describe_days(current_days)}"
+            f" -> {_describe_days(state.audit_history_days)}"
+        )
+
+
+def _describe_days(days: int) -> str:
+    return "unlimited" if days == UNLIMITED else str(days)
 
 
 def _describe(resource_type: str, mask: int) -> str:

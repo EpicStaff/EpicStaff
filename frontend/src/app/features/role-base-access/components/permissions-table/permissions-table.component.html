@@ -151,9 +151,36 @@
                                     />
                                 }
                             </div>
-                            <div class="resource-info">
-                                <span class="resource-name">{{ resource.label }}</span>
-                                <span class="resource-desc">{{ resource.description }}</span>
+                            <div class="resource-cell">
+                                <div class="resource-info">
+                                    <span class="resource-name">{{ resource.label }}</span>
+                                    <span class="resource-desc">{{ resource.description }}</span>
+                                </div>
+                                @if (resource.code === auditResourceCode && auditHistoryLabel()) {
+                                    @if (readonly()) {
+                                        @if (hasAuditAccess()) {
+                                            <span class="audit-history-label">
+                                                <app-svg-icon
+                                                    icon="vertical-sliders"
+                                                    size="10px"
+                                                />
+                                                {{ auditHistoryLabel() }}
+                                            </span>
+                                        }
+                                    } @else {
+                                        <app-button
+                                            class="audit-history-button"
+                                            type="outline-secondary"
+                                            mod="small"
+                                            leftIcon="vertical-sliders"
+                                            iconSize="10px"
+                                            [ariaLabel]="'Audit history visibility: ' + auditHistoryLabel()"
+                                            [disabled]="!hasAuditAccess()"
+                                            (click)="openAuditHistoryDialog()"
+                                            >{{ auditHistoryLabel() }}</app-button
+                                        >
+                                    }
+                                }
                             </div>
                             @for (action of catalog().actions; track action.code) {
                                 <div class="action-cell">

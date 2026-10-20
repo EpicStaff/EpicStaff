@@ -23,7 +23,7 @@ class PermissionResolver:
         # queries below are what gets cached behind a key like
         # `rbac:perms:user:{user_id}:org:{org_id}`.
         membership = (
-            OrganizationUser.objects.select_related("role", "org")
+            OrganizationUser.objects.select_related("role", "role__audit_policy", "org")
             .filter(user=user, org_id=org_id, org__is_active=True)
             .first()
         )

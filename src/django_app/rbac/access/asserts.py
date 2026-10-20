@@ -50,17 +50,19 @@ def assert_row_org_permission(
         raise PermissionDenied("You do not have permission to perform this action.")
 
 
-def assert_within_ceiling(effective, by_resource) -> None:
-    """Assert every bit in `by_resource` is within `effective`'s own permissions.
+def assert_within_ceiling(effective, grant) -> None:
+    """Assert everything `grant` (a `RoleGrant`) hands out is within `effective`.
 
-    The escalation ceiling: you cannot grant authority you do not hold. Shared
-    by the two places authority is handed out -- authoring a custom role (the
-    bits written into it) and assigning any role to a member (the bits it
-    grants) -- so the rule is stated once and the two cannot drift. Superadmin
-    bypasses inside `EffectivePermissions.covers`.
+    The escalation ceiling: you cannot grant authority you do not hold -- neither
+    a bit nor a wider audit history limit. Shared by the two places authority is
+    handed out -- authoring a custom role (what is written into it) and
+    assigning any role to a member (what it grants) -- so the rule is stated
+    once and the two cannot drift. Superadmin bypasses inside
+    `EffectivePermissions.covers`.
 
     Raises:
-        PermissionEscalationError (403): a requested bit exceeds `effective`.
+        PermissionEscalationError (403): a requested bit or the audit history
+            limit exceeds `effective`.
     """
-    if not effective.covers(by_resource):
+    if not effective.covers(grant):
         raise PermissionEscalationError()

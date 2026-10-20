@@ -101,6 +101,7 @@ class RoleAdminViewSet(CrossOrgAdminViewSet):
             name=cleaned["name"],
             description=cleaned["description"],
             permissions=cleaned["permissions"],
+            audit_history_days=cleaned["audit_history_days"],
         )
         return Response(RoleResponseSerializer(role).data, status=status.HTTP_201_CREATED)
 

@@ -26,7 +26,7 @@ class CrossOrgPermissionResolver:
 
     def resolve_all(self, user) -> list[OrgScope]:
         memberships = (
-            OrganizationUser.objects.select_related("org", "role")
+            OrganizationUser.objects.select_related("org", "role", "role__audit_policy")
             .prefetch_related("role__permissions_set")
             .filter(user=user, org__is_active=True)
             .order_by(Lower("org__name"))

@@ -1,11 +1,18 @@
 from rest_framework import serializers
 
+from rbac.access.audit_history import AUDIT_HISTORY_DAYS_MAX
 from rbac.serializers.permissions import RoleResponseSerializer
 
 
 class RolePermissionInputSerializer(serializers.Serializer):
     resource_type = serializers.CharField()
     actions = serializers.ListField(child=serializers.CharField(), allow_empty=True)
+    audit_history_days = serializers.IntegerField(
+        required=False,
+        min_value=0,
+        max_value=AUDIT_HISTORY_DAYS_MAX,
+        help_text="audit entry only; 0 = unlimited",
+    )
 
 
 class RoleWriteSerializer(serializers.Serializer):

@@ -6,7 +6,7 @@ from loguru import logger
 from rest_framework.exceptions import PermissionDenied
 
 from rbac.access.asserts import assert_within_ceiling
-from rbac.access.effective import EffectivePermissions
+from rbac.access.effective import RoleGrant
 from rbac.exceptions import (
     MembershipAlreadyExistsError,
     MembershipNotFoundError,
@@ -36,8 +36,8 @@ class MembershipManagementService(CrossOrgResourceService):
 
     Invariants:
       - Escalation ceiling on assignment — a role may only be assigned if every
-        grantable bit it carries is within the caller's own permissions in that
-        org. Applied identically to built-in and custom roles: holding
+        grantable bit it carries, and its audit history limit, is within the
+        caller's own permissions in that org. Applied identically to built-in and custom roles: holding
         MEMBERSHIPS does not let you hand out authority you lack. Superadmin
         bypasses. `assert_role_is_assignable` still runs first and blocks the
         global Superadmin role and foreign-org custom roles.
@@ -146,7 +146,7 @@ class MembershipManagementService(CrossOrgResourceService):
         UserManagementGuards.assert_user_is_assignable_member(target)
         role = self._resolve_role(role_id)
         UserManagementGuards.assert_role_is_assignable(role, org_id=org_id)
-        assert_within_ceiling(effective, EffectivePermissions.bits_of(role))
+        assert_within_ceiling(effective, RoleGrant.of_role(role))
         if OrganizationUser.objects.filter(user=target, org_id=org_id).exists():
             raise MembershipAlreadyExistsError()
         try:
@@ -183,7 +183,7 @@ class MembershipManagementService(CrossOrgResourceService):
         UserManagementGuards.assert_membership_holder_is_assignable(membership)
         new_role = self._resolve_role(role_id)
         UserManagementGuards.assert_role_is_assignable(new_role, org_id=membership.org_id)
-        assert_within_ceiling(effective, EffectivePermissions.bits_of(new_role))
+        assert_within_ceiling(effective, RoleGrant.of_role(new_role))
         if membership.role_id != new_role.pk:
             membership.role = new_role
             membership.save(update_fields=["role"])
@@ -272,9 +272,14 @@ class MembershipManagementService(CrossOrgResourceService):
 
     @staticmethod
     def _resolve_role(role_id):
-        """Fetch the target role with its permission rows prefetched — the
-        assignment ceiling reads them via `EffectivePermissions.bits_of`."""
-        role = Role.objects.prefetch_related("permissions_set").filter(pk=role_id).first()
+        """Fetch the target role with its permission rows and audit policy
+        loaded — the assignment ceiling reads both via `RoleGrant.of_role`."""
+        role = (
+            Role.objects.select_related("audit_policy")
+            .prefetch_related("permissions_set")
+            .filter(pk=role_id)
+            .first()
+        )
         if role is None:
             raise RoleNotFoundError()
         return role

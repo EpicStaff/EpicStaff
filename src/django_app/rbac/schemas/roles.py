@@ -33,7 +33,8 @@ _WRITE_FORBIDDEN_DESCRIPTION = (
     "permission_denied (the caller can see the role but lacks this "
     "action on ROLES in its org — a role they cannot see is a 404), "
     "permission_escalation_denied (granting a bit the caller doesn't "
-    "hold), or built_in_role_immutable (target is a built-in role)."
+    "hold, or an audit history limit wider than the caller's own), or "
+    "built_in_role_immutable (target is a built-in role)."
 )
 
 _WRITE_FORBIDDEN_403 = admin_write_forbidden_403(_WRITE_FORBIDDEN_DESCRIPTION)
@@ -147,7 +148,12 @@ ROLES_CREATE_POST = {
         "Creates an org-scoped custom role (org_id in the body). Requires "
         "ROLES create in that org; the caller can only grant permissions "
         "they themselves hold (ceiling rule). An empty `permissions` list "
-        "is a valid 'no access' role."
+        "is a valid 'no access' role. The `audit` permission entry may carry "
+        "`audit_history_days` (0..36500; 0 or omitted = unlimited): how many "
+        "days back the role's holders can see audit data. It is accepted only "
+        "on the audit entry, a non-zero value needs the read or export action, "
+        "and the ceiling rule covers it too — a caller limited to N days can "
+        "grant at most N, never unlimited."
     ),
     "request": RoleWriteSerializer,
     "responses": {
@@ -168,6 +174,22 @@ ROLES_CREATE_POST = {
             request_only=True,
         ),
         OpenApiExample(
+            "Compliance reviewer (90 days of audit history)",
+            value={
+                "org_id": 10,
+                "name": "Compliance reviewer",
+                "permissions": [
+                    {
+                        "resource_type": "audit",
+                        "actions": ["read", "export"],
+                        "audit_history_days": 90,
+                    },
+                    {"resource_type": "flows", "actions": ["read"]},
+                ],
+            },
+            request_only=True,
+        ),
+        OpenApiExample(
             "No-access role",
             value={"org_id": 10, "name": "No Access", "permissions": []},
             request_only=True,
@@ -179,8 +201,13 @@ ROLES_UPDATE_PATCH = {
     "summary": "Edit a custom role (name / description / permissions)",
     "description": (
         "Partial update. If `permissions` is sent it fully replaces the "
-        "role's matrix. Built-in roles are immutable; the ceiling rule "
-        "applies to added bits. Changes take effect for assignees on their "
+        "role's matrix, including the audit entry's `audit_history_days`: "
+        "an audit entry without it makes the role unlimited, so always send "
+        "the current value. Without `permissions` the limit is untouched. A "
+        "changed limit applies from the holder's next audit token; tokens "
+        "already issued keep their window until they expire. Built-in roles "
+        "are immutable; the ceiling rule applies to added bits and to the "
+        "audit history limit. Changes take effect for assignees on their "
         "next request."
     ),
     "request": RoleWriteSerializer,

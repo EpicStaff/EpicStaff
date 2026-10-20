@@ -2,7 +2,7 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from rbac.models import OrganizationUser, Role, RolePermission
+from rbac.models import OrganizationUser, Role, RoleAuditPolicy, RolePermission
 from rbac.models.enums import BuiltInRole, Permission
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -468,3 +468,91 @@ def test_missing_update_bit_is_permission_denied_not_escalation(
 
     assert resp.status_code == status.HTTP_403_FORBIDDEN
     assert resp.json()["code"] == "permission_denied"
+
+
+# ---- the audit history limit is part of the assignment ceiling ----
+
+
+def _audit_role(acme, name, history_days):
+    role = _custom_role(acme, name, "audit", Permission.READ)
+    if history_days:
+        RoleAuditPolicy.objects.create(role=role, history_days=history_days)
+    return role
+
+
+@pytest.fixture
+def limited_member_manager(db, django_user_model, acme, beta, role_org_admin):
+    """Manages Acme memberships and reads Acme audit 30 days back; Org Admin of
+    beta so the coarse door gate always passes."""
+    role = _custom_role(acme, "Limited member manager-mc", "memberships", Permission.CREATE)
+    role.permissions_set.update(
+        permissions=int(Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE)
+    )
+    RolePermission.objects.create(role=role, resource_type="audit", permissions=int(Permission.READ))
+    RoleAuditPolicy.objects.create(role=role, history_days=30)
+    user = django_user_model.objects.create_user(
+        email="limited-member-manager-mc@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=beta, role=role_org_admin)
+    OrganizationUser.objects.create(user=user, org=acme, role=role)
+    return user
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("caller", "history_days", "allowed"),
+    [
+        ("limited_member_manager", None, False),
+        ("limited_member_manager", 90, False),
+        ("limited_member_manager", 30, True),
+        ("limited_member_manager", 7, True),
+        ("superadmin", None, True),
+    ],
+)
+def test_change_role_caps_the_audit_history_limit(
+    request, client_as, acme_membership, acme, role_member, caller, history_days, allowed
+):
+    role = _audit_role(acme, f"Auditor {history_days}-mc", history_days)
+
+    resp = client_as(request.getfixturevalue(caller)).patch(
+        detail_url(acme_membership.id), {"role_id": role.id}, format="json"
+    )
+
+    acme_membership.refresh_from_db()
+    if allowed:
+        assert resp.status_code == status.HTTP_200_OK
+        assert acme_membership.role_id == role.id
+    else:
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        assert resp.json()["code"] == "permission_escalation_denied"
+        assert acme_membership.role_id == role_member.id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("caller", "history_days", "allowed"),
+    [
+        ("limited_member_manager", None, False),
+        ("limited_member_manager", 7, True),
+        ("superadmin", None, True),
+    ],
+)
+def test_add_member_caps_the_audit_history_limit(
+    request, client_as, acme, django_user_model, caller, history_days, allowed
+):
+    role = _audit_role(acme, f"New auditor {history_days}-mc", history_days)
+    newcomer = django_user_model.objects.create_user(
+        email="newcomer-audit-mc@example.com", password="StrongPass123!"
+    )
+
+    resp = client_as(request.getfixturevalue(caller)).post(
+        LIST_URL, {"org_id": acme.id, "user_id": newcomer.id, "role_id": role.id}, format="json"
+    )
+
+    if allowed:
+        assert resp.status_code == status.HTTP_201_CREATED
+        assert OrganizationUser.objects.get(user=newcomer, org=acme).role_id == role.id
+    else:
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        assert resp.json()["code"] == "permission_escalation_denied"
+        assert not OrganizationUser.objects.filter(user=newcomer, org=acme).exists()

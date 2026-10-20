@@ -10,7 +10,8 @@ from django.db.models import Count, Q
 from rest_framework.exceptions import PermissionDenied
 
 from rbac.access.asserts import assert_within_ceiling
-from rbac.access.effective import EffectivePermissions
+from rbac.access.audit_history import UNLIMITED, grants_audit, sync_audit_policy
+from rbac.access.effective import RoleGrant
 from rbac.exceptions import (
     BuiltInRoleImmutableError,
     OrganizationNotFoundError,
@@ -53,14 +54,18 @@ class RoleManagementService(CrossOrgResourceService):
 
     # ---- writes ----
 
-    def create_role(self, actor, org_id, name, description, permissions) -> Role:
+    def create_role(
+        self, actor, org_id, name, description, permissions, audit_history_days
+    ) -> Role:
         """Create an org-scoped custom role. `permissions` is a list of
-        {resource_type, bitmask}. Enforces the ceiling rule and per-org
-        CREATE. Atomic."""
+        {resource_type, bitmask}; `audit_history_days` caps how far back its
+        holders see audit data (0 = unlimited). Enforces the ceiling rule --
+        bits and audit limit -- and per-org CREATE. Atomic."""
+        grant = self._grant_from_payload(permissions, audit_history_days)
         with transaction.atomic():
             effective = self._resolver.resolve(user=actor, org_id=org_id)
             self.assert_can(effective=effective, action=Permission.CREATE)
-            self._assert_within_ceiling(effective=effective, permissions=permissions)
+            assert_within_ceiling(effective, grant)
             self._assert_name_available(org_id=org_id, name=name, exclude_role_id=None)
             # For non-superadmin callers the resolve() above already proved
             # membership (hence the org exists). Superadmin skips that check, so
@@ -75,11 +80,15 @@ class RoleManagementService(CrossOrgResourceService):
             except IntegrityError as exc:
                 raise RoleNameConflictError() from exc
             self._write_permission_rows(role=role, permissions=permissions)
+            sync_audit_policy(role, grant.audit_history_days)
         return self._build_role_response(role_id=role.id)
 
     def update_role(self, actor, role_id, changes) -> Role:
         """Apply a partial update (subset of name/description/permissions).
-        `permissions`, if present, is a full replacement. Atomic + row-locked.
+        `permissions`, if present, is a full replacement, and the audit
+        history limit travels with it (`changes["audit_history_days"]`, 0 =
+        unlimited); without `permissions` the limit is left untouched.
+        Atomic + row-locked.
 
         A role the caller cannot see raises RoleNotFoundError (404) from
         `resolve_for_write`, so this endpoint never confirms an id that the
@@ -91,8 +100,12 @@ class RoleManagementService(CrossOrgResourceService):
             self.assert_mutable(role)
             effective = self.resolve_for_write(actor, role.org_id, action=Permission.UPDATE)
             self.assert_can(effective=effective, action=Permission.UPDATE)
+            grant = None
             if "permissions" in changes:
-                self._assert_within_ceiling(effective=effective, permissions=changes["permissions"])
+                grant = self._grant_from_payload(
+                    changes["permissions"], changes["audit_history_days"]
+                )
+                assert_within_ceiling(effective, grant)
             if "name" in changes:
                 self._assert_name_available(
                     org_id=role.org_id, name=changes["name"], exclude_role_id=role.id
@@ -104,9 +117,10 @@ class RoleManagementService(CrossOrgResourceService):
                 role.save(update_fields=["name", "description", "updated_at"])
             except IntegrityError as exc:
                 raise RoleNameConflictError() from exc
-            if "permissions" in changes:
+            if grant is not None:
                 role.permissions_set.all().delete()
                 self._write_permission_rows(role=role, permissions=changes["permissions"])
+                sync_audit_policy(role, grant.audit_history_days)
         return self._build_role_response(role_id=role.id)
 
     def preview_delete(self, actor, role_id) -> dict:
@@ -197,7 +211,11 @@ class RoleManagementService(CrossOrgResourceService):
         except (TypeError, ValueError) as exc:
             raise RoleNotFoundError() from exc
         try:
-            role = Role.objects.select_related("org").prefetch_related("permissions_set").get(pk=pk)
+            role = (
+                Role.objects.select_related("org", "audit_policy")
+                .prefetch_related("permissions_set")
+                .get(pk=pk)
+            )
         except Role.DoesNotExist as exc:
             raise RoleNotFoundError() from exc
 
@@ -218,7 +236,9 @@ class RoleManagementService(CrossOrgResourceService):
         response must not re-apply the READ gate (a role granting
         CREATE/UPDATE without READ would otherwise 404 a committed write)."""
         role = (
-            Role.objects.select_related("org").prefetch_related("permissions_set").get(pk=role_id)
+            Role.objects.select_related("org", "audit_policy")
+            .prefetch_related("permissions_set")
+            .get(pk=role_id)
         )
         # Only create/update reach here, and `assert_mutable` rejects a
         # built-in before either write begins. Only built-in counting consults
@@ -246,6 +266,7 @@ class RoleManagementService(CrossOrgResourceService):
         qs = (
             Role.objects.filter(is_built_in=True, org__isnull=True)
             .order_by("name")
+            .select_related("audit_policy")
             .prefetch_related("permissions_set")
         )
         if search:
@@ -265,13 +286,14 @@ class RoleManagementService(CrossOrgResourceService):
 
     def is_assignable_by(self, effective, role, org_id) -> bool:
         """Whether `effective` may assign `role` in `org_id`: a structurally
-        valid membership target, and within the caller's escalation ceiling.
+        valid membership target, and within the caller's escalation ceiling
+        (bits and audit history limit).
 
         The boolean twin of the two assertions `MembershipManagementService`
         runs before a write, so the picker cannot offer a role the write
         would refuse."""
         return UserManagementGuards.role_is_assignable(role, org_id) and effective.covers(
-            EffectivePermissions.bits_of(role)
+            RoleGrant.of_role(role)
         )
 
     def resolve_assignable_scopes(self, actor, org_ids, scopes=None):
@@ -298,7 +320,7 @@ class RoleManagementService(CrossOrgResourceService):
         case-insensitive filter on name and description."""
         base_qs = (
             Role.objects.filter(is_built_in=False)
-            .select_related("org")
+            .select_related("org", "audit_policy")
             .prefetch_related("permissions_set")
             .order_by("org__name", "name")
         )
@@ -439,14 +461,19 @@ class RoleManagementService(CrossOrgResourceService):
                 "You do not have permission to manage roles in this organization."
             )
 
-    def _assert_within_ceiling(self, effective, permissions) -> None:
-        """Ceiling rule for authoring: every requested bit must be within the
-        caller's own effective permissions. Adapts the validator's
-        `[{resource_type, bitmask}]` shape onto the shared assertion, which
-        role assignment uses too. Collapsing the list into a mapping cannot
+    @staticmethod
+    def _grant_from_payload(permissions, audit_history_days) -> RoleGrant:
+        """What a role-write payload grants, in the shape the shared ceiling
+        assertion takes (role assignment uses the same assertion). Collapsing
+        the validator's `[{resource_type, bitmask}]` list into a mapping cannot
         lose an entry -- RoleValidationService rejects a duplicate
-        resource_type. Superadmin bypasses."""
-        assert_within_ceiling(effective, {e["resource_type"]: e["bitmask"] for e in permissions})
+        resource_type. A limit on a role that grants no audit action becomes
+        unlimited, so a policy row never outlives the audit grant it limits."""
+        by_resource = {entry["resource_type"]: entry["bitmask"] for entry in permissions}
+        return RoleGrant(
+            by_resource=by_resource,
+            audit_history_days=audit_history_days if grants_audit(by_resource) else UNLIMITED,
+        )
 
     @staticmethod
     def _assert_not_own_role(actor, role) -> None:

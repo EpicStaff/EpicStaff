@@ -20,6 +20,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { OrganizationsStorageService } from '../../services/admin/organizations-storage.service';
 import { RolesService } from '../../services/admin/roles.service';
+import { auditHistoryDaysOf, DEFAULT_AUDIT_HISTORY_DAYS, withAuditHistoryDays } from '../../utils';
 import { PermissionsTableComponent } from '../permissions-table/permissions-table.component';
 
 /** Snapshot passed to the dialog when opening it in duplicate-mode. */
@@ -28,6 +29,7 @@ export interface DuplicateRoleSource {
     description: string | null;
     permissions: string[];
     orgId: number | null;
+    auditHistoryDays: number;
 }
 
 export interface CreateRoleDialogData {
@@ -101,6 +103,11 @@ export class CreateRoleDialogComponent implements OnInit {
     });
 
     readonly selectedPermissions = signal<Set<string>>(this.initialSelectedPermissions());
+    readonly auditHistoryDays = signal<number>(
+        this.dialogData?.role
+            ? auditHistoryDaysOf(this.dialogData.role.permissions)
+            : (this.dialogData?.duplicateSource?.auditHistoryDays ?? DEFAULT_AUDIT_HISTORY_DAYS)
+    );
 
     private initialName(): string {
         if (this.dialogData?.role) return this.dialogData.role.name;
@@ -326,18 +333,16 @@ export class CreateRoleDialogComponent implements OnInit {
         }
         const name = this.form.controls.name.value.trim();
         const description = this.form.controls.description.value?.trim() || null;
-        const permissions = setToRolePermissions(this.selectedPermissions());
+        const permissions = withAuditHistoryDays(
+            setToRolePermissions(this.selectedPermissions()),
+            this.auditHistoryDays()
+        );
 
         this.isSubmitting.set(true);
 
         const request$ = this.isEditMode
             ? this.rolesService.updateRole(this.dialogData!.role!.id, { name, description, permissions })
-            : this.rolesService.createRole({
-                  org_id: this.targetOrgId()!,
-                  name,
-                  description,
-                  permissions,
-              });
+            : this.rolesService.createRole({ org_id: this.targetOrgId()!, name, description, permissions });
 
         request$
             .pipe(
@@ -367,6 +372,7 @@ export class CreateRoleDialogComponent implements OnInit {
             description: this.form.controls.description.value || null,
             permissions: Array.from(this.selectedPermissions()),
             orgId: this.targetOrgId(),
+            auditHistoryDays: this.auditHistoryDays(),
         };
         this.dialog.open<CreateRoleDialogResult, CreateRoleDialogData>(CreateRoleDialogComponent, {
             width: 'calc(100vw - 2rem)',
@@ -383,15 +389,23 @@ export class CreateRoleDialogComponent implements OnInit {
             return;
         }
         if (code === 'permission_escalation_denied') {
-            this.toast.error("You can't grant permissions you don't have in that organization.");
+            this.toast.error(
+                "You can't grant permissions or an audit history range wider than your own in that organization."
+            );
             return;
         }
         if (code === 'invalid' && Array.isArray(err.error?.errors)) {
+            const unmatchedReasons: string[] = [];
             for (const e of err.error.errors) {
                 const control = this.form.get(e.field);
-                if (!control) continue;
-                control.setErrors({ server: [e.reason] });
+                if (control) {
+                    control.setErrors({ server: [e.reason] });
+                } else {
+                    unmatchedReasons.push(e.reason);
+                }
             }
+            // errors on fields without a form control, e.g. the permissions payload, would otherwise be invisible
+            if (unmatchedReasons.length > 0) this.toast.error(unmatchedReasons[0] || 'Failed to save role');
             return;
         }
         this.toast.error(err.error?.message ?? 'Failed to save role');

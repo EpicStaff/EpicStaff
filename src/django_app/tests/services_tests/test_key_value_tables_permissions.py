@@ -2,7 +2,7 @@ import pytest
 
 from rbac.access.builtin_roles import BuiltInRoleSeeder
 from rbac.access.catalog import grantable_bits_for
-from rbac.access.effective import EffectivePermissions
+from rbac.access.effective import EffectivePermissions, RoleGrant
 from rbac.models import Organization, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 
@@ -50,4 +50,4 @@ def test_a_custom_role_use_bit_on_key_value_tables_survives_seeding_but_grants_n
     assert grant.permissions == int(Permission.READ | Permission.USE)
     custom = EffectivePermissions.from_role(role)
     assert custom.to_action_codes()[ResourceType.KEY_VALUE_TABLES.value] == ["read"]
-    assert EffectivePermissions.from_role(org_admin).covers(EffectivePermissions.bits_of(role))
+    assert EffectivePermissions.from_role(org_admin).covers(RoleGrant.of_role(role))

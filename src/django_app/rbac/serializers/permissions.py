@@ -1,8 +1,9 @@
 from rest_framework import serializers
 
+from rbac.access.audit_history import history_days_of
 from rbac.access.bitmask import bitmask_to_actions
 from rbac.access.catalog import applicable_actions_for
-from rbac.models.enums import BuiltInRole
+from rbac.models.enums import BuiltInRole, ResourceType
 
 
 class CatalogActionSerializer(serializers.Serializer):
@@ -34,6 +35,13 @@ class CatalogResponseSerializer(serializers.Serializer):
 class RolePermissionEntrySerializer(serializers.Serializer):
     resource_type = serializers.CharField()
     actions = serializers.ListField(child=serializers.CharField())
+    audit_history_days = serializers.IntegerField(
+        required=False,
+        help_text=(
+            "Audit entry only: how many days back the role's holders may read "
+            "audit data; 0 = unlimited."
+        ),
+    )
 
 
 class RoleResponseSerializer(serializers.Serializer):
@@ -65,17 +73,24 @@ class RoleResponseSerializer(serializers.Serializer):
             "assigned_count": getattr(instance, "_assigned_count", 0),
             "assigned_by_org": getattr(instance, "_assigned_by_org", []),
             "permissions": [
-                {
-                    "resource_type": row.resource_type,
-                    "actions": bitmask_to_actions(
-                        row.permissions,
-                        applicable=applicable_actions_for(row.resource_type),
-                    ),
-                }
+                self._permission_entry(instance, row)
                 for row in getattr(instance, "_perm_rows", [])
                 if row.permissions != 0
             ],
         }
+
+    @staticmethod
+    def _permission_entry(role, row) -> dict:
+        entry = {
+            "resource_type": row.resource_type,
+            "actions": bitmask_to_actions(
+                row.permissions,
+                applicable=applicable_actions_for(row.resource_type),
+            ),
+        }
+        if row.resource_type == ResourceType.AUDIT.value:
+            entry["audit_history_days"] = history_days_of(role)
+        return entry
 
     @staticmethod
     def _org_obj(role):

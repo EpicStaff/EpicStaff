@@ -6,6 +6,7 @@ import { ActionCode, CatalogResponse, GetRoleResponse, ResourceCode } from '@sha
 import { rolePermissionsToSet } from '@shared/utils';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { auditHistoryDaysOf } from '../../utils';
 import {
     CreateRoleDialogComponent,
     CreateRoleDialogData,
@@ -28,6 +29,7 @@ export class RoleInfoDialogComponent implements OnInit {
     private permissionsService = inject(PermissionsService);
 
     readonly role = inject<GetRoleResponse>(DIALOG_DATA);
+    readonly auditHistoryDays = auditHistoryDaysOf(this.role.permissions);
     readonly catalog = computed<CatalogResponse | null>(() => this.permissionsService.catalog());
 
     readonly selectedPermissions = computed<Set<string>>(() => {
@@ -62,6 +64,7 @@ export class RoleInfoDialogComponent implements OnInit {
             description: this.role.description,
             permissions: Array.from(this.selectedPermissions()),
             orgId: this.role.org_id,
+            auditHistoryDays: this.auditHistoryDays,
         };
         this.dialogRef.close();
         this.dialog.open<CreateRoleDialogResult, CreateRoleDialogData>(CreateRoleDialogComponent, {

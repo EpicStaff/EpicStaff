@@ -6,8 +6,7 @@ from drf_spectacular.utils import extend_schema
 from rbac.access.org_context import OrgContextService
 from rbac.access.resolver import PermissionResolver
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
-from rbac.models import OrganizationConfig
-from rbac.models.enums import BuiltInRole, Permission, ResourceType
+from rbac.models.enums import Permission, ResourceType
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -45,19 +44,7 @@ class AuditTokenView(APIView):
         if not actions:
             raise PermissionDenied("You do not have permission to perform this action.")
 
-        # Restrictionless pass for superadmin and this org's Org Admin
-        is_org_admin = (
-            effective.role is not None
-            and effective.role.is_built_in
-            and effective.role.name == BuiltInRole.ORG_ADMIN
-        )
-        if effective.is_superadmin or is_org_admin:
-            retention_days = 0
-        else:
-            try:
-                retention_days = OrganizationConfig.objects.get(org_id=org_id).audit_retention_days
-            except OrganizationConfig.DoesNotExist:
-                retention_days = 0
+        retention_days = effective.audit_history_days
 
         now = datetime.now(UTC)
         payload = {

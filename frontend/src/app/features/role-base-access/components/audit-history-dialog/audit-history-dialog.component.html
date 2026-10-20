@@ -1,0 +1,50 @@
+<div class="dialog">
+    <div class="header">
+        <span class="title">Audit history visibility</span>
+        <button
+            class="close"
+            type="button"
+            aria-label="Close"
+            (click)="onCancel()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="18px"
+            />
+        </button>
+    </div>
+
+    <div class="body">
+        <app-select
+            label="Unit"
+            panelClass="audit-history-unit-panel"
+            [items]="unitItems"
+            [(selectedValue)]="unit"
+        />
+        @if (unit() !== 'unlimited') {
+            <app-number-stepper
+                label="Amount"
+                ariaLabel="Amount"
+                [alwaysShowButtons]="true"
+                [integer]="true"
+                [min]="1"
+                [max]="maxAmount()"
+                [value]="clampedAmount()"
+                (changed)="setAmount($event)"
+            />
+        }
+    </div>
+
+    <div class="footer">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+            >Cancel</app-button
+        >
+        <app-button
+            type="primary"
+            (click)="onSave()"
+            >Save Range</app-button
+        >
+    </div>
+</div>

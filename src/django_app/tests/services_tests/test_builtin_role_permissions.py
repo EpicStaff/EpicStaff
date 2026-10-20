@@ -14,7 +14,7 @@ import pytest
 
 from rbac.models import Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
-from rbac.access.effective import EffectivePermissions
+from rbac.access.effective import EffectivePermissions, RoleGrant
 from rbac.access.catalog import grantable_bits_for
 
 DELEGATED = [BuiltInRole.ORG_ADMIN, BuiltInRole.MEMBER, BuiltInRole.VIEWER]
@@ -59,7 +59,7 @@ def test_org_admin_can_assign_the_lesser_built_ins(target_name):
     role weaker than their own."""
     org_admin = EffectivePermissions.from_role(_builtin(BuiltInRole.ORG_ADMIN))
 
-    assert org_admin.covers(EffectivePermissions.bits_of(_builtin(target_name)))
+    assert org_admin.covers(RoleGrant.of_role(_builtin(target_name)))
 
 
 @pytest.mark.django_db
