@@ -93,7 +93,7 @@ async def test_ingest_partial_bulk_failure_returns_207_with_failed_ids_and_statu
     errors = [
         {
             "index": {
-                "_index": "audit_events",
+                "_index": "audit_events-unlimited-2026.10",
                 "_id": "evt-2",
                 "status": 400,
                 "error": {"type": "mapper_parsing_exception", "reason": "boom"},

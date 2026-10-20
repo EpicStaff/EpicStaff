@@ -16,6 +16,7 @@ from fakeredis import FakeAsyncRedis
 import app.services.search_pipeline as search_pipeline
 from app.core import settings
 from app.domains.sessions.domain import SESSIONS
+from app.repositories.opensearch_repository import OpenSearchAuditRepository
 from app.domains.sessions.schemas import SessionExportRequest
 from app.services.export_job_service import ExportJobService
 from app.services.export_write_service import ExportWriteService
@@ -241,3 +242,24 @@ async def test_failed_export_leaves_no_file_and_no_exception_text_in_the_job(
     assert job["status"] == "failed"
     # Redis is reachable from the sandbox network, so the job hash must not hold it.
     assert "secret internal detail" not in json.dumps(job)
+
+
+class _RecordingOpenSearchClient:
+    def __init__(self, sources: list[dict]):
+        self._hits = [{"_id": source["id"], "_source": source, "sort": [1, source["id"]]} for source in sources]
+        self.searched_indices: list[str] = []
+
+    async def search(self, index: str, body: dict) -> dict:
+        self.searched_indices.append(index)
+        return {"hits": {"hits": self._hits}}
+
+
+async def test_export_reads_the_pattern(export):
+    client = _RecordingOpenSearchClient([_event("evt-1").model_dump(mode="json")])
+    repository = OpenSearchAuditRepository(client, SESSIONS.index, SessionAuditEvent)
+
+    rows = json.loads(await export([], repository=repository))
+
+    assert [row["id"] for row in rows] == ["evt-1"]
+    assert client.searched_indices
+    assert set(client.searched_indices) == {"audit_events-*"}
