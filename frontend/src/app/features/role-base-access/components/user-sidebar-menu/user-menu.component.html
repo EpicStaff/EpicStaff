@@ -1,6 +1,5 @@
 <div class="user-menu-panel">
-    <!-- User header -->
-    <div class="user-header">
+    <section class="menu-section user-header">
         <app-user-avatar
             [name]="user().display_name || user().email"
             [avatarUrl]="user().avatar_url"
@@ -9,29 +8,79 @@
             <div class="user-name">{{ user().display_name || user().email }}</div>
             <div class="user-email">{{ user().email }}</div>
         </div>
-    </div>
+    </section>
 
-    <button
-        class="nav-item"
-        (click)="onProfileClick()"
-    >
-        <app-svg-icon
-            size="16px"
-            icon="profile"
-            class="nav-icon"
-        />
-        <span class="nav-label">My Profile</span>
-    </button>
+    <section class="menu-section">
+        <div class="section-label text-body-small">Organizations</div>
+        <ul class="org-list">
+            @for (org of organizations(); track org.organization.id) {
+                <li
+                    class="org-row"
+                    [class.active]="activeOrgService.activeOrgId() === org.organization.id"
+                    [class.disabled]="switching()"
+                    (click)="onOrgClick(org.organization.id)"
+                >
+                    <app-org-avatar [name]="org.organization.name" />
+                    <div class="org-info">
+                        <div class="org-name text-body-small">{{ org.organization.name }}</div>
+                        <div class="org-role">{{ org.role.name }}</div>
+                    </div>
+                </li>
+            }
+        </ul>
+    </section>
 
-    <button
-        class="nav-item"
-        (click)="onSignOutClick()"
-    >
-        <app-svg-icon
-            size="16px"
-            icon="sign-out"
-            class="nav-icon"
-        />
-        <span class="nav-label">Sign out</span>
-    </button>
+    <section class="menu-section">
+        <div class="section-label text-body-small">Navigation</div>
+        @if (canVisitWorkspace()) {
+            <button
+                class="nav-item"
+                [class.active]="isWorkspaceRoute()"
+                (click)="onWorkspaceClick()"
+            >
+                <app-svg-icon
+                    size="16px"
+                    icon="workspace"
+                    class="nav-icon"
+                />
+                <span class="nav-label text-body-small-large">Workspace</span>
+                <app-svg-icon
+                    size="16px"
+                    icon="chevron-right"
+                    class="nav-chevron"
+                />
+            </button>
+        }
+        <button
+            class="nav-item"
+            [class.active]="isProfileRoute()"
+            (click)="onProfileClick()"
+        >
+            <app-svg-icon
+                size="16px"
+                icon="profile"
+                class="nav-icon"
+            />
+            <span class="nav-label text-body-small-large">My Profile</span>
+            <app-svg-icon
+                size="16px"
+                icon="chevron-right"
+                class="nav-chevron"
+            />
+        </button>
+    </section>
+
+    <section class="menu-section">
+        <button
+            class="nav-item"
+            (click)="onSignOutClick()"
+        >
+            <app-svg-icon
+                size="16px"
+                icon="sign-out"
+                class="nav-icon"
+            />
+            <span class="nav-label text-body-small-large">Sign out</span>
+        </button>
+    </section>
 </div>
