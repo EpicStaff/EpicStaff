@@ -4,26 +4,13 @@ from types import TracebackType
 
 import settings
 from loguru import logger
-
-
-def _validated_log_level(configured_level: str | None) -> str:
-    level = (configured_level or "").upper()
-    try:
-        logger.level(level)
-    except ValueError:
-        raise ValueError(
-            f"CREW_LOG_LEVEL={configured_level!r} is not a log level; use one of "
-            "TRACE, DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL."
-        ) from None
-    return level
-
+from src.shared.bench_log import add_bench_sink, without_bench
 
 logger.remove()
 logger.add(
-    sys.stdout,
-    format="{time} {level} {message}",
-    level=_validated_log_level(settings.LOG_LEVEL),
+    sys.stdout, format="{time} {level} {message}", level=settings.LOG_LEVEL, filter=without_bench()
 )
+add_bench_sink(sys.stdout, settings.LOG_LEVEL)
 
 
 def log_exception(
