@@ -25,6 +25,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import ResponseError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
+from shared.bench_log import add_bench_sink, without_bench
 from shared.knowledge.client import KnowledgeClient
 from shared.redis_streams import RedisStreamClient, StreamEnvelope, StreamMessage
 
@@ -154,6 +155,7 @@ async def main() -> None:
     logger.add(
         sys.stderr,
         level=settings.LOG_LEVEL,
+        filter=without_bench(),
         format=(
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | "
             "{extra[correlation_id]} | "
@@ -163,6 +165,7 @@ async def main() -> None:
         backtrace=True,
         diagnose=False,
     )
+    add_bench_sink(sys.stderr, settings.LOG_LEVEL)
 
     consumer_name = f"{socket.gethostname()}-{uuid4().hex[:8]}"
 

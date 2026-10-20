@@ -282,3 +282,12 @@ pyrightconfig.json
 
 # Manager Logs
 src/manager/logs/*
+
+# Local benchmark tool folder; never committed here
+/benchmark/
+
+# .env backup the benchmark keeps while a run overrides settings
+src/.env.bench-backup
+
+# Host-specific compose settings such as container limits (loaded by compose)
+src/docker-compose.override.yaml

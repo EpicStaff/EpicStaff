@@ -1,5 +1,7 @@
 import { IPoint } from '@foblex/2d';
 
+import { SVG_ENDPOINT_NUDGE } from './path-builder-shared';
+
 /**
  * Shapes shared by the orthogonal builder and the router's no-route fallback. Pure
  * functions over full point lists, port to port.
@@ -8,6 +10,8 @@ import { IPoint } from '@foblex/2d';
 const STUB = 20;
 // Foblex's port points come from DOM rects and can be a pixel or two off getPortPosition.
 const SNAP_TOLERANCE = 3;
+// Below this length a perpendicular bridge between two parallel segments is collapsed.
+const MIN_BRIDGE = 10;
 // Below this vertical distance between the ports the fallback assumes the two nodes' boxes
 // overlap vertically, so there is no gap to return through (the builder doesn't know the boxes;
 // 60 px is the height of the smallest node, whose port sits at its centre).
@@ -25,7 +29,7 @@ export function buildRoundedOrthogonalPath(points: IPoint[], radius: number): st
         if (index === 0) {
             path += `M ${point.x} ${point.y}`;
         } else if (index === points.length - 1) {
-            path += `L ${point.x + 0.0002} ${point.y + 0.0002}`;
+            path += `L ${point.x + SVG_ENDPOINT_NUDGE} ${point.y + SVG_ENDPOINT_NUDGE}`;
         } else {
             path += getBend(points[index - 1], point, points[index + 1], radius);
         }
@@ -82,7 +86,29 @@ export function normalizeOrthogonalWaypoints(source: IPoint, waypoints: IPoint[]
     const moved = moveDraggedStretches(snappedAnchors(source, waypoints, target));
     const orthogonal = removeRedundantPoints(orthogonalize(source, moved.slice(1, -1), target));
     const stubbed = keepStubs(orthogonal);
-    return removeRedundantPoints(orthogonalize(source, stubbed.slice(1, -1), target)).slice(1, -1);
+    const cleaned = removeRedundantPoints(orthogonalize(source, stubbed.slice(1, -1), target));
+    return removeRedundantPoints(collapseShortBridges(cleaned)).slice(1, -1);
+}
+
+/**
+ * Light cleanup for a frozen (user-adjusted) wire after a node move: snap the first/last
+ * waypoints to the current port rows, collapse short bridges, and orthogonalize to stabilize.
+ * Does not do full normalization (moveDraggedStretches, keepStubs) to preserve the user's layout.
+ *
+ * The final orthogonalize ensures the stored waypoints match what the builder renders. Without it,
+ * a collapse that removes points can leave a non-orthogonal gap (the last waypoint no longer on the
+ * target's row); the builder fills it with an elbow on every render, silently recreating the bend
+ * the collapse just removed. For an already-orthogonal wire this is the identity.
+ */
+export function refreshFrozenWireWaypoints(source: IPoint, waypoints: IPoint[], target: IPoint): IPoint[] {
+    const anchors = snappedAnchors(source, waypoints, target);
+    const collapsed = collapseShortBridges(anchors);
+    // Orthogonalize snaps all segments to axes, so removeRedundantPoints can detect
+    // collinear points that a node move made redundant (e.g. two horizontal segments
+    // that now sit on the same line). Without this, handle() normalizes them away for
+    // rendering but the extra points survive in storage and reappear as visible bends.
+    const ortho = orthogonalize(collapsed[0], collapsed.slice(1, -1), collapsed[collapsed.length - 1]);
+    return removeRedundantPoints(ortho).slice(1, -1);
 }
 
 /**
@@ -109,6 +135,59 @@ export function fallbackRoutePoints(source: IPoint, target: IPoint): IPoint[] {
         { x: entryX, y: target.y },
         target,
     ];
+}
+
+/**
+ * Collapses interior segments shorter than MIN_BRIDGE between two parallel neighbours by
+ * moving one neighbour onto the other's line (stubs never move; the earlier neighbour is
+ * tried first, aligning to the later one's line). Runs on a full point array (source to target).
+ */
+function collapseShortBridges(points: IPoint[]): IPoint[] {
+    if (points.length < 5) return points;
+    let result = points.map((point) => ({ x: point.x, y: point.y }));
+
+    let changed = true;
+    while (changed) {
+        changed = false;
+        const lastSeg = result.length - 2;
+        for (let i = 1; i < lastSeg; i++) {
+            const a = result[i];
+            const b = result[i + 1];
+            const isVertical = a.x === b.x && a.y !== b.y;
+            const isHorizontal = a.y === b.y && a.x !== b.x;
+            if (!isVertical && !isHorizontal) continue;
+
+            const bridgeLength = isVertical ? Math.abs(b.y - a.y) : Math.abs(b.x - a.x);
+            if (bridgeLength >= MIN_BRIDGE) continue;
+
+            const prev = result[i - 1];
+            const next = result[i + 2];
+            if (isVertical && (prev.y !== a.y || b.y !== next.y)) continue;
+            if (isHorizontal && (prev.x !== a.x || b.x !== next.x)) continue;
+
+            const axis: 'x' | 'y' = isVertical ? 'y' : 'x';
+            const earlierMovable = i - 1 > 0;
+            const laterMovable = i + 1 < lastSeg;
+
+            const options: { segment: number; to: number }[] = [];
+            if (earlierMovable) options.push({ segment: i - 1, to: b[axis] });
+            if (laterMovable) options.push({ segment: i + 1, to: a[axis] });
+
+            for (const { segment, to } of options) {
+                const candidate = result.map((point) => ({ ...point }));
+                candidate[segment][axis] = to;
+                candidate[segment + 1][axis] = to;
+                const clean = removeRedundantPoints(candidate);
+                if (clean.length < result.length) {
+                    result = clean;
+                    changed = true;
+                    break;
+                }
+            }
+            if (changed) break;
+        }
+    }
+    return result;
 }
 
 // [source, ...waypoints, target] as copies, the first and last waypoints snapped onto the port

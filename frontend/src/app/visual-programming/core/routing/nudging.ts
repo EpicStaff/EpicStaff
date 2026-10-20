@@ -1,6 +1,7 @@
 import { IPoint } from '@foblex/2d';
 
 import { Rect } from './obstacles';
+import { rangeOverlap, sharesPort, STUB } from './routing-constants';
 
 /**
  * Separates wires that run on top of each other into parallel lanes. Collinear
@@ -20,7 +21,6 @@ export interface RoutedPath {
 }
 
 const LANE_SPACING = 10;
-const STUB = 20;
 // A lane may shorten a neighbouring segment down to this, never flip it.
 const MIN_SEGMENT = 1;
 const ROUNDS = 2;
@@ -112,7 +112,7 @@ function overlapGroups(paths: RoutedPath[], axis: Axis, includeNear: boolean): S
         for (let second = first + 1; second < segments.length; second++) {
             const [a, b] = [segments[first], segments[second]];
             if (b.line !== a.line && (!includeNear || b.line - a.line >= NEAR_DISTANCE)) break;
-            const overlap = Math.min(a.high, b.high) - Math.max(a.low, b.low);
+            const overlap = rangeOverlap(a.low, a.high, b.low, b.high);
             const endToEnd = includeNear && a.path !== b.path && overlap <= 0 && overlap >= -END_TO_END_GAP;
             const conflicts = a.line === b.line ? overlap > 0 || endToEnd : a.path !== b.path && overlap > NEAR_OVERLAP;
             if (conflicts) parent[root(second)] = root(first);
@@ -160,10 +160,6 @@ function trunkLanes(paths: RoutedPath[], orderedLanes: Segment[][]): Segment[][]
         else merged.push([...lane]);
     }
     return merged;
-}
-
-function sharesPort(first: RoutedPath, second: RoutedPath): boolean {
-    return first.sourcePortKey === second.sourcePortKey || first.targetPortKey === second.targetPortKey;
 }
 
 interface LaneEnds {
@@ -346,7 +342,7 @@ function conflictsAround(
             if (!otherLine || otherLine.axis !== axis) continue;
             const distance = Math.abs(otherLine.position - position);
             if (distance >= NEAR_DISTANCE) continue;
-            const overlap = Math.min(high, otherLine.high) - Math.max(low, otherLine.low);
+            const overlap = rangeOverlap(low, high, otherLine.low, otherLine.high);
             if (distance < SAME_LINE_TOLERANCE) {
                 if (overlap > MIN_SEGMENT) score += COLLINEAR_WEIGHT;
                 else if (overlap >= -END_TO_END_GAP) score++;
