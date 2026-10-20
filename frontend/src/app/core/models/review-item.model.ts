@@ -10,6 +10,14 @@ export interface RawFlowNode {
 
 export type FlowNodesByFile = Record<string, RawFlowNode[]>;
 
+/**
+ * Python code as an import file carries it.
+ *
+ * KNOWN BROKEN: `libraries` is what older export files hold. Libraries live only
+ * on the venv now and no export carries one, so the import review still shows a
+ * library list that importing will not restore. Fixing it means deciding how a
+ * venv travels in an exported flow.
+ */
 export interface ReviewPythonCode {
     code: string;
     entrypoint: string;

@@ -10,6 +10,16 @@ from tables.validators.python_libraries_validator import validate_python_library
 
 
 class PythonCodeImportSerializer(serializers.ModelSerializer):
+    """Python code as it travels in an import/export file.
+
+    KNOWN BROKEN: `libraries` is declared here but `PythonCode` has no such field
+    any more -- libraries live only on the venv, and an export carries no venv.
+    Serializing reads an attribute that does not exist and importing passes a
+    keyword the model will not take, so python-tool import/export does not work.
+    Fixing it means deciding how a venv travels in an exported flow; the field is
+    left in place until then so the file format is not changed twice.
+    """
+
     code = serializers.CharField(allow_blank=True)
     libraries = serializers.CharField(allow_blank=True)
     entrypoint = serializers.CharField(allow_blank=True, required=False)

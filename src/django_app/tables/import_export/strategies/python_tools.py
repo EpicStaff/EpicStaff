@@ -29,6 +29,9 @@ from tables.models import PythonCode, PythonCodeTool, User
 COMPARED_FIELDS = ("description", "variables", "use_storage")
 
 
+# KNOWN BROKEN: `libraries` is no longer a field of `PythonCode`, so every read of
+# it here raises. See PythonCodeImportSerializer; both are fixed together, once it
+# is decided how a venv travels in an exported flow.
 def python_code_key(code: str, libraries: str, entrypoint: str) -> tuple:
     """Return what python code is matched on, from file values or a stored row.
 

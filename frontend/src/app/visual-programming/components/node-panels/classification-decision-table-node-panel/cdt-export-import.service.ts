@@ -5,6 +5,13 @@ import { PromptConfig } from '../../../core/models/classification-decision-table
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { normalizeRouteCode } from './cdt-route-continue.util';
 
+/**
+ * KNOWN BROKEN: libraries live only on the venv now, and nothing here carries a
+ * venv. `libraries` below is kept so the file format still round-trips, but it is
+ * always empty on export and ignored on import, so a CDT moved between
+ * installations loses its environment. Fixing it means deciding how a venv
+ * travels in an exported flow.
+ */
 export interface CdtExportPythonCode {
     code: string;
     libraries: string[];
