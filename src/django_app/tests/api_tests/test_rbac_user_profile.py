@@ -251,14 +251,19 @@ def test_patch_rejects_an_invalid_display_name(member_acme, display_name):
     assert any(error["field"] == "display_name" for error in response.json()["errors"])
 
 
-EMPTY_SHORTCUTS = {"custom": []}
+EMPTY_SHORTCUTS = {"custom": [], "overrides": {}}
 SAVED_SHORTCUTS = {
     "custom": [{"action": "node.task", "keys": "Shift+KeyT"}, {"action": "node.agent", "keys": None}],
+    "overrides": {"node.python": "Shift+KeyY", "node.llm": None},
 }
 
 
-def shortcuts(custom):
-    return {"custom": custom}
+def shortcuts(custom, overrides=None):
+    return {"custom": custom, "overrides": {} if overrides is None else overrides}
+
+
+def overrides(mapping):
+    return shortcuts([], mapping)
 
 
 def custom_entry(action="node.task", keys="Shift+KeyT"):
@@ -275,27 +280,34 @@ def save_shortcuts(user, value):
 
 
 @pytest.mark.django_db
-def test_custom_shortcuts_default_to_an_empty_custom_list(member_acme):
+def test_custom_shortcuts_default_to_empty_custom_and_overrides(member_acme):
     response = client_for(member_acme).get(PROFILE_URL)
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json()["custom_shortcuts"] == {"custom": []}
+    assert response.json()["custom_shortcuts"] == {"custom": [], "overrides": {}}
 
 
 @pytest.mark.django_db
 def test_patch_replaces_the_whole_shortcut_value(member_acme):
     save_shortcuts(
         member_acme,
-        {"custom": [{"action": "editor.save", "keys": "Alt+KeyS"}, {"action": "node.task", "keys": "Shift+KeyT"}]},
+        {
+            "custom": [{"action": "editor.save", "keys": "Alt+KeyS"}, {"action": "node.task", "keys": "Shift+KeyT"}],
+            "overrides": {"node.python": "Shift+KeyY"},
+        },
     )
-    replacement = {"custom": [{"action": "node.agent", "keys": None}]}
+    replacement = {"custom": [{"action": "node.agent", "keys": None}], "overrides": {"node.llm": None}}
 
     response = client_for(member_acme).patch(PROFILE_URL, {"custom_shortcuts": replacement}, format="json")
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json()["custom_shortcuts"] == {"custom": [{"action": "node.agent", "keys": None}]}
+    assert response.json()["custom_shortcuts"] == {
+        "custom": [{"action": "node.agent", "keys": None}], "overrides": {"node.llm": None},
+    }
     member_acme.refresh_from_db()
-    assert member_acme.custom_shortcuts == {"custom": [{"action": "node.agent", "keys": None}]}
+    assert member_acme.custom_shortcuts == {
+        "custom": [{"action": "node.agent", "keys": None}], "overrides": {"node.llm": None},
+    }
 
 
 @pytest.mark.django_db
@@ -338,13 +350,25 @@ def test_patch_without_custom_shortcuts_keeps_them(member_acme):
             subgraph_entry({"flowId": 12}, keys="Shift+KeyA"),
             subgraph_entry({"flowId": 13}, keys=None),
         ]),
+        overrides({"node.python": "Shift+KeyY"}),
+        overrides({"node.python": None}),
+        overrides({"node.python": None, "node.llm": None}),
+        overrides({f"node.action{index}": f"Shift+Key{index}" for index in range(100)}),
+        overrides({f"node.action{index}": None for index in range(100)}),
+        overrides({"x" * 64: "y" * 64}),
+        overrides({" !~": " !~"}),
+        shortcuts([custom_entry(keys=None)], {"node.python": "Shift+KeyT"}),
+        shortcuts([custom_entry(keys="Shift+KeyA")], {"node.python": "Shift+KeyB", "node.llm": None}),
     ],
     ids=[
         "empty", "unknown-action", "two-keys", "same-action-twice", "null-keys", "repeated-null-keys",
         "null-keys-beside-a-chord", "action-at-limit", "keys-at-limit", "printable-ascii-edges",
         "entries-at-limit", "entries-at-limit-all-null", "params-int", "params-string", "params-at-limit",
         "param-name-and-value-at-limit", "param-printable-ascii-edges", "param-int-zero", "param-int-at-limit",
-        "entries-with-and-without-params",
+        "entries-with-and-without-params", "override-chord", "override-null", "overrides-all-null",
+        "overrides-at-limit", "overrides-at-limit-all-null", "override-action-and-chord-at-limit",
+        "override-printable-ascii-edges", "override-chord-beside-a-null-custom-keys",
+        "overrides-and-custom-with-different-chords",
     ],
 )
 def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):
@@ -365,9 +389,9 @@ def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):
         "Shift+KeyA",
         {},
         {"node.agent": "Shift+KeyA"},
-        {"overrides": {}, "custom": []},
+        {"custom": []},
         {"overrides": {}},
-        {"custom": [], "extra": {}},
+        {"custom": [], "overrides": {}, "extra": {}},
         shortcuts(None),
         shortcuts({}),
         shortcuts("Shift+KeyA"),
@@ -422,9 +446,29 @@ def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):
         shortcuts([subgraph_entry({"flowName": "Головний"})]),
         shortcuts([subgraph_entry({"flowName": "Main\tflow"})]),
         shortcuts([custom_entry(), subgraph_entry({"flowId": 12}, keys="Shift+KeyT")]),
+        {"custom": [], "overrides": None},
+        overrides([]),
+        overrides(["node.python", "Shift+KeyY"]),
+        overrides("node.python=Shift+KeyY"),
+        overrides({f"node.action{index}": None for index in range(101)}),
+        overrides({"": "Shift+KeyY"}),
+        overrides({"x" * 65: "Shift+KeyY"}),
+        overrides({"node.python": ""}),
+        overrides({"node.python": "x" * 65}),
+        overrides({"node.python": 1}),
+        overrides({"node.python": True}),
+        overrides({"node.python": ["Shift+KeyY"]}),
+        overrides({"node.python": {"keys": "Shift+KeyY"}}),
+        overrides({"node.\u0000": "Shift+KeyY"}),
+        overrides({"node.python": "Shift+KeyY\u0000"}),
+        overrides({"node.пітон": "Shift+KeyY"}),
+        overrides({"node.python": "Shift+КейY"}),
+        overrides({"node.python": "Shift+KeyY", "node.llm": "Shift+KeyY"}),
+        shortcuts([custom_entry(keys="Shift+KeyY")], {"node.python": "Shift+KeyY"}),
+        shortcuts([custom_entry(action="node.python", keys="Shift+KeyY")], {"node.python": "Shift+KeyY"}),
     ],
     ids=[
-        "null", "list", "string", "empty-object", "old-flat-map", "overrides-present", "missing-custom",
+        "null", "list", "string", "empty-object", "old-flat-map", "missing-overrides", "missing-custom",
         "extra-top-level-key", "custom-null", "custom-object", "custom-string", "item-null", "item-string",
         "item-list", "item-missing-keys", "item-missing-action", "item-extra-key", "non-string-action",
         "null-action", "non-string-keys", "list-keys", "empty-action", "empty-keys", "action-over-limit",
@@ -436,6 +480,12 @@ def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):
         "param-true", "param-false", "param-whole-float", "param-float", "param-object", "param-list",
         "param-null", "param-negative-int", "param-int-over-limit", "nul-param-name", "nul-param-string",
         "non-ascii-param-name", "non-ascii-param-string", "tab-in-param-string", "duplicate-keys-with-params",
+        "overrides-null", "overrides-list", "overrides-pair-list", "overrides-string", "overrides-over-limit",
+        "empty-override-action", "override-action-over-limit", "empty-override-chord", "override-chord-over-limit",
+        "int-override-chord", "bool-override-chord", "list-override-chord", "object-override-chord",
+        "nul-override-action", "nul-override-chord", "non-ascii-override-action", "non-ascii-override-chord",
+        "duplicate-chord-between-overrides", "duplicate-chord-between-override-and-custom",
+        "duplicate-chord-between-override-and-custom-of-the-same-action",
     ],
 )
 def test_patch_rejects_a_malformed_shortcut_value(member_acme, payload):
@@ -460,15 +510,17 @@ def test_patch_rejects_a_malformed_shortcut_value(member_acme, payload):
     [
         [],
         {"node.agent": "Alt+KeyG"},
-        {"overrides": {}, "custom": []},
+        {"custom": []},
         shortcuts([custom_entry(keys="\u0000")]),
         shortcuts([custom_entry(), custom_entry(action="node.agent")]),
         shortcuts([subgraph_entry({"flowId": True})]),
         shortcuts([subgraph_entry({"flowId": {"id": 12}})]),
+        overrides({"node.python": 1}),
+        shortcuts([custom_entry()], {"node.python": "Shift+KeyT"}),
     ],
     ids=[
-        "not-an-object", "old-flat-map", "overrides-present", "nul-keys", "duplicate-keys", "param-true",
-        "param-object",
+        "not-an-object", "old-flat-map", "missing-overrides", "nul-keys", "duplicate-keys", "param-true",
+        "param-object", "non-string-override-chord", "duplicate-chord-between-override-and-custom",
     ],
 )
 def test_a_rejected_shortcut_patch_does_not_change_the_display_name(member_acme, custom_shortcuts):

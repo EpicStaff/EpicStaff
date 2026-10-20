@@ -4,6 +4,7 @@ from typing import Any
 from django.core.files.uploadedfile import UploadedFile
 from tables.models.user import (
     SHORTCUTS_MAX_CUSTOM_ENTRIES,
+    SHORTCUTS_MAX_OVERRIDE_ENTRIES,
     SHORTCUTS_MAX_PARAM_INTEGER,
     SHORTCUTS_MAX_PARAMS,
     SHORTCUTS_MAX_TEXT_LENGTH,
@@ -234,13 +235,18 @@ class UserValidationService(BaseRBACValidator):
 
     @staticmethod
     def _custom_shortcuts_error(value: Any) -> str | None:
-        if not isinstance(value, dict) or value.keys() != {"custom"}:
-            return 'Must be an object with exactly the key "custom".'
+        if not isinstance(value, dict) or value.keys() != {"custom", "overrides"}:
+            return 'Must be an object with exactly the keys "custom" and "overrides".'
         custom = value["custom"]
+        overrides = value["overrides"]
         if not isinstance(custom, list):
             return _CUSTOM_ENTRY_SHAPE_REASON
+        if not isinstance(overrides, dict):
+            return '"overrides" must be an object mapping action ids to keys or null.'
         if len(custom) > SHORTCUTS_MAX_CUSTOM_ENTRIES:
             return f'"custom" must have {SHORTCUTS_MAX_CUSTOM_ENTRIES} entries or fewer.'
+        if len(overrides) > SHORTCUTS_MAX_OVERRIDE_ENTRIES:
+            return f'"overrides" must have {SHORTCUTS_MAX_OVERRIDE_ENTRIES} entries or fewer.'
         if not all(_has_shortcut_entry_shape(entry) for entry in custom):
             return _CUSTOM_ENTRY_SHAPE_REASON
         params_list = [entry["params"] for entry in custom if "params" in entry]
@@ -249,12 +255,15 @@ class UserValidationService(BaseRBACValidator):
             for params in params_list
         ):
             return f'"params" must be an object with 1 to {SHORTCUTS_MAX_PARAMS} entries.'
-        if not all(_is_shortcut_text(entry["action"]) for entry in custom):
+        action_ids = [entry["action"] for entry in custom] + list(overrides)
+        if not all(_is_shortcut_text(action_id) for action_id in action_ids):
             return (
                 "Action ids must be non-empty printable ASCII strings "
                 f"of {SHORTCUTS_MAX_TEXT_LENGTH} characters or fewer."
             )
-        assigned_keys = [entry["keys"] for entry in custom if entry["keys"] is not None]
+        assigned_keys = [entry["keys"] for entry in custom if entry["keys"] is not None] + [
+            keys for keys in overrides.values() if keys is not None
+        ]
         if not all(_is_shortcut_text(keys) for keys in assigned_keys):
             return (
                 "Keys must be null or non-empty printable ASCII strings "
@@ -271,7 +280,7 @@ class UserValidationService(BaseRBACValidator):
                 f"such a string or an integer from 0 to {SHORTCUTS_MAX_PARAM_INTEGER}."
             )
         if len(set(assigned_keys)) != len(assigned_keys):
-            return 'Each "custom" entry with keys must have different keys.'
+            return 'Keys must not repeat across "custom" entries and "overrides".'
         return None
 
     def validate_avatar_upload(self, data) -> UploadedFile:

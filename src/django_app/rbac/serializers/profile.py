@@ -41,6 +41,13 @@ class ShortcutCustomEntrySerializer(serializers.Serializer):
 
 class CustomShortcutsSerializer(serializers.Serializer):
     custom = ShortcutCustomEntrySerializer(many=True)
+    overrides = serializers.DictField(
+        child=serializers.CharField(allow_null=True),
+        help_text=(
+            "The user's own keys for built-in actions, by action id. "
+            "null means the action deliberately has no key."
+        ),
+    )
 
 
 class ProfileResponseSerializer(UserResponseSerializer):
@@ -92,7 +99,7 @@ class ProfilePatchRequestSerializer(serializers.Serializer):
     display_name = serializers.CharField(required=False, allow_null=True)
     custom_shortcuts = CustomShortcutsSerializer(
         required=False,
-        help_text="Replaces the whole value: the list of custom shortcuts.",
+        help_text="Replaces the whole value: the custom shortcuts and the key overrides.",
     )
 
 

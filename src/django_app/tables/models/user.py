@@ -21,6 +21,7 @@ from django.db import models
 DISPLAY_NAME_MAX_LENGTH = 255
 
 SHORTCUTS_MAX_CUSTOM_ENTRIES = 100
+SHORTCUTS_MAX_OVERRIDE_ENTRIES = 100
 SHORTCUTS_MAX_TEXT_LENGTH = 64
 SHORTCUTS_MAX_PARAMS = 5
 SHORTCUTS_MAX_PARAM_INTEGER = 2**53 - 1
@@ -107,7 +108,7 @@ def _avatar_upload_path(instance, filename):
 
 
 def default_custom_shortcuts() -> dict:
-    return {"custom": []}
+    return {"custom": [], "overrides": {}}
 
 
 class User(AbstractBaseUser, PermissionsMixin):

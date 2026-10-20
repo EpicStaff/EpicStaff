@@ -213,7 +213,9 @@ def test_list_ordering(superadmin, member_acme, ordering, expected):
 
 @pytest.mark.django_db
 def test_the_user_directory_never_shows_custom_shortcuts(superadmin, member_acme):
-    member_acme.custom_shortcuts = {"custom": [{"action": "node.task", "keys": "Shift+KeyT"}]}
+    member_acme.custom_shortcuts = {
+        "custom": [{"action": "node.task", "keys": "Shift+KeyT"}], "overrides": {"node.python": "Shift+KeyY"},
+    }
     member_acme.save(update_fields=["custom_shortcuts"])
 
     response = client_for(superadmin).get(USERS_LIST)

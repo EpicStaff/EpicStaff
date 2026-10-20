@@ -127,9 +127,10 @@ class UserProfileService:
             )
         if "custom_shortcuts" in changes:
             logger.info(
-                "profile.custom_shortcuts_updated user_id={} custom={}",
+                "profile.custom_shortcuts_updated user_id={} custom={} overrides={}",
                 user.id,
                 len(changes["custom_shortcuts"]["custom"]),
+                len(changes["custom_shortcuts"]["overrides"]),
             )
         return user
 
