@@ -165,6 +165,52 @@ def test_add_member_is_refused(
     assert OrganizationUser.objects.count() == memberships_before
 
 
+@pytest.fixture
+def membership_manager_acme(db, django_user_model, acme):
+    """Holds only MEMBERSHIPS create/read/update in acme — narrow enough that
+    the escalation ceiling can refuse a role (Org Admin holds every grantable bit)."""
+    role = Role.objects.create(name="MembershipManager", org=acme, is_built_in=False)
+    RolePermission.objects.create(
+        role=role,
+        resource_type="memberships",
+        permissions=int(Permission.CREATE | Permission.READ | Permission.UPDATE),
+    )
+    user = django_user_model.objects.create_user(email="mm@x.com", password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=acme, role=role)
+    return user
+
+
+@pytest.fixture
+def foreign_and_missing_role_ids(beta):
+    """A custom role of beta and an id no role has — the two must be indistinguishable.
+
+    The foreign role grants a bit `membership_manager_acme` lacks, so running the
+    escalation ceiling before the org check would surface as a 403 and fail.
+    """
+    foreign = Role.objects.create(name="BetaOnly", org=beta, is_built_in=False)
+    RolePermission.objects.create(role=foreign, resource_type="flows", permissions=int(Permission.READ))
+    missing = Role.objects.order_by("-pk").first().pk + 1000
+    return foreign.pk, missing
+
+
+@pytest.mark.django_db
+def test_add_member_foreign_org_role_answers_like_a_missing_role(
+    client_as, membership_manager_acme, acme, django_user_model, foreign_and_missing_role_ids
+):
+    django_user_model.objects.create_user(email="t@x.com", password="StrongPass123!")
+    client = client_as(membership_manager_acme)
+
+    foreign, missing = (
+        client.post(LIST_URL, {"org_id": acme.id, "email": "t@x.com", "role_id": role_id}, format="json")
+        for role_id in foreign_and_missing_role_ids
+    )
+
+    assert foreign.status_code == missing.status_code == status.HTTP_404_NOT_FOUND
+    assert foreign.json() == missing.json()
+    assert foreign.json()["code"] == "role_not_found"
+    assert not OrganizationUser.objects.filter(user__email="t@x.com").exists()
+
+
 # ---- change role ----
 
 
@@ -181,6 +227,39 @@ def test_change_role_200(
     )
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["role"]["id"] == role_viewer.id
+
+
+@pytest.mark.django_db
+def test_change_role_foreign_org_role_answers_like_a_missing_role(
+    client_as, membership_manager_acme, acme, role_member, django_user_model, foreign_and_missing_role_ids
+):
+    bob = django_user_model.objects.create_user(email="bob@x.com", password="StrongPass123!")
+    membership = OrganizationUser.objects.create(user=bob, org=acme, role=role_member)
+    client = client_as(membership_manager_acme)
+
+    foreign, missing = (
+        client.patch(detail_url(membership.id), {"role_id": role_id}, format="json")
+        for role_id in foreign_and_missing_role_ids
+    )
+
+    assert foreign.status_code == missing.status_code == status.HTTP_404_NOT_FOUND
+    assert foreign.json() == missing.json()
+    assert foreign.json()["code"] == "role_not_found"
+    membership.refresh_from_db()
+    assert membership.role_id == role_member.id
+
+
+@pytest.mark.django_db
+def test_change_role_to_superadmin_role_400(client_as, admin_acme, acme, role_member, django_user_model):
+    bob = django_user_model.objects.create_user(email="bob@x.com", password="StrongPass123!")
+    membership = OrganizationUser.objects.create(user=bob, org=acme, role=role_member)
+
+    resp = client_as(admin_acme).patch(detail_url(membership.id), {"role_id": _superadmin_role().id}, format="json")
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.json()["code"] == "invalid_role_assignment"
+    membership.refresh_from_db()
+    assert membership.role_id == role_member.id
 
 
 @pytest.mark.django_db

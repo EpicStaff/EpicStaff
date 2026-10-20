@@ -134,8 +134,9 @@ class UserManagementService(CrossOrgResourceService):
             given without an explicit role_id (D9).
           - duplicate email → EmailAlreadyExistsError (400).
           - unknown organization_id → OrganizationNotFoundError (404).
-          - unknown role_id → RoleNotFoundError (404).
-          - non-assignable role → InvalidRoleAssignmentError (400).
+          - unknown role_id, or a custom role of another org →
+            RoleNotFoundError (404).
+          - the global Superadmin role → InvalidRoleAssignmentError (400).
         """
         UserModel = get_user_model()  # noqa: N806
 
