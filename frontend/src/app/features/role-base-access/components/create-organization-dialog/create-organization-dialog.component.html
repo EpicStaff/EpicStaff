@@ -54,7 +54,7 @@
                         @for (column of retentionColumns(); track column.type) {
                             <div class="data-retention__column">
                                 <span
-                                    class="text-body-small-large"
+                                    class="data-retention__column-label text-body"
                                     [id]="column.labelId"
                                 >
                                     {{ column.label }}
@@ -63,6 +63,8 @@
                                     [items]="column.items"
                                     [formControl]="column.control"
                                     [ariaLabelledby]="column.labelId"
+                                    [outlined]="true"
+                                    [transparent]="true"
                                 />
                                 <app-validation-errors [control]="column.control" />
                                 @if (column.hint) {
