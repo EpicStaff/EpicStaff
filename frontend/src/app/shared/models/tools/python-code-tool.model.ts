@@ -65,6 +65,8 @@ export interface PatchPythonCodeToolRequest {
 export interface CreatePythonCodeBody {
     code: string;
     entrypoint: string;
+    /** The venv the tool runs in; `null` means the sandbox's default one. */
+    venv_id: number | null;
     global_kwargs: Record<string, unknown>;
     secret_ids?: number[];
 }

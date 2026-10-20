@@ -4,6 +4,7 @@ export interface CreateCustomToolFormValue {
     description: string;
     pythonCode: string;
     variablesJson: string;
+    venvId: number | null;
     useStorage: boolean;
 }
 
@@ -34,6 +35,9 @@ export function toCreatePayload(
         python_code: {
             code: form.pythonCode,
             entrypoint: preserved.entrypoint?.trim() || DEFAULT_ENTRYPOINT,
+            // Always sent, `null` included: the backend applies the keys it is given,
+            // so leaving it out would keep the old venv instead of clearing it.
+            venv_id: form.venvId,
             global_kwargs: {},
             secret_ids: secretIds,
         },

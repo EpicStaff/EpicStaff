@@ -122,6 +122,18 @@
                     </div>
                 }
 
+                <div class="form-section">
+                    <app-select
+                        label="Venv"
+                        tooltipText="The virtual environment this tool's code runs in. Leave empty to use the default environment."
+                        placeholder="Select venv"
+                        formControlName="venvId"
+                        [items]="venvItems()"
+                        [loading]="loadingVenvs()"
+                        [readonly]="isBuiltIn()"
+                    />
+                </div>
+
                 @if (activeEditor() !== ActiveEditor.Python) {
                     <div
                         class="editor-card"
