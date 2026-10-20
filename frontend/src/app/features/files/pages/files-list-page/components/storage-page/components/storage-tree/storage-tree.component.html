@@ -77,7 +77,7 @@
             [class.storage-tree__item--drop-target]="isDropTarget(node)"
             [class.storage-tree__item--dragging]="isDraggingItem(node)"
             [attr.draggable]="renamingItem() === null || renamingItem()?.path !== node.path ? 'true' : 'false'"
-            [style.padding-left.rem]="0.75 + level * 1.25"
+            [style.--tree-level]="level"
             (click)="onItemClick($event, node)"
             (contextmenu)="onContextMenu($event, node)"
             (mouseenter)="onItemMouseEnter($event, node)"

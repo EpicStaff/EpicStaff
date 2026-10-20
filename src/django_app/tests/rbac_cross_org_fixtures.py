@@ -80,3 +80,11 @@ def superadmin(db, django_user_model):
         password="StrongPass123!",
         is_superadmin=True,
     )
+
+
+@pytest.fixture
+def superadmin_in_acme(client_as, superadmin, acme):
+    """A superadmin client with Acme as the active org (superadmins need the header too)."""
+    client = client_as(superadmin)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    return client

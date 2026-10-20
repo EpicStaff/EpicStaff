@@ -127,9 +127,9 @@
                                             [attr.aria-activedescendant]="keyVariablePicker.activeDescendantFor(i)"
                                             (input)="onKeyInput(i, $event)"
                                             (keydown)="onKeyKeydown(i, $event)"
-                                            (focus)="onKeyFocus(i)"
+                                            (focus)="onKeyFocus(i, $event)"
                                             (blur)="onKeyBlur(i, $event)"
-                                            (click)="onKeyCaretMove(i, $event)"
+                                            (click)="onKeyClick(i, $event)"
                                             (keyup)="onKeyCaretMove(i, $event)"
                                             (scroll)="keyBackdrop.scrollLeft = keyInput.scrollLeft"
                                         />

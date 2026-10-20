@@ -20,21 +20,21 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
+import {
+    PYTHON_CODE_RUNNING_MESSAGE,
+    SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
+    SAVE_NODE_BEFORE_CODE_RUN_MESSAGE,
+    SAVE_TO_RUN_LATEST_CODE_MESSAGE,
+    STORED_GRAPH_OUTDATED_MESSAGE,
+} from '../shared/python-code-test-run/stored-python-code';
 import {
     INVALID_TEST_PAYLOAD_NOT_SAVED_MESSAGE,
     TEST_PAYLOAD_SAVED_OTHER_CHANGES_NOT_SAVED_MESSAGE,
     TriggerTestPayloadState,
 } from '../shared/test-payload-section/trigger-test-payload.state';
-import {
-    PYTHON_CODE_RUNNING_MESSAGE,
-    RUN_PYTHON_CODE_LABEL,
-    SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
-    SAVE_NODE_BEFORE_CODE_RUN_MESSAGE,
-    SAVE_TO_RUN_LATEST_CODE_MESSAGE,
-    STORED_GRAPH_OUTDATED_MESSAGE,
-    WebhookTriggerNodePanelComponent,
-} from './webhook-trigger-node-panel.component';
+import { RUN_PYTHON_CODE_LABEL, WebhookTriggerNodePanelComponent } from './webhook-trigger-node-panel.component';
 
 const SAVED_PAYLOAD = { order: { id: '104' } };
 
@@ -49,6 +49,11 @@ const DTO: GetWebhookTriggerNodeRequest = {
     metadata: {},
     webhook_trigger: null,
     test_payload: SAVED_PAYLOAD,
+    use_storage: false,
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 /** The template-facing members the panel's test payload editor binds to. */
@@ -75,7 +80,13 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
             ],
         });
@@ -243,6 +254,110 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
     });
 });
 
+describe('WebhookTriggerNodePanelComponent storage', () => {
+    const STORAGE_HEADER = 'from epicstaff_storage import storage';
+    let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
+    let panel: WebhookTriggerNodePanelComponent;
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ToastService, useValue: { warning: vi.fn() } },
+                {
+                    provide: PermissionsService,
+                    useValue: { can: () => true, canAny: () => true, canEditSecrets: () => true },
+                },
+                {
+                    provide: SecretsStorageService,
+                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                },
+            ],
+        });
+        // Real panel template with the real storage section; the other controls render as unknown elements.
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: { imports: [NgTemplateOutlet, NodeStorageSectionComponent], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        panel = fixture.componentInstance;
+        fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(DTO));
+        fixture.detectChanges();
+    });
+
+    function storageSection(): NodeStorageSectionComponent {
+        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
+            .componentInstance as NodeStorageSectionComponent;
+    }
+
+    it('shows the node storage flag in the storage section', () => {
+        expect(panel.useStorage()).toBe(false);
+        expect(storageSection().enabled()).toBe(false);
+    });
+
+    it('saves a toggled storage flag, and saves it again once it is toggled back', () => {
+        storageSection().onToggle(true);
+
+        expect(panel.useStorage()).toBe(true);
+        expect(panel.isDirty()).toBe(true);
+        expect(panel.onSaveSilently()!.data.use_storage).toBe(true);
+        expect(panel.isDirty()).toBe(false);
+
+        storageSection().onToggle(false);
+
+        expect(panel.onSaveSilently()!.data.use_storage).toBe(false);
+    });
+
+    it('puts the storage header on top of the code once, and takes it out again when storage is turned off', () => {
+        storageSection().onToggle(true);
+
+        expect(panel.pythonCode.startsWith(STORAGE_HEADER)).toBe(true);
+        expect(panel.pythonCode.endsWith(DTO.python_code.code)).toBe(true);
+        const codeWithHeader = panel.pythonCode;
+        panel.insertStorageCode(STORAGE_HEADER);
+        expect(panel.pythonCode).toBe(codeWithHeader);
+
+        storageSection().onToggle(false);
+
+        expect(panel.pythonCode).toBe(DTO.python_code.code);
+        expect(panel.isDirty()).toBe(false);
+    });
+
+    it('leaves the header in code that no longer starts with it when storage is turned off', () => {
+        storageSection().onToggle(true);
+        panel.onPythonCodeChange('# edited\n' + panel.pythonCode);
+
+        storageSection().onToggle(false);
+
+        expect(panel.pythonCode.includes(STORAGE_HEADER)).toBe(true);
+        expect(panel.useStorage()).toBe(false);
+    });
+
+    it('does not add the header to code that already uses storage', () => {
+        const code = 'from epicstaff_storage import storage\n\ndef main(trigger_payload): pass';
+        fixture.componentRef.setInput(
+            'node',
+            mapWebhookTriggerNodeToModel({ ...DTO, id: 22, python_code: { ...DTO.python_code, code } })
+        );
+        fixture.detectChanges();
+
+        storageSection().onToggle(true);
+
+        expect(panel.pythonCode).toBe(code);
+    });
+
+    it('shows the flag of another webhook node selected in the same panel', () => {
+        const otherNode = { ...mapWebhookTriggerNodeToModel({ ...DTO, use_storage: true }), id: 'other-node' };
+
+        fixture.componentRef.setInput('node', otherNode);
+        fixture.detectChanges();
+
+        expect(panel.useStorage()).toBe(true);
+        expect(storageSection().enabled()).toBe(true);
+        expect(panel.isDirty()).toBe(false);
+    });
+});
+
 describe('WebhookTriggerNodePanelComponent code editor header', () => {
     let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
 
@@ -258,7 +373,13 @@ describe('WebhookTriggerNodePanelComponent code editor header', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: RuffWasmService, useValue: { check: () => Promise.resolve([]) } },
                 { provide: RuffDiagnosticsService, useValue: { setMarkers: () => {}, hasSyntaxErrors: () => false } },
@@ -339,7 +460,13 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: PythonCodeRunService, useValue: runService },
             ],
@@ -478,6 +605,16 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
         });
 
+        it('asks to save after a storage toggle, and clears once the saved graph has the flag', () => {
+            const runPanel = open();
+
+            panel().onStorageToggle(true);
+            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            bindStoredGraph(asStored({ ...DTO, use_storage: true }));
+            expect(runPanel.runCodeBlocker()).toBeNull();
+        });
+
         it('keeps asking after the panel is closed and reopened before the graph is saved', () => {
             open();
             panel().onPythonCodeChange('def main(**kwargs): return 2');
@@ -569,19 +706,17 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
         });
     });
 
-    it('runs the stored code with the test payload as trigger_payload', () => {
+    it('runs the stored code of the node, by its backend id, with the test payload as trigger_payload', () => {
         const runPanel = open();
         runPanel.onTestPayloadTextChange('{"order": {"id": "300"}}');
 
         runFromEditor();
 
         expect(runService.runPythonCode).toHaveBeenCalledTimes(1);
-        expect(runService.runPythonCode).toHaveBeenCalledWith(
-            expect.objectContaining({
-                python_code_id: 5,
-                variables: { trigger_payload: { order: { id: '300' } } },
-            })
-        );
+        expect(runService.runPythonCode).toHaveBeenCalledWith({
+            target: { type: 'webhook_trigger_node', id: DTO.id },
+            variables: { trigger_payload: { order: { id: '300' } } },
+        });
     });
 
     it('does not run while blocked', () => {

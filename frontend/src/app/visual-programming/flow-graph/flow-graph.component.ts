@@ -41,7 +41,7 @@ import {
     FZoomDirective,
     ICurrentSelection,
 } from '@foblex/flow';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, AuthorshipDetailsSource } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { Subject } from 'rxjs';
@@ -49,7 +49,7 @@ import { Subject } from 'rxjs';
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
 import { ToastService } from '../../services/notifications';
-import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
+import { DomainDialogComponent, DomainDialogData } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
 import { FlowNodeVariablesOverlayComponent } from '../components/flow-base-node/flow-node-variables-overlay.component';
@@ -58,10 +58,12 @@ import { FlowFilesButtonComponent } from '../components/flow-files-button/flow-f
 import { FlowGraphContextMenuComponent } from '../components/flow-graph-context-menu/flow-graph-context-menu.component';
 import { FlowSettingsPanelComponent } from '../components/flow-settings-panel/flow-settings-panel.component';
 import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-button/flow-shortcuts-button.component';
+import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
 import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
+import { isRoutePortBlockedByContinue } from '../components/node-panels/classification-decision-table-node-panel/cdt-route-continue.util';
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
-import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
+import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
@@ -96,6 +98,7 @@ import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
+import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
@@ -113,6 +116,9 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     if (a.length !== b.length) return false;
     return a.every((p, i) => p.x === b[i].x && p.y === b[i].y);
 }
+
+/** How long a refused reassignment — and the same refusal when drawing a connection — stays on screen. */
+const CONNECTION_REFUSED_TOAST_MS = 5000;
 
 @Component({
     selector: 'app-flow-graph',
@@ -334,6 +340,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly toastService = inject(ToastService);
     private readonly importExportService = inject(ImportExportService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
+    /** The flow page's store in the live editor, the preview's own (empty) one in a version preview. */
+    private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly injector = inject(Injector);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
@@ -642,7 +650,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const targetPortId = isSourceMoved ? conn.targetPortId : nextPortId;
             const error = this.getReassignError(sourcePortId, targetPortId, [...occupied, ...updated]);
             if (error) {
-                this.toastService.warning(error, 5000, 'bottom-right');
+                this.toastService.warning(error, CONNECTION_REFUSED_TOAST_MS, 'bottom-right');
                 return;
             }
             updated.push(
@@ -678,7 +686,20 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (this.hasOccupiedPort(sourcePortId, targetPortId, connections)) {
             return 'This port already has a connection';
         }
+        if (this.isRoutePortBlockedByContinue(sourcePortId)) {
+            return CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue;
+        }
         return null;
+    }
+
+    /** A Classification Decision Table route-code port whose row has Continue on; see `isRoutePortBlockedByContinue`. */
+    private isRoutePortBlockedByContinue(sourcePortId: CustomPortId): boolean {
+        const sourceNodeId = sourcePortId.split('_')[0];
+        const sourceNode = this.flowService.nodes().find((node) => node.id === sourceNodeId);
+        if (sourceNode?.type !== NodeType.CLASSIFICATION_TABLE) {
+            return false;
+        }
+        return isRoutePortBlockedByContinue(sourceNode.data.table?.condition_groups ?? [], sourceNode.id, sourcePortId);
     }
 
     private hasOccupiedPort(sourcePortId: string, targetPortId: string, connections: ConnectionModel[]): boolean {
@@ -726,6 +747,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         if (this.hasOccupiedPort(pair.sourcePortId, pair.targetPortId, currentConnections)) {
             this.toastService.warning('This port already has a connection', 4000, 'bottom-right');
+            return;
+        }
+
+        if (this.isRoutePortBlockedByContinue(pair.sourcePortId)) {
+            this.toastService.warning(
+                CDT_ROUTE_CONTINUE_COPY.routePortBlockedByContinue,
+                CONNECTION_REFUSED_TOAST_MS,
+                'bottom-right'
+            );
             return;
         }
 
@@ -1011,10 +1041,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
             const noteNode = node as GraphNoteModel;
 
-            const dialogRef = this.dialog.open(NoteEditDialogComponent, {
-                data: { node: noteNode },
-                disableClose: true,
-            });
+            const data: NoteEditDialogData = {
+                node: noteNode,
+                authorship: this.nodeAuthorshipStore.authorshipOf(noteNode),
+            };
+            const dialogRef = this.dialog.open(NoteEditDialogComponent, { data, disableClose: true });
 
             dialogRef.closed.subscribe((result: unknown) => {
                 if (
@@ -1040,7 +1071,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         } else if (node.type === NodeType.START) {
             const startNode = node as StartNodeModel;
-            const startNodeInitialState = startNode.data?.initialState || {};
+            const data: DomainDialogData = {
+                initialData: startNode.data?.initialState || {},
+                authorship: this.nodeAuthorshipStore.authorshipOf(startNode),
+            };
 
             const dialogRef = this.dialog.open(DomainDialogComponent, {
                 disableClose: true,
@@ -1050,9 +1084,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 maxHeight: '90vh',
                 panelClass: 'domain-dialog-panel',
                 backdropClass: 'domain-dialog-backdrop',
-                data: {
-                    initialData: startNodeInitialState,
-                },
+                data,
                 // This editor's injector: the dialog then sees this editor's read-only state.
                 injector: this.injector,
             });
@@ -1433,7 +1465,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onDomainClick(): void {
-        const startNodeInitialState = this.flowService.startNodeInitialState();
+        const data: DomainDialogData = {
+            initialData: this.flowService.startNodeInitialState(),
+            authorship: this.startNodeAuthorship(),
+        };
 
         const dialogRef = this.dialog.open(DomainDialogComponent, {
             width: '1000px',
@@ -1442,9 +1477,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             maxHeight: '90vh',
             panelClass: 'domain-dialog-panel',
             backdropClass: 'domain-dialog-backdrop',
-            data: {
-                initialData: startNodeInitialState,
-            },
+            data,
             injector: this.injector,
         });
 
@@ -1862,6 +1895,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         } else {
             this.toastService.error('Start node not found');
         }
+    }
+
+    /** The toolbar's Domain window edits the Start node's variables, so its footer credits the Start node. */
+    private startNodeAuthorship(): AuthorshipDetailsSource {
+        const startNode = this.flowService.nodes().find((node) => node.type === NodeType.START);
+        // No Start node: nobody to credit, shown as dashes like a node that is not saved yet.
+        return this.nodeAuthorshipStore.authorshipOf(startNode ?? { type: NodeType.START, backendId: null });
     }
 
     public openNodePanel(nodeId: string, expand: boolean = true): void {

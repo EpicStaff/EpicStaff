@@ -3,15 +3,16 @@ from rest_framework import serializers
 
 from tables.import_export.serializers.inline_surface import serialize_inline_surface
 from tables.models import AgentNode, Graph
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class AgentNodeImportSerializer(serializers.ModelSerializer):
+class AgentNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
 
     class Meta:
         model = AgentNode
-        exclude = ["created_at", "updated_at", "surface_list"]
+        exclude = ["created_at", "updated_at", "created_by", "surface_list"]
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

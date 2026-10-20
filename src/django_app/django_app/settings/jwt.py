@@ -17,4 +17,10 @@ SIMPLE_JWT = {
     ),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
+    # Binds every token to the user's password hash (claim `hash_password`):
+    # a password set invalidates every access and refresh token at once,
+    # including rotated refresh tokens that have no OutstandingToken row to
+    # blacklist. JWTAuthentication enforces it on access tokens; the refresh
+    # endpoint and token introspection enforce it via rbac.identity.tokens.
+    "CHECK_REVOKE_TOKEN": True,
 }

@@ -743,8 +743,16 @@ describe('TelegramWebhookRegistrationComponent', () => {
     describe('registration blocker', () => {
         it.each<[TelegramRegistrationBlockerCode, string]>([
             [
+                'bot_key_in_recycle_bin',
+                "This node's bot key secret is in the recycle bin, so its webhook cannot be registered. Restore it from the Recycle Bin, or pick another bot key above and save the flow.",
+            ],
+            [
                 'no_webhook_trigger',
                 'This node has no webhook trigger, so its webhook cannot be registered. Pick or create a webhook trigger above and save the flow.',
+            ],
+            [
+                'webhook_trigger_in_recycle_bin',
+                "This node's webhook trigger is in the recycle bin, so its webhook cannot be registered. Restore it from the Recycle Bin, or pick another webhook trigger above and save the flow.",
             ],
             [
                 'no_tunnel_provider',
@@ -780,7 +788,9 @@ describe('TelegramWebhookRegistrationComponent', () => {
         });
 
         it.each<TelegramRegistrationBlockerCode>([
+            'bot_key_in_recycle_bin',
             'no_webhook_trigger',
+            'webhook_trigger_in_recycle_bin',
             'no_tunnel_provider',
             'localhost_provider',
             'auth_kind_conflict',

@@ -12,7 +12,9 @@ from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.models import Graph, PythonCode, WebhookTrigger
 from tables.models.graph_models import (
+    GraphOrganization,
     PythonNode,
+    StartNode,
     TelegramTriggerNode,
     TelegramTriggerNodeField,
     WebhookTriggerNode,
@@ -115,6 +117,33 @@ class TestWebhookTriggerTestRun:
         principal = session.principal
         assert principal.kind == SessionPrincipal.ActionKind.USER
         assert principal.user_id == admin_acme.id
+
+    def test_payload_sets_org_persistent_path_declared_under_its_key(
+        self, acme_client, acme_graph, webhook_node, redis_client_mock
+    ):
+        StartNode.objects.create(
+            graph=acme_graph,
+            variables={
+                "variables": {"trigger_payload": {"order_id": 0}},
+                "persistent_variables": {
+                    "organization": ["trigger_payload.order_id"],
+                    "user": [],
+                },
+            },
+        )
+        GraphOrganization.objects.create(
+            graph=acme_graph, persistent_variables={"trigger_payload": {"order_id": 1}}
+        )
+        acme_graph.enable_persistent_variables = True
+        acme_graph.save(update_fields=["enable_persistent_variables"])
+
+        response = acme_client.post(
+            URL, _body(webhook_node, "webhook-trigger", WEBHOOK_PAYLOAD), format="json"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED, response.content
+        session = Session.objects.get(pk=response.data["session_id"])
+        assert session.variables["trigger_payload"] == WEBHOOK_PAYLOAD
 
     def test_user_api_key_caller_is_recorded_as_api_key_principal(
         self, acme, admin_acme, issue_api_key, webhook_node, redis_client_mock
@@ -443,7 +472,7 @@ class TestTriggerTestRunAccess:
 
     def test_soft_deleted_node_is_404(self, acme_client, webhook_node, redis_client_mock):
         WebhookTriggerNode.all_objects.filter(pk=webhook_node.pk).update(
-            is_soft_deleted=True, soft_deleted_at=timezone.now()
+            active=False, soft_deleted_at=timezone.now()
         )
 
         response = acme_client.post(
@@ -732,7 +761,9 @@ class TestIsTestRunInSessionResponses:
         )
         assert response.status_code == status.HTTP_201_CREATED, response.content
         manual_session = SessionManagerService().create_session(
-            webhook_node.graph_id, trigger=TriggerSpec.manual()
+            webhook_node.graph,
+            start_node=StartNode.objects.filter(graph=webhook_node.graph).first(),
+            trigger=TriggerSpec.manual(),
         )
         return response.data["session_id"], manual_session.pk
 

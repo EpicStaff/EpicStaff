@@ -1,4 +1,8 @@
-<div class="mcp-tool-dialog">
+<div
+    class="mcp-tool-dialog"
+    (appEnterSubmit)="onSave()"
+    [appEnterSubmitDisabled]="form.invalid || form.pending"
+>
     <div class="mcp-tool-dialog__header">
         <h2 class="mcp-tool-dialog__title">
             {{ isEditMode ? 'Edit MCP Tool' : 'Add MCP Tool' }}
@@ -84,6 +88,10 @@
                     searchPlaceholder="Search a secret..."
                     [readonly]="!canUseSecrets()"
                     readonlyEmptyPlaceholder="No secret"
+                />
+                <app-binned-secret-note
+                    [selected]="form.get('auth_secret_id')?.value"
+                    [readonly]="!canUseSecrets()"
                 />
                 @if (!canUseSecrets()) {
                     <app-hint-message>

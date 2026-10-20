@@ -3,7 +3,7 @@ Tests for passing TaskNode into the crew session payload with combined surfaces.
 
 Covers:
 - NodeSurfaceService.build_combined_surface (catalog + inline surface combination)
-- SessionManagerService._build_graph_data TaskNode conversion end-to-end
+- SessionManagerService.create_session_data TaskNode conversion end-to-end
 - Cross-service round-trip parseability (SessionData -> JSON -> SessionData)
 """
 
@@ -14,7 +14,6 @@ from decimal import Decimal
 import pytest
 
 from agents.exceptions import SurfaceValidationError
-from tables.models import EmbeddingConfig, EmbeddingModel
 from agents.models import (
     AgentDefinition,
     Surface,
@@ -39,6 +38,7 @@ from tables.models.graph_models import (
     GraphStorageFile,
     StartNode,
     StorageFile,
+    SubGraphNode,
     TaskNode,
 )
 from tables.models.knowledge_models.collection_models import (
@@ -50,6 +50,7 @@ from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization
+from tables.models.session_models import Session
 from agents.services.node_surface_service import NodeSurfaceService
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
@@ -80,7 +81,7 @@ def graph(db, org):
 @pytest.fixture
 def agent(db, org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="task-node-payload-agent",
         instruction_list=[{"name": "Instruction_1.md", "content": "do things"}],
     )
@@ -89,7 +90,7 @@ def agent(db, org):
 @pytest.fixture
 def surface_a(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="task-node-payload-surface-a",
         instructions="be concise",
     )
@@ -98,7 +99,7 @@ def surface_a(db, org):
 @pytest.fixture
 def surface_b(db, org):
     return Surface.objects.create(
-        organization=org,
+        org=org,
         name="task-node-payload-surface-b",
         instructions="use bullet points",
     )
@@ -143,6 +144,32 @@ def mcp_tool(db, org):
 @pytest.fixture
 def task_node(graph):
     return TaskNode.objects.create(graph=graph, node_name="task-node-payload")
+
+
+def graph_data_for_run(graph) -> GraphData:
+    """The GraphData crew receives when a session of `graph` is run."""
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.PENDING, variables={})
+    return SessionManagerService().create_session_data(
+        session, start_node=graph.start_node_list.first()
+    ).graph
+
+
+def session_folder(graph) -> str:
+    """Every run may also use its own session folder, whatever the surface grants."""
+    return f"sessions/{Session.objects.filter(graph=graph).latest('pk').pk}/"
+
+
+def graph_data_as_subflow(graph) -> GraphData:
+    """The GraphData crew receives for `graph` when another flow runs it as a subflow."""
+    parent = Graph.objects.create(name=f"{graph.name}-parent", org=graph.org)
+    subflow_node = SubGraphNode.objects.create(graph=parent, subgraph=graph, node_name="subflow")
+    start_node = StartNode.objects.create(graph=parent, variables={})
+    Edge.objects.create(graph=parent, start_node_id=start_node.id, end_node_id=subflow_node.id)
+    session = Session.objects.create(graph=parent, status=Session.SessionStatus.PENDING, variables={})
+    (subflow,) = SessionManagerService().create_session_data(
+        session, start_node=start_node
+    ).unique_subgraph_list
+    return subflow.data
 
 
 def wire_entrypoint(graph, task_node):
@@ -235,7 +262,7 @@ class TestBuildGraphDataTaskNode:
         task_node.surface_list.set([surface_a, surface_b])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         assert len(graph_data.task_node_list) == 1
         task_data = graph_data.task_node_list[0]
@@ -264,7 +291,7 @@ class TestBuildGraphDataTaskNode:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.agent_definition.max_tool_calls == 7
@@ -283,7 +310,7 @@ class TestBuildGraphDataTaskNode:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.input_map == {"topic": "variables.topic"}
@@ -292,7 +319,7 @@ class TestBuildGraphDataTaskNode:
     def test_task_node_default_input_map_is_empty(self, graph, task_node):
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.input_map == {}
@@ -309,7 +336,7 @@ class TestDefaultAgentDefinitionConfigSeededDefaults:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         agent_data = graph_data.task_node_list[0].agent_definition
         assert agent_data.default_temperature == 0.7
@@ -336,7 +363,7 @@ class TestDefaultAgentDefinitionConfigSeededDefaults:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         agent_data = graph_data.task_node_list[0].agent_definition
         assert agent_data.max_iter == 42
@@ -360,7 +387,7 @@ class TestSessionDataRoundTrip:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
         session_data = SessionData(id=1, org_id=1, graph=graph_data)
 
         parsed = SessionData.model_validate_json(session_data.model_dump_json())
@@ -399,7 +426,7 @@ class TestSurfaceValidationErrorPropagation:
         wire_entrypoint(graph, task_node)
 
         with pytest.raises(SurfaceValidationError):
-            SessionManagerService()._build_graph_data(graph)
+            graph_data_for_run(graph)
 
 
 class TestDecimalCoercion:
@@ -424,7 +451,7 @@ class TestDecimalCoercion:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         naive_config = task_data.surface.knowledge[0].naive_search_config
@@ -443,7 +470,7 @@ class TestAgentDefinitionLLMHydration:
         task_node.save()
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.agent_definition.llm is not None
@@ -487,7 +514,7 @@ class TestToolPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.tools) == 1
@@ -510,7 +537,7 @@ class TestToolPool:
         task_node.surface_list.set([surface_a, surface_b])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.tools == []
@@ -523,7 +550,7 @@ class TestToolPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.tools) == 1
@@ -542,7 +569,7 @@ class TestS3Pool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.s3_files) == 1
@@ -562,7 +589,7 @@ class TestS3Pool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []
@@ -593,7 +620,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.collections) == 1
@@ -634,7 +661,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert len(task_data.collections) == 1
@@ -665,7 +692,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.collections == []
@@ -696,7 +723,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.collections[0].description == "Product FAQ knowledge base."
@@ -725,7 +752,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.collections[0].description is None
@@ -760,7 +787,7 @@ class TestCollectionPool:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         entry = task_data.collections[0].search_configs[0]
@@ -827,7 +854,7 @@ class TestPoolsContractCrossCheck:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
         task_data = graph_data.task_node_list[0]
 
         agent_spec = AgentSpec(
@@ -861,7 +888,7 @@ class TestPoolsContractCrossCheck:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
         session_data = SessionData(id=1, org_id=1, graph=graph_data)
 
         parsed = SessionData.model_validate_json(session_data.model_dump_json())
@@ -887,7 +914,7 @@ class TestStorageToolAllowedPathsScopedToSurface:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
@@ -907,14 +934,14 @@ class TestStorageToolAllowedPathsScopedToSurface:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
-        assert tool.data.python_code.storage_allowed_paths == [storage_file.path]
+        assert tool.data.python_code.storage_allowed_paths == [storage_file.path, session_folder(graph)]
 
     @pytest.mark.django_db
-    def test_no_surface_storage_items_yields_empty_list_not_none(
+    def test_no_surface_storage_items_with_session_yields_session_fallback(
         self, graph, task_node, surface_a, storage_py_tool
     ):
         SurfacePythonTool.objects.create(
@@ -922,8 +949,30 @@ class TestStorageToolAllowedPathsScopedToSurface:
         )
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
+        session = Session.objects.create(
+            graph=graph, status=Session.SessionStatus.PENDING, variables={}
+        )
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = SessionManagerService().create_session_data(
+            session, start_node=graph.start_node_list.first()
+        ).graph
+
+        task_data = graph_data.task_node_list[0]
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == [f"sessions/{session.pk}/"]
+
+    @pytest.mark.django_db
+    def test_no_surface_storage_items_in_a_subflow_yields_empty_list_not_none(
+        self, graph, task_node, surface_a, storage_py_tool
+    ):
+        """A subflow is built without a session, so there is no session folder to fall back to."""
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = graph_data_as_subflow(graph)
 
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
@@ -942,7 +991,7 @@ class TestStorageToolAllowedPathsScopedToSurface:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
@@ -967,7 +1016,7 @@ class TestStorageToolAllowedPathsScopedToGraphAttachedFiles:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []
@@ -990,12 +1039,12 @@ class TestStorageToolAllowedPathsScopedToGraphAttachedFiles:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert [f.id for f in task_data.s3_files] == [storage_file.pk]
         tool = task_data.tools[0]
-        assert tool.data.python_code.storage_allowed_paths == [storage_file.path]
+        assert tool.data.python_code.storage_allowed_paths == [storage_file.path, session_folder(graph)]
 
     @pytest.mark.django_db
     def test_graph_id_none_skips_ceiling_surface_stays_authoritative(
@@ -1058,12 +1107,12 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert [f.id for f in task_data.s3_files] == [docs_file.pk]
         tool = task_data.tools[0]
-        assert tool.data.python_code.storage_allowed_paths == [docs_file.path]
+        assert tool.data.python_code.storage_allowed_paths == [docs_file.path, session_folder(graph)]
 
     @pytest.mark.django_db
     def test_attached_folder_granted_directly_is_included(
@@ -1076,7 +1125,7 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert [f.id for f in task_data.s3_files] == [docs_folder.pk]
@@ -1092,7 +1141,7 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []
@@ -1108,7 +1157,7 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []
@@ -1124,7 +1173,7 @@ class TestStorageCeilingIsPathPrefixAware:
         task_node.surface_list.set([surface_a])
         wire_entrypoint(graph, task_node)
 
-        graph_data = SessionManagerService()._build_graph_data(graph)
+        graph_data = graph_data_for_run(graph)
 
         task_data = graph_data.task_node_list[0]
         assert task_data.s3_files == []

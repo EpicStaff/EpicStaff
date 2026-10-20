@@ -1,4 +1,10 @@
-import { AuditConditionGroup, createAuditCondition, removeAuditCondition } from './audit-filter.models';
+import {
+    AuditConditionGroup,
+    createAuditCondition,
+    createAuditConditionGroup,
+    EMPTY_AUDIT_FILTER,
+    removeAuditCondition,
+} from './audit-filter.models';
 
 function group(id: string, ...conditionIds: string[]): AuditConditionGroup {
     return {
@@ -38,5 +44,12 @@ describe('removeAuditCondition', () => {
     it('only removes the row from the given group', () => {
         const result = removeAuditCondition([group('g1', 'same', 'x'), group('g2', 'same')], 'g1', 'same');
         expect(result.map((item) => item.conditions.map((condition) => condition.id))).toEqual([['x'], ['same']]);
+    });
+});
+
+describe('createAuditConditionGroup', () => {
+    it('joins a new group to the previous one with OR, in a fresh builder too', () => {
+        expect(createAuditConditionGroup().join).toBe('or');
+        expect(EMPTY_AUDIT_FILTER.input[0].join).toBe('or');
     });
 });

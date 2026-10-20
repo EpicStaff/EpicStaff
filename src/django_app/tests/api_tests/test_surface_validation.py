@@ -241,7 +241,7 @@ class TestSurfaceKnowledgePrompts:
 @pytest.mark.django_db
 class TestSurfaceHttpMethods:
     def test_put_is_not_allowed(self, client, acme):
-        surface = Surface.objects.create(organization=acme, name="surface")
+        surface = Surface.objects.create(org=acme, name="surface")
 
         response = client.put(f"{SURFACES_URL}{surface.id}/", {"name": "renamed"}, format="json")
 
@@ -250,7 +250,7 @@ class TestSurfaceHttpMethods:
         assert surface.name == "surface"
 
     def test_patch_updates_surface(self, client, acme):
-        surface = Surface.objects.create(organization=acme, name="surface")
+        surface = Surface.objects.create(org=acme, name="surface")
 
         response = client.patch(f"{SURFACES_URL}{surface.id}/", {"name": "renamed"}, format="json")
 
@@ -260,7 +260,7 @@ class TestSurfaceHttpMethods:
     def test_patch_out_of_range_knowledge_config_is_rejected(
         self, client, acme, graph_collection
     ):
-        surface = Surface.objects.create(organization=acme, name="surface")
+        surface = Surface.objects.create(org=acme, name="surface")
 
         response = client.patch(
             f"{SURFACES_URL}{surface.id}/",
@@ -279,7 +279,7 @@ class TestSurfaceHttpMethods:
         assert not surface.knowledge.exists()
 
     def test_patch_other_organization_surface_is_not_found(self, client, beta):
-        foreign_surface = Surface.objects.create(organization=beta, name="foreign")
+        foreign_surface = Surface.objects.create(org=beta, name="foreign")
 
         response = client.patch(
             f"{SURFACES_URL}{foreign_surface.id}/", {"name": "hijacked"}, format="json"
@@ -302,7 +302,7 @@ class TestSurfaceKnowledgeProportionSumOnPatch:
     def test_omitted_partner_counts_with_its_default(
         self, client, acme, graph_collection, config_key, config
     ):
-        surface = Surface.objects.create(organization=acme, name="surface")
+        surface = Surface.objects.create(org=acme, name="surface")
 
         response = client.patch(
             f"{SURFACES_URL}{surface.id}/",
@@ -314,7 +314,7 @@ class TestSurfaceKnowledgeProportionSumOnPatch:
         assert not surface.knowledge.exists()
 
     def test_omitted_partner_within_sum_is_accepted(self, client, acme, graph_collection):
-        surface = Surface.objects.create(organization=acme, name="surface")
+        surface = Surface.objects.create(org=acme, name="surface")
 
         response = client.patch(
             f"{SURFACES_URL}{surface.id}/",

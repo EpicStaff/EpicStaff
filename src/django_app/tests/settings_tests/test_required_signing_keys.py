@@ -9,38 +9,31 @@ from src.shared.envtools import Env, EnvironmentBlankError, EnvironmentNotFoundE
 # setup, matching every other module in this suite.
 pytestmark = pytest.mark.django_db
 
-
-def test_returns_value_when_set(monkeypatch):
-    monkeypatch.setenv("EPICSTAFF_PROBE_KEY", "a-real-key")
-
-    assert Env().secret("EPICSTAFF_PROBE_KEY") == "a-real-key"
+UNSET = object()
 
 
-def test_strips_surrounding_whitespace(monkeypatch):
-    monkeypatch.setenv("EPICSTAFF_PROBE_KEY", "  a-real-key\n")
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("a-real-key", "a-real-key"),
+        ("  a-real-key\n", "a-real-key"),
+        (UNSET, EnvironmentNotFoundError),
+        ("", EnvironmentBlankError),
+        ("   ", EnvironmentBlankError),
+    ],
+    ids=["set", "padded", "unset", "empty", "whitespace"],
+)
+def test_a_required_secret_must_be_set_and_non_blank(monkeypatch, value, expected):
+    if value is UNSET:
+        monkeypatch.delenv("EPICSTAFF_PROBE_KEY", raising=False)
+    else:
+        monkeypatch.setenv("EPICSTAFF_PROBE_KEY", value)
 
-    assert Env().secret("EPICSTAFF_PROBE_KEY") == "a-real-key"
-
-
-def test_raises_when_unset(monkeypatch):
-    monkeypatch.delenv("EPICSTAFF_PROBE_KEY", raising=False)
-
-    with pytest.raises(EnvironmentNotFoundError, match="EPICSTAFF_PROBE_KEY"):
-        Env().secret("EPICSTAFF_PROBE_KEY")
-
-
-def test_raises_when_empty(monkeypatch):
-    monkeypatch.setenv("EPICSTAFF_PROBE_KEY", "")
-
-    with pytest.raises(EnvironmentBlankError, match="EPICSTAFF_PROBE_KEY"):
-        Env().secret("EPICSTAFF_PROBE_KEY")
-
-
-def test_raises_when_whitespace_only(monkeypatch):
-    monkeypatch.setenv("EPICSTAFF_PROBE_KEY", "   ")
-
-    with pytest.raises(EnvironmentBlankError, match="EPICSTAFF_PROBE_KEY"):
-        Env().secret("EPICSTAFF_PROBE_KEY")
+    if isinstance(expected, type):
+        with pytest.raises(expected, match="EPICSTAFF_PROBE_KEY"):
+            Env().secret("EPICSTAFF_PROBE_KEY")
+    else:
+        assert Env().secret("EPICSTAFF_PROBE_KEY") == expected
 
 
 def test_settings_expose_non_blank_signing_keys():

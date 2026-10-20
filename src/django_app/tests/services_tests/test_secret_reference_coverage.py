@@ -22,7 +22,14 @@ NEUTRAL_CODE = "def main(**kwargs):\n    return 1\n"
 #: secrets:USE gate does not apply to it. A subclass that NARROWS its guarded fields via
 #: get_secret_reference_fields() lands here too: widening a path's coverage is free, but
 #: removing protection from one has to be justified in writing. See guide section 5.6.
-EXEMPT: set[tuple[str, str]] = set()
+EXEMPT: set[tuple[str, str]] = {
+    # Query input of the Twilio phone-numbers lookup, not a stored reference: nothing
+    # is saved, the token is only sent to Twilio and never returned, and the id is
+    # already org-scoped. The lookup is gated by voice:READ alone, as it was before the
+    # id went through a serializer; requiring secrets:USE would remove the lookup from
+    # the Member and Viewer roles, so it is a product decision, not made here.
+    ("TwilioAuthTokenSecretSerializer", "auth_token_secret_id"),
+}
 
 #: Serializer classes it is fine for `_try_instantiate`/`_secret_fields_of` to be unable
 #: to introspect: DRF's own generic abstract bases (ModelSerializer, ListSerializer,

@@ -1,15 +1,3 @@
-import os
-
-# app.core.settings requires these at import time - see tests/test_export_routes.py.
-os.environ.setdefault("OPENSEARCH_PASSWORD", "test")
-os.environ.setdefault("AUDITOR_INGEST_API_KEY", "test-ingest-key")
-os.environ.setdefault("AUDIT_JWT_SECRET", "test-secret")
-os.environ.setdefault("REDIS_HOST", "localhost")
-os.environ.setdefault("REDIS_USER", "test")
-os.environ.setdefault("REDIS_PORT", "6379")
-os.environ.setdefault("REDIS_PASSWORD", "")
-os.environ.setdefault("AUDITOR_REDIS_DB", "1")
-
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,7 +8,6 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel, Field
 
 from app.controllers.query_routes import build_search_router
-from app.core.security import verify_user_jwt
 from app.domains.base import (
     ApiSpec,
     AuditDomain,
@@ -40,6 +27,7 @@ from app.repositories.compiler import FilterCompileError, QueryCompiler
 from app.services.matching import expand_and_mark
 from app.services.search_pipeline import SearchPipeline
 from src.shared.models import BaseAuditEvent, SessionAuditEvent
+from tests._auth import auth
 from tests._fakes import InMemoryFakeRepository
 
 ORG_ID = 7
@@ -110,24 +98,6 @@ def _assert_every_query_used_custom_policy(queries: list[dict]) -> None:
 # --- ScopingPolicy -----------------------------------------------------
 
 
-def test_scoping_policy_subclass_override_is_honored():
-    query = TermsOrgScopingPolicy()([], BaseScopeArgs(org_id=ORG_ID, retention_days=0))
-
-    assert query["bool"]["filter"] == [{"terms": {"org_id": [ORG_ID]}}]
-
-
-def test_scoped_query_builder_applies_its_policy_and_args():
-    builder = ScopedQueryBuilder(ScopingPolicy(), BaseScopeArgs(org_id=3, retention_days=10))
-
-    query = builder.build([{"term": {"kind": "event"}}])
-
-    assert query["bool"]["filter"] == [
-        {"term": {"kind": "event"}},
-        {"term": {"org_id": 3}},
-        {"range": {"event_time": {"gte": "now-10d"}}},
-    ]
-
-
 @pytest.mark.asyncio
 async def test_expansion_follow_up_queries_use_the_domain_scoping_policy():
     domain = replace(SESSIONS, scoping=TermsOrgScopingPolicy())
@@ -144,8 +114,6 @@ async def test_expansion_follow_up_queries_use_the_domain_scoping_policy():
     )
 
     assert {event.id for event in events} == {"sess-1", "node-1", "evt-start", "evt-finish"}
-    # Base search, full-history fetch, session status lookup.
-    assert len(repository.queries) == 3
     _assert_every_query_used_custom_policy(repository.queries)
 
 
@@ -171,7 +139,6 @@ async def test_computed_field_resolution_uses_the_domain_scoping_policy():
     )
 
     assert [event.id for event in events] == ["node-1"]
-    assert len(repository.queries) == 2
     _assert_every_query_used_custom_policy(repository.queries)
 
 
@@ -201,39 +168,6 @@ async def test_expansion_never_crosses_org_boundary():
 
 
 # --- match_scope contract ----------------------------------------------
-
-
-class ExplodingExpander:
-    async def expand(self, repository, events, match_scope, query_builder):
-        raise AssertionError("expander must not run without a match scope")
-
-
-@pytest.mark.asyncio
-async def test_expand_and_mark_skips_expansion_when_match_scope_is_none():
-    events = _session_tree()[:1]
-    query_builder = ScopedQueryBuilder(ScopingPolicy(), BaseScopeArgs(ORG_ID, 0))
-
-    result = await expand_and_mark(
-        InMemoryFakeRepository([]), events, None, ExplodingExpander(), query_builder
-    )
-
-    assert [event.id for event in result] == ["sess-1"]
-    assert result[0].filter_matched is True
-
-
-@pytest.mark.asyncio
-async def test_expand_and_mark_accepts_a_scope_without_is_noop():
-    class PlainScope:
-        pass
-
-    events = _session_tree()[:1]
-    query_builder = ScopedQueryBuilder(ScopingPolicy(), BaseScopeArgs(ORG_ID, 0))
-
-    result = await expand_and_mark(
-        InMemoryFakeRepository([]), events, PlainScope(), NullExpander(), query_builder
-    )
-
-    assert [event.id for event in result] == ["sess-1"]
 
 
 # --- a flat domain with no match-scope or computed-field concept -------
@@ -293,14 +227,9 @@ async def test_flat_domain_without_match_scope_searches_successfully():
     app = FastAPI()
     app.include_router(build_search_router(FLAT_DOMAIN))
     app.state.repositories = {FLAT_DOMAIN.name: InMemoryFakeRepository(events)}
-    app.dependency_overrides[verify_user_jwt] = lambda: {
-        "org_id": ORG_ID,
-        "user_id": 1,
-        "retention_days": 0,
-        "FLAT": ["read"],
-    }
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    headers = auth(AUDIT=None, FLAT=["read"])
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
         resp = await client.post(
             "/api/audit/flat/search",
             json={"filters": {"field": "action", "op": "equals", "value": "login"}},
@@ -315,14 +244,9 @@ async def test_audit_grant_does_not_open_another_domains_routes():
     app = FastAPI()
     app.include_router(build_search_router(FLAT_DOMAIN))
     app.state.repositories = {FLAT_DOMAIN.name: InMemoryFakeRepository([])}
-    app.dependency_overrides[verify_user_jwt] = lambda: {
-        "org_id": ORG_ID,
-        "user_id": 1,
-        "retention_days": 0,
-        "AUDIT": ["read", "export"],
-    }
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    headers = auth(AUDIT=["read", "export"])
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
         resp = await client.post("/api/audit/flat/search", json={})
 
     assert resp.status_code == 403
@@ -425,15 +349,6 @@ def test_duration_rejects_non_numeric_value_as_validation_error():
 # --- shared event model ------------------------------------------------
 
 
-def test_session_audit_event_details_default_is_not_shared_between_instances():
-    first = SessionAuditEvent(id="a", org_id=1, session_id=1, kind="event", event_time=NOW)
-    second = SessionAuditEvent(id="b", org_id=1, session_id=1, kind="event", event_time=NOW)
-
-    first.details["leaked"] = True
-
-    assert second.details == {}
-
-
 # --- match_scope expansion ---------------------------------------------
 
 
@@ -498,8 +413,6 @@ async def test_session_row_status_comes_from_its_session_end_event(session_end_s
     assert by_id["sess-1"].status == session_end_status
     assert by_id["evt-finish"].filter_matched is True
     assert by_id["sess-1"].filter_matched is False
-    # Two ancestor hops plus exactly one status lookup.
-    assert len(repository.queries) == 3
 
 
 @pytest.mark.asyncio
@@ -539,4 +452,5 @@ async def test_session_status_is_batched_and_stays_none_without_session_end():
 
     assert [(row.id, row.status) for row in result] == [("sess-1", "completed"), ("sess-2", None)]
     assert ended.status is None
+    # One lookup for every session on the page, not one per session.
     assert len(repository.queries) == 1

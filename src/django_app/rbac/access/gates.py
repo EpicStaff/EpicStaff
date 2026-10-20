@@ -106,7 +106,13 @@ class HasOrgPermission(BaseRbacPermission):
     _resolver = PermissionResolver()
 
     def _authorize(self, request, view, resource_type, required) -> bool:
-        org_id = self._org_context.resolve(request=request, view_kwargs=view.kwargs)
+        # Cached under the key the scoping mixins and serializer fields read, so the
+        # view does not run the membership query a second time.
+        if not hasattr(request, "_rbac_active_org_id"):
+            request._rbac_active_org_id = self._org_context.resolve(
+                request=request, view_kwargs=view.kwargs
+            )
+        org_id = request._rbac_active_org_id
         effective = self._resolver.resolve(user=request.user, org_id=org_id)
 
         if not effective.can(resource_type, required):
@@ -117,39 +123,21 @@ class HasOrgPermission(BaseRbacPermission):
         return True
 
 
-class IsApiKeyAuthenticated(BasePermission):
-    """Allows only requests authenticated via a valid ApiKey (system or user).
-
-    For internal-service lookup endpoints that intentionally bypass org-context
-    scoping (e.g. by-token webhook resolution for inbound Twilio calls, where
-    the caller structurally cannot supply an `X-Organization-Id` header). A
-    regular JWT session must not be able to use these org-bypass paths — pair
-    this alone in `permission_classes` (no `IsAuthenticated`/`HasOrgPermission`).
-
-    NOTE: this accepts BOTH `key_type=SYSTEM` and `key_type=USER` keys. Do not
-    use this on an endpoint that also skips org-scoping (like
-    `RealtimeChannelViewSet.lookup_by_token`) — any org member can self-issue
-    a USER key via `POST /api/profile/api-keys/`, so pairing org-bypass with
-    "any API key" lets a low-privilege user in one org read another org's
-    data. Use `IsSystemApiKeyAuthenticated` for those endpoints instead.
-    """
-
-    message = "This endpoint requires API key authentication."
-
-    def has_permission(self, request, view) -> bool:
-        return isinstance(request.auth, ApiKey)
-
-
 class IsSystemApiKeyAuthenticated(BasePermission):
     """Allows only requests authenticated via a `key_type=SYSTEM` ApiKey.
 
-    Stricter than `IsApiKeyAuthenticated`: a self-issued USER key is rejected.
-    Required for endpoints that ALSO bypass org-context scoping (the token
-    itself is the only authorization check performed), because a USER key
-    is scoped to its owner's own org's RBAC but this permission class runs
-    before, and instead of, any org check — e.g.
-    `RealtimeChannelViewSet.lookup_by_token`, restricted to the trusted
-    `realtime` service.
+    For internal-service lookup endpoints that intentionally bypass
+    org-context scoping, where the token itself is the only authorization
+    check performed (e.g. `RealtimeChannelViewSet.lookup_by_token`, restricted
+    to the trusted `realtime` service). Pair it alone in
+    `permission_classes` (no `IsAuthenticated`/`HasOrgPermission`), so a
+    regular JWT session cannot use these org-bypass paths.
+
+    A `key_type=USER` key is rejected on purpose. Any org member can
+    self-issue one via `POST /api/profile/api-keys/`, and this class runs
+    before, and instead of, any org check — admitting "any API key" here would
+    let a low-privilege user in one org read another org's data. There is
+    deliberately no "any API key" variant of this gate.
     """
 
     message = "This endpoint requires system API key authentication."

@@ -1,6 +1,8 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
+from src.shared.models.ai_providers import REASONING_EFFORT_VALUES
 
 from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
 from tables.models.provider import Provider
@@ -60,6 +62,14 @@ class DefaultLLMConfig(DefaultBaseModel):
     seed = models.IntegerField(null=True, blank=True)
     logprobs = models.BooleanField(null=True, blank=True)
     top_logprobs = models.IntegerField(null=True, blank=True)
+    # Mirrors LLMConfig.reasoning_effort for parity; nothing reads it yet (LLMConfig
+    # never calls fill_with_defaults), so a future reader must re-validate it against the model.
+    reasoning_effort = models.CharField(
+        max_length=16,
+        choices=[(value, value) for value in REASONING_EFFORT_VALUES],
+        null=True,
+        blank=True,
+    )
     base_url = models.TextField(null=True, blank=True)
     api_version = models.TextField(null=True, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
@@ -67,7 +77,7 @@ class DefaultLLMConfig(DefaultBaseModel):
     is_visible = models.BooleanField(default=True)
 
 
-class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
+class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableModel):
     custom_name = models.TextField()
     model = models.ForeignKey(LLMModel, on_delete=models.CASCADE, null=True)
     temperature = models.FloatField(
@@ -94,6 +104,12 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     seed = models.IntegerField(null=True, blank=True)
     logprobs = models.BooleanField(null=True, blank=True)
     top_logprobs = models.IntegerField(null=True, blank=True)
+    reasoning_effort = models.CharField(
+        max_length=16,
+        choices=[(value, value) for value in REASONING_EFFORT_VALUES],
+        null=True,
+        blank=True,
+    )
     base_url = models.TextField(null=True, blank=True)
     api_version = models.TextField(null=True, blank=True)
     api_key_secret = models.ForeignKey(
@@ -107,6 +123,9 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     timeout = models.FloatField(default=120.0, null=True, blank=True)
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(LLMConfigTag, blank=True, related_name="llm_configs")
+    # Nullable because configs created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

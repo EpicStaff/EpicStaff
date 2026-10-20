@@ -11,7 +11,6 @@ import pytest
 
 from src.shared.models import variable_adapter
 from src.shared.models.variable_conversion import (
-    _normalize_type,
     json_schema_node_to_nested_variable,
     args_schema_to_variables,
 )
@@ -19,32 +18,24 @@ from tables.import_export.version_conversions.convertions import v1_to_v2, v2_to
 
 
 # ──────────────────────────────────────────
-# _normalize_type
+# JSON Schema type -> variable type
 # ──────────────────────────────────────────
 
 
-class TestNormalizeType:
-    def test_integer_becomes_number(self):
-        assert _normalize_type("integer") == "number"
-
-    def test_none_becomes_string(self):
-        assert _normalize_type(None) == "string"
-
-    def test_empty_string_becomes_string(self):
-        assert _normalize_type("") == "string"
-
-    def test_passthrough_types(self):
-        for t in ("string", "number", "boolean", "object", "array", "any"):
-            assert _normalize_type(t) == t
-
-    def test_list_type_nullable_integer_becomes_number(self):
-        assert _normalize_type(["integer", "null"]) == "number"
-
-    def test_list_type_null_only_becomes_string(self):
-        assert _normalize_type(["null"]) == "string"
-
-    def test_list_type_string_nullable_becomes_string(self):
-        assert _normalize_type(["string", "null"]) == "string"
+@pytest.mark.parametrize(
+    ("schema_type", "variable_type"),
+    [
+        ("integer", "number"),
+        (None, "string"),
+        ("", "string"),
+        *[(kept, kept) for kept in ("string", "number", "boolean", "object", "array", "any")],
+        (["integer", "null"], "number"),
+        (["null"], "string"),
+        (["string", "null"], "string"),
+    ],
+)
+def test_json_schema_types_map_to_variable_types(schema_type, variable_type):
+    assert json_schema_node_to_nested_variable({"type": schema_type})["type"] == variable_type
 
 
 # ──────────────────────────────────────────

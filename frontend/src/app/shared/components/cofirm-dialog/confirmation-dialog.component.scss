@@ -161,6 +161,29 @@
     color: var(--accent-color);
 }
 
+.dialog-container.raised {
+    background: var(--color-ks-background);
+
+    .caution-block {
+        border-left-width: 2px;
+    }
+
+    // Same secondary colour as `.dialog-message`; <strong> stays white.
+    .caution-message {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    .cancel-button {
+        color: var(--accent-color);
+        border-color: var(--accent-color);
+
+        &:hover {
+            color: var(--accent-color-hover);
+            border-color: var(--accent-color-hover);
+        }
+    }
+}
+
 .caution-message {
     font-size: 0.875rem;
     color: var(--color-text-subtle);

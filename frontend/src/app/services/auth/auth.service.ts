@@ -43,7 +43,6 @@ export class AuthService {
     // Access token lives ONLY in memory. The refresh token lives ONLY in a
     // backend-managed HttpOnly cookie and is not accessible from JS.
     private readonly accessTokenSignal = signal<string | null>(null);
-    public readonly accessToken = this.accessTokenSignal.asReadonly();
 
     private get baseUrl(): string {
         return `${this.configService.apiUrl}auth/`;
@@ -108,7 +107,7 @@ export class AuthService {
 
     confirmResetPassword(data: ConfirmResetPasswordRequest): Observable<ConfirmResetPasswordResponse> {
         return this.http
-            .post<ResetPasswordResponse>(`${this.baseUrl}password-reset/confirm/`, data)
+            .post<ConfirmResetPasswordResponse>(`${this.baseUrl}password-reset/confirm/`, data)
             .pipe(catchError((err) => throwError(() => err)));
     }
 

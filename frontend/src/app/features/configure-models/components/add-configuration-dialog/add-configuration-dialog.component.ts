@@ -1,8 +1,17 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    OnInit,
+    signal,
+    viewChild,
+} from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     ButtonComponent,
     CustomInputComponent,
@@ -12,14 +21,17 @@ import {
     InputNumberComponent,
     JsonEditorFormFieldComponent,
     KeyValueListComponent,
+    LlmReasoningEffortFieldComponent,
     SelectComponent,
     SelectItem,
     SliderWithStepperComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
-import { CreateEmbeddingConfigRequest, ModelTypes } from '@shared/models';
+import { EnterSubmitDirective } from '@shared/directives';
+import { CreateEmbeddingConfigRequest, ModelTypes, ReasoningEffort } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
+import { extractFieldErrorMessages, extractHttpErrorMessage } from '@shared/utils';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -52,10 +64,14 @@ const DUPLICATE_EMBEDDING_NAME_MESSAGE =
         InputNumberComponent,
         JsonEditorFormFieldComponent,
         LlmModelSelectorComponent,
+        LlmReasoningEffortFieldComponent,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddConfigurationDialogComponent implements OnInit {
+    private readonly reasoningEffortField = viewChild(LlmReasoningEffortFieldComponent);
+
     private readonly fb = inject(FormBuilder);
     private readonly destroyRef = inject(DestroyRef);
     private readonly llmStorage = inject(LlmConfigStorageService);
@@ -73,6 +89,10 @@ export class AddConfigurationDialogComponent implements OnInit {
     selectedProvider = signal<RealtimeProvider>('openai');
     isSubmitting = signal(false);
     errorMessage = signal<string | null>(null);
+    // Saving before the LLM model is known would send reasoning_effort as null instead of the chosen value.
+    readonly isLlmModelResolving = computed(
+        () => this.activeTab() === 'llm' && (this.reasoningEffortField()?.resolving() ?? false)
+    );
     readonly submitLabel = computed(() => {
         switch (this.activeTab()) {
             case 'llm':
@@ -90,6 +110,11 @@ export class AddConfigurationDialogComponent implements OnInit {
         { key: 'gemini', label: 'Gemini' },
     ];
 
+    protected readonly llmModelControl = new FormControl<number | null>(null, [Validators.required]);
+    protected readonly selectedLlmModelId = toSignal(this.llmModelControl.valueChanges, {
+        initialValue: this.llmModelControl.value,
+    });
+    protected readonly reasoningEffortControl = new FormControl<ReasoningEffort | null>(null);
     llmForm!: FormGroup;
 
     openaiForm = this.fb.nonNullable.group({
@@ -140,7 +165,7 @@ export class AddConfigurationDialogComponent implements OnInit {
         this.llmForm = this.fb.group({
             custom_name: ['', [Validators.required]],
             api_key_secret_id: [null as number | null],
-            model: [null, [Validators.required]],
+            model: this.llmModelControl,
             temperature: [0.5, [Validators.min(0), Validators.max(1)]],
             top_p: [1, [Validators.min(0.1)]],
             stop: [null],
@@ -152,6 +177,7 @@ export class AddConfigurationDialogComponent implements OnInit {
             seed: [null, [Validators.min(-2147483648), Validators.max(2147483647)]],
             extra_headers: [{}],
             timeout: [120, [Validators.min(1), Validators.max(600)]],
+            reasoning_effort: this.reasoningEffortControl,
             is_visible: [true],
         });
 
@@ -188,13 +214,16 @@ export class AddConfigurationDialogComponent implements OnInit {
     }
 
     private submitLlm(): void {
-        if (this.llmForm.invalid || this.isSubmitting()) {
+        if (this.llmForm.invalid || this.isSubmitting() || this.isLlmModelResolving()) {
             this.llmForm.markAllAsTouched();
             return;
         }
         this.isSubmitting.set(true);
         this.llmStorage
-            .createConfig(this.llmForm.value)
+            .createConfig({
+                ...this.llmForm.value,
+                reasoning_effort: this.reasoningEffortField()?.submittedValue() ?? null,
+            })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => {
@@ -202,9 +231,16 @@ export class AddConfigurationDialogComponent implements OnInit {
                     this.toast.success('LLM configuration created successfully.');
                     this.dialogRef.close(true);
                 },
-                error: () => {
+                error: (error: HttpErrorResponse) => {
                     this.isSubmitting.set(false);
-                    this.toast.error('Failed to create LLM configuration.');
+                    const reasoningEffortErrors = extractFieldErrorMessages(error, 'reasoning_effort');
+                    if (
+                        reasoningEffortErrors.length &&
+                        this.reasoningEffortField()?.showServerErrors(reasoningEffortErrors)
+                    ) {
+                        return;
+                    }
+                    this.toast.error(extractHttpErrorMessage(error, 'Failed to create LLM configuration.'));
                 },
             });
     }

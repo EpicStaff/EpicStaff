@@ -1,181 +1,99 @@
-"""
-Tests for OpenAI ServerEventHandler event routing.
-`save_realtime_session_item_to_db` is patched out to avoid DB dependency.
-"""
+"""OpenAI ServerEventHandler: forwards OpenAI Realtime events to the frontend, runs
+tool calls, and records every event. The DB write is the recorded side effect."""
+
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from infrastructure.providers.openai.event_handlers.agent_server_event_handler import (
-    ServerEventHandler,
-)
+from infrastructure.providers.openai.event_handlers.agent_server_event_handler import ServerEventHandler
+
+pytestmark = pytest.mark.asyncio
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+@pytest.fixture
+def db_write():
+    with patch(
+        "infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db",
+        new_callable=AsyncMock,
+    ) as write:
+        yield write
+
 
 @pytest.fixture
 def client():
-    c = MagicMock()
-    c.connection_key = "test_conn"
-    c.send_client = AsyncMock()
-    c.call_tool = AsyncMock()
-    return c
+    sent: list[dict] = []
 
+    async def send_client(payload):
+        sent.append(payload)
 
-@pytest.fixture
-def handler(client):
-    return ServerEventHandler(client)
-
-
-# ---------------------------------------------------------------------------
-# default_handler — forwards event to client.send_client
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_default_handler_forwards_to_send_client(mock_db, handler, client):
-    data = {"type": "response.created", "response": {"id": "r1"}}
-    await handler.handle_event(data)
-    client.send_client.assert_awaited_once_with(data)
-
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_audio_delta_forwarded(mock_db, handler, client):
-    data = {"type": "response.audio.delta", "delta": "abc123"}
-    await handler.handle_event(data)
-    client.send_client.assert_awaited_once_with(data)
-
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_session_created_forwarded(mock_db, handler, client):
-    data = {"type": "session.created", "session": {}}
-    await handler.handle_event(data)
-    client.send_client.assert_awaited_once_with(data)
-
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_handle_event_forwards_org_id_to_db_write(mock_db, handler, client):
-    client.org_id = 55
-    data = {"type": "session.created", "session": {}}
-    await handler.handle_event(data)
-    _, kwargs = mock_db.call_args
-    assert kwargs.get("org_id") == 55
-
-
-# ---------------------------------------------------------------------------
-# handle_error — logs and forwards
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_error_event_forwarded(mock_db, handler, client):
-    data = {"type": "error", "error": {"message": "oops"}}
-    await handler.handle_event(data)
-    client.send_client.assert_awaited_once_with(data)
-
-
-# ---------------------------------------------------------------------------
-# handle_function_call_done — calls tool and forwards
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_function_call_done_calls_tool(mock_db, handler, client):
-    data = {
-        "type": "response.function_call_arguments.done",
-        "call_id": "call_1",
-        "name": "search_tool",
-        "arguments": json.dumps({"query": "hello"}),
-    }
-    await handler.handle_event(data)
-    client.call_tool.assert_awaited_once_with(
-        call_id="call_1",
-        tool_name="search_tool",
-        tool_arguments={"query": "hello"},
+    return SimpleNamespace(
+        connection_key="test_conn", org_id=55, user_id=6, sent=sent, send_client=send_client, call_tool=AsyncMock()
     )
 
 
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_function_call_done_logs_tool_name_and_call_id_but_not_arguments(
-    mock_db, handler, client, captured_log_messages
-):
-    data = {
+@pytest.fixture
+def handler(client, db_write):
+    return ServerEventHandler(client)
+
+
+def _item(item_id) -> dict:
+    return {"type": "conversation.item.created", "item": {"id": item_id, "type": "message"}}
+
+
+@pytest.mark.parametrize(
+    ("event", "forwarded"),
+    [
+        ({"type": "response.created", "response": {"id": "r1"}}, "same"),
+        ({"type": "response.audio.delta", "delta": "abc123"}, "same"),
+        ({"type": "session.created", "session": {}}, "same"),
+        ({"type": "error", "error": {"message": "oops"}}, "same"),
+        ({"type": "completely_unknown"}, "same"),
+        # The GA API's event names are mapped to the beta names the frontend handles.
+        ({"type": "response.output_audio.delta", "delta": "abc"}, {"type": "response.audio.delta", "delta": "abc"}),
+        ({"type": "response.output_text.done", "text": "hi"}, {"type": "response.text.done", "text": "hi"}),
+        (
+            {"type": "conversation.item.added", "item": {"id": "msg_1"}},
+            {"type": "conversation.item.created", "item": {"id": "msg_1"}},
+        ),
+        # The client's own wake-word handover echo is hidden from the UI.
+        (_item("dont_show_it"), None),
+        (_item("dont_show_it_abcdef1234567890"), None),
+        ({"type": "conversation.item.added", "item": {"id": "dont_show_it_abc"}}, None),
+        (_item("msg_abc"), "same"),
+        (_item("item_ABC123"), "same"),
+        (_item("fc_xyz789"), "same"),
+        (_item(None), "same"),
+        ({"type": "conversation.item.created", "item": {}}, "same"),
+        ({"type": "response.function_call_arguments.delta", "delta": "{"}, None),
+    ],
+    ids=lambda value: value["type"] + (f":{value['item'].get('id')}" if "item" in value else "") if isinstance(value, dict) else None,
+)
+async def test_event_reaches_the_frontend(handler, client, db_write, event, forwarded):
+    await handler.handle_event(event)
+
+    expected = [] if forwarded is None else [event if forwarded == "same" else forwarded]
+    assert client.sent == expected
+    # Every event is recorded under the caller's org, whether or not it is shown.
+    kwargs = db_write.await_args.kwargs
+    assert (kwargs["data"], kwargs["connection_key"], kwargs["org_id"], kwargs["user_id"]) == (event, "test_conn", 55, 6)
+
+
+async def test_finished_function_call_runs_the_tool_and_is_forwarded(handler, client, captured_log_messages):
+    event = {
         "type": "response.function_call_arguments.done",
         "call_id": "call_42",
         "name": "search_tool",
         "arguments": json.dumps({"query": "my card number is 4111"}),
     }
-    await handler.handle_event(data)
 
-    tool_call_logs = [message for message in captured_log_messages if "search_tool" in message]
-    assert tool_call_logs
-    assert any("call_42" in message for message in tool_call_logs)
+    await handler.handle_event(event)
+
+    client.call_tool.assert_awaited_once_with(
+        call_id="call_42", tool_name="search_tool", tool_arguments={"query": "my card number is 4111"}
+    )
+    assert client.sent == [event]
+    # The call is traceable in the logs, but the arguments may hold user data.
+    assert any("search_tool" in message and "call_42" in message for message in captured_log_messages)
     assert not any("4111" in message for message in captured_log_messages)
-
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_function_call_done_also_forwards_to_client(mock_db, handler, client):
-    data = {
-        "type": "response.function_call_arguments.done",
-        "call_id": "c1",
-        "name": "t",
-        "arguments": "{}",
-    }
-    await handler.handle_event(data)
-    client.send_client.assert_awaited_once_with(data)
-
-
-# ---------------------------------------------------------------------------
-# conversation_item_created_handler — skips "dont_show_it" id
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_conversation_item_skips_dont_show_it(mock_db, handler, client):
-    data = {
-        "type": "conversation.item.created",
-        "item": {"id": "dont_show_it"},
-    }
-    await handler.handle_event(data)
-    client.send_client.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_conversation_item_forwards_normal_item(mock_db, handler, client):
-    data = {
-        "type": "conversation.item.created",
-        "item": {"id": "msg_abc", "type": "message"},
-    }
-    await handler.handle_event(data)
-    client.send_client.assert_awaited_once_with(data)
-
-
-# ---------------------------------------------------------------------------
-# Unknown event type — forwarded as default
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_unknown_event_forwarded(mock_db, handler, client):
-    data = {"type": "completely_unknown"}
-    await handler.handle_event(data)
-    client.send_client.assert_awaited_once_with(data)
-
-
-# ---------------------------------------------------------------------------
-# save_realtime_session_item_to_db is always called
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-@patch("infrastructure.providers.openai.event_handlers.agent_server_event_handler.save_realtime_session_item_to_db", new_callable=AsyncMock)
-async def test_db_save_called_for_every_event(mock_db, handler):
-    await handler.handle_event({"type": "response.done"})
-    mock_db.assert_awaited_once()

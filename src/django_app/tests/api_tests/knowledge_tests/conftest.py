@@ -4,7 +4,9 @@ Fixtures for knowledge API tests
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 
+from tables.constants.upload_limits import default_upload_limits
 from tables.models.knowledge_models import (
     SourceCollection,
     DocumentMetadata,
@@ -22,7 +24,7 @@ from tables.models.provider import Provider
 def source_collection(default_org):
     """Create a test source collection."""
     return SourceCollection.objects.create(
-        collection_name="Test Collection", user_id="test_user", org=default_org
+        collection_name="Test Collection", org=default_org
     )
 
 
@@ -30,7 +32,7 @@ def source_collection(default_org):
 def empty_collection(default_org):
     """Create an empty source collection."""
     return SourceCollection.objects.create(
-        collection_name="Empty Collection", user_id="test_user", org=default_org
+        collection_name="Empty Collection", org=default_org
     )
 
 
@@ -98,12 +100,16 @@ def test_json_file():
 
 @pytest.fixture
 def large_file():
-    """Create a file that exceeds size limit."""
-    # Create a 13MB file (exceeds 12MB limit)
-    content = b"x" * (13 * 1024 * 1024)
-    return SimpleUploadedFile(
-        name="large.pdf", content=content, content_type="application/pdf"
-    )
+    """Create a file one byte over the configured per-file upload limit.
+
+    The limit is shrunk with `override_settings` (it stays active while the
+    test runs) so the file stays small; the real limit is tens of megabytes.
+    """
+    with override_settings(MAX_UPLOAD_FILE_SIZE=1024):
+        content = b"x" * (default_upload_limits().max_file_bytes + 1)
+        yield SimpleUploadedFile(
+            name="large.pdf", content=content, content_type="application/pdf"
+        )
 
 
 @pytest.fixture

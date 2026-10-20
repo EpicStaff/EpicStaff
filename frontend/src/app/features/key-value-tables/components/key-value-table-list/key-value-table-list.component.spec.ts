@@ -1,4 +1,8 @@
-import { TestBed } from '@angular/core/testing';
+import { Dialog } from '@angular/cdk/dialog';
+import { DOWN_ARROW, ENTER, ESCAPE } from '@angular/cdk/keycodes';
+import { OverlayContainer } from '@angular/cdk/overlay';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { AuthorshipDetailsDialogService } from '@shared/components';
 
 import { KeyValueTable } from '../../models/key-value-table.model';
 import { KeyValueTableListComponent } from './key-value-table-list.component';
@@ -10,37 +14,188 @@ const TABLE: KeyValueTable = {
     entry_count: 3,
     created_at: '2026-09-24T00:00:00Z',
     updated_at: '2026-09-24T00:00:00Z',
+    created_by: { id: 1, display_name: 'Ivan Bohun', avatar_url: null },
+    last_edited_by: { id: 2, display_name: 'Olena Petrenko', avatar_url: null },
+    last_edited_at: '2026-09-25T00:00:00Z',
 };
 
-function renderList(canRename: boolean, canDelete: boolean): HTMLElement {
+interface RenderedList {
+    fixture: ComponentFixture<KeyValueTableListComponent>;
+    element: HTMLElement;
+    overlay: HTMLElement;
+    trigger: HTMLButtonElement;
+}
+
+function renderList(canRename: boolean, canDelete: boolean): RenderedList {
     const fixture = TestBed.createComponent(KeyValueTableListComponent);
     fixture.componentRef.setInput('tables', [TABLE]);
     fixture.componentRef.setInput('canRename', canRename);
     fixture.componentRef.setInput('canDelete', canDelete);
     fixture.detectChanges();
-    return fixture.nativeElement as HTMLElement;
+    const element = fixture.nativeElement as HTMLElement;
+    return {
+        fixture,
+        element,
+        overlay: TestBed.inject(OverlayContainer).getContainerElement(),
+        trigger: element.querySelector<HTMLButtonElement>('[aria-label="More actions for profiles"]')!,
+    };
+}
+
+function openMenu({ fixture, trigger }: RenderedList): void {
+    trigger.click();
+    fixture.detectChanges();
+}
+
+function menuItems(overlay: HTMLElement): HTMLButtonElement[] {
+    return [...overlay.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+}
+
+function menuItemLabels(overlay: HTMLElement): (string | undefined)[] {
+    return menuItems(overlay).map((item) => item.textContent?.trim());
+}
+
+function menuItem(overlay: HTMLElement, label: string): HTMLButtonElement {
+    return menuItems(overlay).find((item) => item.textContent?.trim() === label)!;
 }
 
 describe('KeyValueTableListComponent card', () => {
     it('shows a database icon, the name and the entry count', () => {
-        const card = renderList(false, false).querySelector('.table-list__select')!;
+        const card = renderList(false, false).element.querySelector('.table-list__select')!;
         expect(card.querySelector('app-svg-icon[icon="database"]')).not.toBeNull();
         expect(card.querySelector('.table-list__name')?.textContent?.trim()).toBe('profiles');
         expect(card.querySelector('.table-list__count')?.textContent?.trim()).toBe('3 entries');
     });
 });
 
-describe('KeyValueTableListComponent permission gating', () => {
-    it('shows rename but not delete with update permission only', () => {
-        const element = renderList(true, false);
-        expect(element.querySelector('[aria-label="Rename table"]')).not.toBeNull();
-        expect(element.querySelector('[aria-label="Delete table"]')).toBeNull();
+/** CDK menus read the legacy `keyCode`, which a synthetic `KeyboardEvent` cannot be constructed with. */
+function pressKey(target: HTMLElement, key: string, keyCode: number): void {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+    target.dispatchEvent(event);
+}
+
+describe('KeyValueTableListComponent row menu', () => {
+    it.each([
+        { canRename: true, canDelete: true, labels: ['Rename', 'View Details', 'Delete'] },
+        { canRename: true, canDelete: false, labels: ['Rename', 'View Details'] },
+        { canRename: false, canDelete: true, labels: ['View Details', 'Delete'] },
+        { canRename: false, canDelete: false, labels: ['View Details'] },
+    ])('lists $labels with rename $canRename and delete $canDelete', ({ canRename, canDelete, labels }) => {
+        const list = renderList(canRename, canDelete);
+        expect(list.trigger).not.toBeNull();
+
+        openMenu(list);
+
+        expect(list.overlay.querySelector('[role="menu"]')).not.toBeNull();
+        expect(menuItemLabels(list.overlay)).toEqual(labels);
     });
 
-    it('shows delete but not rename with delete permission only', () => {
-        const element = renderList(false, true);
-        expect(element.querySelector('[aria-label="Rename table"]')).toBeNull();
-        expect(element.querySelector('[aria-label="Delete table"]')).not.toBeNull();
+    it('opens the menu without selecting the row', () => {
+        const list = renderList(true, true);
+        const selected = vi.fn();
+        list.fixture.componentInstance.selected.subscribe(selected);
+
+        openMenu(list);
+
+        expect(menuItems(list.overlay)).toHaveLength(3);
+        expect(selected).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { label: 'Rename', output: 'renameRequested' as const },
+        { label: 'Delete', output: 'deleteRequested' as const },
+    ])('emits $output with the table, closes the menu and focuses the ⋮ on "$label"', ({ label, output }) => {
+        const list = renderList(true, true);
+        const emitted = vi.fn();
+        list.fixture.componentInstance[output].subscribe(emitted);
+        const selected = vi.fn();
+        list.fixture.componentInstance.selected.subscribe(selected);
+
+        openMenu(list);
+        menuItem(list.overlay, label).click();
+        list.fixture.detectChanges();
+
+        expect(emitted).toHaveBeenCalledExactlyOnceWith(TABLE);
+        expect(selected).not.toHaveBeenCalled();
+        expect(menuItems(list.overlay)).toHaveLength(0);
+        expect(document.activeElement).toBe(list.trigger);
+    });
+
+    it('opens the table details dialog with the table and the ⋮ to return focus to on "View Details"', () => {
+        const list = renderList(false, false);
+        const open = vi.spyOn(TestBed.inject(AuthorshipDetailsDialogService), 'open');
+
+        openMenu(list);
+        menuItem(list.overlay, 'View Details').click();
+        list.fixture.detectChanges();
+
+        expect(open).toHaveBeenCalledExactlyOnceWith('Table Details', TABLE, list.trigger);
+        expect(list.overlay.querySelector('[role="menu"]')).toBeNull();
+    });
+
+    it('can be opened and an item chosen with the keyboard alone', () => {
+        const list = renderList(true, true);
+        const renameRequested = vi.fn();
+        list.fixture.componentInstance.renameRequested.subscribe(renameRequested);
+        list.trigger.focus();
+
+        pressKey(list.trigger, 'ArrowDown', DOWN_ARROW);
+        list.fixture.detectChanges();
+
+        const rename = menuItem(list.overlay, 'Rename');
+        expect(document.activeElement).toBe(rename);
+
+        pressKey(rename, 'Enter', ENTER);
+        list.fixture.detectChanges();
+
+        expect(renameRequested).toHaveBeenCalledExactlyOnceWith(TABLE);
+        expect(menuItems(list.overlay)).toHaveLength(0);
+        expect(document.activeElement).toBe(list.trigger);
+    });
+
+    it('closes only the menu on Escape and returns focus to the ⋮', () => {
+        const list = renderList(true, true);
+        const emitted = vi.fn();
+        list.fixture.componentInstance.renameRequested.subscribe(emitted);
+        list.fixture.componentInstance.deleteRequested.subscribe(emitted);
+        list.fixture.componentInstance.selected.subscribe(emitted);
+
+        openMenu(list);
+        pressKey(menuItem(list.overlay, 'Rename'), 'Escape', ESCAPE);
+        list.fixture.detectChanges();
+
+        expect(menuItems(list.overlay)).toHaveLength(0);
+        expect(document.activeElement).toBe(list.trigger);
+        expect(emitted).not.toHaveBeenCalled();
+    });
+
+    it('keeps the row marked while its menu is open', () => {
+        const list = renderList(true, true);
+        const row = list.element.querySelector('.table-list__row')!;
+
+        openMenu(list);
+        expect(row.classList).toContain('table-list__row--menu-open');
+
+        list.trigger.click();
+        list.fixture.detectChanges();
+        expect(row.classList).not.toContain('table-list__row--menu-open');
+    });
+
+    it('returns focus to the ⋮ once the details dialog closes', () => {
+        const list = renderList(false, false);
+        const dialog = TestBed.inject(Dialog);
+
+        openMenu(list);
+        menuItem(list.overlay, 'View Details').click();
+        list.fixture.detectChanges();
+        expect(dialog.openDialogs).toHaveLength(1);
+        expect(list.overlay.textContent).toContain('Table Details');
+
+        dialog.openDialogs[0].close();
+        list.fixture.detectChanges();
+
+        expect(dialog.openDialogs).toHaveLength(0);
+        expect(document.activeElement).toBe(list.trigger);
     });
 });
 

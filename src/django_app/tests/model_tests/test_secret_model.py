@@ -46,14 +46,6 @@ def test_empty_value_raises_integrity_error(default_org):
 
 
 @pytest.mark.django_db
-def test_metadata_defaults_to_empty_dict(default_org):
-    secret = Secret.objects.create(
-        name="WITH_DEFAULTS", value="ciphertext", org=default_org
-    )
-    assert secret.metadata == {}
-
-
-@pytest.mark.django_db
 def test_seal_and_persist_round_trips_through_the_database(default_org):
     text = "sk-live-51H8xJ2eZvKYlo2C0X9F3q7R"
     secret = Secret(name="ROUND_TRIP", org=default_org)

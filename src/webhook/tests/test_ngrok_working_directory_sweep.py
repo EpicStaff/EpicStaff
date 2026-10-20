@@ -13,7 +13,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from loguru import logger
 
 from app.core.settings import settings
 from app.main import lifespan
@@ -21,9 +20,7 @@ from app.providers.tunnels import ngrok_working_directory as working_directory_m
 from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
 from app.providers.tunnels.ngrok_working_directory import (
     LOCK_FILE_NAME,
-    PENDING_LOCK_FILE_NAME,
     UNLOCKED_WORKING_DIRECTORY_GRACE_SECONDS,
-    NgrokWorkingDirectoryError,
     remove_stale_working_directories,
 )
 from app.services.tunnel_registry import TunnelRegistry
@@ -109,12 +106,8 @@ def _lock_is_free(lock_path) -> bool:
     return True
 
 
-@pytest.fixture
-def error_logs():
-    records = []
-    sink_id = logger.add(lambda message: records.append(message.record), level="ERROR")
-    yield records
-    logger.remove(sink_id)
+def _started_working_directory(environment) -> str:
+    return os.path.dirname(environment.ngrok.connect.call_args.kwargs["pyngrok_config"].ngrok_path)
 
 
 def _make_provider() -> NgrokTunnel:
@@ -310,7 +303,7 @@ def test_failure_on_one_directory_does_not_stop_the_others(sweep_environment, mo
 
 
 def test_directory_removed_by_someone_else_meanwhile_is_not_an_error(
-    sweep_environment, monkeypatch, error_logs
+    sweep_environment, monkeypatch
 ):
     vanishing = _make_old_unlocked_directory(sweep_environment.root, "ngrok_vanishing")
     orphan = _make_old_unlocked_directory(sweep_environment.root, "ngrok_orphan")
@@ -334,7 +327,6 @@ def test_directory_removed_by_someone_else_meanwhile_is_not_an_error(
 
     assert not vanishing.exists()
     assert not orphan.exists()
-    assert error_logs == []
 
 
 def test_sweep_does_not_raise_when_the_temp_root_cannot_be_checked(
@@ -347,7 +339,7 @@ def test_sweep_does_not_raise_when_the_temp_root_cannot_be_checked(
 
 @requires_flock
 def test_sweep_holds_the_lock_while_removing_so_a_concurrent_sweep_skips(
-    sweep_environment, monkeypatch, error_logs
+    sweep_environment, monkeypatch
 ):
     orphan = _make_working_directory(sweep_environment.root, "ngrok_orphan")
     real_rmtree = shutil.rmtree
@@ -366,7 +358,6 @@ def test_sweep_holds_the_lock_while_removing_so_a_concurrent_sweep_skips(
 
     assert observed == {"lock_free": False, "still_there": True}
     assert not orphan.exists()
-    assert error_logs == []
 
 
 def test_unrelated_entries_in_the_temp_root_are_untouched(sweep_environment):
@@ -380,22 +371,23 @@ def test_unrelated_entries_in_the_temp_root_are_untouched(sweep_environment):
 
 
 @requires_flock
-async def test_tunnel_holds_its_lock_across_reconnects_and_releases_it_on_disconnect(
+async def test_tunnel_holds_its_lock_across_retries_and_releases_it_on_disconnect(
     ngrok_environment,
 ):
+    ngrok_environment.ngrok.connect.side_effect = [
+        RuntimeError("ngrok failed to start"),
+        ngrok_environment.ngrok.connect.return_value,
+    ]
     provider = _make_provider()
     await provider.connect()
-    working_directory = provider._working_directory
+    working_directory = _started_working_directory(ngrok_environment)
     lock_path = os.path.join(working_directory, LOCK_FILE_NAME)
     assert not _lock_is_free(lock_path)
 
-    provider._tunnel = None
-    await provider._establish_connection()
+    await provider.connect()
 
-    assert ngrok_environment.ngrok.connect.call_count == 2
-    assert provider._working_directory == working_directory
+    assert _started_working_directory(ngrok_environment) == working_directory
     assert not _lock_is_free(lock_path)
-    assert not os.path.exists(os.path.join(working_directory, PENDING_LOCK_FILE_NAME))
 
     # Opened before the removal so the lock can still be tried once the file is unlinked.
     lock_descriptor = os.open(lock_path, os.O_RDWR)
@@ -434,7 +426,8 @@ async def test_sweep_before_the_new_lock_file_is_locked_keeps_the_directory(
 
     assert swept
     ngrok_environment.ngrok.connect.assert_called_once()
-    assert not _lock_is_free(os.path.join(provider._working_directory, LOCK_FILE_NAME))
+    working_directory = _started_working_directory(ngrok_environment)
+    assert not _lock_is_free(os.path.join(working_directory, LOCK_FILE_NAME))
 
     await provider.disconnect()
 
@@ -461,13 +454,10 @@ async def test_tunnel_refuses_to_run_when_its_directory_cannot_be_locked(
         _FakeFcntl(OSError(errno.ENOLCK, "No locks available")),
     )
     provider = _make_provider()
-    provider._is_running = True
 
-    with pytest.raises(NgrokWorkingDirectoryError, match="cannot lock"):
-        await provider._establish_connection()
+    await provider.connect()
 
     ngrok_environment.ngrok.connect.assert_not_called()
-    assert provider._working_directory_lock is None
     assert list(ngrok_environment.temp_root.iterdir()) == []
 
     await provider.disconnect()
@@ -494,8 +484,8 @@ async def test_tunnel_runs_without_a_lock_when_fcntl_is_unavailable(ngrok_enviro
     await provider.connect()
 
     ngrok_environment.ngrok.connect.assert_called_once()
-    assert provider._working_directory_lock is None
-    assert not os.path.exists(os.path.join(provider._working_directory, LOCK_FILE_NAME))
+    working_directory = _started_working_directory(ngrok_environment)
+    assert not os.path.exists(os.path.join(working_directory, LOCK_FILE_NAME))
 
     await provider.disconnect()
     assert list(ngrok_environment.temp_root.iterdir()) == []

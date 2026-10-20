@@ -40,6 +40,15 @@ describe('audit condition groups', () => {
         expect(chips.find((chip) => chip.key === 'input')?.value).toBe('(contains a AND contains b) OR contains c');
     });
 
+    it('marks operators and joins as keywords but never the user value', () => {
+        const chips = describeAuditFilter({ ...EMPTY_AUDIT_FILTER, input: [group('and', 'equals', 'b')] });
+        const keywords = chips
+            .find((chip) => chip.key === 'input')
+            ?.parts?.filter((part) => part.isKeyword)
+            .map((part) => part.text);
+        expect(keywords).toEqual(['contains', 'AND', 'contains']);
+    });
+
     it('folds three groups left to right in both the chip and the compiled tree', () => {
         const state = { ...EMPTY_AUDIT_FILTER, input: [group('and', 'a', 'b'), group('or', 'c'), group('and', 'd')] };
         const chips = describeAuditFilter(state);
@@ -78,7 +87,9 @@ describe('audit query mode', () => {
             query: 'name == "Session Start"',
             input: [group('and', 'ignored')],
         });
-        expect(chips).toEqual([{ key: 'query', label: 'Query', value: 'name == "Session Start"' }]);
+        expect(chips.map(({ key, label, value }) => ({ key, label, value }))).toEqual([
+            { key: 'query', label: 'Query', value: 'name == "Session Start"' },
+        ]);
     });
 });
 

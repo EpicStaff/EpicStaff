@@ -7,12 +7,11 @@ from rbac.serializers.users import (
 
 
 class ProfileResponseSerializer(UserResponseSerializer):
-    """GET / PATCH / POST-avatar response for /api/profile/.
+    """GET / PATCH / POST-avatar / POST-quickstart-tour response for /api/profile/.
 
     Strict superset of UserResponseSerializer: same fields, plus
-    `avatar_url`, `active_organization_id`, `active_permissions` and
-    `quickstart_tour_completed`. The
-    `memberships` list is computed in UserProfileService.get_profile — a
+    `active_organization_id`, `active_permissions` and `quickstart_tour_completed`.
+    The `memberships` list is computed in UserProfileService.get_profile — a
     normal user's real active memberships, or (for a superadmin) every active
     organization with the built-in Superadmin role — so the response shape is
     unchanged.
@@ -42,19 +41,6 @@ class ProfileResponseSerializer(UserResponseSerializer):
 
     def get_quickstart_tour_completed(self, user) -> bool:
         return user.quickstart_tour_completed_at is not None
-
-    def get_avatar_url(self, user):
-        if not user.avatar:
-            return None
-        request = self.context.get("request")
-        try:
-            return (
-                request.build_absolute_uri(user.avatar.url)
-                if request is not None
-                else user.avatar.url
-            )
-        except ValueError:
-            return None
 
 
 # ---- request serializers (schema-only; validation in UserValidationService) ----

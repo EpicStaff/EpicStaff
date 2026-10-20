@@ -7,8 +7,14 @@ from tables.models.base_models import TimestampMixin
 
 class AuditFilterPreset(OrgScopedModel, TimestampMixin):
     """
-    A user's saved audit-search filter - owner-only (see created_by), never
-    shared/visible across users, even to an Org Admin. `filter_body` is the
+    A saved audit-search filter. A preset is either private ("My Presets":
+    only its author, `created_by`, sees it) or shared ("Shared Presets":
+    every org member with AUDIT:read can see, export and duplicate it).
+    Sharing is one-way - a shared preset is never made private again - and
+    only the author can edit or delete a preset, shared or not. A name is
+    unique per author within the org, private and shared alike - two authors
+    may each share a preset with the same name (the list shows the author),
+    and a private name never reveals itself to colleagues. `filter_body` is the
     auditor search request body (`filters` | `query`, `match_scope`,
     `cursor`, `size`) plus an optional frontend-only `ui_state` (the filters
     panel state), which is never sent to the auditor. Its shape is checked
@@ -23,6 +29,7 @@ class AuditFilterPreset(OrgScopedModel, TimestampMixin):
     )
     name = models.CharField(max_length=150)
     filter_body = models.JSONField(default=dict)
+    is_shared = models.BooleanField(default=False)
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

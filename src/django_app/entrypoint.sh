@@ -15,6 +15,10 @@ python manage.py migrate
 echo "Seeding built-in roles..."
 python manage.py seed_builtin_roles
 
+# Backfill MinIO storage credentials for any organization missing them
+echo "Backfilling org storage credentials..."
+python manage.py backfill_org_storage_credentials
+
 # Fix PostgreSQL sequences for all tables
 echo "Fixing PostgreSQL sequences..."
 python manage.py fix_sequences
@@ -31,13 +35,17 @@ python manage.py seed_system_api_key
 echo "Collects static"
 python manage.py collectstatic --noinput
 
+# The Redis workers share this container with the web server, so their own
+# connection pool is set per process here. Each queries from a single thread:
+# one connection, plus one spare.
+
 # Start Redis listener in the background
 echo "Starting Redis listener..."
-python manage.py listen_redis &
+DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py listen_redis &
 
 # Start Redis cache in the background
 echo "Starting Redis caching..."
-python manage.py cache_redis &
+DJANGO_DB_POOL_MIN_SIZE=1 DJANGO_DB_POOL_MAX_SIZE=2 python manage.py cache_redis &
 
 # Start Django application
 PORT="${DJANGO_PORT}"

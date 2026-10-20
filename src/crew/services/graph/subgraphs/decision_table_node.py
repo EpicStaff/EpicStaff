@@ -1,6 +1,4 @@
 import json
-import uuid
-from dataclasses import asdict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -17,6 +15,7 @@ from src.shared.models import (
     DecisionTableNodeData,
     PythonCodeData,
 )
+from src.shared.models.storage_scope import StorageCredentials
 
 
 class DecisionTableNodeDataError(Exception):
@@ -35,6 +34,7 @@ class DecisionTableNodeSubgraph:
         run_code_execution_service: RunPythonCodeService,
         redis_service=None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ):
         self.decision_table_node_data = decision_table_node_data
         self._graph_builder = graph_builder
@@ -48,6 +48,7 @@ class DecisionTableNodeSubgraph:
             custom_session_message_writer or CustomSessionMessageWriter()
         )
         self.run_code_execution_service = run_code_execution_service
+        self.storage_credentials = storage_credentials
 
     def _publish_message(self, graph_message: GraphMessage):
         """Publish a GraphMessage directly to Redis and dispatch it to the
@@ -58,25 +59,11 @@ class DecisionTableNodeSubgraph:
         reach Redis (hence never Postgres) or OpenSearch at all."""
         if self.redis_service is None:
             return
+        data = graph_message.to_payload()
+        encoded_data = GraphMessage.encode_payload(data)
+        self.redis_service.add_graph_message(data["uuid"], encoded_data)
         try:
-            data = asdict(graph_message)
-        except (TypeError, Exception) as e:
-            logger.warning(f"Failed to serialize GraphMessage via asdict: {e}")
-            data = {
-                "session_id": graph_message.session_id,
-                "name": graph_message.name,
-                "execution_order": graph_message.execution_order,
-                "message_data": graph_message.message_data
-                if isinstance(graph_message.message_data, dict)
-                else {
-                    "message_type": getattr(graph_message.message_data, "message_type", "unknown")
-                },
-                "timestamp": graph_message.timestamp,
-            }
-        data["uuid"] = str(uuid.uuid4())
-        self.redis_service.publish("graph:messages", data)
-        try:
-            emit_session_audit_event(data)
+            emit_session_audit_event(encoded_data)
         except Exception as audit_exc:
             logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
 
@@ -132,9 +119,14 @@ def main(**kwargs) -> bool:
             python_code_data=python_code_data,
             inputs={"variables": state["variables"].model_dump()},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
 
-        logger.info(f"Python code execution data: {python_code_execution_data}")
+        logger.debug(
+            "Manipulation finished: execution_id={} returncode={}",
+            python_code_execution_data["execution_id"],
+            python_code_execution_data["returncode"],
+        )
         if python_code_execution_data["returncode"] != 0:
             raise DecisionTableNodeDataError(
                 f"Manipulation execution failed with error: {python_code_execution_data['stderr']}"
@@ -166,6 +158,7 @@ def main(variables: dict) -> bool:
             python_code_data=python_code_data,
             inputs={"variables": state["variables"].model_dump()},
             stop_event=self.stop_event,
+            storage_credentials=self.storage_credentials,
         )
         if python_code_execution_data["returncode"] != 0:
             raise DecisionTableNodeDataError(

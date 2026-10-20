@@ -146,9 +146,9 @@ def test_referenced_trigger_is_readable_by_flows_reader(
 def test_soft_deleted_node_does_not_grant_visibility(
     default_org, secret, referenced_ngrok
 ):
-    """A related join ignores the ActiveManager, so is_soft_deleted must be explicit."""
+    """A related join ignores managers, so the active filter must be explicit."""
     WebhookTriggerNode.all_objects.update(
-        is_soft_deleted=True, soft_deleted_at=timezone.now()
+        active=False, soft_deleted_at=timezone.now()
     )
 
     result = _is_readable_map(

@@ -1,111 +1,111 @@
-def test_webhook_endpoint_no_auth_configured_is_rejected(
-    client, mock_redis_service, register_tunnel_path
+import pytest
+from src.shared.models import LocalhostConfigData, WebhookTriggerAuthData
+
+HEADER_BY_KIND = {
+    "webhook": "EPICSTAFF_API_KEY",
+    "telegram": "X-Telegram-Bot-Api-Secret-Token",
+}
+
+
+def _auth(kind: str, secret: str) -> WebhookTriggerAuthData:
+    return WebhookTriggerAuthData(kind=kind, header_name=HEADER_BY_KIND[kind], secret=secret)
+
+
+async def _register(registry, path: str, auth=None, org_id: int = 1) -> LocalhostConfigData:
+    config = LocalhostConfigData(name=path, org_id=org_id, auth=auth)
+    await registry.register(config)
+    return config
+
+
+@pytest.mark.parametrize("kind", ["webhook", "telegram"])
+async def test_authenticated_webhook_is_forwarded_to_django(
+    client, tunnel_registry, received_events, kind
 ):
-    """A path with no `WebhookTriggerAuth` row at all (`config.auth is None`)
-    must fail closed -- there is no legitimate unauthenticated dispatch case
-    left in this design."""
-    webhook_path = "payment_success"
-    payload = {"status": "ok"}
-    register_tunnel_path(webhook_path)
+    config = await _register(tunnel_registry, "telegram-trigger/bot", auth=_auth(kind, "secret"))
 
-    response = client.post(f"/webhooks/{webhook_path}", json=payload)
-
-    assert response.status_code == 401
-    mock_redis_service.publish_webhook.assert_not_called()
-
-
-def test_webhook_endpoint_query_params(client, mock_redis_service, register_tunnel_path):
-    webhook_path = "my-hook"
-    register_tunnel_path(webhook_path, auth=_auth("webhook", "correct-secret"))
-
-    query_params = {"a": "1", "b": "2"}
-
-    response = client.post(
-        f"/webhooks/{webhook_path}",
-        params=query_params,
-        json={"some": "data"},
-        headers={"EPICSTAFF_API_KEY": "correct-secret"},
+    response = await client.post(
+        "/webhooks/telegram-trigger/bot",
+        json={"update_id": 1},
+        headers={HEADER_BY_KIND[kind]: "secret"},
     )
 
     assert response.status_code == 200
+    assert response.json()["config_id"] == config.unique_id
+    assert await received_events() == [
+        {"path": "telegram-trigger/bot", "payload": {"update_id": 1}, "config_id": config.unique_id}
+    ]
 
-    mock_redis_service.publish_webhook.assert_called_once()
+
+@pytest.mark.parametrize(
+    ("auth", "headers"),
+    [
+        (_auth("webhook", "correct-secret"), {}),
+        (_auth("webhook", "correct-secret"), {"EPICSTAFF_API_KEY": "wrong-secret"}),
+        (_auth("webhook", "correct-secret"), {"EPICSTAFF_API_KEY": ""}),
+        # No auth configured must fail closed: there is no unauthenticated dispatch.
+        (None, {"EPICSTAFF_API_KEY": "correct-secret"}),
+    ],
+    ids=["missing-header", "wrong-secret", "empty-header", "path-without-auth"],
+)
+async def test_unauthenticated_webhook_is_rejected_with_401(
+    client, tunnel_registry, received_events, auth, headers
+):
+    await _register(tunnel_registry, "authed-hook", auth=auth)
+
+    response = await client.post("/webhooks/authed-hook", json={"a": 1}, headers=headers)
+
+    assert response.status_code == 401
+    assert await received_events() == []
 
 
-def test_webhook_endpoint_unregistered_path_returns_404(client, mock_redis_service):
-    response = client.post("/webhooks/never-registered", json={"a": 1})
+async def test_unregistered_path_returns_404(client, received_events):
+    response = await client.post("/webhooks/never-registered", json={"a": 1})
 
     assert response.status_code == 404
-    mock_redis_service.publish_webhook.assert_not_called()
+    assert await received_events() == []
 
 
-def _auth(kind: str, secret: str):
-    from src.shared.models import WebhookTriggerAuthData
-
-    header_name = {
-        "webhook": "EPICSTAFF_API_KEY",
-        "telegram": "X-Telegram-Bot-Api-Secret-Token",
-    }[kind]
-    return WebhookTriggerAuthData(kind=kind, header_name=header_name, secret=secret)
-
-
-def test_webhook_endpoint_rejects_missing_header_when_auth_configured(
-    client, mock_redis_service, register_tunnel_path
+async def test_path_registered_by_two_orgs_is_refused_rather_than_guessed(
+    client, tunnel_registry, received_events
 ):
-    webhook_path = "authed-hook"
-    register_tunnel_path(webhook_path, auth=_auth("webhook", "correct-secret"))
+    """The request carries only the path, so routing it to either org could leak one
+    org's event into the other's graph."""
+    auth = _auth("webhook", "secret")
+    await _register(tunnel_registry, "shared-path", auth=auth, org_id=1)
+    await _register(tunnel_registry, "shared-path", auth=auth, org_id=2)
 
-    response = client.post(f"/webhooks/{webhook_path}", json={"a": 1})
-
-    assert response.status_code == 401
-    mock_redis_service.publish_webhook.assert_not_called()
-
-
-def test_webhook_endpoint_rejects_wrong_secret(
-    client, mock_redis_service, register_tunnel_path
-):
-    webhook_path = "authed-hook-2"
-    register_tunnel_path(webhook_path, auth=_auth("webhook", "correct-secret"))
-
-    response = client.post(
-        f"/webhooks/{webhook_path}",
-        json={"a": 1},
-        headers={"EPICSTAFF_API_KEY": "wrong-secret"},
+    response = await client.post(
+        "/webhooks/shared-path", json={"a": 1}, headers={"EPICSTAFF_API_KEY": "secret"}
     )
 
-    assert response.status_code == 401
-    mock_redis_service.publish_webhook.assert_not_called()
+    assert response.status_code == 409
+    assert await received_events() == []
 
 
-def test_webhook_endpoint_accepts_correct_epicstaff_api_key(
-    client, mock_redis_service, register_tunnel_path
+@pytest.mark.parametrize("requested", ["my-hook", "my-hook/"])
+async def test_path_matching_ignores_surrounding_slashes(
+    client, tunnel_registry, received_events, requested
 ):
-    webhook_path = "authed-hook-3"
-    register_tunnel_path(webhook_path, auth=_auth("webhook", "correct-secret"))
+    await _register(tunnel_registry, "/my-hook/", auth=_auth("webhook", "secret"))
 
-    response = client.post(
-        f"/webhooks/{webhook_path}",
-        json={"a": 1},
-        headers={"EPICSTAFF_API_KEY": "correct-secret"},
+    response = await client.post(
+        f"/webhooks/{requested}", json={"a": 1}, headers={"EPICSTAFF_API_KEY": "secret"}
     )
 
     assert response.status_code == 200
-    mock_redis_service.publish_webhook.assert_called_once()
+    assert len(await received_events()) == 1
 
 
-def test_webhook_endpoint_accepts_correct_telegram_secret_token(
-    client, mock_redis_service, register_tunnel_path
-):
-    webhook_path = "telegram-trigger/authed-bot"
-    register_tunnel_path(webhook_path, auth=_auth("telegram", "tg-secret"))
+async def test_returns_503_when_no_received_events_receives_the_event(client, tunnel_registry):
+    """Telegram only redelivers an update after a non-2xx response, so a 200 for an
+    event that reached no listener would lose the chat message."""
+    await _register(tunnel_registry, "telegram-trigger/bot", auth=_auth("telegram", "tg-secret"))
 
-    response = client.post(
-        f"/webhooks/{webhook_path}",
-        json={"a": 1},
+    response = await client.post(
+        "/webhooks/telegram-trigger/bot",
+        json={"update_id": 1},
         headers={"X-Telegram-Bot-Api-Secret-Token": "tg-secret"},
     )
 
-    assert response.status_code == 200
-    mock_redis_service.publish_webhook.assert_called_once()
-
-
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
