@@ -6,7 +6,7 @@
 # `auth_secret_id` has no `source=` override, so its default source
 # ("auth_secret_id") does not exist on `WebhookTrigger`; the real value lives at
 # `instance.auth.secret`, one hop through the `WebhookTriggerAuth` OneToOne row --
-# hence the `get_current_secret_reference` hook on the serializer rather than a
+# hence the serializer's `persisted_value` override rather than a
 # plain `source=`.
 
 import pytest

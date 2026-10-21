@@ -85,6 +85,7 @@ from tables.services.rag_registry import resolve_rag_in_collection
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.services.secrets.declaration_validator import binned_secret_names
+from tables.services.secrets.injection_guard import secret_injection_guard
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
@@ -186,9 +187,10 @@ class ConverterService(metaclass=SingletonMeta):
             knowledge_node.rag_type,
             knowledge_node.rag_id,
             knowledge_node.source_collection,
+            select_related=("embedder__model",),
         )
         embedder = rag.embedder
-        return embedder.api_key_secret_id if embedder else None
+        return secret_injection_guard.injectable_api_key_secret_id(embedder)
 
     @staticmethod
     def _node_rag_llm_secret_id(knowledge_node: KnowledgeNode) -> int | None:
@@ -200,9 +202,10 @@ class ConverterService(metaclass=SingletonMeta):
             knowledge_node.rag_type,
             knowledge_node.rag_id,
             knowledge_node.source_collection,
+            select_related=("llm__model",) if knowledge_node.rag_type == "graph" else (),
         )
         llm = getattr(rag, "llm", None)
-        return llm.api_key_secret_id if llm else None
+        return secret_injection_guard.injectable_api_key_secret_id(llm)
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
         return list(
@@ -307,6 +310,8 @@ class ConverterService(metaclass=SingletonMeta):
 
         if rt_agent_chat.openai_config_id is not None:
             cfg: OpenAIRealtimeConfig = rt_agent_chat.openai_config
+            # Both keys go to the config's own base_url.
+            secret_injection_guard.assert_injection_permitted(cfg)
             rt_provider = "openai"
             rt_model_name = cfg.model_name
             rt_api_key_secret_id = cfg.api_key_secret_id
@@ -605,11 +610,27 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_llm_config_data(self, config: LLMConfig) -> LLMConfigData:
-        """Convert an LLMConfig that has a model into its provider-independent LLMConfigData.
+        """Convert an LLMConfig for a payload, once the injection check allows its secret.
+
+        Issues no query when the caller selected `model`, unless the config sends a
+        secret to a custom destination: then its approver is checked (see
+        SecretInjectionGuard).
+
+        Raises:
+            SecretInjectionDeniedError: The config's secret goes to a custom destination
+                no current USE holder approved.
+        """
+        secret_injection_guard.assert_injection_permitted(config)
+        return self.build_llm_config_data(config)
+
+    @staticmethod
+    def build_llm_config_data(config: LLMConfig) -> LLMConfigData:
+        """Convert an LLMConfig that has a model into LLMConfigData, with no injection check.
 
         Reads only the config and its model, never `model.llm_provider`, so a model
-        whose provider was deleted (NULL) converts without raising. Issues no query
-        when the caller selected `model`.
+        whose provider was deleted (NULL) converts without raising, and issues no query
+        when the caller selected `model` -- safe from async code. A caller sending the
+        secret must have run the injection check (`resolve_llm_api_key` does).
         """
         return LLMConfigData(
             model=config.model.name,
@@ -636,6 +657,7 @@ class ConverterService(metaclass=SingletonMeta):
         if not embedding_config:
             return None
 
+        secret_injection_guard.assert_injection_permitted(embedding_config)
         return EmbedderData(
             provider=(
                 embedding_config.model.embedding_provider.name

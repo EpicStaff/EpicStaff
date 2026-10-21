@@ -7,6 +7,7 @@ from enum import Enum
 from typing import ClassVar, Self
 
 from django.apps import apps
+from django.conf import settings
 from django.db import connection, models, router, transaction
 from django.db.models import Func, Value
 from django.db.models.deletion import Collector
@@ -518,3 +519,28 @@ class BaseGlobalNode(models.Model):
             return target_model.objects.filter(id=node_id).first()
 
         return None
+
+
+class SecretBindingApprovedModel(models.Model):
+    """A config whose secret may go to a custom destination, and who vouched for that.
+
+    `secret_binding_approved_by` is the last person holding secrets:USE who changed
+    which secret the row carries or where it sends it, or who re-saved it
+    (SecretReferenceGuard.authorize_write decides). SecretInjectionGuard ships the
+    row's secret to a custom destination only while that user still holds
+    secrets:USE in the row's org. A save by anyone without USE leaves it alone, so
+    tuning a field never breaks delivery. NULL -- never approved, or the user was
+    deleted -- fails closed. Never writable by a client.
+    """
+
+    secret_binding_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        editable=False,
+    )
+
+    class Meta:
+        abstract = True

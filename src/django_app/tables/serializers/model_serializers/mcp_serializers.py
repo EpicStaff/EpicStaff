@@ -17,6 +17,7 @@ from tables.serializers.utils.soft_delete_fields import (
     ExcludeSoftDeleteFieldsMixin,
     KeptLinkPrimaryKeyRelatedField,
 )
+from tables.services.secrets.policies import MCP_TOOL_SECRET_POLICY
 
 
 class McpToolSerializer(
@@ -26,7 +27,7 @@ class McpToolSerializer(
     SecretReferenceGuardMixin,
     serializers.ModelSerializer,
 ):
-    secret_reference_fields = ("auth_secret_id",)
+    secret_policy = MCP_TOOL_SECRET_POLICY
 
     auth_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),

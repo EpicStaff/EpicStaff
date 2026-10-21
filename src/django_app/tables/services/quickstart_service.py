@@ -16,6 +16,8 @@ from tables.models.tag_models import (
 )
 from tables.models.user import User
 from tables.services.secrets import secret_service
+from tables.services.secrets.policies import LLM_CONFIG_SECRET_POLICY
+from tables.services.secrets.reference_guard import SecretActor, secret_reference_guard
 from utils.singleton_meta import SingletonMeta
 
 
@@ -68,6 +70,13 @@ class QuickstartService(metaclass=SingletonMeta):
             config_name = self._generate_unique_quickstart_config_name(provider)
             provider_obj = Provider.objects.get(name=provider)
             author = resolve_author(user)
+            # The bundle's configs carry its secret from their first save, so the user
+            # approves that binding -- if they hold secrets:USE; otherwise the rows stay
+            # unapproved and a custom model will not receive the key until an admin
+            # re-saves. The three config types record the same approver field.
+            approval = secret_reference_guard.approval_by_use_holder(
+                policy=LLM_CONFIG_SECRET_POLICY, actor=SecretActor(user=user, org_id=org_id)
+            )
             with transaction.atomic():
                 # One Secret backs the whole bundle. Resolved before any config
                 # exists, so every config can set the FK on its INSERT.
@@ -83,6 +92,7 @@ class QuickstartService(metaclass=SingletonMeta):
                     org_id=org_id,
                     secret=bundle_secret,
                     author=author,
+                    approval=approval,
                 )
                 embedding_config = self._create_embedder_config(
                     provider=provider_obj,
@@ -90,13 +100,18 @@ class QuickstartService(metaclass=SingletonMeta):
                     org_id=org_id,
                     secret=bundle_secret,
                     author=author,
+                    approval=approval,
                 )
 
                 realtime_configs = []
                 if provider == "openai":
                     realtime_configs.append(
                         self._create_openai_realtime_config(
-                            bundle_secret, config_name, org_id=org_id, author=author
+                            bundle_secret,
+                            config_name,
+                            org_id=org_id,
+                            author=author,
+                            approval=approval,
                         )
                     )
                 elif provider == "gemini":
@@ -221,6 +236,7 @@ class QuickstartService(metaclass=SingletonMeta):
         org_id: int,
         secret: Secret,
         author: User | None,
+        approval: dict,
     ) -> LLMConfig:
         llm_model = self._get_or_create_llm_model(provider=provider, org_id=org_id, author=author)
         return LLMConfig.objects.create(
@@ -229,6 +245,7 @@ class QuickstartService(metaclass=SingletonMeta):
             org_id=org_id,
             api_key_secret=secret,
             created_by=author,
+            **approval,
         )
 
     def _create_embedder_config(
@@ -239,6 +256,7 @@ class QuickstartService(metaclass=SingletonMeta):
         org_id: int,
         secret: Secret,
         author: User | None,
+        approval: dict,
     ) -> EmbeddingConfig:
         embedder_model = self._get_or_create_embedder_model(
             provider=provider, org_id=org_id, author=author
@@ -249,10 +267,16 @@ class QuickstartService(metaclass=SingletonMeta):
             org_id=org_id,
             api_key_secret=secret,
             created_by=author,
+            **approval,
         )
 
     def _create_openai_realtime_config(
-        self, secret: Secret, config_name: str, org_id: int, author: User | None
+        self,
+        secret: Secret,
+        config_name: str,
+        org_id: int,
+        author: User | None,
+        approval: dict,
     ) -> OpenAIRealtimeConfig:
         return OpenAIRealtimeConfig.objects.create(
             custom_name=config_name,
@@ -260,6 +284,7 @@ class QuickstartService(metaclass=SingletonMeta):
             transcription_api_key_secret=secret,
             org_id=org_id,
             created_by=author,
+            **approval,
         )
 
     def _create_gemini_realtime_config(

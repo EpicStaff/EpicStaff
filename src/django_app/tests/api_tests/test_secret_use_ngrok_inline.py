@@ -1,4 +1,4 @@
-"""Task 7: NgrokConfigInlineSerializer's auth_token_secret_id is gated behind secrets:USE, resolving the current value through the declared parent_attribute rather than the field name."""
+"""NgrokConfigInlineSerializer's auth_token_secret_id is gated behind secrets:USE, reading the current value through the parent trigger's ngrok row (its persisted_value override) rather than the field name."""
 
 import pytest
 from rest_framework.test import APIClient
@@ -89,7 +89,7 @@ class TestNgrokInlineIsGated:
     def test_editing_the_path_while_resending_the_token_is_accepted(
         self, no_use_client, trigger, secret
     ):
-        """The test that catches a wrong parent_attribute — derive it and this 400s."""
+        """The test that catches a wrong persisted_value override — read the field name and this 400s."""
         response = no_use_client.patch(
             f"/api/webhook-triggers/{trigger.id}/",
             {

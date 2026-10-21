@@ -7,6 +7,7 @@ from rbac.models.org_scoped import OrgScopedModel
 from tables.models.base_models import (
     AbstractDefaultFillableModel,
     DefaultBaseModel,
+    SecretBindingApprovedModel,
     SoftDeleteFields,
     soft_delete_consistency_constraint,
 )
@@ -23,7 +24,9 @@ class AudioFormatChoices(models.TextChoices):
 # ---------------------------------------------------------------------------
 
 
-class OpenAIRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
+class OpenAIRealtimeConfig(
+    OrgScopedModel, LastEditTrackedModel, SecretBindingApprovedModel, models.Model
+):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         db_table = "openai_realtime_config"

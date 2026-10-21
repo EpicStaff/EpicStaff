@@ -16,6 +16,7 @@ from tables.models.knowledge_models import (
     GraphRagDocument,
     NaiveRag,
 )
+from tables.services.secrets.injection_guard import secret_injection_guard
 
 
 class IndexingService:
@@ -66,7 +67,7 @@ class IndexingService:
         # Get NaiveRag instance
         try:
             naive_rag = NaiveRag.objects.select_related(
-                "base_rag_type", "base_rag_type__source_collection", "embedder"
+                "base_rag_type", "base_rag_type__source_collection", "embedder__model"
             ).get(naive_rag_id=naive_rag_id)
         except NaiveRag.DoesNotExist as e:
             raise NaiveRagNotFoundException(naive_rag_id) from e
@@ -109,7 +110,9 @@ class IndexingService:
             "rag_type": "naive",
             "collection_id": collection.collection_id,
             "base_rag_type_id": base_rag_type.rag_type_id,
-            "embedder_api_key_secret_id": naive_rag.embedder.api_key_secret_id,
+            "embedder_api_key_secret_id": secret_injection_guard.injectable_api_key_secret_id(
+                naive_rag.embedder
+            ),
             "llm_api_key_secret_id": None,
         }
 
@@ -129,8 +132,8 @@ class IndexingService:
             graph_rag = GraphRag.objects.select_related(
                 "base_rag_type",
                 "base_rag_type__source_collection",
-                "embedder",
-                "llm",
+                "embedder__model",
+                "llm__model",
                 "index_config",
             ).get(graph_rag_id=graph_rag_id)
         except GraphRag.DoesNotExist as e:
@@ -189,8 +192,12 @@ class IndexingService:
             "rag_type": "graph",
             "collection_id": collection.collection_id,
             "base_rag_type_id": base_rag_type.rag_type_id,
-            "embedder_api_key_secret_id": graph_rag.embedder.api_key_secret_id,
-            "llm_api_key_secret_id": graph_rag.llm.api_key_secret_id,
+            "embedder_api_key_secret_id": secret_injection_guard.injectable_api_key_secret_id(
+                graph_rag.embedder
+            ),
+            "llm_api_key_secret_id": secret_injection_guard.injectable_api_key_secret_id(
+                graph_rag.llm
+            ),
         }
 
     @staticmethod

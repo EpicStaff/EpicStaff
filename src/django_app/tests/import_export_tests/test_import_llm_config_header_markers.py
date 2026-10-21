@@ -105,6 +105,7 @@ class TestImportedHeaderMarkers:
 
         imported = LLMConfig.objects.get(custom_name__startswith=IMPORTED_NAME)
         assert imported.extra_headers == MARKER
+        assert imported.secret_binding_approved_by == user_with_use
 
     def test_plain_headers_without_use_are_imported(
         self, exportable_graph_with_agent_node, export_service, default_org, user_without_use

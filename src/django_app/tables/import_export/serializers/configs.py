@@ -57,7 +57,11 @@ class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigIm
         # Keep created_at out of the export: BaseConfigStrategy.find_existing filters on
         # every exported key, and an equivalent config created by an earlier import has
         # its own creation time, so re-imports would stop matching it and duplicate it.
-        exclude = [*BaseConfigImportSerializer.Meta.exclude, "created_at"]
+        exclude = [
+            *BaseConfigImportSerializer.Meta.exclude,
+            "created_at",
+            "secret_binding_approved_by",
+        ]
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -78,7 +82,11 @@ class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):
         # Keep created_at out of the export: BaseConfigStrategy.find_existing filters on
         # every exported key, and an equivalent config created by an earlier import has
         # its own creation time, so re-imports would stop matching it and duplicate it.
-        exclude = [*BaseConfigImportSerializer.Meta.exclude, "created_at"]
+        exclude = [
+            *BaseConfigImportSerializer.Meta.exclude,
+            "created_at",
+            "secret_binding_approved_by",
+        ]
 
 
 class RealtimeConfigImportSerializer(BaseConfigImportSerializer):
@@ -123,6 +131,7 @@ class OpenAIRealtimeConfigImportSerializer(
             "created_at",
             "api_key_secret",
             "transcription_api_key_secret",
+            "secret_binding_approved_by",
         ]
 
 

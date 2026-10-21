@@ -39,7 +39,7 @@ def _api_key_secret(org, name: str, text: str = "sk-test-key") -> Secret:
 
 @pytest.mark.django_db
 def test_convert_rt_agent_definition_chat_to_pydantic_populates_rt_base_url(
-    converter, default_org, llm_config
+    converter, default_org, llm_config, regular_user
 ):
     agent_definition = AgentDefinition.objects.create(
         org=default_org,
@@ -54,6 +54,8 @@ def test_convert_rt_agent_definition_chat_to_pydantic_populates_rt_base_url(
         model_name="gpt-4o-realtime-preview",
         base_url="https://my-proxy.internal",
         api_key_secret=_api_key_secret(default_org, "openai-cfg-def-api-key"),
+        # A custom base_url receives the key only with an approver holding secrets:USE.
+        secret_binding_approved_by=regular_user,
     )
     rt_agent_definition = RealtimeAgentDefinition.objects.create(
         agent_definition=agent_definition, openai_config=config

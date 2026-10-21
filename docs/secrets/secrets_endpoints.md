@@ -278,8 +278,9 @@ unchanged and needs nothing. Refusals come back as a normal DRF field error:
 { "auth_secret_id": ["Changing the secrets referenced here requires the \"Use\" permission on Secrets. The existing selection was left unchanged. Ask an organization admin to grant it."] }
 ```
 
-Enforcement lives in `SecretReferenceGuardMixin` — mechanism, coverage guarantees, and how to
-diverge one request path are in
+Enforcement lives in `SecretReferenceGuard` and the per-entity `SecretPolicy` classes, applied
+to these endpoints by `SecretReferenceGuardMixin` — mechanism, coverage guarantees, the
+injection-time re-check, and how to diverge one request path are in
 [DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6.
 
 ---

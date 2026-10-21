@@ -41,6 +41,7 @@ from tables.services.copy_services.helpers import (
     create_python_code,
 )
 from tables.services.secrets.parse_code import parse_secret_names
+from tables.services.secrets.policies import PYTHON_CODE_SECRET_POLICY
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
@@ -50,7 +51,7 @@ from tables.validators.python_libraries_validator import validate_python_library
 class PythonCodeSerializer(
     SecretReferenceGuardMixin, ContentHashWritableMixin, serializers.ModelSerializer
 ):
-    secret_reference_fields = ("secret_ids",)
+    secret_policy = PYTHON_CODE_SECRET_POLICY
 
     libraries = serializers.ListField(
         child=serializers.CharField(validators=[validate_python_library_spec]),
@@ -117,10 +118,9 @@ class PythonCodeSerializer(
             return None
         return getattr(parent_instance, self.field_name, None)
 
-    def get_current_secret_reference(self, source):
-        """The persisted secrets for this field, resolved through the parent when nested."""
-        python_code = self._current_python_code()
-        return getattr(python_code, source, None) if python_code is not None else None
+    def persisted_value(self, source):
+        """Read the persisted PythonCode, resolved through the parent when nested."""
+        return getattr(self._current_python_code(), source, None)
 
     def validate(self, attrs):
         """Reject code that reads a secret this PythonCode did not declare."""

@@ -14,8 +14,10 @@ from tables.services.secrets.exceptions import (
     SecretDecryptionError,
     SecretResolutionError,
     SecretTooLargeError,
+    SecretUseDeniedError,
     UndeclaredSecretError,
 )
+from tables.services.secrets.linked_ids import linked_ids
 from tables.services.secrets.parse_code import (
     GET_SECRET_FUNC,
     parse_secret_names,
@@ -45,9 +47,11 @@ __all__ = [
     "SecretService",
     "SecretTooLargeError",
     "SecretUsageService",
+    "SecretUseDeniedError",
     "UndeclaredSecretError",
     "UsageCounts",
     "assert_tool_secrets_declared",
+    "linked_ids",
     "parse_secret_names",
     "secret_declaration_validator",
     "secret_encryption",

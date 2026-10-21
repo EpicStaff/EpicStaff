@@ -624,6 +624,89 @@ async def test_stream_reply_resolves_real_secret_for_real_litellm_client(
     assert events[-1].type == "done"
 
 
+async def _custom_model_conversation(openai_provider, user_a, org_a, *, approved: bool):
+    """A conversation whose LLM config sends its secret to an org custom model."""
+    from asgiref.sync import sync_to_async
+
+    from tables.services.secrets import secret_service
+
+    def build():
+        org_admin = Role.objects.get(name=BuiltInRole.ORG_ADMIN, is_built_in=True, org__isnull=True)
+        org_user = OrganizationUser.objects.create(user=user_a, org=org_a, role=org_admin)
+        custom_model = LLMModel.objects.create(
+            name="proxy-gpt",
+            llm_provider=openai_provider,
+            base_url="https://proxy.example",
+            org=org_a,
+            is_custom=True,
+        )
+        secret = secret_service.create(text="sk-custom-model", org=org_a, name="fa-custom-key")
+        config = LLMConfig.objects.create(
+            custom_name="custom-model-config",
+            model=custom_model,
+            org=org_a,
+            api_key_secret=secret,
+            secret_binding_approved_by=user_a if approved else None,
+        )
+        graph = Graph.objects.create(name="Custom Flow", description="A test flow.", org=org_a)
+        assistant = FlowAssistant.objects.create(graph=graph, llm_config=config)
+        return _make_conversation_with_messages(
+            assistant,
+            org_user,
+            [{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}],
+        )
+
+    return await sync_to_async(build)()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_reply_checks_a_custom_model_secret_outside_the_event_loop(
+    openai_provider, user_a, org_a, db
+):
+    """The injection check queries, so it must run in sync_to_async, not inside the generator.
+
+    Run under @pytest.mark.asyncio: only with a running loop does Django's async-unsafe
+    guard raise SynchronousOnlyOperation for a query made inline.
+    """
+    conversation = await _custom_model_conversation(openai_provider, user_a, org_a, approved=True)
+    captured_kwargs: dict = {}
+
+    async def fake_acompletion(**kwargs):
+        captured_kwargs.update(kwargs)
+
+        async def _empty_stream():
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        return _empty_stream()
+
+    events = []
+    with patch("litellm.acompletion", side_effect=fake_acompletion):
+        async for event in FlowAssistantService().stream_reply(conversation, "hi"):
+            events.append(event)
+
+    assert captured_kwargs.get("api_key") == "sk-custom-model"
+    assert events[-1].type == "done"
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_reply_refuses_an_unapproved_custom_model_secret(
+    openai_provider, user_a, org_a, db
+):
+    from tables.services.secrets.exceptions import SecretInjectionDeniedError
+
+    conversation = await _custom_model_conversation(openai_provider, user_a, org_a, approved=False)
+
+    with patch("litellm.acompletion") as acompletion:
+        with pytest.raises(SecretInjectionDeniedError):
+            async for _event in FlowAssistantService().stream_reply(conversation, "hi"):
+                pass
+
+    acompletion.assert_not_called()
+
+
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_stream_reply_rejects_stored_config_with_malformed_extra_headers(

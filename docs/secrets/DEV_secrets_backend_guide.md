@@ -8,7 +8,8 @@ Related focused docs: [secrets_endpoints.md](secrets_endpoints.md),
 [sandbox_secrets.md](sandbox_secrets.md), [secret_usage.md](secret_usage.md).
 
 Who may **change** which secret a resource references is a separate, RBAC-side concern —
-`secrets:USE`, enforced by `SecretReferenceGuardMixin` and documented in
+`secrets:USE`, enforced by `SecretReferenceGuard` through per-entity `SecretPolicy` classes
+(and re-checked at payload build time by `SecretInjectionGuard`), documented in
 [../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6. Everything in
 *this* guide is about storing, resolving and delivering the value once a reference exists.
 
@@ -353,11 +354,15 @@ Consequences worth knowing:
 4. If the value must reach another service, add the pydantic carrier pair
    (`<field>_secret_id` with `Field(exclude=True)`, plus the plaintext `<field>` slot) and
    let `resolve_payload` fill it. Do not decrypt at the call site.
-5. **Add the write field to the owning serializer's `secret_reference_fields`**, so changing
-   the reference requires `secrets:USE`. The serializer must carry
-   `SecretReferenceGuardMixin`, and if it defines its own `validate()` it **must** call
-   `super().validate(attrs)` — four serializers have silently bypassed the guard exactly that
-   way. `tests/services_tests/test_secret_reference_coverage.py` fails until the field is
+5. **Add the write field to the `reference_fields` of the entity's `SecretPolicy`**
+   (`tables/services/secrets/policies/`), so changing the reference requires `secrets:USE`.
+   A new policy goes into `SECRET_POLICIES`. The serializer must carry
+   `SecretReferenceGuardMixin` with `secret_policy = <THE_POLICY>`, and if it defines its
+   own `validate()` it **must** call `super().validate(attrs)` — four serializers have
+   silently bypassed the guard exactly that way. If the config routes its secret to a custom
+   destination and a payload builder injects it, give its policy an `approval_model` so
+   `SecretInjectionGuard` checks it too.
+   `tests/services_tests/test_secret_reference_coverage.py` fails until the field is
    registered or explicitly exempted with a written reason; see
    [../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6.
 6. Register a usage source so deletion safety still tells the truth — see
@@ -413,8 +418,10 @@ All paths are relative to `src/django_app/` unless stated otherwise.
 | Usage sources and payload | `tests/services_tests/test_secret_usage_sources.py`, `test_secret_usage_service.py`, `test_secret_usage_source_coverage.py` |
 | Usage endpoints, query cost | `tests/api_tests/test_secret_usage_api.py`, `test_graph_list_cdt_secrets_query_count.py` |
 | Usage visibility per role (readable/hidden) | `tests/services_tests/test_secret_usage_permission_filtering.py`, `tests/api_tests/test_secret_usage_permission_visibility.py` |
-| `secrets:USE` guard: delta rule, fail-safe | `tests/services_tests/test_secret_reference_guard.py` |
-| `secrets:USE` coverage — every field gated, guard actually reached | `tests/services_tests/test_secret_reference_coverage.py` |
+| `secrets:USE` guard: delta rule, fail-safe, policies, serializer adapter | `tests/services_tests/test_secret_reference_guard.py` |
+| `secrets:USE` coverage — every field gated, every policy registered, guard actually reached | `tests/services_tests/test_secret_reference_coverage.py` |
+| `secrets:USE` at injection time — approver of a custom-destination config, approval on writes, backfill | `tests/services_tests/test_secret_injection_guard.py` |
+| Kept links to binned rows (`persisted_value`, `linked_ids`) | `tests/services_tests/test_kept_link_field.py`, `test_kept_reference_coverage.py` |
 | `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py` |
 | `secrets:USE` on LLM header markers and destination changes (LLM, embedding and OpenAI realtime configs and models) | `tests/api_tests/test_secret_use_llm_headers_and_destination.py` |
 | `secrets:USE` on imported header markers | `tests/import_export_tests/test_import_llm_config_header_markers.py` |

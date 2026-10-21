@@ -226,7 +226,7 @@ the list serializer's `.context` **the same dict**.
 `_effective_for` (`tables/serializers/model_serializers/secret_serializers.py`) resolves the
 requesting user's `EffectivePermissions` in the active org via `PermissionResolver` —
 `HasOrgPermission` does not stash this on the request, so the serializer resolves it itself,
-the same pattern `SecretReferenceGuard` uses
+the same `PermissionResolver` path `SecretReferenceGuard` uses
 ([DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6).
 
 `SimpleLazyObject` keeps an empty page from paying for a query nothing will read. The load-
@@ -413,15 +413,19 @@ they did, with nothing to re-link.
 ## 6. Changing a reference vs. reading one: `secrets:USE`
 
 Everything above governs who can **see** that a secret is referenced. A separate mechanism,
-`SecretReferenceGuardMixin`, governs who can **change** which secret a resource references —
+`SecretReferenceGuard` with its per-entity `SecretPolicy` classes (registered in
+`SECRET_POLICIES`), governs who can **change** which secret a resource references —
 documented in [DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6, not here,
-because it is a serializer-layer write guard rather than part of the usage/counting registry.
+because it is a write guard rather than part of the usage/counting registry.
 The short version: a reference is treated as *state*, not an operation — omitted from a
 payload or resent unchanged needs nothing; actually changing it requires `secrets:USE`. This
 is what makes the guard usable from a bulk graph save, which resubmits the whole graph on
 every save. The same rule covers secrets referenced by name through `epicstaff_secret(<name>)`
 markers in `extra_headers`, and changing where a secret-bearing LLM, embedding or OpenAI
 realtime config sends its request (which custom model it uses, any routing field of that model, or its own `base_url`).
+The same rule is re-checked when a session payload is built: a config whose secret goes to a
+custom destination is injected only if its approver (`secret_binding_approved_by`) still holds `secrets:USE`
+(`SecretInjectionGuard`, same section).
 
 If you are adding a new secret-referencing field, both mechanisms need updating — see §7,
 step 5, and the RBAC guide section above.
@@ -443,7 +447,7 @@ step 5, and the RBAC guide section above.
    add a projection method, an assembler, and entries in `SHAPE_PROJECTIONS` /
    `HITS_ASSEMBLERS` — otherwise the union will fail on mismatched columns.
 4. `Cast(..., output_field=TextField())` any name column (§3.2).
-5. Register the field with `SecretReferenceGuardMixin` too if it is writable — see §6. A
+5. Add the field to the entity's `SecretPolicy` too if it is writable — see §6. A
    usage source only makes deletion-safety honest; it does not gate who may repoint the
    reference.
 6. Confirm `test_registry_covers_every_declared_source`, `TestDetailShapes`, and

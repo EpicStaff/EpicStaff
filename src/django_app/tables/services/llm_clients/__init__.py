@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import ValidationError
 from tables.services.converter_service import ConverterService
+from tables.services.secrets import secret_resolver
+from tables.services.secrets.injection_guard import secret_injection_guard
 
 from .base import (
     BaseLLMClient,
@@ -30,7 +32,26 @@ __all__ = [
     "ToolSpec",
     "UnsupportedLLMProviderError",
     "get_llm_client",
+    "resolve_llm_api_key",
 ]
+
+
+def resolve_llm_api_key(llm_config, *, context: str) -> str | None:
+    """Return the plaintext API key for `llm_config`, once the injection check allows it.
+
+    Synchronous and queries the database: async callers wrap it in ``sync_to_async``.
+    The one place a direct LLM call obtains its key, so the secret never leaves for a
+    custom destination no current USE holder approved.
+
+    Raises:
+        SecretInjectionDeniedError: The config's secret goes to an unapproved custom
+            destination.
+        SecretResolutionError: The secret cannot be read.
+    """
+    secret_injection_guard.assert_injection_permitted(llm_config)
+    return secret_resolver.resolve(
+        secret_id=llm_config.api_key_secret_id, org_id=llm_config.org_id, context=context
+    )
 
 
 def get_llm_client(
@@ -45,16 +66,17 @@ def get_llm_client(
     request structured JSON output (e.g. ``response_format: json_schema``)
     without mutating the persisted ``LLMConfig`` row.
 
-    ``api_key`` must be resolved by the caller (via
-    ``tables.services.secrets.secret_resolver``) before calling this function;
-    it has no default so omitting it fails loudly instead of silently sending
-    an unauthenticated request. ``None`` is a legitimate explicit value for
-    providers that need no credential. Async callers must wrap the resolution
-    in ``sync_to_async``.
+    ``api_key`` must come from ``resolve_llm_api_key`` -- which also runs the
+    secret injection check -- before calling this function; it has no default so
+    omitting it fails loudly instead of silently sending an unauthenticated
+    request. ``None`` is a legitimate explicit value for providers that need no
+    credential. Async callers must wrap ``resolve_llm_api_key`` in
+    ``sync_to_async``.
 
-    The config is converted to ``LLMConfigData`` here, so LiteLLMClient never
-    sees the ORM row. Callers must ``select_related("model__llm_provider")``:
-    this function then issues no query and is safe to call from async code.
+    The config is converted to ``LLMConfigData`` here (no injection check of its
+    own), so LiteLLMClient never sees the ORM row. Callers must
+    ``select_related("model__llm_provider")``: this function then issues no query
+    and is safe to call from async code.
 
     Raises ``UnsupportedLLMProviderError`` when the config has no model or the
     model name is empty, and ``InvalidLLMConfigError`` when a stored value (e.g.
@@ -64,7 +86,7 @@ def get_llm_client(
     if model is None:
         raise UnsupportedLLMProviderError("(no model configured)")
     try:
-        config_data = ConverterService().convert_llm_config_data(llm_config)
+        config_data = ConverterService.build_llm_config_data(llm_config)
     except ValidationError as exc:
         field_names = sorted({str(error["loc"][0]) for error in exc.errors() if error["loc"]})
         raise InvalidLLMConfigError(llm_config.pk, field_names) from exc

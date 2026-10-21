@@ -20,16 +20,13 @@ from tables.serializers.model_serializers.tag_serializers import (
     EmbeddingTagSerializer,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
-from tables.serializers.utils.secret_reference_guard_mixin import (
-    SecretReferenceGuardMixin,
-    model_destination,
-)
+from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
+from tables.services.secrets.policies import (
+    EMBEDDING_CONFIG_SECRET_POLICY,
+    EMBEDDING_MODEL_SECRET_POLICY,
+)
 from tables.validators.model_name_validator import reject_url_in_model_name
-
-#: EmbeddingModel fields that never affect where a request goes; see
-#: LLMModelSerializer for why the list names what does NOT route.
-_EMBEDDING_MODEL_NON_ROUTING_FIELDS = frozenset({"is_visible", "tags"})
 
 
 class EmbeddingModelSerializer(
@@ -38,6 +35,8 @@ class EmbeddingModelSerializer(
     TagHandlingMixin,
     serializers.ModelSerializer,
 ):
+    secret_policy = EMBEDDING_MODEL_SECRET_POLICY
+
     tags = EmbeddingTagSerializer(many=True, required=False)
     tag_model = EmbeddingModelTag
 
@@ -66,22 +65,6 @@ class EmbeddingModelSerializer(
             )
         ]
 
-    def get_secret_destination(self, attrs) -> dict:
-        """Every writable field except the cosmetic ones: today name, embedding_provider,
-        deployment and base_url. The converter and the knowledge service route on the
-        first three plus the provider; `deployment` is read by nothing yet but is an
-        Azure routing field by meaning, so it stays gated."""
-        return self.writable_values_after_save(attrs, exclude=_EMBEDDING_MODEL_NON_ROUTING_FIELDS)
-
-    def carries_secret_reference(self, attrs) -> bool:
-        """Whether any config using this model sends its API key to where it routes.
-
-        Not scoped to the active org, for the same reason as LLMModelSerializer.
-        """
-        return EmbeddingConfig.objects.filter(
-            model=self.instance, api_key_secret__isnull=False
-        ).exists()
-
 
 class EmbeddingConfigSerializer(
     AuthorStampingSerializerMixin,
@@ -90,7 +73,7 @@ class EmbeddingConfigSerializer(
     TagHandlingMixin,
     serializers.ModelSerializer,
 ):
-    secret_reference_fields = ("api_key_secret_id",)
+    secret_policy = EMBEDDING_CONFIG_SECRET_POLICY
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -115,15 +98,5 @@ class EmbeddingConfigSerializer(
 
     class Meta:
         model = EmbeddingConfig
-        exclude = ["api_key_secret"]
+        exclude = ["api_key_secret", "secret_binding_approved_by"]
         read_only_fields = ["org", "created_by", "created_at"]
-
-    def get_secret_destination(self, attrs) -> dict:
-        """The model's identity (see `model_destination`): its fields route the API key."""
-        return {"model": model_destination(self.value_after_save(attrs, "model"))}
-
-    def carries_secret_reference(self, attrs) -> bool:
-        api_key_secret = self.value_after_save(
-            attrs, "api_key_secret", persisted_attribute="api_key_secret_id"
-        )
-        return api_key_secret is not None
