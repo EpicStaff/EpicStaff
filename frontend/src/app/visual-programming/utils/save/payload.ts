@@ -18,6 +18,7 @@ import {
     ScheduleTriggerNodeModel,
 } from '../../core/models/node.model';
 import { toStoredCdtExplanations } from '../cdt-explanations';
+import { isPythonCodeBlockSaved } from './cdt-python-code-block';
 import { hasPersistedWaypoints, mergeWaypointsIntoMetadata } from './edge-waypoints.helpers';
 import { toNodeMetadata } from './metadata';
 import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
@@ -200,29 +201,29 @@ function buildCdtNodePayload(
     return {
         graph: graphId,
         node_name: node.node_name,
-        pre_python_code:
-            preCodeValue.trim() === '' && !preSecretIds.length
-                ? null
-                : {
-                      code: preCodeValue,
-                      libraries: preComp?.libraries ?? [],
-                      entrypoint: 'main',
-                      global_kwargs: {},
-                      secret_ids: preSecretIds,
-                  },
+        pre_python_code: isPythonCodeBlockSaved(preCodeValue, preSecretIds)
+            ? {
+                  code: preCodeValue,
+                  libraries: preComp?.libraries ?? [],
+                  entrypoint: 'main',
+                  global_kwargs: {},
+                  secret_ids: preSecretIds,
+                  execution_timeout: preComp?.execution_timeout,
+              }
+            : null,
         pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
         pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
         pre_use_storage: tableData.pre_use_storage ?? false,
-        post_python_code:
-            postCodeValue.trim() === '' && !postSecretIds.length
-                ? null
-                : {
-                      code: postCodeValue,
-                      libraries: postComp?.libraries ?? [],
-                      entrypoint: 'main',
-                      global_kwargs: {},
-                      secret_ids: postSecretIds,
-                  },
+        post_python_code: isPythonCodeBlockSaved(postCodeValue, postSecretIds)
+            ? {
+                  code: postCodeValue,
+                  libraries: postComp?.libraries ?? [],
+                  entrypoint: 'main',
+                  global_kwargs: {},
+                  secret_ids: postSecretIds,
+                  execution_timeout: postComp?.execution_timeout,
+              }
+            : null,
         post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
         post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
         post_use_storage: tableData.post_use_storage ?? false,

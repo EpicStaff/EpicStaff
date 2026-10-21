@@ -4,6 +4,14 @@ import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
 
+/** The Settings page; its index redirects to the first tab the user may see (settingsIndexGuard). */
+export const SETTINGS_URL = '/settings';
+/**
+ * The Quickstart settings tab: where /settings sends users who can create LLM configs, and where the Quick Start tour
+ * takes them.
+ */
+export const SETTINGS_QUICKSTART_URL = `${SETTINGS_URL}/quickstart`;
+
 /**
  * Parent guard for /settings. Permissions are already loaded by bootstrapGuard
  * (parent canActivate on MainLayoutComponent), so this just checks access.
@@ -22,7 +30,7 @@ export const settingsIndexGuard: CanActivateFn = () => {
     const router = inject(Router);
 
     if (permissionsService.can(ResourceCode.LlmConfigs, ActionCode.Create)) {
-        return router.parseUrl('/settings/quickstart');
+        return router.parseUrl(SETTINGS_QUICKSTART_URL);
     }
     if (permissionsService.can(ResourceCode.LlmConfigs, ActionCode.Read)) {
         return router.parseUrl('/settings/default-llms');

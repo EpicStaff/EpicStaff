@@ -53,6 +53,7 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 org_id=python_code_data.org_id,
                 storage_credentials=storage_credentials,
                 secrets=python_code_data.secrets,
+                execution_timeout=python_code_data.execution_timeout,
             )
         except ValidationError:
             # Never log or return `error` itself: pydantic's ValidationError

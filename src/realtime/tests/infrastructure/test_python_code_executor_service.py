@@ -100,3 +100,13 @@ async def test_code_task_carries_the_org_into_the_sandbox(
     task = published_task(fake_redis_service)
     assert (task.global_kwargs, task.org_id, task.func_kwargs) == (expected_globals, org_id, {"query": "hello"})
     assert result["result_data"] == "ok"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("execution_timeout", [42, None], ids=["tool-timeout", "sandbox-default"])
+async def test_code_task_carries_the_tool_execution_timeout(executor, fake_redis_service, execution_timeout):
+    python_code_data = build_python_code_data(execution_timeout=execution_timeout)
+
+    await executor.run_code(python_code_data, inputs={})
+
+    assert published_task(fake_redis_service).execution_timeout == execution_timeout

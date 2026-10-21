@@ -33,6 +33,7 @@ from rbac.views.profile import (
     PasswordChangeConfirmView,
     PasswordChangeRequestView,
     ProfileAvatarView,
+    ProfileQuickstartTourCompleteView,
     ProfileView,
 )
 from rbac.views.roles import RoleAdminViewSet
@@ -79,6 +80,11 @@ urlpatterns = [
         "api/profile/avatar/",
         ProfileAvatarView.as_view(),
         name="profile_avatar",
+    ),
+    path(
+        "api/profile/quickstart-tour/complete/",
+        ProfileQuickstartTourCompleteView.as_view(),
+        name="profile_quickstart_tour_complete",
     ),
     path(
         "api/profile/password-change/request/",
