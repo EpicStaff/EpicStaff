@@ -27,7 +27,7 @@ import { KeyValueTablesStorageService } from '../../../features/key-value-tables
 import { CAPTION_TABLE_NAME_LIMIT, keyValueSummaryParts } from '../../core/constants/key-value-mode-visuals';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
-import { canvasTitleCarriesNumber, formatCanvasTitle } from '../../core/helpers/format-node-label.util';
+import { showsNodeNumber } from '../../core/helpers/node-number.util';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
@@ -219,22 +219,14 @@ export class FlowBaseNodeComponent implements OnInit {
         return this.node?.type === NodeType.SUBGRAPH && !!this.node.isBlocked;
     }
 
-    /** The #N chip: shown for a numbered node, unless its title already carries the number. */
-    public get hasNumberChip(): boolean {
-        if (this.node.type === NodeType.START || this.node.type === NodeType.END) return false;
-        return this.node.nodeNumber != null && !this.numberShownInTitle;
+    /** Whether the node shows its "#N" under the title. */
+    protected get isNumberedNode(): boolean {
+        return showsNodeNumber(this.node);
     }
 
-    /** The tab above the node: the #N chip, or a Key-Value node's summary that rides in it even once the title shows the number. */
-    public get hasNumberTab(): boolean {
-        return this.hasNumberChip || (this.numberShownInTitle && this.keyValueSummary !== null);
-    }
-
-    private get numberShownInTitle(): boolean {
-        if (!this.flowSettings.showNodeNumbersInTitles()) return false;
-        // Table nodes draw their own title from node_name (see their components), not from getNodeTitle.
-        const isTable = this.node.type === NodeType.TABLE || this.node.type === NodeType.CLASSIFICATION_TABLE;
-        return canvasTitleCarriesNumber(isTable ? this.node.node_name : getNodeTitle(this.node), this.node);
+    /** The "#N" stays shown under the title; otherwise it appears on hover. */
+    protected get isNodeNumberPinned(): boolean {
+        return this.isNumberedNode && this.flowSettings.alwaysShowNodeNumbers();
     }
 
     public get hasDeleteChip(): boolean {
@@ -257,7 +249,7 @@ export class FlowBaseNodeComponent implements OnInit {
         return node ? KEY_VALUE_MODE_COLORS[node.data.mode] : null;
     }
 
-    /** "Mode / Table / N keys" in full, and as the parts the #N tab shows, its table name cut short. */
+    /** "Mode / Table / N keys" in full, and as the parts the summary tab shows, its table name cut short. */
     public get keyValueSummary(): { full: string; captionParts: string[] } | null {
         const node = this.keyValueNode;
         if (!node) return null;
@@ -317,8 +309,7 @@ export class FlowBaseNodeComponent implements OnInit {
     }
 
     public getNodeTitle(): string {
-        const title = getNodeTitle(this.node);
-        return this.flowSettings.showNodeNumbersInTitles() ? formatCanvasTitle(title, this.node) : title;
+        return getNodeTitle(this.node);
     }
 
     onNodeSizeChanged(size: { width: number; height: number }): void {

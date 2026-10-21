@@ -7,7 +7,7 @@ export function getNodeTitle(node: NodeModel): string {
 
     switch (node.type) {
         // Node types where the user edits the name — return node_name as-is.
-        // The #N badge is displayed separately above the node.
+        // The #N is shown on its own line under the title, not in it.
         case NodeType.PYTHON:
         case NodeType.FILE_EXTRACTOR:
         case NodeType.AUDIO_TO_TEXT:

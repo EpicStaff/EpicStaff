@@ -48,10 +48,10 @@
         </div>
 
         <div class="form-section form-section--toggle">
-            <span class="section-label">Show node numbers in titles</span>
+            <span class="section-label">Always show node numbers</span>
             <app-toggle-switch
-                [checked]="flowSettings.showNodeNumbersInTitles()"
-                (checkedChange)="flowSettings.showNodeNumbersInTitles.set($event)"
+                [checked]="flowSettings.alwaysShowNodeNumbers()"
+                (checkedChange)="flowSettings.alwaysShowNodeNumbers.set($event)"
             />
         </div>
 

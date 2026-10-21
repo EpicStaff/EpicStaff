@@ -12,32 +12,32 @@ function storedSettings(): Record<string, unknown> {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)!);
 }
 
-describe('FlowSettingsService show node numbers in titles', () => {
+describe('FlowSettingsService always show node numbers', () => {
     beforeEach(() => localStorage.clear());
 
     it('is off by default', () => {
-        expect(createService().showNodeNumbersInTitles()).toBe(false);
+        expect(createService().alwaysShowNodeNumbers()).toBe(false);
     });
 
     it('persists the setting next to the other flow settings', () => {
         const service = createService();
         service.showInputsOutputs.set(true);
 
-        service.showNodeNumbersInTitles.set(true);
+        service.alwaysShowNodeNumbers.set(true);
         TestBed.tick();
 
-        expect(storedSettings()).toMatchObject({ showNodeNumbersInTitles: true, showInputsOutputs: true });
+        expect(storedSettings()).toMatchObject({ alwaysShowNodeNumbers: true, showInputsOutputs: true });
     });
 
     it('loads the stored setting', () => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ showNodeNumbersInTitles: true }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ alwaysShowNodeNumbers: true }));
 
-        expect(createService().showNodeNumbersInTitles()).toBe(true);
+        expect(createService().alwaysShowNodeNumbers()).toBe(true);
     });
 
     it.each(['true', 1, null, {}])('ignores a stored value that is not a boolean: %j', (stored) => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ showNodeNumbersInTitles: stored }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ alwaysShowNodeNumbers: stored }));
 
-        expect(createService().showNodeNumbersInTitles()).toBe(false);
+        expect(createService().alwaysShowNodeNumbers()).toBe(false);
     });
 });

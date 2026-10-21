@@ -7,7 +7,7 @@ import { of } from 'rxjs';
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
-import { DecisionTableNodeModel, NodeModel } from '../../core/models/node.model';
+import { NodeModel } from '../../core/models/node.model';
 import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
@@ -41,7 +41,7 @@ const KEY_VALUE_NODE = {
 describe('FlowBaseNodeComponent key-value summary', () => {
     let fixture: ComponentFixture<FlowBaseNodeComponent>;
 
-    const summaryTab = (): HTMLElement | null => fixture.nativeElement.querySelector('.node-number-badge.has-summary');
+    const summaryTab = (): HTMLElement | null => fixture.nativeElement.querySelector('.key-value-summary-tab');
     const summaryParts = (): string[] =>
         Array.from<HTMLElement>(summaryTab()!.querySelectorAll('.summary > span:not(.summary-separator)')).map((part) =>
             part.textContent!.trim()
@@ -75,12 +75,12 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         fixture.detectChanges();
     }
 
-    it('sums up mode, table and keys after the node number, the table name cut short, in full on hover', () => {
+    it('sums up mode, table and keys in the tab without the node number, the table name cut short, in full on hover', () => {
         render(KEY_VALUE_NODE);
 
-        expect(summaryTab()!.querySelector('.node-number')!.textContent!.trim()).toBe('#1');
         expect(summaryParts()).toEqual(['Write', 'Very very long tabl…', '2 keys']);
-        expect(separators()).toEqual(['-', '/', '/']);
+        expect(separators()).toEqual(['/', '/']);
+        expect(summaryTab()!.textContent).not.toContain('#');
         expect(summaryTab()!.title).toBe('Write / Very very long table name / 2 keys');
     });
 
@@ -88,7 +88,6 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         render(KEY_VALUE_NODE);
 
         expect(summaryTab()!.querySelector('.summary')!.getAttribute('aria-hidden')).toBe('true');
-        expect(summaryTab()!.querySelector('.node-number')!.closest('[aria-hidden]')).toBeNull();
         expect(fixture.nativeElement.querySelector('.icon-wrapper [role="img"]').getAttribute('aria-label')).toBe(
             'Write / Very very long table name / 2 keys'
         );
@@ -158,78 +157,14 @@ describe('FlowBaseNodeComponent key-value summary', () => {
 
 describe('FlowBaseNodeComponent node number', () => {
     let fixture: ComponentFixture<FlowBaseNodeComponent>;
-
-    const text = (selector: string): string => fixture.nativeElement.querySelector(selector)!.textContent!.trim();
-
-    function render(node: NodeModel, otherNodes: NodeModel[] = []): void {
-        TestBed.configureTestingModule({
-            providers: [
-                { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false) } },
-                { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
-                { provide: LlmConfigStorageService, useValue: { isConfigsLoaded: signal(false), configs: signal([]) } },
-                {
-                    provide: KeyValueTablesStorageService,
-                    useValue: { tables: signal([]), loadTables: () => of([]) },
-                },
-            ],
-        });
-        TestBed.inject(FlowService).setFlow({ nodes: [node, ...otherNodes], connections: [] });
-        fixture = TestBed.createComponent(FlowBaseNodeComponent);
-        fixture.componentRef.setInput('node', node);
-        fixture.detectChanges();
-    }
-
-    it('titles the node with its name and shows the number only in the badge', () => {
-        render({ ...KEY_VALUE_NODE, nodeNumber: 3 });
-
-        expect(text('.interactive-node-body .title')).toBe('Key-Value');
-        expect(text('.node-number')).toBe('#3');
-    });
-
-    describe('on a decision table', () => {
-        const fetchNode = { id: 'fetch', type: NodeType.PYTHON, node_name: 'Fetch', nodeNumber: 4 } as NodeModel;
-        const tableNode = {
-            id: 'table',
-            backendId: null,
-            type: NodeType.TABLE,
-            node_name: 'Route',
-            nodeNumber: 3,
-            data: {
-                name: 'Route',
-                table: { default_next_node: 'fetch', next_error_node: null, condition_groups: [] },
-            },
-            position: { x: 0, y: 0 },
-            ports: [],
-            color: '',
-            icon: '',
-            size: { width: 300, height: 200 },
-            input_map: {},
-            output_variable_path: null,
-        } as unknown as DecisionTableNodeModel;
-
-        it('titles the table with its name and shows the number only in the badge', () => {
-            render(tableNode, [fetchNode]);
-
-            expect(text('.decision-table__header .title')).toBe('Route');
-            expect(text('.node-number-badge')).toBe('#3');
-        });
-
-        it('names the next node with its number, so same-named nodes are told apart', () => {
-            render(tableNode, [fetchNode, { ...fetchNode, id: 'fetch-again', nodeNumber: 9 }]);
-
-            expect(text('.decision-table__group .group-status')).toBe('(Fetch #4)');
-        });
-    });
-});
-
-describe('FlowBaseNodeComponent node numbers in titles', () => {
-    let fixture: ComponentFixture<FlowBaseNodeComponent>;
     let settings: FlowSettingsService;
 
-    const text = (selector: string): string | undefined =>
-        fixture.nativeElement.querySelector(selector)?.textContent?.trim();
+    const element = (selector: string): HTMLElement | null => fixture.nativeElement.querySelector(selector);
+    const text = (selector: string): string | undefined => element(selector)?.textContent?.trim();
+    const numberLine = (): string | undefined => text('.title-column .node-number-line');
+    const titleColumnClasses = (): DOMTokenList => element('.title-column')!.classList;
 
-    function render(node: NodeModel, { numbersInTitles }: { numbersInTitles: boolean }): void {
+    function render(node: NodeModel, { alwaysShow = false, otherNodes = [] as NodeModel[] } = {}): void {
         TestBed.configureTestingModule({
             providers: [
                 { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false) } },
@@ -245,8 +180,8 @@ describe('FlowBaseNodeComponent node numbers in titles', () => {
             ],
         });
         settings = TestBed.inject(FlowSettingsService);
-        settings.showNodeNumbersInTitles.set(numbersInTitles);
-        TestBed.inject(FlowService).setFlow({ nodes: [node], connections: [] });
+        settings.alwaysShowNodeNumbers.set(alwaysShow);
+        TestBed.inject(FlowService).setFlow({ nodes: [node, ...otherNodes], connections: [] });
         fixture = TestBed.createComponent(FlowBaseNodeComponent);
         fixture.componentRef.setInput('node', node);
         fixture.detectChanges();
@@ -272,106 +207,103 @@ describe('FlowBaseNodeComponent node numbers in titles', () => {
             ...overrides,
         }) as unknown as NodeModel;
 
+    const NODE_TITLE = '.interactive-node-body .title';
+    const TABLE_TITLE = '.decision-table__header .title';
+
     beforeEach(() => localStorage.clear());
 
-    it('off: titles the node with its name and keeps the number in the chip', () => {
-        render(pythonNode, { numbersInTitles: false });
-
-        expect(text('.interactive-node-body .title')).toBe('Fetch');
-        expect(text('.node-number')).toBe('#3');
-    });
-
-    it('on: titles the node "Name #N" and drops the chip, so the number is shown once', () => {
-        render(pythonNode, { numbersInTitles: true });
-
-        expect(text('.interactive-node-body .title')).toBe('Fetch #3');
-        expect(text('.node-number')).toBeUndefined();
-        expect(text('.node-number-badge')).toBeUndefined();
-    });
-
-    it('follows the setting while the node is on the canvas', () => {
-        render(pythonNode, { numbersInTitles: false });
-
-        settings.showNodeNumbersInTitles.set(true);
-        fixture.detectChanges();
-        expect(text('.interactive-node-body .title')).toBe('Fetch #3');
-        expect(text('.node-number-badge')).toBeUndefined();
-
-        settings.showNodeNumbersInTitles.set(false);
-        fixture.detectChanges();
-        expect(text('.interactive-node-body .title')).toBe('Fetch');
-        expect(text('.node-number')).toBe('#3');
-    });
-
-    it('on: a node without a number shows just its name', () => {
-        render({ ...pythonNode, nodeNumber: undefined }, { numbersInTitles: true });
-
-        expect(text('.interactive-node-body .title')).toBe('Fetch');
-        expect(text('.node-number-badge')).toBeUndefined();
-    });
-
-    it('on: a numbered node without a name keeps its chip, so the number is still shown', () => {
-        render({ ...pythonNode, node_name: '' }, { numbersInTitles: true });
-
-        expect(text('.interactive-node-body .title')).toBe('');
-        expect(text('.node-number')).toBe('#3');
-    });
-
-    it('on: the End node keeps its plain title', () => {
-        render({ id: 'end', type: NodeType.END, node_name: 'End', nodeNumber: 5 } as NodeModel, {
-            numbersInTitles: true,
-        });
-
-        expect(text('.interactive-node-body .title')).toBe('End');
-    });
-
-    it('on: a Key-Value node keeps its summary tab but not the number in it', () => {
-        render({ ...KEY_VALUE_NODE, nodeNumber: 3 }, { numbersInTitles: true });
-
-        expect(text('.interactive-node-body .title')).toBe('Key-Value #3');
-        expect(text('.node-number')).toBeUndefined();
-        expect(text('.node-number-badge.has-summary')).toContain('Write');
-        expect(text('.node-number-badge.has-summary')).not.toContain('#3');
-    });
-
+    // Hover and the name's glide are CSS (:hover, transform), which jsdom does not apply: these tests pin
+    // the DOM and the classes the styles key on — `has-node-number` (lifts on hover) and `is-number-pinned`.
     describe.each([
-        { type: NodeType.TABLE, titleSelector: '.decision-table__header .title', fallback: 'Decision Table' },
+        { kind: 'a Python node', node: pythonNode, titleSelector: NODE_TITLE, name: 'Fetch' },
         {
-            type: NodeType.CLASSIFICATION_TABLE,
-            titleSelector: '.decision-table__header .title',
-            fallback: 'Classification Table',
+            kind: 'a Key-Value node',
+            node: { ...KEY_VALUE_NODE, nodeNumber: 3 },
+            titleSelector: NODE_TITLE,
+            name: 'Key-Value',
         },
-    ])('on a $type node', ({ type, titleSelector, fallback }) => {
-        it('off: titles the table with its name and keeps the number in the badge', () => {
-            render(tableLikeNode(type), { numbersInTitles: false });
+        { kind: 'a decision table', node: tableLikeNode(NodeType.TABLE), titleSelector: TABLE_TITLE, name: 'Route' },
+        {
+            kind: 'a classification table',
+            node: tableLikeNode(NodeType.CLASSIFICATION_TABLE),
+            titleSelector: TABLE_TITLE,
+            name: 'Route',
+        },
+    ])('on $kind', ({ node, titleSelector, name }) => {
+        it.each([false, true])(
+            'titles the node with its name only and puts "#N" under it (always shown: %s)',
+            (alwaysShow) => {
+                render(node, { alwaysShow });
 
-            expect(text(titleSelector)).toBe('Route');
-            expect(text('.node-number-badge')).toBe('#3');
-        });
+                expect(text(titleSelector)).toBe(name);
+                expect(numberLine()).toBe('#3');
+            }
+        );
 
-        it('on: titles the table "Name #N" and drops the badge', () => {
-            render(tableLikeNode(type), { numbersInTitles: true });
+        // Only the pin is checkable here: showing the number on hover is a CSS :hover rule, which jsdom does not apply.
+        it('pins the number while the setting is on, and unpins it when the setting goes off', () => {
+            render(node);
+            expect(titleColumnClasses()).toContain('has-node-number');
+            expect(titleColumnClasses()).not.toContain('is-number-pinned');
 
-            expect(text(titleSelector)).toBe('Route #3');
-            expect(text('.node-number-badge')).toBeUndefined();
-        });
-
-        it('on: a table without a name shows its default title and keeps the badge', () => {
-            render(tableLikeNode(type, { node_name: '' }), { numbersInTitles: true });
-
-            expect(text(titleSelector)).toBe(fallback);
-            expect(text('.node-number-badge')).toBe('#3');
-        });
-
-        // The squared corner tucks under the badge; with no badge the table keeps all corners round.
-        it("marks the table's badge corner only while the #N badge is shown", () => {
-            render(tableLikeNode(type), { numbersInTitles: false });
-            const table: HTMLElement = fixture.nativeElement.querySelector('.decision-table');
-            expect(table.classList).toContain('has-number-chip');
-
-            settings.showNodeNumbersInTitles.set(true);
+            settings.alwaysShowNodeNumbers.set(true);
             fixture.detectChanges();
-            expect(table.classList).not.toContain('has-number-chip');
+            expect(titleColumnClasses()).toContain('is-number-pinned');
+
+            settings.alwaysShowNodeNumbers.set(false);
+            fixture.detectChanges();
+            expect(titleColumnClasses()).not.toContain('is-number-pinned');
         });
+
+        it('has no number in the bar above the node, and keeps its delete chip there', () => {
+            render(node, { alwaysShow: true });
+
+            expect(text('.node-action-bar')).not.toContain('#');
+            expect(element('.node-action-bar .delete-button')).not.toBeNull();
+        });
+    });
+
+    it.each([
+        { kind: 'a node without a number', node: { ...pythonNode, nodeNumber: undefined } },
+        { kind: 'the End node', node: { id: 'end', type: NodeType.END, node_name: 'End', nodeNumber: 5 } as NodeModel },
+        { kind: 'a table without a number', node: tableLikeNode(NodeType.TABLE, { nodeNumber: undefined }) },
+    ])('shows no number on $kind, and its name stays centred alone', ({ node }) => {
+        render(node, { alwaysShow: true });
+
+        expect(numberLine()).toBeUndefined();
+        expect(titleColumnClasses()).not.toContain('has-node-number');
+        expect(titleColumnClasses()).not.toContain('is-number-pinned');
+    });
+
+    it.each([
+        { type: NodeType.TABLE, fallback: 'Decision Table' },
+        { type: NodeType.CLASSIFICATION_TABLE, fallback: 'Classification Table' },
+    ])('titles a $type node without a name with its default title, and still shows "#N"', ({ type, fallback }) => {
+        render(tableLikeNode(type, { node_name: '' }), { alwaysShow: true });
+
+        expect(text(TABLE_TITLE)).toBe(fallback);
+        expect(numberLine()).toBe('#3');
+    });
+
+    // The node body squares the corner the tab sits on, so only a node with a tab may be marked.
+    it.each([
+        { kind: 'a Key-Value node', node: KEY_VALUE_NODE, hasTab: true },
+        { kind: 'a Python node', node: pythonNode, hasTab: false },
+    ])('draws the tab above the node only for $kind with a summary', ({ node, hasTab }) => {
+        render(node);
+
+        expect(element('.key-value-summary-tab') !== null).toBe(hasTab);
+        expect(element('.interactive-node-body')!.classList.contains('has-summary-tab')).toBe(hasTab);
+    });
+
+    it('names the next node of a decision table with its number, so same-named nodes are told apart', () => {
+        const fetchNode = { id: 'fetch', type: NodeType.PYTHON, node_name: 'Fetch', nodeNumber: 4 } as NodeModel;
+        const tableNode = tableLikeNode(NodeType.TABLE, {
+            data: { name: 'Route', table: { default_next_node: 'fetch', next_error_node: null, condition_groups: [] } },
+        });
+
+        render(tableNode, { otherNodes: [fetchNode, { ...fetchNode, id: 'fetch-again', nodeNumber: 9 }] });
+
+        expect(text('.decision-table__group .group-status')).toBe('(Fetch #4)');
     });
 });

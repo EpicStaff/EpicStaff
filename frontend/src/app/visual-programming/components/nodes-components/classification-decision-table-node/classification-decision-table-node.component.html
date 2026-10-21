@@ -1,6 +1,5 @@
 <div
     class="decision-table"
-    [class.has-number-chip]="hasNumberChip()"
     [class.is-blocked-llm]="hasMissingLlmConfig || hasEmptyConditionName"
     appClickOrDrag
     (actualClick)="onEditClick()"
@@ -40,8 +39,17 @@
                 [style.color]="node.color"
             ></i>
         </div>
-        <div class="title">
-            <span class="title__label">{{ title }}</span>
+        <div
+            class="title-column"
+            [class.has-node-number]="isNumberedNode"
+            [class.is-number-pinned]="isNodeNumberPinned"
+        >
+            <div class="title">
+                <span class="title__label">{{ title }}</span>
+            </div>
+            @if (isNumberedNode) {
+                <div class="node-number-line">#{{ node.nodeNumber }}</div>
+            }
         </div>
         @if (errorMessages.length > 0) {
             <div

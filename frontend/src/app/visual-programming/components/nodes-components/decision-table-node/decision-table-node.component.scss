@@ -1,7 +1,5 @@
 @use '../../../styles/flow-node-mixins' as mixins;
 
-$table-transition: box-shadow 0.18s ease;
-
 .decision-table {
     position: relative;
     display: flex;
@@ -13,11 +11,7 @@ $table-transition: box-shadow 0.18s ease;
     border-radius: mixins.$node-border-radius;
     cursor: pointer;
     overflow: visible;
-    transition: $table-transition;
-
-    &.has-number-chip {
-        @include mixins.node-corner-under-number-tab-idle($table-transition);
-    }
+    transition: box-shadow 0.18s ease;
 
     .input-port-wrapper {
         position: absolute;
@@ -78,6 +72,10 @@ $table-transition: box-shadow 0.18s ease;
             i {
                 font-size: 1.5625rem;
             }
+        }
+
+        .title-column {
+            @include mixins.node-title-with-number;
         }
 
         .title {
@@ -201,8 +199,7 @@ $table-transition: box-shadow 0.18s ease;
     color: var(--white-alpha-70);
 }
 
-// Only the corner under the #N tab squares; the delete chip floats clear of the top-right corner.
-:host-context(app-flow-base-node:hover) .decision-table.has-number-chip,
-:host-context(.f-selected) .decision-table.has-number-chip {
-    @include mixins.node-corner-under-number-tab-shown;
+// The node hover, as on every other node. As deep as the rule that hides the number, so :hover wins.
+:host-context(app-flow-base-node:hover) .decision-table__header .title-column.has-node-number {
+    @include mixins.node-title-with-number-shown;
 }

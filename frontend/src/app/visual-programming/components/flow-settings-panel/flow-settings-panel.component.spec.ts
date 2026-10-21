@@ -35,7 +35,7 @@ describe('FlowSettingsPanelComponent', () => {
 describe('FlowSettingsPanelComponent node numbers toggle', () => {
     beforeEach(() => localStorage.clear());
 
-    it('flips whether canvas titles show node numbers', () => {
+    it('flips whether node numbers are always shown', () => {
         TestBed.configureTestingModule({
             providers: [
                 { provide: DialogRef, useValue: { close: vi.fn() } },
@@ -48,13 +48,13 @@ describe('FlowSettingsPanelComponent node numbers toggle', () => {
         const settings = TestBed.inject(FlowSettingsService);
         const row = fixture.debugElement
             .queryAll(By.css('.form-section--toggle'))
-            .find((section) => section.nativeElement.textContent.includes('Show node numbers in titles'))!;
+            .find((section) => section.nativeElement.textContent.includes('Always show node numbers'))!;
 
         row.nativeElement.querySelector('input[type="checkbox"]').click();
         fixture.detectChanges();
-        expect(settings.showNodeNumbersInTitles()).toBe(true);
+        expect(settings.alwaysShowNodeNumbers()).toBe(true);
 
         row.nativeElement.querySelector('input[type="checkbox"]').click();
-        expect(settings.showNodeNumbersInTitles()).toBe(false);
+        expect(settings.alwaysShowNodeNumbers()).toBe(false);
     });
 });

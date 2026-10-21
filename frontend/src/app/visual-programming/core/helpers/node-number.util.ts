@@ -30,6 +30,11 @@ export function isNumberedNodeType(type: NodeType): boolean {
     return !UNNUMBERED_NODE_TYPES.has(type);
 }
 
+/** Whether a canvas node shows a #N: its type is numbered and it holds a number. */
+export function showsNodeNumber(node: Pick<NodeModel, 'type' | 'nodeNumber'>): boolean {
+    return isNumberedNodeType(node.type) && node.nodeNumber != null;
+}
+
 /**
  * Moves every unsaved node (no `backendId`) that shows one of `takenNumbers` to `nextNumber()`, in
  * canvas order. A number the server gave a saved node is that node's; the unsaved node only showed

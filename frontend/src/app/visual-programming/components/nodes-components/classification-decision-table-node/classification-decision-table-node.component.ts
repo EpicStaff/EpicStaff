@@ -1,14 +1,5 @@
 import { CommonModule, NgStyle } from '@angular/common';
-import {
-    ChangeDetectionStrategy,
-    Component,
-    DestroyRef,
-    EventEmitter,
-    inject,
-    Input,
-    input,
-    Output,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, inject, Input, Output } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
@@ -17,7 +8,7 @@ import { LlmConfigStorageService } from '@shared/services';
 import { formatNodeLabel } from '@shared/utils';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
-import { formatCanvasTitle } from '../../../core/helpers/format-node-label.util';
+import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
@@ -36,8 +27,6 @@ import { FlowSettingsService } from '../../../services/flow-settings.service';
 export class ClassificationDecisionTableNodeComponent {
     @Input({ required: true }) node!: ClassificationDecisionTableNodeModel;
     @Output() actualClick = new EventEmitter<MouseEvent>();
-    /** Whether the #N tab sits on this node's top-left corner (owned by the flow-base-node). */
-    readonly hasNumberChip = input(false);
 
     private flowService = inject(FlowService);
     private readonly llmConfigStorageService = inject(LlmConfigStorageService);
@@ -87,10 +76,17 @@ export class ClassificationDecisionTableNodeComponent {
     }
 
     get title(): string {
-        if (!this.node.node_name) return 'Classification Table';
-        return this.flowSettings.showNodeNumbersInTitles()
-            ? formatCanvasTitle(this.node.node_name, this.node)
-            : this.node.node_name;
+        return this.node.node_name || 'Classification Table';
+    }
+
+    /** Whether the header shows the node's "#N" under the title. */
+    protected get isNumberedNode(): boolean {
+        return showsNodeNumber(this.node);
+    }
+
+    /** The "#N" stays shown under the title; otherwise it appears on hover. */
+    protected get isNodeNumberPinned(): boolean {
+        return this.isNumberedNode && this.flowSettings.alwaysShowNodeNumbers();
     }
 
     get inputPort() {
