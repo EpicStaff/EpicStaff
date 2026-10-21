@@ -51,6 +51,8 @@ export class ValidationErrorsComponent {
         taskNameRequired: () => 'Every task needs a name.',
         taskNameDuplicate: () => 'Task names must be unique.',
         taskInstructionsRequired: () => 'Every task needs instructions.',
+        invalidNumber: () => 'Enter a valid number. Use a dot as the decimal separator.',
+        pricePair: () => "Set both the input and output price, or leave both empty to use the provider's pricing.",
     };
 
     messagesList = computed<string[]>(() => {

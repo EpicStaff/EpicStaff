@@ -694,7 +694,6 @@ services:
       KNOWLEDGE_STORAGE_BUCKET: ${KNOWLEDGE_STORAGE_BUCKET:?}
       KNOWLEDGE_TOKENIZER_PATH: ${KNOWLEDGE_TOKENIZER_PATH:?}
       KNOWLEDGE_CUSTOM_EMBED_BASE_URL: ${KNOWLEDGE_CUSTOM_EMBED_BASE_URL:?}
-      KNOWLEDGE_EMBEDDING_HEADERS: ${KNOWLEDGE_EMBEDDING_HEADERS:?}
 
   # Chat service and its database. Gated behind profiles: ["chat"]: they start only when
   # COMPOSE_PROFILES includes "chat"; CHAT_ENABLED=true then exposes the feature in nginx and the UI.

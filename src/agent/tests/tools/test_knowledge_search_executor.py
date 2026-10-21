@@ -21,7 +21,7 @@ from shared.models.knowledge import (
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
 )
-from shared.models.knowledge_new import FoundChunk
+from shared.models.knowledge_new import FoundChunk, SearchOutcome, SearchUsage
 
 
 def _make_target(rag_type: str = "naive") -> KnowledgeSearchTarget:
@@ -55,25 +55,28 @@ def _make_graph_targets() -> dict[str, KnowledgeSearchTarget]:
 
 
 class FakeKnowledgeClient:
-    def __init__(self, response=None, raises: Exception | None = None):
+    def __init__(self, response=None, raises: Exception | None = None, usage: SearchUsage | None = None):
         self.response = response if response is not None else []
         self.raises = raises
+        self.usage = usage or SearchUsage()
         self.searches: list[tuple[KnowledgeSearchTarget, str, float]] = []
 
-    async def search(self, target, query, timeout):
+    async def search_with_usage(self, target, query, timeout):
         self.searches.append((target, query, timeout))
         if self.raises is not None:
             raise self.raises
-        return self.response
+        return SearchOutcome(result=self.response, usage=self.usage)
 
 
 class RecordingSink:
     def __init__(self, raises: Exception | None = None):
         self.raises = raises
         self.events: list[tuple] = []
+        self.usages: list[SearchUsage | None] = []
 
-    async def on_knowledge_search(self, target, query, result, error=None):
+    async def on_knowledge_search(self, target, query, result, error=None, usage=None):
         self.events.append((target, query, result, error))
+        self.usages.append(usage)
         if self.raises is not None:
             raise self.raises
 
@@ -215,3 +218,20 @@ async def test_a_failing_sink_never_changes_the_tool_result(client, expected_con
     result = await _naive_executor(client, sink=RecordingSink(raises=RuntimeError("sink exploded")))({"query": "test"})
 
     assert (result.content, result.is_error) == (expected_content, expected_error)
+
+
+async def test_sink_receives_the_embedding_usage_of_the_search():
+    usage = SearchUsage(embedding_tokens=12, embedding_cost_usd=0.0001)
+    sink = RecordingSink()
+
+    await _naive_executor(FakeKnowledgeClient([], usage=usage), sink=sink)({"query": "test"})
+
+    assert sink.usages == [usage]
+
+
+async def test_sink_receives_no_usage_when_the_search_fails():
+    sink = RecordingSink()
+
+    await _naive_executor(FakeKnowledgeClient(raises=RuntimeError("down")), sink=sink)({"query": "test"})
+
+    assert sink.usages == [None]

@@ -13,12 +13,16 @@ import {
 } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter, Observable, of } from 'rxjs';
-import { catchError, map, switchMap } from 'rxjs/operators';
+import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { RAG_TYPE_CONFIG } from '../../constants/constants';
-import { getIndexingConfirmationData, IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
+import {
+    getIndexingConfirmationData,
+    getIndexingConfirmationDataWithEstimate,
+    IndexingDocumentInfo,
+} from '../../helpers/get-indexing-confirmation-data.util';
 import { RagType } from '../../models/base-rag.model';
 import { CreateCollectionStep } from '../../models/collection.model';
 import { DisplayedListDocument } from '../../models/document.model';
@@ -120,7 +124,8 @@ export class CreateCollectionDialogComponent {
 
     currentStep = computed(() => this.steps()[this.currentStepIndex()]);
     nextHidden = computed(() => this.currentStep().hideProceed());
-    nextDisabled = computed(() => !this.currentStep().canProceed());
+    isProceeding = signal(false);
+    nextDisabled = computed(() => this.isProceeding() || !this.currentStep().canProceed());
     nextText = computed(() => this.currentStep().proceedLabel);
     stepLabels = computed(() => this.steps().map((s) => s.label));
 
@@ -136,11 +141,15 @@ export class CreateCollectionDialogComponent {
     }
 
     nextStep() {
-        if (!this.currentStep().canProceed()) return;
+        if (this.isProceeding() || !this.currentStep().canProceed()) return;
 
+        this.isProceeding.set(true);
         this.currentStep()
             .onProceed()
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                finalize(() => this.isProceeding.set(false))
+            )
             .subscribe((success) => {
                 if (!success) return;
 
@@ -242,7 +251,11 @@ export class CreateCollectionDialogComponent {
 
         const savePending$: Observable<unknown> = componentInstance.uploadPendingForChecked?.() ?? of(null);
 
-        return this.confirmation.confirm(getIndexingConfirmationData(indexingDocs)).pipe(
+        const confirmationData = strategy.estimateIndexing
+            ? getIndexingConfirmationDataWithEstimate(indexingDocs, strategy.estimateIndexing(configIds))
+            : getIndexingConfirmationData(indexingDocs);
+
+        return this.confirmation.confirm(confirmationData).pipe(
             takeUntilDestroyed(this.destroyRef),
             filter((result) => result === true),
             switchMap(() => savePending$),

@@ -17,6 +17,7 @@ from src.shared.models import (
     NaiveSearchConfig,
     SearchConfig,
     SearchRequest,
+    SearchUsage,
 )
 
 
@@ -101,6 +102,8 @@ class KnowledgeSearchService:
         timeout: int | None = None,
         rag_embedder_api_key: str | None = None,
         rag_llm_api_key: str | None = None,
+        rag_embedder_extra_headers: dict[str, str] | None = None,
+        rag_llm_extra_headers: dict[str, str] | None = None,
         writer: Optional["StreamWriter"] = None,
         session_id: int | None = None,
         node_name: str | None = None,
@@ -143,7 +146,7 @@ class KnowledgeSearchService:
 
         try:
             with KnowledgeClient() as client:
-                result = client.search(
+                outcome = client.search_with_usage(
                     strategy=RAGStrategy(rag_type),
                     rag_id=rag_id,
                     query=query,
@@ -151,11 +154,15 @@ class KnowledgeSearchService:
                     timeout=timeout,
                     embedding_api_key=resolved_embedder_key,
                     llm_api_key=resolved_llm_key,
+                    embedding_extra_headers=rag_embedder_extra_headers,
+                    llm_extra_headers=rag_llm_extra_headers,
                 )
         except ClientTimeoutError as e:
             raise TimeoutError(
                 f"Knowledge search timeout for {rag_type_id} after {timeout}s"
             ) from e
+
+        result = outcome.result
 
         logger.info(
             "Knowledge search completed rag_id=%s sender=%s query=%r",
@@ -168,6 +175,7 @@ class KnowledgeSearchService:
             self._add_knowledges_to_graph_message(
                 request=request,
                 result=result,
+                usage=outcome.usage,
                 rag_type=rag_type,
                 collection_id=knowledge_collection_id,
                 writer=writer,
@@ -205,6 +213,7 @@ class KnowledgeSearchService:
     def _add_knowledges_to_graph_message(
         request: SearchRequest,
         result: list[FoundChunk] | str,
+        usage: SearchUsage,
         rag_type: str,
         collection_id: int,
         writer: "StreamWriter",
@@ -223,7 +232,8 @@ class KnowledgeSearchService:
             "rag_search_config": request.search_config.model_dump(),
             "chunks": chunks,
             "answer": result if isinstance(result, str) else None,
-            "token_usage": {},  # not yet in new contract thats why empty
+            # Top-level `token_usage` of a graph message is added to the session's total.
+            "token_usage": usage.to_token_usage(),
         }
         graph_message = GraphMessage(
             session_id=session_id,

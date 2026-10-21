@@ -1,3 +1,5 @@
+import functools
+
 import settings
 from application.ports import AbstractChunker
 from chonkie import TokenChunker as ChonkieTokenChunker
@@ -6,10 +8,17 @@ from infrastructure.processing_run import run_in_process
 from tokie import Tokenizer
 
 
-def _load_tokenizer() -> Tokenizer | str:
-    # tokie resolves a tokenizer name through $HOME/.cache and downloads from
-    # huggingface.co when it is cold, ignoring HF_HOME and HF_HUB_OFFLINE. Loading
-    # the file the image bakes bypasses that cache entirely.
+@functools.cache
+def load_gpt2_tokenizer() -> Tokenizer | str:
+    """Load the GPT-2 tokenizer once per process.
+
+    tokie resolves a tokenizer name through $HOME/.cache and downloads from
+    huggingface.co when it is cold, ignoring HF_HOME and HF_HUB_OFFLINE. Loading
+    the file the image bakes bypasses that cache entirely. Building the tokenizer
+    costs ~0.3 s, so it is loaded at startup and reused. Process-pool workers
+    inherit it only when the pool forks after startup; with spawn each worker
+    loads it once itself.
+    """
     if settings.TOKENIZER_PATH:
         return Tokenizer.from_file(settings.TOKENIZER_PATH)
     return "gpt2"
@@ -19,7 +28,7 @@ class TokenChunker(AbstractChunker):
     @run_in_process
     def _chunk(self, text: str) -> list[PreviewChunk]:
         text_splitter = ChonkieTokenChunker(
-            tokenizer=_load_tokenizer(),
+            tokenizer=load_gpt2_tokenizer(),
             chunk_size=self.config.chunk_size,
             chunk_overlap=self.config.chunk_overlap,
         )

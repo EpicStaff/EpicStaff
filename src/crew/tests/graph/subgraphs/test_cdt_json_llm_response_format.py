@@ -160,3 +160,16 @@ async def test_without_schema_sends_no_response_format_and_only_user_message(
     call_kwargs = mock_completion.call_args.kwargs
     assert call_kwargs["response_format"] is None
     assert call_kwargs["messages"] == [{"role": "user", "content": PROMPT}]
+
+
+@pytest.mark.asyncio
+async def test_config_extra_headers_are_sent_to_the_provider(mock_completion):
+    headers = {"X-Gateway-Key": "gateway-token", "X-Trace": "trace-id"}
+    llm = LLMData(
+        provider="openai",
+        config=LLMConfigData(model="gpt-4o-mini", extra_headers=headers),
+    )
+
+    await run_prompt(llm, {})
+
+    assert mock_completion.call_args.kwargs["extra_headers"] == headers

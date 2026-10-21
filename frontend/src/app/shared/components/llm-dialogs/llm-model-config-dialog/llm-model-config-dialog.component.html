@@ -182,6 +182,38 @@
                 [writeValueAsJSON]="false"
             />
         </section>
+
+        <section
+            class="section"
+            formGroupName="pricing"
+        >
+            <h3 class="title">PRICING</h3>
+            <div>
+                <app-input-number
+                    formControlName="input_price_per_million"
+                    [min]="0"
+                    [allowDecimal]="true"
+                    placeholder="Provider default"
+                    label="Input price (USD / 1M tokens)"
+                    [tooltipText]="TOKEN_PRICE_HINT"
+                />
+                <app-validation-errors [control]="form.get('pricing.input_price_per_million')!" />
+            </div>
+            <div>
+                <app-input-number
+                    formControlName="output_price_per_million"
+                    [min]="0"
+                    [allowDecimal]="true"
+                    placeholder="Provider default"
+                    label="Output price (USD / 1M tokens)"
+                    [tooltipText]="TOKEN_PRICE_HINT"
+                />
+                <app-validation-errors [control]="form.get('pricing.output_price_per_million')!" />
+            </div>
+            @if (form.get('pricing')?.hasError('pricePair') && form.get('pricing')?.touched) {
+                <app-validation-errors [control]="form.get('pricing')!" />
+            }
+        </section>
     </div>
 
     <div class="footer">

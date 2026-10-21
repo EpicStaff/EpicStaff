@@ -1,7 +1,7 @@
 import abc
 
 from domain.errors import EmbeddingError
-from domain.models import EmbeddingConfig
+from domain.models import Embedding, EmbeddingConfig
 
 
 class AbstractEmbedder(abc.ABC):
@@ -11,8 +11,8 @@ class AbstractEmbedder(abc.ABC):
         self.api_key = api_key
         self.config = config
 
-    async def embed(self, text: str) -> list[float]:
-        """Embed `text` into a vector.
+    async def embed(self, text: str) -> Embedding:
+        """Embed `text` into a vector, with the tokens the provider billed for it.
 
         Args:
             text: The text to embed.
@@ -26,8 +26,8 @@ class AbstractEmbedder(abc.ABC):
             raise EmbeddingError(embedder=type(self).__name__) from e
 
     @abc.abstractmethod
-    async def _embed(self, text: str) -> list[float]:
-        """Return the embedding vector for `text`.
+    async def _embed(self, text: str) -> Embedding:
+        """Return the embedding vector for `text` and the tokens it consumed.
 
         `embed` translates any error into `EmbeddingError`, so implementations
         need not wrap exceptions themselves.
