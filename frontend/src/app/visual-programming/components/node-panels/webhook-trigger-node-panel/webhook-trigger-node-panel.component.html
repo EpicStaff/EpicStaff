@@ -1,6 +1,6 @@
 <ng-template #headerActionsTpl>
-    <!-- Hidden for a viewer and in a version preview: a test run needs Flows:Update and runs the live graph. -->
-    @if (!isReadOnly()) {
+    <!-- Hidden without Flows:Update or Flows:Use, and in a version preview: a test run needs both and runs the live graph. -->
+    @if (canRunNode()) {
         <app-run-test-payload-button
             [labelled]="isExpanded()"
             [disabledReason]="testPayload.runBlocker()"
@@ -140,6 +140,11 @@
                         [activeColor]="activeColor"
                         [readonly]="isReadOnly()"
                     ></app-custom-input>
+
+                    <app-execution-timeout-field
+                        [field]="executionTimeout"
+                        [readonly]="isReadOnly()"
+                    />
 
                     <app-node-storage-section
                         [readonly]="isReadOnly()"

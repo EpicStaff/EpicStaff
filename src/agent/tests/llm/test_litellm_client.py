@@ -23,6 +23,7 @@ from app.loop.context import AgentContext
 from app.tools.registry import ToolSpec
 from shared.models.agent_service import AgentSpec
 from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.cancellation import never_cancelled
 
 # ---------------------------------------------------------------------------
 # Chunk builders
@@ -532,7 +533,7 @@ def _model_config_from_llm_config(provider: str, llm_config: LLMConfigData) -> d
         instructions="i",
         llm=LLMData(provider=provider, config=llm_config),
     )
-    return _build_model_config(AgentContext(agent=agent, attachments=[], correlation_id="c"))
+    return _build_model_config(AgentContext(agent=agent, attachments=[], correlation_id="c", is_cancelled=never_cancelled))
 
 
 async def _acompletion_kwargs_for(model_config: dict) -> dict:

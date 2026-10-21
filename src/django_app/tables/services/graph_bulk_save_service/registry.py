@@ -61,6 +61,9 @@ class NodeTypeConfig:
     model_class: type  # Django model class, e.g. AgentNode
     serializer_class: type  # bulk serializer class, e.g. AgentNodeBulkSerializer
     saveable_factory: NodeSaveableFactory = field(default=None)
+    # A trigger node: it starts flow runs on its own (webhook call, Telegram
+    # message, schedule), so creating or editing one requires FLOWS.USE.
+    starts_runs: bool = False
 
     def __post_init__(self):
         if self.saveable_factory is None:
@@ -80,7 +83,8 @@ NODE_TYPE_REGISTRY — single source of truth for all node types
 
 To add a new node type:
   1. Add one BulkSerializer class in graph_bulk_save_serializers.py.
-  2. Add one NodeTypeConfig line here.
+  2. Add one NodeTypeConfig line here; set starts_runs=True if the node
+     starts flow runs by itself (a trigger).
   Everything else (service loop, serializer fields, deletions, temp_id
   scan) updates automatically.
 """
@@ -160,18 +164,21 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "webhook_trigger_node_ids",
         WebhookTriggerNode,
         WebhookTriggerNodeBulkSerializer,
+        starts_runs=True,
     ),
     NodeTypeConfig(
         "telegram_trigger_node_list",
         "telegram_trigger_node_ids",
         TelegramTriggerNode,
         TelegramTriggerNodeBulkSerializer,
+        starts_runs=True,
     ),
     NodeTypeConfig(
         "schedule_trigger_node_list",
         "schedule_trigger_node_ids",
         ScheduleTriggerNode,
         ScheduleTriggerNodeBulkSerializer,
+        starts_runs=True,
     ),
     NodeTypeConfig(
         "task_node_list",
@@ -186,6 +193,17 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         AgentNodeBulkSerializer,
     ),
 ]
+
+
+# The trigger node types, by graph relation (`<type>_node_list`) and by model. Every
+# "is this a trigger node" decision (the flows:USE checks in tables/services/
+# trigger_nodes.py) derives from `starts_runs` through these.
+TRIGGER_NODE_LIST_KEYS: frozenset[str] = frozenset(
+    config.list_key for config in NODE_TYPE_REGISTRY if config.starts_runs
+)
+TRIGGER_NODE_MODELS: frozenset[type] = frozenset(
+    config.model_class for config in NODE_TYPE_REGISTRY if config.starts_runs
+)
 
 
 """

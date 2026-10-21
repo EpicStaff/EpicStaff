@@ -6,7 +6,7 @@ from app.constants import FAILURE_STOP_REASONS
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
 from app.exceptions import AgentServiceError
-from app.loop.context import AgentContext
+from app.loop.context import AgentContext, CancellationCheck
 from app.output.schema import add_usage
 from app.prompt.single_task import SingleTaskPromptBuilder
 from app.runners.base import Runner
@@ -55,7 +55,13 @@ class ListOfTasksRunner(Runner):
     emitter_mode = EmitterMode.TOOL_EVENTS
     _prompt_builder = SingleTaskPromptBuilder()
 
-    async def execute(self, request: AgentRequest, emitter: Emitter) -> None:
+    async def execute(
+        self,
+        request: AgentRequest,
+        emitter: Emitter,
+        *,
+        is_cancelled: CancellationCheck,
+    ) -> None:
         await emitter.on_start(request)
 
         try:
@@ -74,7 +80,9 @@ class ListOfTasksRunner(Runner):
                 [task.name for task in tasks],
             )
 
-            resolved = await self._deps.resolver.resolve(agent, request, knowledge_sink=emitter)
+            resolved = await self._deps.resolver.resolve(
+                agent, request, knowledge_sink=emitter, is_cancelled=is_cancelled
+            )
             logger.debug(
                 "resolved tools={} attachments={}",
                 [spec.name for spec in resolved.tools.tool_specs()],
@@ -98,6 +106,7 @@ class ListOfTasksRunner(Runner):
                     agent=agent,
                     attachments=resolved.attachments,
                     correlation_id=request.correlation_id,
+                    is_cancelled=is_cancelled,
                 )
                 messages = self._prompt_builder.build(
                     agent,

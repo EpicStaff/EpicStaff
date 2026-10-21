@@ -1,0 +1,72 @@
+<label
+    class="shortcut-picker__label"
+    [attr.for]="idPrefix + '-input'"
+    >{{ label() }}</label
+>
+<div class="shortcut-picker__anchor">
+    <input
+        #pickerInput
+        class="shortcut-picker__input"
+        type="text"
+        role="combobox"
+        autocomplete="off"
+        [placeholder]="placeholder()"
+        [id]="idPrefix + '-input'"
+        [value]="query()"
+        [attr.aria-expanded]="isListOpen()"
+        [attr.aria-controls]="isListOpen() ? idPrefix + '-list' : null"
+        aria-autocomplete="list"
+        [attr.aria-activedescendant]="activeOption()?.elementId ?? null"
+        (input)="onQueryInput(pickerInput.value)"
+        (focus)="pickerInput.select()"
+        (pointerdown)="onPointerDown()"
+        (mouseup)="onMouseUp($event)"
+        (click)="openList()"
+        (blur)="close()"
+        (keydown)="onKeydown($event)"
+    />
+    @if (isListOpen()) {
+        <div
+            class="shortcut-picker__list"
+            role="listbox"
+            [class.shortcut-picker__list--up]="listPlacement().opensUp"
+            [style.max-height.px]="listPlacement().maxHeight"
+            [attr.aria-label]="listLabel()"
+            [id]="idPrefix + '-list'"
+            (mousedown)="$event.preventDefault()"
+        >
+            @for (group of shownGroups(); track group.titleId) {
+                <div
+                    class="shortcut-picker__group"
+                    [attr.role]="group.title === null ? null : 'group'"
+                    [attr.aria-labelledby]="group.title === null ? null : group.titleId"
+                >
+                    @if (group.title !== null) {
+                        <div
+                            class="shortcut-picker__group-title"
+                            role="presentation"
+                            [id]="group.titleId"
+                        >
+                            {{ group.title }}
+                        </div>
+                    }
+                    @for (option of group.options; track option.id) {
+                        <div
+                            #optionElement
+                            class="shortcut-picker__option"
+                            role="option"
+                            [id]="option.elementId"
+                            [attr.aria-selected]="option.id === selected()"
+                            [class.shortcut-picker__option--active]="option.elementId === activeOption()?.elementId"
+                            (click)="pick(option)"
+                        >
+                            {{ option.label }}
+                        </div>
+                    }
+                </div>
+            } @empty {
+                <div class="shortcut-picker__empty">{{ emptyText() }}</div>
+            }
+        </div>
+    }
+</div>

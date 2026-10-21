@@ -1,5 +1,5 @@
 import { WIRE_CLEARANCE } from '../routing/obstacles';
-import { LayoutEdge } from './layout-graph';
+import { GRID, LayoutEdge, median } from './layout-graph';
 import { LayeredGraph } from './long-edges';
 
 /**
@@ -17,7 +17,6 @@ import { LayeredGraph } from './long-edges';
  * input alignment bends the flow-8 fixture (CDT#6 off Py#3).
  */
 
-const GRID = 20;
 // As dense as the wires allow: one wire fits between two stacked nodes,
 // WIRE_CLEARANCE from each; on the grid that is a pitch of height + 20. A dummy is a
 // long edge's wire: next to a node it keeps the clearance plus a lane (so a riser leaving that node
@@ -25,26 +24,29 @@ const GRID = 20;
 // bare clearance next to a dummy gives more crossings (342 against 335).
 const REAL_GAP = 2 * WIRE_CLEARANCE;
 const DUMMY_REAL_GAP = 2 * WIRE_CLEARANCE;
+// Two adjacent dummies are long-edge waypoints: they only need one lane width (10 px) between
+// them, not the full wire clearance real nodes require.
 const DUMMY_GAP = 10;
+// Floating-point tolerance for "same position" checks (grid snapping, straight-wire detection).
 const EPSILON = 1e-6;
 const SWEEPS: ('down' | 'up')[] = ['down', 'up', 'down', 'up', 'down'];
+// Equal-priority nodes that blocked each other get retried once the blocker moves; 4 passes
+// suffices for row siblings settling onto consecutive table rows.
 const MAX_LAYER_PASSES = 4;
-// Priority bands, far apart so a lower band never adds up to the next: degrees stay below 1000.
+// Priority bands, far apart so a lower band never adds up to the next: the highest possible
+// degree (incident edges + back edges) stays well below 1000 in any realistic graph.
 const ROW_CHILD_TIER = 1_000_000;
+// Within the ROW_CHILD_TIER band, tables with more row wires rank higher so their children
+// push smaller tables' children aside, not the reverse.
 const TABLE_RANK_STEP = 1000;
-// An input port this close to another wire's output row in the layer before reads as its continuation.
+// An input port within 1 px of another wire's output row in the preceding layer looks like a
+// continuation of that wire — avoidFalseContinuations nudges the node away.
 const FALSE_CONTINUATION_TOLERANCE = 1;
 
 const snapUp = (value: number): number => Math.ceil(value / GRID - EPSILON) * GRID;
 const snapDown = (value: number): number => Math.floor(value / GRID + EPSILON) * GRID;
 const onGrid = (value: number): boolean => Math.abs(value - Math.round(value / GRID) * GRID) < EPSILON;
 const same = (first: number, second: number): boolean => Math.abs(first - second) < EPSILON;
-
-function median(values: number[]): number {
-    const sorted = [...values].sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
 
 export function assignTops(layered: LayeredGraph, order: string[][], startY: number): Map<string, number> {
     return new TopAssignment(layered, order).run(startY);

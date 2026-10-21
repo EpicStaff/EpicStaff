@@ -3,7 +3,7 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { HasPermissionDirective } from '@shared/directives';
-import { GraphSessionStatus } from '@shared/models';
+import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { GraphSessionLight, SessionRunType, SessionTrigger } from '../../services/flows-sessions.service';
@@ -102,5 +102,38 @@ describe('FlowSessionsTableComponent type column', () => {
         dropdown.valueChange.emit(['test']);
 
         expect(emitted).toEqual([['test']]);
+    });
+});
+
+describe('FlowSessionsTableComponent stop button', () => {
+    function renderRunningSession(canRun: boolean): HTMLElement {
+        TestBed.configureTestingModule({
+            providers: [
+                provideRouter([]),
+                {
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            canRun && resource === ResourceCode.Flows && action === ActionCode.Use,
+                        canAny: () => false,
+                    } as unknown as PermissionsService,
+                },
+            ],
+        });
+        TestBed.overrideComponent(FlowSessionsTableComponent, {
+            set: {
+                imports: [CommonModule, HasPermissionDirective, FlowSessionTypeFilterDropdownComponent],
+                schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            },
+        });
+        const running = { ...session(4, webhookTrigger(false)), status: GraphSessionStatus.RUNNING };
+        return render([running]).nativeElement as HTMLElement;
+    }
+
+    it.each([
+        ['offers Stop on a running session to a user who can run flows', true, 1],
+        ['hides Stop from a user who cannot run flows', false, 0],
+    ])('%s', (_case, canRun, stopButtons) => {
+        expect(renderRunningSession(canRun).querySelectorAll('app-stop-button')).toHaveLength(stopButtons);
     });
 });

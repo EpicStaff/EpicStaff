@@ -77,6 +77,7 @@ export function mapClassificationDecisionTableNodeToModel(
                     libraries: n.pre_python_code?.libraries ?? [],
                     secret_ids: toSecretIds(n.pre_python_code?.secrets),
                     secret_names: toSecretNames(n.pre_python_code?.secrets),
+                    execution_timeout: n.pre_python_code?.execution_timeout,
                 },
                 post_computation: {
                     code: n.post_python_code?.code ?? '',
@@ -85,6 +86,7 @@ export function mapClassificationDecisionTableNodeToModel(
                     libraries: n.post_python_code?.libraries ?? [],
                     secret_ids: toSecretIds(n.post_python_code?.secrets),
                     secret_names: toSecretNames(n.post_python_code?.secrets),
+                    execution_timeout: n.post_python_code?.execution_timeout,
                 },
                 condition_groups: conditionGroups,
                 sections: reconcileCdtSections(

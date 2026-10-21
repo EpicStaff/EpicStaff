@@ -4,6 +4,7 @@
     [class.readonly]="flowReadOnly.isReadOnly()"
 >
     <f-flow
+        #flowHost
         appMouseTracker
         (mousePosition)="updateMouseTrackerPosition($event)"
         (contextmenu)="onContextMenu($event)"
@@ -12,8 +13,8 @@
         (mousedown)="onFlowMouseDown($event)"
         (pointerup)="onFlowPointerUp($event)"
         fDraggable
-        [fMultiSelectTrigger]="multiSelectTrigger"
-        [fCanvasMoveTrigger]="canvasMoveTrigger"
+        [fMultiSelectTrigger]="selectionManager.multiSelectTrigger"
+        [fCanvasMoveTrigger]="selectionManager.canvasMoveTrigger"
         [fNodeMoveTrigger]="editGestureTrigger"
         [fNodeResizeTrigger]="editGestureTrigger"
         [fNodeRotateTrigger]="editGestureTrigger"
@@ -25,13 +26,6 @@
         [hCellSize]="GRID_CELL_SIZE"
         [fCellSizeWhileDragging]="false"
         class="visual-programming-flow"
-        appShortcutListener
-        (delete)="onDelete()"
-        (escape)="onEscapeKey()"
-        (undo)="onUndo()"
-        (redo)="onRedo()"
-        (copy)="onCopy()"
-        (paste)="onPaste()"
         (fLoaded)="onInitialized()"
         (fSelectionChange)="onSelectionChange($event)"
         (fDragStarted)="onDragStarted($event)"
@@ -47,7 +41,7 @@
         <f-canvas fZoom>
             <f-snap-connection
                 fBehavior="fixed"
-                fType="segment"
+                [fType]="flowSettings.edgeStyle()"
                 [fSnapThreshold]="100"
             >
                 <svg
@@ -120,14 +114,14 @@
             @for (node of flowService.nodes(); track node.id) {
                 <app-flow-base-node
                     [node]="node"
-                    [multiSelectActive]="multiSelectActive()"
+                    [multiSelectActive]="selectionManager.multiSelectActive()"
                     [fMinimapClass]="getMinimapClassForNode(node)"
                     fNode
                     fDragHandle
                     [fNodeId]="node.id"
                     [fNodeSize]="node.size"
                     [fNodePosition]="node.position"
-                    [fNodeDraggingDisabled]="flowReadOnly.isReadOnly()"
+                    [fNodeDraggingDisabled]="isNodeReadOnly(node)"
                     [style.z-index]="getNodeZIndex(node)"
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
@@ -143,23 +137,26 @@
 
             @for (
                 connection of sortedConnections();
-                track connection.id + '-' + (connectionRenderVersions()[connection.id] ?? 0)
+                track connection.id + '-' + (routingOrchestrator.connectionRenderVersions()[connection.id] ?? 0)
             ) {
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
-                    fType="orthogonal"
+                    [fType]="flowSettings.edgeStyle()"
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
+                    (mouseenter)="hoveredConnectionId.set(connection.id)"
+                    (mouseleave)="hoveredConnectionId.set(null)"
                     [fReassignableStart]="true"
                     [fReassignDisabled]="
-                        flowReadOnly.isReadOnly() || reassignSuppressedConnectionIds().has(connection.id)
+                        flowReadOnly.isReadOnly() || reassignHandler.suppressedConnectionIds().has(connection.id)
                     "
                     [fSelectionDisabled]="flowReadOnly.isReadOnly()"
                     [class.dashed-connection]="connection.category === 'virtual'"
-                    [class.is-backward]="backwardConnectionIds().has(connection.id)"
-                    [class.is-reassign-follower]="reassignFollowerIds().has(connection.id)"
-                    [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
+                    [class.is-backward]="routingOrchestrator.backwardConnectionIds().has(connection.id)"
+                    [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
+                    [class.node-hovered]="hoveredNodeConnectionIds().has(connection.id)"
+                    [style.z-index]="routingOrchestrator.backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()
                             ? nodeColorMap().get(connection.sourceNodeId) || '#555'
@@ -196,11 +193,6 @@
                         <path
                             d="M0,0 L6,3 0,6Z"
                             stroke="none"
-                            [attr.fill]="
-                                flowSettings.arrowColorsEnabled()
-                                    ? nodeColorMap().get(connection.targetNodeId) || '#555'
-                                    : connection.endColor || '#555'
-                            "
                         ></path>
                     </svg>
 
@@ -242,13 +234,13 @@
                         [waypoints]="connection.waypoints ?? []"
                         (waypointsChange)="onWaypointsChanged(connection.id, $event)"
                         [radius]="5"
-                        [visibility]="true"
+                        [visibility]="flowSettings.edgeStyle() === 'orthogonal'"
                     ></f-connection-waypoints>
                 </f-connection>
             }
         </f-canvas>
 
-        <f-selection-area [fTrigger]="selectionAreaTrigger"></f-selection-area>
+        <f-selection-area [fTrigger]="selectionManager.selectionAreaTrigger"></f-selection-area>
         <f-minimap [fMinSize]="1000"></f-minimap>
     </f-flow>
 
@@ -286,7 +278,7 @@
                     label="S"
                     iconSize="14px"
                     [textEnd]="true"
-                    [active]="multiSelectActive()"
+                    [active]="selectionManager.multiSelectActive()"
                     matTooltip="Multi-select"
                     matTooltipPosition="right"
                     (clicked)="onToggleMultiSelect()"
@@ -295,8 +287,6 @@
                 <div
                     #shortcutsAnchor
                     #shortcutsButton
-                    appShortcutListener
-                    (openShortcuts)="onOpenShortcuts(shortcutsAnchor)"
                 >
                     <app-flow-shortcuts-button (clicked)="onOpenShortcuts(shortcutsAnchor)">
                     </app-flow-shortcuts-button>
@@ -312,7 +302,7 @@
 
         <div class="top-right-controls">
             <div class="top-right-actions">
-                @if (selectedNodeCount() > 0 && !isPreview) {
+                @if (selectionManager.selectedNodeCount() > 0 && !isPreview) {
                     <button
                         class="arrange-btn extract-subflow-btn"
                         matTooltip="Extract to Subflow"
@@ -324,8 +314,8 @@
                 }
                 @if (!isPreview) {
                     <app-flow-export-import-button
-                        [selectedCount]="selectedNodeCount()"
-                        [allSelectedAreCdt]="allSelectedAreCdt()"
+                        [selectedCount]="selectionManager.selectedNodeCount()"
+                        [allSelectedAreCdt]="selectionManager.allSelectedAreCdt()"
                         (exportSelectedJson)="onExportSelectedAsJson()"
                         (exportSelectedCsv)="onExportSelectedAsCsv()"
                         (exportJson)="onExportAllAsJson()"
@@ -341,12 +331,11 @@
                 }
                 @if (!flowReadOnly.isReadOnly()) {
                     <button
-                        #arrangeBtnRef
                         class="arrange-btn"
                         title="Auto arrange"
                         matTooltip="Auto arrange"
                         matTooltipPosition="below"
-                        [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
+                        [disabled]="isAutoArrangeDisabled()"
                         (click)="onAutoArrange()"
                     >
                         <app-svg-icon

@@ -79,6 +79,11 @@ export class SelectComponent implements ControlValueAccessor {
     readonly = input<boolean>(false);
     /** Text shown in readonly mode when no value is selected. */
     readonlyEmptyPlaceholder = input<string>('—');
+    /**
+     * Stable `data-tour` anchor for the dropdown panel. The panel renders in a CDK overlay outside this host, so an
+     * attribute on the host cannot reach it.
+     */
+    dropdownDataAnchor = input<string | null>(null);
 
     changed = output<unknown>();
     opened = output<void>();

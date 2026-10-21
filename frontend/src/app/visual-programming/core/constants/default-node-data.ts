@@ -2,6 +2,7 @@ import { NODE_COLORS, NodeType } from '@shared/models';
 
 import { AgentNodeData } from '../models/agent-node.model';
 import { KeyValueNodeData } from '../models/key-value-node.model';
+import { TelegramTriggerNodeModel } from '../models/node.model';
 import { ScheduleTriggerNodeData } from '../models/schedule-trigger.model';
 import { TaskNodeData } from '../models/task-node.model';
 
@@ -88,8 +89,9 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         test_payload: {},
         use_storage: false,
     }),
-    [NodeType.TELEGRAM_TRIGGER]: () => ({
+    [NodeType.TELEGRAM_TRIGGER]: (): TelegramTriggerNodeModel['data'] => ({
         telegram_bot_api_key_secret_id: null,
+        webhook_trigger: null,
         fields: [],
         test_payload: {},
     }),

@@ -515,7 +515,7 @@ describe('FlowVersionPreviewComponent', () => {
         });
 
         it('leaves an active multi-select to clear first', () => {
-            flowGraph().multiSelectActive.set(true);
+            flowGraph().selectionManager.multiSelectActive.set(true);
             pressEscape();
             expect(closed).not.toHaveBeenCalled();
         });
@@ -524,6 +524,14 @@ describe('FlowVersionPreviewComponent', () => {
             const input = document.body.appendChild(document.createElement('input'));
             pressEscape(input);
             input.remove();
+            expect(closed).not.toHaveBeenCalled();
+        });
+
+        it('leaves Esc pressed in the shortcuts popover to the popover', () => {
+            const popover = document.body.appendChild(document.createElement('app-shortcuts-modal'));
+            const button = popover.appendChild(document.createElement('button'));
+            pressEscape(button);
+            popover.remove();
             expect(closed).not.toHaveBeenCalled();
         });
 

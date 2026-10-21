@@ -365,7 +365,7 @@ class ClassificationDecisionTableNodeSubgraph:
         Only a matched row changes state, so every row up to the next match sees the
         same variables and can share one run. Evaluation stops at the first True or the
         first failing expression; later expressions are never compiled or run. The
-        whole batch shares one SANDBOX_EXECUTION_TIMEOUT.
+        whole batch shares one SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
 
         Returns:
             The result of each evaluated row, and the error message of the row right
