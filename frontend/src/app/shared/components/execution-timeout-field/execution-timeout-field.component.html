@@ -9,7 +9,6 @@
             class="execution-timeout__control"
             role="group"
             [attr.aria-label]="label()"
-            [class.execution-timeout__control--invalid]="!!errorMessage()"
         >
             <button
                 type="button"
@@ -22,26 +21,44 @@
             >
                 <app-svg-icon
                     icon="minus-fit"
-                    size="16px"
+                    size="14px"
                 />
             </button>
-            <input
-                #timeoutInput
-                type="text"
-                class="execution-timeout__input text-body"
-                [attr.aria-label]="inputLabel()"
-                inputmode="numeric"
-                autocomplete="off"
-                spellcheck="false"
-                [attr.aria-invalid]="!!errorMessage()"
-                [attr.aria-describedby]="describedBy()"
-                [disabled]="readonly()"
-                [value]="text()"
-                (input)="onInputEvent($event, timeoutInput)"
-                (compositionend)="onInput(timeoutInput)"
-                (blur)="commit()"
-                (keydown.enter)="commit(); $event.preventDefault()"
-            />
+            <div class="execution-timeout__field">
+                <span
+                    class="execution-timeout__mirror text-body"
+                    aria-hidden="true"
+                >
+                    @for (cell of cells(); track $index) {
+                        <span
+                            [class.execution-timeout__cell--untyped]="cell.untyped"
+                            [class.execution-timeout__cell--separator]="cell.separator"
+                            >{{ cell.character }}</span
+                        >
+                    }
+                </span>
+                <input
+                    #timeoutInput
+                    type="text"
+                    class="execution-timeout__input text-body"
+                    [attr.aria-label]="inputLabel()"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    spellcheck="false"
+                    [attr.aria-invalid]="!!errorMessage()"
+                    [attr.aria-describedby]="describedBy()"
+                    [disabled]="readonly()"
+                    [value]="text()"
+                    (beforeinput)="onBeforeInput($event, timeoutInput)"
+                    (input)="onInputEvent($event, timeoutInput)"
+                    (compositionstart)="onCompositionStart(timeoutInput)"
+                    (compositionend)="onCompositionEnd($event, timeoutInput)"
+                    (blur)="commit()"
+                    (keydown.enter)="commit(); $event.preventDefault()"
+                    (keydown.arrowleft)="moveCaret($event, false, timeoutInput)"
+                    (keydown.arrowright)="moveCaret($event, true, timeoutInput)"
+                />
+            </div>
             <button
                 type="button"
                 class="execution-timeout__step"
@@ -53,7 +70,7 @@
             >
                 <app-svg-icon
                     icon="plus-fit"
-                    size="16px"
+                    size="14px"
                 />
             </button>
         </div>
