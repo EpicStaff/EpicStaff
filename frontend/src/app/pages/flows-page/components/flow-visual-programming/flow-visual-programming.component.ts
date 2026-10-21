@@ -34,7 +34,7 @@ import {
     NodeType,
     ResourceCode,
 } from '@shared/models';
-import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
 import { escapeHtml, extractHttpErrorMessage, generateUuid } from '@shared/utils';
 import {
     catchError,
@@ -145,6 +145,7 @@ import {
 } from '../../../../visual-programming/utils/save';
 import { withGraphScheduleTriggerRuntimeState } from '../../../../visual-programming/utils/save/schedule-trigger-runtime-state';
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
+import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import {
@@ -212,6 +213,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly flowTestRunService = inject(FlowTestRunService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     /** The root instance, as for the live canvas and its panels; the version preview has its own. */
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
     private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
@@ -926,6 +928,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 ...this.getInvalidClassificationTableMessages(flowState),
                 // The key-value panel puts invalid entries into the flow so the canvas follows it; they stop here.
                 ...invalidKeyValueNodeMessages(flowState.nodes),
+                // As for key-value nodes: a panel commits an invalid timeout to the flow for the save to stop it here.
+                ...invalidExecutionTimeoutMessages(flowState.nodes, this.executionTimeoutLimits.limits().minSeconds),
             ];
         } catch (error) {
             console.error('Node validation crashed before save — blocking the save defensively', error);

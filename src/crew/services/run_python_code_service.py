@@ -100,6 +100,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 secrets=python_code_data.secrets,
                 org_id=python_code_data.org_id,
                 storage_credentials=storage_credentials,
+                execution_timeout=python_code_data.execution_timeout,
                 reply_to_crew_channel=True,
             )
         except ValidationError:

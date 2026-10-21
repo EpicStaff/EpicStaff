@@ -17,11 +17,13 @@ import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
     ValidationErrorsComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
 import { ResourceCode, toSecretIds, WebhookTriggerModel } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
@@ -71,6 +73,7 @@ export const RUN_PYTHON_CODE_LABEL = 'Run python code';
         RunTestPayloadButtonComponent,
         PythonTerminalComponent,
         NgTemplateOutlet,
+        ExecutionTimeoutFieldComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -82,6 +85,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly permissionsService = inject(PermissionsService);
     private readonly sidePanelService = inject(SidePanelService);
     private readonly flowService = inject(FlowService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
@@ -164,6 +168,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
+    protected executionTimeout!: ExecutionTimeoutFormField;
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
     public readonly canEditSecrets = computed(
         () => !this.isReadOnly() && this.permissionsService.canEditSecrets(ResourceCode.Flows)
@@ -255,10 +260,13 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         if (this.runCodeBlocker() !== null || payload === null || backendId == null) return;
         this.isCodeTerminalShown.set(true);
         // The backend runs the code it stores for the node; the blocker ensures the panel's code matches it.
-        this.codeTestRun.run({
-            target: { type: 'webhook_trigger_node', id: backendId },
-            variables: { trigger_payload: payload },
-        });
+        this.codeTestRun.run(
+            {
+                target: { type: 'webhook_trigger_node', id: backendId },
+                variables: { trigger_payload: payload },
+            },
+            this.executionTimeoutLimits.secondsToRun(this.savedNode()?.python_code.execution_timeout)
+        );
     }
 
     protected onTestPayloadTextChange(text: string): void {
@@ -278,10 +286,15 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     }
 
     initializeForm(): FormGroup {
+        this.executionTimeout = new ExecutionTimeoutFormField(
+            this.node().data.python_code.execution_timeout,
+            this.executionTimeoutLimits.limits()
+        );
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             libraries: [this.node().data.python_code.libraries?.join(', ') || ''],
             webhook_trigger: [this.node().data.webhook_trigger ?? null],
+            execution_timeout: this.executionTimeout.control,
         });
         this.pythonCode = this.node().data.python_code.code || '';
         this.initialPythonCode = this.pythonCode;
@@ -311,6 +324,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
                     libraries: this.libraries(),
                     secret_ids: this.selectedSecretIds(),
                     secret_names: this.secretNames(),
+                    execution_timeout: this.executionTimeout.value,
                 },
                 test_payload: this.testPayload.payloadToSave(this.node().data.test_payload),
                 use_storage: this.useStorage(),
@@ -364,7 +378,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         this.copied.set(true);
     }
 
-    /** The code, libraries, secrets or storage flag in the panel are not the ones the backend has stored. */
+    /** The code, libraries, secrets, storage flag or execution timeout in the panel are not the ones the backend has stored. */
     private differsFromSaved(savedNode: GetWebhookTriggerNodeRequest): boolean {
         this.dirtyCheckTick();
         if (!this.form) return true;
@@ -372,7 +386,9 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         const saved = pythonCodeSignature(savedCode.code, savedCode.libraries, toSecretIds(savedCode.secrets));
         return (
             saved !== pythonCodeSignature(this.pythonCode, this.libraries(), this.selectedSecretIds()) ||
-            (savedNode.use_storage ?? false) !== this.useStorage()
+            (savedNode.use_storage ?? false) !== this.useStorage() ||
+            this.executionTimeoutLimits.secondsToRun(savedCode.execution_timeout) !==
+                this.executionTimeoutLimits.secondsToRun(this.executionTimeout.value)
         );
     }
 

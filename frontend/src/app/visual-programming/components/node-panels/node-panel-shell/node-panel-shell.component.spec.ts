@@ -9,6 +9,7 @@ import { of } from 'rxjs';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { provideLoadedExecutionTimeoutLimits } from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import {
     EndNodeModel,
     NodeModel,
@@ -50,6 +51,7 @@ const endNode: EndNodeModel = {
 async function mount(isPreview: boolean): Promise<ComponentFixture<NodePanelShellComponent>> {
     TestBed.configureTestingModule({
         providers: [
+            provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
             // A user who may edit flows: read-only below comes from the preview alone.
             { provide: PermissionsService, useValue: { can: () => true } },
@@ -458,6 +460,7 @@ describe('NodePanelShellComponent', () => {
         const shellFor = (type: NodeType): NodePanelShellComponent => {
             TestBed.configureTestingModule({
                 providers: [
+                    provideLoadedExecutionTimeoutLimits(),
                     {
                         provide: SidePanelService,
                         useValue: {
@@ -533,6 +536,7 @@ describe('NodePanelShellComponent', () => {
             const open = vi.fn();
             TestBed.configureTestingModule({
                 providers: [
+                    provideLoadedExecutionTimeoutLimits(),
                     { provide: FLOW_EDITOR_PREVIEW, useValue: options.isPreview ?? false },
                     {
                         provide: PermissionsService,

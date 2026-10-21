@@ -1,0 +1,119 @@
+:host {
+    display: block;
+}
+
+.execution-timeout {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+
+    // As wide as the control: a message wraps under it rather than widening it.
+    &__group {
+        display: flex;
+        flex-direction: column;
+        width: min-content;
+    }
+
+    &__control {
+        display: flex;
+        align-items: stretch;
+        background-color: var(--color-input-background);
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        overflow: hidden;
+        transition: border-color 0.2s ease;
+
+        &:has(.execution-timeout__input:focus) {
+            border-color: var(--accent-color);
+        }
+
+        &--invalid,
+        &--invalid:has(.execution-timeout__input:focus) {
+            border-color: var(--color-status-error);
+        }
+    }
+
+    &__input {
+        box-sizing: content-box;
+        // Fits the longest timeout, `99999:99:99`.
+        width: 11ch;
+        padding: 8px 12px;
+        background-color: transparent;
+        border: none;
+        color: var(--color-text-primary);
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+
+        &:focus {
+            outline: none;
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    }
+
+    &__step {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        width: 2.25rem;
+        padding: 0;
+        background-color: var(--color-input-background-hover);
+        border: none;
+        color: var(--color-text-primary);
+        cursor: pointer;
+        transition:
+            background-color 0.2s ease,
+            color 0.2s ease;
+
+        &:hover:not(:disabled, .execution-timeout__step--unavailable) {
+            background-color: var(--color-secondary-btn-background-hover);
+        }
+
+        &:active:not(:disabled, .execution-timeout__step--unavailable) {
+            background-color: var(--accent-color);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
+        }
+
+        // Read-only disables the button natively; a limit only marks it, so it keeps the keyboard focus.
+        &:disabled,
+        &--unavailable {
+            color: var(--color-text-disabled);
+            cursor: not-allowed;
+        }
+    }
+
+    // Read by screen readers only.
+    &__visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    &__message {
+        margin: 4px 0 0;
+        padding: 4px 8px;
+        background-color: var(--color-status-error-subtle);
+        border: 1px solid var(--color-status-error);
+        border-radius: 4px;
+        color: var(--color-status-error);
+    }
+
+    &__hint {
+        margin: 4px 0 0;
+        color: var(--color-text-secondary);
+    }
+}
