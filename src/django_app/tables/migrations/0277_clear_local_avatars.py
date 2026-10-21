@@ -33,7 +33,7 @@ def clear_local_avatars(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("tables", "0274_alter_user_avatar"),
+        ("tables", "0276_alter_user_avatar"),
     ]
 
     operations = [

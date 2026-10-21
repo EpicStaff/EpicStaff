@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tables', '0273_merge_20261020_1109'),
+        ('tables', '0275_pythoncode_execution_timeout'),
     ]
 
     operations = [
