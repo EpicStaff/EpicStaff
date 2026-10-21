@@ -3,7 +3,7 @@
 import pytest
 from plugins.models import Plugin, PluginState
 
-from tests.plugins_tests.conftest import upload_file
+from tests.plugins_tests.conftest import mark_running, upload_file
 from tests.plugins_tests.package_builder import ICON_SVG, PNG_ICON, build_package, sample_files, sample_manifest
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
@@ -91,3 +91,26 @@ def test_a_plugin_that_stopped_running_is_not_found(anonymous_client, running_pl
     Plugin.objects.filter(pk=plugin.pk).update(state=PluginState.MAINTENANCE)
 
     assert anonymous_client.get(f"/api/plugin-public/weather/{path}/").status_code == 404
+
+
+def test_a_plugin_with_a_backend_names_epicstaff_s_login_urls(anonymous_client, backend_plugin):
+    mark_running(backend_plugin())
+
+    response = anonymous_client.get("/api/plugin-public/weather/config/")
+
+    assert response.status_code == 200
+    assert response.json()["login"] == {
+        "authorize_url": "http://epicstaff.localhost/api/auth/plugin-authorize/",
+        "token_url": "http://epicstaff.localhost/api/auth/plugin-token/",
+    }
+
+
+def test_the_login_urls_are_on_epicstaff_s_origin_with_its_port(anonymous_client, backend_plugin, settings):
+    settings.FRONTEND_BASE_URL = "https://epicstaff.example.com:8443"
+    settings.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    mark_running(backend_plugin())
+
+    login = anonymous_client.get("/api/plugin-public/weather/config/").json()["login"]
+
+    assert login["authorize_url"] == "https://epicstaff.example.com:8443/api/auth/plugin-authorize/"
+    assert login["token_url"] == "https://epicstaff.example.com:8443/api/auth/plugin-token/"

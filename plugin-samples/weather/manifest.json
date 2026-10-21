@@ -1,7 +1,7 @@
 {
     "manifest_version": 1,
     "id": "weather",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "name": "Weather",
     "description": "Forecasts for the places your organization cares about.",
     "publisher": { "name": "EpicStaff" },
@@ -17,7 +17,8 @@
         }
     ],
     "public_paths": [
-        { "path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0 }
+        { "path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0 },
+        { "path": "/api/demo-provider", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 30, "max_body_kb": 0 }
     ],
     "settings": [
         {

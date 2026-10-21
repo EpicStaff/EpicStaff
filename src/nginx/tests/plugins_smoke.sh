@@ -3,11 +3,15 @@
 # least one approved plugin, through epicstaff-nginx, the way a browser reaches them:
 #
 #   - the plugin host serves the plugin's SPA with the security headers, every index.html with
-#     Cache-Control: no-cache, the platform config from Django, and 404 for the platform's paths;
+#     Cache-Control: no-cache, the platform config from Django, the platform's login callback
+#     pages (only GET and HEAD) with their own policy, and 404 for the platform's other paths;
 #   - its /api/ goes through the gateway: a declared public path reaches the plugin's backend with
 #     a public context, any other path is 401 login_required, paths that are not canonical and
-#     /_epicstaff/ never reach it, and a context a client forges never counts;
+#     /_epicstaff/ never reach it, a context a client forges never counts, and the gateway's own
+#     refusals carry X-EpicStaff-Gateway-Deny while the plugin's answers never do;
 #   - a host name that is not a valid plugin host reaches EpicStaff's own server;
+#   - EpicStaff's sign-in pages for plugins (/plugin-login, /plugin-choose-org) may be framed by
+#     EpicStaff itself, inside a plugin's frame (X-Frame-Options: SAMEORIGIN, never DENY);
 #   - EpicStaff's server frames plugin hosts (frame-src), refuses a package upload without a
 #     SuperAdmin's login before reading it, and takes a SuperAdmin's upload above its usual 50 MB
 #     limit, up to PLUGINS_MAX_PACKAGE_MB.
@@ -15,8 +19,8 @@
 # Settings, from the environment:
 #   EPICSTAFF_URL           EpicStaff's origin, as in DJANGO_FRONTEND_BASE_URL, e.g. http://epicstaff.localhost
 #   PLUGINS_BASE_DOMAIN     e.g. plugins.epicstaff.localhost
-#   PLUGIN_IDENTIFIER       an approved plugin with a backend, running, e.g. weather (the sample
-#                           at 0.2.0: public path GET /api/ping, which answers its context's mode)
+#   PLUGIN_IDENTIFIER       an approved plugin with a backend, running, e.g. weather (the sample:
+#                           public path GET /api/ping, which answers its context's mode)
 #   PLUGINS_MAX_PACKAGE_MB  the stack's upload limit, e.g. 300
 #   PUBLIC_PATH             optional, default /api/ping: a public GET path of the plugin that
 #                           answers 200 with "mode": "public"
@@ -79,6 +83,12 @@ header() {
   grep -i "^$1:" "$work_dir/headers" | tail -n 1 | cut -d: -f2- | sed 's/^ *//; s/\r$//' || true
 }
 
+# Every value of a header of the last response, sorted and joined with |.
+header_values() {
+  { grep -i "^$1:" "$work_dir/headers" || true; } | cut -d: -f2- | sed 's/^ *//; s/\r$//' \
+    | LC_ALL=C sort | paste -sd '|' -
+}
+
 expect_status() { # $1 = description, $2 = expected status, $3 = actual status
   if [ "$3" = "$2" ]; then
     pass "$1"
@@ -105,6 +115,17 @@ expect_no_header() { # $1 = description, $2 = header name
   fi
 }
 
+expect_header_values() { # $1 = description, $2 = header name, $3... = every value it must have
+  local description=$1 name=$2 expected
+  shift 2
+  expected=$(printf '%s\n' "$@" | LC_ALL=C sort | paste -sd '|' -)
+  if [ "$(header_values "$name")" = "$expected" ]; then
+    pass "$description"
+  else
+    fail "$description: $name is [$(header_values "$name")], expected [$expected]"
+  fi
+}
+
 expect_body() { # $1 = description, $2 = text the body must contain
   if grep -qF -- "$2" "$work_dir/body"; then
     pass "$1"
@@ -113,9 +134,13 @@ expect_body() { # $1 = description, $2 = text the body must contain
   fi
 }
 
-# The headers every plugin host response carries, whatever its status.
+# The headers every plugin host response carries, whatever its status. A response may add a
+# policy of its own (the callback pages do), so frame-ancestors is one of the policies sent.
 expect_plugin_security_headers() { # $1 = what was requested
-  expect_header "$1: frame-ancestors" Content-Security-Policy "frame-ancestors 'self' $epicstaff_origin"
+  case "|$(header_values Content-Security-Policy)|" in
+    *"|frame-ancestors 'self' $epicstaff_origin|"*) pass "$1: frame-ancestors" ;;
+    *) fail "$1: frame-ancestors: Content-Security-Policy is [$(header_values Content-Security-Policy)]" ;;
+  esac
   expect_header "$1: nosniff" X-Content-Type-Options nosniff
   expect_header "$1: Referrer-Policy" Referrer-Policy strict-origin-when-cross-origin
   expect_header "$1: Origin-Agent-Cluster" Origin-Agent-Cluster "?1"
@@ -157,11 +182,34 @@ case "$(header Content-Type)" in
   *) fail "the fallback is HTML: Content-Type is [$(header Content-Type)]" ;;
 esac
 
-for path in /_epicstaff/x /.well-known/epicstaff/x; do
+for path in /_epicstaff/x /.well-known/epicstaff/x /.well-known/epicstaff/other.html; do
   status=$(fetch "$plugin_origin$path")
   expect_status "$path is 404" 404 "$status"
   expect_plugin_security_headers "$path"
 done
+
+echo "# the platform's login callback pages"
+
+# EpicStaff's authorize endpoint redirects a plugin page to these, on its own host.
+page_policy="default-src 'none'; script-src 'self'; base-uri 'none'; form-action 'none'"
+for page in callback.html silent-callback.html; do
+  status=$(fetch "$plugin_origin/.well-known/epicstaff/$page")
+  expect_status "$page is served" 200 "$status"
+  expect_header "$page is HTML" Content-Type text/html
+  expect_header "$page is revalidated on every load" Cache-Control no-cache
+  expect_header_values "$page runs only this host's scripts, framed only by EpicStaff and the plugin" \
+    Content-Security-Policy "$page_policy" "frame-ancestors 'self' $epicstaff_origin"
+  expect_body "$page loads callback.js" '/.well-known/epicstaff/callback.js'
+  expect_no_header "$page sets no cookie" Set-Cookie
+  expect_plugin_security_headers "$page"
+done
+status=$(fetch "$plugin_origin/.well-known/epicstaff/callback.js")
+expect_status "callback.js is served" 200 "$status"
+expect_header "callback.js is JavaScript" Content-Type application/javascript
+expect_header "callback.js is revalidated on every load" Cache-Control no-cache
+expect_plugin_security_headers "callback.js"
+status=$(fetch "$plugin_origin/.well-known/epicstaff/callback.html" -X POST --data x)
+expect_status "a POST to callback.html is refused" 403 "$status"
 
 echo "# the plugin's API, through the gateway"
 
@@ -169,6 +217,7 @@ status=$(fetch "$plugin_origin$public_path")
 expect_status "the public path $public_path reaches the plugin" 200 "$status"
 expect_body "the plugin got a verified public context" '"mode":"public"'
 expect_no_header "the plugin's response sets no cookie" Set-Cookie
+expect_no_header "the plugin's response is not marked as the gateway's" X-EpicStaff-Gateway-Deny
 expect_plugin_security_headers "$public_path"
 
 # Every spelling of the context header a client might send: the plugin's SDK would refuse the
@@ -183,6 +232,7 @@ expect_status "/api/x, which is not public, is 401" 401 "$status"
 expect_header "/api/x answers JSON" Content-Type application/json
 expect_body "/api/x has EpicStaff's error shape" '"code":"login_required"'
 expect_header "/api/x asks for a bearer token" WWW-Authenticate Bearer
+expect_header "/api/x is marked as the gateway's refusal" X-EpicStaff-Gateway-Deny login
 expect_plugin_security_headers "/api/x"
 
 for path in /api/%2e%2e/_epicstaff/health /api/public/../x /api/..%2f_epicstaff/health \
@@ -194,6 +244,7 @@ done
 status=$(fetch "$unknown_plugin_origin$public_path")
 expect_status "an unknown plugin's API is 404" 404 "$status"
 expect_body "an unknown plugin's API has EpicStaff's error shape" '"code":"not_found"'
+expect_header "an unknown plugin's API is marked as the gateway's refusal" X-EpicStaff-Gateway-Deny not_found
 
 status=$(fetch "$plugin_origin/.well-known/epicstaff/config.json")
 expect_status "config.json is proxied to Django" 200 "$status"
@@ -230,6 +281,14 @@ case "$(header Content-Security-Policy-Report-Only)" in
   *"frame-src 'self' $scheme://*.$base_domain$port_suffix;"*) pass "EpicStaff frames the plugin hosts (frame-src)" ;;
   *) fail "EpicStaff frames the plugin hosts (frame-src): [$(header Content-Security-Policy-Report-Only)]" ;;
 esac
+
+# The sign-in pages open inside the plugin's frame, whose only ancestor is EpicStaff's own page:
+# EpicStaff must be able to frame them, so one X-Frame-Options, SAMEORIGIN.
+for path in "/plugin-login?continue=%2Fsmoke" "/plugin-choose-org?continue=%2Fsmoke"; do
+  status=$(fetch "$epicstaff_url$path")
+  expect_status "${path%%\?*} is served" 200 "$status"
+  expect_header_values "${path%%\?*} may be framed by EpicStaff itself, never DENY" X-Frame-Options SAMEORIGIN
+done
 
 status=$(fetch "$epicstaff_url/api/plugin-gateway/check/")
 expect_status "/api/plugin-gateway/ is not reachable" 404 "$status"

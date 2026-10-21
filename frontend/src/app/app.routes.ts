@@ -59,6 +59,15 @@ export const routes: Routes = [
         canActivate: [guestGuard],
     },
     {
+        // A plugin page's sign-in, often inside the plugin's frame. No guestGuard: a person who is already signed in
+        // continues the sign-in at once instead of being sent into EpicStaff.
+        path: 'plugin-login',
+        loadComponent: () =>
+            import('./features/plugins/pages/plugin-login-continue-page/plugin-login-continue-page.component').then(
+                (m) => m.PluginLoginContinuePageComponent
+            ),
+    },
+    {
         path: '',
         component: RoutedAuthShellComponent,
         canActivate: [authGuard, bootstrapGuard],
@@ -78,6 +87,16 @@ export const routes: Routes = [
                         (m) => m.UnassignedUserPageComponent
                     ),
                 canActivate: [unassignedGuard],
+            },
+            {
+                // Which organization a plugin page signs in to; signed in, without EpicStaff's layout, often inside
+                // the plugin's frame.
+                path: 'plugin-choose-org',
+                loadComponent: () =>
+                    import('./features/plugins/pages/plugin-org-chooser-page/plugin-org-chooser-page.component').then(
+                        (m) => m.PluginOrgChooserPageComponent
+                    ),
+                canActivate: [pluginsEnabledGuard],
             },
             {
                 path: '',

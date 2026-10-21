@@ -25,9 +25,55 @@ plugin sees it, and adds the context in the `X-EpicStaff-Plugin-Context` header.
 client sends in that header, in any spelling, is removed first. The plugin also never receives
 the browser's cookies, and the browser never receives cookies the plugin sets.
 
-In this version the gateway forwards only [public paths](../how-to/public-paths.md), with a
-public context. Every other path is answered `401 login_required` until people can log in to
-plugins.
+A request gets one of two kinds of context:
+
+- **Public**, on a [public path](../how-to/public-paths.md) the manifest declares: no person, no
+  organization, no permissions. Anyone can make these requests, logged in or not.
+- **User**, on every other path: the request comes from a person logged in to EpicStaff through
+  the plugin's page. The [JS SDK](js-sdk.md) logs the person in and sends the plugin login
+  token it gets ([token exchange](token-exchange.md)) as `Authorization: Bearer <token>` on the
+  plugin's own `/api/` calls. The gateway checks the token and the person's access, then
+  forwards the request with a user context. The plugin never sees the token.
+
+## Who is asking: user contexts
+
+The gateway forwards a request on a non-public path only when all of these hold:
+
+1. it carries a valid plugin login token for this plugin, unexpired and not altered;
+2. the person's account is active, and their password has not changed since the token was
+   issued;
+3. the plugin is still granted to the organization the token was issued in, and the grant is
+   active;
+4. the person is still a member of that organization, the organization is active, and the
+   person's role there includes the plugin's `read` action.
+
+Otherwise the gateway answers instead of the plugin, in EpicStaff's error shape:
+
+| Answer | Meaning | What the JS SDK does |
+|---|---|---|
+| `401 login_required` | The request has no acceptable token: none, expired, for another plugin, or no longer valid (checks 1–3) | Renews the token silently, once, and repeats the request |
+| `403 forbidden` | The token is fine, but the person may no longer use the plugin in that organization (check 4) | Reports that the person has no access, and does not retry |
+
+A change to an account, a membership, a role or a grant takes effect within 10 seconds. The token
+itself lives at most 15 minutes and is not ended by logging out of EpicStaff.
+
+The plugin never receives a credential for EpicStaff:
+
+- **The plugin login token** never reaches the plugin process. The gateway removes
+  `Authorization` on every non-public path, and on a public path when it holds a plugin login
+  token, whose context then stays public.
+- **EpicStaff's cookies and API keys** are removed before every request.
+
+On a public path any other `Authorization` header is passed through, so a plugin can check
+tokens it issued itself. The context is the only statement of who is asking; nothing the plugin
+receives lets it act in EpicStaff as that person.
+
+The gateway lets a person in on `read` alone. Any finer action (`update`, `delete`, ...) is the
+plugin's own check: `context.has_permission("update")`.
+
+A browser cannot set `Authorization` on a WebSocket, so a WebSocket from the plugin's page
+reaches the backend only on a public path ([frontend in the
+frame](../how-to/frontend-in-the-frame.md)).
 
 ## Format
 
@@ -39,7 +85,7 @@ A compact JWS (a signed JWT), signed with Ed25519.
 { "alg": "EdDSA", "typ": "epicstaff-plugin-context+jwt", "kid": "3f9c2a7b1e4d8a60" }
 ```
 
-**Claims**
+**Claims** of a user context
 
 ```json
 {
@@ -48,7 +94,25 @@ A compact JWS (a signed JWT), signed with Ed25519.
   "iat": 1792310400,
   "exp": 1792310460,
   "jti": "0d6f3c0b9a2e4f7d8c1b5a6e3f2d9c4b",
-  "plugin": { "identifier": "weather", "version": "0.2.0" },
+  "plugin": { "identifier": "weather", "version": "0.3.0" },
+  "org": { "id": 3, "name": "Acme" },
+  "user": { "id": 42, "email": "ada@acme.example.com", "name": "Ada" },
+  "permissions": ["read"],
+  "request": { "method": "GET", "path": "/api/whoami" },
+  "mode": "user"
+}
+```
+
+and of a public context
+
+```json
+{
+  "iss": "https://epicstaff.example.com",
+  "aud": "weather",
+  "iat": 1792310400,
+  "exp": 1792310460,
+  "jti": "7a1e5c9d3b2f4e6a8c0d1b3f5e7a9c2d",
+  "plugin": { "identifier": "weather", "version": "0.3.0" },
   "org": null,
   "user": null,
   "permissions": [],
@@ -65,10 +129,13 @@ A compact JWS (a signed JWT), signed with Ed25519.
 | `jti` | 32 random hex characters, unique per context |
 | `plugin` | The plugin's id and the version EpicStaff routed the request to |
 | `org` | `{id, name}` of the organization the request is made in, or `null` |
-| `user` | `{id, email, name}` of the person making the request, or `null` |
-| `permissions` | The plugin actions the person holds there (`read`, `update`, ...); `[]` when public |
+| `user` | `{id, email, name}` of the person making the request, or `null`. `name` is the name EpicStaff shows for them |
+| `permissions` | The plugin actions the person holds there (`read`, `update`, ...), in the order of the manifest's `user_permissions`; `[]` when public |
 | `request` | The request the context is for: its method and its canonical path, without the query string |
-| `mode` | `public` on a public path: `org` and `user` are `null` and `permissions` is empty. `user` is reserved for requests from a logged-in person |
+| `mode` | `user` for a logged-in person: `org` and `user` are set and `permissions` contains `read`. `public` on a public path: `org` and `user` are `null` and `permissions` is empty |
+
+Each `mode` comes only with its own shape: a context that breaks it is refused
+(`invalid_claims`).
 
 The models are `epicstaff_plugin.contracts.gateway_context.GatewayContext` and its parts. A
 newer EpicStaff may add claims; ignore claims you do not know.
@@ -134,7 +201,7 @@ Refused GET '/api/ping': gateway context expired
 | `bad_signature` | The signature does not verify: the token was altered or signed by someone else |
 | `expired`, `not_yet_valid` | Outside its lifetime, beyond the 30 s allowance |
 | `wrong_audience`, `wrong_issuer` | Issued for another plugin, or by another EpicStaff |
-| `invalid_claims` | A claim is missing or breaks the format above |
+| `invalid_claims` | A claim is missing or breaks the format above, such as a user context without `read` |
 | `request_mismatch` | Issued for another method or path |
 | `dot_segment` | The path has a `.` or `..` segment |
 
@@ -146,7 +213,7 @@ public address changed, or someone calling the plugin's port directly.
 
 ```python
 from epicstaff_plugin.gateway import context_from_scope
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 
 app = FastAPI()
 
@@ -154,7 +221,22 @@ app = FastAPI()
 @app.get("/api/ping")
 async def ping(request: Request) -> dict[str, str]:
     return {"status": "ok", "mode": context_from_scope(request.scope).mode}
+
+
+@app.delete("/api/places/{place_id}")
+async def delete_place(place_id: int, request: Request) -> None:
+    context = context_from_scope(request.scope)
+    if not context.has_permission("delete"):
+        raise HTTPException(403)
+    ...  # delete the place of context.org.id
 ```
 
-`context_from_scope` takes any ASGI scope (`request.scope`, `websocket.scope`). In tests, sign
-contexts with `epicstaff_plugin.testing.ContextSigner`; see the [Python SDK](python-sdk.md#testing).
+| On `GatewayContext` | Value |
+|---|---|
+| `is_user` | `True` for a user context: `user` and `org` are set |
+| `has_permission(action)` | Whether the person holds `action` (`"read"`, `"update"`, ...); always `False` in a public context. An action name that does not exist raises `ValueError` |
+
+`context_from_scope` takes any ASGI scope (`request.scope`, `websocket.scope`). Scope everything a
+person reads or changes to `context.org.id`: the same person may use the plugin in several
+organizations. In tests, sign contexts with `epicstaff_plugin.testing.ContextSigner`; see the
+[Python SDK](python-sdk.md#testing).

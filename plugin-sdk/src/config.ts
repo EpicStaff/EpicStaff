@@ -11,8 +11,16 @@ export interface PlatformConfig {
     frame_protocol: typeof FRAME_PROTOCOL_VERSION;
     /** The plugin's own API prefix, on the plugin's origin. */
     api_base: string;
-    /** Sign-in endpoints; `null` until EpicStaff offers plugin sign-in. */
-    login: unknown;
+    /** EpicStaff's sign-in endpoints; `null` for a plugin without a backend, which has nothing to sign in to. */
+    login: PlatformLogin | null;
+}
+
+/** Where a plugin page signs a person in. Both URLs are on `epicstaff_origin`. */
+export interface PlatformLogin {
+    /** EpicStaff's authorize endpoint, opened as a navigation (never fetched). */
+    authorize_url: string;
+    /** EpicStaff's token endpoint, which exchanges a code for a plugin login token. */
+    token_url: string;
 }
 
 export class PlatformConfigError extends Error {
@@ -77,8 +85,39 @@ export function parsePlatformConfig(value: unknown): PlatformConfig {
         epicstaff_origin: epicstaffOrigin,
         frame_protocol: FRAME_PROTOCOL_VERSION,
         api_base: apiBase,
-        login: value['login'] ?? null,
+        login: parseLogin(value['login'] ?? null, epicstaffOrigin),
     };
+}
+
+function parseLogin(value: unknown, epicstaffOrigin: string): PlatformLogin | null {
+    if (value === null) return null;
+    if (!isRecord(value)) throw new PlatformConfigError('"login" must be null or an object.');
+    const authorizeUrl = value['authorize_url'];
+    const tokenUrl = value['token_url'];
+    if (!isEndpointOn(authorizeUrl, epicstaffOrigin) || !isEndpointOn(tokenUrl, epicstaffOrigin)) {
+        throw new PlatformConfigError(
+            '"login.authorize_url" and "login.token_url" must be URLs on "epicstaff_origin", without a query.'
+        );
+    }
+    return { authorize_url: authorizeUrl, token_url: tokenUrl };
+}
+
+/** An absolute URL on `origin` with a path and no credentials, query or fragment. */
+function isEndpointOn(value: unknown, origin: string): value is string {
+    if (typeof value !== 'string') return false;
+    try {
+        const url = new URL(value);
+        return (
+            url.origin === origin &&
+            url.href === value &&
+            url.search === '' &&
+            url.hash === '' &&
+            !url.username &&
+            !url.password
+        );
+    } catch {
+        return false;
+    }
 }
 
 function isNonEmptyString(value: unknown): value is string {

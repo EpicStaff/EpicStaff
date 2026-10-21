@@ -30,7 +30,13 @@ from pydantic import (
     model_validator,
 )
 
-from epicstaff_plugin.contracts.manifest import IDENTIFIER_PATTERN, Action, Version
+from epicstaff_plugin.contracts.manifest import (
+    ACTIONS,
+    IDENTIFIER_PATTERN,
+    READ_ACTION,
+    Action,
+    Version,
+)
 
 CONTEXT_HEADER = "X-EpicStaff-Plugin-Context"
 CONTEXT_TYPE = "epicstaff-plugin-context+jwt"
@@ -146,8 +152,9 @@ class GatewayContext(_ContextContractModel):
     """The claims of a gateway context, the payload of `X-EpicStaff-Plugin-Context`.
 
     `mode` is `public` on a path the manifest declares public: there is no user and no
-    organization, and `permissions` is empty. `user` contexts carry the person's plugin
-    permissions in the organization the request is made in.
+    organization, and `permissions` is empty. A `user` context is a logged-in person's request:
+    it names the person and the organization, and carries the plugin actions the person holds
+    there, which always include `read` (without it the gateway refuses the request).
     """
 
     iss: Annotated[str, StringConstraints(min_length=1, max_length=2048)]
@@ -163,7 +170,8 @@ class GatewayContext(_ContextContractModel):
     org: ContextOrganization | None
     user: ContextUser | None
     permissions: list[Action]
-    """The plugin actions (`read`, `update`, ...) the user holds; empty for a public request."""
+    """The plugin actions (`read`, `update`, ...) the user holds, in manifest order; empty for
+    a public request."""
 
     request: ContextRequest
     mode: ContextMode
@@ -180,7 +188,27 @@ class GatewayContext(_ContextContractModel):
             self.user is not None or self.org is not None or self.permissions
         ):
             raise ValueError("a public context has no user, no organization and no permissions")
+        if self.mode == "user" and (
+            self.user is None or self.org is None or READ_ACTION not in self.permissions
+        ):
+            raise ValueError("a user context has a user, an organization and the read permission")
         return self
+
+    @property
+    def is_user(self) -> bool:
+        """Whether a logged-in person makes the request; `user` and `org` are then set."""
+        return self.mode == "user"
+
+    def has_permission(self, action: Action) -> bool:
+        """Whether the person holds `action` on this plugin in the request's organization.
+
+        Always false in a public context, which carries no permissions. An `action` that is
+        not a plugin action (`read`, `create`, `update`, `delete`, `export`, `use`) raises
+        `ValueError`, so a misspelt check fails loudly instead of denying everyone.
+        """
+        if action not in ACTIONS:
+            raise ValueError(f"{action!r} is not a plugin action: one of {', '.join(ACTIONS)}")
+        return action in self.permissions
 
 
 def encode_context(context: GatewayContext, private_key: Ed25519PrivateKey, kid: str) -> str:

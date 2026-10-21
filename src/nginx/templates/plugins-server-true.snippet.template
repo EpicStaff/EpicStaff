@@ -5,7 +5,8 @@
 # this container mounts read-only, and the platform config the SPA loads at start-up. /api/ is
 # the plugin's own backend, behind the gateway: every request is first checked by django_app
 # (auth_request), which names the upstream and signs the context the plugin verifies. The
-# platform's own paths answer 404.
+# platform's login callback pages are the same static files on every host; the platform's other
+# paths answer 404.
 
 # HSTS for the plugin hosts when nginx terminates TLS (NGINX_SSL_MODE=on), as EpicStaff's own
 # server does. A variable, because the header has to be repeated in every location.
@@ -36,6 +37,19 @@ map $plugin_deny $plugin_deny_retry_after {
 map $plugin_deny $plugin_deny_www_authenticate {
     login   Bearer;
     default "";
+}
+
+# X-EpicStaff-Gateway-Deny, on every answer the gateway gives itself instead of the plugin's: its
+# reason. A plugin's page tells the gateway's 401 (sign in again) and 403 (access lost) from the
+# plugin's own by it; a plugin can never send it (/api/ hides it from the plugin's answers). A
+# reason nobody named is refused as unavailable, as its status is.
+map $plugin_deny $plugin_gateway_deny {
+    login        login;
+    not_found    not_found;
+    rate_limited rate_limited;
+    too_large    too_large;
+    forbidden    forbidden;
+    default      unavailable;
 }
 
 # 1 for a caller on the plugins network: a plugin backend or the node. It may use EpicStaff only
@@ -86,6 +100,48 @@ server {
         # from framing the response; frame-ancestors in the security headers decides that here.
         proxy_hide_header Set-Cookie;
         proxy_hide_header X-Frame-Options;
+    }
+
+    # The login callback pages, the same files on every plugin host (src/nginx/plugin-platform,
+    # mounted read-only). EpicStaff's authorize endpoint sends the browser here with its answer in
+    # the URL fragment, which callback.js hands to the plugin's page on this origin. Static
+    # files, never proxied: nothing sent here reaches Django or a plugin. Each page's own policy
+    # runs only this host's callback.js; the frame-ancestors of the security headers lets the
+    # silent page load in the plugin's hidden frame inside EpicStaff. Revalidated on every load,
+    # so an EpicStaff upgrade reaches every browser at once.
+    location = /.well-known/epicstaff/callback.html {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; base-uri 'none'; form-action 'none'" always;
+        add_header Cache-Control no-cache always;
+        limit_except GET HEAD {
+            deny all;
+        }
+        types { }
+        default_type text/html;
+        alias /usr/share/nginx/plugin-platform/callback.html;
+    }
+
+    location = /.well-known/epicstaff/silent-callback.html {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; base-uri 'none'; form-action 'none'" always;
+        add_header Cache-Control no-cache always;
+        limit_except GET HEAD {
+            deny all;
+        }
+        types { }
+        default_type text/html;
+        alias /usr/share/nginx/plugin-platform/silent-callback.html;
+    }
+
+    location = /.well-known/epicstaff/callback.js {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Cache-Control no-cache always;
+        limit_except GET HEAD {
+            deny all;
+        }
+        types { }
+        default_type application/javascript;
+        alias /usr/share/nginx/plugin-platform/callback.js;
     }
 
     # The platform's other paths on every plugin host: refused here rather than left to the SPA
@@ -154,6 +210,8 @@ server {
         proxy_ignore_headers X-Accel-Redirect;
         proxy_hide_header Set-Cookie;
         proxy_hide_header X-Frame-Options;
+        # Only the gateway's own refusals carry it, so a page can trust it.
+        proxy_hide_header X-EpicStaff-Gateway-Deny;
         proxy_connect_timeout 5s;
         # SSE and WebSocket: no buffering, long reads (as /api/run-session/subscribe/).
         proxy_buffering off;
@@ -196,6 +254,7 @@ server {
         include /etc/nginx/conf.d/plugins-security-headers.snippet;
         add_header WWW-Authenticate $plugin_deny_www_authenticate always;
         add_header Retry-After $plugin_deny_retry_after always;
+        add_header X-EpicStaff-Gateway-Deny $plugin_gateway_deny always;
         default_type application/json;
         if ($plugin_deny = login) {
             return 401 '{"status_code":401,"code":"login_required","message":"Log in through EpicStaff to use this plugin."}';
@@ -217,6 +276,7 @@ server {
 
     location @plugin_request_too_large {
         include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header X-EpicStaff-Gateway-Deny too_large always;
         default_type application/json;
         return 413 '{"status_code":413,"code":"request_too_large","message":"The request body is too large."}';
     }
@@ -224,6 +284,7 @@ server {
     location @plugin_unavailable {
         include /etc/nginx/conf.d/plugins-security-headers.snippet;
         add_header Retry-After 30 always;
+        add_header X-EpicStaff-Gateway-Deny unavailable always;
         default_type application/json;
         return 503 '{"status_code":503,"code":"plugin_unavailable","message":"The plugin is not available right now."}';
     }

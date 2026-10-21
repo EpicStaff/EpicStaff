@@ -1,7 +1,7 @@
 {
     "name": "@epicstaff/plugin-sdk",
     "version": "0.1.0",
-    "description": "Browser SDK for EpicStaff plugin pages: platform config, frame protocol 1, navigation sync and theme tokens.",
+    "description": "Browser SDK for EpicStaff plugin pages: platform config, frame protocol 1, navigation sync, theme tokens, sign-in through EpicStaff and popup hand-off.",
     "private": true,
     "license": "SEE LICENSE IN ../LICENSE.md",
     "type": "module",
@@ -14,6 +14,7 @@
             "default": "./dist/index.js"
         },
         "./contracts/frame-protocol.json": "./contracts/frame-protocol.json",
+        "./contracts/login-protocol.json": "./contracts/login-protocol.json",
         "./package.json": "./package.json"
     },
     "types": "./dist/index.d.ts",

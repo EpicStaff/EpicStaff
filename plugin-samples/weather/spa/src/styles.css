@@ -12,6 +12,8 @@
     --es-color-border: #c8ceda24;
     --es-color-divider-subtle: #c8ceda14;
     --es-color-warning: #ffcf00;
+    --es-color-error: #dc5b60;
+    --es-focus-ring: 0 0 0 2px #685fff66;
     --es-font-family: Inter, 'Helvetica Neue', sans-serif;
     color-scheme: dark;
 }
@@ -42,6 +44,12 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+}
+
+.title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .title {
@@ -82,6 +90,47 @@ body {
     border-left: 3px solid var(--es-color-warning);
     border-radius: 4px;
     background: var(--es-color-surface);
+}
+
+.note--error {
+    border-left-color: var(--es-color-error);
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.button {
+    align-self: flex-start;
+    padding: 6px 12px;
+    border: 1px solid var(--es-color-accent);
+    border-radius: 8px;
+    background: var(--es-color-accent);
+    color: var(--es-color-text);
+    font: inherit;
+    cursor: pointer;
+}
+
+.button:hover {
+    border-color: var(--es-color-accent-hover);
+    background: var(--es-color-accent-hover);
+}
+
+.button:focus-visible {
+    outline: none;
+    box-shadow: var(--es-focus-ring);
+}
+
+.button--secondary {
+    border-color: var(--es-color-border);
+    background: transparent;
+}
+
+.button--secondary:hover {
+    border-color: var(--es-color-accent-hover);
+    background: transparent;
 }
 
 .places {

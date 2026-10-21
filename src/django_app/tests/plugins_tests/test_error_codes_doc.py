@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from plugins import exceptions
+from plugins.identity.login_protocol import CALLBACK_ERRORS
 from utils.exceptions import CustomAPIExeption
 
 ERROR_CODES_DOC = Path(__file__).resolve().parents[4] / "docs" / "plugins" / "reference" / "error-codes.md"
@@ -43,3 +44,15 @@ def test_every_plugin_error_code_is_documented_once_and_nothing_else():
 
 def test_every_gateway_code_is_documented():
     assert set(_documented("Gateway codes")) == GATEWAY_CODES
+
+
+def test_the_login_codes_epicstaff_s_api_answers_with_are_documented():
+    assert {"unsupported_media_type", "throttled"} <= set(_documented("Codes from EpicStaff's API"))
+
+
+def test_no_code_is_documented_both_as_a_plugin_code_and_as_an_epicstaff_code():
+    assert not set(_documented("Plugin API codes")) & set(_documented("Codes from EpicStaff's API"))
+
+
+def test_every_login_callback_error_is_documented():
+    assert tuple(_documented("Login callback errors")) == CALLBACK_ERRORS

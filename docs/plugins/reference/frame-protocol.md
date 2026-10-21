@@ -49,8 +49,14 @@ Every plugin host serves `/.well-known/epicstaff/config.json` on the plugin's ow
 }
 ```
 
-`epicstaff_origin` is the only origin the page may talk to over this protocol. `login` stays `null` until EpicStaff
-offers sign-in to plugin pages.
+`epicstaff_origin` is the only origin the page may talk to over this protocol. `login` names EpicStaff's sign-in
+endpoints for a plugin with a backend and is `null` for a frontend-only plugin; see [JS SDK](js-sdk.md#platform-config).
+
+### Sign-in
+
+Login is not part of the frame protocol; see [JS SDK](js-sdk.md). A page signs the person in on its own origin and
+through EpicStaff's addresses, the same way inside EpicStaff and on its own; the host page takes no part. A sign-in
+that navigates the frame makes it send a new `es:ready`, which EpicStaff answers as for any reload.
 
 ## Handshake
 
@@ -183,8 +189,8 @@ plugin.onThemeChange((theme) => console.log(theme.mode));
 answers `nav.navigate` by replacing the address and firing `popstate` (and `hashchange` in hash mode), which most
 routers follow. Pass `onNavigate` to call your router directly, and `applyTheme: false` to apply the theme yourself.
 
-The [Weather sample](../../../plugin-samples/weather/) is a complete page built this way: two routes, colours only from
-the tokens, no network calls besides the platform config.
+The [Weather sample](../../../plugin-samples/weather/) is a complete page built this way: routes kept in the address
+path, colours only from the tokens, and sign-in through the SDK.
 
 ## Without the SDK
 

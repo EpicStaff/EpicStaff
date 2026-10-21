@@ -18,6 +18,7 @@ export type PluginErrorCode =
     | 'package_file_mismatch'
     | 'untrusted_not_acknowledged'
     | 'plugin_not_found'
+    | 'invalid_authorize_request'
     | 'plugin_not_running'
     | 'plugin_already_granted'
     | 'plugin_has_no_backend'

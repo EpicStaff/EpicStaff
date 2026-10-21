@@ -40,7 +40,7 @@ class PublicPluginView(APIView):
 
 class PluginPublicConfigView(PublicPluginView):
     def get(self, request, identifier: str):
-        plugin = _running_plugin(identifier, "icon_bytes", "manifest")
+        plugin = _running_plugin(identifier, "icon_bytes")
         response = Response(PublicConfigSerializer(plugin).data)
         response["Cache-Control"] = CONFIG_CACHE_CONTROL
         return response

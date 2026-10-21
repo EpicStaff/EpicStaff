@@ -18,3 +18,11 @@ export function facts(entries: readonly (readonly [string, string])[]): HTMLDLis
     }
     return list;
 }
+
+/** A button that runs `onClick`. */
+export function button(label: string, onClick: () => void): HTMLButtonElement {
+    const created = element('button', 'button', label);
+    created.type = 'button';
+    created.addEventListener('click', onClick);
+    return created;
+}

@@ -3,8 +3,10 @@ from importlib import import_module, reload
 
 import pytest
 from django.conf import settings as django_settings
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import clear_url_caches
+from django_redis import get_redis_connection
 from epicstaff_plugin.signing import generate_secret_key
 from plugins.gateway.gateway_service import snapshot_cache
 from plugins.gateway.gateway_service import GatewayDecisionService
@@ -267,3 +269,32 @@ def gateway_in_request_thread(monkeypatch):
         "plugins.gateway.gateway_check_view._decisions",
         GatewayDecisionService(in_request_thread=True),
     )
+
+
+@pytest.fixture
+def clean_login_state():
+    """Forget authorization codes, token-exchange throttle counts and the gateway's person cache."""
+
+    def _clean():
+        cache.delete_pattern("throttle_plugin_token_*")
+        cache.delete_pattern("plugins:gw:person:*")
+        connection = get_redis_connection("default")
+        codes = connection.keys("plugins:auth_code:*")
+        if codes:
+            connection.delete(*codes)
+
+    _clean()
+    yield
+    _clean()
+
+
+@pytest.fixture
+def login_platform(plugins_enabled, package_store, spa_root, clean_login_state, settings):
+    """The plugin platform on, over plain http (the refresh cookie is `auth.refresh`)."""
+    settings.REFRESH_COOKIE_SECURE = False
+
+
+@pytest.fixture
+def loginable_weather(backend_plugin, login_platform):
+    """Weather with a backend, approved and running: people can log in to it."""
+    return mark_running(backend_plugin())

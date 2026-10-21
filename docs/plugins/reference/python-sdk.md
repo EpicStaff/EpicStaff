@@ -23,6 +23,8 @@ Until the package is published, a plugin's lock gets it from a wheel built from 
 `plugin-samples/weather/backend/src/weather_plugin/app.py` is a complete one. In outline:
 
 ```python
+from typing import Any
+
 from epicstaff_plugin.gateway import context_from_scope
 from epicstaff_plugin.runtime import runtime_config
 from fastapi import FastAPI, Request
@@ -35,13 +37,23 @@ async def ping(request: Request) -> dict[str, str]:
     return {"status": "ok", "mode": context_from_scope(request.scope).mode}
 
 
+@app.get("/api/whoami")
+async def whoami(request: Request) -> dict[str, Any]:
+    context = context_from_scope(request.scope)
+    return context.model_dump(
+        mode="json", include={"mode", "user", "org", "permissions", "request"}
+    )
+
+
 @app.get("/api/settings")
 async def settings() -> dict[str, str | None]:
     return {"units": runtime_config().setting("units")}
 ```
 
-with `"backend": {"python": "3.13", "entrypoint": "weather_plugin.app:app"}` in the manifest.
-Turning off FastAPI's generated pages keeps the plugin's public address to the routes you wrote.
+with `"backend": {"python": "3.13", "entrypoint": "weather_plugin.app:app"}` in the manifest and
+`/api/ping` declared as a public path. `/api/whoami` is reached only by a logged-in person, so its
+context is always a user context. Turning off FastAPI's generated pages keeps the plugin's public
+address to the routes you wrote.
 
 ## `epicstaff_plugin.serve`
 
@@ -79,7 +91,16 @@ To run your backend on your machine the way the node does, write a runtime file 
 `GatewayContext` (from `epicstaff_plugin.contracts.gateway_context`) has the claims as
 attributes: `context.mode`, `context.user.email`, `context.org.id`, `context.permissions`,
 `context.request.path`, and so on; `context.model_dump(mode="json")` gives the claims as a
-dictionary.
+dictionary. Two predicates answer the usual questions:
+
+| Predicate | Answer |
+|---|---|
+| `context.is_user` | `True` when a logged-in person makes the request (`mode` is `user`); `context.user` and `context.org` are then set and `permissions` contains `read`. `False` on a public path |
+| `context.has_permission(action)` | Whether the person holds the plugin action `action` (`"read"`, `"create"`, `"update"`, `"delete"`, `"export"`, `"use"`) in the request's organization; always `False` in a public context. Any other name raises `ValueError`, so a misspelt check fails loudly instead of refusing everyone |
+
+The gateway lets a person in on `read` alone, so check finer actions yourself:
+`if not context.has_permission("update"): ...`. What `401 login_required` and `403 forbidden` from
+the gateway mean is in [Gateway context](gateway-context.md#who-is-asking-user-contexts).
 
 ## `epicstaff_plugin.runtime`
 
@@ -120,7 +141,7 @@ itself, which no EpicStaff trusts, so never import it in production code.
 | `ContextSigner(plugin_identifier="sample", plugin_version="0.1.0", issuer="https://epicstaff.test")` | A gateway with its own Ed25519 key |
 | `signer.headers(method, path, **fields)` | `{"X-EpicStaff-Plugin-Context": <token>}` for a request; `fields` as for `context` |
 | `signer.issue(method, path, **fields)` | Just the token |
-| `signer.context(method, path, *, mode="public", user=None, org=None, permissions=(), issued_at=None, lifetime_seconds=60)` | The `GatewayContext` it would sign |
+| `signer.context(method, path, *, mode="public", user=None, org=None, permissions=None, issued_at=None, lifetime_seconds=60)` | The `GatewayContext` it would sign. With `mode="user"`, whichever of `user`, `org` and `permissions` is not given becomes a test member (`epicstaff_plugin.testing.DEFAULT_USER`), a test organization (`DEFAULT_ORGANIZATION`) and `["read"]`. A context that breaks the rules of its mode raises `pydantic.ValidationError` |
 | `signer.sign_claims(claims, headers=None)` | Signs any claims, for tests of contexts that must be refused |
 | `signer.jwks` | Its public key, as a `Jwks` |
 | `write_runtime_file(path, *, signer=None, **fields)` | Writes a valid runtime file whose plugin, issuer and JWKS are the signer's; `fields` replace top-level fields, such as `settings={"units": "imperial"}` |
@@ -135,8 +156,8 @@ from fastapi.testclient import TestClient
 from weather_plugin.app import app
 
 
-def test_ping_is_public(tmp_path, monkeypatch):
-    signer = ContextSigner(plugin_identifier="weather", plugin_version="0.2.0")
+def test_ping_is_public_and_whoami_names_the_person(tmp_path, monkeypatch):
+    signer = ContextSigner(plugin_identifier="weather", plugin_version="0.3.0")
     runtime_file = tmp_path / "runtime.json"
     write_runtime_file(runtime_file, signer=signer)
     monkeypatch.setenv("EPICSTAFF_PLUGIN_RUNTIME_FILE", str(runtime_file))
@@ -147,6 +168,12 @@ def test_ping_is_public(tmp_path, monkeypatch):
         "mode": "public",
     }
     assert client.get("/api/ping").status_code == 401
+
+    ada = {"id": 42, "email": "ada@acme.example.com", "name": "Ada"}
+    headers = signer.headers(
+        "GET", "/api/whoami", mode="user", user=ada, org={"id": 3, "name": "Acme"}
+    )
+    assert client.get("/api/whoami", headers=headers).json()["user"] == ada
 ```
 
 (`TestClient` needs `httpx` in your test dependencies.)

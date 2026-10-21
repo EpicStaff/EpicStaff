@@ -119,3 +119,38 @@ def log_signing_key_rotation(new_kid: str, retired_kids: list[str]) -> None:
         kid=new_kid,
         retired=",".join(retired_kids) or "none",
     )
+
+
+# The login lines name people by id only and never carry a code, verifier, token, cookie or
+# `state`: the code and the token are credentials, and `state` binds the browser's login.
+def log_login_token_issued(*, user_id: int, org_id: int, identifier: str, jti: str) -> None:
+    logger.info(
+        "plugins.login.token_issued user_id={user_id} org_id={org_id} plugin={identifier} "
+        "jti={jti}",
+        user_id=user_id,
+        org_id=org_id,
+        identifier=identifier,
+        jti=jti,
+    )
+
+
+def log_login_access_denied(*, user_id: int, identifier: str, reason: str) -> None:
+    """Log a refused plugin login; `reason` is `not_eligible`, `org_not_eligible` or
+    `no_eligible_org`."""
+    logger.info(
+        "plugins.login.access_denied user_id={user_id} plugin={identifier} reason={reason}",
+        user_id=user_id,
+        identifier=identifier,
+        reason=reason,
+    )
+
+
+def log_origin_refused(*, origin: str, method: str, path: str) -> None:
+    """Log a request from a plugin page that EpicStaff refused; values are quoted, as the
+    browser's page controls the path and a non-browser client the origin and method too."""
+    logger.info(
+        "plugins.origin_refused origin={origin!r} method={method!r} path={path!r}",
+        origin=origin,
+        method=method,
+        path=path,
+    )

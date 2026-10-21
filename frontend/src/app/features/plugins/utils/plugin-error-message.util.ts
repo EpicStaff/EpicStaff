@@ -25,6 +25,7 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
         'damaged. Reject it and upload it again.',
     untrusted_not_acknowledged: 'Confirm that you accept the risk of installing an untrusted package.',
     plugin_not_found: 'This plugin no longer exists.',
+    invalid_authorize_request: 'This sign-in link is not valid. Open the plugin again from EpicStaff.',
     plugin_not_running: 'The plugin is not running yet, so it cannot be granted.',
     plugin_already_granted: 'This organization already has the plugin.',
     plugin_has_no_backend: 'This plugin has no backend, so it has no settings, limits or runtime.',

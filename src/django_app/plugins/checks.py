@@ -23,6 +23,7 @@ GATEWAY_SECRET_CHECK_ID = "plugins.E006"
 NODE_KEY_CHECK_ID = "plugins.E007"
 NODE_UID_RANGE_CHECK_ID = "plugins.E008"
 PLATFORM_MAXIMUMS_CHECK_ID = "plugins.E009"
+EPICSTAFF_HOST_CHECK_ID = "plugins.E010"
 
 MIN_SHARED_SECRET_LENGTH = 32
 UNCONFIGURED = "none"
@@ -53,6 +54,7 @@ def check_plugin_platform_settings(app_configs, **kwargs) -> list[checks.Error]:
         *_frontend_origin_errors(),
         *_trusted_key_errors(),
         *_cors_errors(),
+        *_epicstaff_host_errors(),
         *_shared_secret_errors(
             "PLUGINS_GATEWAY_SECRET",
             settings.PLUGINS_GATEWAY_SECRET,
@@ -201,6 +203,28 @@ def _cors_errors() -> list[checks.Error]:
             id=CORS_ORIGINS_CHECK_ID,
         )
         for origin in plugin_origins
+    ]
+
+
+def _epicstaff_host_errors() -> list[checks.Error]:
+    # A plugin identifier could name EpicStaff's own host, and the Origin policy, which refuses
+    # every plugin-domain origin, would refuse EpicStaff's own pages.
+    base_domain = settings.PLUGINS_BASE_DOMAIN
+    if not _is_dns_name(base_domain):
+        return []
+    host = _origin_host(settings.FRONTEND_BASE_URL)
+    if not _is_under(host, base_domain):
+        return []
+    return [
+        checks.Error(
+            f"DJANGO_FRONTEND_BASE_URL's host ({host!r}) is PLUGINS_BASE_DOMAIN "
+            f"({base_domain!r}) or a host under it.",
+            hint=(
+                "Serve the plugins from a domain beside EpicStaff's host, such as "
+                "plugins.example.com for epicstaff.example.com, never one that contains it."
+            ),
+            id=EPICSTAFF_HOST_CHECK_ID,
+        )
     ]
 
 

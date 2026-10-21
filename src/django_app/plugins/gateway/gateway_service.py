@@ -5,6 +5,11 @@ The answer is a status and headers only: 200 with the upstream and a signed cont
 a bare 404 when the caller does not hold the gateway secret. The checks run in a fixed
 order, so an earlier refusal never reveals what a later check would say.
 
+A path the manifest does not declare public needs a plugin login token. 401 `login` means the
+token is not acceptable (missing, invalid, expired, or its user, password or grant no longer
+holds): the SDK renews it once. 403 `forbidden` means the token is fine but the person may no
+longer use the plugin: the SDK stops. A login token never reaches the plugin process.
+
 Every request to a plugin's `/api/` waits for this check, so the view is asynchronous and the
 decision runs in one worker thread: it never queues behind Django's one thread for
 synchronous views. A plugin's static data (version, upstream, public paths) is kept in
@@ -22,12 +27,19 @@ from typing import Any
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import close_old_connections
+from epicstaff_plugin.contracts.gateway_context import ContextOrganization, ContextUser
 from epicstaff_plugin.contracts.manifest import PublicPath
 
 from plugins.exceptions import SigningKeyMissingError
-from plugins.gateway.context_builder import public_context
+from plugins.gateway.context_builder import public_context, user_context
 from plugins.gateway.path_policy import canonical_path, match_public_path
+from plugins.gateway.person_cache import person_for
 from plugins.gateway.public_rate_limiter import PublicRateLimiter
+from plugins.identity.plugin_login_tokens import (
+    PluginLoginTokenRejected,
+    looks_like_plugin_login_token,
+    verify_plugin_login_token,
+)
 from plugins.models import (
     PlacementHealth,
     PlacementObservedState,
@@ -48,6 +60,7 @@ UPSTREAM_HEADER = "X-Plugin-Upstream"
 CONTEXT_HEADER = "X-Plugin-Context"
 FORWARD_AUTHORIZATION_HEADER = "X-Plugin-Forward-Authorization"
 
+DENY_FORBIDDEN = "forbidden"
 DENY_LOGIN = "login"
 DENY_NOT_FOUND = "not_found"
 DENY_RATE_LIMITED = "rate_limited"
@@ -70,6 +83,7 @@ class GatewayCheckRequest:
     content_length: str
     transfer_encoding: str
     client_address: str
+    authorization: str
 
     @classmethod
     def from_meta(cls, meta) -> "GatewayCheckRequest":
@@ -82,6 +96,7 @@ class GatewayCheckRequest:
             content_length=meta.get("HTTP_X_ORIGINAL_CONTENT_LENGTH", "").strip(),
             transfer_encoding=meta.get("HTTP_X_ORIGINAL_TRANSFER_ENCODING", "").strip(),
             client_address=meta.get("HTTP_X_REAL_IP", "").strip(),
+            authorization=meta.get("HTTP_AUTHORIZATION", ""),
         )
 
 
@@ -170,8 +185,7 @@ def _deny(status: int, reason: str) -> GatewayDecision:
 
 
 class GatewayDecisionService:
-    """Decides one gateway check. Paths outside public paths need a login once people can
-    log in to plugins; until then they are refused.
+    """Decides one gateway check. Paths outside public paths need a plugin login token.
 
     `decide_async` runs the whole decision in one worker thread, off the event loop.
     `in_request_thread=True` runs it in the calling thread instead, for tests whose
@@ -204,7 +218,7 @@ class GatewayDecisionService:
             return _deny(403, DENY_UNAVAILABLE)
         matched = match_public_path(list(snapshot.public_paths), check.method, path)
         if matched is None:
-            return _deny(401, DENY_LOGIN)
+            return _logged_in_decision(check, snapshot, path)
         rule_index, rule = matched
         if _body_too_large(check, rule):
             return _deny(403, DENY_TOO_LARGE)
@@ -222,16 +236,65 @@ class GatewayDecisionService:
             )
         except SigningKeyMissingError:
             return _deny(403, DENY_UNAVAILABLE)
-        return GatewayDecision(
-            status=200,
-            headers={
-                UPSTREAM_HEADER: snapshot.upstream,
-                CONTEXT_HEADER: context,
-                # A public path's own Authorization (a plugin's API token, say) is the
-                # plugin's business, so it is passed on.
-                FORWARD_AUTHORIZATION_HEADER: "1",
-            },
+        bearer = _bearer_token(check.authorization)
+        # A public path's own Authorization (a plugin's API token, say) is the plugin's
+        # business, so it is passed on; a plugin login token is EpicStaff's, and stays here.
+        forward = bearer is None or not looks_like_plugin_login_token(bearer)
+        return _forward(snapshot, context, forward_authorization=forward)
+
+
+def _logged_in_decision(
+    check: GatewayCheckRequest, snapshot: PluginSnapshot, path: str
+) -> GatewayDecision:
+    """Decide a request to a path that is not public: it needs a valid plugin login token."""
+    token = _bearer_token(check.authorization)
+    if token is None:
+        return _deny(401, DENY_LOGIN)
+    try:
+        claims = verify_plugin_login_token(token, snapshot.identifier)
+    except PluginLoginTokenRejected:
+        return _deny(401, DENY_LOGIN)
+    person = person_for(claims)
+    if not person.accepts(claims):
+        return _deny(401, DENY_LOGIN)
+    if not person.may_use:
+        return _deny(403, DENY_FORBIDDEN)
+    try:
+        context = user_context(
+            PluginOrigins().epicstaff_origin,
+            snapshot.identifier,
+            snapshot.version,
+            check.method,
+            path,
+            organization=ContextOrganization(id=claims.org_id, name=person.organization_name),
+            user=ContextUser(id=claims.user_id, email=person.email, name=person.name),
+            permissions=person.actions,
         )
+    except SigningKeyMissingError:
+        return _deny(403, DENY_UNAVAILABLE)
+    return _forward(snapshot, context, forward_authorization=False)
+
+
+def _forward(
+    snapshot: PluginSnapshot, context: str, *, forward_authorization: bool
+) -> GatewayDecision:
+    return GatewayDecision(
+        status=200,
+        headers={
+            UPSTREAM_HEADER: snapshot.upstream,
+            CONTEXT_HEADER: context,
+            FORWARD_AUTHORIZATION_HEADER: "1" if forward_authorization else "0",
+        },
+    )
+
+
+def _bearer_token(authorization: str) -> str | None:
+    """The token of `Authorization: Bearer <token>` (the scheme in any case), or None."""
+    scheme, _, token = authorization.strip().partition(" ")
+    token = token.strip()
+    if scheme.lower() != "bearer" or not token or any(character.isspace() for character in token):
+        return None
+    return token
 
 
 def _releasing_connections(function: Callable[..., Any]) -> Callable[..., Any]:

@@ -18,6 +18,15 @@ passing it on. A deployment whose plugins are all frontend-only does not need th
   [What stops at start-up](#what-stops-at-start-up)).
 - **A domain name.** EpicStaff must be reached by a domain name; a deployment reached by an IP
   address cannot use plugins.
+- **EpicStaff and the plugins on one site.** EpicStaff's host and the plugin hosts must share a
+  registrable domain: `epicstaff.example.com` with `plugins.example.com` works,
+  `epicstaff.example.com` with `plugins.example.net` does not. A plugin shown in EpicStaff's frame
+  signs its user in through EpicStaff inside that frame, and the browser sends EpicStaff's login
+  cookie (`SameSite=Lax`) there only when the frame and the page around it are the same site.
+  Otherwise sign-in works only when the plugin is opened in a tab of its own.
+- **EpicStaff outside the plugin domain.** EpicStaff's own host must not be the base domain or a
+  name under it (`plugins.example.com`, `app.plugins.example.com`); Django refuses to start then
+  (`plugins.E010`).
 - **One wildcard DNS record**, `*.plugins.example.com`, pointing at the same address as EpicStaff.
 - **One wildcard TLS certificate** for `*.plugins.example.com`. Let's Encrypt issues wildcard
   certificates only through the DNS-01 challenge.
@@ -71,7 +80,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_STORAGE_BUCKET` | `epicstaff-plugins` | The bucket in EpicStaff's storage that keeps uploaded packages. Created on the first upload. |
 | `PLUGINS_GATEWAY_SECRET` | `none` | A random value of at least 32 characters, made of letters, digits and `. _ ~ + / = -`: `openssl rand -hex 32`. nginx sends it with every gateway check, and Django answers a check without it with 404. Required with plugins on. |
 | `DJANGO_FRONTEND_BASE_URL` | already set | The exact origin people open EpicStaff at, such as `https://epicstaff.example.com`: scheme, host and port only, no path (a trailing `/` is allowed). Only this origin may frame a plugin page, so any other value (the development default `http://localhost:4200`, a different port) leaves every plugin page blank. It is also the issuer of the signed context plugin backends verify. |
-| `DJANGO_REFRESH_COOKIE_SECURE` | already set | `true` on HTTPS. |
+| `DJANGO_REFRESH_COOKIE_SECURE` | already set | `true` on HTTPS. It also chooses the name and path of EpicStaff's login cookie (see [Sign-in and EpicStaff's login cookie](#sign-in-and-epicstaffs-login-cookie)). |
 | `DJANGO_ALLOWED_HOSTS` | already set | Only if you restrict it (the default is `*`): add `.plugins.example.com`, because each plugin host fetches its configuration from Django under its own host name, and keep `localhost`, the host name of nginx's gateway checks and of the plugin node's requests. |
 | `DJANGO_SGI_WORKERS` | `1` | **At least `2`** once plugins have real traffic. Every request to a plugin's `/api/` asks Django first (the gateway check), and each Django worker is replaced after `DJANGO_SGI_MAX_REQUESTS` requests. With one worker, every replacement pauses all of EpicStaff and every plugin for a few seconds, and plugin traffic makes replacements frequent. With two or more, the others keep answering while one is replaced. Each worker adds Django's memory and its database connections (see `DJANGO_DB_POOL_MAX_SIZE`). |
 
@@ -139,6 +148,7 @@ Wrong values stop a container with a message instead of serving a broken plugin 
 | `plugins.E007` | `PLUGINS_NODE_KEY` is `none` or shorter than 32 characters. |
 | `plugins.E008` | `PLUGINS_NODE_UID_RANGE` is not `<start>-<end>` with 10000 < start ≤ end < 60000 and at least 10 ids. |
 | `plugins.E009` | A `PLUGINS_MAX_*` value is not a positive whole number. |
+| `plugins.E010` | The host of `DJANGO_FRONTEND_BASE_URL` is `PLUGINS_BASE_DOMAIN` or a name under it. A plugin's address could then be EpicStaff's own, and EpicStaff would refuse its own pages as a plugin's. |
 
 **epicstaff-nginx** exits with an `ERROR:` line when `PLUGINS_ENABLED` is not a boolean, and, with
 plugins on, when `PLUGINS_BASE_DOMAIN` is not a lower-case DNS name of two or more labels,
@@ -158,9 +168,9 @@ at start-up; Docker then restarts it, and its log names the variable or the port
 
 ## Check it
 
-After a SuperAdmin has approved a plugin with a backend (the sample `weather` at version 0.2.0
-answers its public path `GET /api/ping`), check nginx's plugin routes and the gateway from any
-machine that reaches EpicStaff:
+After a SuperAdmin has approved a plugin with a backend (the sample `weather`, version 0.3.0,
+answers its public path `GET /api/ping`, and `GET /api/whoami` for a signed-in person), check
+nginx's plugin routes and the gateway from any machine that reaches EpicStaff:
 
 ```bash
 EPICSTAFF_URL=https://epicstaff.example.com PLUGINS_BASE_DOMAIN=plugins.example.com \
@@ -168,17 +178,76 @@ PLUGIN_IDENTIFIER=weather PLUGINS_MAX_PACKAGE_MB=300 bash src/nginx/tests/plugin
 ```
 
 It prints one `ok` or `not ok` line per check. Extra arguments are passed to every curl call, for
-example `--insecure` for a self-signed certificate. With `SMOKE_ADMIN_TOKEN` set to a SuperAdmin's
-access token it also streams a 51 MiB upload to Django; with `GATEWAY_LOAD_SECONDS=30` it also
-measures the gateway check's latency under load (every plugin backend request waits for it).
+example `--cacert ca.pem` for a certificate of your own CA, or `--insecure`. With
+`SMOKE_ADMIN_TOKEN` set to a SuperAdmin's access token it also streams a 51 MiB upload to Django;
+with `GATEWAY_LOAD_SECONDS=30` it also measures the gateway check's latency under load (every
+plugin backend request waits for it).
+
+Then check sign-in, as a person who may use the plugin in one organization (with Weather, any
+role but Viewer). Use an account made for the check: the script signs it in and out, also when
+it stops early. It sends up to four login requests, and EpicStaff allows five a minute per
+address and account, so leave a minute between two runs.
+
+```bash
+SMOKE_BASE_URL=https://epicstaff.example.com SMOKE_PLUGIN=weather \
+SMOKE_EMAIL=smoke@example.com SMOKE_PASSWORD='…' SMOKE_ORG_ID=3 \
+bash src/nginx/tests/login_smoke.sh
+```
+
+It checks EpicStaff's login cookie (its name and attributes, and that a duplicated or old-named
+cookie is no session), that login takes JSON only, the redirects of the sign-in, the token
+exchange from the plugin's address, the plugin's `/api/whoami` with that token, that the token
+opens none of EpicStaff's API, and that neither a plugin page nor a page with `Origin: null` (a
+sandboxed frame) can call it. Extra arguments go to curl as above; with
+`SMOKE_LOAD_SECONDS=30` it also times `/api/whoami` with the token.
+
+With plugins off it checks what still applies: the login cookie's name and attributes, that a
+duplicated or old-named cookie is no session, that login takes JSON only, that
+`/api/plugins/available/` and the authorize endpoint answer 404, and the logout. It notices plugins are off by itself (both endpoints 404),
+or set `SMOKE_PLUGINS_OFF=1`, which needs no `SMOKE_ORG_ID`:
+
+```bash
+SMOKE_BASE_URL=https://epicstaff.example.com SMOKE_PLUGIN=weather \
+SMOKE_EMAIL=smoke@example.com SMOKE_PASSWORD='…' SMOKE_PLUGINS_OFF=1 \
+bash src/nginx/tests/login_smoke.sh
+```
 
 The repository has two labs that need nothing but Docker: `bash src/nginx/tests/gateway/run.sh`
 checks the gateway's header and path rules and its overhead under load, and
 `bash src/es_plugins/lab/run.sh` runs the node exactly as compose defines it with probe plugins
 and checks what a plugin process can and cannot do (it downloads wheels, so it needs network
 access). If you change the nginx templates, `bash src/nginx/tests/check_templates.sh`
-renders them with every combination of settings and runs `nginx -t` on each (needs Docker and
-`openssl`).
+renders them with every combination of settings, runs `nginx -t` on each and checks that only
+Django receives or sets cookies (needs Docker and `openssl`).
+
+## Sign-in and EpicStaff's login cookie
+
+People sign in to a plugin with their EpicStaff login: the plugin's page asks EpicStaff and gets a
+token for that plugin alone, valid for 15 minutes and renewed while the page is open. The token
+reaches nginx's gateway and nothing else; no EpicStaff credential ever reaches the plugin.
+Nothing needs configuring for it, but EpicStaff's login cookie changed with it, plugins on or off.
+
+| `DJANGO_REFRESH_COOKIE_SECURE` | Cookie | Path | Attributes |
+|---|---|---|---|
+| `true` (HTTPS) | `__Host-auth.refresh` | `/` | `HttpOnly; Secure; SameSite=Lax`, no `Domain` |
+| `false` (plain http, development only) | `auth.refresh` | `/api/auth/` | `HttpOnly; SameSite=Lax`, no `Domain` |
+
+- **Everyone is signed out once.** On HTTPS, EpicStaff no longer reads the `auth.refresh` cookie
+  of earlier versions, so after the upgrade every person signs in again, once. Plain http
+  deployments keep their sessions.
+- **Only EpicStaff's own host can set the cookie.** Browsers accept a `__Host-` cookie only from
+  the exact host, over HTTPS, without a `Domain`, so a plugin host cannot set it for EpicStaff. A
+  request that carries the cookie more than once counts as signed out: a cookie planted by
+  another site can sign someone out, never in as somebody else.
+- **Only Django gets and sets cookies.** With `Path=/` the browser sends the cookie with every
+  request to EpicStaff's host. nginx removes the `Cookie` header from every request it sends to
+  anything but Django (the web app's files, webhooks, realtime voice, the audit trail and the chat
+  service, which may run elsewhere, at `CHAT_UPSTREAM_URL`), and drops any `Set-Cookie` they
+  answer with, so none of them can replace EpicStaff's login cookie. None of them uses cookies.
+- **A plugin page cannot use EpicStaff's API.** Django refuses every request whose `Origin` is a
+  plugin host (`403 plugin_origin_refused`), except the token exchange, which is the one
+  cross-origin call it allows, and never with credentials.
+- **A plugin token outlives a logout** by up to 15 minutes, as EpicStaff's own access tokens do.
 
 ## How plugin backends are kept apart
 
@@ -293,7 +362,9 @@ memory, the last error and, for a failed plugin, the end of its log.
 | `the node's disk has only … MB free, and installing needs 2048 MB` | The `es_plugins_data` volume is below its install reserve. Free space on it (or give it more), then press Restart. |
 | `the node's disk is almost full (…), and this plugin uses the most of it (…)` | The volume fell below its floor and this plugin used the most of it. Free space, then press Restart; consider a file system of its own for the volume. |
 | Restarts with `more than its memory limit` | The plugin needs more memory than its effective limit: remove a lower override on the Limits tab, or ask the publisher to request more (up to `PLUGINS_MAX_PROCESS_MEMORY_MB`). |
-| `401 login_required` on every `/api/` path but the public ones | Expected in this version: people cannot log in to plugin backends yet. |
+| Sign-in works when the plugin is opened in its own tab, not inside EpicStaff | EpicStaff and the plugin hosts are not on the same registrable domain, so the browser does not send EpicStaff's login cookie inside the frame (see [Before you start](#before-you-start)). |
+| A person sees "You do not have access to <plugin> in this organization" | Their role in that organization gives no View on the plugin, the plugin is not granted to the organization (or the grant is suspended), or they are not a member of it. A SuperAdmin is no exception: only a membership counts. |
+| A plugin page reports `insecure_context` | The plugin host is served over plain http on a name that does not end in `.localhost`; browsers allow sign-in only in a secure context. Use HTTPS. |
 
 A backend's output is also in the node's log, each line prefixed with `[<identifier>]`
 (`docker compose logs es_plugins`), and in `/var/lib/es_plugins/logs/<identifier>/` inside the
@@ -315,8 +386,10 @@ A backend's output is also in the node's log, each line prefixed with `[<identif
 Open EpicStaff at `http://epicstaff.localhost`, not `http://localhost`: a plugin at
 `http://weather.plugins.epicstaff.localhost` must be a subdomain of EpicStaff's own name. Chrome and
 Firefox send every `*.localhost` name to your machine without DNS; other tools may need one
-`/etc/hosts` line per name. Safari treats `*.localhost` names differently, so test Safari against
-a real domain over HTTPS.
+`/etc/hosts` line per name. Plain http works only on `*.localhost` names, which browsers treat as a
+secure context; sign-in refuses any other http page. Safari treats `*.localhost` names
+differently, so test Safari against a real domain over HTTPS, or against `*.test` names in
+`/etc/hosts` over HTTPS with a certificate of a local CA your browser trusts.
 
 ## Where plugin data lives
 
@@ -342,7 +415,10 @@ volume stay, and come back when you turn the platform on again.
 ## Behind another proxy or load balancer
 
 If TLS ends in front of EpicStaff, route `*.plugins.example.com` to EpicStaff's nginx as well, keep
-the `Host` header, allow request bodies of `PLUGINS_MAX_PACKAGE_MB` plus one MiB on
+the `Host` and `Origin` headers as the browser sent them (Django refuses plugin pages by their
+`Origin`, and binds each sign-in to it), pass the response header `X-EpicStaff-Gateway-Deny` on
+unchanged (it marks the gateway's own refusals, by which a plugin's page tells "sign in again"
+from the plugin's own errors), allow request bodies of `PLUGINS_MAX_PACKAGE_MB` plus one MiB on
 `/api/admin/plugins/packages/` and of `PLUGINS_MAX_REQUEST_BODY_MB` on the plugin hosts, let
 WebSocket upgrades and long-lived streams (server-sent events) through to the plugin hosts, and
 put the wildcard certificate on that proxy. Then set `NGINX_SSL_MODE=off` and
@@ -380,3 +456,7 @@ This version adds required variables: `PLUGINS_GATEWAY_SECRET`, `PLUGINS_NODE_NA
 env-update` adds them with their defaults, which keep plugins off. Set the two secrets before
 turning plugins on, and check that the default `PLUGINS_NETWORK_SUBNET` overlaps none of your
 networks: it applies with plugins off too.
+
+On HTTPS deployments everyone is signed out once after this upgrade, plugins on or off: EpicStaff's
+login cookie is now `__Host-auth.refresh` (see
+[Sign-in and EpicStaff's login cookie](#sign-in-and-epicstaffs-login-cookie)).

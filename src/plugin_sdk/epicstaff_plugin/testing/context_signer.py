@@ -21,10 +21,14 @@ from epicstaff_plugin.contracts.gateway_context import (
     Jwks,
     encode_context,
 )
+from epicstaff_plugin.contracts.manifest import READ_ACTION
 
 DEFAULT_ISSUER = "https://epicstaff.test"
 DEFAULT_PLUGIN_IDENTIFIER = "sample"
 DEFAULT_PLUGIN_VERSION = "0.1.0"
+# The person and organization of a user context built without naming them.
+DEFAULT_USER = {"id": 1, "email": "member@example.test", "name": "Test Member"}
+DEFAULT_ORGANIZATION = {"id": 1, "name": "Test Organization"}
 
 
 class ContextSigner:
@@ -61,11 +65,23 @@ class ContextSigner:
         mode: ContextMode = "public",
         user: ContextUser | Mapping[str, Any] | None = None,
         org: ContextOrganization | Mapping[str, Any] | None = None,
-        permissions: Iterable[str] = (),
+        permissions: Iterable[str] | None = None,
         issued_at: int | None = None,
         lifetime_seconds: int = CONTEXT_LIFETIME_SECONDS,
     ) -> GatewayContext:
-        """Build the context EpicStaff would send with a request of this method and path."""
+        """Build the context EpicStaff would send with a request of this method and path.
+
+        A `user` context gets `DEFAULT_USER`, `DEFAULT_ORGANIZATION` and `["read"]` for
+        whichever of `user`, `org` and `permissions` is not given. A `public` context has none.
+
+        Raises:
+            pydantic.ValidationError: The fields do not make a valid context, such as a
+                public context with a user or a user context without `read`.
+        """
+        if mode == "user":
+            user = DEFAULT_USER if user is None else user
+            org = DEFAULT_ORGANIZATION if org is None else org
+            permissions = [READ_ACTION] if permissions is None else permissions
         now = int(time.time()) if issued_at is None else issued_at
         return GatewayContext.model_validate(
             {
@@ -77,7 +93,7 @@ class ContextSigner:
                 "plugin": {"identifier": self.plugin_identifier, "version": self.plugin_version},
                 "org": org,
                 "user": user,
-                "permissions": list(permissions),
+                "permissions": list(permissions or ()),
                 "request": {"method": method, "path": path},
                 "mode": mode,
             }

@@ -38,7 +38,7 @@ class WebSocketOutcome:
         return close["code"] if close else None
 
 
-def _scope(scope_type, method, path, headers):
+def _scope(scope_type, method, path, headers, query_string=b""):
     raw_headers = [(name.lower().encode("latin-1"), value.encode("latin-1")) for name, value in headers]
     return {
         "type": scope_type,
@@ -48,7 +48,7 @@ def _scope(scope_type, method, path, headers):
         "scheme": "http" if scope_type == "http" else "ws",
         "path": path,
         "raw_path": path.encode("utf-8"),
-        "query_string": b"",
+        "query_string": query_string,
         "root_path": "",
         "headers": raw_headers,
         "client": ("127.0.0.1", 50000),
@@ -58,8 +58,11 @@ def _scope(scope_type, method, path, headers):
     }
 
 
-def request(app, method, path, headers=None, body=b""):
-    """Send one HTTP request; `headers` is a dict or a list of (name, value) pairs."""
+def request(app, method, path, headers=None, body=b"", *, query=""):
+    """Send one HTTP request; `headers` is a dict or a list of (name, value) pairs.
+
+    `query` is the raw query string, without the `?`.
+    """
     pairs = list(headers.items()) if isinstance(headers, dict) else list(headers or [])
 
     async def run():
@@ -74,7 +77,7 @@ def request(app, method, path, headers=None, body=b""):
         async def send(message):
             sent.append(message)
 
-        await app(_scope("http", method, path, pairs), receive, send)
+        await app(_scope("http", method, path, pairs, query.encode("latin-1")), receive, send)
         start = next(message for message in sent if message["type"] == "http.response.start")
         response_body = b"".join(
             message.get("body", b"") for message in sent if message["type"] == "http.response.body"

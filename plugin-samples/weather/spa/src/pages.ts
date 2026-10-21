@@ -8,7 +8,11 @@ export const ABOUT_PATH = '/about';
 
 /** The forecast page: the sample places. */
 export function renderForecast(): HTMLElement[] {
-    const note = element('p', 'note', 'Sample data. Live forecasts arrive once this plugin has a backend of its own.');
+    const note = element(
+        'p',
+        'note',
+        'Sample data. The sample’s backend tells who is signed in (Who am I), not forecasts.'
+    );
     const list = element('ul', 'places');
     for (const place of SAMPLE_PLACES) {
         const item = element('li', 'place');

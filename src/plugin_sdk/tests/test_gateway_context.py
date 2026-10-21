@@ -353,3 +353,107 @@ def test_epicstaff_cannot_build_a_context_that_breaks_the_contract(signer, chang
 
     with pytest.raises(ValidationError):
         GatewayContext.model_validate(claims)
+
+
+# --- User contexts and the predicates ---
+
+
+def _user_claims(signer, **changes):
+    claims = signer.context("GET", "/api/whoami", mode="user", user=USER, org=ORG, permissions=["read"]).model_dump(
+        mode="json"
+    )
+    claims.update(changes)
+    return claims
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"user": None},
+        {"org": None},
+        {"permissions": []},
+        {"permissions": ["update"]},
+        {"mode": "public"},
+        {"mode": "admin"},
+    ],
+    ids=["no user", "no org", "no permissions", "no read", "public with a user", "unknown mode"],
+)
+def test_a_user_context_names_the_person_the_org_and_read(signer, changes):
+    with pytest.raises(ValidationError):
+        GatewayContext.model_validate(_user_claims(signer, **changes))
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"user": USER}, {"permissions": ["read"]}],
+    ids=["a user", "permissions"],
+)
+def test_a_public_context_carries_no_person_and_no_permissions(signer, changes):
+    with pytest.raises(ValidationError):
+        GatewayContext.model_validate(_claims(signer, **changes))
+
+
+def test_a_signed_user_context_without_read_is_refused_as_invalid_claims(runtime, signer):
+    token = signer.sign_claims(_user_claims(signer, permissions=["update"]))
+
+    assert _rejection(ContextVerifier(runtime), token, "GET", "/api/whoami") == "invalid_claims"
+
+
+def test_a_user_context_is_a_user_context_and_holds_its_permissions(signer):
+    context = signer.context("GET", "/api/places", mode="user", user=USER, org=ORG, permissions=["read", "update"])
+
+    assert context.is_user
+    assert (context.has_permission("read"), context.has_permission("update")) == (True, True)
+    assert (context.has_permission("delete"), context.has_permission("export")) == (False, False)
+
+
+def test_a_public_context_is_not_a_user_context_and_holds_no_permission(signer):
+    context = signer.context("GET", "/api/ping")
+
+    assert not context.is_user
+    assert not context.has_permission("read")
+
+
+@pytest.mark.parametrize("action", ["write", "READ", ""])
+def test_asking_for_an_action_that_does_not_exist_fails_loudly(signer, action):
+    context = signer.context("GET", "/api/whoami", mode="user")
+
+    with pytest.raises(ValueError, match="is not a plugin action"):
+        context.has_permission(action)
+
+
+def test_the_predicates_are_not_claims(signer):
+    claims = signer.context("GET", "/api/whoami", mode="user").model_dump(mode="json")
+
+    assert "is_user" not in claims
+    assert GatewayContext.model_validate(claims).is_user
+
+
+def test_the_signer_fills_a_user_context_with_a_test_member_and_read(signer):
+    context = signer.context("GET", "/api/whoami", mode="user")
+
+    assert (context.user.email, context.org.name, context.permissions) == (
+        "member@example.test",
+        "Test Organization",
+        ["read"],
+    )
+
+
+def test_the_signer_keeps_the_person_and_permissions_it_is_given(signer):
+    context = signer.context("GET", "/api/whoami", mode="user", org=ORG, permissions=["read", "use"])
+
+    assert (context.user.name, context.org.id, context.permissions) == ("Test Member", 3, ["read", "use"])
+
+
+def test_the_signer_cannot_issue_a_user_context_without_read(signer):
+    with pytest.raises(ValidationError):
+        signer.issue("GET", "/api/whoami", mode="user", permissions=[])
+
+
+def test_a_signed_user_context_verifies_with_its_person(runtime, signer):
+    token = signer.issue("GET", "/api/whoami", mode="user", user=USER, org=ORG)
+
+    context = ContextVerifier(runtime).verify(token, "GET", "/api/whoami")
+
+    assert context.is_user
+    assert (context.user.id, context.org.id, context.permissions) == (7, 3, ["read"])

@@ -179,3 +179,47 @@ class SigningKeyMissingError(CustomAPIExeption):
         "manage.py seed_plugin_node."
     )
     default_code = "signing_key_missing"
+
+
+class InvalidAuthorizeRequestError(_ProblemListError):
+    """A plugin authorize request with a missing, repeated, unknown or malformed parameter.
+
+    Answered as JSON, never as a redirect: with a broken request there is nowhere safe to send
+    the browser.
+    """
+
+    status_code = 400
+    default_detail = "The plugin login request is invalid."
+    default_code = "invalid_authorize_request"
+
+
+class InvalidTokenRequestError(_ProblemListError):
+    """A token exchange whose JSON body is not exactly `{code, code_verifier}` of the right form."""
+
+    status_code = 400
+    default_detail = "The request body is invalid."
+    default_code = "invalid"
+
+
+class InvalidGrantError(CustomAPIExeption):
+    """The code is unknown, expired or used, or the verifier or `Origin` does not match it."""
+
+    status_code = 400
+    default_detail = "The login code is invalid, expired or already used."
+    default_code = "invalid_grant"
+
+
+class PluginAccessDeniedError(CustomAPIExeption):
+    """The person lost the right to use the plugin between the login and the code exchange."""
+
+    status_code = 403
+    default_detail = "You do not have access to this plugin in this organization."
+    default_code = "plugin_access_denied"
+
+
+class PluginOriginRefusedError(CustomAPIExeption):
+    """A request from a plugin page to anything but the plugin token exchange (or authorize)."""
+
+    status_code = 403
+    default_detail = "Plugin pages cannot call EpicStaff's API."
+    default_code = "plugin_origin_refused"

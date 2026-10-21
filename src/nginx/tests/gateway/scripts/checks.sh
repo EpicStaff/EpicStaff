@@ -30,6 +30,16 @@ code_of_body() { jq -r '.code // empty' "$work/body" 2> /dev/null; }
 backend_header() { jq -r --arg name "$1" '[.headers[] | select(.[0] | ascii_downcase == $name) | .[1]] | join("|")' "$work/body"; }
 decision_entry() { grep -F "$1" /evidence/decision.log | tail -n 1; }
 
+# The reason in X-EpicStaff-Gateway-Deny for each code the gateway answers with.
+deny_reason_of_code() {
+  case "$1" in
+    login_required) echo login ;;
+    request_too_large) echo too_large ;;
+    plugin_unavailable) echo unavailable ;;
+    *) echo "$1" ;;
+  esac
+}
+
 expect_refusal() { # description, status, code, [header=value...]; uses the last request
   local description=$1 expected_status=$2 expected_code=$3
   shift 3
@@ -37,6 +47,9 @@ expect_refusal() { # description, status, code, [header=value...]; uses the last
     fail "$description: got $status $(head -c 160 "$work/body")"
     return
   fi
+  # Every answer the gateway gives itself names its reason, so a page can tell it from the
+  # plugin's own 401 or 403.
+  set -- "X-EpicStaff-Gateway-Deny=$(deny_reason_of_code "$expected_code")" "$@"
   local pair
   for pair in "$@"; do
     if [ "$(header "${pair%%=*}")" != "${pair#*=}" ]; then
@@ -95,7 +108,8 @@ echo "# forwarding"
 
 request "$alpha" /api/ping
 if [ "$status" = 200 ] && [ "$(jq -r .backend "$work/body")" = alpha ] \
-  && [ "$(backend_header x-epicstaff-plugin-context)" = "lab-context;alpha;public;GET;/api/ping" ]; then
+  && [ "$(backend_header x-epicstaff-plugin-context)" = "lab-context;alpha;public;GET;/api/ping" ] \
+  && ! grep -qi '^x-epicstaff-gateway-deny:' "$work/headers"; then
   pass "a public path reaches the plugin (upstream plugin_alpha) with the gateway's context"
 else
   fail "a public path: got $status $(head -c 200 "$work/body")"
@@ -163,10 +177,19 @@ else
   fail "the check's Host: $(echo "$seen" | jq -c '[.headers[] | select(.[0] == "Host")]')"
 fi
 request "$alpha" /api/public/echo
-if [ -z "$(header Set-Cookie)" ] && [ -z "$(header X-Frame-Options)" ]; then
-  pass "the plugin's Set-Cookie and X-Frame-Options never reach the browser"
+if [ -z "$(header Set-Cookie)" ] && [ -z "$(header X-Frame-Options)" ] \
+  && [ -z "$(header X-EpicStaff-Gateway-Deny)" ]; then
+  pass "the plugin's Set-Cookie, X-Frame-Options and X-EpicStaff-Gateway-Deny never reach the browser"
 else
-  fail "plugin response headers leaked: Set-Cookie [$(header Set-Cookie)] X-Frame-Options [$(header X-Frame-Options)]"
+  fail "plugin response headers leaked: Set-Cookie [$(header Set-Cookie)] X-Frame-Options [$(header X-Frame-Options)] X-EpicStaff-Gateway-Deny [$(header X-EpicStaff-Gateway-Deny)]"
+fi
+# The plugin's own 401, dressed as the gateway's: it reaches the page as the plugin's, unmarked.
+request "$alpha" /api/public/denied
+if [ "$status" = 401 ] && [ "$(code_of_body)" = login_required ] \
+  && ! grep -qi '^x-epicstaff-gateway-deny:' "$work/headers"; then
+  pass "a plugin's own 401 reaches the page without X-EpicStaff-Gateway-Deny, in any letter case"
+else
+  fail "a plugin's own 401: got $status, X-EpicStaff-Gateway-Deny [$(header X-EpicStaff-Gateway-Deny)]"
 fi
 request "$alpha" /api/public/accel
 if [ "$(cat "$work/body")" = BACKEND-BODY ] && ! grep -qi '^x-plugin-' "$work/headers"; then
@@ -198,7 +221,8 @@ else
 fi
 for path in /api/public/../private /api/public/%2e%2e/private /api/public/%2E%2E/private /api/public//private; do
   request "$alpha" "$path"
-  if [ "$status" = 404 ] && [ "$(code_of_body)" = not_found ]; then
+  if [ "$status" = 404 ] && [ "$(code_of_body)" = not_found ] \
+    && [ "$(header X-EpicStaff-Gateway-Deny)" = not_found ]; then
     pass "a path that is not canonical is not_found: $path"
   else
     fail "a path that is not canonical: $path got $status"

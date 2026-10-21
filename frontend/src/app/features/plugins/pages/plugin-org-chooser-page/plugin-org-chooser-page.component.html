@@ -1,0 +1,72 @@
+<div class="chooser">
+    <section class="chooser__card">
+        @if (choice(); as choice) {
+            <app-plugin-icon
+                [src]="choice.plugin.icon_url"
+                size="48px"
+            />
+            <div class="chooser__heading">
+                <h1
+                    #choiceTitle
+                    class="chooser__title text-h1"
+                    tabindex="-1"
+                >
+                    Open {{ choice.plugin.name }}
+                </h1>
+                <p class="chooser__text">Choose the organization to use {{ choice.plugin.name }} in.</p>
+            </div>
+            <ul
+                class="chooser__organizations"
+                aria-label="Organizations"
+            >
+                @for (organization of choice.organizations; track organization.id) {
+                    <li>
+                        <app-button
+                            class="chooser__organization"
+                            type="outline-secondary"
+                            (click)="choose(organization)"
+                        >
+                            {{ organization.name }}
+                        </app-button>
+                    </li>
+                }
+            </ul>
+        }
+        <!-- Only the status is announced; the choices take the focus instead. -->
+        <div
+            class="chooser__status"
+            aria-live="polite"
+        >
+            @if (message(); as message) {
+                @if (message.plugin; as plugin) {
+                    <app-plugin-icon
+                        [src]="plugin.icon_url"
+                        size="48px"
+                    />
+                }
+                <div class="chooser__heading">
+                    <h1 class="chooser__title text-h1">{{ message.title }}</h1>
+                    <p class="chooser__text">{{ message.text }}</p>
+                </div>
+            } @else if (isLoading()) {
+                <app-spinner
+                    [size]="32"
+                    [borderWidth]="3"
+                    [isOverlay]="false"
+                    accentColor="var(--accent-color)"
+                    borderColor="var(--color-divider-regular)"
+                    textColor="var(--color-text-secondary)"
+                    text="Loading your organizations…"
+                />
+            }
+        </div>
+        @if (message()?.canRetry) {
+            <app-button
+                type="outline-primary"
+                (click)="load()"
+            >
+                Try again
+            </app-button>
+        }
+    </section>
+</div>

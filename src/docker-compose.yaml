@@ -553,6 +553,8 @@ services:
       - ./nginx/certs:/etc/nginx/certs:ro
       - media_data:/usr/share/nginx/html/media:ro
       - plugin_spa:/srv/plugin-spa:ro
+      # The login callback pages every plugin host serves under /.well-known/epicstaff/.
+      - ./nginx/plugin-platform:/usr/share/nginx/plugin-platform:ro
     # Namespaced to this container, no privileges needed. Every proxied request opens a new
     # upstream connection (no upstream keepalive is configured, and a proxy_pass through a
     # variable, as plugin backends need, cannot have one). Without reuse, the sockets nginx closes

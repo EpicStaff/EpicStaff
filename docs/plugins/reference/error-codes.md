@@ -10,7 +10,8 @@ Every error EpicStaff's plugin API returns uses EpicStaff's error envelope:
 `code` is stable; `message` is for people and may change. `errors` is present on codes that list
 problems; each `loc` is a dotted path with list indexes, prefixed by the part it refers to
 (`package.`, `contents.`, `signature.`, `manifest.`, `plugins[…]`, `values.`, `overrides.`,
-`report.`).
+`report.`), or the name of a login parameter or body field. A submitted value is never echoed
+back.
 
 ## Plugin API codes
 
@@ -24,7 +25,7 @@ problems; each `loc` is a dotted path with list indexes, prefixed by the part it
 | `plugin_package_not_found` | 404 | No such package; for a plugin node, a package that is not the current package of one of its placements |
 | `package_not_pending` | 409 | Approve or reject of a package that was already decided |
 | `untrusted_not_acknowledged` | 400 | Approve of an untrusted package without `untrusted_acknowledged: true` |
-| `plugin_not_found` | 404 | No plugin with this identifier; on the public endpoints, a plugin that is not running |
+| `plugin_not_found` | 404 | No plugin with this identifier; on the public endpoints, a plugin that is not running; on the login endpoints (`plugin-authorize`, `login-organizations`), also a plugin without a backend, which nobody can log in to |
 | `plugin_not_running` | 409 | A grant for a plugin that is not running (a plugin with a backend runs once its node reports it healthy) |
 | `plugin_already_granted` | 409 | The organization already has a grant for the plugin |
 | `organization_inactive` | 409 | A grant to a deactivated organization |
@@ -39,6 +40,11 @@ problems; each `loc` is a dotted path with list indexes, prefixed by the part it
 | `placement_not_found` | 404 | A plugin node asks for the runtime credentials of a placement that is not its own |
 | `invalid_node_report` | 400 | A plugin node report that does not follow the report format (fields this EpicStaff does not know are ignored). `loc` is under `report` |
 | `signing_key_missing` | 503 | No plugin signing key exists yet, so no context can be signed; EpicStaff creates the first one at start-up with plugins on (`manage.py seed_plugin_node`) |
+| `invalid` | 400 | A request body or query of the wrong shape, such as a missing `org_id`. On the [token exchange](token-exchange.md), the body is not exactly `{"code", "code_verifier"}` with each value of its form, or is not JSON; `errors` lists each problem, `loc` being the field, an unknown key, or `body` |
+| `invalid_authorize_request` | 400 | A [plugin login](token-exchange.md) authorize request with a missing, repeated or malformed parameter, or one the protocol does not name (such as `redirect_uri` or `return_path`). Answered as JSON, never as a redirect; `loc` is the parameter's name |
+| `invalid_grant` | 400 | A token exchange whose code is unknown, expired (codes live 60 s) or already used, whose `code_verifier` does not match the code's challenge, that does not come from the plugin's own origin, or whose person changed their password after the code was issued. A failed exchange still uses up the code |
+| `plugin_access_denied` | 403 | A token exchange for a person who lost access to the plugin in that organization after the code was issued, or for a plugin that stopped running since |
+| `plugin_origin_refused` | 403 | A request from a plugin page (an `Origin` in the plugins base domain) to anything but the token exchange, `/api/plugin-public/*` included: plugin pages cannot call EpicStaff's API. The authorize navigation is not refused. Also a request with `Origin: null` to any `/api/auth/` endpoint or the password-change confirm, other than `GET`, `HEAD` and `OPTIONS`. See [what a plugin page cannot do](token-exchange.md#what-a-plugin-page-cannot-do) |
 
 ## Gateway codes
 
@@ -47,12 +53,12 @@ the gateway refuses its request. The request never reaches the plugin.
 
 | Code | Status | When |
 |---|---|---|
-| `login_required` | 401 | The path is not one of the plugin's [public paths](../how-to/public-paths.md), and the request carries no valid login. Comes with `WWW-Authenticate: Bearer` |
+| `login_required` | 401 | The path is not one of the plugin's [public paths](../how-to/public-paths.md), and the request carries no acceptable plugin login token: none, a malformed, expired or another plugin's token, or one whose person is deactivated, changed their password, or whose grant was suspended or re-created. Comes with `WWW-Authenticate: Bearer`. The JS SDK renews the token once and retries |
 | `not_found` | 404 | No running plugin with a backend has this address, or the path is not canonical (dot segments, encoded dots, doubled slashes, a path into the platform's own `/_epicstaff/` paths) |
 | `rate_limited` | 429 | The client went over the public path's `rate_limit_per_minute`. Comes with `Retry-After: 60` |
 | `request_too_large` | 413 | The body is larger than the public path's `max_body_kb`, or its size is not declared (a chunked body, or a `POST`, `PUT`, `PATCH` or `DELETE` without `Content-Length`) |
 | `plugin_unavailable` | 503 | The plugin is installed but its process is not running and healthy right now, or EpicStaff cannot sign a context yet. Comes with `Retry-After: 30` |
-| `forbidden` | 403 | The person is logged in but may not use the plugin (used once people can log in to plugins) |
+| `forbidden` | 403 | The token is valid, but its person may no longer use the plugin in its organization: their membership was removed, their role lost View, or the organization was deactivated. The JS SDK reports no access and does not retry |
 
 A request that reaches the plugin process without a valid gateway context, which only happens
 when something on the plugin node calls the process directly, is answered by the Python SDK with
@@ -66,11 +72,23 @@ The plugin endpoints also return EpicStaff's general codes:
 |---|---|---|
 | `not_authenticated` | 401 | No login, or an expired one |
 | `permission_denied` | 403 | The caller may not use the endpoint: plugin administration by anyone but a SuperAdmin, any write with an API key, or a Roles-matrix write without the right to edit roles in the organization |
-| `invalid` | 400 | A request body or query of the wrong shape, such as a missing `org_id` |
-| `unsupported_media_type` | 415 | A package upload that is not `multipart/form-data` |
+| `unsupported_media_type` | 415 | A package upload that is not `multipart/form-data`, or a token exchange that is not `application/json` |
+| `throttled` | 429 | More than 120 token exchanges a minute from one client address. Comes with `Retry-After` |
 | `org_context_required` | 400 | The available-plugins list without `X-Organization-Id` |
 | `org_membership_required` | 403 | The available-plugins list for an organization the caller is not a member of |
 | `organization_not_found` | 404 | An organization that does not exist, or whose roles the caller may not read |
 | `role_not_found` | 404 | A role that does not exist, or a custom role of an organization whose roles the caller may not read |
 | `built_in_role_immutable` | 403 | A Roles-matrix write on a built-in role: built-in roles always have the manifest defaults |
 | `permission_escalation_denied` | 403 | A Roles-matrix write adding or removing an action the caller does not hold on that plugin themselves, or giving someone a role with such an action |
+
+## Login callback errors
+
+What the authorize step puts in the callback page's fragment (`#error=<code>&state=<state>`)
+instead of a code. They are OAuth's words, not API codes; the JS SDK turns them into its login
+states. See [token exchange](token-exchange.md).
+
+| Code | When |
+|---|---|
+| `login_required` | No EpicStaff session, on a silent request (`prompt=none`). Without `prompt` the browser goes to EpicStaff's login page instead |
+| `access_denied` | The person may use the plugin in no organization, or not in the one named by `org` |
+| `interaction_required` | The person may use the plugin in several organizations and none was named, on a silent request. Without `prompt` the browser goes to EpicStaff's organization chooser instead |

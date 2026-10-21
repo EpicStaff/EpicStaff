@@ -10,8 +10,9 @@
 #     X-Frame-Options is the only one (read from the rendered configuration, includes expanded);
 #   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse;
 #   - live, inside the container: which upstreams receive the browser's cookies and may set
-#     one, the package upload route, and which listener answers a caller on the plugins subnet
-#     (127.0.0.0/8 stands in for it) and which refuses it.
+#     one, the package upload route, the login callback pages a plugin host serves from src/nginx/plugin-platform,
+#     and which listener answers a caller on the plugins subnet (127.0.0.0/8 stands in for it)
+#     and which refuses it.
 #
 # Needs Docker and openssl. The containers have no network and publish no ports; nothing is left
 # behind. Usage, from anywhere: bash src/nginx/tests/check_templates.sh
@@ -21,6 +22,7 @@ nginx_dir=$(cd "$(dirname "$0")/.." && pwd)
 compose_file="$nginx_dir/../docker-compose.yaml"
 plugins_envsh="$nginx_dir/docker-entrypoint.d/16-normalize-plugins-enabled.envsh"
 chat_envsh="$nginx_dir/docker-entrypoint.d/15-normalize-chat-enabled.envsh"
+platform_dir="$nginx_dir/plugin-platform"
 
 image=$(awk '/^  epicstaff-nginx:$/ { in_service = 1; next }
              in_service && /^    image:/ { print $2; exit }' "$compose_file")
@@ -50,6 +52,9 @@ make_certificate plugins- "*.plugins.epicstaff.test"
 
 # A value of the shape `openssl rand -hex 32` gives; the rendered check location must carry it.
 gateway_secret=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+# The policy of the two login callback pages, next to the plugin hosts' frame-ancestors.
+platform_page_policy="default-src 'none'; script-src 'self'; base-uri 'none'; form-action 'none'"
 
 failures=0
 pass() { echo "ok - $1"; }
@@ -83,6 +88,10 @@ set_docker_arguments() {
     -v "$plugins_envsh:/docker-entrypoint.d/16-normalize-plugins-enabled.envsh:ro"
     -v "$work_dir/certs:/etc/nginx/certs:ro"
   )
+  # As the stack mounts it. Only when present: Docker would create a missing one on the host.
+  if [ -d "$platform_dir" ]; then
+    docker_arguments+=(-v "$platform_dir:/usr/share/nginx/plugin-platform:ro")
+  fi
 }
 
 # Starts the image's entrypoint with `nginx -T` and the environment of set_docker_arguments.
@@ -289,6 +298,57 @@ expect_only_django_cookies() {
   fi
 }
 
+# Reads the flattened configuration twice (the file name, twice) and checks the plugin hosts'
+# server (the one whose server_name captures plugin_identifier): every answer the gateway gives
+# itself instead of the plugin's carries X-EpicStaff-Gateway-Deny, set with `always` (each error
+# page of /api/, and each named location that returns 4xx or 5xx), and /api/ hides the header
+# from the plugin's own answers. Prints one line per problem, then "checked <n>": the answering
+# locations it found.
+read -r -d '' gateway_deny_check_program << 'AWK' || :
+BEGIN { FS = "\t" }
+NR == FNR {
+  if ($3 ~ /^server_name "~\^\(\?<plugin_identifier>/) plugin_server = $1
+  next
+}
+$1 != plugin_server { next }
+{
+  last = split($3, word, " ")
+  if ($2 == "^~ /api/" && word[1] == "error_page") answering[word[last]] = 1
+  if (substr($2, 1, 1) == "@" && word[1] == "return" && word[2] ~ /^[45][0-9][0-9]$/) answering[$2] = 1
+  if (word[1] == "add_header" && tolower(word[2]) == "x-epicstaff-gateway-deny" && word[last] == "always") marked[$2] = 1
+  if ($2 == "^~ /api/" && word[1] == "proxy_hide_header" && tolower(word[2]) == "x-epicstaff-gateway-deny") hidden = 1
+}
+END {
+  for (location in answering) {
+    count++
+    if (!(location in marked)) print location ": answers without X-EpicStaff-Gateway-Deny"
+  }
+  if (!hidden) print "^~ /api/: passes a plugin's X-EpicStaff-Gateway-Deny on"
+  print "checked " count + 0
+}
+AWK
+
+# $1 = a file of `nginx -T` output; prints the gateway deny check's problems, sorted.
+gateway_deny_problems() {
+  flatten_configuration "$1" > "$work_dir/flat"
+  awk "$gateway_deny_check_program" "$work_dir/flat" "$work_dir/flat" | { grep -v '^checked ' || true; } \
+    | LC_ALL=C sort
+}
+
+# $1 = description. Checks the last rendered configuration (plugins on).
+expect_gateway_denies_marked() {
+  local problems answering
+  problems=$(gateway_deny_problems "$work_dir/out")
+  answering=$(awk "$gateway_deny_check_program" "$work_dir/flat" "$work_dir/flat" | sed -n 's/^checked //p')
+  if [ -n "$problems" ]; then
+    fail "$1: $(printf '%s\n' "$problems" | paste -sd ';' -)"
+  elif [ "$answering" -lt 3 ]; then
+    fail "$1: found only $answering locations that answer for the gateway"
+  else
+    pass "$1 ($answering locations answer for the gateway, all marked; hidden from the plugin)"
+  fi
+}
+
 if [ -x "$plugins_envsh" ]; then
   pass "16-normalize-plugins-enabled.envsh is executable (the image ignores it otherwise)"
 else
@@ -305,7 +365,8 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       /_epicstaff/plugin-upload-permission auth_request \
       /api/plugin-gateway/ /api/plugin-nodes/ plugins-fullchain.pem frame-ancestors\ \'self\'\ http \
       /_plugin_gateway_check X-Plugin-Gateway-Secret "listen 8081" "$gateway_secret" \
-      plugin_network_caller 10.235.0.0/24; do
+      plugin_network_caller 10.235.0.0/24 /.well-known/epicstaff/callback \
+      /usr/share/nginx/plugin-platform X-EpicStaff-Gateway-Deny; do
       if has_directive "$text"; then
         leaked="$leaked [$text]"
       fi
@@ -320,6 +381,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
   if expect_valid "nginx -t: PLUGINS_ENABLED=true $flags" \
     PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled; then
     expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
+    expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals"
     expected_tls="include /etc/nginx/conf.d/plugins-ssl-off.snippet;"
     if [ "$ssl_mode" = on ]; then
       expected_tls="ssl_certificate /etc/nginx/certs/plugins-fullchain.pem;"
@@ -337,6 +399,16 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       "location ^~ /api/plugin-gateway/ {" \
       "location ^~ /api/plugin-nodes/ {" \
       "$expected_tls"
+    expect_directives "PLUGINS_ENABLED=true $flags serves the login callback pages" \
+      'location = /.well-known/epicstaff/callback.html {' \
+      'alias /usr/share/nginx/plugin-platform/callback.html;' \
+      'location = /.well-known/epicstaff/silent-callback.html {' \
+      'alias /usr/share/nginx/plugin-platform/silent-callback.html;' \
+      'location = /.well-known/epicstaff/callback.js {' \
+      'alias /usr/share/nginx/plugin-platform/callback.js;' \
+      'default_type application/javascript;' \
+      "add_header Content-Security-Policy \"$platform_page_policy\" always;" \
+      'limit_except GET HEAD {'
     expect_directives "PLUGINS_ENABLED=true $flags refuses the plugins subnet on 80/443" \
       'geo $plugin_network_caller {' \
       '10.235.0.0/24  1;' \
@@ -430,6 +502,23 @@ if expect_valid "nginx -t: CHAT_ENABLED=true PLUGINS_ENABLED=true, for the cooki
     pass "the cookie check applies nginx's proxy_hide_header inheritance"
   else
     fail "the cookie check, without the snippet's X-Frame-Options rule, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+fi
+
+# The gateway deny check itself: with every X-EpicStaff-Gateway-Deny line deleted it must name
+# exactly the three locations that answer for the gateway, and /api/.
+if expect_valid "nginx -t: PLUGINS_ENABLED=true, for the gateway deny check's self-test" \
+  PLUGINS_ENABLED=true; then
+  grep -vF 'X-EpicStaff-Gateway-Deny' "$work_dir/out" > "$work_dir/out-without-deny-header"
+  found=$(gateway_deny_problems "$work_dir/out-without-deny-header")
+  expected=$(printf '%s\n' "@plugin_denied: answers without X-EpicStaff-Gateway-Deny" \
+    "@plugin_request_too_large: answers without X-EpicStaff-Gateway-Deny" \
+    "@plugin_unavailable: answers without X-EpicStaff-Gateway-Deny" \
+    "^~ /api/: passes a plugin's X-EpicStaff-Gateway-Deny on" | LC_ALL=C sort)
+  if [ "$found" = "$expected" ]; then
+    pass "the gateway deny check finds every location that answers for the gateway"
+  else
+    fail "the gateway deny check, with the header deleted, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
   fi
 fi
 
@@ -622,6 +711,76 @@ for path in /_epicstaff/plugin-upload-permission /api/admin/plugins/packages/upl
     fail "$path from outside: expected nginx's 404, got $status"
   fi
 done
+
+# The login callback pages, asked of a plugin host: the committed files with their headers, only
+# GET and HEAD, the platform's other names 404, and nothing of it reaches Django (the stub's log
+# stays empty), whose gateway check would run first for anything proxied.
+# plugin_host_request METHOD PATH: prints the status; headers and body go to $work_dir.
+plugin_host_request() {
+  live sh -c 'curl -s -X "$1" -D /tmp/headers -o /tmp/body -w "%{http_code}" \
+    -H "Host: alpha.plugins.epicstaff.test" "http://127.0.0.1$2"' request "$1" "$2" || true
+  live cat /tmp/headers | tr -d '\r' > "$work_dir/headers"
+  live cat /tmp/body > "$work_dir/body"
+}
+header_values() { # $1 = header name, as nginx writes it; prints every value, sorted, |-joined
+  sed -n "s/^$1: //p" "$work_dir/headers" | LC_ALL=C sort | paste -sd '|' -
+}
+frame_policy="frame-ancestors 'self' https://epicstaff.test"
+page_policies=$(printf '%s\n' "$frame_policy" "$platform_page_policy" | LC_ALL=C sort | paste -sd '|' -)
+if [ ! -d "$platform_dir" ]; then
+  fail "$platform_dir is missing: the plugin hosts have no login callback pages to serve"
+else
+  for page in "callback.html text/html" "silent-callback.html text/html" \
+    "callback.js application/javascript"; do
+    read -r name content_type <<< "$page"
+    expected_policies=$frame_policy
+    if [ "$content_type" = text/html ]; then
+      expected_policies=$page_policies
+    fi
+    live sh -c ': > /tmp/stub-django.log'
+    status=$(plugin_host_request GET "/.well-known/epicstaff/$name")
+    problems=""
+    [ "$status" = 200 ] || problems="$problems status $status;"
+    cmp -s "$work_dir/body" "$platform_dir/$name" || problems="$problems not the committed file;"
+    [ "$(header_values Content-Type)" = "$content_type" ] \
+      || problems="$problems Content-Type [$(header_values Content-Type)];"
+    [ "$(header_values Content-Security-Policy)" = "$expected_policies" ] \
+      || problems="$problems Content-Security-Policy [$(header_values Content-Security-Policy)];"
+    [ "$(header_values Cache-Control)" = no-cache ] \
+      || problems="$problems Cache-Control [$(header_values Cache-Control)];"
+    [ "$(header_values X-Content-Type-Options)" = nosniff ] || problems="$problems no nosniff;"
+    [ "$(header_values Origin-Agent-Cluster)" = '?1' ] || problems="$problems no Origin-Agent-Cluster;"
+    [ -z "$(header_values X-Frame-Options)$(header_values Set-Cookie)" ] \
+      || problems="$problems X-Frame-Options or Set-Cookie sent;"
+    if live grep -q . /tmp/stub-django.log; then problems="$problems reached Django;"; fi
+    if [ -z "$problems" ]; then
+      pass "a plugin host serves /.well-known/epicstaff/$name with its headers, without Django"
+    else
+      fail "/.well-known/epicstaff/$name on a plugin host:$problems"
+    fi
+  done
+  live sh -c ': > /tmp/stub-django.log'
+  status=$(plugin_host_request POST /.well-known/epicstaff/callback.html)
+  if [ "$status" = 403 ] && [ "$(header_values Content-Security-Policy)" = "$page_policies" ] \
+    && ! live grep -q . /tmp/stub-django.log; then
+    pass "a POST to a callback page is refused (403), with the page's headers"
+  else
+    fail "a POST to a callback page: $status, Content-Security-Policy [$(header_values Content-Security-Policy)]"
+  fi
+  wrong=""
+  for path in /.well-known/epicstaff/other.html /.well-known/epicstaff/callback.html/x \
+    /.well-known/epicstaff/Callback.html /.well-known/epicstaff/callback.json; do
+    status=$(plugin_host_request GET "$path")
+    [ "$status" = 404 ] || wrong="$wrong [$path: $status]"
+  done
+  if [ -n "$wrong" ]; then
+    fail "other names under /.well-known/epicstaff/ must stay 404:$wrong"
+  elif live grep -q . /tmp/stub-django.log; then
+    fail "a request for a callback page reached Django: $(live head -n 3 /tmp/stub-django.log)"
+  else
+    pass "every other name under /.well-known/epicstaff/ stays 404, and none reached Django"
+  fi
+fi
 
 docker rm -f "$live_container" > /dev/null
 live_container=""

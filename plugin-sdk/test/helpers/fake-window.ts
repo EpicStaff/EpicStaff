@@ -1,6 +1,7 @@
 /**
  * Just enough of a browser window for the SDK: `parent`, message delivery with any `source` and `origin` (Node's
- * `MessageEvent` only accepts a `MessagePort` as `source`), `history`, `location` and `document.documentElement`.
+ * `MessageEvent` only accepts a `MessagePort` as `source`), `history`, `location`, `document`, `sessionStorage`,
+ * `open`, `opener` and the secure-context switch.
  */
 
 export const EPICSTAFF_ORIGIN = 'https://epicstaff.example.com';
@@ -16,6 +17,10 @@ interface DeliveredMessage {
 type MessageListener = (event: DeliveredMessage) => void;
 
 export class FakeLocation {
+    /** Every `location.replace` call; the page stays where it is, as if the navigation were still loading. */
+    readonly replacements: string[] = [];
+    /** Every `location.assign` call; the login flow must never make one. */
+    readonly assignments: string[] = [];
     private url: URL;
 
     constructor(href: string) {
@@ -44,6 +49,43 @@ export class FakeLocation {
 
     get hash(): string {
         return this.url.hash;
+    }
+
+    replace(url: string | URL): void {
+        this.replacements.push(new URL(url, this.url.href).href);
+    }
+
+    assign(url: string | URL): void {
+        this.assignments.push(new URL(url, this.url.href).href);
+    }
+}
+
+/** `sessionStorage`: strings by key. */
+export class FakeStorage {
+    readonly items = new Map<string, string>();
+
+    get length(): number {
+        return this.items.size;
+    }
+
+    key(index: number): string | null {
+        return [...this.items.keys()][index] ?? null;
+    }
+
+    getItem(key: string): string | null {
+        return this.items.get(key) ?? null;
+    }
+
+    setItem(key: string, value: string): void {
+        this.items.set(key, String(value));
+    }
+
+    removeItem(key: string): void {
+        this.items.delete(key);
+    }
+
+    clear(): void {
+        this.items.clear();
     }
 }
 
@@ -109,8 +151,68 @@ export class FakeElement {
     }
 }
 
-export class FakeDocument {
+/** A frame the page created; its `contentWindow` is a stand-in object, compared by identity. */
+export class FakeFrame {
+    src = '';
+    hidden = false;
+    tabIndex = 0;
+    title = '';
+    readonly style = new FakeStyle() as FakeStyle & Record<string, string>;
+    readonly attributes = new Map<string, string>();
+    readonly contentWindow = { frame: 'silent sign-in' };
+    removed = false;
+
+    setAttribute(name: string, value: string): void {
+        this.attributes.set(name, value);
+    }
+
+    remove(): void {
+        this.removed = true;
+    }
+}
+
+export class FakeBody {
+    readonly children: FakeFrame[] = [];
+
+    append(...nodes: FakeFrame[]): void {
+        this.children.push(...nodes);
+    }
+}
+
+export class FakeDocument extends EventTarget {
     readonly documentElement = new FakeElement();
+    visibilityState: 'visible' | 'hidden' = 'visible';
+    readonly body = new FakeBody();
+    /** Every frame the page created, attached or not. */
+    readonly frames: FakeFrame[] = [];
+
+    createElement(tag: string): FakeFrame {
+        if (tag !== 'iframe') throw new Error(`The fake document only creates iframes, not ${tag}.`);
+        const frame = new FakeFrame();
+        this.frames.push(frame);
+        return frame;
+    }
+
+    /** Frames attached and not removed yet. */
+    get liveFrames(): FakeFrame[] {
+        return this.body.children.filter((frame) => !frame.removed);
+    }
+
+    /** What the browser does when the tab is hidden or shown again. */
+    setVisibility(state: 'visible' | 'hidden'): void {
+        this.visibilityState = state;
+        this.dispatchEvent(new Event('visibilitychange'));
+    }
+}
+
+/** A window the page opened with `window.open`, or the page's own opener. */
+export class FakePopup {
+    closed = false;
+    readonly posted: { data: unknown; targetOrigin: string }[] = [];
+
+    postMessage(data: unknown, targetOrigin: string): void {
+        this.posted.push({ data, targetOrigin });
+    }
 }
 
 /** EpicStaff's window as the plugin page sees it: records what the page posts to it. */
@@ -128,14 +230,31 @@ export interface FakeWindowOptions {
     /** `false`: the window is its own parent (a top-level page). Default `true`. */
     framed?: boolean;
     url?: string;
+    /** `window.isSecureContext`. Default `true`. */
+    secure?: boolean;
+    /** `window.crypto`; `null` for none. Default Node's Web Crypto. */
+    crypto?: Crypto | null;
+    /** `window.opener`. Default `null`. */
+    opener?: FakePopup | null;
+    /** What `window.open` returns; `null` for a blocked popup. Default a new {@link FakePopup}. */
+    popup?: FakePopup | null;
 }
 
 export class FakeWindow extends EventTarget {
     readonly location: FakeLocation;
     readonly history: FakeHistory;
     readonly document = new FakeDocument();
+    readonly sessionStorage = new FakeStorage();
     readonly parent: FakeParent | FakeWindow;
+    readonly isSecureContext: boolean;
+    readonly crypto: Crypto | undefined;
+    readonly opener: FakePopup | null;
     readonly dispatched: string[] = [];
+    /** Every `window.open` call. */
+    readonly opened: { url: string; target: string; features: string }[] = [];
+    /** `true` once the page called `window.close()`. */
+    closedByScript = false;
+    private readonly popup: FakePopup | null;
     private readonly messageListeners = new Set<MessageListener>();
 
     constructor(options: FakeWindowOptions = {}) {
@@ -143,6 +262,25 @@ export class FakeWindow extends EventTarget {
         this.location = new FakeLocation(options.url ?? `${PLUGIN_ORIGIN}/`);
         this.history = new FakeHistory(this.location);
         this.parent = options.framed === false ? this : new FakeParent();
+        this.isSecureContext = options.secure ?? true;
+        this.crypto = options.crypto === null ? undefined : (options.crypto ?? globalThis.crypto);
+        this.opener = options.opener ?? null;
+        this.popup = options.popup === undefined ? new FakePopup() : options.popup;
+    }
+
+    open(url: string, target: string, features: string): FakePopup | null {
+        this.opened.push({ url, target, features });
+        return this.popup;
+    }
+
+    close(): void {
+        this.closedByScript = true;
+    }
+
+    /** The popup `window.open` hands out. */
+    get openedPopup(): FakePopup {
+        if (this.popup === null) throw new Error('This window blocks popups.');
+        return this.popup;
     }
 
     override addEventListener(

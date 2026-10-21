@@ -13,11 +13,20 @@ import type { OrgContext, ThemeState } from './protocol.js';
 import { applyTheme } from './theme.js';
 
 export {
+    createPluginLogin,
+    type LoginState,
+    type PluginLogin,
+    type PluginLoginOptions,
+    type PluginLoginSource,
+    type PluginSession,
+} from './auth.js';
+export {
     loadPlatformConfig,
     parsePlatformConfig,
     PLATFORM_CONFIG_PATH,
     type PlatformConfig,
     PlatformConfigError,
+    type PlatformLogin,
 } from './config.js';
 export {
     type FrameInit,
@@ -35,7 +44,32 @@ export {
     locationToNavPath,
     type RoutingMode,
 } from './nav-path.js';
+export { PluginLoginError, type PluginLoginErrorCode } from './login-error.js';
+export {
+    GATEWAY_DENY_HEADER,
+    GATEWAY_DENY_REASONS,
+    type GatewayDenyReason,
+    type LoginCallbackError,
+    LOGIN_AUTHORIZE_PARAMETERS,
+    LOGIN_CALLBACK_ERRORS,
+    LOGIN_CODE_CHALLENGE_METHOD,
+    LOGIN_LIMITS,
+    LOGIN_MESSAGE_TYPES,
+    LOGIN_ORG_STORAGE_KEY,
+    LOGIN_PATHS,
+    LOGIN_PATTERNS,
+    LOGIN_PROMPT_VALUES,
+    LOGIN_PROTOCOL_VERSION,
+    LOGIN_STORAGE_KEYS,
+} from './login-protocol.js';
 export { installNavSync, type NavReport, type NavSync } from './nav-sync.js';
+export {
+    type CompletePopupOptions,
+    type CompletePopupOutcome,
+    createPopupState,
+    type OpenPopupOptions,
+    type PopupResult,
+} from './popup.js';
 export {
     FRAME_ERROR_CODES,
     FRAME_LIMITS,

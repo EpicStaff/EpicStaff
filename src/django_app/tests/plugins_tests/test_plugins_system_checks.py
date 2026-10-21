@@ -1,4 +1,4 @@
-"""Start-up checks plugins.E001-E009, which run only while the plugin platform is on."""
+"""Start-up checks plugins.E001-E010, which run only while the plugin platform is on."""
 
 import pytest
 from django.core.management import call_command
@@ -215,3 +215,38 @@ def test_e009_a_platform_maximum_that_is_not_a_positive_integer(valid_platform, 
     setattr(valid_platform, setting, value)
 
     assert _ids() == ["plugins.E009"]
+
+
+@pytest.mark.parametrize(
+    ("frontend_url", "base_domain"),
+    [
+        ("https://plugins.example.com", "plugins.example.com"),
+        ("https://epicstaff.plugins.example.com", "plugins.example.com"),
+        ("https://EpicStaff.Plugins.Example.com:8443", "plugins.example.com"),
+        ("https://example.com", "example.com"),
+    ],
+    ids=["the-base-domain-itself", "a-host-under-it", "any-case-and-a-port", "a-parent-domain-as-base"],
+)
+def test_e010_epicstaff_s_host_inside_the_plugin_base_domain(valid_platform, frontend_url, base_domain):
+    valid_platform.REFRESH_COOKIE_SECURE = True
+    valid_platform.FRONTEND_BASE_URL = frontend_url
+    valid_platform.PLUGINS_BASE_DOMAIN = base_domain
+
+    assert _ids() == ["plugins.E010"]
+
+
+@pytest.mark.parametrize(
+    ("frontend_url", "base_domain"),
+    [
+        ("https://epicstaff.example.com", "plugins.example.com"),
+        ("https://xplugins.example.com", "plugins.example.com"),
+        ("https://example.com", "plugins.example.com"),
+    ],
+    ids=["a-sibling", "a-look-alike-suffix", "the-parent"],
+)
+def test_e010_is_quiet_for_a_host_outside_the_plugin_base_domain(valid_platform, frontend_url, base_domain):
+    valid_platform.REFRESH_COOKIE_SECURE = True
+    valid_platform.FRONTEND_BASE_URL = frontend_url
+    valid_platform.PLUGINS_BASE_DOMAIN = base_domain
+
+    assert _ids() == []

@@ -52,14 +52,22 @@ async def handle(request: web.Request) -> web.StreamResponse:
         return web.Response(text="BACKEND-BODY", headers={"X-Accel-Redirect": "/_plugin_gateway_check"})
     if path.endswith("/bench"):
         return web.Response(text="ok")
+    if path.endswith("/denied"):
+        # The plugin's own refusal, dressed as the gateway's: nginx must hide the marker.
+        denied = web.json_response({"code": "login_required"}, status=401)
+        denied.headers.add("X-EpicStaff-Gateway-Deny", "login")
+        denied.headers.add("x-epicstaff-gateway-deny", "forbidden")
+        return denied
     body = await request.read()
     response = web.json_response(
         {"backend": NAME, "method": request.method, "raw_path": raw_path, "body_bytes": len(body),
          "headers": raw_headers(request)}
     )
-    # Both must never reach the browser: a cookie for the parent domain, and a framing rule.
+    # None may reach the browser: a cookie for the parent domain, a framing rule, and the
+    # gateway's refusal marker.
     response.headers["Set-Cookie"] = "tossed=1; Domain=epicstaff.test; Path=/"
     response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-EpicStaff-Gateway-Deny"] = "forbidden"
     return response
 
 

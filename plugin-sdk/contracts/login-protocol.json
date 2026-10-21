@@ -1,0 +1,40 @@
+{
+    "protocol": 1,
+    "paths": {
+        "authorize": "/api/auth/plugin-authorize/",
+        "token": "/api/auth/plugin-token/",
+        "callback": "/.well-known/epicstaff/callback.html",
+        "silent_callback": "/.well-known/epicstaff/silent-callback.html",
+        "callback_script": "/.well-known/epicstaff/callback.js",
+        "login_continue": "/plugin-login",
+        "choose_org": "/plugin-choose-org"
+    },
+    "authorize_params": ["plugin", "state", "code_challenge", "code_challenge_method", "org", "prompt"],
+    "code_challenge_method": "S256",
+    "prompt_values": ["none"],
+    "callback_errors": ["login_required", "access_denied", "interaction_required"],
+    "message_types": ["es:login-result", "es:popup-result"],
+    "storage_keys": {
+        "pending": "epicstaff.login.pending",
+        "result": "epicstaff.login.result",
+        "popup": "epicstaff.popup.result"
+    },
+    "patterns": {
+        "state": "^[A-Za-z0-9_-]{43,128}$",
+        "code": "^[A-Za-z0-9_-]{43}$",
+        "code_challenge": "^[A-Za-z0-9_-]{43}$",
+        "code_verifier": "^[A-Za-z0-9._~-]{43,128}$",
+        "continue": "^/api/auth/plugin-authorize/\\?[A-Za-z0-9._~%=&+-]{1,4000}$",
+        "return_path": "^/(?![/\\\\])[!-~]{0,2047}$",
+        "popup_state": "^[1-9][0-9]{0,9}\\.[A-Za-z0-9_-]{22,64}$"
+    },
+    "limits": {
+        "code_ttl_seconds": 60,
+        "token_lifetime_seconds": 900,
+        "renew_before_expiry_seconds": 60,
+        "silent_timeout_ms": 10000,
+        "pending_max_age_seconds": 600,
+        "popup_relay_poll_ms": 2000,
+        "popup_relay_timeout_seconds": 600
+    }
+}

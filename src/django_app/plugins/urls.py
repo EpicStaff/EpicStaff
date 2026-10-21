@@ -19,6 +19,8 @@ from plugins.views.admin_plugins import (
 )
 from plugins.views.admin_role_permissions import PluginRolePermissionViewSet
 from plugins.views.available_plugins import AvailablePluginsView
+from plugins.views.login import PluginAuthorizeView, PluginTokenView
+from plugins.views.login_organizations import PluginLoginOrganizationsView
 from plugins.views.node_api import (
     DesiredStateView,
     NodePackageView,
@@ -98,6 +100,13 @@ urlpatterns = [
         name="admin-plugin-role-permissions",
     ),
     path("api/plugins/available/", AvailablePluginsView.as_view(), name="plugins-available"),
+    path(
+        "api/plugins/<str:identifier>/login-organizations/",
+        PluginLoginOrganizationsView.as_view(),
+        name="plugin-login-organizations",
+    ),
+    path("api/auth/plugin-authorize/", PluginAuthorizeView.as_view(), name="plugin-authorize"),
+    path("api/auth/plugin-token/", PluginTokenView.as_view(), name="plugin-token"),
     path("api/plugin-public/jwks/", PluginJwksView.as_view(), name="plugin-public-jwks"),
     path(
         "api/plugin-public/<str:identifier>/config/",

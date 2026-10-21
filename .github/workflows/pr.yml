@@ -71,12 +71,14 @@ jobs:
           filter cla '^(CLA\.md$|\.github/scripts/check_cla_version\.py$|\.github/scripts/cla_version\.py$|\.github/scripts/test_check_cla_version\.py$|\.github/workflows/pr\.yml$)'
 
           # The plugin author tooling: the JS SDK, the sample plugins, and the Python
-          # package whose CLI validates the samples.
-          filter plugins_js '^(plugin-sdk/|plugin-samples/|src/plugin_sdk/|\.github/workflows/pr\.yml$)'
+          # package whose CLI validates the samples. Also the login callback pages
+          # nginx serves on every plugin host: the JS SDK's tests run their script.
+          filter plugins_js '^(plugin-sdk/|plugin-samples/|src/plugin_sdk/|src/nginx/plugin-platform/|\.github/workflows/pr\.yml$)'
 
-          # nginx's templates and the start-up scripts that fill them in, checked by
-          # rendering them in the pinned nginx image (check_templates.sh).
-          filter nginx '^(src/nginx/(templates|docker-entrypoint\.d)/|src/nginx/tests/check_templates\.sh$|src/docker-compose\.yaml$|\.github/workflows/pr\.yml$)'
+          # nginx's templates, the start-up scripts that fill them in and the login
+          # callback pages a plugin host serves, checked by rendering them in the
+          # pinned nginx image (check_templates.sh).
+          filter nginx '^(src/nginx/(templates|docker-entrypoint\.d|plugin-platform)/|src/nginx/tests/check_templates\.sh$|src/docker-compose\.yaml$|\.github/workflows/pr\.yml$)'
 
           # Backend suites are gated per service, so a pull request touching one
           # service does not pay for the other three. Three inputs force every

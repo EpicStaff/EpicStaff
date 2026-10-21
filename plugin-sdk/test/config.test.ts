@@ -49,6 +49,32 @@ describe('platform config', () => {
         }
     });
 
+    test('parses the login endpoints, which must both be on epicstaff_origin', () => {
+        const login = {
+            authorize_url: `${EPICSTAFF_ORIGIN}/api/auth/plugin-authorize/`,
+            token_url: `${EPICSTAFF_ORIGIN}/api/auth/plugin-token/`,
+        };
+
+        assert.deepEqual(parsePlatformConfig({ ...VALID, login }).login, login);
+        assert.equal(parsePlatformConfig({ ...VALID, login: undefined }).login, null);
+        for (const invalid of [
+            { ...login, token_url: 'https://evil.example/api/auth/plugin-token/' },
+            { ...login, authorize_url: 'https://weather.plugins.epicstaff.example.com/api/auth/plugin-authorize/' },
+            { ...login, authorize_url: `${EPICSTAFF_ORIGIN}/api/auth/plugin-authorize/?plugin=other` },
+            { ...login, token_url: `${EPICSTAFF_ORIGIN}/api/auth/plugin-token/#x` },
+            { ...login, token_url: 'https://user@epicstaff.example.com/api/auth/plugin-token/' },
+            { authorize_url: login.authorize_url },
+            'https://epicstaff.example.com/',
+            [],
+        ]) {
+            assert.throws(
+                () => parsePlatformConfig({ ...VALID, login: invalid }),
+                PlatformConfigError,
+                JSON.stringify(invalid)
+            );
+        }
+    });
+
     test('refuses another frame protocol, a missing plugin identity or a non-path api_base', () => {
         assert.throws(() => parsePlatformConfig({ ...VALID, frame_protocol: 2 }), PlatformConfigError);
         assert.throws(() => parsePlatformConfig({ ...VALID, plugin: { name: 'Weather' } }), PlatformConfigError);

@@ -138,3 +138,30 @@ def test_the_middleware_uses_the_process_runtime_file_by_default(monkeypatch, ru
 def test_reading_the_context_of_an_unprotected_request_fails_loudly():
     with pytest.raises(ContextUnavailableError, match="epicstaff_plugin.serve"):
         context_from_scope({"type": "http", "path": "/api/ping"})
+
+
+def test_a_user_context_reaches_the_app_through_context_from_scope(runtime, signer):
+    seen = []
+
+    async def app(scope, receive, send):
+        context = context_from_scope(scope)
+        seen.append((context.is_user, context.user.email, context.org.id, context.has_permission("read")))
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    protected = EpicStaffContextMiddleware(app, ContextVerifier(runtime))
+    user = {"id": 42, "email": "ada@acme.test", "name": "Ada"}
+    headers = signer.headers("GET", "/api/whoami", mode="user", user=user, org={"id": 3, "name": "Acme"})
+
+    assert request(protected, "GET", "/api/whoami", headers).status == 204
+    assert seen == [(True, "ada@acme.test", 3, True)]
+
+
+def test_a_signed_user_context_without_read_never_reaches_the_app(protected, plugin_app, signer):
+    claims = signer.context("GET", "/api/whoami", mode="user").model_dump(mode="json")
+    claims["permissions"] = []
+
+    response = request(protected, "GET", "/api/whoami", {CONTEXT_HEADER: signer.sign_claims(claims)})
+
+    assert (response.status, response.json()) == (401, {"code": "context_invalid"})
+    assert plugin_app.calls == 0
