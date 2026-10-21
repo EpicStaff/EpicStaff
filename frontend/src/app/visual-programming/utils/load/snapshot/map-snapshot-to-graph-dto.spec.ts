@@ -8,7 +8,7 @@ import {
 import { Edge } from '../../../core/models/edge.model';
 import { FlowModel } from '../../../core/models/flow.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../core/models/knowledge-retriever-node.model';
-import { KeyValueNodeModel, NodeModel } from '../../../core/models/node.model';
+import { KeyValueNodeModel, NodeModel, PythonNodeModel } from '../../../core/models/node.model';
 import {
     LIVE_AUTHORSHIP,
     LIVE_NODE_ID as ID,
@@ -264,6 +264,26 @@ describe('buildPreviewFlowModel', () => {
         for (const node of legacyFlow.nodes.filter((item) => item.type !== NodeType.START)) {
             expect((node.data as { test_payload: unknown }).test_payload).toEqual({});
         }
+    });
+
+    it('keeps the execution timeout of python code, and leaves it out for versions saved without one', () => {
+        const timed: GraphVersionSnapshot = {
+            nodes: [
+                exported('PythonNode', {
+                    ...livePython,
+                    python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '', execution_timeout: 90 },
+                }),
+            ],
+        };
+        const pythonCodeOf = (version: GraphVersionSnapshot): PythonNodeModel['data'] =>
+            (
+                buildPreviewFlowModel(version, secretsByName, availableFlows).flow.nodes.find(
+                    (node) => node.type === NodeType.PYTHON
+                ) as PythonNodeModel
+            ).data;
+
+        expect(pythonCodeOf(timed).execution_timeout).toBe(90);
+        expect((byId(ID.python) as PythonNodeModel).data.execution_timeout).toBeUndefined();
     });
 
     it('keeps the webhook storage flag and turns it off for versions saved without one', () => {

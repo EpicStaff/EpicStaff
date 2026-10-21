@@ -57,6 +57,7 @@ export function toLivePythonCode(code: SnapshotPythonCode, secrets: DeclaredSecr
         entrypoint: code.entrypoint,
         libraries: parseSnapshotLibraries(code.libraries),
         secrets,
+        execution_timeout: code.execution_timeout,
     };
 }
 

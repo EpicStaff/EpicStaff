@@ -51,11 +51,11 @@ class CustomShortcutsSerializer(serializers.Serializer):
 
 
 class ProfileResponseSerializer(UserResponseSerializer):
-    """GET / PATCH / POST-avatar response for /api/profile/.
+    """GET / PATCH / POST-avatar / POST-quickstart-tour response for /api/profile/.
 
     Strict superset of UserResponseSerializer: same fields, plus
-    `avatar_url`, `active_organization_id`, `active_permissions` and
-    `custom_shortcuts` (the user's own preference, so it stays off the
+    `active_organization_id`, `active_permissions`, `quickstart_tour_completed`
+    and `custom_shortcuts` (the user's own preference, so it stays off the
     admin user directory's UserResponseSerializer). The
     `memberships` list is computed in UserProfileService.get_profile — a
     normal user's real active memberships, or (for a superadmin) every active
@@ -73,6 +73,7 @@ class ProfileResponseSerializer(UserResponseSerializer):
     active_permissions = serializers.JSONField(
         source="_active_permissions", allow_null=True, default=None, read_only=True
     )
+    quickstart_tour_completed = serializers.SerializerMethodField()
     custom_shortcuts = serializers.SerializerMethodField()
 
     class Meta(UserResponseSerializer.Meta):
@@ -81,9 +82,13 @@ class ProfileResponseSerializer(UserResponseSerializer):
             "avatar_url",
             "active_organization_id",
             "active_permissions",
+            "quickstart_tour_completed",
             "custom_shortcuts",
         ]
         read_only_fields = fields
+
+    def get_quickstart_tour_completed(self, user) -> bool:
+        return user.quickstart_tour_completed_at is not None
 
     @extend_schema_field(CustomShortcutsSerializer)
     def get_custom_shortcuts(self, user):

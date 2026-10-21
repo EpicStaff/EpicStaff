@@ -125,6 +125,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     is_superadmin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    quickstart_tour_completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the user finished or skipped the Quick Start tour; null means not completed or skipped yet.",
+    )
     custom_shortcuts = models.JSONField(default=default_custom_shortcuts, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

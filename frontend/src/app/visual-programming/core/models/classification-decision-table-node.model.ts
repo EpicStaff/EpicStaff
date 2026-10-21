@@ -68,6 +68,8 @@ export interface CDTPythonCodeBlock {
     content_hash?: string;
     secret_ids?: number[];
     secrets?: DeclaredSecretRef[];
+    /** Seconds one run of the code may take; the backend applies its default when it is left out. */
+    execution_timeout?: number;
 }
 
 export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields {

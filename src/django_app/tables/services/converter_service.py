@@ -432,6 +432,7 @@ class ConverterService(metaclass=SingletonMeta):
             entrypoint=python_code.entrypoint,
             libraries=libraries,
             global_kwargs=python_code.global_kwargs,
+            execution_timeout=python_code.execution_timeout,
             use_storage=use_storage,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
