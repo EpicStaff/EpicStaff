@@ -28,6 +28,7 @@ from agents.models import (
     SurfacePythonTool,
     ToolMode,
 )
+from tables.import_export.constants import MAX_REUSE_CANDIDATES
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
@@ -463,6 +464,111 @@ class TestBuiltInTool:
         assert {
             id_mapper.get(EntityType.PYTHON_CODE_TOOL, built_in_tool.id) for id_mapper in id_mappers
         } == {org_copies.get().id}
+
+
+@pytest.mark.django_db
+class TestPythonToolDescriptionCleanedOnImport:
+    """Import stores a tool description without control characters and capped, yet
+    the reuse lookup still finds a tool stored with the text as written: a built-in
+    tool keeps upload_tools' text, which can exceed the cap."""
+
+    LONG_BUILT_IN_DESCRIPTION = "first line\n" + "y" * 3000
+
+    def _attach_built_in_tool(self, agent_flow, description):
+        built_in_tool = PythonCodeTool.objects.create(
+            name="built_in_py",
+            description=description,
+            python_code=PythonCode.objects.create(
+                code="def main(): return 'built-in'", entrypoint="main", libraries=""
+            ),
+            built_in=True,
+        )
+        SurfacePythonTool.objects.create(
+            surface=agent_flow["owned_surface"], python_tool=built_in_tool, mode=ToolMode.ALLOW
+        )
+        return built_in_tool
+
+    def test_hand_edited_description_imports_once_then_is_reused(
+        self, agent_flow, export_file, import_file, default_org
+    ):
+        old_tool_id = agent_flow["python_tool"].id
+        data = json.loads(export_file)
+        for entry in data[EntityType.PYTHON_CODE_TOOL]:
+            if entry["id"] == old_tool_id:
+                entry["description"] = "Line one\x1b[31m\x07\n" + "x" * 2000
+        hand_edited_file = json.dumps(data)
+
+        first_id_mapper = import_file(hand_edited_file)
+        counts_after_first_import = _org_counts(default_org)
+        second_id_mapper = import_file(hand_edited_file)
+
+        assert _org_counts(default_org) == counts_after_first_import
+        assert second_id_mapper.get(EntityType.PYTHON_CODE_TOOL, old_tool_id) == (
+            first_id_mapper.get(EntityType.PYTHON_CODE_TOOL, old_tool_id)
+        )
+
+    def test_built_in_with_a_long_multiline_description_is_reused(
+        self, agent_flow, export_service, import_file, default_org
+    ):
+        built_in_tool = self._attach_built_in_tool(agent_flow, self.LONG_BUILT_IN_DESCRIPTION)
+        export_file = json.dumps(
+            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+        )
+
+        id_mapper = import_file(export_file)
+
+        assert id_mapper.get(EntityType.PYTHON_CODE_TOOL, built_in_tool.id) == built_in_tool.id
+        assert not PythonCodeTool.objects.filter(
+            org=default_org, name__startswith="built_in_py"
+        ).exists()
+
+    def test_tool_stored_with_the_files_text_wins_over_one_matching_only_once_cleaned(
+        self, agent_flow, export_service, import_file, default_org
+    ):
+        built_in_tool = self._attach_built_in_tool(agent_flow, self.LONG_BUILT_IN_DESCRIPTION)
+        export_file = json.dumps(
+            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+        )
+        # Same name and code, newer id, so it sorts before the built-in in the lookup;
+        # its description equals the built-in's only after cleaning.
+        PythonCodeTool.objects.create(
+            name="built_in_py",
+            description="first line" + "y" * 1014,
+            python_code=PythonCode.objects.create(
+                code="def main(): return 'built-in'", entrypoint="main", libraries=""
+            ),
+            org=default_org,
+        )
+
+        id_mapper = import_file(export_file)
+
+        assert id_mapper.get(EntityType.PYTHON_CODE_TOOL, built_in_tool.id) == built_in_tool.id
+
+    def test_matching_copy_is_found_among_more_copies_than_the_lookup_loads(
+        self, agent_flow, export_file, import_file, default_org
+    ):
+        exported_tool_id = agent_flow["python_tool"].id
+        agent_flow["python_tool"].delete()
+
+        def tool_copy(name, description):
+            return PythonCodeTool.objects.create(
+                name=name,
+                description=description,
+                python_code=PythonCode.objects.create(
+                    code="def main(): return 1", entrypoint="main", libraries=""
+                ),
+                org=default_org,
+            )
+
+        # The matching copy is the oldest; newer copies that differ only in
+        # description outnumber the lookup's candidate window.
+        matching_copy = tool_copy("py #2", "description")
+        for number in range(3, MAX_REUSE_CANDIDATES + 4):
+            tool_copy(f"py #{number}", f"other description {number}")
+
+        id_mapper = import_file(export_file)
+
+        assert id_mapper.get(EntityType.PYTHON_CODE_TOOL, exported_tool_id) == matching_copy.id
 
 
 @pytest.mark.django_db
