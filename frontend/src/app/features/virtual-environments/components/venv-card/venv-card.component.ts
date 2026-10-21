@@ -69,10 +69,6 @@ export class VenvCardComponent {
         { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
     ];
 
-    libLabel(lib: VenvLib): string {
-        return lib.specification ? `${lib.name} ${lib.specification}` : lib.name;
-    }
-
     // appOverflowItems hides chips from the end, so the hidden ones are the last `count`.
     hiddenLibs(count: number): VenvLib[] {
         return count > 0 ? this.venv().libs.slice(-count) : [];

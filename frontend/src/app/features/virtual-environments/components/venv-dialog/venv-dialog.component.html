@@ -66,8 +66,27 @@
                         <tr class="text-body-small">
                             <th class="venv-dialog__cell--center">#</th>
                             <th>Library Name<span class="venv-dialog__required">*</span></th>
-                            <th>Version</th>
-                            <th>Specification</th>
+                            <th>
+                                <span class="venv-dialog__col-header">
+                                    Version
+                                    <app-help-tooltip
+                                        [text]="versionHint"
+                                        position="top"
+                                        size="14px"
+                                    />
+                                </span>
+                            </th>
+                            <th>
+                                <span class="venv-dialog__col-header">
+                                    Specification
+                                    <app-help-tooltip
+                                        [text]="specificationHint"
+                                        position="top"
+                                        size="14px"
+                                        tooltipClass="venv-specifier-tooltip"
+                                    />
+                                </span>
+                            </th>
                             <th class="venv-dialog__cell--center">
                                 <button
                                     type="button"
@@ -92,7 +111,7 @@
                     >
                         @for (row of libs.controls; track row; let index = $index) {
                             @let versionError = versionErrorMessage(row);
-                            @let preservedSpecification = row.controls.preservedSpecification.value;
+                            @let specificationError = specificationErrorMessage(row);
                             <tr [formGroupName]="index">
                                 <td class="venv-dialog__cell--center venv-dialog__cell--muted">{{ index + 1 }}</td>
                                 <td>
@@ -124,41 +143,17 @@
                                     />
                                 </td>
                                 <td>
-                                    <app-select
-                                        #specificationSelect
-                                        class="venv-dialog__spec-select"
-                                        formControlName="operator"
-                                        [items]="operatorItems"
-                                        [hideTrigger]="true"
-                                    >
-                                        <button
-                                            type="button"
-                                            class="venv-dialog__spec-trigger"
-                                            aria-label="Specification"
-                                            matTooltip="Set outside this dialog. Kept as is until you change this row's operator or version."
-                                            matTooltipPosition="above"
-                                            [matTooltipDisabled]="!preservedSpecification"
-                                            [appSelectTrigger]="specificationSelect"
-                                        >
-                                            @if (preservedSpecification) {
-                                                <span class="venv-dialog__spec-operator venv-dialog__spec-label">{{
-                                                    preservedSpecification
-                                                }}</span>
-                                            } @else {
-                                                <span class="venv-dialog__spec-operator">{{
-                                                    row.controls.operator.value
-                                                }}</span>
-                                                <span class="venv-dialog__spec-label">{{
-                                                    operatorLabels[row.controls.operator.value]
-                                                }}</span>
-                                            }
-                                            <app-svg-icon
-                                                class="venv-dialog__spec-chevron"
-                                                icon="chevron-down"
-                                                size="12px"
-                                            />
-                                        </button>
-                                    </app-select>
+                                    <input
+                                        class="venv-dialog__cell-input"
+                                        type="text"
+                                        formControlName="specification"
+                                        placeholder="e.g. >=1.0,<2.0"
+                                        aria-label="Specification"
+                                        matTooltipPosition="above"
+                                        [matTooltip]="specificationError ?? ''"
+                                        [matTooltipDisabled]="!specificationError"
+                                        [class.venv-dialog__cell-input--invalid]="!!specificationError"
+                                    />
                                 </td>
                                 <td class="venv-dialog__cell--center">
                                     <button

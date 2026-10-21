@@ -102,8 +102,7 @@ export class VenvsListPageComponent {
 
     onCreate(): void {
         this.dialog
-            // disableClose: the Specification `app-select` overlay has its own backdrop; a click on it
-            // would otherwise close the dialog.
+            // disableClose: a stray backdrop click must not throw away a half-filled library table.
             .open<Venv | null>(VenvDialogComponent, { disableClose: true })
             .closed.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((venv) => {

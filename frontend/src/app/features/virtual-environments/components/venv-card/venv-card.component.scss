@@ -142,6 +142,19 @@
         white-space: nowrap;
     }
 
+    &__tooltip-versions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+    }
+
+    // The installed version reads as the fact; the specifier set behind it as the constraint.
+    &__chip-version,
+    &__tooltip-version {
+        color: var(--accent-color);
+    }
+
     &__dot {
         flex-shrink: 0;
         width: 8px;

@@ -2,10 +2,20 @@
 export const VENV_LIBRARY_VERSION_PATTERN =
     /^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_.][a-z0-9]+)*)?$/;
 
+// Shape of a PEP 440 specifier set such as `!=1.2,>=1.0,<=1.8`: a comma-separated list of
+// clauses, each an operator followed by a version token. Deliberately looser than
+// VENV_LIBRARY_VERSION_PATTERN, which rejects the `.*` wildcard a clause may carry
+// (`==1.2.*`). The sandbox service validates the set with `packaging.SpecifierSet` and is the
+// authority; this only catches obvious typos before the request leaves the browser.
+export const VENV_LIBRARY_SPECIFICATION_PATTERN =
+    /^\s*(===|==|!=|~=|>=|<=|>|<)\s*[0-9A-Za-z][0-9A-Za-z.*+!_-]*(\s*,\s*(===|==|!=|~=|>=|<=|>|<)\s*[0-9A-Za-z][0-9A-Za-z.*+!_-]*)*\s*$/;
+
 // The sandbox_new venv lifecycle, mirrored from the service's VenvStatus enum.
 export type VenvStatus = 'declared' | 'processing' | 'completed' | 'failed';
 
-// `version` is resolved and locked by the sandbox service; the user's constraint is `specification`.
+// `version` is the installed version: the user may pin it, and a successful build writes back
+// what it installed. `specification` is the specifier set the version is validated against, and
+// what the resolver picks from when `version` is empty.
 export interface VenvLib {
     name: string;
     specification: string;

@@ -98,7 +98,10 @@
                         @if (updatableLibNames().has(lib.name)) {
                             <span class="venv-card__dot"></span>
                         }
-                        {{ libLabel(lib) }}
+                        {{ lib.name }}
+                        @if (lib.version) {
+                            <span class="venv-card__chip-version">{{ lib.version }}</span>
+                        }
                     </span>
                 }
                 <span
@@ -127,7 +130,11 @@
                                 }
                                 {{ lib.name }}
                             </span>
-                            <span class="venv-card__tooltip-accent">{{ lib.specification }}</span>
+                            <span class="venv-card__tooltip-versions">
+                                @if (lib.version) {
+                                    <span class="venv-card__tooltip-version">{{ lib.version }}</span>
+                                }
+                            </span>
                         }
                     </div>
                 </ng-template>

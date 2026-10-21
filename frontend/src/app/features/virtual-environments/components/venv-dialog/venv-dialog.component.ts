@@ -2,73 +2,38 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-    AbstractControl,
-    FormArray,
-    FormControl,
-    FormGroup,
-    ReactiveFormsModule,
-    ValidationErrors,
-    Validators,
-} from '@angular/forms';
+import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
     CustomInputComponent,
     HelpTooltipComponent,
-    SelectComponent,
-    SelectItem,
-    SelectTriggerDirective,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { merge, Observable, take } from 'rxjs';
+import { Observable } from 'rxjs';
 
-import { CreateVenvRequest, Venv, VENV_LIBRARY_VERSION_PATTERN, VenvLib } from '../../models/venv.model';
+import {
+    CreateVenvRequest,
+    Venv,
+    VENV_LIBRARY_SPECIFICATION_PATTERN,
+    VENV_LIBRARY_VERSION_PATTERN,
+    VenvLib,
+} from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
 
 export interface VenvDialogData {
     venv?: Venv;
 }
 
-// PEP 440 version specifier operators, the only part of a specifier this MVP builds.
-export type SpecifierOperator = '==' | '>=' | '<=' | '!=' | '~=' | '>' | '<';
-
-const SPECIFIER_OPERATORS: SpecifierOperator[] = ['==', '>=', '<=', '!=', '~=', '>', '<'];
-// Two-character operators first so ">=" is not read as ">" followed by "=...".
-const SPECIFIER_OPERATORS_LONGEST_FIRST = [...SPECIFIER_OPERATORS].sort((a, b) => b.length - a.length);
-
-const SPECIFIER_OPERATOR_LABELS: Record<SpecifierOperator, string> = {
-    '==': 'Exactly',
-    '>=': 'Greater or equal',
-    '<=': 'Less or equal',
-    '!=': 'Not equal',
-    '~=': 'Compatible',
-    '>': 'Greater than',
-    '<': 'Less than',
-};
-
 interface LibraryRowGroup {
     name: FormControl<string>;
-    operator: FormControl<SpecifierOperator>;
+    // The installed version: a pin when the user types one, otherwise what the last build resolved.
     version: FormControl<string>;
-    // Unparseable stored specifier, sent back unchanged until the row is edited.
-    preservedSpecification: FormControl<string | null>;
-}
-
-interface ParsedSpecification {
-    operator: SpecifierOperator;
-    version: string;
-}
-
-// PEP 440: "~=" needs at least two release segments.
-function compatibleReleaseValidator(control: AbstractControl): ValidationErrors | null {
-    const { operator, version } = control.value as ParsedSpecification;
-    const trimmed = version.trim();
-    if (operator !== '~=' || !trimmed) return null;
-    return /^([0-9]+!)?[0-9]+\.[0-9]+/.test(trimmed) ? null : { compatibleRelease: true };
+    // The whole PEP 440 specifier set, stored and sent verbatim.
+    specification: FormControl<string>;
 }
 
 @Component({
@@ -77,8 +42,6 @@ function compatibleReleaseValidator(control: AbstractControl): ValidationErrors 
         ReactiveFormsModule,
         CustomInputComponent,
         HelpTooltipComponent,
-        SelectComponent,
-        SelectTriggerDirective,
         ValidationErrorsComponent,
         ButtonComponent,
         AppSvgIconComponent,
@@ -100,12 +63,6 @@ export class VenvDialogComponent {
         return this.isEdit ? 'Save' : 'Create Venv';
     });
 
-    readonly operatorItems: SelectItem<SpecifierOperator>[] = SPECIFIER_OPERATORS.map((operator) => ({
-        name: `${operator} ${SPECIFIER_OPERATOR_LABELS[operator]}`,
-        value: operator,
-    }));
-    protected readonly operatorLabels = SPECIFIER_OPERATOR_LABELS;
-
     readonly form = new FormGroup({
         name: new FormControl('', {
             nonNullable: true,
@@ -113,6 +70,21 @@ export class VenvDialogComponent {
         }),
         libs: new FormArray<FormGroup<LibraryRowGroup>>([]),
     });
+
+    protected readonly versionHint =
+        'The version installed now. Clear it to let the next build pick one from the specification.';
+    // Rendered with the line breaks intact: see `.venv-specifier-tooltip` in styles/_material.scss.
+    protected readonly specificationHint = [
+        'Which versions a build may install. Combine clauses with commas, e.g. !=1.2,>=1.0,<=1.8.',
+        '',
+        '==  exactly this version (==1.2.* allows any release of 1.2)',
+        '!=  any version except this one',
+        '>=  this version or newer',
+        '<=  this version or older',
+        '>   newer than this version',
+        '<   older than this version',
+        '~=  newer, but only within the last part you wrote (~=1.4 allows 1.5, not 2.0)',
+    ].join('\n');
 
     private readonly dialogRef = inject<DialogRef<Venv | null>>(DialogRef);
     private readonly venvsApi = inject(VenvsApiService);
@@ -171,62 +143,47 @@ export class VenvDialogComponent {
         this.dialogRef.close(null);
     }
 
-    versionErrorMessage(row: FormGroup<LibraryRowGroup>): string | null {
-        const { operator, version } = row.controls;
-        if (!operator.touched && !version.touched) return null;
-        if (version.hasError('pattern')) return 'Not a valid version, e.g. 2.31.0';
-        if (row.hasError('compatibleRelease')) return '"~=" needs at least two version parts, e.g. 1.4';
-        return null;
+    protected versionErrorMessage(row: FormGroup<LibraryRowGroup>): string | null {
+        const version = row.controls.version;
+        if (!version.touched || !version.hasError('pattern')) return null;
+        return 'Not a valid version, e.g. 2.31.0';
+    }
+
+    // Whether the version actually satisfies the specification is PEP 440 ordering: the sandbox
+    // service decides that and rejects the pair, naming both values.
+    protected specificationErrorMessage(row: FormGroup<LibraryRowGroup>): string | null {
+        const specification = row.controls.specification;
+        if (!specification.touched || !specification.hasError('pattern')) return null;
+        return 'Not a valid specifier set, e.g. >=1.0,<2.0';
     }
 
     private createLibraryRow(lib?: VenvLib): FormGroup<LibraryRowGroup> {
-        const specification = lib?.specification ?? '';
-        const parsed = this.parseSpecification(specification);
-        const row = new FormGroup<LibraryRowGroup>(
-            {
-                name: new FormControl(lib?.name ?? '', {
-                    nonNullable: true,
-                    validators: [Validators.required],
-                }),
-                operator: new FormControl(parsed?.operator ?? '==', { nonNullable: true }),
-                version: new FormControl(parsed?.version ?? '', {
-                    nonNullable: true,
-                    validators: [Validators.pattern(VENV_LIBRARY_VERSION_PATTERN)],
-                }),
-                preservedSpecification: new FormControl<string | null>(parsed ? null : specification),
-            },
-            { validators: compatibleReleaseValidator }
-        );
-        if (!parsed) {
-            merge(row.controls.operator.valueChanges, row.controls.version.valueChanges)
-                .pipe(take(1), takeUntilDestroyed(this.destroyRef))
-                .subscribe(() => row.controls.preservedSpecification.setValue(null));
-        }
-        return row;
+        return new FormGroup<LibraryRowGroup>({
+            name: new FormControl(lib?.name ?? '', {
+                nonNullable: true,
+                validators: [Validators.required],
+            }),
+            version: new FormControl(lib?.version ?? '', {
+                nonNullable: true,
+                validators: [Validators.pattern(VENV_LIBRARY_VERSION_PATTERN)],
+            }),
+            specification: new FormControl(lib?.specification ?? '', {
+                nonNullable: true,
+                validators: [Validators.pattern(VENV_LIBRARY_SPECIFICATION_PATTERN)],
+            }),
+        });
     }
 
-    // Parses `specification`, not `lib.version`: that is the resolved version and would rewrite the user's constraint.
-    private parseSpecification(specification: string): ParsedSpecification | null {
-        const trimmed = specification.trim();
-        if (!trimmed) return { operator: '==', version: '' };
-        const operator = SPECIFIER_OPERATORS_LONGEST_FIRST.find((candidate) => trimmed.startsWith(candidate));
-        if (!operator) return null;
-        const version = trimmed.slice(operator.length).trim();
-        return VENV_LIBRARY_VERSION_PATTERN.test(version) ? { operator, version } : null;
-    }
-
-    // `version` is the service-resolved lock, never user input.
     private buildPayload(): CreateVenvRequest {
         const { name, libs } = this.form.getRawValue();
         return {
             name,
             libs: libs.map((row) => {
                 const version = row.version.trim();
-                const built = version ? `${row.operator}${version}` : '';
                 return {
                     name: row.name.trim(),
-                    specification: row.preservedSpecification ?? built,
-                    version: null,
+                    specification: row.specification.trim(),
+                    version: version || null,
                 };
             }),
         };

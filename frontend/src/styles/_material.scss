@@ -68,6 +68,18 @@ $compact-theme: mat.define-theme(
     line-height: 1.45;
 }
 
+// Venv library specifier reference: one operator per line, so the breaks have to survive.
+.venv-specifier-tooltip {
+    --mat-tooltip-container-max-width: 480px;
+}
+
+.venv-specifier-tooltip .mdc-tooltip__surface {
+    max-width: 480px;
+    text-align: left;
+    white-space: pre-line;
+    line-height: 1.6;
+}
+
 .tree-name-tooltip {
     --mat-tooltip-container-max-width: 60vw;
 }

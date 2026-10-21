@@ -142,12 +142,17 @@
         text-align: center;
     }
 
+    &__col-header {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
     &__cell--muted {
         color: var(--color-ks-transparent-text-60);
     }
 
-    &__cell-input,
-    &__spec-trigger {
+    &__cell-input {
         width: 100%;
         height: 32px;
         padding: 0 8px;
@@ -155,25 +160,17 @@
         border: 1px solid transparent;
         color: var(--color-text-primary);
         font: inherit;
+        text-overflow: ellipsis;
         transition:
             background-color 0.15s ease,
             border-color 0.15s ease;
 
-        &:hover {
-            background-color: var(--color-input-background-hover);
-        }
-
-        &:focus-visible {
-            outline: none;
-            border-color: var(--accent-color);
-        }
-    }
-
-    &__cell-input {
-        text-overflow: ellipsis;
-
         &::placeholder {
             color: var(--color-input-text-placeholder);
+        }
+
+        &:hover {
+            background-color: var(--color-input-background-hover);
         }
 
         &:focus {
@@ -185,35 +182,6 @@
         &--invalid:focus {
             border-color: var(--color-ks-status-failed);
         }
-    }
-
-    &__spec-select {
-        display: block;
-    }
-
-    &__spec-trigger {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        text-align: left;
-        cursor: pointer;
-    }
-
-    &__spec-operator {
-        color: var(--accent-color);
-    }
-
-    &__spec-label {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    &__spec-chevron {
-        flex-shrink: 0;
-        color: var(--color-ks-transparent-text-60);
     }
 
     &__icon-btn {
