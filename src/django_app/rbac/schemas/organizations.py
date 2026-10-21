@@ -21,6 +21,10 @@ from rbac.serializers.organizations import (
 
 ORGANIZATIONS_LIST_GET = {
     "summary": "List organizations (permission-aware)",
+    "description": (
+        "`admins` is populated only for organizations where the caller holds "
+        "memberships read; for every other organization it is an empty list."
+    ),
     "responses": {200: OrganizationListResponseSerializer(many=True)},
 }
 

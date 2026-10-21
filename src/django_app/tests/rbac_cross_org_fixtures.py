@@ -10,7 +10,7 @@ other suites rely on).
 import pytest
 from rest_framework.test import APIClient
 
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole
 
 
@@ -80,6 +80,25 @@ def superadmin(db, django_user_model):
         password="StrongPass123!",
         is_superadmin=True,
     )
+
+
+@pytest.fixture
+def user_with_grants(db, django_user_model):
+    """Factory → a user holding, in each given org, a custom role with exactly
+    the given bits. `grants` maps Organization → {resource_type: Permission}."""
+
+    def _make(email, grants):
+        user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+        for org, bits in grants.items():
+            role = Role.objects.create(name=f"grants-{user.id}", org=org, is_built_in=False)
+            for resource_type, mask in bits.items():
+                RolePermission.objects.create(
+                    role=role, resource_type=resource_type, permissions=int(mask)
+                )
+            OrganizationUser.objects.create(user=user, org=org, role=role)
+        return user
+
+    return _make
 
 
 @pytest.fixture

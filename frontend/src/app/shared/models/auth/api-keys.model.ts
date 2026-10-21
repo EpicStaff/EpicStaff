@@ -32,6 +32,7 @@ export interface ApiKeyOwner {
 }
 
 export interface GetApiKeyWithOwnerResponse extends GetMyApiKeyResponse {
-    owner: ApiKeyOwner;
+    /** `null` when the caller may not read memberships in any of the key's organizations. */
+    owner: ApiKeyOwner | null;
     org_ids: number[];
 }

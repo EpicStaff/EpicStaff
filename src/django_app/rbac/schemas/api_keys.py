@@ -34,8 +34,8 @@ _JWT_ONLY_403_RESPONSE = OpenApiResponse(
 _ADMIN_LIST_403_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
     description=(
-        "Caller holds api_keys read in no organization, or a forbidden ?org_ids= "
-        "entry (permission_denied). No API key can list here: the system key is "
+        "Caller holds api_keys read in no organization, a forbidden ?org_ids= "
+        "entry, or a ?user= the caller may not identify (permission_denied). No API key can list here: the system key is "
         "rejected by the admin-surface gate, a USER key by the JWT-only gate."
     ),
     examples=[SYSTEM_KEY_REJECTED_EXAMPLE, _API_KEY_ON_JWT_ONLY_ENDPOINT_EXAMPLE],
@@ -176,7 +176,9 @@ API_KEYS_MANAGEMENT_LIST = {
     "description": (
         "Keys owned by members of every organization where the caller holds "
         "api_keys read. Superadmins see all. System keys never appear, and "
-        "superadmin-owned keys are visible only to superadmins."
+        "superadmin-owned keys are visible only to superadmins. `owner` is "
+        "null unless the caller also holds memberships read in one of the "
+        "key's `org_ids`."
     ),
     "parameters": [
         OpenApiParameter(
@@ -191,7 +193,10 @@ API_KEYS_MANAGEMENT_LIST = {
             type=OpenApiTypes.INT,
             location=OpenApiParameter.QUERY,
             required=False,
-            description="Filter by owner user id.",
+            description=(
+                "Filter by owner user id. 403 unless the owner is a member of an "
+                "organization where the caller holds memberships read."
+            ),
         ),
         OpenApiParameter(
             name="status",

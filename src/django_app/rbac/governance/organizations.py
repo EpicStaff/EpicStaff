@@ -62,7 +62,11 @@ class OrganizationManagementService(CrossOrgResourceService):
         the orgs where they hold ORGANIZATIONS.READ (a forbidden ?org_ids=
         entry fails loud, 403). Returns a queryset annotated with
         `member_count`, with each org's Org Admins prefetched into
-        `_admin_memberships` (attach via `attach_admins`)."""
+        `_admin_memberships` (attach via `attach_admins`).
+
+        Admins are prefetched only for the orgs where the caller holds
+        MEMBERSHIPS.READ; every other org gets an empty `_admin_memberships`,
+        so its admins are never queried, let alone serialized."""
         admin_memberships_qs = (
             OrganizationUser.objects.filter(
                 role__name=BuiltInRole.ORG_ADMIN, role__is_built_in=True
@@ -70,6 +74,9 @@ class OrganizationManagementService(CrossOrgResourceService):
             .select_related("user")
             .order_by("joined_at", "user_id")
         )
+        identity_org_ids = self.resolve_identity_visible_org_ids(actor, scopes=scopes)
+        if identity_org_ids is not None:
+            admin_memberships_qs = admin_memberships_qs.filter(org_id__in=identity_org_ids)
         base_qs = self._list_organizations(is_active=is_active).prefetch_related(
             Prefetch(
                 "members",
@@ -387,7 +394,7 @@ class OrganizationManagementService(CrossOrgResourceService):
 
     def _get_fallback_admin_user(self) -> User | None:
         """Oldest active superadmin — fallback for orgs with no Org Admins
-        in `list_organizations_with_admins`. Returns None if no active
+        in `attach_admins`. Returns None if no active
         superadmin exists (theoretical edge case)."""
         return (
             User.objects.filter(is_superadmin=True, is_active=True)

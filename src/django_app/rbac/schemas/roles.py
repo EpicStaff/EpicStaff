@@ -208,9 +208,11 @@ ROLES_DESTROY_DELETE = {
     "description": (
         "Deletes a custom role and reassigns its members to the built-in "
         "Viewer role (never evicts them). With ?dry_run=true nothing is "
-        "deleted and the affected members are returned so the UI can warn "
-        "first. Built-in roles are immutable, and a caller cannot delete the "
-        "role they themselves hold."
+        "deleted and the number of affected members is returned so the UI can "
+        "warn first; the members themselves (`affected_users`) are listed only "
+        "when the caller also holds memberships read in the role's "
+        "organization, otherwise that key is omitted. Built-in roles are "
+        "immutable, and a caller cannot delete the role they themselves hold."
     ),
     "parameters": [
         OpenApiParameter(
@@ -249,6 +251,12 @@ ROLES_DESTROY_DELETE = {
                     {"user_id": 42, "email": "ann@example.com", "display_name": "Ann"}
                 ],
             },
+            response_only=True,
+            status_codes=["200"],
+        ),
+        OpenApiExample(
+            "Dry-run preview without memberships read",
+            value={"role_id": 101, "assigned_count": 5},
             response_only=True,
             status_codes=["200"],
         ),

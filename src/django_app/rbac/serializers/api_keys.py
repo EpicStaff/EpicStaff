@@ -56,7 +56,15 @@ class ApiKeyOwnerSerializer(serializers.ModelSerializer):
 
 
 class ApiKeyAdminSerializer(ApiKeySerializer):
-    owner = ApiKeyOwnerSerializer(source="created_by", read_only=True)
+    # `visible_owner` is set by ApiKeyManagementService.attach_visible_orgs.
+    # With allow_null, DRF renders a missing attribute as null, so a key that
+    # skipped the service never exposes its owner.
+    owner = ApiKeyOwnerSerializer(
+        source="visible_owner",
+        read_only=True,
+        allow_null=True,
+        help_text="Null unless the caller holds memberships read in one of `org_ids`.",
+    )
     org_ids = serializers.SerializerMethodField()
 
     class Meta(ApiKeySerializer.Meta):

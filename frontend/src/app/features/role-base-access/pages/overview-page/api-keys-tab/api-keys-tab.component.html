@@ -96,20 +96,24 @@
         appTableCell="owner"
         let-row
     >
-        <div class="owner-cell">
-            <app-user-avatar
-                [avatarUrl]="row['ownerAvatar']"
-                [name]="row['ownerName']"
-            />
-            <div class="owner-info">
-                <span
-                    class="owner-name"
-                    [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
-                    >{{ row['ownerName'] }}</span
-                >
-                <span class="owner-email">{{ row['ownerEmail'] }}</span>
+        @if (row['ownerId'] !== null) {
+            <div class="owner-cell">
+                <app-user-avatar
+                    [avatarUrl]="row['ownerAvatar']"
+                    [name]="row['ownerName']"
+                />
+                <div class="owner-info">
+                    <span
+                        class="owner-name"
+                        [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
+                        >{{ row['ownerName'] }}</span
+                    >
+                    <span class="owner-email">{{ row['ownerEmail'] }}</span>
+                </div>
             </div>
-        </div>
+        } @else {
+            <span class="empty-value">—</span>
+        }
     </ng-template>
 
     <!-- NAME -->
