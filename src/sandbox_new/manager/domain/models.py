@@ -53,8 +53,17 @@ class Library(ValueObject):
             return f"{self.name}=={self.version}"
         return f"{self.name}{self.specification}"
 
-    def with_version(self, value: str, /) -> "Library":
-        return Library(**{**self.model_dump(), "version": value})
+    def with_resolved_version(self, value: str, /) -> "Library":
+        """This library as the build resolved it: the installed version, and a
+        specification when the declaration carried none.
+
+        The default `>=<installed>` is what the user is held to from now on: the
+        specification is the guard rail the version is validated against, so a
+        library declared without one would otherwise accept any version later.
+        An explicit specification is the user's, and is left alone.
+        """
+        specification = self.specification or f">={value}"
+        return Library(**{**self.model_dump(), "version": value, "specification": specification})
 
 
 class Venv(Entity):
@@ -95,8 +104,15 @@ class Venv(Entity):
         self.mark_as_declared()
 
     def apply_resolved_versions(self, versions: dict[str, str], /):
+        """Record what the build installed, keyed by canonical name.
+
+        `versions` also carries the transitive packages uv resolved; only declared
+        libraries are stamped, and one the build did not resolve is left as declared.
+        """
         self.libs = [
-            library.with_version(versions[library.name]) if library.name in versions else library
+            library.with_resolved_version(versions[library.name])
+            if library.name in versions
+            else library
             for library in self.libs
         ]
 

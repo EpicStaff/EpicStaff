@@ -122,7 +122,9 @@ class VenvBuildOrchestrator:
 
         libs = [library.requirement for library in venv.libs]
         await self.uv_provider.apply(staging_path, *libs)
-        venv.apply_resolved_versions(self.uv_provider.read_resolved_versions(staging_path))
+        # Held, not applied yet: stamping the libraries is what the user sees as the
+        # outcome of the build, so it must not survive a step below that fails.
+        resolved_versions = self.uv_provider.read_resolved_versions(staging_path)
 
         lock_file = self.uv_provider.get_lock_file(staging_path)
         lock_hash = hashlib.sha256(lock_file.read_bytes()).hexdigest()
@@ -140,6 +142,7 @@ class VenvBuildOrchestrator:
         # build. They are intentionally kept out of venv.libs.
         await self.uv_provider.install_local(venv_path, *settings.PREDEFINED_VENV_PACKAGES)
 
+        venv.apply_resolved_versions(resolved_versions)
         return venv
 
     async def _retrieve(self, id: int) -> Venv:
