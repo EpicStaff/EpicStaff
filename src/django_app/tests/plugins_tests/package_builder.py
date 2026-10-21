@@ -37,7 +37,37 @@ SAMPLE_MANIFEST = {
 }
 
 BACKEND = {"python": "3.12", "entrypoint": "plugin.app:app"}
-BACKEND_FILES = {"backend/requirements.lock": b"", "backend/src/plugin/app.py": b"app = None\n"}
+# Every backend's lock pins the SDK and uvicorn, each with a sha256.
+BACKEND_LOCK = (
+    "uvicorn==0.52.3 --hash=sha256:" + "a" * 64 + "\n"
+    "epicstaff-plugin==0.1.0 --hash=sha256:" + "b" * 64 + "\n"
+).encode("utf-8")
+BACKEND_FILES = {"backend/requirements.lock": BACKEND_LOCK, "backend/src/plugin/app.py": b"app = None\n"}
+
+PING_PATH = {"path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0}
+UNITS_SETTING = {
+    "key": "units",
+    "type": "enum",
+    "label": "Units",
+    "description": "Units for every organization.",
+    "required": True,
+    "default": "metric",
+    "values": ["metric", "imperial"],
+}
+TOKEN_SETTING = {
+    "key": "forecast_api_token",
+    "type": "secret",
+    "label": "Forecast API token",
+    "description": "Token for the forecast provider.",
+    "required": False,
+}
+WEATHER_LIMITS = {
+    "memory_mb": 256,
+    "db_connections": 5,
+    "statement_timeout_seconds": 10,
+    "requests_per_minute": 120,
+    "cpu_priority": "normal",
+}
 
 
 def sample_manifest(**changes) -> dict:
@@ -45,6 +75,20 @@ def sample_manifest(**changes) -> dict:
     manifest = copy.deepcopy(SAMPLE_MANIFEST)
     manifest.update(changes)
     return manifest
+
+
+def backend_manifest(**changes) -> dict:
+    """The Weather sample with a backend: a public ping path, two settings and limits."""
+    return sample_manifest(
+        **{
+            "version": "0.2.0",
+            "backend": dict(BACKEND),
+            "public_paths": [dict(PING_PATH)],
+            "settings": [dict(UNITS_SETTING), dict(TOKEN_SETTING)],
+            "limits": dict(WEATHER_LIMITS),
+            **changes,
+        }
+    )
 
 
 def sample_files(manifest: dict | None = None) -> dict[str, bytes]:

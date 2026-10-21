@@ -102,6 +102,11 @@
         .group-icon {
             color: var(--purple-primary);
             flex-shrink: 0;
+
+            &--font {
+                font-size: 14px;
+                line-height: 1;
+            }
         }
 
         .group-name {
@@ -138,6 +143,15 @@
     }
 }
 
+.group-note {
+    margin: 0;
+    padding: 12px 8px 12px 40px;
+    color: var(--color-text-secondary);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+}
+
 .resource-row {
     display: grid;
     grid-template-columns: var(--perm-row-grid);
@@ -165,8 +179,18 @@
         justify-content: center;
 
         .resource-name {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
             font-size: 0.875rem;
             color: var(--color-text-primary);
+
+            .resource-icon {
+                width: 14px;
+                height: 14px;
+                flex-shrink: 0;
+                object-fit: contain;
+            }
 
             &.bulk {
                 font-size: 0.625rem;

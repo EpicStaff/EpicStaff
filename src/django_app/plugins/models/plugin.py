@@ -60,6 +60,9 @@ class Plugin(models.Model):
         blank=True,
         related_name="+",
     )
+    # The SuperAdmin's lowered limits, by limit name; they can only lower what the manifest
+    # asks for (plugins.configuration.limits).
+    limit_overrides = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -87,6 +90,10 @@ class PluginPackage(models.Model):
     signature_status = models.CharField(max_length=16, choices=SignatureStatus.choices)
     signer_key_id = models.CharField(max_length=16, null=True, blank=True)
     signer_key_name = models.CharField(max_length=64, null=True, blank=True)
+    # The minisign public key (`RW...`) the signature verified with, as trusted when the
+    # verdict was taken; set exactly when `trust` is trusted, so the plugin node checks the
+    # signature with the key EpicStaff checked it with, whatever the trusted keys are today.
+    signer_public_key = models.CharField(max_length=64, null=True, blank=True)
     review_state = models.CharField(
         max_length=16, choices=ReviewState.choices, default=ReviewState.PENDING
     )

@@ -116,10 +116,20 @@ INVALID_CASES = [
             **document,
             "user_permissions": [
                 *document["user_permissions"],
-                {"action": "update", "description": "Edit.", "defaults": {"org_admin": True, "member": False, "viewer": True}},
+                {"action": "update", "description": "Edit.", "defaults": {"org_admin": True, "member": True, "viewer": True}},
             ],
         },
         "manifest.user_permissions",
+    ),
+    (
+        "viewer gets an action member does not",
+        _set(("user_permissions", 0, "defaults"), {"org_admin": True, "member": False, "viewer": True}),
+        "manifest.user_permissions[0].defaults",
+    ),
+    (
+        "member gets an action org_admin does not",
+        _set(("user_permissions", 0, "defaults"), {"org_admin": False, "member": True, "viewer": False}),
+        "manifest.user_permissions[0].defaults",
     ),
     ("user permission action list", _set(("user_permissions", 0, "action"), "list"), "manifest.user_permissions[0].action"),
     ("defaults without viewer", _delete("user_permissions", 0, "defaults", "viewer"), "manifest.user_permissions[0].defaults.viewer"),
@@ -151,7 +161,8 @@ INVALID_CASES = [
     ("limits memory below 64", _set(("limits",), _limits(memory_mb=63), backend=True), "manifest.limits.memory_mb"),
     ("limits connections above 100", _set(("limits",), _limits(db_connections=101), backend=True), "manifest.limits.db_connections"),
     ("limits cpu priority high", _set(("limits",), _limits(cpu_priority="high"), backend=True), "manifest.limits.cpu_priority"),
-    ("limits without requests_per_minute", _set(("limits",), {key: value for key, value in LIMITS.items() if key != "requests_per_minute"}, backend=True), "manifest.limits.requests_per_minute"),
+    ("limits requests_per_minute as a string", _set(("limits",), _limits(requests_per_minute="60"), backend=True), "manifest.limits.requests_per_minute"),
+    ("limits with an unknown field", _set(("limits",), _limits(disk_mb=10), backend=True), "manifest.limits.disk_mb"),
     ("hook without a backend", _set(("hooks",), {"install": True}), "manifest.hooks"),
     ("install timeout above 900", _set(("hooks",), {"install": True, "timeouts_seconds": {"install": 901}}, backend=True), "manifest.hooks.timeouts_seconds.install"),
     ("upgrade timeout above 1800", _set(("hooks",), {"upgrade": True, "timeouts_seconds": {"upgrade": 1801}}, backend=True), "manifest.hooks.timeouts_seconds.upgrade"),
@@ -178,6 +189,44 @@ def test_the_weather_sample_is_valid(manifest_document):
     assert manifest.spa.entry == "index.html"
     assert manifest.access == []
     assert manifest.hooks.any_enabled is False
+
+
+@pytest.mark.parametrize(
+    "limits",
+    [{"memory_mb": 256}, {"cpu_priority": "low", "requests_per_minute": 30}, {}, {"memory_mb": None}],
+)
+def test_every_limit_may_be_left_to_the_platform_default(manifest_document, limits):
+    manifest = validate_manifest(_set(("limits",), limits, backend=True)(manifest_document))
+
+    given = {key: value for key, value in limits.items() if value is not None}
+    assert manifest.limits.model_dump(exclude_none=True) == given
+
+
+@pytest.mark.parametrize(
+    "defaults",
+    [
+        {"org_admin": True, "member": True, "viewer": True},
+        {"org_admin": True, "member": True, "viewer": False},
+        {"org_admin": True, "member": False, "viewer": False},
+        {"org_admin": False, "member": False, "viewer": False},
+    ],
+)
+def test_nested_built_in_role_defaults_are_accepted(manifest_document, defaults):
+    manifest_document["user_permissions"].append({"action": "update", "description": "Edit.", "defaults": defaults})
+    manifest_document["user_permissions"][0]["defaults"] = {"org_admin": True, "member": True, "viewer": True}
+
+    assert validate_manifest(manifest_document).user_permissions[1].defaults.model_dump() == defaults
+
+
+def test_a_built_in_role_default_that_is_not_nested_says_which_roles(manifest_document):
+    manifest_document["user_permissions"][0]["defaults"] = {"org_admin": True, "member": False, "viewer": True}
+
+    with pytest.raises(PackageProblemsError) as raised:
+        validate_manifest(manifest_document)
+
+    (problem,) = raised.value.problems
+    assert problem.loc == "manifest.user_permissions[0].defaults"
+    assert "gives viewer the action but not member" in problem.message
 
 
 def test_the_complete_example_is_valid(full_manifest_document):

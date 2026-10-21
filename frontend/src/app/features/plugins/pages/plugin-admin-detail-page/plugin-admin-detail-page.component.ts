@@ -14,7 +14,10 @@ import { catchError, finalize, of, switchMap, tap } from 'rxjs';
 import { PluginBadgeComponent } from '../../components/plugin-badge/plugin-badge.component';
 import { PluginGrantsTableComponent } from '../../components/plugin-grants-table/plugin-grants-table.component';
 import { PluginIconComponent } from '../../components/plugin-icon/plugin-icon.component';
+import { PluginLimitsFormComponent } from '../../components/plugin-limits-form/plugin-limits-form.component';
 import { PluginReviewPanelComponent } from '../../components/plugin-review-panel/plugin-review-panel.component';
+import { PluginRuntimePanelComponent } from '../../components/plugin-runtime-panel/plugin-runtime-panel.component';
+import { PluginSettingsFormComponent } from '../../components/plugin-settings-form/plugin-settings-form.component';
 import { PluginDetail } from '../../models/plugin-admin.model';
 import { PluginErrorView } from '../../models/plugin-error.model';
 import { PluginDialogsService } from '../../services/plugin-dialogs.service';
@@ -27,12 +30,18 @@ import {
 } from '../../utils/plugin-display.util';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
 
-export type PluginDetailTab = 'overview' | 'organizations';
+export type PluginDetailTab = 'overview' | 'organizations' | 'settings' | 'limits' | 'runtime';
+
+/** The tabs only a plugin whose current package has a backend has. */
+const BACKEND_TABS: readonly PluginDetailTab[] = ['settings', 'limits', 'runtime'];
 
 /** The plugin list's address. */
 const PLUGINS_LIST_ROUTE = '/workspace/plugins';
 
-/** `/workspace/plugins/:identifier`: one plugin's approved package and the organizations it is granted to. */
+/**
+ * `/workspace/plugins/:identifier`: one plugin's approved package and the organizations it is granted to; for a plugin
+ * with a backend also its settings, limits and runtime.
+ */
 @Component({
     selector: 'app-plugin-admin-detail-page',
     imports: [
@@ -43,7 +52,10 @@ const PLUGINS_LIST_ROUTE = '/workspace/plugins';
         PluginBadgeComponent,
         PluginGrantsTableComponent,
         PluginIconComponent,
+        PluginLimitsFormComponent,
         PluginReviewPanelComponent,
+        PluginRuntimePanelComponent,
+        PluginSettingsFormComponent,
         RouterLink,
         TabButtonComponent,
     ],
@@ -54,8 +66,14 @@ export class PluginAdminDetailPageComponent {
     /** The route param. */
     readonly identifier = input.required<string>();
 
-    protected readonly tab = signal<PluginDetailTab>('overview');
     protected readonly plugin = signal<PluginDetail | null>(null);
+    protected readonly hasBackend = computed(() => this.plugin()?.current_package?.contents.has_backend === true);
+    private readonly selectedTab = signal<PluginDetailTab>('overview');
+    /** The selected tab, or Overview when it is a backend tab and the plugin has no backend. */
+    protected readonly tab = computed<PluginDetailTab>(() => {
+        const tab = this.selectedTab();
+        return BACKEND_TABS.includes(tab) && !this.hasBackend() ? 'overview' : tab;
+    });
     protected readonly isLoading = signal(true);
     protected readonly loadError = signal<PluginErrorView | null>(null);
     protected readonly stateLabel = computed(() => {
@@ -113,7 +131,18 @@ export class PluginAdminDetailPageComponent {
     }
 
     protected selectTab(tab: PluginDetailTab): void {
-        this.tab.set(tab);
+        this.selectedTab.set(tab);
+    }
+
+    /** Reloads the plugin quietly (its state badge follows the runtime); a failure keeps what is shown. */
+    protected refreshPlugin(): void {
+        this.storage
+            .getPlugin(this.identifier())
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (plugin) => this.plugin.set(plugin),
+                error: () => undefined,
+            });
     }
 
     protected reload(): void {

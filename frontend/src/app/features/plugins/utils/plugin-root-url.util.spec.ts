@@ -1,3 +1,7 @@
+import { TestBed } from '@angular/core/testing';
+import { ORG_SWITCH_URL_RULES } from '@shared/services';
+
+import { providePluginsExtensions } from '../plugins.providers';
 import { pluginRootUrl } from './plugin-root-url.util';
 
 describe('pluginRootUrl', () => {
@@ -16,4 +20,10 @@ describe('pluginRootUrl', () => {
             expect(pluginRootUrl(url)).toBeNull();
         }
     );
+
+    it('is the organization-switch rule the plugin feature registers', () => {
+        TestBed.configureTestingModule({ providers: [providePluginsExtensions()] });
+
+        expect(TestBed.inject(ORG_SWITCH_URL_RULES)).toEqual([pluginRootUrl]);
+    });
 });

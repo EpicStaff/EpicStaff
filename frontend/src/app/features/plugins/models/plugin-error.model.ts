@@ -19,7 +19,11 @@ export type PluginErrorCode =
     | 'untrusted_not_acknowledged'
     | 'plugin_not_found'
     | 'plugin_not_running'
-    | 'plugin_already_granted';
+    | 'plugin_already_granted'
+    | 'plugin_has_no_backend'
+    | 'invalid_plugin_settings'
+    | 'invalid_plugin_limits'
+    | 'no_plugin_node';
 
 /** One problem in a refused package: `loc` is a dotted path such as `manifest.user_permissions[1].action`. */
 export interface PluginErrorItem {

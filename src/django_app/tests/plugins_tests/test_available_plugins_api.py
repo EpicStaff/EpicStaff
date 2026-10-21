@@ -1,7 +1,8 @@
-"""Which plugins a person may open in an organization (contract section 3, `available`)."""
+"""Which plugins a person may open in an organization (`available`)."""
 
 import pytest
-from plugins.models import GrantState, Plugin, PluginState
+from plugins.models import GrantState, Plugin, PluginGrant, PluginRolePermission, PluginState
+from rbac.governance.roles import RoleManagementService
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from rest_framework.test import APIClient
@@ -15,16 +16,6 @@ EDITABLE_PERMISSIONS = [
     {"action": "update", "description": "Edit places.", "defaults": {"org_admin": True, "member": True, "viewer": False}},
     {"action": "delete", "description": "Change settings.", "defaults": {"org_admin": True, "member": False, "viewer": False}},
 ]
-
-
-@pytest.fixture
-def make_member(django_user_model):
-    def _make(organization, role, email):
-        user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
-        OrganizationUser.objects.create(user=user, org=organization, role=role)
-        return user
-
-    return _make
 
 
 @pytest.fixture
@@ -68,7 +59,7 @@ def test_a_viewer_without_the_default_view_sees_nothing(client_as, make_member, 
     assert response.json() == []
 
 
-def test_a_custom_role_gets_nothing_even_with_every_epicstaff_permission(client_as, make_member, acme, weather_in_acme):
+def test_a_custom_role_without_plugin_actions_gets_nothing_even_with_every_epicstaff_permission(client_as, make_member, acme, weather_in_acme):
     role = Role.objects.create(name="Power user", org=acme, is_built_in=False)
     for resource_type in ResourceType:
         RolePermission.objects.create(role=role, resource_type=resource_type, permissions=int(Permission(127)))
@@ -196,3 +187,75 @@ def test_anonymous_callers_must_log_in(anonymous_client, acme):
     anonymous_client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
 
     assert anonymous_client.get(AVAILABLE_URL).status_code == 401
+
+
+def _store_actions(grant, role, *actions):
+    bits = 0
+    for action in actions:
+        bits |= int(Permission[action.upper()])
+    return PluginRolePermission.objects.create(grant=grant, role=role, permissions=bits)
+
+
+def test_a_custom_role_with_view_lists_the_plugin(client_as, make_member, make_custom_role, acme, running_plugin, grant_to):
+    grant = grant_to(running_plugin(user_permissions=EDITABLE_PERMISSIONS), acme)
+    role = make_custom_role(acme, "Forecasters")
+    _store_actions(grant, role, "read", "update")
+    forecaster = make_member(acme, role, "forecaster@example.com")
+
+    response = _available(client_as, forecaster, acme)
+
+    assert response.status_code == 200
+    assert [(plugin["identifier"], plugin["permissions"]) for plugin in response.json()] == [("weather", ["read", "update"])]
+
+
+def test_a_custom_role_with_actions_but_no_view_does_not_list_the_plugin(client_as, make_member, make_custom_role, acme, running_plugin, grant_to):
+    grant = grant_to(running_plugin(user_permissions=EDITABLE_PERMISSIONS), acme)
+    role = make_custom_role(acme, "Editors without view")
+    _store_actions(grant, role, "update")
+    editor = make_member(acme, role, "editor-no-view@example.com")
+
+    assert _available(client_as, editor, acme).json() == []
+
+
+def test_actions_stored_for_a_grant_in_one_organization_never_apply_in_another(client_as, make_member, make_custom_role, acme, beta, running_plugin, grant_to):
+    plugin = running_plugin()
+    acme_role = make_custom_role(acme, "Forecasters")
+    _store_actions(grant_to(plugin, acme), acme_role, "read")
+    grant_to(plugin, beta)
+    person = make_member(acme, acme_role, "two-orgs@example.com")
+    OrganizationUser.objects.create(user=person, org=beta, role=make_custom_role(beta, "Forecasters"))
+
+    assert [plugin["identifier"] for plugin in _available(client_as, person, acme).json()] == ["weather"]
+    assert _available(client_as, person, beta).json() == []
+
+
+def test_a_custom_role_lists_through_a_fixed_number_of_queries(client_as, make_member, make_custom_role, acme, running_plugin, grant_to, django_assert_max_num_queries):
+    role = make_custom_role(acme, "Forecasters")
+    for identifier in ("one", "two", "three"):
+        _store_actions(grant_to(running_plugin(id=identifier), acme), role, "read")
+    client = client_as(make_member(acme, role, "forecaster-queries@example.com"))
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+
+    # One more than a built-in role: the custom role's stored actions, all in one query.
+    with django_assert_max_num_queries(4):
+        response = client.get(AVAILABLE_URL)
+
+    assert len(response.json()) == 3
+
+
+def test_deleting_the_role_deletes_its_plugin_actions(admin_acme, make_custom_role, acme, running_plugin, grant_to):
+    role = make_custom_role(acme, "Forecasters")
+    _store_actions(grant_to(running_plugin(), acme), role, "read")
+
+    RoleManagementService().delete_role(actor=admin_acme, role_id=role.pk)
+
+    assert not PluginRolePermission.objects.exists()
+
+
+def test_deleting_the_grant_deletes_the_role_s_plugin_actions(make_custom_role, acme, running_plugin, grant_to):
+    grant = grant_to(running_plugin(), acme)
+    _store_actions(grant, make_custom_role(acme, "Forecasters"), "read")
+
+    PluginGrant.objects.filter(pk=grant.pk).delete()
+
+    assert not PluginRolePermission.objects.exists()

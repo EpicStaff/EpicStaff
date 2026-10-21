@@ -1,18 +1,41 @@
 {
     "manifest_version": 1,
     "id": "weather",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "name": "Weather",
     "description": "Forecasts for the places your organization cares about.",
     "publisher": { "name": "EpicStaff" },
     "icon": "icon.svg",
     "platform": { "frame_protocol": 1, "gateway_context": 1, "hook_api": 1 },
     "spa": { "entry": "index.html" },
+    "backend": { "python": "3.13", "entrypoint": "weather_plugin.app:app" },
     "user_permissions": [
         {
             "action": "read",
             "description": "Open Weather and see forecasts.",
             "defaults": { "org_admin": true, "member": true, "viewer": false }
         }
-    ]
+    ],
+    "public_paths": [
+        { "path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0 }
+    ],
+    "settings": [
+        {
+            "key": "units",
+            "type": "enum",
+            "label": "Units",
+            "description": "Units every forecast is shown in.",
+            "required": true,
+            "default": "metric",
+            "values": ["metric", "imperial"]
+        },
+        {
+            "key": "forecast_api_token",
+            "type": "secret",
+            "label": "Forecast API token",
+            "description": "Token for a forecast service that needs one; the sample works without it.",
+            "required": false
+        }
+    ],
+    "limits": { "memory_mb": 256 }
 }

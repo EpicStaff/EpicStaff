@@ -1,0 +1,140 @@
+@if (response()) {
+    <div class="limits">
+        @if (saveError(); as failure) {
+            <div
+                class="limits__error-banner text-body"
+                role="alert"
+            >
+                <span>{{ failure.message }}</span>
+                @if (otherErrorItems().length > 0) {
+                    <ul class="limits__error-items">
+                        @for (item of otherErrorItems(); track $index) {
+                            <li>
+                                <code>{{ item.loc }}</code
+                                >: {{ item.message }}
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
+
+        <table class="limits__table text-body">
+            <thead>
+                <tr>
+                    <th scope="col">Limit</th>
+                    <th scope="col">Requested</th>
+                    <th scope="col">Platform maximum</th>
+                    <th scope="col">Override</th>
+                    <th scope="col">Effective</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (row of rows(); track row.key) {
+                    <tr
+                        [attr.data-limit-key]="row.key"
+                        [class.limits__row--disabled]="!row.enforced"
+                    >
+                        <th scope="row">
+                            <span class="limits__name">
+                                {{ row.label }}
+                                @if (!row.enforced) {
+                                    <app-plugin-badge label="Not enforced yet" />
+                                }
+                            </span>
+                        </th>
+                        <td>{{ row.requested }}</td>
+                        <td>{{ row.platformMax }}</td>
+                        <td>
+                            <div class="limits__override">
+                                <app-input-number
+                                    mod="small"
+                                    placeholder="None"
+                                    [value]="row.draft"
+                                    [min]="1"
+                                    [max]="row.bound"
+                                    [disabled]="!row.enforced"
+                                    [invalid]="row.enforced && !!rowError(row)"
+                                    [errorMessage]="row.enforced ? rowError(row) : ''"
+                                    [ariaLabel]="row.label + ' override, at most ' + row.bound"
+                                    (changed)="setDraft(row.key, $event)"
+                                />
+                                @if (row.enforced && row.draft !== null) {
+                                    <app-button
+                                        type="outline-secondary"
+                                        mod="small"
+                                        (click)="reset(row.key)"
+                                    >
+                                        Reset
+                                    </app-button>
+                                }
+                            </div>
+                        </td>
+                        <td>{{ row.effective }}</td>
+                    </tr>
+                }
+                @if (cpu(); as cpuRow) {
+                    <tr
+                        data-limit-key="cpu_priority"
+                        [class.limits__row--disabled]="!cpuRow.enforced"
+                    >
+                        <th scope="row">
+                            <span class="limits__name">
+                                {{ cpuLabel }}
+                                @if (!cpuRow.enforced) {
+                                    <app-plugin-badge label="Not enforced yet" />
+                                }
+                            </span>
+                        </th>
+                        <td>{{ cpuRow.requested }}</td>
+                        <td>—</td>
+                        <td>
+                            <label class="limits__checkbox">
+                                <app-checkbox
+                                    ariaLabel="Run at low CPU priority"
+                                    [checked]="cpuRow.low"
+                                    [disabled]="!cpuRow.enforced || cpuRow.requestsLow"
+                                    (changed)="setLowCpu($event)"
+                                />
+                                Low
+                            </label>
+                            @if (cpuRow.requestsLow) {
+                                <p class="limits__muted text-body-small">The plugin asks for low priority itself.</p>
+                            }
+                            @if (fieldError('cpu_priority'); as message) {
+                                <p
+                                    class="limits__field-error text-body-small"
+                                    role="alert"
+                                >
+                                    {{ message }}
+                                </p>
+                            }
+                        </td>
+                        <td>{{ cpuRow.effective }}</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="limits__footer">
+            <p class="limits__muted text-body-small">
+                An override can only lower a limit. Saving restarts the plugin with the new limits.
+            </p>
+            <app-button
+                type="primary"
+                [disabled]="!canSave()"
+                (click)="save()"
+            >
+                Save limits
+            </app-button>
+        </div>
+    </div>
+} @else if (loadError(); as failure) {
+    <app-fetch-error-state
+        title="Couldn't load the limits"
+        [message]="failure.message"
+        (retry)="reload()"
+    />
+} @else if (isLoading()) {
+    <app-loading-spinner />
+}

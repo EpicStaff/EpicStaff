@@ -1,9 +1,9 @@
-"""Every manifest v1 rule (contract section 4.1), as an upload reports it."""
+"""Every manifest v1 rule, as an upload reports it."""
 
 import copy
 
 import pytest
-from plugins.exceptions import InvalidPluginError, PluginFeatureUnavailableError
+from plugins.exceptions import InvalidPluginError
 from plugins.models import Plugin
 
 from tests.plugins_tests.conftest import upload_file
@@ -73,7 +73,7 @@ RULES = [
         _manifest(
             user_permissions=[
                 {**READ_ONLY, "defaults": {"org_admin": True, "member": True, "viewer": False}},
-                {"action": "update", "description": "Edit.", "defaults": {"org_admin": True, "member": False, "viewer": True}},
+                {"action": "update", "description": "Edit.", "defaults": {"org_admin": True, "member": True, "viewer": True}},
             ]
         ),
         "manifest.user_permissions",
@@ -146,7 +146,7 @@ def test_access_must_fit_this_epicstaff_s_permission_catalog(installation, super
 
 
 @pytest.mark.django_db
-def test_access_that_fits_the_catalog_passes_to_the_feature_check(installation, superadmin):
+def test_access_that_fits_the_catalog_is_accepted(installation, superadmin):
     manifest = _manifest(
         backend=True,
         access=[
@@ -156,8 +156,9 @@ def test_access_that_fits_the_catalog_passes_to_the_feature_check(installation, 
     )
     data = build_package(manifest=manifest)
 
-    with pytest.raises(PluginFeatureUnavailableError):
-        installation.upload(upload_file(data), len(data), superadmin)
+    package = installation.upload(upload_file(data), len(data), superadmin)
+
+    assert [declaration["resource_type"] for declaration in package.manifest["access"]] == ["flows", "secrets"]
 
 
 @pytest.mark.django_db

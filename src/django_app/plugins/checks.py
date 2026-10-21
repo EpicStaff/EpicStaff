@@ -11,11 +11,21 @@ from django.conf import settings
 from django.core import checks
 from epicstaff_plugin.signing import SignatureFormatError, parse_trusted_keys
 
+from plugins.configuration.limits import MAXIMUM_SETTINGS, positive_integer
+from plugins.nodes.node_registration import parse_uid_range
+
 HTTPS_REQUIRED_CHECK_ID = "plugins.E001"
 BASE_DOMAIN_CHECK_ID = "plugins.E002"
 FRONTEND_ORIGIN_CHECK_ID = "plugins.E003"
 TRUSTED_KEYS_CHECK_ID = "plugins.E004"
 CORS_ORIGINS_CHECK_ID = "plugins.E005"
+GATEWAY_SECRET_CHECK_ID = "plugins.E006"
+NODE_KEY_CHECK_ID = "plugins.E007"
+NODE_UID_RANGE_CHECK_ID = "plugins.E008"
+PLATFORM_MAXIMUMS_CHECK_ID = "plugins.E009"
+
+MIN_SHARED_SECRET_LENGTH = 32
+UNCONFIGURED = "none"
 
 LOCAL_DEVELOPMENT_SUFFIX = ".localhost"
 PLACEHOLDER_SUFFIX = ".invalid"
@@ -43,6 +53,20 @@ def check_plugin_platform_settings(app_configs, **kwargs) -> list[checks.Error]:
         *_frontend_origin_errors(),
         *_trusted_key_errors(),
         *_cors_errors(),
+        *_shared_secret_errors(
+            "PLUGINS_GATEWAY_SECRET",
+            settings.PLUGINS_GATEWAY_SECRET,
+            "nginx proves its gateway checks with it",
+            GATEWAY_SECRET_CHECK_ID,
+        ),
+        *_shared_secret_errors(
+            "PLUGINS_NODE_KEY",
+            settings.PLUGINS_NODE_KEY,
+            "the plugin node authenticates with it",
+            NODE_KEY_CHECK_ID,
+        ),
+        *_uid_range_errors(),
+        *_platform_maximum_errors(),
     ]
 
 
@@ -189,3 +213,47 @@ def _origin_host(origin: str) -> str | None:
 
 def _is_under(host: str | None, domain: str) -> bool:
     return bool(host) and (host == domain or host.endswith(f".{domain}"))
+
+
+def _shared_secret_errors(
+    name: str, value: str | None, purpose: str, check_id: str
+) -> list[checks.Error]:
+    if value and value != UNCONFIGURED and len(value) >= MIN_SHARED_SECRET_LENGTH:
+        return []
+    problem = "is not set (none)" if not value or value == UNCONFIGURED else "is too short"
+    return [
+        checks.Error(
+            f"{name} {problem}: {purpose}, so it must be at least "
+            f"{MIN_SHARED_SECRET_LENGTH} characters.",
+            hint="Generate one with: openssl rand -hex 32",
+            id=check_id,
+        )
+    ]
+
+
+def _uid_range_errors() -> list[checks.Error]:
+    if parse_uid_range(settings.PLUGINS_NODE_UID_RANGE) is not None:
+        return []
+    return [
+        checks.Error(
+            f"PLUGINS_NODE_UID_RANGE ({settings.PLUGINS_NODE_UID_RANGE!r}) is not "
+            "<start>-<end> with 10000 < start <= end < 60000 and at least 10 user ids.",
+            hint=(
+                "Pick a range no other process on the Docker host uses, such as 20000-20999; "
+                "every plugin with a backend runs under one id of it."
+            ),
+            id=NODE_UID_RANGE_CHECK_ID,
+        )
+    ]
+
+
+def _platform_maximum_errors() -> list[checks.Error]:
+    return [
+        checks.Error(
+            f"{setting} ({getattr(settings, setting)!r}) is not a positive integer.",
+            hint="Set it to a whole number greater than 0.",
+            id=PLATFORM_MAXIMUMS_CHECK_ID,
+        )
+        for setting in MAXIMUM_SETTINGS.values()
+        if positive_integer(getattr(settings, setting)) is None
+    ]

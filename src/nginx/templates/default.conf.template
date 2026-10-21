@@ -235,3 +235,6 @@ server {
 # The plugin hosts' server. It must stay after the server above: the first server on a port is
 # the default one, so a host name that is not a valid plugin host still reaches EpicStaff.
 include /etc/nginx/conf.d/plugins-server-${PLUGINS_ENABLED}.snippet;
+
+# EpicStaff's API for the plugin node and plugin backends, on port 8081 of plugins-network.
+include /etc/nginx/conf.d/plugins-internal-api-${PLUGINS_ENABLED}.snippet;

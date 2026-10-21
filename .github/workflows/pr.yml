@@ -83,15 +83,19 @@ jobs:
           #   this file    -- same self-testing rule as the filters above
           backend_wide='src/shared/|Makefile$|\.github/workflows/pr\.yml$'
 
-          # crew, agent and plugin_sdk need no database and nothing from the
-          # filesystem beyond an interpreter, so one matrix job covers them all
-          # and this picks its legs. A new service of that kind is not picked
-          # up by itself: add it to this list. `filter` leaves $result set, so
-          # the array is built from the same regex that writes each output
-          # rather than from a second copy of it.
+          # crew, agent, plugin_sdk and es_plugins need no database and nothing
+          # from the filesystem beyond an interpreter, so one matrix job covers
+          # them all and this picks its legs. A new service of that kind is not
+          # picked up by itself: add it to this list. `filter` leaves $result
+          # set, so the array is built from the same regex that writes each
+          # output rather than from a second copy of it.
           nodb=''
-          for svc in crew agent plugin_sdk; do
-            filter "be_$svc" "^(src/$svc/|$backend_wide)"
+          for svc in crew agent plugin_sdk es_plugins; do
+            # es_plugins installs src/plugin_sdk (package rules, signatures and
+            # the runtime file contract), so a change there runs its suite too.
+            also=''
+            if [ "$svc" = es_plugins ]; then also='src/plugin_sdk/|'; fi
+            filter "be_$svc" "^(${also}src/$svc/|$backend_wide)"
             if [ "$result" = true ]; then
               nodb="$nodb${nodb:+,}\"$svc\""
             fi
@@ -328,11 +332,13 @@ jobs:
         if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
-  # crew, agent and plugin_sdk: no database, no service containers, well under
-  # a minute each. One matrix job whose legs are decided at runtime, so a pull
-  # request touching only src/agent/ runs one leg and a pull request touching
-  # none of them skips the job outright. sandbox was a leg until it needed a
-  # container of its own; it has a separate job below.
+  # crew, agent, plugin_sdk and es_plugins: no database, no service containers,
+  # well under a minute each. One matrix job whose legs are decided at runtime,
+  # so a pull request touching only src/agent/ runs one leg and a pull request
+  # touching none of them skips the job outright. sandbox was a leg until it
+  # needed a container of its own; it has a separate job below. es_plugins'
+  # tests that need root (the launcher switching to plugin UIDs) skip here;
+  # src/es_plugins/lab/run.sh runs them in the node's own container.
   #
   # An empty `py_services` array would make `fromJSON` produce a matrix with no
   # legs, which GitHub treats as a workflow error rather than a skip -- hence the
@@ -386,6 +392,14 @@ jobs:
 
       - name: Unit tests
         run: make ${{ matrix.service }}-tests
+
+      # es_plugins' launcher switches to plugin UIDs and sets up directories owned by them;
+      # those tests are marked `root` and skip as the normal runner user. The ubuntu runner has
+      # passwordless sudo, so run the suite again as root to exercise the privilege boundary
+      # (fresh test databases are not involved; pytest's tmp dirs live under /tmp).
+      - name: Unit tests as root (es_plugins launcher boundary)
+        if: matrix.service == 'es_plugins'
+        run: sudo -E env "PATH=$PATH" make es_plugins-tests
 
   # Sandbox is the one suite that cares what the filesystem around it looks
   # like. Its tests build a real Landlock jail, and jail.py's read_exec
@@ -524,9 +538,10 @@ jobs:
         run: make chat-tests
 
   # The plugin author tooling end to end: the JS SDK's tests, the sample
-  # plugin's SPA build, and the Python CLI validating the sample by the rules
-  # Django applies on upload. The Python package's own unit tests run as a
-  # backend-tests leg.
+  # plugin's SPA build, the Python CLI validating the sample by the rules
+  # Django applies on upload, and packing it with its backend's wheels as an
+  # author would. The Python package's own unit tests run as a backend-tests
+  # leg.
   plugin-sdk-checks:
     needs: changes
     if: needs.changes.outputs.plugins_js == 'true'
@@ -590,6 +605,26 @@ jobs:
           uv run --frozen --project src/plugin_sdk
           epicstaff-plugin validate plugin-samples/weather
           --spa-dir plugin-samples/weather/spa/dist
+
+      # epicstaff-plugin is on no index yet: the packed lock pins this build of it.
+      - name: Build the SDK wheel
+        run: uv build --project src/plugin_sdk --wheel -o "$RUNNER_TEMP/epicstaff-plugin-dist"
+
+      # --download-wheels fetches every lock entry as a binary wheel for both
+      # Linux architectures (network; pip comes from the SDK's dev group).
+      - name: Pack the sample plugin with its backend's wheels
+        run: >-
+          uv run --frozen --project src/plugin_sdk
+          epicstaff-plugin pack plugin-samples/weather
+          --spa-dir plugin-samples/weather/spa/dist
+          --download-wheels
+          --local-wheel "$(ls "$RUNNER_TEMP"/epicstaff-plugin-dist/epicstaff_plugin-*.whl)"
+          --out "$RUNNER_TEMP/weather.esplugin"
+
+      - name: Validate the packed sample plugin
+        run: >-
+          uv run --frozen --project src/plugin_sdk
+          epicstaff-plugin validate "$RUNNER_TEMP/weather.esplugin"
 
   # There is deliberately no django-tests job here. The suite takes about twenty
   # minutes -- measured on 2026-09-18, and that is already with tests/api_tests

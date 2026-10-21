@@ -199,11 +199,32 @@ class AccessDeclaration(_ManifestPart):
 
 
 class UserPermissionDefaults(_ManifestPart):
-    """Whether each built-in role gets the action. Custom roles start with nothing."""
+    """Whether each built-in role gets the action. Custom roles start with nothing.
+
+    The built-in roles build on each other: Viewer gets only what Member gets, and Member only
+    what Org Admin gets. Assigning a role checks its plugin actions against the assigner's
+    own, so an Org Admin could not assign a Member who holds an action Org Admin lacks.
+    """
 
     org_admin: bool
     member: bool
     viewer: bool
+
+    @model_validator(mode="after")
+    def _higher_roles_get_what_lower_ones_get(self) -> "UserPermissionDefaults":
+        if self.viewer and not self.member:
+            raise _rule_error(
+                "built_in_roles_not_nested",
+                "gives viewer the action but not member; a built-in role must also get "
+                "every action of the roles below it (viewer, then member, then org_admin)",
+            )
+        if self.member and not self.org_admin:
+            raise _rule_error(
+                "built_in_roles_not_nested",
+                "gives member the action but not org_admin; a built-in role must also get "
+                "every action of the roles below it (viewer, then member, then org_admin)",
+            )
+        return self
 
 
 class UserPermission(_ManifestPart):
@@ -288,13 +309,18 @@ def _default_matches_type(default: Any, setting_type: str) -> bool:
 
 
 class Limits(_ManifestPart):
-    """Resource limits the backend asks for, never above the platform's maximums."""
+    """Resource limits the backend asks for.
 
-    memory_mb: Annotated[int, Field(ge=64, le=8192)]
-    db_connections: Annotated[int, Field(ge=1, le=100)]
-    statement_timeout_seconds: Annotated[int, Field(ge=1, le=600)]
-    requests_per_minute: Annotated[int, Field(ge=1, le=6000)]
-    cpu_priority: Literal["normal", "low"]
+    Each one is optional: EpicStaff gives an omitted (or null) limit the platform default,
+    and caps every limit at the deployment's maximum, which it checks at upload. The bounds
+    here are the most any deployment may allow.
+    """
+
+    memory_mb: Annotated[int, Field(ge=64, le=8192)] | None = None
+    db_connections: Annotated[int, Field(ge=1, le=100)] | None = None
+    statement_timeout_seconds: Annotated[int, Field(ge=1, le=600)] | None = None
+    requests_per_minute: Annotated[int, Field(ge=1, le=6000)] | None = None
+    cpu_priority: Literal["normal", "low"] | None = None
 
 
 class HookTimeouts(_ManifestPart):

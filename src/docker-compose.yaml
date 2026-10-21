@@ -150,6 +150,17 @@ services:
       PLUGINS_TRUSTED_SIGNING_KEYS: ${PLUGINS_TRUSTED_SIGNING_KEYS:?}
       PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
       PLUGINS_STORAGE_BUCKET: ${PLUGINS_STORAGE_BUCKET:?}
+      PLUGINS_GATEWAY_SECRET: ${PLUGINS_GATEWAY_SECRET:?}
+      PLUGINS_NODE_NAME: ${PLUGINS_NODE_NAME:?}
+      PLUGINS_NODE_KEY: ${PLUGINS_NODE_KEY:?}
+      PLUGINS_NODE_UID_RANGE: ${PLUGINS_NODE_UID_RANGE:?}
+      PLUGINS_INTERNAL_API_URL: ${PLUGINS_INTERNAL_API_URL:?}
+      PLUGINS_MAX_PROCESS_MEMORY_MB: ${PLUGINS_MAX_PROCESS_MEMORY_MB:?}
+      PLUGINS_MAX_DB_CONNECTIONS: ${PLUGINS_MAX_DB_CONNECTIONS:?}
+      PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS: ${PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS:?}
+      PLUGINS_MAX_REQUESTS_PER_MINUTE: ${PLUGINS_MAX_REQUESTS_PER_MINUTE:?}
+      PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE: ${PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE:?}
+      PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
     volumes:
       - media_data:/app/media
       # Approved plugins' SPA files, published here and served by epicstaff-nginx (read-only).
@@ -528,6 +539,11 @@ services:
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
       PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
       PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
+      PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
+      # The plugins network's subnet: nginx denies it on 80/443 and allows only it on 8081.
+      PLUGINS_NETWORK_SUBNET: ${PLUGINS_NETWORK_SUBNET:?}
+      # Sent with every plugin gateway check; django_app answers a check without it with 404.
+      PLUGINS_GATEWAY_SECRET: ${PLUGINS_GATEWAY_SECRET:?}
       # EpicStaff's public origin: the only page allowed to frame a plugin.
       DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}
     volumes:
@@ -545,8 +561,13 @@ services:
     sysctls:
       net.ipv4.tcp_tw_reuse: "1"
     networks:
-      - backend-network
-      - frontend-network
+      backend-network:
+      frontend-network:
+      # The internal API listener (port 8081) for the plugin node and plugin backends, which
+      # reach EpicStaff only this way: django_app is not on plugins-network.
+      plugins-network:
+        aliases:
+          - epicstaff-api
     depends_on:
       django_app:
         condition: service_healthy
@@ -802,6 +823,71 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # The plugin node. Gated behind profiles: ["plugins"]: it starts only when COMPOSE_PROFILES
+  # includes "plugins" (with PLUGINS_ENABLED=true). Nothing outside the profile may depend on it.
+  # It runs every plugin backend as its own Unix user: the launcher (PID 1) is root with only
+  # SETUID, SETGID and CHOWN, the agent and the plugins have no capability at all.
+  es_plugins:
+    image: ghcr.io/epicstaff/es_plugins:${IMAGE_TAG:?}
+    build:
+      context: .
+      dockerfile: ./es_plugins/Dockerfile
+    container_name: es_plugins
+    hostname: es_plugins
+    profiles: ["plugins"]
+    user: root
+    read_only: true
+    tmpfs:
+      # Root-owned 0755: no plugin can write /tmp or /dev/shm, so it cannot fill them or use
+      # them to reach another plugin. Plugins get TMPDIR in their own data directory.
+      - /tmp:mode=0755
+      - /run:mode=0755
+      - /dev/shm:mode=0755
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID  # switch to a plugin's UID (spawn, kill helper, purge helper)
+      - SETGID  # drop groups and switch to a plugin's GID
+      - CHOWN  # hand per-plugin directories and runtime files to their UID
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 4096
+    # The agent holds a socket for every port of the node's range (999) for its whole life, so
+    # no plugin can bind one; the launcher gives each plugin its own lower limit.
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
+    cpus: ${ES_PLUGINS_CPUS:?}
+    mem_limit: ${ES_PLUGINS_MEMORY:?}
+    environment:
+      <<: [*docker-env]
+      PLUGINS_NODE_NAME: ${PLUGINS_NODE_NAME:?}
+      PLUGINS_NODE_KEY: ${PLUGINS_NODE_KEY:?}
+      PLUGINS_NODE_UID_RANGE: ${PLUGINS_NODE_UID_RANGE:?}
+      PLUGINS_INTERNAL_API_URL: ${PLUGINS_INTERNAL_API_URL:?}
+      ES_PLUGINS_DISK_MB_PER_PLUGIN: ${ES_PLUGINS_DISK_MB_PER_PLUGIN:?}
+      ES_PLUGINS_FILES_PER_PLUGIN: ${ES_PLUGINS_FILES_PER_PLUGIN:?}
+    volumes:
+      # Unbounded by itself: put it on a file system of its own for a hard limit (see
+      # docs/plugins/operator/enable-plugins.md). The agent caps each plugin's share of it.
+      - es_plugins_data:/var/lib/es_plugins
+    # Only plugins-network: nginx reaches the plugins here, and they reach EpicStaff's API through
+    # nginx's internal listener. No route to the internet or to the other services.
+    networks:
+      - plugins-network
+    healthcheck:
+      # The agent touches this file every 5 s, on a clock of its own (a slow django_app or a
+      # long install does not delay it).
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.stat('/run/es_plugins/agent.heartbeat').st_mtime > 30)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # No depends_on: the agent retries until nginx's internal listener answers, and the node
+    # lab (src/es_plugins/lab) extends this service without the rest of the stack.
+    restart: unless-stopped
+
 volumes:
   sandbox_venvs:
     external: true
@@ -817,6 +903,7 @@ volumes:
   auditor_data: {}
   chat_pgdata: {}
   plugin_spa: {}
+  es_plugins_data: {}
 
 networks:
   backend-network:
@@ -828,3 +915,11 @@ networks:
     external: true
   sandbox-network:
     driver: bridge
+  # Plugin backends, the plugin node and nginx (as epicstaff-api) only; no outside access.
+  # A fixed subnet, so nginx can deny it on 80/443 and allow only it on the internal listener.
+  plugins-network:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: ${PLUGINS_NETWORK_SUBNET:?}

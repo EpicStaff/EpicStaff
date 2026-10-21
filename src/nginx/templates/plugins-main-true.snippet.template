@@ -1,5 +1,13 @@
 # PLUGINS_ENABLED=true: the plugin platform's routes on EpicStaff's own server.
 
+# A plugin backend runs on the plugins network and must never reach EpicStaff's own site on
+# 80/443, only its API through the internal listener on 8081. nginx listens on every network it
+# is on, so this server refuses the plugins subnet before choosing a location
+# ($plugin_network_caller, plugins-server-true.snippet).
+if ($plugin_network_caller) {
+    return 403;
+}
+
 # Package upload. Larger than the server's 50M limit and streamed to Django as it arrives, which
 # applies the same PLUGINS_MAX_PACKAGE_MB limit and reads the package from a temporary file.
 # Timeouts are between two reads or writes, not a limit on the whole upload.
@@ -66,5 +74,11 @@ location @plugin_upload_forbidden {
 # Reserved for the plugin gateway's access check, which only nginx itself may call. Refused here
 # so that no client ever reaches it, whatever Django mounts under it.
 location ^~ /api/plugin-gateway/ {
+    return 404;
+}
+
+# The plugin node's API: reached only through the internal listener on plugins-network
+# (plugins-internal-api-true.snippet), never from outside.
+location ^~ /api/plugin-nodes/ {
     return 404;
 }

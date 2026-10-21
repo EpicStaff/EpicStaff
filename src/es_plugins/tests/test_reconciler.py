@@ -1,0 +1,332 @@
+"""The reconciler against django_app (`httpx.MockTransport`) and the launcher stand-in.
+
+The plugin's process is a real child answering the health check; the venv build is
+recorded instead of run (it has its own tests).
+"""
+
+import errno
+import json
+import socket
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from es_plugins.agent import reconciler as reconciler_module
+from es_plugins.agent.django_client import DjangoNodeClient
+from es_plugins.agent.main import prepare_agent_directories
+from es_plugins.agent.port_reservation import PortReservation
+from es_plugins.agent.reconciler import AgentServices, Reconciler
+from es_plugins.health.health_checker import HealthChecker
+from es_plugins.node_disk import INSTALL_RESERVE_BYTES, NodeDisk
+from es_plugins.packages.package_fetcher import PackageFetcher
+from tests.helpers import (
+    API_URL,
+    NODE_KEY,
+    FakeDjango,
+    FakeLauncher,
+    backend_wheels,
+    desired_state,
+    free_port,
+    free_ports,
+    manifest,
+    package_files,
+    placement,
+    runtime_file_document,
+    write_package,
+)
+from tests.test_supervisor_backoff import wait_until
+
+pytestmark = pytest.mark.linux
+
+UID = 20001
+
+
+class Volume:
+    """The node volume's free space, as the test sets it."""
+
+    def __init__(self):
+        self.free_bytes = 100 * INSTALL_RESERVE_BYTES
+
+    def __call__(self, path):
+        return SimpleNamespace(f_bavail=self.free_bytes // 4096, f_frsize=4096, f_favail=10**7, f_files=10**8)
+
+
+class RecordingVenvBuilder:
+    def __init__(self):
+        self.requests = []
+
+    async def __call__(self, request):
+        self.requests.append(request)
+        assert (request.backend / "requirements.lock").is_file()
+        python = request.venv / "bin" / "python"
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.write_text("")
+        return python
+
+
+@pytest.fixture
+def package_bytes(tmp_path):
+    files = package_files(backend_wheels(tmp_path / "wheels"))
+    return write_package(tmp_path / "weather.esplugin", files).read_bytes()
+
+
+@pytest.fixture
+def newer_package_bytes(tmp_path):
+    files = package_files(backend_wheels(tmp_path / "wheels"), manifest(version="0.3.0"))
+    return write_package(tmp_path / "weather-0.3.0.esplugin", files, version="0.3.0").read_bytes()
+
+
+def port_is_free(port: int) -> bool:
+    """Whether no socket listens on `port` (connections closing in TIME_WAIT do not count)."""
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("0.0.0.0", port))
+        except OSError as error:
+            assert error.errno == errno.EADDRINUSE
+            return False
+        return True
+
+
+@pytest.fixture
+async def node(tmp_path, layout, package_bytes):
+    layout.agent_directory.mkdir(parents=True)
+    prepare_agent_directories(layout)
+    django = FakeDjango()
+    django.packages[12] = package_bytes
+    django.runtime_files[7] = runtime_file_document()
+    client = DjangoNodeClient(API_URL, NODE_KEY, transport=django.transport)
+    launcher = FakeLauncher()
+    venv_builder = RecordingVenvBuilder()
+    health_checker = HealthChecker()
+    port, other_port = free_ports(2)
+    volume = Volume()
+    ports = PortReservation([port, other_port])
+    ports.reserve()
+    services = AgentServices(
+        layout=layout,
+        django=client,
+        fetcher=PackageFetcher(client, layout.downloads_directory),
+        launcher=launcher,
+        health_checker=health_checker,
+        ports=ports,
+        disk=NodeDisk(layout.data_root, statvfs=volume),
+        on_change=lambda: None,
+        interpreter_for=lambda python: Path(sys.executable),
+        venv_builder=venv_builder,
+    )
+    reconciler = Reconciler(services)
+
+    def desired(package=package_bytes, **overrides):
+        return desired_state(
+            [placement(package, **{"runtime__port": port, "uid": UID, **overrides})]
+        )
+
+    desired.port, desired.other_port = port, other_port
+    desired.volume = volume
+    yield reconciler, django, launcher, venv_builder, desired
+    await reconciler.close()
+    ports.close()
+    launcher.stop_all()
+    await health_checker.aclose()
+    await client.aclose()
+
+
+def running(reconciler):
+    reports = reconciler.reports()
+    return bool(reports) and (reports[0].observed_state, reports[0].health) == ("running", "ok")
+
+
+async def test_a_new_placement_is_installed_configured_and_started(node, layout):
+    reconciler, django, launcher, venv_builder, desired = node
+
+    await reconciler.apply(desired())
+    await wait_until(lambda: running(reconciler))
+
+    operations = [operation[0] for operation in launcher.operations]
+    assert operations.index("install_code") < operations.index("write_runtime_file")
+    assert operations.index("write_runtime_file") < operations.index("spawn")
+    assert json.loads(launcher.runtime_files["weather"]) == django.runtime_files[7]
+    venv = layout.plugin_venv("weather", "0.2.0")
+    assert venv_builder.requests[0].source_path == layout.plugin_source("weather", "0.2.0")
+    spawned = launcher.spawned[0]
+    assert spawned["argv"] == [str(venv / "bin" / "python"), "-I", "-m", "epicstaff_plugin.serve"]
+    assert spawned["nice"] == 0
+    assert spawned["environment"] == {
+        "PORT": spawned["environment"]["PORT"],
+        "USER": "weather",
+        "LOGNAME": "weather",
+        "HOME": str(layout.plugin_home("weather")),
+        "TMPDIR": str(layout.plugin_temporary_directory("weather")),
+        "PATH": f"{venv}/bin:/usr/local/bin:/usr/bin:/bin",
+        "LANG": "C.UTF-8",
+        "PYTHONUNBUFFERED": "1",
+        "EPICSTAFF_PLUGIN_IDENTIFIER": "weather",
+        "EPICSTAFF_PLUGIN_VERSION": "0.2.0",
+        "EPICSTAFF_PLUGIN_ENTRYPOINT": "weather_plugin.app:app",
+        "EPICSTAFF_PLUGIN_RUNTIME_FILE": str(layout.runtime_file("weather")),
+        "EPICSTAFF_API_URL": "http://epicstaff-api:8081/api/",
+        "EPICSTAFF_PUBLIC_URL": "https://epicstaff.example.com",
+        "EPICSTAFF_PLUGIN_PUBLIC_URL": "https://weather.plugins.example.com",
+    }
+    assert not any("secret" in argument for argument in spawned["argv"])
+    report = reconciler.reports()[0]
+    assert (report.observed_version, report.applied_restart_generation) == ("0.2.0", 0)
+    assert report.applied_credentials_revision == "c" * 64
+    assert not layout.unpacked_package("weather", "0.2.0").exists()
+
+
+async def test_the_same_desired_state_again_changes_nothing(node):
+    reconciler, django, launcher, _, desired = node
+    await reconciler.apply(desired())
+    await wait_until(lambda: running(reconciler))
+    operations_before = list(launcher.operations)
+
+    await reconciler.apply(desired())
+    await reconciler.apply(desired())
+
+    assert launcher.operations == operations_before
+
+
+async def test_a_new_credentials_revision_only_rewrites_the_runtime_file(node):
+    reconciler, django, launcher, _, desired = node
+    await reconciler.apply(desired())
+    await wait_until(lambda: running(reconciler))
+    django.credentials_revisions[7] = "d" * 64
+    django.runtime_files[7] = runtime_file_document(settings={"units": "metric", "rotated": True})
+
+    await reconciler.apply(desired(credentials_revision="d" * 64))
+    await wait_until(lambda: reconciler.reports()[0].applied_credentials_revision == "d" * 64)
+
+    assert json.loads(launcher.runtime_files["weather"])["settings"]["rotated"] is True
+    assert len(launcher.spawned) == 1
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"settings_revision": 1},
+        {"restart_generation": 1},
+        {"runtime__memory_mb": 128},
+        {"runtime__cpu_priority": "low"},
+        {"runtime__port": "another"},
+        {"package": "newer"},
+    ],
+)
+async def test_a_change_that_needs_a_new_process_restarts_it(
+    node, newer_package_bytes, change
+):
+    reconciler, django, launcher, _, desired = node
+    await reconciler.apply(desired())
+    await wait_until(lambda: running(reconciler))
+    django.settings_revisions[7] = change.get("settings_revision", 0)
+    if change.get("runtime__port") == "another":
+        change = {"runtime__port": desired.other_port}
+    if change.get("package") == "newer":
+        django.packages[13] = newer_package_bytes
+        change = {"package": newer_package_bytes, "package__package_id": 13, "version": "0.3.0"}
+
+    await reconciler.apply(desired(**change))
+    await wait_until(lambda: len(launcher.spawned) == 2)
+    await wait_until(lambda: running(reconciler))
+
+    assert [operation[0] for operation in launcher.operations].count("write_runtime_file") == 2
+    if change.get("runtime__cpu_priority") == "low":
+        assert launcher.spawned[1]["nice"] == 10
+    if "runtime__port" in change:
+        # The new process serves the new port; the agent still holds the old one.
+        assert launcher.spawned[1]["environment"]["PORT"] == str(change["runtime__port"])
+        assert not port_is_free(desired.port)
+    if "package" in change:
+        assert reconciler.reports()[0].observed_version == "0.3.0"
+        assert launcher.spawned[1]["argv"][0].endswith("/weather/0.3.0/bin/python")
+
+
+async def test_newer_settings_that_arrive_with_a_credentials_rewrite_still_restart_later(node):
+    reconciler, django, launcher, _, desired = node
+    await reconciler.apply(desired())
+    await wait_until(lambda: running(reconciler))
+    # The settings change lands in django_app between the desired state and the fetch: the
+    # credentials-only rewrite already writes the new settings, but the process still runs
+    # with the old ones.
+    django.credentials_revisions[7] = "d" * 64
+    django.settings_revisions[7] = 1
+
+    await reconciler.apply(desired(credentials_revision="d" * 64))
+    await wait_until(lambda: reconciler.reports()[0].applied_credentials_revision == "d" * 64)
+    assert len(launcher.spawned) == 1
+    assert reconciler.reports()[0].applied_settings_revision == 0
+
+    await reconciler.apply(desired(credentials_revision="d" * 64, settings_revision=1))
+    await wait_until(lambda: len(launcher.spawned) == 2)
+    await wait_until(lambda: running(reconciler))
+
+    assert reconciler.reports()[0].applied_settings_revision == 1
+
+
+async def test_the_agent_keeps_holding_a_port_after_its_placement_goes(node):
+    reconciler, _, launcher, _, desired = node
+
+    await reconciler.apply(desired())
+    await wait_until(lambda: running(reconciler))
+    assert not port_is_free(desired.port)
+
+    await reconciler.apply(desired_state([]))
+
+    # It no longer takes connections, and no plugin can take it before the next placement
+    # that is given it.
+    with pytest.raises(ConnectionRefusedError):
+        socket.create_connection(("127.0.0.1", desired.port), timeout=5)
+    assert not port_is_free(desired.port)
+
+
+async def test_a_port_that_is_not_one_of_the_nodes_is_retried_and_nothing_is_installed(
+    node, monkeypatch
+):
+    monkeypatch.setattr(reconciler_module, "TRANSIENT_RETRY_SECONDS", 0.2)
+    reconciler, django, launcher, _, desired = node
+
+    await reconciler.apply(desired(runtime__port=free_port()))
+    await wait_until(lambda: reconciler.reports()[0].last_error is not None)
+
+    assert "is not one of this node's ports" in reconciler.reports()[0].last_error
+    assert not [request for request in django.requests if "packages" in request.url.path]
+    assert launcher.spawned == []
+
+
+async def test_nothing_is_downloaded_below_the_install_reserve_until_a_restart_with_room(node):
+    reconciler, django, launcher, venv_builder, desired = node
+    desired.volume.free_bytes = INSTALL_RESERVE_BYTES - 1
+
+    await reconciler.apply(desired())
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "failed")
+
+    assert reconciler.reports()[0].last_error.startswith("the node's disk has only 2047 MB free")
+    assert not [request for request in django.requests if "packages" in request.url.path]
+    assert launcher.spawned == []
+    assert venv_builder.requests == []
+
+    desired.volume.free_bytes = 100 * INSTALL_RESERVE_BYTES
+    await reconciler.apply(desired(restart_generation=1))
+    await wait_until(lambda: running(reconciler))
+
+
+async def test_a_venv_is_not_built_below_the_install_reserve(node, monkeypatch):
+    reconciler, django, launcher, venv_builder, desired = node
+    real_fetch = reconciler_module.PackageFetcher.fetch
+
+    async def fetch_then_fill_the_disk(fetcher, package):
+        path = await real_fetch(fetcher, package)
+        desired.volume.free_bytes = INSTALL_RESERVE_BYTES - 1
+        return path
+
+    monkeypatch.setattr(reconciler_module.PackageFetcher, "fetch", fetch_then_fill_the_disk)
+
+    await reconciler.apply(desired())
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "failed")
+
+    assert "installing needs 2048 MB" in reconciler.reports()[0].last_error
+    assert venv_builder.requests == []
+    assert launcher.spawned == []

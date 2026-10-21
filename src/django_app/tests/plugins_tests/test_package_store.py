@@ -94,3 +94,27 @@ def test_other_download_errors_are_raised(client):
         with pytest.raises(ClientError):
             store.download("packages/a", io.BytesIO())
 
+
+
+def test_a_package_is_opened_as_a_stream_with_its_size(client):
+    store = PluginPackageStore(client, "epicstaff-plugins")
+    body = io.BytesIO(b"package bytes")
+    with Stubber(client) as stubber:
+        stubber.add_response(
+            "get_object",
+            {"Body": body, "ContentLength": 13},
+            {"Bucket": "epicstaff-plugins", "Key": "packages/a"},
+        )
+
+        stream, size = store.open("packages/a")
+
+    assert (stream.read(), size) == (b"package bytes", 13)
+
+
+def test_opening_a_missing_package_says_so(client):
+    store = PluginPackageStore(client, "epicstaff-plugins")
+    with Stubber(client) as stubber:
+        stubber.add_client_error("get_object", service_error_code="NoSuchKey", http_status_code=404)
+
+        with pytest.raises(PackageFileMissingError):
+            store.open("packages/missing")

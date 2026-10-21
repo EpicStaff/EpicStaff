@@ -53,6 +53,26 @@
             >
                 Organizations
             </app-tab-button>
+            @if (hasBackend()) {
+                <app-tab-button
+                    [active]="tab() === 'settings'"
+                    (action)="selectTab('settings')"
+                >
+                    Settings
+                </app-tab-button>
+                <app-tab-button
+                    [active]="tab() === 'limits'"
+                    (action)="selectTab('limits')"
+                >
+                    Limits
+                </app-tab-button>
+                <app-tab-button
+                    [active]="tab() === 'runtime'"
+                    (action)="selectTab('runtime')"
+                >
+                    Runtime
+                </app-tab-button>
+            }
         </div>
 
         @switch (tab()) {
@@ -92,6 +112,25 @@
                     [identifier]="current.identifier"
                     [pluginName]="current.name"
                     [canGrant]="canGrant()"
+                />
+            }
+            @case ('settings') {
+                <app-plugin-settings-form
+                    [identifier]="current.identifier"
+                    (saved)="refreshPlugin()"
+                />
+            }
+            @case ('limits') {
+                <app-plugin-limits-form
+                    [identifier]="current.identifier"
+                    (saved)="refreshPlugin()"
+                />
+            }
+            @case ('runtime') {
+                <app-plugin-runtime-panel
+                    [identifier]="current.identifier"
+                    [pluginName]="current.name"
+                    (runtimeChanged)="refreshPlugin()"
                 />
             }
         }

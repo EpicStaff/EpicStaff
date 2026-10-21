@@ -37,3 +37,19 @@ class GrantState(models.TextChoices):
     UPGRADE_FAILED = "upgrade_failed"
     SUSPENDED = "suspended"
     PURGING = "purging"
+
+
+class PlacementObservedState(models.TextChoices):
+    UNKNOWN = "unknown"
+    DOWNLOADING = "downloading"
+    BUILDING = "building"
+    STARTING = "starting"
+    RUNNING = "running"
+    STOPPED = "stopped"
+    FAILED = "failed"
+
+
+class PlacementHealth(models.TextChoices):
+    OK = "ok"
+    FAILING = "failing"
+    UNKNOWN = "unknown"

@@ -48,6 +48,22 @@ class PluginPackageStore:
                 raise PackageFileMissingError(key) from error
             raise
 
+    def open(self, key: str) -> tuple[BinaryIO, int]:
+        """Open the object at `key` for reading as it streams from the bucket; return it and its size.
+
+        The caller closes the stream.
+
+        Raises:
+            PackageFileMissingError: There is no object at `key`.
+        """
+        try:
+            response = self._client.get_object(Bucket=self._bucket, Key=key)
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") in _MISSING_OBJECT_CODES:
+                raise PackageFileMissingError(key) from error
+            raise
+        return response["Body"], response["ContentLength"]
+
     def delete(self, key: str) -> None:
         self._client.delete_object(Bucket=self._bucket, Key=key)
 

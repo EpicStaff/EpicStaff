@@ -1,15 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, input, output, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent, SearchComponent } from '@shared/components';
-import { ActionCode, CatalogAction, CatalogResourceType, CatalogResponse, ResourceCode } from '@shared/models';
+import { ActionCode, CatalogAction, CatalogResponse } from '@shared/models';
 
-import { ACTION_ICONS, GROUP_META, GroupMeta } from '../../constants/permission-table.constant';
-
-interface CatalogGroup {
-    key: string;
-    label: string;
-    icon: string;
-    resources: CatalogResourceType[];
-}
+import { ACTION_ICONS } from '../../constants/permission-table.constant';
+import { PermissionMatrixGroup, PermissionMatrixRow } from './permission-matrix.model';
+import { catalogMatrixGroups, permissionKey } from './permission-matrix.util';
 
 type TriState = 'checked' | 'indeterminate' | 'empty';
 
@@ -18,19 +14,23 @@ type TriState = 'checked' | 'indeterminate' | 'empty';
     templateUrl: './permissions-table.component.html',
     styleUrls: ['./permissions-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppSvgIconComponent, SearchComponent, CheckboxComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, SearchComponent, CheckboxComponent, ButtonComponent, MatTooltipModule],
 })
 export class PermissionsTableComponent {
     catalog = input.required<CatalogResponse>();
-    selectedPermissions = input.required<Set<string>>();
+    /** Groups shown after the catalog's groups, with rows extensions add (see `ROLE_PERMISSION_EXTENSIONS`). Their
+     *  columns are the catalog's actions; a row shows a cell only for its own actions. */
+    extensionGroups = input<readonly PermissionMatrixGroup[]>([]);
+    selectedPermissions = input.required<ReadonlySet<string>>();
     readonly = input(false);
     /** Set of `${resource}:${action}` keys the actor is NOT allowed to grant (ceiling rule).
      *  Ignored in readonly mode (all cells are already non-interactive). */
-    disabledPermissions = input<Set<string>>(new Set<string>());
+    disabledPermissions = input<ReadonlySet<string>>(new Set<string>());
 
-    permissionToggle = output<{ resourceType: ResourceCode; action: ActionCode }>();
+    /** `resourceType` is the row's code: a catalog resource code or an extension row's code. */
+    permissionToggle = output<{ resourceType: string; action: ActionCode }>();
     /** Toggles ALL applicable & grantable actions for a resource on/off. */
-    resourceToggle = output<{ resourceCode: ResourceCode; select: boolean }>();
+    resourceToggle = output<{ resourceCode: string; select: boolean }>();
     /** Toggles ALL applicable & grantable actions across every resource in a group. */
     groupToggle = output<{ groupKey: string; select: boolean }>();
     /** Toggles a single action across every applicable & grantable resource in a group. */
@@ -38,7 +38,7 @@ export class PermissionsTableComponent {
     selectAllClick = output<void>();
     clearAllClick = output<void>();
     /** Adds the missing recommended keys triggered by a specific resource to the selection. */
-    enableRecommendedForResource = output<{ resourceCode: ResourceCode; keys: string[] }>();
+    enableRecommendedForResource = output<{ resourceCode: string; keys: string[] }>();
 
     private readonly hostEl = inject<ElementRef<HTMLElement>>(ElementRef);
 
@@ -47,53 +47,61 @@ export class PermissionsTableComponent {
     /** Missing-keys signatures whose recommendation banner the user dismissed within this dialog
      *  session. Only hides the banner UI — yellow borders on recommended checkboxes remain visible. */
     dismissedSignatures = signal<Set<string>>(new Set());
-    lastToggledResources = signal<Set<ResourceCode>>(new Set());
-    lastShownPendingResourceCode = signal<ResourceCode | null>(null);
+    lastToggledResources = signal<Set<string>>(new Set());
+    lastShownPendingResourceCode = signal<string | null>(null);
 
     totalSelected = computed(() => this.selectedPermissions().size);
 
-    private readonly groupedCatalog = computed<CatalogGroup[]>(() => {
-        const catalog = this.catalog();
-        const groupMap = new Map<string, CatalogResourceType[]>();
-        for (const rt of catalog.resource_types) {
-            const arr = groupMap.get(rt.group) ?? [];
-            arr.push(rt);
-            groupMap.set(rt.group, arr);
+    private readonly groups = computed<PermissionMatrixGroup[]>(() => [
+        ...catalogMatrixGroups(this.catalog()),
+        ...this.extensionGroups(),
+    ]);
+
+    private readonly allRows = computed<PermissionMatrixRow[]>(() => this.groups().flatMap((group) => group.rows));
+
+    /** The row each cell key belongs to. Row codes may contain `:` themselves, so a key is never split to find it. */
+    private readonly rowCodeByKey = computed<Map<string, string>>(() => {
+        const map = new Map<string, string>();
+        for (const row of this.allRows()) {
+            for (const action of row.actions) map.set(permissionKey(row.code, action), row.code);
         }
-        return Array.from(groupMap.entries()).map(([key, resources]) => {
-            const meta: GroupMeta = GROUP_META[key] ?? { label: key, icon: 'settings' };
-            return { key, label: meta.label, icon: meta.icon, resources };
-        });
+        return map;
     });
 
-    filteredGroups = computed<CatalogGroup[]>(() => {
+    filteredGroups = computed<PermissionMatrixGroup[]>(() => {
         const term = this.searchTerm().toLowerCase().trim();
         const hideEmpty = this.readonly();
-        if (!term && !hideEmpty) return this.groupedCatalog();
-        return this.groupedCatalog()
-            .map((g) => ({
-                ...g,
-                resources: g.resources.filter((r) => {
-                    if (term && !(r.label.toLowerCase().includes(term) || r.description.toLowerCase().includes(term))) {
-                        return false;
-                    }
-                    if (hideEmpty && !this.hasGrantedPermission(r)) return false;
-                    return true;
-                }),
-            }))
-            .filter((g) => g.resources.length > 0);
+        if (!term && !hideEmpty) return this.groups();
+        return (
+            this.groups()
+                .map((g) => ({
+                    ...g,
+                    rows: g.rows.filter((r) => {
+                        if (
+                            term &&
+                            !(r.label.toLowerCase().includes(term) || r.description.toLowerCase().includes(term))
+                        ) {
+                            return false;
+                        }
+                        if (hideEmpty && !this.hasGrantedPermission(r)) return false;
+                        return true;
+                    }),
+                }))
+                // A note group has no rows to match: it stays until something is searched for.
+                .filter((g) => g.rows.length > 0 || (g.note !== null && !term))
+        );
     });
 
     groupCounts = computed(() => {
         const selected = this.selectedPermissions();
         return new Map(
-            this.groupedCatalog().map((g) => {
+            this.groups().map((g) => {
                 let total = 0;
                 let selectedCount = 0;
-                for (const rt of g.resources) {
-                    for (const action of rt.applicable_actions) {
+                for (const row of g.rows) {
+                    for (const action of row.actions) {
                         total++;
-                        if (selected.has(`${rt.code}:${action}`)) selectedCount++;
+                        if (selected.has(permissionKey(row.code, action))) selectedCount++;
                     }
                 }
                 return [g.key, { selected: selectedCount, total }];
@@ -101,26 +109,29 @@ export class PermissionsTableComponent {
         );
     });
 
-    private readonly relations = computed<Record<string, string[]>>(() => {
-        const map: Record<string, string[]> = {};
-        for (const rt of this.catalog().resource_types) {
-            for (const [action, cells] of Object.entries(rt.recommended_with)) {
-                map[`${rt.code}:${action}`] = cells.map((c) => `${c.resource_type}:${c.action}`);
+    private readonly relations = computed<Record<string, readonly string[]>>(() => {
+        const map: Record<string, readonly string[]> = {};
+        for (const row of this.allRows()) {
+            for (const [action, cells] of Object.entries(row.recommendedWith)) {
+                if (cells) map[`${row.code}:${action}`] = cells;
             }
         }
         return map;
     });
 
-    readonly recommendedByResource = computed<Map<ResourceCode, { triggers: string[]; missingKeys: string[] }>>(() => {
+    readonly recommendedByResource = computed<Map<string, { triggers: string[]; missingKeys: string[] }>>(() => {
         if (this.readonly()) return new Map();
         const selected = this.selectedPermissions();
         const disabled = this.disabledPermissions();
         const applicable = this.applicableKeySet();
         const relations = this.relations();
-        const acc = new Map<ResourceCode, { triggers: Set<string>; missing: Set<string> }>();
+        const rowCodeByKey = this.rowCodeByKey();
+        const acc = new Map<string, { triggers: Set<string>; missing: Set<string> }>();
         for (const trigger of selected) {
             const deps = relations[trigger];
             if (!deps || deps.length === 0) continue;
+            const resource = rowCodeByKey.get(trigger);
+            if (resource === undefined) continue;
             const missing: string[] = [];
             for (const dep of deps) {
                 if (selected.has(dep)) continue;
@@ -129,13 +140,12 @@ export class PermissionsTableComponent {
                 missing.push(dep);
             }
             if (missing.length === 0) continue;
-            const resource = trigger.split(':')[0] as ResourceCode;
             const entry = acc.get(resource) ?? { triggers: new Set<string>(), missing: new Set<string>() };
             entry.triggers.add(trigger);
             for (const k of missing) entry.missing.add(k);
             acc.set(resource, entry);
         }
-        const result = new Map<ResourceCode, { triggers: string[]; missingKeys: string[] }>();
+        const result = new Map<string, { triggers: string[]; missingKeys: string[] }>();
         for (const [k, v] of acc) result.set(k, { triggers: [...v.triggers], missingKeys: [...v.missing] });
         return result;
     });
@@ -149,33 +159,33 @@ export class PermissionsTableComponent {
         return set;
     });
 
-    private readonly missingKeysSignatureByResource = computed<Map<ResourceCode, string>>(() => {
-        const map = new Map<ResourceCode, string>();
+    private readonly missingKeysSignatureByResource = computed<Map<string, string>>(() => {
+        const map = new Map<string, string>();
         for (const [resourceCode, entry] of this.recommendedByResource()) {
             map.set(resourceCode, [...entry.missingKeys].sort().join('|'));
         }
         return map;
     });
 
-    private readonly consolidationWinners = computed<Set<ResourceCode>>(() => {
+    private readonly consolidationWinners = computed<Set<string>>(() => {
         const lastToggled = this.lastToggledResources();
         const signatures = this.missingKeysSignatureByResource();
-        const bySignature = new Map<string, { resourceCode: ResourceCode; toggled: boolean }>();
-        for (const rt of this.catalog().resource_types) {
-            const signature = signatures.get(rt.code);
+        const bySignature = new Map<string, { resourceCode: string; toggled: boolean }>();
+        for (const row of this.allRows()) {
+            const signature = signatures.get(row.code);
             if (!signature) continue;
-            const toggled = lastToggled.has(rt.code);
+            const toggled = lastToggled.has(row.code);
             const existing = bySignature.get(signature);
             if (!existing || (toggled && !existing.toggled)) {
-                bySignature.set(signature, { resourceCode: rt.code, toggled });
+                bySignature.set(signature, { resourceCode: row.code, toggled });
             }
         }
         return new Set([...bySignature.values()].map((winner) => winner.resourceCode));
     });
 
-    readonly consolidatedRecommendations = computed<{ resourceCode: ResourceCode; missingKeys: string[] }[]>(() => {
+    readonly consolidatedRecommendations = computed<{ resourceCode: string; missingKeys: string[] }[]>(() => {
         const winners = this.consolidationWinners();
-        const result: { resourceCode: ResourceCode; missingKeys: string[] }[] = [];
+        const result: { resourceCode: string; missingKeys: string[] }[] = [];
         for (const [resourceCode, entry] of this.recommendedByResource()) {
             if (!winners.has(resourceCode)) continue;
             if (this.isBannerDismissed(resourceCode)) continue;
@@ -184,28 +194,28 @@ export class PermissionsTableComponent {
         return result;
     });
 
-    private readonly visibleRecommendationByResource = computed<Map<ResourceCode, { missingKeys: string[] }>>(() => {
-        const map = new Map<ResourceCode, { missingKeys: string[] }>();
+    private readonly visibleRecommendationByResource = computed<Map<string, { missingKeys: string[] }>>(() => {
+        const map = new Map<string, { missingKeys: string[] }>();
         for (const entry of this.consolidatedRecommendations()) map.set(entry.resourceCode, entry);
         return map;
     });
 
-    recommendationFor(resourceCode: ResourceCode): { missingKeys: string[] } | undefined {
+    recommendationFor(resourceCode: string): { missingKeys: string[] } | undefined {
         return this.visibleRecommendationByResource().get(resourceCode);
     }
 
     readonly globalPendingCount = computed(() => this.recommendedSet().size);
 
-    private readonly orderedPendingResourceCodes = computed<ResourceCode[]>(() => {
+    private readonly orderedPendingResourceCodes = computed<string[]>(() => {
         const winners = this.consolidationWinners();
-        const codes: ResourceCode[] = [];
-        for (const rt of this.catalog().resource_types) {
-            if (winners.has(rt.code) && !this.isBannerDismissed(rt.code)) codes.push(rt.code);
+        const codes: string[] = [];
+        for (const row of this.allRows()) {
+            if (winners.has(row.code) && !this.isBannerDismissed(row.code)) codes.push(row.code);
         }
         return codes;
     });
 
-    readonly nextPendingResourceCode = computed<ResourceCode | null>(() => {
+    readonly nextPendingResourceCode = computed<string | null>(() => {
         const ordered = this.orderedPendingResourceCodes();
         if (ordered.length === 0) return null;
         const lastShown = this.lastShownPendingResourceCode();
@@ -213,27 +223,33 @@ export class PermissionsTableComponent {
         return ordered[(lastIndex + 1) % ordered.length];
     });
 
-    private readonly resourceToGroupMap = computed<Map<ResourceCode, string>>(() => {
-        const map = new Map<ResourceCode, string>();
-        for (const rt of this.catalog().resource_types) map.set(rt.code, rt.group);
+    private readonly resourceToGroupMap = computed<Map<string, string>>(() => {
+        const map = new Map<string, string>();
+        for (const group of this.groups()) {
+            for (const row of group.rows) map.set(row.code, group.key);
+        }
+        return map;
+    });
+
+    /** A label for every cell key: `<row label>: <action label>`. */
+    private readonly cellLabels = computed<Map<string, string>>(() => {
+        const actionLabels = new Map(this.catalog().actions.map((action) => [action.code, action.label]));
+        const map = new Map<string, string>();
+        for (const row of this.allRows()) {
+            for (const action of row.actions) {
+                map.set(permissionKey(row.code, action), `${row.label}: ${actionLabels.get(action) ?? action}`);
+            }
+        }
         return map;
     });
 
     /** Whether the recommendation banner for this resource's missing-keys signature has been dismissed. */
-    isBannerDismissed(resourceCode: ResourceCode): boolean {
+    isBannerDismissed(resourceCode: string): boolean {
         const signature = this.missingKeysSignatureByResource().get(resourceCode);
         return signature !== undefined && this.dismissedSignatures().has(signature);
     }
 
-    private readonly applicableKeySet = computed<Set<string>>(() => {
-        const set = new Set<string>();
-        for (const rt of this.catalog().resource_types) {
-            for (const action of rt.applicable_actions) {
-                set.add(`${rt.code}:${action}`);
-            }
-        }
-        return set;
-    });
+    private readonly applicableKeySet = computed<Set<string>>(() => new Set(this.rowCodeByKey().keys()));
 
     isGroupCollapsed(groupKey: string): boolean {
         return this.collapsedGroups().has(groupKey);
@@ -247,35 +263,48 @@ export class PermissionsTableComponent {
         });
     }
 
-    isApplicable(resource: CatalogResourceType, action: CatalogAction): boolean {
-        return resource.applicable_actions.includes(action.code);
+    isApplicable(row: PermissionMatrixRow, action: CatalogAction): boolean {
+        return row.actions.includes(action.code);
     }
 
-    isChecked(resourceCode: ResourceCode, actionCode: ActionCode): boolean {
-        return this.selectedPermissions().has(`${resourceCode}:${actionCode}`);
+    isChecked(resourceCode: string, actionCode: ActionCode): boolean {
+        return this.selectedPermissions().has(permissionKey(resourceCode, actionCode));
     }
 
-    private hasGrantedPermission(resource: CatalogResourceType): boolean {
+    /** The cell's tooltip: what the action allows on that row, when the row says. */
+    cellTooltip(row: PermissionMatrixRow, actionCode: ActionCode): string {
+        return row.actionDescriptions[actionCode] ?? '';
+    }
+
+    /** The cell checkbox's name, `<row>: <action>`, with the description when the row has one (screen readers do not
+     *  read the tooltip). */
+    cellAriaLabel(row: PermissionMatrixRow, actionCode: ActionCode): string {
+        const name = this.keyLabel(permissionKey(row.code, actionCode));
+        const description = this.cellTooltip(row, actionCode);
+        return description ? `${name}. ${description}` : name;
+    }
+
+    private hasGrantedPermission(row: PermissionMatrixRow): boolean {
         const selected = this.selectedPermissions();
-        return resource.applicable_actions.some((action) => selected.has(`${resource.code}:${action}`));
+        return row.actions.some((action) => selected.has(permissionKey(row.code, action)));
     }
 
-    isCellDisabled(resourceCode: ResourceCode, actionCode: ActionCode): boolean {
-        return this.readonly() || this.disabledPermissions().has(`${resourceCode}:${actionCode}`);
+    isCellDisabled(resourceCode: string, actionCode: ActionCode): boolean {
+        return this.readonly() || this.disabledPermissions().has(permissionKey(resourceCode, actionCode));
     }
 
-    isRecommended(resourceCode: ResourceCode, actionCode: ActionCode): boolean {
-        return this.recommendedSet().has(`${resourceCode}:${actionCode}`);
+    isRecommended(resourceCode: string, actionCode: ActionCode): boolean {
+        return this.recommendedSet().has(permissionKey(resourceCode, actionCode));
     }
 
     /** Tri-state for a single resource row. Considers only grantable actions. */
-    resourceState(resource: CatalogResourceType): TriState {
+    resourceState(row: PermissionMatrixRow): TriState {
         const selected = this.selectedPermissions();
         const disabled = this.disabledPermissions();
         let grantable = 0;
         let sel = 0;
-        for (const action of resource.applicable_actions) {
-            const key = `${resource.code}:${action}`;
+        for (const action of row.actions) {
+            const key = permissionKey(row.code, action);
             if (disabled.has(key)) continue;
             grantable++;
             if (selected.has(key)) sel++;
@@ -286,14 +315,14 @@ export class PermissionsTableComponent {
     }
 
     /** Tri-state for a group header checkbox. Considers only grantable actions in the group. */
-    groupState(group: CatalogGroup): TriState {
+    groupState(group: PermissionMatrixGroup): TriState {
         const selected = this.selectedPermissions();
         const disabled = this.disabledPermissions();
         let grantable = 0;
         let sel = 0;
-        for (const rt of group.resources) {
-            for (const action of rt.applicable_actions) {
-                const key = `${rt.code}:${action}`;
+        for (const row of group.rows) {
+            for (const action of row.actions) {
+                const key = permissionKey(row.code, action);
                 if (disabled.has(key)) continue;
                 grantable++;
                 if (selected.has(key)) sel++;
@@ -305,31 +334,31 @@ export class PermissionsTableComponent {
     }
 
     /** Whether the row-checkbox should render as fully-checked (drives the `checked` input). */
-    resourceCheckboxChecked(resource: CatalogResourceType): boolean {
-        return this.resourceState(resource) === 'checked';
+    resourceCheckboxChecked(row: PermissionMatrixRow): boolean {
+        return this.resourceState(row) === 'checked';
     }
 
-    resourceCheckboxIndeterminate(resource: CatalogResourceType): boolean {
-        return this.resourceState(resource) === 'indeterminate';
+    resourceCheckboxIndeterminate(row: PermissionMatrixRow): boolean {
+        return this.resourceState(row) === 'indeterminate';
     }
 
-    groupCheckboxChecked(group: CatalogGroup): boolean {
+    groupCheckboxChecked(group: PermissionMatrixGroup): boolean {
         return this.groupState(group) === 'checked';
     }
 
-    groupCheckboxIndeterminate(group: CatalogGroup): boolean {
+    groupCheckboxIndeterminate(group: PermissionMatrixGroup): boolean {
         return this.groupState(group) === 'indeterminate';
     }
 
     /** Tri-state for a single action across all resources of a group. Considers only applicable & grantable cells. */
-    groupActionState(group: CatalogGroup, actionCode: ActionCode): TriState {
+    groupActionState(group: PermissionMatrixGroup, actionCode: ActionCode): TriState {
         const selected = this.selectedPermissions();
         const disabled = this.disabledPermissions();
         let grantable = 0;
         let sel = 0;
-        for (const rt of group.resources) {
-            if (!rt.applicable_actions.includes(actionCode)) continue;
-            const key = `${rt.code}:${actionCode}`;
+        for (const row of group.rows) {
+            if (!row.actions.includes(actionCode)) continue;
+            const key = permissionKey(row.code, actionCode);
             if (disabled.has(key)) continue;
             grantable++;
             if (selected.has(key)) sel++;
@@ -339,58 +368,58 @@ export class PermissionsTableComponent {
         return 'indeterminate';
     }
 
-    groupActionCheckboxChecked(group: CatalogGroup, actionCode: ActionCode): boolean {
+    groupActionCheckboxChecked(group: PermissionMatrixGroup, actionCode: ActionCode): boolean {
         return this.groupActionState(group, actionCode) === 'checked';
     }
 
-    groupActionCheckboxIndeterminate(group: CatalogGroup, actionCode: ActionCode): boolean {
+    groupActionCheckboxIndeterminate(group: PermissionMatrixGroup, actionCode: ActionCode): boolean {
         return this.groupActionState(group, actionCode) === 'indeterminate';
     }
 
     /** Whether the group has at least one applicable & grantable cell for this action. */
-    hasGroupApplicableAction(group: CatalogGroup, actionCode: ActionCode): boolean {
+    hasGroupApplicableAction(group: PermissionMatrixGroup, actionCode: ActionCode): boolean {
         const disabled = this.disabledPermissions();
-        for (const rt of group.resources) {
-            if (!rt.applicable_actions.includes(actionCode)) continue;
-            if (!disabled.has(`${rt.code}:${actionCode}`)) return true;
+        for (const row of group.rows) {
+            if (!row.actions.includes(actionCode)) continue;
+            if (!disabled.has(permissionKey(row.code, actionCode))) return true;
         }
         return false;
     }
 
     /** Bulk-action click: toggle the action across every applicable & grantable resource in the group. */
-    onGroupActionToggleClick(group: CatalogGroup, actionCode: ActionCode): void {
+    onGroupActionToggleClick(group: PermissionMatrixGroup, actionCode: ActionCode): void {
         if (this.readonly()) return;
         const select = this.groupActionState(group, actionCode) !== 'checked';
         const disabled = this.disabledPermissions();
         this.lastToggledResources.set(
             new Set(
-                group.resources
+                group.rows
                     .filter(
-                        (rt) => rt.applicable_actions.includes(actionCode) && !disabled.has(`${rt.code}:${actionCode}`)
+                        (row) => row.actions.includes(actionCode) && !disabled.has(permissionKey(row.code, actionCode))
                     )
-                    .map((rt) => rt.code)
+                    .map((row) => row.code)
             )
         );
         this.groupActionToggle.emit({ groupKey: group.key, actionCode, select });
     }
 
     /** Row-checkbox click: any non-checked state selects everything grantable; fully-checked clears the row. */
-    onResourceRowToggle(resource: CatalogResourceType): void {
+    onResourceRowToggle(row: PermissionMatrixRow): void {
         if (this.readonly()) return;
-        const select = this.resourceState(resource) !== 'checked';
-        this.lastToggledResources.set(new Set([resource.code]));
-        this.resourceToggle.emit({ resourceCode: resource.code, select });
+        const select = this.resourceState(row) !== 'checked';
+        this.lastToggledResources.set(new Set([row.code]));
+        this.resourceToggle.emit({ resourceCode: row.code, select });
     }
 
     /** BULK SELECT row leading checkbox: toggle every applicable & grantable action in the group. */
-    onGroupBulkToggle(group: CatalogGroup): void {
+    onGroupBulkToggle(group: PermissionMatrixGroup): void {
         if (this.readonly()) return;
         const select = this.groupState(group) !== 'checked';
-        this.lastToggledResources.set(new Set(group.resources.map((rt) => rt.code)));
+        this.lastToggledResources.set(new Set(group.rows.map((row) => row.code)));
         this.groupToggle.emit({ groupKey: group.key, select });
     }
 
-    onPermissionCellToggle(resourceType: ResourceCode, action: ActionCode): void {
+    onPermissionCellToggle(resourceType: string, action: ActionCode): void {
         this.lastToggledResources.set(new Set([resourceType]));
         this.permissionToggle.emit({ resourceType, action });
     }
@@ -404,21 +433,16 @@ export class PermissionsTableComponent {
     }
 
     keyLabel(key: string): string {
-        const [resource, action] = key.split(':');
-        const rt = this.catalog().resource_types.find((r) => r.code === resource);
-        const act = this.catalog().actions.find((a) => a.code === action);
-        const resourceLabel = rt?.label ?? resource;
-        const actionLabel = act?.label ?? action;
-        return `${resourceLabel}: ${actionLabel}`;
+        return this.cellLabels().get(key) ?? key;
     }
 
-    onEnableResourceRecommended(resourceCode: ResourceCode): void {
+    onEnableResourceRecommended(resourceCode: string): void {
         const entry = this.recommendedByResource().get(resourceCode);
         if (!entry || entry.missingKeys.length === 0) return;
         this.enableRecommendedForResource.emit({ resourceCode, keys: entry.missingKeys });
     }
 
-    onDismissResourceRecommended(resourceCode: ResourceCode): void {
+    onDismissResourceRecommended(resourceCode: string): void {
         const signature = this.missingKeysSignatureByResource().get(resourceCode);
         if (!signature) return;
         this.dismissedSignatures.update((set) => {
@@ -448,7 +472,7 @@ export class PermissionsTableComponent {
 
     private scrollRequestId = 0;
 
-    private scrollToResourceWhenSettled(resourceCode: ResourceCode, deadline = performance.now() + 1000): void {
+    private scrollToResourceWhenSettled(resourceCode: string, deadline = performance.now() + 1000): void {
         const requestId = ++this.scrollRequestId;
         const host = this.hostEl.nativeElement;
         requestAnimationFrame(() => {

@@ -15,6 +15,7 @@ from utils.logger import logger
 
 from plugins.access.declared_access import declared_access_problems
 from plugins.audit import PackageFacts, log_package_action
+from plugins.configuration.limits import PlatformMaximums, manifest_limit_problems
 from plugins.exceptions import (
     InvalidPluginError,
     PackageFileMismatchError,
@@ -26,6 +27,7 @@ from plugins.exceptions import (
     UntrustedNotAcknowledgedError,
 )
 from plugins.models import Plugin, PluginPackage, PluginState, ReviewState, Trust
+from plugins.nodes.placement_service import PlacementService
 from plugins.packages.package_reader import read_uploaded_package
 from plugins.packages.package_store import (
     PackageFileMissingError,
@@ -33,7 +35,10 @@ from plugins.packages.package_store import (
     get_package_store,
     package_storage_key,
 )
-from plugins.packages.signature_verifier import verify_package_signature
+from plugins.packages.signature_verifier import (
+    trusted_signer_public_key,
+    verify_package_signature,
+)
 from plugins.packages.spa_publisher import SpaPublisher
 
 _HASH_CHUNK_BYTES = 1024 * 1024
@@ -47,15 +52,20 @@ class PluginInstallationService:
     """Upload of plugin packages and the review decisions on them.
 
     In this version a plugin has at most one approved package (no upgrades) and a package
-    with a backend or a database is refused, so approving publishes the SPA and the plugin
-    runs at once.
+    with a database is refused. Approving publishes the SPA; a plugin without a backend
+    runs at once, one with a backend is placed on the plugin node and is `provisioning`
+    until the node reports its process running.
     """
 
     def __init__(
-        self, store: PluginPackageStore | None = None, publisher: SpaPublisher | None = None
+        self,
+        store: PluginPackageStore | None = None,
+        publisher: SpaPublisher | None = None,
+        placements: PlacementService | None = None,
     ):
         self._store = store or get_package_store()
         self._publisher = publisher or SpaPublisher()
+        self._placements = placements or PlacementService()
 
     def upload(self, file: BinaryIO, size: int, uploaded_by) -> PluginPackage:
         """Check an uploaded package and keep it as the plugin's package pending review.
@@ -66,9 +76,10 @@ class PluginInstallationService:
         Raises:
             PackageTooLargeError: Larger than PLUGINS_MAX_PACKAGE_MB.
             InvalidPluginError: The package breaks a format or manifest rule, declares access
-                this EpicStaff's catalog does not have, or holds nothing to install.
+                this EpicStaff's catalog does not have, asks for more than the platform
+                maximums, or holds nothing to install.
             InvalidSignatureError: The package's signature does not belong to it.
-            PluginFeatureUnavailableError: The package declares a backend or a database.
+            PluginFeatureUnavailableError: The package declares a database.
             PluginUpgradeUnavailableError: The plugin already has an approved package.
         """
         if size > max_package_bytes():
@@ -79,6 +90,7 @@ class PluginInstallationService:
             raise InvalidPluginError(problems)
         verdict = verify_package_signature(package)
         _assert_installable(manifest)
+        _assert_within_platform_maximums(manifest)
         if Plugin.objects.filter(identifier=manifest.id, current_package__isnull=False).exists():
             raise PluginUpgradeUnavailableError()
 
@@ -143,6 +155,7 @@ class PluginInstallationService:
             signature_status=verdict.signature,
             signer_key_id=verdict.key_id,
             signer_key_name=verdict.key_name,
+            signer_public_key=trusted_signer_public_key(verdict),
             icon_bytes=package.icon,
             icon_media_type=package.icon_media_type,
             spa_file_count=package.summary.spa_file_count,
@@ -164,19 +177,25 @@ class PluginInstallationService:
         saved even when the approval is then refused, so the review shows it.
 
         The SPA's files are written before the approval commits and served (`current`
-        switched) only once it has; a failed approval leaves nothing served.
+        switched) only once it has; a failed approval leaves nothing served. A package with
+        a backend gets its placement (port and Unix user id on the plugin node) and leaves
+        the plugin `provisioning`; the platform maximums are checked again, as they are now.
 
         Raises:
             PluginPackageNotFoundError: No package with this id.
             PackageNotPendingError: The package was already decided.
             PackageFileMismatchError: The stored file is missing or not the reviewed one.
-            InvalidPluginError: The stored package breaks a package rule.
+            InvalidPluginError: The stored package breaks a package rule or asks for more than
+                today's platform maximums.
             InvalidSignatureError: Its signature does not verify with today's trusted keys.
             UntrustedNotAcknowledgedError: The package is untrusted now and the SuperAdmin did
                 not acknowledge it.
+            NoPluginNodeError: The package has a backend and no plugin node is registered.
+            PluginNodeFullError: The plugin node has no free port or user id left.
         """
         with tempfile.TemporaryFile() as local_copy:
             archive = self._reviewed_archive(self._pending_package(package_id), local_copy)
+            _assert_within_platform_maximums(archive.manifest)
             package = self._record_verdict(package_id, verify_package_signature(archive))
             if package.trust == Trust.UNTRUSTED and not untrusted_acknowledged:
                 raise UntrustedNotAcknowledgedError()
@@ -223,8 +242,12 @@ class PluginInstallationService:
                 package.approved_at = timezone.now()
                 package.save(update_fields=["review_state", "approved_by", "approved_at"])
                 plugin = package.plugin
+                if manifest.backend is not None:
+                    self._placements.ensure_placement(plugin)
                 plugin.current_package = package
-                plugin.state = PluginState.RUNNING
+                plugin.state = (
+                    PluginState.RUNNING if manifest.backend is None else PluginState.PROVISIONING
+                )
                 plugin.name = manifest.name
                 plugin.description = manifest.description
                 plugin.save(
@@ -292,6 +315,7 @@ class PluginInstallationService:
             "signature_status": verdict.signature,
             "signer_key_id": verdict.key_id,
             "signer_key_name": verdict.key_name,
+            "signer_public_key": trusted_signer_public_key(verdict),
         }
         with transaction.atomic():
             package = self._pending_package(package_id, lock=True)
@@ -356,16 +380,20 @@ def _assert_installable(manifest: PluginManifest) -> None:
                 )
             ]
         )
-    unavailable = [
-        Problem(
-            f"{MANIFEST_LOC}.{section}",
-            f"a plugin {section} is not available in this EpicStaff yet",
+    if manifest.database is not None:
+        raise PluginFeatureUnavailableError(
+            [
+                Problem(
+                    f"{MANIFEST_LOC}.database",
+                    "a plugin database is not available in this EpicStaff yet",
+                )
+            ]
         )
-        for section, value in (("backend", manifest.backend), ("database", manifest.database))
-        if value is not None
-    ]
-    if unavailable:
-        raise PluginFeatureUnavailableError(unavailable)
+
+
+def _assert_within_platform_maximums(manifest: PluginManifest) -> None:
+    if problems := manifest_limit_problems(manifest, PlatformMaximums.from_settings()):
+        raise InvalidPluginError(problems)
 
 
 def _log_file_mismatch(package: PluginPackage, *, found: str | None) -> None:

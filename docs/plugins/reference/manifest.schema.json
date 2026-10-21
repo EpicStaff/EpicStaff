@@ -161,48 +161,81 @@
     },
     "Limits": {
       "additionalProperties": false,
-      "description": "Resource limits the backend asks for, never above the platform's maximums.",
+      "description": "Resource limits the backend asks for.\n\nEach one is optional: EpicStaff gives an omitted (or null) limit the platform default,\nand caps every limit at the deployment's maximum, which it checks at upload. The bounds\nhere are the most any deployment may allow.",
       "properties": {
         "memory_mb": {
-          "maximum": 8192,
-          "minimum": 64,
-          "title": "Memory Mb",
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 8192,
+              "minimum": 64,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Mb"
         },
         "db_connections": {
-          "maximum": 100,
-          "minimum": 1,
-          "title": "Db Connections",
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Db Connections"
         },
         "statement_timeout_seconds": {
-          "maximum": 600,
-          "minimum": 1,
-          "title": "Statement Timeout Seconds",
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 600,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statement Timeout Seconds"
         },
         "requests_per_minute": {
-          "maximum": 6000,
-          "minimum": 1,
-          "title": "Requests Per Minute",
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 6000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requests Per Minute"
         },
         "cpu_priority": {
-          "enum": [
-            "normal",
-            "low"
+          "anyOf": [
+            {
+              "enum": [
+                "normal",
+                "low"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Cpu Priority",
-          "type": "string"
+          "default": null,
+          "title": "Cpu Priority"
         }
       },
-      "required": [
-        "memory_mb",
-        "db_connections",
-        "statement_timeout_seconds",
-        "requests_per_minute",
-        "cpu_priority"
-      ],
       "title": "Limits",
       "type": "object"
     },
@@ -475,7 +508,7 @@
     },
     "UserPermissionDefaults": {
       "additionalProperties": false,
-      "description": "Whether each built-in role gets the action. Custom roles start with nothing.",
+      "description": "Whether each built-in role gets the action. Custom roles start with nothing.\n\nThe built-in roles build on each other: Viewer gets only what Member gets, and Member only\nwhat Org Admin gets. Assigning a role checks its plugin actions against the assigner's\nown, so an Org Admin could not assign a Member who holds an action Org Admin lacks.",
       "properties": {
         "org_admin": {
           "title": "Org Admin",

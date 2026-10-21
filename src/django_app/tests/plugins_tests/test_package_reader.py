@@ -1,4 +1,4 @@
-"""Package caps and path rules, as Django applies them to an upload (contract section 5)."""
+"""Package caps and path rules, as Django applies them to an upload."""
 
 import io
 import json

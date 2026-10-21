@@ -15,34 +15,48 @@ needs `backend`"; those are marked *cross-field* below.
 ## What this version of EpicStaff installs
 
 The manifest format accepts every field on this page, so a manifest does not change when EpicStaff
-gains features. This version installs **frontend-only plugins**: a package that declares
-`backend` or `database` is refused with `plugin_feature_unavailable`, and one with neither `spa`
-nor `backend` (nothing to install) with `invalid_plugin`. Because `access`, `public_paths`,
-`outbound_hosts`, `settings`, `limits` and enabled hooks all need a backend, a plugin
-installable today has an `spa` section, leaves those empty or out, and turns every hook off.
+gains features. This version installs plugins with a single-page app, a Python backend, or both.
+A package that declares `database` is refused with `plugin_feature_unavailable`, and one with
+neither `spa` nor `backend` (nothing to install) with `invalid_plugin`.
+
+A backend runs as its own process on the deployment's plugin node ([Runtime](runtime.md)). In
+this version it serves its `public_paths` through EpicStaff's gateway, every other path answers
+`401 login_required` until people can log in to plugins, and it reads its `settings` and
+`limits`. `access`, `outbound_hosts` and hooks are accepted and shown at review, but nothing uses
+them yet.
 
 ## Example
 
-The Weather sample (`plugin-samples/weather/manifest.json`):
+The Weather sample (`plugin-samples/weather/manifest.json`), a page and a backend with one public
+path and two settings:
 
 ```json
 {
   "manifest_version": 1,
   "id": "weather",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Weather",
   "description": "Forecasts for the places your organization cares about.",
   "publisher": { "name": "EpicStaff" },
   "icon": "icon.svg",
   "platform": { "frame_protocol": 1, "gateway_context": 1, "hook_api": 1 },
   "spa": { "entry": "index.html" },
+  "backend": { "python": "3.13", "entrypoint": "weather_plugin.app:app" },
   "user_permissions": [
     { "action": "read", "description": "Open Weather and see forecasts.", "defaults": { "org_admin": true, "member": true, "viewer": false } }
-  ]
+  ],
+  "public_paths": [
+    { "path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0 }
+  ],
+  "settings": [
+    { "key": "units", "type": "enum", "label": "Units", "description": "Units every forecast is shown in.", "required": true, "default": "metric", "values": ["metric", "imperial"] },
+    { "key": "forecast_api_token", "type": "secret", "label": "Forecast API token", "description": "Token for a forecast service that needs one; the sample works without it.", "required": false }
+  ],
+  "limits": { "memory_mb": 256 }
 }
 ```
 
-A manifest with every section filled in (a plugin with a backend, which later EpicStaff versions
+A manifest with every section filled in (a plugin with a database, which later EpicStaff versions
 install):
 
 ```json
@@ -104,14 +118,14 @@ install):
 | `icon` | string | yes | `icon.svg` or `icon.png`, a file at the package root. See [Icon](#icon). |
 | `platform` | object | yes | `frame_protocol`, `gateway_context` and `hook_api`, each `1`: the versions of the platform contracts the plugin is written for. |
 | `spa` | object | no | The plugin's single-page app. `entry` (default `index.html`) is a path inside `spa/` that must exist in the package. |
-| `backend` | object | no | `python`: `"3.12"` or `"3.13"`; `entrypoint`: `module.path:attribute` of an ASGI app, whose module is `backend/src/<module/path>.py` or `backend/src/<module/path>/__init__.py`. Not installed by this version. |
+| `backend` | object | no | `python`: `"3.12"` or `"3.13"`; `entrypoint`: `module.path:attribute` of an ASGI app, whose module is `backend/src/<module/path>.py` or `backend/src/<module/path>/__init__.py`. Its files are under `backend/` ([backend/requirements.lock](#backendrequirementslock)); [Runtime](runtime.md) says how it is run. |
 | `database` | `{}` | no | Present when the plugin needs its own database; takes no fields. Not installed by this version. |
 | `access` | array | no (default `[]`) | What the plugin's backend may do in EpicStaff; see [access](#access). *Cross-field:* non-empty `access` needs `backend`. |
 | `user_permissions` | array | yes | What people may do with the plugin; see [user_permissions](#user_permissions). |
-| `public_paths` | array | no (default `[]`) | Backend paths reached without an EpicStaff login. Each: `path` under `/api/` (`/api/<segment>[/…]`, no `.` or `..` segment, at most 512 characters, distinct), `match` `exact` or `prefix`, `methods` (distinct, from `GET HEAD POST PUT PATCH DELETE OPTIONS`), `rate_limit_per_minute` 1–6000, `max_body_kb` 0–20480. *Cross-field:* needs `backend`. |
+| `public_paths` | array | no (default `[]`) | Backend paths reached without an EpicStaff login. Each: `path` under `/api/` (`/api/<segment>[/…]`, no `.` or `..` segment, at most 512 characters, distinct), `match` `exact` or `prefix`, `methods` (distinct, from `GET HEAD POST PUT PATCH DELETE OPTIONS`), `rate_limit_per_minute` 1–6000, `max_body_kb` 0–20480, each at most the deployment's maximum ([Platform maximums](#platform-maximums)). *Cross-field:* needs `backend`. |
 | `outbound_hosts` | array | no (default `[]`) | Hosts the backend may call, over HTTPS on port 443 only. Each: `host` is a lower-case DNS name or `*.` and a name (no IP address, no port, distinct) and `reason` (1–200 characters). *Cross-field:* needs `backend`. |
 | `settings` | array | no (default `[]`) | Deployment-wide settings a SuperAdmin fills in; see [settings](#settings). *Cross-field:* needs `backend`. |
-| `limits` | object | no | `memory_mb` 64–8192, `db_connections` 1–100, `statement_timeout_seconds` 1–600, `requests_per_minute` 1–6000, `cpu_priority` `normal` or `low`; all five required when present. EpicStaff may still cap them lower. *Cross-field:* needs `backend`. |
+| `limits` | object | no | `memory_mb` 64–8192, `db_connections` 1–100, `statement_timeout_seconds` 1–600, `requests_per_minute` 1–6000, `cpu_priority` `normal` or `low`. Each is optional: one left out (or `null`) gets the platform default, and each is at most the deployment's maximum ([Platform maximums](#platform-maximums)). A SuperAdmin may lower them per plugin. *Cross-field:* needs `backend`. |
 | `hooks` | object | no (default all off) | `install`, `upgrade`, `org_removed` (booleans) and optional `timeouts_seconds` with `install` ≤ 900, `upgrade` ≤ 1800, `org_removed` ≤ 900. *Cross-field:* any hook turned on needs `backend`. |
 
 ### access
@@ -140,8 +154,13 @@ Each entry is `{action, description, defaults}`: one action people can be given 
   the plugin.
 - `description`: 1–200 characters saying what the action means inside your plugin.
 - `defaults`: `{org_admin, member, viewer}`, all three booleans: whether each built-in role gets
-  the action. A role that gets any action must also get `read`. Organizations cannot change what
-  built-in roles get; other roles get nothing in this version.
+  the action. Organizations cannot change what built-in roles get; a custom role gets only the
+  actions an Org Admin gives it on the Roles page.
+- *Cross-field:* a built-in role that gets any action must also get `read`.
+- *Cross-field:* the built-in roles build on each other. For every action, `viewer: true` needs
+  `member: true`, and `member: true` needs `org_admin: true` (refused at
+  `manifest.user_permissions[<i>].defaults`). People assign roles only up to their own plugin
+  actions, so without this an Org Admin could not assign Member.
 
 ### settings
 
@@ -153,6 +172,26 @@ Each entry is `{key, type, label, description, required, default, values}`:
 - `values`: for `enum` only, and required there: distinct strings of 1–64 characters.
 - `default`: optional, of the setting's type (an integer for `integer`, a boolean for `boolean`,
   an `http(s)` URL for `url`, one of `values` for `enum`). A `secret` has no default.
+
+### Platform maximums
+
+The schema bounds above are the most any deployment may allow. Each deployment sets its own
+maximums, and an upload that asks for more is refused with `invalid_plugin` at the field
+(`manifest.limits.memory_mb`, `manifest.public_paths[0].max_body_kb`, ...). A limit the manifest
+leaves out, or a backend without `limits`, gets the platform default, capped by the maximum.
+
+| Field | Deployment maximum (variable) | Maximum by default | Platform default |
+|---|---|---|---|
+| `limits.memory_mb` | `PLUGINS_MAX_PROCESS_MEMORY_MB` | 1024 | 256 |
+| `limits.db_connections` | `PLUGINS_MAX_DB_CONNECTIONS` | 20 | 5 |
+| `limits.statement_timeout_seconds` | `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS` | 60 | 30 |
+| `limits.requests_per_minute` | `PLUGINS_MAX_REQUESTS_PER_MINUTE` | 600 | 120 |
+| `limits.cpu_priority` | — | — | `normal` |
+| `public_paths[].rate_limit_per_minute` | `PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE` | 120 | — |
+| `public_paths[].max_body_kb` | `PLUGINS_MAX_REQUEST_BODY_MB` × 1024 | 20480 | — |
+
+`epicstaff-plugin validate` checks only the schema bounds; the deployment's maximums are checked
+at upload. [Limits](limits.md) says which limits this version enforces and how.
 
 ## Package layout
 
@@ -173,6 +212,26 @@ database/migrations/NNN_<name>.sql    with "database"; NNN = three digits, disti
 
 Any other file is refused, as are `spa/`, `backend/` or `database/` files without their manifest
 section.
+
+### backend/requirements.lock
+
+The node installs a backend offline, from the package alone:
+`pip install --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock`.
+So the lock is a pip requirements file that holds nothing but exact pins with hashes:
+
+- every requirement is `name==version`, optionally with extras and an environment marker
+  (`; sys_platform == 'win32'`), and has at least one `--hash=sha256:<64 hex digits>`;
+- no other option (`--index-url`, `-e`, `-r`, `--find-links`, ...) and no URL or path
+  requirement;
+- it pins `uvicorn` and `epicstaff-plugin`, which run every backend
+  ([Runtime](runtime.md#how-the-backend-is-started));
+- every file in `backend/wheels/` is a wheel whose name and version the lock pins.
+
+`uv pip compile requirements.in --universal --generate-hashes` writes such a lock; [Sign and
+package a plugin](../how-to/sign-and-package.md#a-plugin-with-a-backend) shows how, and how `pack`
+downloads the wheels. Wheels must match the node: CPython of the manifest's `backend.python`
+on Linux, `manylinux_2_28` or older, `x86_64` or `aarch64`. A wheel built for another platform is
+refused when the node installs the backend, naming the wheel and the platform.
 
 ### Caps and path rules
 
@@ -252,7 +311,7 @@ lines.
 | `package` | the archive as a whole, or one file in it after the dot | `package`, `package.spa/app.js` |
 
 Other upload answers: `invalid_signature` (a signature that does not belong to the package),
-`plugin_feature_unavailable` (a `backend` or `database` section, listed in `errors`),
+`plugin_feature_unavailable` (a `database` section, listed in `errors`),
 `package_too_large` (413) and `plugin_upgrade_unavailable` (409, the plugin already has an
 approved version; installing a new version is not available yet).
 

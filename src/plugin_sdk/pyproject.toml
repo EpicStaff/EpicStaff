@@ -8,7 +8,9 @@ authors = [{ name = "EpicStaff" }]
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "cryptography>=50",
+    "packaging>=24",
     "pydantic>=2.13,<3",
+    "pyjwt>=2.10,<3",
 ]
 
 [project.scripts]
@@ -17,6 +19,16 @@ epicstaff-plugin = "epicstaff_plugin.cli.main:run"
 [dependency-groups]
 dev = [
     "pytest==8.4.2",
+    # `pack --download-wheels` runs pip, which a uv-made environment does not have.
+    "pip==26.0.1",
+    # The Weather sample backend and a real `epicstaff_plugin.serve` run in the tests, at
+    # the versions the other services ship (the shared dependency floor).
+    "anyio==4.14.2",
+    "fastapi==0.141.1",
+    "h11==0.16.0",
+    "idna==3.18",
+    "starlette==1.6.0",
+    "uvicorn==0.52.3",
 ]
 # The versions django_app ships, transitive ones included. A newer version in this lock would
 # raise the shared dependency floor (.github/dependency-floor.toml) for django_app and add a
@@ -25,9 +37,11 @@ django-app-versions = [
     "annotated-types==0.8.0",
     "cffi==2.1.1",
     "cryptography==50.0.1",
+    "packaging==26.3",
     "pycparser==3.0",
     "pydantic-core==2.46.4",
     "pydantic==2.13.4",
+    "pyjwt==2.13.0",
     "typing-extensions==4.16.0",
     "typing-inspection==0.4.4",
 ]

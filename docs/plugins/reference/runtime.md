@@ -1,0 +1,167 @@
+# Runtime: how a plugin backend runs
+
+A plugin's backend runs as its own process on the deployment's plugin node, under a Unix user
+of its own, on a port of its own. This page is what that process can rely on: how it is
+started, its environment, its runtime file, its file system, and what other plugins on the same
+node can and cannot see of it. The [Python SDK](python-sdk.md) reads all of it for you.
+
+## How the backend is started
+
+The node builds a virtual environment for each version of the plugin with the Python the
+manifest names (`backend.python`, CPython 3.12 or 3.13), offline, from the package:
+
+```
+pip install --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock
+```
+
+It puts `backend/src` on the environment's import path, and starts:
+
+```
+<venv>/bin/python -I -m epicstaff_plugin.serve
+```
+
+`epicstaff_plugin.serve` reads the runtime file, imports the ASGI app the manifest's
+`backend.entrypoint` names, and serves it with uvicorn: one worker, no `Server` header, proxy
+headers ignored, lifespan events on (an app that does not handle them fails to start). In front
+of your app it puts two things you cannot turn off:
+
+1. `GET /_epicstaff/health` answers `200 {"status":"ok"}`. The node calls it every 15 s;
+   three failures in a row restart the process.
+2. Every other request needs a valid [gateway context](gateway-context.md); without one it is
+   answered `401 {"code":"context_invalid"}` and never reaches your app.
+
+**The platform owns the port.** The node binds the plugin's port itself and keeps it bound while
+the plugin restarts, so no other process on the node can take it in between. It passes the
+listening socket to the process as file descriptor 3 (`EPICSTAFF_PLUGIN_LISTEN_FD`), and
+`serve` serves on that socket and never binds one. Do not open listening sockets of your own:
+binding `PORT` fails, since the node holds it, and a socket on any other port is reached by
+nothing from EpicStaff but by every other plugin on the node, with no context check in front.
+`serve` refuses to start when the descriptor is not a listening TCP socket. Without `EPICSTAFF_PLUGIN_LISTEN_FD`, on your own machine, `serve` binds
+`0.0.0.0:$PORT` itself.
+
+So your lock must pin `uvicorn` and `epicstaff-plugin` (upload refuses a lock without them), and
+your app must be an ASGI app: FastAPI, Starlette, Litestar, Django's ASGI handler and so on.
+uvicorn is installed as your lock pins it; WebSockets need a WebSocket library in the lock
+(`websockets` or `wsproto`), as uvicorn's own documentation describes.
+
+The process is restarted when its settings change, when a SuperAdmin restarts it or changes its
+limits, and when it exits or fails its health check (after 1 s, then backing off to 5 minutes).
+After 10 restarts in a row without staying healthy for a minute in between, the plugin is marked
+failed and stays stopped until a SuperAdmin restarts it; the Runtime tab of the plugin shows the
+last lines of its log.
+
+## Environment
+
+The process gets exactly these variables; nothing is inherited from the node.
+
+| Variable | Value |
+|---|---|
+| `PORT` | The plugin's port, stable for the plugin's life. For information: the node has bound it already |
+| `EPICSTAFF_PLUGIN_LISTEN_FD` | `3`: the listening socket the node opened on `PORT`, which `serve` serves on |
+| `USER`, `LOGNAME` | The plugin's id |
+| `HOME` | `/var/lib/es_plugins/data/<id>`, the plugin's own writable directory |
+| `TMPDIR` | `/var/lib/es_plugins/data/<id>/tmp` |
+| `PATH` | `<venv>/bin:/usr/local/bin:/usr/bin:/bin` |
+| `LANG` | `C.UTF-8` |
+| `PYTHONUNBUFFERED` | `1` |
+| `EPICSTAFF_PLUGIN_IDENTIFIER` | The plugin's id |
+| `EPICSTAFF_PLUGIN_VERSION` | The running version |
+| `EPICSTAFF_PLUGIN_ENTRYPOINT` | The manifest's `backend.entrypoint` |
+| `EPICSTAFF_PLUGIN_RUNTIME_FILE` | `/run/es_plugins/<id>/runtime.json` |
+| `EPICSTAFF_API_URL` | EpicStaff's API as the plugin reaches it, the runtime file's `epicstaff_api_url` |
+| `EPICSTAFF_PUBLIC_URL` | EpicStaff's address in people's browsers, the runtime file's `epicstaff_public_url` |
+| `EPICSTAFF_PLUGIN_PUBLIC_URL` | The plugin's own public address, the runtime file's `public_url` |
+
+Secrets are never in the environment or on the command line; they are only in the runtime file.
+
+## Runtime file
+
+A JSON document at `EPICSTAFF_PLUGIN_RUNTIME_FILE`, readable only by the plugin's user (mode
+0400). Its model is `epicstaff_plugin.contracts.runtime.RuntimeFile`.
+
+```json
+{
+  "format": 1,
+  "plugin": { "identifier": "weather", "version": "0.2.0" },
+  "issuer": "https://epicstaff.example.com",
+  "public_url": "https://weather.plugins.example.com",
+  "epicstaff_public_url": "https://epicstaff.example.com",
+  "epicstaff_api_url": "http://epicstaff-api:8081/api/",
+  "settings": { "units": "metric" },
+  "secret_settings": { "forecast_api_token": "…" },
+  "service_accounts": {},
+  "jwks": { "keys": [ { "kty": "OKP", "crv": "Ed25519", "x": "…", "kid": "…", "alg": "EdDSA", "use": "sig" } ] },
+  "public_paths": [ { "path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0 } ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `format` | `1` |
+| `plugin` | The plugin's id and the running version |
+| `issuer` | EpicStaff's public origin, the `iss` of every gateway context |
+| `public_url` | The plugin's own address. Build every external callback address (OAuth redirect URIs and the like) from it; operators keep it stable |
+| `epicstaff_public_url` | EpicStaff's address in people's browsers |
+| `epicstaff_api_url` | EpicStaff's API from inside the node. Only `/api/` is reachable there, without `/api/auth/` and `/api/admin/` |
+| `settings` | Every non-secret setting: its stored value, else its default. An optional setting with neither is left out |
+| `secret_settings` | The secret settings that are set, in clear text. Unset ones are left out |
+| `service_accounts` | Empty in this version |
+| `jwks` | The keys gateway contexts are signed with: the current one and any retired in the last 24 h |
+| `public_paths` | The manifest's public paths, as the gateway applies them |
+
+Settings are deployment-wide: one value per plugin, set by a SuperAdmin on the plugin's Settings
+tab. Saving them restarts the process, so read them whenever you need them or once at start-up;
+both see the current values.
+
+The node rewrites the file atomically (a rename) when EpicStaff's signing keys change, without
+restarting the process. `RuntimeConfig` in the SDK notices the change and reads the file again.
+A newer EpicStaff may add fields; read the file with the SDK, or ignore fields you do not know.
+
+## File system and identity
+
+| Path | Access |
+|---|---|
+| `HOME` and `TMPDIR` | Read and write, yours alone. Keep your files here. Both count towards the operator's per-plugin disk and file caps ([limits](limits.md)); a plugin over a cap is stopped and marked failed. The node must be able to measure everything here: don't make directories unreadable to yourself and don't call `prctl(PR_SET_DUMPABLE, 0)` — a plugin it cannot measure is treated as over the cap |
+| `/tmp` | **Not writable.** Use `TMPDIR`; Python's `tempfile` does so already |
+| `/dev/shm` | **Not writable**, so there is no POSIX shared memory: `multiprocessing` locks, queues and pools (and `ProcessPoolExecutor`) need its semaphores and fail. Use threads, asyncio or subprocesses |
+| Your code and virtual environment | Read-only |
+| Everything else | Read-only, or not readable at all |
+
+The plugin's user has a number but no entry in `/etc/passwd`: `pwd.getpwuid(os.getuid())` raises
+`KeyError`. Use `os.environ["USER"]` or `getpass.getuser()`, which reads it, and
+`os.path.expanduser("~")`, which reads `HOME`.
+
+Write logs to standard output and standard error. The node keeps the last 30 MB of them per
+plugin, and shows the last 200 lines on the Runtime tab when the plugin fails.
+
+## Other plugins on the same node
+
+Several plugins share a node. Each runs as a different user, so a plugin **cannot**:
+
+- read another plugin's environment, runtime file, code, virtual environment or files;
+- send signals to or trace another plugin's processes;
+- reach the node's own supervisor.
+
+But every plugin on the node **can**:
+
+- list every process, with its user number, memory use and **full command line**;
+- see which ports are listening, and which plugins are installed;
+- connect to every other plugin's port.
+
+Hence two rules:
+
+- **Never put a secret in a command line**, your own or a child process's: every plugin on the
+  node can read it. Pass secrets in environment variables of the child or in files under
+  `HOME`.
+- **Trust a request only through its gateway context.** Another plugin can call your port
+  directly, but it cannot forge a context: `epicstaff_plugin.serve` refuses every request
+  without a valid one, which is why it cannot be turned off.
+
+## Limits
+
+The node caps the memory of all processes of the plugin's user together, and runs them at the
+CPU priority the plugin's limits give. Above the cap it stops every process of the plugin and
+restarts it. The cap counts the resident memory of those processes: memory a plugin holds in a
+memory file (`memfd_create`) or a tmpfs is not counted, though the node's own memory limit still
+bounds it. [Limits](limits.md) gives the details, including by how much the memory cap can be
+overshot.

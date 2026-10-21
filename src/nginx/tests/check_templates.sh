@@ -5,7 +5,9 @@
 #
 #   - every combination of PLUGINS_ENABLED and NGINX_SSL_MODE, with throwaway self-signed
 #     certificates; with the flag off nothing plugin-related may be rendered;
-#   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse.
+#   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse;
+#   - live, inside the container: the package upload route, and which listener answers a caller
+#     on the plugins subnet (127.0.0.0/8 stands in for it) and which refuses it.
 #
 # Needs Docker and openssl. The containers have no network and publish no ports; nothing is left
 # behind. Usage, from anywhere: bash src/nginx/tests/check_templates.sh
@@ -42,6 +44,9 @@ make_certificate() { # $1 = file name prefix, $2 = common name
 make_certificate "" epicstaff.test
 make_certificate plugins- "*.plugins.epicstaff.test"
 
+# A value of the shape `openssl rand -hex 32` gives; the rendered check location must carry it.
+gateway_secret=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
 failures=0
 pass() { echo "ok - $1"; }
 fail() {
@@ -63,7 +68,8 @@ set_docker_arguments() {
     REALTIME_HOST=realtime REALTIME_PORT=8050 WEBHOOK_HOST=webhook WEBHOOK_PORT=8009 \
     AUDITOR_HOST=auditor AUDITOR_PORT=8010 CHAT_ENABLED=false CHAT_UPSTREAM_URL=http://chat:8200 \
     PLUGINS_ENABLED=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test PLUGINS_MAX_PACKAGE_MB=300 \
-    DJANGO_FRONTEND_BASE_URL=https://epicstaff.test \
+    PLUGINS_MAX_REQUEST_BODY_MB=20 PLUGINS_GATEWAY_SECRET="$gateway_secret" \
+    DJANGO_FRONTEND_BASE_URL=https://epicstaff.test PLUGINS_NETWORK_SUBNET=10.235.0.0/24 \
     "$@"; do
     docker_arguments+=(-e "$assignment")
   done
@@ -139,7 +145,9 @@ for ssl_mode in off on; do
     leaked=""
     for text in plugin_identifier /srv/plugin-spa /api/admin/plugins/packages/ \
       /_epicstaff/plugin-upload-permission auth_request \
-      /api/plugin-gateway/ plugins-fullchain.pem frame-ancestors\ \'self\'\ http; do
+      /api/plugin-gateway/ /api/plugin-nodes/ plugins-fullchain.pem frame-ancestors\ \'self\'\ http \
+      /_plugin_gateway_check X-Plugin-Gateway-Secret "listen 8081" "$gateway_secret" \
+      plugin_network_caller 10.235.0.0/24; do
       if has_directive "$text"; then
         leaked="$leaked [$text]"
       fi
@@ -168,7 +176,52 @@ for ssl_mode in off on; do
       "location = /api/admin/plugins/packages/upload-permission/ {" \
       "client_max_body_size 301m;" \
       "location ^~ /api/plugin-gateway/ {" \
+      "location ^~ /api/plugin-nodes/ {" \
       "$expected_tls"
+    expect_directives "PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode refuses the plugins subnet on 80/443" \
+      'geo $plugin_network_caller {' \
+      '10.235.0.0/24  1;' \
+      'if ($plugin_network_caller) {'
+    if [ "$(directives | grep -cF 'if ($plugin_network_caller) {')" = 2 ]; then
+      pass "both EpicStaff's server and the plugin hosts' server refuse the plugins subnet"
+    else
+      fail "the plugins subnet is refused by $(directives | grep -cF 'if ($plugin_network_caller) {') server(s), not 2"
+    fi
+    expect_directives "PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode renders the plugin gateway" \
+      'client_max_body_size 20m;' \
+      'set $plugin_normalized_path $uri;' \
+      'auth_request /_plugin_gateway_check;' \
+      'auth_request_set $plugin_upstream $upstream_http_x_plugin_upstream;' \
+      'auth_request_set $plugin_deny $upstream_http_x_plugin_deny;' \
+      'error_page 401 403 = @plugin_denied;' \
+      'recursive_error_pages on;' \
+      'proxy_pass http://$plugin_upstream;' \
+      'proxy_set_header Connection $connection_upgrade;' \
+      'proxy_set_header Cookie "";' \
+      'proxy_set_header X-API-Key "";' \
+      'proxy_set_header X_API_Key "";' \
+      'error_page 500 = @plugin_unavailable;' \
+      'proxy_set_header Authorization $plugin_authorization;' \
+      'proxy_set_header X-EpicStaff-Plugin-Context $plugin_context;' \
+      'proxy_set_header X_EpicStaff_Plugin_Context "";' \
+      'proxy_set_header X-EpicStaff-Plugin_Context "";' \
+      'proxy_ignore_headers X-Accel-Redirect;' \
+      'proxy_hide_header Set-Cookie;' \
+      'proxy_buffering off;' \
+      'location = /_plugin_gateway_check {' \
+      'proxy_pass_request_headers off;' \
+      'proxy_set_header Host localhost;' \
+      "proxy_set_header X-Plugin-Gateway-Secret \"$gateway_secret\";" \
+      'proxy_set_header X-Original-Normalized-Path $plugin_normalized_path;' \
+      'proxy_set_header X-Original-Transfer-Encoding $http_transfer_encoding;' \
+      'location @plugin_denied {' \
+      "return 401 '{\"status_code\":401,\"code\":\"login_required\""
+    expect_directives "PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode renders the internal API listener" \
+      'listen 8081;' \
+      'location ^~ /api/auth/ {' \
+      'location ^~ /api/admin/ {' \
+      'proxy_set_header X-Organization-Id $http_x_organization_id;' \
+      'if ($plugin_network_caller = 0) {'
   fi
 done
 
@@ -181,7 +234,8 @@ expect_refused "PLUGINS_ENABLED=maybe is refused" "PLUGINS_ENABLED='maybe' is no
 
 # With the flag off the plugin values are never read, so they cannot stop nginx.
 expect_valid "PLUGINS_ENABLED=false ignores malformed plugin values" PLUGINS_ENABLED=false \
-  "PLUGINS_BASE_DOMAIN=bad;value" DJANGO_FRONTEND_BASE_URL=none PLUGINS_MAX_PACKAGE_MB=many || :
+  "PLUGINS_BASE_DOMAIN=bad;value" DJANGO_FRONTEND_BASE_URL=none PLUGINS_MAX_PACKAGE_MB=many \
+  PLUGINS_MAX_REQUEST_BODY_MB=lots PLUGINS_GATEWAY_SECRET=none "PLUGINS_NETWORK_SUBNET=any; allow all" || :
 
 # Values that would break or inject into the rendered configuration.
 for base_domain in "plugins.epicstaff.test;" "plugins.epicstaff.test\"" "Plugins.Epicstaff.test" \
@@ -205,6 +259,26 @@ for frontend_url in "https://epicstaff.test/app" "https://epicstaff.test/app/" \
 done
 expect_valid "PLUGINS_ENABLED=false ignores a path in DJANGO_FRONTEND_BASE_URL" PLUGINS_ENABLED=false \
   "DJANGO_FRONTEND_BASE_URL=http://localhost:4200/app/" || :
+for body_megabytes in 0 20MB "" 020 -1; do
+  expect_refused "PLUGINS_MAX_REQUEST_BODY_MB=$(printf '%q' "$body_megabytes") is refused" \
+    "ERROR: PLUGINS_MAX_REQUEST_BODY_MB=" PLUGINS_ENABLED=true "PLUGINS_MAX_REQUEST_BODY_MB=$body_megabytes"
+done
+for secret in none None "" "short-secret" "${gateway_secret}\"; add_header X 1; #" \
+  "${gateway_secret}\$host" "${gateway_secret} space" "${gateway_secret}"$'\n'"x"; do
+  expect_refused "PLUGINS_GATEWAY_SECRET of the shape $(printf '%q' "${secret//[0-9a-f]/h}") is refused" \
+    "ERROR: PLUGINS_GATEWAY_SECRET" PLUGINS_ENABLED=true "PLUGINS_GATEWAY_SECRET=$secret"
+  # Its first 12 characters are enough to show it, and cannot hold a newline here.
+  if [ "${#secret}" -ge 12 ] && grep -qF -- "${secret:0:12}" "$work_dir/err"; then
+    fail "the refused PLUGINS_GATEWAY_SECRET $(printf '%q' "${secret//[0-9a-f]/h}") is echoed"
+  fi
+done
+# Rendered into allow, deny and geo: anything but a plain IPv4 CIDR could add a directive or
+# widen the rule.
+for subnet in "" none 10.235.0.0 "10.235.0.0/24; allow all" "10.235.0.0/24 10.0.0.0/8" \
+  "fd00:235::/64" "all" "10.235.0.0/24"$'\n'"allow all;" "10.235.0.0/24;"; do
+  expect_refused "PLUGINS_NETWORK_SUBNET=$(printf '%q' "$subnet") is refused" \
+    "ERROR: PLUGINS_NETWORK_SUBNET=" PLUGINS_ENABLED=true "PLUGINS_NETWORK_SUBNET=$subnet"
+done
 for package_megabytes in 0 300MB "" 030 -1; do
   expect_refused "PLUGINS_MAX_PACKAGE_MB=$(printf '%q' "$package_megabytes") is refused" \
     "ERROR: PLUGINS_MAX_PACKAGE_MB=" PLUGINS_ENABLED=true "PLUGINS_MAX_PACKAGE_MB=$package_megabytes"
@@ -319,6 +393,17 @@ status=$(upload -H 'Authorization: Bearer superadmin' --data-binary @/tmp/too-la
 [ "$status" = 413 ] && pass "a body more than one MiB above the cap gets 413 from nginx" \
   || fail "a body of 2.5 MiB with a 1 MiB cap: expected 413, got $status"
 
+# 127.0.0.1 is not in this container's PLUGINS_NETWORK_SUBNET (10.235.0.0/24): a caller off the
+# plugins network.
+for path in /api/plugin-nodes/self/desired-state/ /api/auth/token/ /; do
+  status=$(live curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8081$path" || true)
+  [ "$status" = 403 ] && pass "the internal API listener refuses a caller outside the plugins subnet: $path" \
+    || fail "the internal API listener from outside the plugins subnet: $path expected 403, got $status"
+done
+status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Host: epicstaff.test' http://127.0.0.1/ || true)
+[ "$status" != 403 ] && pass "EpicStaff's server answers a caller outside the plugins subnet ($status)" \
+  || fail "EpicStaff's server refused a caller outside the plugins subnet"
+
 for path in /_epicstaff/plugin-upload-permission /api/admin/plugins/packages/upload-permission/; do
   live sh -c ': > /tmp/stub-django.log'
   status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Host: epicstaff.test' \
@@ -327,6 +412,40 @@ for path in /_epicstaff/plugin-upload-permission /api/admin/plugins/packages/upl
     pass "$path is not reachable from outside"
   else
     fail "$path from outside: expected nginx's 404, got $status"
+  fi
+done
+
+docker rm -f "$live_container" > /dev/null
+live_container=""
+
+# The same, seen from the plugins network: PLUGINS_NETWORK_SUBNET=127.0.0.0/8 makes curl inside
+# the container a plugin backend. The 8081 listener reaches "Django"; EpicStaff's server and a
+# plugin host refuse it before any location, so even the plugin API's own error pages (which
+# would answer a refusal as 503 plugin_unavailable) never run.
+set_docker_arguments PLUGINS_ENABLED=true DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000 \
+  PLUGINS_NETWORK_SUBNET=127.0.0.0/8
+live_container=$(docker run -d "${docker_arguments[@]}" \
+  -v "$work_dir/stub-django.conf:/etc/nginx/conf.d/zz-stub-django.conf:ro" "$image")
+for _ in $(seq 50); do
+  if live curl -s -o /dev/null http://127.0.0.1:8000/ 2> /dev/null; then break; fi
+  sleep 0.1
+done
+live sh -c ': > /tmp/stub-django.log'
+status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: PluginNodeKey k' \
+  http://127.0.0.1:8081/api/plugin-nodes/self/desired-state/ || true)
+if reached_django "GET /api/plugin-nodes/self/desired-state/"; then
+  pass "the internal API listener serves a caller on the plugins subnet ($status from the stub)"
+else
+  fail "the internal API listener did not pass a plugins-subnet caller on to Django ($status)"
+fi
+for target in "epicstaff.test /" "epicstaff.test /api/other/" "epicstaff.test /api/admin/plugins/packages/" \
+  "alpha.plugins.epicstaff.test /api/ping" "alpha.plugins.epicstaff.test /"; do
+  live sh -c ': > /tmp/stub-django.log'
+  status=$(live curl -s -o /dev/null -w '%{http_code}' -H "Host: ${target% *}" "http://127.0.0.1${target#* }" || true)
+  if [ "$status" = 403 ] && ! reached_django ""; then
+    pass "a plugins-subnet caller is refused with 403 on ${target% *}${target#* }"
+  else
+    fail "a plugins-subnet caller on ${target% *}${target#* }: expected 403, got $status"
   fi
 done
 

@@ -104,3 +104,78 @@ class PackageFileMismatchError(CustomAPIExeption):
         "Upload the package again."
     )
     default_code = "package_file_mismatch"
+
+
+class InvalidPluginRolePermissionsError(_ProblemListError):
+    """A Roles-matrix write names a plugin or an action the role's organization cannot have."""
+
+    status_code = 400
+    default_detail = "The role's plugin permissions are invalid."
+    default_code = "invalid_plugin_role_permissions"
+
+
+class PluginHasNoBackendError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "The plugin has no backend."
+    default_code = "plugin_has_no_backend"
+
+
+class InvalidPluginSettingsError(_ProblemListError):
+    status_code = 400
+    default_detail = "The plugin settings are invalid."
+    default_code = "invalid_plugin_settings"
+
+
+class InvalidPluginLimitsError(_ProblemListError):
+    status_code = 400
+    default_detail = "The plugin limits are invalid."
+    default_code = "invalid_plugin_limits"
+
+
+class NoPluginNodeError(CustomAPIExeption):
+    """A package with a backend needs a plugin node to run on, and none is registered."""
+
+    status_code = 409
+    default_detail = (
+        "No plugin node named PLUGINS_NODE_NAME is registered, so a plugin with a backend "
+        "cannot run. EpicStaff registers it at start-up (manage.py seed_plugin_node): restart "
+        "EpicStaff, and check that PLUGINS_NODE_NAME has not changed since the node was set up."
+    )
+    default_code = "no_plugin_node"
+
+
+class PluginNodeFullError(CustomAPIExeption):
+    """Every port or Unix user id of the plugin node is taken by another plugin."""
+
+    status_code = 409
+    default_detail = "The plugin node has no free port or user id left for another plugin."
+    default_code = "plugin_node_full"
+
+
+class NodeNotAuthenticatedError(CustomAPIExeption):
+    status_code = 401
+    default_detail = "The plugin node key is missing or wrong."
+    default_code = "node_not_authenticated"
+
+
+class PlacementNotFoundError(CustomAPIExeption):
+    status_code = 404
+    default_detail = "Placement not found."
+    default_code = "placement_not_found"
+
+
+class InvalidNodeReportError(_ProblemListError):
+    status_code = 400
+    default_detail = "The node report is invalid."
+    default_code = "invalid_node_report"
+
+
+class SigningKeyMissingError(CustomAPIExeption):
+    """No context-signing key exists: `seed_plugin_node` creates the first one at start-up."""
+
+    status_code = 503
+    default_detail = (
+        "EpicStaff has no plugin signing key yet. Restart EpicStaff with plugins on, or run "
+        "manage.py seed_plugin_node."
+    )
+    default_code = "signing_key_missing"

@@ -1,4 +1,4 @@
-"""SuperAdmin plugin API: upload, review, approve, reject, list and detail (contract section 3)."""
+"""SuperAdmin plugin API: upload, review, approve, reject, list and detail."""
 
 import base64
 import os
@@ -200,17 +200,15 @@ def test_a_package_with_nothing_to_install_is_invalid(superadmin_client):
     ]
 
 
-@pytest.mark.parametrize("section", ["backend", "database"])
-def test_a_package_with_a_backend_or_database_is_refused(superadmin_client, section):
-    manifest = sample_manifest()
-    manifest[section] = {"python": "3.12", "entrypoint": "plugin.app:app"} if section == "backend" else {}
+def test_a_package_with_a_database_is_refused(superadmin_client):
+    manifest = sample_manifest(backend={"python": "3.12", "entrypoint": "plugin.app:app"}, database={})
 
     response = _upload(superadmin_client, build_package(manifest=manifest))
 
     assert response.status_code == 400
     body = response.json()
     assert body["code"] == "plugin_feature_unavailable"
-    assert body["errors"] == [{"loc": f"manifest.{section}", "message": f"a plugin {section} is not available in this EpicStaff yet"}]
+    assert body["errors"] == [{"loc": "manifest.database", "message": "a plugin database is not available in this EpicStaff yet"}]
     assert not Plugin.objects.exists()
 
 

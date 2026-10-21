@@ -1,0 +1,126 @@
+@if (runtime()) {
+    <div class="runtime">
+        @if (loadError(); as failure) {
+            <div
+                class="runtime__stale text-body-small"
+                role="status"
+            >
+                Couldn't refresh: {{ failure.message }} Showing the last known state.
+            </div>
+        }
+
+        <section class="runtime__section">
+            <h3 class="runtime__title text-h4">Node</h3>
+            @if (node(); as runtimeNode) {
+                <dl class="runtime__facts text-body">
+                    <dt>Name</dt>
+                    <dd class="runtime__inline">
+                        <code>{{ runtimeNode.name }}</code>
+                        <app-plugin-badge
+                            [label]="runtimeNode.online ? 'Online' : 'Offline'"
+                            [tone]="runtimeNode.online ? 'success' : 'danger'"
+                        />
+                    </dd>
+                    <dt>Last seen</dt>
+                    <dd>{{ (runtimeNode.last_seen_at | date: 'medium') ?? 'Never' }}</dd>
+                    <dt>Agent version</dt>
+                    <dd>{{ runtimeNode.agent_version ?? '—' }}</dd>
+                </dl>
+            } @else {
+                <p class="runtime__muted text-body">
+                    No plugin node is registered, so plugins with a backend cannot run. Set PLUGINS_NODE_KEY and restart
+                    EpicStaff.
+                </p>
+            }
+        </section>
+
+        <section class="runtime__section">
+            <div class="runtime__heading">
+                <h3 class="runtime__title text-h4">Process</h3>
+                <app-button
+                    type="outline-primary"
+                    mod="small"
+                    [disabled]="isRestarting() || !placement()"
+                    (click)="restart()"
+                >
+                    Restart
+                </app-button>
+            </div>
+            @if (placement(); as current) {
+                @if (blockedMessage(); as message) {
+                    <div
+                        class="runtime__blocked text-body"
+                        role="status"
+                    >
+                        {{ message }}
+                    </div>
+                }
+                <dl class="runtime__facts text-body">
+                    <dt>Port</dt>
+                    <dd>{{ current.port }}</dd>
+                    <dt>UID</dt>
+                    <dd>{{ current.unix_uid }}</dd>
+                    <dt>Desired state</dt>
+                    <dd>{{ desiredLabel() }}</dd>
+                    <dt>Observed state</dt>
+                    <dd>
+                        <app-plugin-badge
+                            [label]="observedLabel()"
+                            [tone]="observedTone()"
+                        />
+                    </dd>
+                    <dt>Health</dt>
+                    <dd>
+                        <app-plugin-badge
+                            [label]="healthLabel()"
+                            [tone]="healthTone()"
+                        />
+                    </dd>
+                    <dt>Version</dt>
+                    <dd>{{ current.observed_version ?? '—' }}</dd>
+                    <dt>PID</dt>
+                    <dd>{{ current.pid ?? '—' }}</dd>
+                    <dt>Restarts</dt>
+                    <dd>{{ current.restarts }}</dd>
+                    <dt>Memory</dt>
+                    <dd>
+                        @if (current.rss_mb !== null) {
+                            {{ current.rss_mb | number: '1.0-1' }} MB
+                        } @else {
+                            —
+                        }
+                    </dd>
+                    <dt>Last report</dt>
+                    <dd>{{ (current.last_report_at | date: 'medium') ?? 'None yet' }}</dd>
+                </dl>
+
+                @if (current.last_error; as lastError) {
+                    <h4 class="runtime__subtitle text-body-medium">Last error</h4>
+                    <pre class="runtime__code runtime__error">{{ lastError }}</pre>
+                }
+                @if (current.log_tail.length > 0) {
+                    <h4 class="runtime__subtitle text-body-medium">Last log lines</h4>
+                    <pre
+                        class="runtime__code runtime__log"
+                        tabindex="0"
+                        aria-label="Last log lines"
+                        >{{ logText() }}</pre
+                    >
+                }
+            } @else {
+                <p class="runtime__muted text-body">
+                    The plugin has no process yet. It gets one when a version with a backend is approved.
+                </p>
+            }
+        </section>
+    </div>
+} @else if (loadError(); as failure) {
+    <div
+        class="runtime__stale text-body"
+        role="alert"
+    >
+        {{ failure.message }} Trying again every few seconds.
+    </div>
+} @else if (isLoading()) {
+    <app-loading-spinner />
+}

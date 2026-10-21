@@ -1,4 +1,4 @@
-"""Public platform config and icon of a running plugin (contract sections 3 and 6)."""
+"""Public platform config and icon of a running plugin."""
 
 import pytest
 from plugins.models import Plugin, PluginState

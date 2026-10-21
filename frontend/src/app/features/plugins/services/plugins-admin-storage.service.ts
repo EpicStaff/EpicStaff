@@ -10,6 +10,13 @@ import {
     PluginSummary,
     PluginUploadEvent,
 } from '../models/plugin-admin.model';
+import {
+    PluginLimitsResponse,
+    PluginLimitsUpdate,
+    PluginRuntimeResponse,
+    PluginSettingsResponse,
+    PluginSettingsUpdate,
+} from '../models/plugin-backend.model';
 import { PluginsAdminApiService } from './plugins-admin-api.service';
 
 /**
@@ -90,6 +97,31 @@ export class PluginsAdminStorageService implements StorageService {
                 )
             );
         });
+    }
+
+    getSettings(identifier: string): Observable<PluginSettingsResponse> {
+        return this.api.getSettings(identifier);
+    }
+
+    updateSettings(identifier: string, update: PluginSettingsUpdate): Observable<PluginSettingsResponse> {
+        return this.api.updateSettings(identifier, update);
+    }
+
+    getLimits(identifier: string): Observable<PluginLimitsResponse> {
+        return this.api.getLimits(identifier);
+    }
+
+    updateLimits(identifier: string, update: PluginLimitsUpdate): Observable<PluginLimitsResponse> {
+        return this.api.updateLimits(identifier, update);
+    }
+
+    getRuntime(identifier: string): Observable<PluginRuntimeResponse> {
+        return this.api.getRuntime(identifier);
+    }
+
+    /** A restart can move the plugin's state (`failed` → `provisioning`): reload it with `getPlugin` afterwards. */
+    restart(identifier: string): Observable<PluginRuntimeResponse> {
+        return this.api.restart(identifier);
     }
 
     clear(): void {

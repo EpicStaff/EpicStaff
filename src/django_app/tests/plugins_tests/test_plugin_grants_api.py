@@ -1,4 +1,4 @@
-"""Granting plugins to organizations (contract section 3)."""
+"""Granting plugins to organizations."""
 
 import pytest
 from django.db import IntegrityError

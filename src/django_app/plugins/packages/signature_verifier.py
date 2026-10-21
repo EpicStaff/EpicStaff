@@ -26,3 +26,14 @@ def verify_package_signature(package: PackageArchive) -> SignatureVerdict:
         )
     except InvalidPackageSignatureError as error:
         raise InvalidSignatureError(detail=f"The package signature is invalid: {error}.") from None
+
+
+def trusted_signer_public_key(verdict: SignatureVerdict) -> str | None:
+    """The `RW...` public key a Trusted verdict verified with, or None for an untrusted one."""
+    if verdict.trust != "trusted":
+        return None
+    for trusted in parse_trusted_keys(settings.PLUGINS_TRUSTED_SIGNING_KEYS):
+        if trusted.public_key.display_id == verdict.key_id:
+            return trusted.public_key.to_text()
+    # A Trusted verdict is only ever reached through a key of this list.
+    raise LookupError(f"no trusted key {verdict.key_id} for a trusted verdict")

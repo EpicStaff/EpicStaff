@@ -4,6 +4,9 @@ from pathlib import Path
 
 import pytest
 
+from epicstaff_plugin.runtime import RuntimeConfig
+from epicstaff_plugin.testing import ContextSigner, write_runtime_file
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MINISIGN_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "minisign"
 
@@ -113,3 +116,25 @@ def plugin_source(tmp_path):
     (spa / "index.html").write_text("<!doctype html><title>Weather</title><script src=app.js></script>")
     (spa / "assets" / "app.js").write_text("console.log('weather');\n")
     return source, spa
+
+
+ISSUER = "https://epicstaff.example.com"
+
+
+@pytest.fixture
+def signer():
+    """Signs contexts for the Weather plugin, as EpicStaff's gateway would."""
+    return ContextSigner(plugin_identifier="weather", plugin_version="0.2.0", issuer=ISSUER)
+
+
+@pytest.fixture
+def runtime_file(tmp_path, signer):
+    """A runtime file whose JWKS holds `signer`'s key."""
+    path = tmp_path / "runtime.json"
+    write_runtime_file(path, signer=signer, settings={"units": "metric"})
+    return path
+
+
+@pytest.fixture
+def runtime(runtime_file):
+    return RuntimeConfig.load(runtime_file)

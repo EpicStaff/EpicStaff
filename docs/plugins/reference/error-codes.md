@@ -1,0 +1,76 @@
+# Error codes
+
+Every error EpicStaff's plugin API returns uses EpicStaff's error envelope:
+
+```json
+{ "status_code": 400, "code": "invalid_plugin", "message": "The plugin package is invalid. 2 problems found.",
+  "errors": [ { "loc": "manifest.limits.memory_mb", "message": "asks for 2048; this EpicStaff allows at most 1024" } ] }
+```
+
+`code` is stable; `message` is for people and may change. `errors` is present on codes that list
+problems; each `loc` is a dotted path with list indexes, prefixed by the part it refers to
+(`package.`, `contents.`, `signature.`, `manifest.`, `plugins[…]`, `values.`, `overrides.`,
+`report.`).
+
+## Plugin API codes
+
+| Code | Status | When |
+|---|---|---|
+| `invalid_plugin` | 400 | The package breaks a format, layout or manifest rule, declares access this EpicStaff's permission catalog does not have, asks for more than the platform maximums, or holds nothing to install. `errors` lists each problem |
+| `plugin_feature_unavailable` | 400 | The package declares a part this EpicStaff cannot run yet (a `database`). `errors` names it |
+| `invalid_signature` | 400 | The package is signed, but the signature names another package or does not verify with the trusted key it claims |
+| `package_too_large` | 413 | The upload is larger than `PLUGINS_MAX_PACKAGE_MB` |
+| `plugin_upgrade_unavailable` | 409 | The plugin already has an approved package; installing a new version is not available yet |
+| `plugin_package_not_found` | 404 | No such package; for a plugin node, a package that is not the current package of one of its placements |
+| `package_not_pending` | 409 | Approve or reject of a package that was already decided |
+| `untrusted_not_acknowledged` | 400 | Approve of an untrusted package without `untrusted_acknowledged: true` |
+| `plugin_not_found` | 404 | No plugin with this identifier; on the public endpoints, a plugin that is not running |
+| `plugin_not_running` | 409 | A grant for a plugin that is not running (a plugin with a backend runs once its node reports it healthy) |
+| `plugin_already_granted` | 409 | The organization already has a grant for the plugin |
+| `organization_inactive` | 409 | A grant to a deactivated organization |
+| `package_file_mismatch` | 409 | The stored package file is missing or is not the file that was reviewed; reject it and upload again |
+| `invalid_plugin_role_permissions` | 400 | A Roles-matrix write names a plugin that is not running and granted in the role's organization (or names it twice), or lists actions the plugin does not declare, repeats one, or gives any without `read`. `loc` is `plugins[<i>].plugin_identifier` or `plugins[<i>].actions` |
+| `plugin_has_no_backend` | 409 | Settings, limits, runtime or restart of a plugin whose current package has no backend |
+| `invalid_plugin_settings` | 400 | A settings write with an unknown key, a value of the wrong type or size, or clearing a required setting that has no default. `loc` is `values.<key>` |
+| `invalid_plugin_limits` | 400 | A limits write with an unknown limit, a value that is not a positive integer or would raise the limit, or a `cpu_priority` other than `low`. `loc` is `overrides.<key>` |
+| `no_plugin_node` | 409 | Approving a package with a backend while no node named `PLUGINS_NODE_NAME` is registered: EpicStaff registers it at start-up (`manage.py seed_plugin_node`), so it has not started with plugins on since the node was configured, or `PLUGINS_NODE_NAME` changed |
+| `plugin_node_full` | 409 | Approving a package with a backend while every port or Unix user id of the plugin node is taken |
+| `node_not_authenticated` | 401 | A plugin node request without the node key, or with a wrong one |
+| `placement_not_found` | 404 | A plugin node asks for the runtime credentials of a placement that is not its own |
+| `invalid_node_report` | 400 | A plugin node report that does not follow the report format (fields this EpicStaff does not know are ignored). `loc` is under `report` |
+| `signing_key_missing` | 503 | No plugin signing key exists yet, so no context can be signed; EpicStaff creates the first one at start-up with plugins on (`manage.py seed_plugin_node`) |
+
+## Gateway codes
+
+What a client of a plugin's own address (`https://<id>.<plugins base domain>/api/**`) gets when
+the gateway refuses its request. The request never reaches the plugin.
+
+| Code | Status | When |
+|---|---|---|
+| `login_required` | 401 | The path is not one of the plugin's [public paths](../how-to/public-paths.md), and the request carries no valid login. Comes with `WWW-Authenticate: Bearer` |
+| `not_found` | 404 | No running plugin with a backend has this address, or the path is not canonical (dot segments, encoded dots, doubled slashes, a path into the platform's own `/_epicstaff/` paths) |
+| `rate_limited` | 429 | The client went over the public path's `rate_limit_per_minute`. Comes with `Retry-After: 60` |
+| `request_too_large` | 413 | The body is larger than the public path's `max_body_kb`, or its size is not declared (a chunked body, or a `POST`, `PUT`, `PATCH` or `DELETE` without `Content-Length`) |
+| `plugin_unavailable` | 503 | The plugin is installed but its process is not running and healthy right now, or EpicStaff cannot sign a context yet. Comes with `Retry-After: 30` |
+| `forbidden` | 403 | The person is logged in but may not use the plugin (used once people can log in to plugins) |
+
+A request that reaches the plugin process without a valid gateway context, which only happens
+when something on the plugin node calls the process directly, is answered by the Python SDK with
+`401 {"code": "context_invalid"}`; see the [gateway context](gateway-context.md).
+
+## Codes from EpicStaff's API
+
+The plugin endpoints also return EpicStaff's general codes:
+
+| Code | Status | When |
+|---|---|---|
+| `not_authenticated` | 401 | No login, or an expired one |
+| `permission_denied` | 403 | The caller may not use the endpoint: plugin administration by anyone but a SuperAdmin, any write with an API key, or a Roles-matrix write without the right to edit roles in the organization |
+| `invalid` | 400 | A request body or query of the wrong shape, such as a missing `org_id` |
+| `unsupported_media_type` | 415 | A package upload that is not `multipart/form-data` |
+| `org_context_required` | 400 | The available-plugins list without `X-Organization-Id` |
+| `org_membership_required` | 403 | The available-plugins list for an organization the caller is not a member of |
+| `organization_not_found` | 404 | An organization that does not exist, or whose roles the caller may not read |
+| `role_not_found` | 404 | A role that does not exist, or a custom role of an organization whose roles the caller may not read |
+| `built_in_role_immutable` | 403 | A Roles-matrix write on a built-in role: built-in roles always have the manifest defaults |
+| `permission_escalation_denied` | 403 | A Roles-matrix write adding or removing an action the caller does not hold on that plugin themselves, or giving someone a role with such an action |

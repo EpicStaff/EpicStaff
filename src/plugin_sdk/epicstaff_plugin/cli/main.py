@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
+from epicstaff_plugin.cli.backend_wheels import DEFAULT_PLATFORMS
 from epicstaff_plugin.cli.keygen import keygen
 from epicstaff_plugin.cli.output import EXIT_USAGE, UsageError, print_error
 from epicstaff_plugin.cli.pack import pack
@@ -36,6 +37,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--key", type=Path, help="unencrypted minisign secret key to sign with"
     )
     pack_command.add_argument("--out", type=Path, required=True, help="package file to write")
+    pack_command.add_argument(
+        "--download-wheels",
+        action="store_true",
+        help="download a wheel of every backend/requirements.lock entry for each --platform",
+    )
+    pack_command.add_argument(
+        "--platform",
+        action="append",
+        default=[],
+        dest="platforms",
+        metavar="TAG",
+        help=(
+            "Linux wheel platform to download for; repeat for more "
+            f"(default: {' and '.join(DEFAULT_PLATFORMS)})"
+        ),
+    )
+    pack_command.add_argument(
+        "--local-wheel",
+        action="append",
+        default=[],
+        dest="local_wheels",
+        type=Path,
+        metavar="WHEEL",
+        help="a wheel no index has (such as a local epicstaff-plugin build) to add and pin; repeat for more",
+    )
 
     keygen_command = commands.add_parser("keygen", help="create a signing key pair")
     keygen_command.add_argument(
@@ -73,7 +99,15 @@ def main(argv: list[str] | None = None) -> int:
             case "validate":
                 return validate(arguments.target, arguments.spa_dir)
             case "pack":
-                return pack(arguments.source, arguments.spa_dir, arguments.key, arguments.out)
+                return pack(
+                    arguments.source,
+                    arguments.spa_dir,
+                    arguments.key,
+                    arguments.out,
+                    download_wheels=arguments.download_wheels,
+                    platforms=arguments.platforms,
+                    local_wheel_paths=arguments.local_wheels,
+                )
             case "keygen":
                 return keygen(arguments.out)
             case "sign":

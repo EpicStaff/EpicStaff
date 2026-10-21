@@ -8,6 +8,7 @@ from pathlib import Path
 
 from epicstaff_plugin.contracts.manifest import MANIFEST_FILE_NAME, PluginManifest, parse_manifest
 from epicstaff_plugin.package_layout import (
+    BACKEND_REQUIREMENTS,
     MAX_ICON_BYTES,
     SPA_DIRECTORY,
     PackageFile,
@@ -16,10 +17,14 @@ from epicstaff_plugin.package_layout import (
     size_problems,
 )
 from epicstaff_plugin.problems import MANIFEST_LOC, PackageProblemsError, Problem, archive_file_loc
+from epicstaff_plugin.requirements_lock import MAX_REQUIREMENTS_LOCK_BYTES
 
 # Copied from the source directory as found; only this editor and interpreter litter is left out.
 IGNORED_FILE_NAMES = frozenset({".DS_Store"})
 IGNORED_DIRECTORY_NAMES = frozenset({"__pycache__"})
+# Inputs that stay in the source: the lock is compiled from requirements.in, and only the
+# lock is installed.
+SOURCE_ONLY_PATHS = frozenset({"backend/requirements.in"})
 SOURCE_DIRECTORIES = ("backend", "database")
 _HASH_CHUNK_BYTES = 1024 * 1024
 
@@ -44,15 +49,32 @@ class PackageSource:
         """Hash every file and return its `CONTENTS.json` entry, keyed by package path."""
         return {file.path: _describe(file) for file in self.files}
 
-    def problems(self, described: dict[str, PackageFile]) -> list[Problem]:
-        """Check the package these files would make against every layout rule and cap."""
-        icon_file = next((file for file in self.files if file.path == self.manifest.icon), None)
-        icon = _read_capped(icon_file.source, MAX_ICON_BYTES) if icon_file else None
+    def problems(
+        self, described: dict[str, PackageFile], *, require_sdk_pin: bool = True
+    ) -> list[Problem]:
+        """Check the package these files would make against every layout rule and cap.
+
+        `require_sdk_pin=False` accepts a lock that does not pin `epicstaff-plugin` yet.
+        """
         return [
             *path_set_problems(described),
             *size_problems(described.values()),
-            *layout_problems(self.manifest, described, icon, check_spa=self.includes_spa),
+            *layout_problems(
+                self.manifest,
+                described,
+                self._read(self.manifest.icon, MAX_ICON_BYTES),
+                requirements_lock=self._read(BACKEND_REQUIREMENTS, MAX_REQUIREMENTS_LOCK_BYTES),
+                check_spa=self.includes_spa,
+                require_sdk_pin=require_sdk_pin,
+            ),
         ]
+
+    def file(self, path: str) -> SourceFile | None:
+        return next((file for file in self.files if file.path == path), None)
+
+    def _read(self, path: str, limit: int) -> bytes | None:
+        file = self.file(path)
+        return _read_capped(file.source, limit) if file else None
 
 
 def collect_source(source_directory: Path, spa_directory: Path | None) -> PackageSource:
@@ -122,7 +144,7 @@ def _walk(directory: Path, prefix: str, report: Callable[[Problem], None]) -> li
                 report(Problem(archive_file_loc(package_path), "is a symbolic link"))
             elif not source.is_file():
                 report(Problem(archive_file_loc(package_path), "is not a regular file"))
-            else:
+            elif package_path not in SOURCE_ONLY_PATHS:
                 files.append(SourceFile(package_path, source))
     return files
 

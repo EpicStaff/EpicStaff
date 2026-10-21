@@ -1,0 +1,48 @@
+[project]
+name = "es_plugins"
+version = "0.1.0"
+description = "EpicStaff plugin node: runs approved plugin backends, each as its own Unix user"
+authors = [{ name = "EpicStaff" }]
+requires-python = "==3.12.10"
+dependencies = [
+    "epicstaff-plugin",
+    "httpx==0.28.1",
+    "loguru==0.7.3",
+    "packaging==26.3",
+    "pydantic==2.13.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+]
+# The versions the other services ship. A newer one here would raise the shared dependency
+# floor (.github/dependency-floor.toml) for them and add a second copy of the package to
+# THIRD-PARTY-NOTICES.md.
+transitive-pins = [
+    "certifi==2026.7.22",
+    "cryptography==50.0.1",
+    "idna==3.18",
+    "pycparser==3.0",
+    "pyjwt==2.13.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+# Package format, signature checks and the node and runtime-file contracts, shared with
+# django_app and with plugin authors' tooling.
+epicstaff-plugin = { path = "../plugin_sdk", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The service's own package from here, `src.shared` from the repository root.
+pythonpath = [".", "../.."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "linux: needs Linux kernel features (SOCK_SEQPACKET, SO_PEERCRED, pidfd, /proc); skipped elsewhere",
+    "root: needs root with CAP_SETUID, CAP_SETGID and CAP_CHOWN (the node's container); skipped otherwise",
+]

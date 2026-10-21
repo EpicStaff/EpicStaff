@@ -3,6 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { FullMembership, GetMeResponse } from '@shared/models';
+import { ORG_SWITCH_URL_RULES } from '@shared/services';
 import { EMPTY } from 'rxjs';
 import { catchError, filter, finalize, map, switchMap } from 'rxjs/operators';
 
@@ -11,7 +12,6 @@ import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
-import { pluginRootUrl } from '../../../plugins/utils/plugin-root-url.util';
 import { OrgAvatarComponent } from '../org-avatar/org-avatar.component';
 
 @Component({
@@ -28,6 +28,8 @@ export class OrganizationsMenuComponent {
     private currentUserService = inject(ProfileService);
     private permissionService = inject(PermissionsService);
     protected activeOrgService = inject(ActiveOrgService);
+    /** Features' own rules for their addresses (a plugin page keeps the plugin, not its path). */
+    private readonly orgSwitchUrlRules = inject(ORG_SWITCH_URL_RULES, { optional: true }) ?? [];
 
     user = input.required<GetMeResponse>();
     isMenuOpen = model<boolean>(false);
@@ -81,13 +83,17 @@ export class OrganizationsMenuComponent {
     /**
      * Detail routes with resource IDs are not safe to keep across an org switch —
      * the resource not exist in the new org. Map them to their list page.
-     * A plugin page keeps the plugin but drops its own path (that data belongs to the old org);
-     * the plugin page guard sends the user to the default route when the new org can't open it.
+     * Other features map their own addresses through `ORG_SWITCH_URL_RULES` (a plugin page keeps the plugin but drops
+     * its own path; the plugin page guard sends the user to the default route when the new org can't open it).
      */
     private getUrlForOrgSwitch(currentUrl: string): string {
         if (/^\/flows\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/flows/my';
         if (/^\/graph\//.test(currentUrl)) return '/sessions';
-        return pluginRootUrl(currentUrl) ?? currentUrl;
+        for (const rule of this.orgSwitchUrlRules) {
+            const mapped = rule(currentUrl);
+            if (mapped !== null) return mapped;
+        }
+        return currentUrl;
     }
 
     onWorkspaceClick(): void {

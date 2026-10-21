@@ -11,6 +11,13 @@ import {
     PluginSummary,
     PluginUploadEvent,
 } from '../models/plugin-admin.model';
+import {
+    PluginLimitsResponse,
+    PluginLimitsUpdate,
+    PluginRuntimeResponse,
+    PluginSettingsResponse,
+    PluginSettingsUpdate,
+} from '../models/plugin-backend.model';
 
 /** SuperAdmin plugin endpoints (`/api/admin/plugins/**`). Cross-org: the org interceptor sends no org header here. */
 @Injectable({ providedIn: 'root' })
@@ -64,6 +71,34 @@ export class PluginsAdminApiService {
 
     createGrant(identifier: string, organizationId: number): Observable<PluginGrant> {
         return this.http.post<PluginGrant>(`${this.pluginUrl(identifier)}grants/`, { organization_id: organizationId });
+    }
+
+    /** The settings of a plugin with a backend (409 `plugin_has_no_backend` otherwise; so are the calls below). */
+    getSettings(identifier: string): Observable<PluginSettingsResponse> {
+        return this.http.get<PluginSettingsResponse>(`${this.pluginUrl(identifier)}settings/`);
+    }
+
+    /** Changes only the keys given; saving restarts the plugin. */
+    updateSettings(identifier: string, update: PluginSettingsUpdate): Observable<PluginSettingsResponse> {
+        return this.http.patch<PluginSettingsResponse>(`${this.pluginUrl(identifier)}settings/`, update);
+    }
+
+    getLimits(identifier: string): Observable<PluginLimitsResponse> {
+        return this.http.get<PluginLimitsResponse>(`${this.pluginUrl(identifier)}limits/`);
+    }
+
+    /** Changes only the overrides given; the plugin restarts with the new limits. */
+    updateLimits(identifier: string, update: PluginLimitsUpdate): Observable<PluginLimitsResponse> {
+        return this.http.patch<PluginLimitsResponse>(`${this.pluginUrl(identifier)}limits/`, update);
+    }
+
+    getRuntime(identifier: string): Observable<PluginRuntimeResponse> {
+        return this.http.get<PluginRuntimeResponse>(`${this.pluginUrl(identifier)}runtime/`);
+    }
+
+    /** Asks the node to restart the process; a failed plugin goes back to provisioning. Answers 202. */
+    restart(identifier: string): Observable<PluginRuntimeResponse> {
+        return this.http.post<PluginRuntimeResponse>(`${this.pluginUrl(identifier)}restart/`, null);
     }
 
     private pluginUrl(identifier: string): string {

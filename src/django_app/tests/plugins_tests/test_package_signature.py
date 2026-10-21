@@ -1,4 +1,4 @@
-"""Trusted or Untrusted: the four signature outcomes of contract section 5."""
+"""Trusted or Untrusted: the four outcomes of a package signature."""
 
 import base64
 

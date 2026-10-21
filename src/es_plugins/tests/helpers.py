@@ -1,0 +1,422 @@
+"""Builders for the tests: wheels, packages, desired states, a django_app and a launcher stand-in."""
+
+import base64
+import hashlib
+import json
+import os
+import signal
+import socket
+import subprocess
+import sys
+import zipfile
+from datetime import UTC, datetime
+from pathlib import Path
+
+import httpx
+from epicstaff_plugin.package_layout import PackageFile, build_contents
+from epicstaff_plugin.signing import SecretKey, sign_package
+from epicstaff_plugin.testing import ContextSigner
+from src.shared.models.plugin_nodes import DesiredPlacement, DesiredState
+
+from es_plugins.agent.launcher_client import SpawnedProcess
+
+NODE_KEY = "n" * 64
+API_URL = "http://epicstaff-api:8081/api/"
+ICON_SVG = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+    b'<circle cx="12" cy="12" r="5" fill="currentColor"/></svg>'
+)
+FOREIGN_WHEEL_TAG = "cp313-cp313-win_amd64"
+
+
+def make_wheel(
+    directory: Path,
+    name: str,
+    version: str,
+    *,
+    tag: str = "py3-none-any",
+    body: str = "",
+    extra_files: dict[str, str] | None = None,
+) -> Path:
+    """A minimal pure-Python wheel pip installs offline: one module named after `name`.
+
+    `extra_files` adds members by their path in the wheel, e.g. a root `.pth` file or a
+    `<name>-<version>.data/scripts/...` script.
+    """
+    distribution = name.replace("-", "_")
+    dist_info = f"{distribution}-{version}.dist-info"
+    files = {
+        **(extra_files or {}),
+        f"{distribution}/__init__.py": body or f"VERSION = {version!r}\n",
+        f"{dist_info}/METADATA": f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n",
+        f"{dist_info}/WHEEL": (
+            f"Wheel-Version: 1.0\nGenerator: es-plugins-tests\nRoot-Is-Purelib: true\nTag: {tag}\n"
+        ),
+    }
+    record = []
+    for path, text in files.items():
+        data = text.encode()
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+        record.append(f"{path},sha256={digest},{len(data)}")
+    record.append(f"{dist_info}/RECORD,,")
+    files[f"{dist_info}/RECORD"] = "\n".join(record) + "\n"
+    directory.mkdir(parents=True, exist_ok=True)
+    wheel = directory / f"{distribution}-{version}-{tag}.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for path, text in files.items():
+            archive.writestr(path, text)
+    return wheel
+
+
+def lock_for(wheels: list[Path]) -> str:
+    lines = []
+    for wheel in sorted(wheels):
+        name, version = wheel.name.split("-")[:2]
+        digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+        lines.append(f"{name.replace('_', '-')}=={version} --hash=sha256:{digest}")
+    return "\n".join(lines) + "\n"
+
+
+def backend_wheels(directory: Path) -> list[Path]:
+    """Stand-ins for the two distributions every plugin lock must pin."""
+    return [
+        make_wheel(directory, "uvicorn", "0.52.3"),
+        make_wheel(directory, "epicstaff-plugin", "0.1.0"),
+    ]
+
+
+def manifest(identifier="weather", version="0.2.0", python="3.13", entrypoint="weather_plugin.app:app"):
+    return {
+        "manifest_version": 1,
+        "id": identifier,
+        "version": version,
+        "name": "Weather",
+        "description": "Forecasts for the places your organization cares about.",
+        "publisher": {"name": "EpicStaff"},
+        "icon": "icon.svg",
+        "platform": {"frame_protocol": 1, "gateway_context": 1, "hook_api": 1},
+        "spa": {"entry": "index.html"},
+        "backend": {"python": python, "entrypoint": entrypoint},
+        "user_permissions": [
+            {
+                "action": "read",
+                "description": "Open Weather and see forecasts.",
+                "defaults": {"org_admin": True, "member": True, "viewer": False},
+            }
+        ],
+    }
+
+
+def package_files(wheels: list[Path], plugin_manifest: dict | None = None) -> dict[str, bytes]:
+    files = {
+        "manifest.json": json.dumps(plugin_manifest or manifest()).encode(),
+        "icon.svg": ICON_SVG,
+        "spa/index.html": b"<!doctype html><title>Weather</title>",
+        "backend/src/weather_plugin/__init__.py": b"",
+        "backend/src/weather_plugin/app.py": b"async def app(scope, receive, send):\n    pass\n",
+        "backend/requirements.lock": lock_for(wheels).encode(),
+    }
+    for wheel in wheels:
+        files[f"backend/wheels/{wheel.name}"] = wheel.read_bytes()
+    return files
+
+
+def write_package(
+    path: Path,
+    files: dict[str, bytes],
+    *,
+    identifier: str = "weather",
+    version: str = "0.2.0",
+    secret_key: SecretKey | None = None,
+    contents: bytes | None = None,
+) -> Path:
+    """Write a package; CONTENTS.json lists `files` unless `contents` replaces it."""
+    if contents is None:
+        contents = build_contents(
+            identifier,
+            version,
+            [
+                PackageFile(path=name, size=len(data), sha256=hashlib.sha256(data).hexdigest())
+                for name, data in files.items()
+            ],
+        )
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, data in files.items():
+            archive.writestr(name, data)
+        archive.writestr("CONTENTS.json", contents)
+        if secret_key is not None:
+            archive.writestr(
+                "CONTENTS.json.minisig", sign_package(contents, identifier, version, secret_key)
+            )
+    return path
+
+
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def placement(
+    package_bytes: bytes,
+    *,
+    placement_id: int = 7,
+    package_id: int = 12,
+    identifier: str = "weather",
+    version: str = "0.2.0",
+    port: int = 20001,
+    uid: int = 20001,
+    trust: str = "untrusted",
+    signer_public_key: str | None = None,
+    **overrides,
+) -> DesiredPlacement:
+    document = {
+        "placement_id": placement_id,
+        "plugin_identifier": identifier,
+        "desired_state": "running",
+        "restart_generation": 0,
+        "package": {
+            "package_id": package_id,
+            "version": version,
+            "sha256": sha256_hex(package_bytes),
+            "size": len(package_bytes),
+            "trust": trust,
+            "signer_public_key": signer_public_key,
+        },
+        "runtime": {
+            "python": "3.13",
+            "entrypoint": "weather_plugin.app:app",
+            "port": port,
+            "unix_uid": uid,
+            "memory_mb": 256,
+            "cpu_priority": "normal",
+        },
+        "credentials_revision": "c" * 64,
+        "settings_revision": 0,
+    }
+    for key, value in overrides.items():
+        section, _, field = key.partition("__")
+        if field:
+            document[section] = {**document[section], field: value}
+        else:
+            document[key] = value
+    return DesiredPlacement.model_validate(document)
+
+
+def desired_state(placements: list[DesiredPlacement], node_name: str = "node-1") -> DesiredState:
+    body = {
+        "format": 1,
+        "node": {"name": node_name},
+        "placements": [item.model_dump(mode="json") for item in placements],
+    }
+    revision = sha256_hex(json.dumps(body, sort_keys=True).encode())
+    return DesiredState.model_validate(
+        {**body, "revision": revision, "generated_at": datetime.now(UTC).isoformat()}
+    )
+
+
+def runtime_file_document(identifier: str = "weather", version: str = "0.2.0", **overrides) -> dict:
+    signer = ContextSigner(plugin_identifier=identifier, plugin_version=version)
+    return {
+        "format": 1,
+        "plugin": {"identifier": identifier, "version": version},
+        "issuer": "https://epicstaff.example.com",
+        "public_url": f"https://{identifier}.plugins.example.com",
+        "epicstaff_public_url": "https://epicstaff.example.com",
+        "epicstaff_api_url": API_URL,
+        "settings": {"units": "metric"},
+        "secret_settings": {"forecast_api_token": "secret-token-value"},
+        "service_accounts": {},
+        "jwks": signer.jwks.model_dump(mode="json"),
+        "public_paths": [],
+        **overrides,
+    }
+
+
+class FakeDjango:
+    """django_app's node API, in memory, behind an `httpx.MockTransport`."""
+
+    def __init__(self):
+        self.desired: DesiredState | None = None
+        self.packages: dict[int, bytes] = {}
+        self.runtime_files: dict[int, dict] = {}
+        self.credentials_revisions: dict[int, str] = {}
+        self.settings_revisions: dict[int, int] = {}
+        self.reports: list[dict] = []
+        self.requests: list[httpx.Request] = []
+        self.unavailable = False
+        self.transport = httpx.MockTransport(self.handle)
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self.unavailable:
+            raise httpx.ConnectError("connection refused", request=request)
+        if request.headers.get("Authorization") != f"PluginNodeKey {NODE_KEY}":
+            return httpx.Response(401, json={"code": "node_not_authenticated"})
+        path = request.url.path.removeprefix("/api/")
+        parts = path.strip("/").split("/")
+        if path == "plugin-nodes/self/desired-state/":
+            etag = f'"{self.desired.revision}"'
+            if request.headers.get("If-None-Match") == etag:
+                return httpx.Response(304)
+            return httpx.Response(
+                200, content=self.desired.model_dump_json(), headers={"ETag": etag}
+            )
+        if parts[:3] == ["plugin-nodes", "self", "packages"]:
+            package = self.packages.get(int(parts[3]))
+            if package is None:
+                return httpx.Response(404, json={"code": "plugin_package_not_found"})
+            return httpx.Response(
+                200, content=package, headers={"X-Package-Sha256": sha256_hex(package)}
+            )
+        if parts[:3] == ["plugin-nodes", "self", "placements"] and request.method == "POST":
+            placement_id = int(parts[3])
+            return httpx.Response(
+                200,
+                json={
+                    "placement_id": placement_id,
+                    "credentials_revision": self.credentials_revisions.get(placement_id, "c" * 64),
+                    "settings_revision": self.settings_revisions.get(placement_id, 0),
+                    "runtime_file": self.runtime_files[placement_id],
+                },
+            )
+        if path == "plugin-nodes/self/reports/" and request.method == "POST":
+            self.reports.append(json.loads(request.content))
+            return httpx.Response(204)
+        return httpx.Response(404)
+
+
+# Serves the health check on the inherited listening socket (fd in EPICSTAFF_PLUGIN_LISTEN_FD),
+# as a real plugin does; it never binds a port, so it cannot clash with the agent's held socket.
+HEALTH_SERVER = """
+import http.server, os, signal, socket, sys
+listener = socket.socket(fileno=int(os.environ["EPICSTAFF_PLUGIN_LISTEN_FD"]))
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200 if self.path == "/_epicstaff/health" else 404)
+        self.end_headers()
+    def log_message(self, *arguments):
+        pass
+server = http.server.HTTPServer(("0.0.0.0", 0), Handler, bind_and_activate=False)
+server.socket = listener
+print("listening", flush=True)
+if os.environ.get("IGNORE_SIGTERM"):
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+else:
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+server.serve_forever()
+"""
+
+
+def listening_socket(port: int) -> socket.socket:
+    """A bound, listening TCP socket on `port`, as the agent holds for a placement."""
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("0.0.0.0", port))
+    listener.listen(16)
+    listener.set_inheritable(True)
+    return listener
+
+
+class FakeLauncher:
+    """The launcher's operations as the agent sees them, without root.
+
+    `spawn` runs a small HTTP server that answers the health check on the listening socket the
+    agent passes in (as a real plugin serves on its inherited fd 3), and records the command.
+    """
+
+    def __init__(self):
+        self.operations: list[tuple] = []
+        self.runtime_files: dict[str, bytes] = {}
+        self.spawned: list[dict] = []
+        self._processes: dict[int, list[subprocess.Popen]] = {}
+        self.refuse_spawn: str | None = None
+        # A plugin that ignores SIGTERM, so only the SIGKILL after the grace period stops it.
+        self.ignore_sigterm = False
+
+    async def prepare_plugin(self, plugin, uid):
+        self.operations.append(("prepare_plugin", plugin, uid))
+
+    async def install_code(self, plugin, uid, version):
+        self.operations.append(("install_code", plugin, uid, version))
+
+    async def write_runtime_file(self, plugin, uid, content):
+        self.operations.append(("write_runtime_file", plugin, uid))
+        self.runtime_files[plugin] = content
+
+    async def spawn(self, plugin, uid, argv, environment, nice, output_descriptor, listen_descriptor):
+        from es_plugins.agent.launcher_client import LauncherError
+
+        if self.refuse_spawn:
+            raise LauncherError(self.refuse_spawn)
+        os.set_inheritable(listen_descriptor, True)
+        process = subprocess.Popen(
+            [sys.executable, "-c", HEALTH_SERVER],
+            env={
+                "PORT": environment["PORT"],
+                "PATH": os.environ.get("PATH", ""),
+                "EPICSTAFF_PLUGIN_LISTEN_FD": str(listen_descriptor),
+                **({"IGNORE_SIGTERM": "1"} if self.ignore_sigterm else {}),
+            },
+            stdout=output_descriptor,
+            stderr=output_descriptor,
+            pass_fds=(listen_descriptor,),
+            start_new_session=True,
+        )
+        self._processes.setdefault(uid, []).append(process)
+        self.spawned.append(
+            {"plugin": plugin, "uid": uid, "argv": argv, "environment": environment, "nice": nice}
+        )
+        self.operations.append(("spawn", plugin, uid))
+        return SpawnedProcess(pid=process.pid, pidfd=os.pidfd_open(process.pid))
+
+    async def terminate_uid(self, uid):
+        self.operations.append(("terminate_uid", uid))
+        for process in self._processes.get(uid, []):
+            if process.poll() is None:
+                process.send_signal(signal.SIGTERM)
+
+    async def kill_uid(self, uid):
+        self.operations.append(("kill_uid", uid))
+        for process in self._processes.get(uid, []):
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+        return []
+
+    async def exit_status(self, pid):
+        for processes in self._processes.values():
+            for process in processes:
+                if process.pid == pid:
+                    return process.poll()
+        return None
+
+    def processes_of(self, uid) -> list[subprocess.Popen]:
+        return list(self._processes.get(uid, []))
+
+    def kill_running(self, uid, signal_number=signal.SIGKILL):
+        """Make the plugin's process die on its own, as a crash would."""
+        for process in self._processes.get(uid, []):
+            if process.poll() is None:
+                process.send_signal(signal_number)
+
+    def stop_all(self):
+        for processes in self._processes.values():
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
+
+
+def free_port() -> int:
+    return free_ports(1)[0]
+
+
+def free_ports(count: int) -> list[int]:
+    """`count` different ports nothing listens on now (held together while chosen, so distinct)."""
+    probes = [socket.socket() for _ in range(count)]
+    try:
+        for probe in probes:
+            probe.bind(("0.0.0.0", 0))
+        return [probe.getsockname()[1] for probe in probes]
+    finally:
+        for probe in probes:
+            probe.close()

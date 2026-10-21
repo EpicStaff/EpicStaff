@@ -3702,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-20T19:18:52Z UTC -->
-<!-- commit: d61ca9fb71c84cfcb76dc0754c9eded3f6184532 -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:c635683e3d8bdfec, knowledge_new:3d46a714e418362f, manager:b4bef382144a5a4a, plugin_sdk:4c0afc65e57365aa, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-10-20T22:51:03Z UTC -->
+<!-- commit: 277ce8fad50345843e3a468d78e70d567f82000f -->
+<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:be59166b6b1b75ee, es_plugins:747887bbed5e89f5, knowledge_new:3d46a714e418362f, manager:b4bef382144a5a4a, plugin_sdk:f16e38ab35882874, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, webhook:6e6a68286cd96f18 -->
 
 ## Backend (Python)
 

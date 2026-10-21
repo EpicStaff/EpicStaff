@@ -35,6 +35,11 @@ from epicstaff_plugin.problems import (
     archive_file_loc,
     format_loc,
 )
+from epicstaff_plugin.requirements_lock import (
+    MAX_REQUIREMENTS_LOCK_BYTES,
+    REQUIREMENTS_LOCK_PATH,
+    backend_lock_problems,
+)
 from epicstaff_plugin.signing import SignatureFile, SignatureFormatError
 
 PACKAGE_EXTENSION = ".esplugin"
@@ -47,7 +52,7 @@ SPA_DIRECTORY = "spa/"
 BACKEND_DIRECTORY = "backend/"
 BACKEND_SOURCE_DIRECTORY = "backend/src/"
 BACKEND_WHEELS_DIRECTORY = "backend/wheels/"
-BACKEND_REQUIREMENTS = "backend/requirements.lock"
+BACKEND_REQUIREMENTS = REQUIREMENTS_LOCK_PATH
 DATABASE_DIRECTORY = "database/"
 MIGRATION_PATTERN = re.compile(r"^database/migrations/([0-9]{3})_[a-z0-9][a-z0-9_]*\.sql$")
 
@@ -70,6 +75,7 @@ _KEPT_FILE_LIMITS = {
     MANIFEST_FILE_NAME: MAX_MANIFEST_BYTES,
     CONTENTS_FILE_NAME: MAX_CONTENTS_BYTES,
     SIGNATURE_FILE_NAME: MAX_SIGNATURE_BYTES,
+    BACKEND_REQUIREMENTS: MAX_REQUIREMENTS_LOCK_BYTES,
     **dict.fromkeys(ICON_MEDIA_TYPES, MAX_ICON_BYTES),
 }
 _UNLISTED_FILES = frozenset({CONTENTS_FILE_NAME, SIGNATURE_FILE_NAME})
@@ -307,13 +313,17 @@ def layout_problems(
     files: Mapping[str, PackageFile],
     icon: bytes | None,
     *,
+    requirements_lock: bytes | None = None,
     check_spa: bool = True,
+    require_sdk_pin: bool = True,
 ) -> list[Problem]:
     """Check that the files fit the fixed layout the manifest implies.
 
-    `files` maps each path to its file, without `CONTENTS.json` and its signature. `icon` is
-    the content of the icon the manifest names, when it is present. `check_spa=False` skips
-    the SPA checks, for a source directory validated without its built SPA.
+    `files` maps each path to its file, without `CONTENTS.json` and its signature. `icon` and
+    `requirements_lock` are the contents of the icon the manifest names and of
+    `backend/requirements.lock`, when present. `check_spa=False` skips the SPA checks, for a
+    source directory validated without its built SPA; `require_sdk_pin=False` accepts a lock
+    without `epicstaff-plugin`, for a source directory packed with `--local-wheel`.
     """
     problems = [
         Problem(archive_file_loc(path), problem)
@@ -330,6 +340,14 @@ def layout_problems(
         problems.extend(_spa_problems(manifest, files))
     if manifest.backend is not None:
         problems.extend(_backend_problems(manifest, files))
+        if requirements_lock is not None:
+            problems.extend(
+                backend_lock_problems(
+                    requirements_lock,
+                    [path for path in files if _is_wheel(path)],
+                    require_sdk_pin=require_sdk_pin,
+                )
+            )
     if manifest.database is not None:
         problems.extend(_migration_problems(files))
     return problems
@@ -559,7 +577,12 @@ class _ArchiveReader:
             self._problems.extend(_identity_problems(contents, manifest))
         if manifest is not None:
             self._problems.extend(
-                layout_problems(manifest, listed_files, self._kept.get(manifest.icon))
+                layout_problems(
+                    manifest,
+                    listed_files,
+                    self._kept.get(manifest.icon),
+                    requirements_lock=self._kept.get(BACKEND_REQUIREMENTS),
+                )
             )
         if self._problems:
             raise PackageProblemsError(self._problems)

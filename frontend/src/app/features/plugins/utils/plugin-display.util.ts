@@ -5,6 +5,13 @@ import {
     PluginState,
     PluginTrust,
 } from '../models/plugin-admin.model';
+import {
+    PluginCpuPriority,
+    PluginDesiredState,
+    PluginHealth,
+    PluginLimitKey,
+    PluginObservedState,
+} from '../models/plugin-backend.model';
 
 /** How a badge reads at a glance. */
 export type PluginBadgeTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -86,4 +93,62 @@ export function pluginTrustTone(trust: PluginTrust): PluginBadgeTone {
 /** The labels of a list of actions, in the order given: `View, Edit`. */
 export function pluginActionLabels(actions: readonly PluginAction[]): string {
     return actions.map((action) => PLUGIN_ACTION_LABELS[action]).join(', ');
+}
+
+export const PLUGIN_OBSERVED_STATE_LABELS: Readonly<Record<PluginObservedState, string>> = {
+    unknown: 'Unknown',
+    downloading: 'Downloading',
+    building: 'Building',
+    starting: 'Starting',
+    running: 'Running',
+    stopped: 'Stopped',
+    failed: 'Failed',
+};
+
+const PLUGIN_OBSERVED_STATE_TONES: Readonly<Record<PluginObservedState, PluginBadgeTone>> = {
+    unknown: 'neutral',
+    downloading: 'neutral',
+    building: 'neutral',
+    starting: 'neutral',
+    running: 'success',
+    stopped: 'warning',
+    failed: 'danger',
+};
+
+export const PLUGIN_DESIRED_STATE_LABELS: Readonly<Record<PluginDesiredState, string>> = {
+    running: 'Running',
+    stopped: 'Stopped',
+};
+
+export const PLUGIN_HEALTH_LABELS: Readonly<Record<PluginHealth, string>> = {
+    ok: 'Healthy',
+    failing: 'Failing',
+    unknown: 'Unknown',
+};
+
+const PLUGIN_HEALTH_TONES: Readonly<Record<PluginHealth, PluginBadgeTone>> = {
+    ok: 'success',
+    failing: 'danger',
+    unknown: 'neutral',
+};
+
+export const PLUGIN_CPU_PRIORITY_LABELS: Readonly<Record<PluginCpuPriority, string>> = {
+    normal: 'Normal',
+    low: 'Low',
+};
+
+export const PLUGIN_LIMIT_LABELS: Readonly<Record<PluginLimitKey, string>> = {
+    memory_mb: 'Memory',
+    db_connections: 'Database connections',
+    statement_timeout_seconds: 'Statement timeout',
+    requests_per_minute: 'Requests per minute',
+    cpu_priority: 'CPU priority',
+};
+
+export function pluginObservedStateTone(state: PluginObservedState): PluginBadgeTone {
+    return PLUGIN_OBSERVED_STATE_TONES[state];
+}
+
+export function pluginHealthTone(health: PluginHealth): PluginBadgeTone {
+    return PLUGIN_HEALTH_TONES[health];
 }

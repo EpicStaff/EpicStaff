@@ -1,4 +1,4 @@
-"""Start-up checks plugins.E001-E004 (contract section 9)."""
+"""Start-up checks plugins.E001-E009, which run only while the plugin platform is on."""
 
 import pytest
 from django.core.management import call_command
@@ -8,6 +8,14 @@ from plugins.checks import check_plugin_platform_settings
 
 KEY = generate_secret_key().public_key.to_text()
 OTHER_KEY = generate_secret_key().public_key.to_text()
+PLATFORM_MAXIMUMS = {
+    "PLUGINS_MAX_PROCESS_MEMORY_MB": "1024",
+    "PLUGINS_MAX_DB_CONNECTIONS": "20",
+    "PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS": "60",
+    "PLUGINS_MAX_REQUESTS_PER_MINUTE": "600",
+    "PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE": "120",
+    "PLUGINS_MAX_REQUEST_BODY_MB": "20",
+}
 
 
 @pytest.fixture
@@ -19,6 +27,11 @@ def valid_platform(settings):
     settings.FRONTEND_BASE_URL = "http://epicstaff.localhost"
     settings.PLUGINS_TRUSTED_SIGNING_KEYS = []
     settings.CORS_ALLOWED_ORIGINS = []
+    settings.PLUGINS_GATEWAY_SECRET = "g" * 32
+    settings.PLUGINS_NODE_KEY = "k" * 32
+    settings.PLUGINS_NODE_UID_RANGE = "20000-20999"
+    for setting, value in PLATFORM_MAXIMUMS.items():
+        setattr(settings, setting, value)
     return settings
 
 
@@ -163,3 +176,42 @@ def test_the_checks_stop_management_commands(valid_platform):
 
     with pytest.raises(SystemCheckError, match="plugins.E001"):
         call_command("check")
+
+
+@pytest.mark.parametrize("value", ["none", "", "short-secret", "x" * 31])
+def test_e006_a_missing_or_short_gateway_secret(valid_platform, value):
+    valid_platform.PLUGINS_GATEWAY_SECRET = value
+
+    assert _ids() == ["plugins.E006"]
+
+
+@pytest.mark.parametrize("value", ["none", "", "x" * 31])
+def test_e007_a_missing_or_short_node_key(valid_platform, value):
+    valid_platform.PLUGINS_NODE_KEY = value
+
+    assert _ids() == ["plugins.E007"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "20000", "20000-", "abc-def", "10000-10999", "20999-20000", "20000-20008", "50000-60000", "20000 - 20999"],
+)
+def test_e008_a_malformed_node_uid_range(valid_platform, value):
+    valid_platform.PLUGINS_NODE_UID_RANGE = value
+
+    assert _ids() == ["plugins.E008"]
+
+
+@pytest.mark.parametrize("value", ["10001-10010", "59990-59999", " 20000-20999 "])
+def test_e008_accepts_ranges_at_the_bounds(valid_platform, value):
+    valid_platform.PLUGINS_NODE_UID_RANGE = value
+
+    assert _ids() == []
+
+
+@pytest.mark.parametrize("setting", sorted(PLATFORM_MAXIMUMS))
+@pytest.mark.parametrize("value", ["0", "-5", "1.5", "lots", ""])
+def test_e009_a_platform_maximum_that_is_not_a_positive_integer(valid_platform, setting, value):
+    setattr(valid_platform, setting, value)
+
+    assert _ids() == ["plugins.E009"]

@@ -1,10 +1,34 @@
 from django.db import models
+from django.db.models.functions import Lower
 from rbac.models import OrgScopedModel
 
-from plugins.models.enums import GrantState
+from plugins.models.enums import GrantState, PluginState
 from plugins.models.plugin import Plugin
 
 GRANT_PER_ORGANIZATION_CONSTRAINT = "plugins_grant_plugin_org_uniq"
+
+
+class PluginGrantQuerySet(models.QuerySet):
+    def with_current_package(self) -> "PluginGrantQuerySet":
+        """Grants of plugins with an approved package, each with that package (without the icon)."""
+        return (
+            self.filter(plugin__current_package__isnull=False)
+            .select_related("plugin__current_package")
+            .defer("plugin__current_package__icon_bytes")
+        )
+
+    def usable(self) -> "PluginGrantQuerySet":
+        """Grants that make their plugin usable: the grant is active and the plugin running.
+
+        Only these give an organization a plugin row in the left bar and the Roles matrix.
+        Each comes with its plugin and current package (without the icon), sorted by plugin
+        name.
+        """
+        return (
+            self.with_current_package()
+            .filter(state=GrantState.ACTIVE, plugin__state=PluginState.RUNNING)
+            .order_by(Lower("plugin__name"), "plugin__identifier")
+        )
 
 
 class PluginGrant(OrgScopedModel):
@@ -22,6 +46,8 @@ class PluginGrant(OrgScopedModel):
     last_hook_error = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = PluginGrantQuerySet.as_manager()
 
     class Meta(OrgScopedModel.Meta):
         constraints = [
