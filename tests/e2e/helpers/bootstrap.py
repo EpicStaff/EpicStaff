@@ -14,7 +14,7 @@ API_KEY_PREFIX = "es-"
 # The minimum the suite needs; `secrets` has no `update` in rbac/access/catalog.py.
 FULL_CRUD = ["create", "read", "update", "delete"]
 RUNNER_ROLE_PERMISSIONS = [
-    {"resource_type": "flows", "actions": FULL_CRUD},
+    {"resource_type": "flows", "actions": [*FULL_CRUD, "use"]},
     {"resource_type": "agents", "actions": FULL_CRUD},
     {"resource_type": "surfaces", "actions": FULL_CRUD},
     {"resource_type": "knowledge_sources", "actions": FULL_CRUD},
