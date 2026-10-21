@@ -170,8 +170,17 @@ function createPanel(
                     can: (_resource: string, action: ActionCode) => permittedActions().includes(action),
                 },
             },
-            // Its own stand-in: the one above answers every resource alike, Flows included.
-            { provide: FlowReadOnlyService, useValue: { isReadOnly: flowReadOnly, notifyBlocked } },
+            // Its own stand-in: the one above answers every resource alike, Flows included. A Key-Value node is
+            // not a trigger node, so it is read-only exactly when the flow is.
+            {
+                provide: FlowReadOnlyService,
+                useValue: {
+                    isReadOnly: flowReadOnly,
+                    isNodeTypeReadOnly: () => flowReadOnly(),
+                    notifyBlocked,
+                    notifyNodeTypeBlocked: notifyBlocked,
+                },
+            },
             { provide: Dialog, useValue: { open: openDialog } },
             // The panel shell, mounted by some tests below, reads node authorship from the flow page's store.
             NodeAuthorshipStore,

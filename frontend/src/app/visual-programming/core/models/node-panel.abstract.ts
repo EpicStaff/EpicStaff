@@ -18,7 +18,8 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected fb = inject(FormBuilder);
     protected destroyRef = inject(DestroyRef);
     protected readonly flowReadOnly = inject(FlowReadOnlyService);
-    public readonly isReadOnly = this.flowReadOnly.isReadOnly;
+    /** Nothing here can be changed: a read-only editor, or a trigger node for a user without Flows:Use. */
+    public readonly isReadOnly = computed(() => this.flowReadOnly.isNodeTypeReadOnly(this.node().type));
     private lastInitializedNodeId: string | null = null;
 
     node = input.required<T>();
@@ -76,7 +77,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
      */
     public onSave(): T | null {
         if (this.isReadOnly()) {
-            this.flowReadOnly.notifyBlocked();
+            this.flowReadOnly.notifyNodeTypeBlocked(this.node().type);
             return null;
         }
         if (this.form && this.form.invalid) {

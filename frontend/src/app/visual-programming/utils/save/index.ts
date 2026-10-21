@@ -9,4 +9,5 @@ export {
 } from './patch';
 export { buildBulkSavePayload } from './payload';
 export { cloneFlowState } from './snapshot';
+export { hasTriggerNodeWrites } from './trigger-node-writes';
 export type { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';

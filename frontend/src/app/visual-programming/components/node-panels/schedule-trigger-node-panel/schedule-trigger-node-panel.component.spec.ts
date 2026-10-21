@@ -1,10 +1,25 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { NodeType } from '@shared/models';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 
+import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
+import { ToastService } from '../../../../services/notifications';
 import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';
+import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
+import { ScheduleTriggerRuntimeService } from '../../../services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { buildFlowModelFromGraphDto } from '../../../utils/load/build-flow-model-from-graph-dto';
+import { cloneFlowState, getNodeDiff, hasTriggerNodeWrites } from '../../../utils/save';
+import { withGraphScheduleTriggerRuntimeState } from '../../../utils/save/schedule-trigger-runtime-state';
+import { liveGraph } from '../../../utils/testing/live-graph.fixture';
+import {
+    FLOW_ACTIONS_WITH_USE,
+    FLOW_ACTIONS_WITHOUT_USE,
+    grantPermissions,
+} from '../../../utils/testing/permissions.fixture';
 import { ScheduleTriggerNodePanelComponent } from './schedule-trigger-node-panel.component';
 
 // A node without a backendId — what a version preview renders — must never reach the
@@ -106,5 +121,116 @@ describe('ScheduleTriggerNodePanelComponent naming', () => {
 
     it('keeps a name the user gave it', () => {
         expect(updatedName('Nightly import')).toBe('Nightly import');
+    });
+});
+
+describe('ScheduleTriggerNodePanelComponent permissions', () => {
+    // Repeating weekly, so the weekday buttons show.
+    const weeklyScheduleNode: ScheduleTriggerNodeModel = {
+        ...unsavedScheduleNode,
+        data: { ...unsavedScheduleNode.data, intervalUnit: 'weeks' },
+    };
+
+    function open(flowActions: ActionCode[]) {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                // Never called: the node has no backendId.
+                { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
+                { provide: ToastService, useValue: { info: vi.fn() } },
+            ],
+        });
+        grantPermissions({ [ResourceCode.Flows]: flowActions });
+        const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', weeklyScheduleNode);
+        fixture.detectChanges();
+        return fixture;
+    }
+
+    function element(fixture: ReturnType<typeof open>, selector: string): HTMLElement | null {
+        return fixture.nativeElement.querySelector(selector);
+    }
+
+    function clickMonday(fixture: ReturnType<typeof open>): void {
+        element(fixture, '[data-tooltip="Monday"]')!.click();
+        fixture.detectChanges();
+    }
+
+    it('is editable for a user who may update and run flows', () => {
+        const fixture = open(FLOW_ACTIONS_WITH_USE);
+
+        expect(element(fixture, 'app-custom-input input')).not.toBeNull();
+        expect(element(fixture, 'app-radio-button')).not.toBeNull();
+        clickMonday(fixture);
+        expect(element(fixture, '[data-tooltip="Monday"]')!.classList).toContain('round-btn--active');
+        fixture.destroy();
+    });
+
+    it('is read-only without Flows:Use: values shown as text, weekdays cannot be toggled, nothing saved', () => {
+        const fixture = open(FLOW_ACTIONS_WITHOUT_USE);
+
+        expect(element(fixture, 'app-custom-input input')).toBeNull();
+        expect(element(fixture, 'app-custom-input .readonly-value')!.textContent).toContain('Schedule #1');
+        expect(element(fixture, 'app-radio-button')).toBeNull();
+        clickMonday(fixture);
+        expect(element(fixture, '[data-tooltip="Monday"]')!.classList).not.toContain('round-btn--active');
+        // What the panel shell and the canvas take on close, Ctrl+S and a full save.
+        expect(fixture.componentInstance.onSave()).toBeNull();
+        expect(fixture.componentInstance.captureForValidation()).toBeNull();
+        fixture.destroy();
+    });
+});
+
+describe('ScheduleTriggerNodePanelComponent refresh from the backend', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('moves the saved baseline with a polled is_active, so a user without Flows:Use can still save', () => {
+        vi.useFakeTimers();
+        const [storedSchedule] = liveGraph.schedule_trigger_node_list;
+        // The schedule ran its last time between the panel opening and the next poll: the backend turned it off.
+        const finishedSchedule = { ...storedSchedule, is_active: false, current_runs: storedSchedule.current_runs + 1 };
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ToastService, useValue: { info: vi.fn() } },
+            ],
+        });
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITHOUT_USE });
+        const httpMock = TestBed.inject(HttpTestingController);
+        const scheduleUrl = (request: { url: string }): boolean =>
+            request.url.endsWith(`schedule-trigger-nodes/${storedSchedule.id}/`);
+        const flowService = TestBed.inject(FlowService);
+        const loadedFlow = buildFlowModelFromGraphDto(liveGraph);
+        flowService.setFlow(loadedFlow);
+        TestBed.inject(SavedFlowStateService).setSavedFlow(cloneFlowState(loadedFlow));
+        // The flows page's part: its saved graph (the save diff's baseline) follows each runtime update.
+        let savedGraph: GraphDto = liveGraph;
+        TestBed.inject(ScheduleTriggerRuntimeService).updates$.subscribe(({ backendId, state }) => {
+            savedGraph = withGraphScheduleTriggerRuntimeState(savedGraph, backendId, state);
+        });
+        const scheduleNode = loadedFlow.nodes.find(
+            (node): node is ScheduleTriggerNodeModel => node.type === NodeType.SCHEDULE_TRIGGER
+        )!;
+        expect(scheduleNode.data.isActive).toBe(true);
+
+        const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', scheduleNode);
+        fixture.detectChanges();
+        httpMock.expectOne(scheduleUrl).flush(storedSchedule);
+        // The poll after the panel's first read of the node (an active schedule with no next run: 1 s).
+        vi.advanceTimersByTime(1_000);
+        httpMock.expectOne(scheduleUrl).flush(finishedSchedule);
+
+        const canvasNode = flowService.nodes().find((node) => node.id === scheduleNode.id) as ScheduleTriggerNodeModel;
+        expect(canvasNode.data.isActive).toBe(false);
+        const savedNode = TestBed.inject(SavedFlowStateService).savedNode(scheduleNode.id) as ScheduleTriggerNodeModel;
+        expect(savedNode.data.isActive).toBe(false);
+
+        const nodeDiff = getNodeDiff(buildFlowModelFromGraphDto(savedGraph), flowService.getFlowState());
+        expect(nodeDiff.scheduleNodes.toUpdate).toEqual([]);
+        // What the flows page checks before saving for a user without Flows:Use.
+        expect(hasTriggerNodeWrites(nodeDiff)).toBe(false);
+        fixture.destroy();
     });
 });

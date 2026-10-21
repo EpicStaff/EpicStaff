@@ -102,7 +102,7 @@ def test_built_in_roles_show_their_permissions(auth_client, org_admin_user, role
     org_admin = next(role for role in body["built_in_roles"] if role["name"] == "Org Admin")
     flows = next(p for p in org_admin["permissions"] if p["resource_type"] == "flows")
 
-    assert set(flows["actions"]) == {"create", "read", "update", "delete", "export"}
+    assert set(flows["actions"]) == {"create", "read", "update", "delete", "export", "use"}
     assert client.get(f"/api/admin/roles/{role_member.id}/").json()["name"] == "Member"
 
 

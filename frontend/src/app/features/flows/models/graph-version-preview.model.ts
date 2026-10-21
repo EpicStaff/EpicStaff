@@ -75,6 +75,8 @@ export interface SnapshotPythonCode {
     libraries: string;
     entrypoint: string;
     global_kwargs?: Record<string, unknown>;
+    /** Seconds; absent in versions saved before code had an execution timeout. */
+    execution_timeout?: number;
 }
 
 export type SnapshotStartNode = SnapshotNodeOf<'StartNode', StartNode>;

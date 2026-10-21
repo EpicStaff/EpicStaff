@@ -95,10 +95,10 @@ const ROLES: { id: ChatComposerRole; label: string }[] = [
 export class ChatThreadComposerComponent {
     readonly conversation = input.required<ChatConversation>();
     // Issued only when a test conversation is created, so only tests started on this page can be written to as the visitor.
-    readonly visitorToken = input<string | null>(null);
+    readonly visitorToken = input<string>();
     // A token being fetched for an older test conversation, or why that failed.
     readonly visitorTokenPending = input(false);
-    readonly visitorTokenError = input<string | null>(null);
+    readonly visitorTokenError = input<string>();
     readonly isClaimedByMe = input(false);
     // A claim or release in flight on the page.
     readonly isActionPending = input(false);

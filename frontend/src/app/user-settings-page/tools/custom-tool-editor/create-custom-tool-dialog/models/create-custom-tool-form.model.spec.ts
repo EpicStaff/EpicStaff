@@ -100,4 +100,38 @@ describe('toCreatePayload sent through CustomToolsService', () => {
         }
         request.flush(LOADED_TOOL);
     });
+
+    it('sends the execution timeout with the code when the dialog has one', () => {
+        const payload = toCreatePayload(
+            {
+                name: 'Fetch orders',
+                description: 'Fetches the latest orders',
+                pythonCode: 'def main():\n    return 1\n',
+                variablesJson: '[]',
+                libraries: [],
+                useStorage: false,
+                executionTimeout: 300,
+            },
+            []
+        );
+
+        expect(payload.python_code.execution_timeout).toBe(300);
+    });
+
+    it('sends no execution timeout when the dialog has none, so the backend applies its own', () => {
+        const payload = toCreatePayload(
+            {
+                name: 'Fetch orders',
+                description: 'Fetches the latest orders',
+                pythonCode: 'def main():\n    return 1\n',
+                variablesJson: '[]',
+                libraries: [],
+                useStorage: false,
+                executionTimeout: undefined,
+            },
+            []
+        );
+
+        expect(payload.python_code).not.toHaveProperty('execution_timeout');
+    });
 });

@@ -1,15 +1,16 @@
+import { mainKeyFromEvent } from '../../../../core/keymap/key-chord.util';
+
 /**
  * Keyboard policy for the Decision Tree dialog.
  *
  * A read-only viewer must not mutate the flow behind it, and the flow page's
- * global shortcuts do exactly that: `FlowVisualProgrammingComponent.handleCtrlS`
- * runs a real `POST /api/graphs/{id}/save/`, and `ShortcutListenerDirective` saves
- * the open panel on Escape and deletes the selected node on Delete. Neither
- * exempts text fields for every key it acts on.
+ * global shortcuts do exactly that: the page's Ctrl+S runs a real
+ * `POST /api/graphs/{id}/save/`, Escape saves the open panel and Delete deletes the
+ * selected node. Not every one of them exempts text fields.
  *
  * The dialog feeds this from `DialogRef.keydownEvents`, which CDK dispatches from a
- * bubble-phase listener on `document.body` — earlier than the handlers above, none
- * of which capture, so `stopPropagation()` here preempts all of them. The
+ * bubble-phase listener on `document.body` — earlier than the editor's `window`
+ * keymap listener, which does not capture, so `stopPropagation()` here preempts it. The
  * subscriber must stay synchronous: deferring it past the dispatcher's stack frame
  * makes `stopPropagation` and `preventDefault` no-ops.
  *
@@ -52,14 +53,11 @@ type CdtTreeKeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey
 /** Keys the page acts on with no modifier held. */
 const PAGE_BARE_KEYS: ReadonlySet<string> = new Set(['Escape', 'Delete', 'Backspace']);
 
-/**
- * Keys the page acts on with Ctrl or Cmd held. The Cyrillic entries are the same
- * physical keys on a RU layout and are listed in the directive as well.
- */
-const PAGE_MODIFIER_KEYS: ReadonlySet<string> = new Set(['c', 'с', 'v', 'м', 'z', 'я', 'y', 'н', 's', 'ы']);
+/** Keys the page acts on with Ctrl or Cmd held, named as the editor keymap names them. */
+const PAGE_MODIFIER_KEYS: ReadonlySet<string> = new Set(['KeyC', 'KeyV', 'KeyZ', 'KeyY', 'KeyS', 'KeyF', 'Slash']);
 
 function isSaveCombo(event: CdtTreeKeyEvent): boolean {
-    return (event.ctrlKey || event.metaKey) && event.code === 'KeyS';
+    return (event.ctrlKey || event.metaKey) && mainKeyFromEvent(event) === 'KeyS';
 }
 
 /**
@@ -78,18 +76,7 @@ function isPageShortcut(event: CdtTreeKeyEvent): boolean {
         return false;
     }
 
-    // Matched the way each page listener matches, so a non-QWERTY layout cannot
-    // slip past: `ShortcutListenerDirective` opens the shortcuts dialog on the
-    // `Slash` key or a `/` character, and `NodesSearchComponent`'s
-    // `document:keydown` handler opens the canvas node search on an `f` character
-    // and guards nothing at all.
-    return (
-        event.code === 'KeyS' ||
-        event.code === 'Slash' ||
-        event.key === '/' ||
-        event.key === 'f' ||
-        PAGE_MODIFIER_KEYS.has(event.key.toLowerCase())
-    );
+    return PAGE_MODIFIER_KEYS.has(mainKeyFromEvent(event));
 }
 
 export function resolveTreeKeyAction(event: CdtTreeKeyEvent, state: CdtTreeKeyState): CdtTreeKeyResult {
@@ -102,7 +89,8 @@ export function resolveTreeKeyAction(event: CdtTreeKeyEvent, state: CdtTreeKeySt
         // Shielding, not consuming: Delete, Backspace and Ctrl+Z are stopped so
         // the canvas behind never sees them, but are not prevented, so nothing
         // native is lost. Inside our own search box the page already exempts text
-        // fields, so only the two it acts on regardless of target are swallowed.
+        // fields for most keys; of those it acts on regardless of target, only
+        // Escape and Ctrl+S are swallowed there, so Ctrl+F still reaches the canvas search.
         stopPropagation: isPageShortcut(event) && (!state.targetIsSearch || escape || save),
         // Only for what we act on, so typing, native undo and copy still work.
         preventDefault: save || action !== 'none',

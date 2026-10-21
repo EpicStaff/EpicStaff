@@ -5,10 +5,12 @@ import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { ResourceCode, toSecretIds } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
 import { merge, Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -62,6 +64,7 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
         ValidationErrorsComponent,
+        ExecutionTimeoutFieldComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -105,6 +108,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     pythonCode: string = '';
     initialPythonCode: string = '';
+    protected executionTimeout!: ExecutionTimeoutFormField;
     private initialFormSignatureExceptTestValues: string = '';
     private initialTestInputValuesSignature: string = '';
     codeEditorHasError: boolean = false;
@@ -179,6 +183,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly flowService = inject(FlowService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
 
     constructor() {
         super();
@@ -296,11 +301,16 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.useStorage.set(this.node().data.use_storage ?? false);
         this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
 
+        this.executionTimeout = new ExecutionTimeoutFormField(
+            this.node().data.execution_timeout,
+            this.executionTimeoutLimits.limits()
+        );
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
             libraries: [this.node().data.libraries?.join(', ') || ''],
+            execution_timeout: this.executionTimeout.control,
             test_input: this.fb.array([]),
         });
 
@@ -363,6 +373,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
                 secret_names: this.secretNames(),
+                execution_timeout: this.executionTimeout.value,
             },
             test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
         };
@@ -457,13 +468,18 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     onRunTest(variables: Record<string, string>): void {
         const backendId = this.node().backendId;
         if (this.runTestBlocker() !== null || backendId == null) return;
-        this.codeTestRun.run({
-            target: { type: 'python_node', id: backendId },
-            variables: parseTestInputValues(variables),
-        });
+        this.codeTestRun.run(
+            {
+                target: { type: 'python_node', id: backendId },
+                variables: parseTestInputValues(variables),
+            },
+            this.executionTimeoutLimits.secondsToRun(
+                this.flowService.savedPythonNode(backendId)?.python_code.execution_timeout
+            )
+        );
     }
 
-    /** The code, libraries, secrets or storage flag in the panel are not the ones the backend stores. */
+    /** The code, libraries, secrets, storage flag or execution timeout in the panel are not the ones the backend stores. */
     private differsFromSaved(savedNode: PythonNode): boolean {
         this.formDirtyTick();
         if (!this.form) return true;
@@ -474,6 +490,11 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             parseCommaSeparatedList(this.form.value.libraries),
             this.selectedSecretIds()
         );
-        return saved !== current || (savedNode.use_storage ?? false) !== this.useStorage();
+        return (
+            saved !== current ||
+            (savedNode.use_storage ?? false) !== this.useStorage() ||
+            this.executionTimeoutLimits.secondsToRun(savedCode.execution_timeout) !==
+                this.executionTimeoutLimits.secondsToRun(this.executionTimeout.value)
+        );
     }
 }

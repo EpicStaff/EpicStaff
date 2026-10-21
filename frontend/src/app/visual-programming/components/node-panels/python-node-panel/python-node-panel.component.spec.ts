@@ -2,6 +2,7 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormArray, ReactiveFormsModule } from '@angular/forms';
 import { By } from '@angular/platform-browser';
+import { ExecutionTimeoutFormField } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
@@ -9,6 +10,11 @@ import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { typeIntoExecutionTimeout } from '../../../../shared/components/execution-timeout-field/execution-timeout-field.testing';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { PythonNode } from '../../../core/models/python-node.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
@@ -52,6 +58,7 @@ const pythonNode = {
 function create(isPreview: boolean): PythonNodePanelComponent {
     TestBed.configureTestingModule({
         providers: [
+            provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
             { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
         ],
@@ -111,6 +118,7 @@ describe('PythonNodePanelComponent test run', () => {
         };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: FLOW_EDITOR_PREVIEW, useValue: false },
                 { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
                 { provide: PythonCodeRunService, useValue: runService },
@@ -266,6 +274,102 @@ describe('PythonNodePanelComponent test run', () => {
 
         expect(blocker()).toBe(STORED_GRAPH_OUTDATED_MESSAGE);
     });
+
+    describe('execution timeout', () => {
+        const TIMED_NODE: PythonNode = {
+            ...STORED_NODE,
+            python_code: { ...STORED_NODE.python_code, execution_timeout: 90 },
+        };
+
+        function timeoutField(): ExecutionTimeoutFormField {
+            return (panel as unknown as { executionTimeout: ExecutionTimeoutFormField }).executionTimeout;
+        }
+
+        function startRun(): void {
+            const start$ = new Subject<{ execution_id: string }>();
+            runService.runPythonCode.mockReturnValue(start$);
+            panel.onRunTest({ count: '3' });
+            start$.next({ execution_id: 'exec-1' });
+        }
+
+        it('shows the stored timeout of the code', () => {
+            bindStoredGraph(TIMED_NODE);
+            open(mapPythonNodeToModel(TIMED_NODE));
+
+            expect(timeoutField().control.value).toBe(90);
+            expect(panel.onSaveSilently()?.data.execution_timeout).toBe(90);
+        });
+
+        it('shows the default for a code without a timeout, and keeps none on it until edited', () => {
+            open();
+
+            expect(timeoutField().control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(panel.onSaveSilently()?.data.execution_timeout).toBeUndefined();
+        });
+
+        it('puts the edited timeout on the code of the node it saves', () => {
+            open();
+
+            timeoutField().edit(300);
+
+            expect(panel.onSaveSilently()?.data.execution_timeout).toBe(300);
+        });
+
+        it('saves a timeout still being typed when the panel closes before the input blurs (Esc, switching nodes)', () => {
+            open();
+
+            typeIntoExecutionTimeout(timeoutField(), '00:05:00');
+
+            expect(panel.isDirty()).toBe(true);
+            expect(panel.onSave()?.data.execution_timeout).toBe(300);
+        });
+
+        it('waits for the result as long as the stored code may run', () => {
+            bindStoredGraph(TIMED_NODE);
+            open(mapPythonNodeToModel(TIMED_NODE));
+
+            startRun();
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 90);
+        });
+
+        it('waits for a stored code without a timeout as long as the default the backend applies to it', () => {
+            open();
+
+            startRun();
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith(
+                'exec-1',
+                TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds
+            );
+        });
+
+        it('blocks the run after an unsaved timeout edit, until it is back to the stored one', () => {
+            open();
+
+            timeoutField().edit(300);
+            expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            timeoutField().edit(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(blocker()).toBeNull();
+        });
+
+        it('runs a stored timeout above the maximum for the maximum, without asking to save it', () => {
+            const longNode: PythonNode = {
+                ...STORED_NODE,
+                python_code: { ...STORED_NODE.python_code, execution_timeout: 7200 },
+            };
+            bindStoredGraph(longNode);
+            open(mapPythonNodeToModel(longNode));
+
+            expect(blocker()).toBeNull();
+            startRun();
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith(
+                'exec-1',
+                TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds
+            );
+        });
+    });
 });
 
 describe('PythonNodePanelComponent node name', () => {
@@ -321,6 +425,7 @@ describe('PythonNodePanelComponent Input List and main() signature', () => {
         vi.useFakeTimers();
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
                 { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
                 { provide: PythonCodeRunService, useValue: {} },

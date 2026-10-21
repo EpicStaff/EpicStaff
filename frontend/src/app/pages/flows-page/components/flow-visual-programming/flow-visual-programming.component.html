@@ -70,9 +70,10 @@
         <app-shortcuts-modal
             [open]="isShortcutsOpen()"
             [pos]="shortcutsPos()"
-            title="Command & Shortcuts"
+            heading="Command & Shortcuts"
             icon="shortcut"
-            [sections]="shortcutSections"
+            [flows]="availableFlowLights()"
+            [currentFlowId]="currentFlowId()"
             (closed)="closeShortcutsModal()"
         ></app-shortcuts-modal>
         <div

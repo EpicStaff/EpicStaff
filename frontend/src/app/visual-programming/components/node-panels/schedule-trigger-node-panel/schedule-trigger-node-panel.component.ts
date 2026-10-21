@@ -40,8 +40,9 @@ import {
     ScheduleTriggerNodeData,
     WeekdayCode,
 } from '../../../core/models/schedule-trigger.model';
-import { FlowService } from '../../../services/flow.service';
+import { ScheduleTriggerRuntimeService } from '../../../services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { toScheduleTriggerRuntimeState } from '../../../utils/save/schedule-trigger-runtime-state';
 
 const MIN_INTERVAL_SECONDS = 60;
 
@@ -77,7 +78,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
 
     private readonly cdr = inject(ChangeDetectorRef);
     private readonly flowsApiService = inject(FlowsApiService);
-    private readonly flowService = inject(FlowService);
+    private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
     private readonly sidePanelService = inject(SidePanelService);
 
     constructor() {
@@ -197,6 +198,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     });
 
     toggleDay(value: WeekdayCode): void {
+        if (this.isReadOnly()) return;
         const current = this.repeatDays();
         this.repeatDays.set(current.includes(value) ? current.filter((d) => d !== value) : [...current, value]);
         this.scheduleDirty.set(true);
@@ -860,29 +862,22 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
             });
     }
 
+    /**
+     * Shows on the canvas what the backend changed on this schedule by itself, moving the saved baseline
+     * along, so the next save does not send it back as the user's edit.
+     */
     private syncRefreshedDataToNode(dto: GetScheduleTriggerNodeRequest, includeIsActive = true): void {
         if (this.scheduleDirty()) return;
         const current = this.node();
-        const newIsActive = includeIsActive ? dto.is_active : current.data.isActive;
-        const newNextRun = dto.schedule?.next_run_date_time ?? null;
-        const newCurrentRuns = dto.current_runs;
+        const state = toScheduleTriggerRuntimeState(dto, { includeIsActive });
         if (
-            current.data.isActive === newIsActive &&
-            current.data.nextRunDateTime === newNextRun &&
-            current.data.currentRuns === newCurrentRuns
+            (state.isActive === undefined || current.data.isActive === state.isActive) &&
+            current.data.nextRunDateTime === state.nextRunDateTime &&
+            current.data.currentRuns === state.currentRuns
         ) {
             return;
         }
-        const updatedNode: ScheduleTriggerNodeModel = {
-            ...current,
-            data: {
-                ...current.data,
-                isActive: newIsActive,
-                nextRunDateTime: newNextRun,
-                currentRuns: newCurrentRuns,
-            },
-        };
-        this.flowService.updateNode(updatedNode);
+        this.scheduleTriggerRuntime.apply(current.id, state);
     }
 
     private computeNextPollDelay(dto: GetScheduleTriggerNodeRequest): number {

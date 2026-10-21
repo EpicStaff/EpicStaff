@@ -7,10 +7,14 @@
     <div
         class="shortcuts__modal"
         [style.top.px]="pos()!.top"
-        [style.left.px]="pos()!.left"
+        [style.left]="leftStyle()"
+        [style.--shortcuts-modal-height]="modalHeightPx + 'px'"
         (click)="$event.stopPropagation()"
+        (keydown)="onModalKeydown($event)"
         [class.shortcuts__modal--compact]="size() === 'compact'"
         [class.shortcuts__modal--wide]="size() === 'wide'"
+        [class.shortcuts__modal--settling]="isSettling()"
+        [class.shortcuts__modal--four-columns]="size() === 'wide' && columnCount() === 4"
     >
         <div class="shortcuts__frame">
             <div class="shortcuts__header">
@@ -23,7 +27,7 @@
                             aria-hidden="true"
                         />
                     }
-                    <div class="shortcuts__header-title">{{ title() }}</div>
+                    <div class="shortcuts__header-title">{{ heading() }}</div>
                 </div>
 
                 <div class="shortcuts__header-right">
@@ -59,35 +63,243 @@
                 </div>
             </div>
 
-            <div class="shortcuts__content">
-                <div class="shortcuts__grid">
-                    @for (section of sections(); track section.id) {
+            <div
+                #content
+                class="shortcuts__content"
+                [class.shortcuts__content--scrolling]="isScrolling()"
+            >
+                <div
+                    #flow
+                    class="shortcuts__flow"
+                    [class.shortcuts__flow--reflowing]="isReflowing() || isSettling()"
+                >
+                    @for (section of sections(); track section.title) {
                         <section class="shortcuts__card">
                             <div class="shortcuts__card-title">{{ section.title }}</div>
 
                             <div class="shortcuts__card-body">
                                 @for (row of section.rows; track row.id; let i = $index) {
-                                    @if (!row.hidden) {
+                                    @if (row.id === editedNodeId()) {
+                                        <app-shortcut-editor
+                                            [nodeAction]="row.id"
+                                            [flows]="flows()"
+                                            [currentFlowId]="currentFlowId()"
+                                            (closed)="closeEditor()"
+                                        />
+                                    } @else {
                                         <div
                                             class="shortcuts__row"
                                             [class.shortcuts__row--alt]="i % 2 === 0"
+                                            [class.shortcuts__row--editable]="row.isKeyEditable"
                                         >
-                                            <div class="shortcuts__label">
+                                            <div
+                                                class="shortcuts__label"
+                                                appTooltipOnOverflow
+                                                [matTooltip]="row.label"
+                                                [matTooltipDisabled]="true"
+                                            >
                                                 {{ row.label }}
                                             </div>
 
                                             <div class="shortcuts__keys">
-                                                @for (key of row.keys; track key) {
-                                                    <span class="shortcuts__key">
-                                                        {{ displayKey(key) }}
-                                                    </span>
+                                                @if (row.isNotSet) {
+                                                    <span class="shortcuts__not-set">Not set</span>
                                                 }
+                                                @for (chord of row.chords; track $index; let first = $first) {
+                                                    @if (!first) {
+                                                        <span class="shortcuts__or">or</span>
+                                                    }
+                                                    @for (key of chord; track $index) {
+                                                        @switch (key) {
+                                                            @case (arrowKeys) {
+                                                                <span
+                                                                    class="shortcuts__arrow-keys"
+                                                                    role="img"
+                                                                    aria-label="Arrow keys"
+                                                                >
+                                                                    <span class="shortcuts__key shortcuts__key--arrow"
+                                                                        ><app-svg-icon
+                                                                            icon="arrow-left"
+                                                                            size="12px"
+                                                                    /></span>
+                                                                    <span class="shortcuts__key shortcuts__key--arrow"
+                                                                        ><app-svg-icon
+                                                                            icon="arrow-up"
+                                                                            size="12px"
+                                                                    /></span>
+                                                                    <span class="shortcuts__key shortcuts__key--arrow"
+                                                                        ><app-svg-icon
+                                                                            icon="arrow-down"
+                                                                            size="12px"
+                                                                    /></span>
+                                                                    <span class="shortcuts__key shortcuts__key--arrow"
+                                                                        ><app-svg-icon
+                                                                            icon="arrow-right"
+                                                                            size="12px"
+                                                                    /></span>
+                                                                </span>
+                                                            }
+                                                            @case (upDownKeys) {
+                                                                <span
+                                                                    class="shortcuts__arrow-keys"
+                                                                    role="img"
+                                                                    aria-label="Up or Down arrow"
+                                                                >
+                                                                    <span class="shortcuts__key shortcuts__key--arrow"
+                                                                        ><app-svg-icon
+                                                                            icon="arrow-up"
+                                                                            size="12px"
+                                                                    /></span>
+                                                                    <span class="shortcuts__key shortcuts__key--arrow"
+                                                                        ><app-svg-icon
+                                                                            icon="arrow-down"
+                                                                            size="12px"
+                                                                    /></span>
+                                                                </span>
+                                                            }
+                                                            @default {
+                                                                <span class="shortcuts__key">
+                                                                    {{ key }}
+                                                                </span>
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            </div>
+
+                                            @if (row.isKeyEditable) {
+                                                <div class="shortcuts__row-actions">
+                                                    @if (row.isOverridden) {
+                                                        <button
+                                                            type="button"
+                                                            class="shortcuts__reset-key"
+                                                            matTooltip="Reset"
+                                                            [attr.aria-label]="'Reset ' + row.label + ' key'"
+                                                            (click)="resetNodeKey(row.id)"
+                                                        >
+                                                            <app-svg-icon
+                                                                icon="arrow-back-up"
+                                                                size="14px"
+                                                            />
+                                                        </button>
+                                                    }
+                                                    <app-edit-button
+                                                        #nodeEdit
+                                                        tooltip="Edit"
+                                                        [ariaLabel]="'Edit ' + row.label + ' key'"
+                                                        (triggered)="startEditingNodeKey(row.id)"
+                                                    />
+                                                </div>
+                                            }
+                                        </div>
+                                        @if (rowMessage(); as message) {
+                                            @if (message.actionId === row.id) {
+                                                <div
+                                                    class="shortcuts__row-feedback"
+                                                    role="alert"
+                                                >
+                                                    {{ message.text }}
+                                                </div>
+                                            }
+                                        }
+                                    }
+                                }
+                            </div>
+                        </section>
+                    }
+
+                    @if (customRows().length > 0) {
+                        <section class="shortcuts__card">
+                            <div class="shortcuts__card-title">Additional</div>
+
+                            <div class="shortcuts__card-body">
+                                @for (row of customRows(); track row.shortcut.id; let i = $index) {
+                                    @if (row.shortcut.id === editedShortcutId()) {
+                                        <app-shortcut-editor
+                                            [shortcut]="row.shortcut"
+                                            [flows]="flows()"
+                                            [currentFlowId]="currentFlowId()"
+                                            (closed)="closeEditor()"
+                                        />
+                                    } @else {
+                                        <div
+                                            class="shortcuts__row shortcuts__row--custom"
+                                            [class.shortcuts__row--alt]="i % 2 === 0"
+                                        >
+                                            <div
+                                                class="shortcuts__label"
+                                                [class.shortcuts__label--muted]="row.isMuted"
+                                                appTooltipOnOverflow
+                                                [matTooltip]="row.label"
+                                                [matTooltipDisabled]="true"
+                                            >
+                                                {{ row.label }}
+                                            </div>
+
+                                            <div class="shortcuts__keys">
+                                                @if (row.keys) {
+                                                    @for (key of row.keys; track $index) {
+                                                        <span class="shortcuts__key">
+                                                            {{ key }}
+                                                        </span>
+                                                    }
+                                                } @else {
+                                                    <span class="shortcuts__not-set">Not set</span>
+                                                }
+                                            </div>
+
+                                            <div class="shortcuts__row-actions">
+                                                <app-edit-button
+                                                    #customEdit
+                                                    tooltip="Edit"
+                                                    [ariaLabel]="'Edit ' + row.label + ' shortcut'"
+                                                    (triggered)="startEditing(row.shortcut.id)"
+                                                />
+                                                <app-delete-button
+                                                    tooltip="Delete"
+                                                    [ariaLabel]="'Delete ' + row.label + ' shortcut'"
+                                                    (triggered)="deleteShortcut(row.shortcut.id)"
+                                                />
                                             </div>
                                         </div>
                                     }
                                 }
                             </div>
                         </section>
+                    }
+
+                    @if (isAdding()) {
+                        <app-shortcut-editor
+                            [flows]="flows()"
+                            [currentFlowId]="currentFlowId()"
+                            (closed)="closeEditor()"
+                        />
+                    } @else {
+                        <div class="shortcuts__add-line">
+                            @if (canResetToDefaults()) {
+                                <app-button
+                                    class="shortcuts__line-button"
+                                    type="outline-secondary"
+                                    mod="small"
+                                    (click)="confirmReset()"
+                                    >Reset to defaults</app-button
+                                >
+                            }
+                            <app-button
+                                #addButton
+                                class="shortcuts__line-button shortcuts__add-button"
+                                type="primary"
+                                mod="small"
+                                (click)="startAdding()"
+                            >
+                                <app-svg-icon
+                                    class="shortcuts__add-icon"
+                                    icon="plus"
+                                    size="1.1rem"
+                                />
+                                Add shortcut
+                            </app-button>
+                        </div>
                     }
                 </div>
             </div>
