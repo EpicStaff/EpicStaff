@@ -13,6 +13,8 @@ from app.tools.registry import ToolRegistry
 from app.tools.system_tools.structured_output import ANSWER_TOOL, build_answer_tool
 from shared.models.agent_service import TokenUsage
 
+_MISSING = object()
+
 
 @dataclass(frozen=True)
 class EnforcementResult:
@@ -73,7 +75,15 @@ class StructuredOutputEnforcer:
                 corrective = "You must call submit_final_answer. " + corrective
                 continue
 
-            candidate = capture.args["result"] if wrapped else capture.args
+            candidate = (
+                (
+                    capture.args.get("result", _MISSING)
+                    if isinstance(capture.args, dict)
+                    else _MISSING
+                )
+                if wrapped
+                else capture.args
+            )
             outcome: ValidationOutcome = validate_output(candidate, output_schema)
 
             if outcome.ok:
