@@ -19,8 +19,9 @@ import {
     normalizeIana,
     NumberStepperComponent,
 } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { SidebarWidthOptions, SidebarWidthService } from '@shared/services';
 import { downloadBlob } from '@shared/utils';
 import {
     catchError,
@@ -75,6 +76,8 @@ const EXPORT_POLL_INTERVAL_MS = 1_000;
 const EXPORT_TIMEOUT_MS = 5 * 60_000;
 // narrow enough to tuck a column away, wide enough to keep its handle and an ellipsis grabbable
 const COLUMN_MIN_WIDTH = 48;
+const PANEL_WIDTH_KEY = 'audit-side-panel';
+const PANEL_WIDTH_OPTIONS = { defaultWidth: 480, minWidth: 360, maxWidth: 960 } satisfies SidebarWidthOptions;
 
 interface AuditTableColumn {
     label: string;
@@ -125,6 +128,7 @@ interface ViewedValue {
         AuditValueViewerComponent,
         ActionDropdownButtonComponent,
         HasPermissionDirective,
+        ResizableSidebarDirective,
     ],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
@@ -158,6 +162,9 @@ export class AuditSessionsBrowserComponent implements OnInit {
     // the table is at least as wide as its columns, so widening one scrolls the table instead of squeezing the rest
     protected readonly tableWidth = computed(() => this.columnWidths().reduce((total, width) => total + width, 0));
     public isFiltersPanelOpen = signal<boolean>(false);
+    protected readonly panelWidthKey = PANEL_WIDTH_KEY;
+    protected readonly panelWidthOptions = PANEL_WIDTH_OPTIONS;
+    protected readonly panelWidth = inject(SidebarWidthService).getWidth(PANEL_WIDTH_KEY, PANEL_WIDTH_OPTIONS);
     protected viewedValue = signal<ViewedValue | null>(null);
     private valueViewerTrigger: HTMLElement | null = null;
     private rawEvents = signal<AuditSessionEvent[]>([]);
