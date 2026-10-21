@@ -330,7 +330,20 @@
         </div>
 
         @if (isFiltersPanelOpen() || viewedValue()) {
-            <aside class="audit-browser__panel">
+            <aside
+                #panel
+                class="audit-browser__panel"
+                [style.flex-basis.px]="panelWidth()"
+            >
+                <div
+                    class="resizable-sidebar-handle audit-browser__panel-handle"
+                    sidebarAriaLabel="Resize side panel"
+                    [sidebarSide]="'right'"
+                    [appResizableSidebar]="panelWidthKey"
+                    [sidebarTarget]="panel"
+                    [sidebarMinWidth]="panelWidthOptions.minWidth"
+                    [sidebarMaxWidth]="panelWidthOptions.maxWidth"
+                ></div>
                 @if (isFiltersPanelOpen()) {
                     <app-audit-filters-panel
                         [flowNames]="flowNames()"
