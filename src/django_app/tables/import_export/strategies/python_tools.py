@@ -120,13 +120,14 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return python_code_tool
 
     def find_existing(self, data, id_mapper, org_id: int | None = None):
-        # SQL narrows on stored columns: entrypoint and global_kwargs exactly
-        # (create stores them so, and jsonb equality keeps true apart from 1).
-        # Code and libraries are compared in Python. Description is compared
-        # cleaned on both sides: create stores it sanitized, but a built-in tool
-        # keeps upload_tools' text, which can exceed the sanitizer's cap. Org rows
-        # still narrow on it in SQL (as written or cleaned), so tools that differ
-        # only in description never crowd the right one out of the candidate window.
+        # SQL narrows on stored columns: entrypoint, global_kwargs and
+        # execution_timeout exactly (create stores them so, and jsonb equality
+        # keeps true apart from 1). Code and libraries are compared in Python.
+        # Description is compared cleaned on both sides: create stores it
+        # sanitized, but a built-in tool keeps upload_tools' text, which can exceed
+        # the sanitizer's cap. Org rows still narrow on it in SQL (as written or
+        # cleaned), so tools that differ only in description never crowd the right
+        # one out of the candidate window.
         compared = compared_values(PythonCodeTool, self.serializer_class, data, COMPARED_FIELDS)
         description = compared.pop("description", None)
         filters, null_filters = create_filters(compared)
@@ -145,6 +146,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
                 self.get_org_scope_q(org_id),
                 python_code__entrypoint=code_key[2],
                 python_code__global_kwargs=python_code["global_kwargs"],
+                python_code__execution_timeout=python_code["execution_timeout"],
             )
             .select_related("python_code"),
             import_values(self.serializer_class, data, ("name",)).get("name"),
@@ -177,6 +179,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         return {
             "global_kwargs": PythonCode._meta.get_field("global_kwargs").get_default(),
+            "execution_timeout": PythonCode._meta.get_field("execution_timeout").get_default(),
             **serializer.validated_data,
         }
 

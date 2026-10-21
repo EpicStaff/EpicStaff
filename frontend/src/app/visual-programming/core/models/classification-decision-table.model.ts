@@ -8,6 +8,8 @@ export interface ComputationConfig {
     libraries?: string[];
     secret_ids?: number[];
     secret_names?: string[];
+    /** Seconds one run of the code may take; absent until set, then the backend applies its default. */
+    execution_timeout?: number;
 }
 
 export interface ClassificationDecisionTableData {

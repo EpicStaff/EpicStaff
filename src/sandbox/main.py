@@ -244,6 +244,7 @@ async def run(code_task_data: CodeTaskData):
                 storage_org_prefix=code_task_data.storage_org_prefix,
                 storage_credentials=code_task_data.storage_credentials,
                 secrets=code_task_data.secrets,
+                execution_timeout=code_task_data.execution_timeout,
             )
         except asyncio.CancelledError:
             # A temporary storage credential may already have been minted for

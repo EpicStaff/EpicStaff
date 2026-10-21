@@ -32,6 +32,10 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { NodePanelShellComponent } from '../../../../visual-programming/components/node-panels/node-panel-shell/node-panel-shell.component';
 import { PythonNodePanelComponent } from '../../../../visual-programming/components/node-panels/python-node-panel/python-node-panel.component';
 import { AgentNode, AgentNodeTaskUi } from '../../../../visual-programming/core/models/agent-node.model';
@@ -47,6 +51,7 @@ import {
     ClassificationDecisionTableNodeModel,
     GraphNoteModel,
     NodeModel,
+    PythonNodeModel,
     ScheduleTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
@@ -261,6 +266,7 @@ describe('FlowVisualProgrammingComponent', () => {
         TestBed.configureTestingModule({
             imports: [FlowVisualProgrammingComponent],
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 {
                     provide: ActivatedRoute,
                     useValue: {
@@ -1793,6 +1799,42 @@ describe('FlowVisualProgrammingComponent', () => {
                 ]);
                 expect(flowService.nodes()[0].node_name).toBe('Renamed again');
             });
+        });
+    });
+
+    describe('full save of a python code with an execution timeout', () => {
+        function loadPythonNodeWithTimeout(executionTimeout: number | undefined): void {
+            flowsApi['getGraphById'].mockReturnValue(of(graphDto({ python_node_list: [livePython] })));
+            component.refreshCurrentFlow();
+            const python = flowService.nodes().find((node) => node.backendId === livePython.id) as PythonNodeModel;
+            flowService.updateNode({ ...python, data: { ...python.data, execution_timeout: executionTimeout } });
+        }
+
+        it('refuses to save a code whose timeout is below the minimum, and names its node', () => {
+            loadPythonNodeWithTimeout(0);
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
+                `Cannot save flow — fix the following node(s) first: "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} seconds.`
+            );
+        });
+
+        it('saves a timeout above the maximum for the backend to lower, so a lowered maximum never blocks a save', () => {
+            const aboveMaximum = TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds! + 600;
+            loadPythonNodeWithTimeout(aboveMaximum);
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(flowsApi['bulkSaveGraph']).toHaveBeenCalledTimes(1);
+            const payload = flowsApi['bulkSaveGraph'].mock.calls[0][1] as Record<string, unknown>;
+            expect(payload['python_node_list']).toEqual([
+                expect.objectContaining({
+                    id: livePython.id,
+                    python_code: expect.objectContaining({ execution_timeout: aboveMaximum }),
+                }),
+            ]);
         });
     });
 
