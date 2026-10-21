@@ -81,9 +81,14 @@
         margin: 0;
     }
 
-    &__none {
+    &__none,
+    &__note {
         margin: 0;
         color: var(--color-text-secondary);
+    }
+
+    &__database {
+        margin: 0;
     }
 
     &__facts {

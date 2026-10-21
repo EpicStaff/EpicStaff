@@ -20,10 +20,15 @@
         runtime.json                    0400 uid:uid
 /run/es_launcher/                       0750 root:10000
     launcher.sock                       0660 root:10000
+/var/lib/es_plugins_egress/             0710 root:10000    made by the image
+    policy/                             0755 10000:10000   the plugin_egress_policy volume
+        passwords, hosts.json           0644 10000:10000   the egress proxy's policy
 ```
 
 Each plugin's gid equals its uid. `agent/` belongs to group 0 so the launcher, which has no
-`CAP_DAC_OVERRIDE`, can read what the agent unpacked there while no plugin can.
+`CAP_DAC_OVERRIDE`, can read what the agent unpacked there while no plugin can. Plugin UIDs
+cannot pass through `/var/lib/es_plugins_egress/`, so no plugin reads another's allow-list or
+password hash; plugins_egress mounts the same volume read-only.
 """
 
 import re
@@ -58,11 +63,12 @@ def check_version_segment(version: str) -> str:
 
 @dataclass(frozen=True)
 class NodeLayout:
-    """Every path of the node. Tests point the three roots at a temporary directory."""
+    """Every path of the node. Tests point the four roots at a temporary directory."""
 
     data_root: Path = Path("/var/lib/es_plugins")
     run_root: Path = Path("/run/es_plugins")
     launcher_socket_directory: Path = Path("/run/es_launcher")
+    egress_policy_directory: Path = Path("/var/lib/es_plugins_egress/policy")
 
     @property
     def agent_directory(self) -> Path:

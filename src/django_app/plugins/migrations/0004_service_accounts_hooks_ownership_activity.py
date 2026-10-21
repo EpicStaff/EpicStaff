@@ -48,7 +48,7 @@ class Migration(migrations.Migration):
                 ('on_behalf_of_user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
             ],
             options={
-                'indexes': [models.Index(fields=['organization_id', '-created_at'], name='plugins_activity_by_org'), models.Index(fields=['plugin_identifier', '-created_at'], name='plugins_activity_by_plugin')],
+                'indexes': [models.Index(fields=['organization_id', '-created_at', '-id'], name='plugins_activity_by_org'), models.Index(fields=['plugin_identifier', '-created_at', '-id'], name='plugins_activity_by_plugin'), models.Index(fields=['organization_id', 'plugin_identifier', '-created_at', '-id'], name='plugins_activity_by_org_plugin')],
             },
         ),
         migrations.CreateModel(
@@ -82,10 +82,10 @@ class Migration(migrations.Migration):
                 ('plugin_identifier', models.CharField(max_length=32)),
                 ('object_id', models.BigIntegerField()),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('content_type', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='+', to='contenttypes.contenttype')),
+                ('content_type', models.ForeignKey(db_index=False, on_delete=django.db.models.deletion.CASCADE, related_name='+', to='contenttypes.contenttype')),
                 ('grant', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='owned_resources', to='plugins.plugingrant')),
                 ('on_behalf_of', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
-                ('org', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='plugin_owned_resources', to='rbac.organization')),
+                ('org', models.ForeignKey(db_index=False, on_delete=django.db.models.deletion.CASCADE, related_name='plugin_owned_resources', to='rbac.organization')),
             ],
             options={
                 'indexes': [models.Index(fields=['org', 'plugin_identifier'], name='plugins_owned_by_org_plugin')],

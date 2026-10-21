@@ -11,7 +11,10 @@ A plugin is a web page, which nginx serves, and may have a Python backend. Backe
 **gateway** asks Django about every request to `<identifier>.<PLUGINS_BASE_DOMAIN>/api/` before
 passing it on. A backend calls EpicStaff's API as the plugin's **service account** in each
 organization the plugin is granted to, within the access its package declares (see
-[Service accounts](#service-accounts)). A deployment whose plugins are all frontend-only does not
+[Service accounts](#service-accounts)). A backend may also keep its data in a database of its own
+on `plugins_db` (see [Plugin databases](#plugin-databases)), and reach the internet hosts its
+package declares through the egress proxy, `plugins_egress` (see
+[Outbound access](#outbound-access)). A deployment whose plugins are all frontend-only does not
 need the node.
 
 ## Before you start
@@ -92,7 +95,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 
 | Variable | Default | What to set |
 |---|---|---|
-| `COMPOSE_PROFILES` | `none` (production) | Add `plugins` (for example `plugins` or `chat,plugins`) to start the `es_plugins` container. |
+| `COMPOSE_PROFILES` | `none` (production) | Add `plugins` (for example `plugins` or `chat,plugins`) to start the `es_plugins`, `plugins_db` and `plugins_egress` containers. |
 | `PLUGINS_NODE_KEY` | `none` | A random value of at least 32 characters: `openssl rand -hex 32`. The node authenticates to Django with it; Django stores only its hash and takes a new value at its next start. Required with plugins on. |
 | `PLUGINS_NODE_NAME` | `node-1` | The node's name, shown on each plugin's Runtime tab. |
 | `PLUGINS_NODE_UID_RANGE` | `20000-20999` | The Unix user ids the node runs plugin backends as, one per plugin: `<start>-<end>`, with 10000 < start ≤ end < 60000 and at least 10 ids. **Nothing else on the Docker host may use these ids**: process limits count per user id across the whole host, not per container. Two nodes on one host need ranges that do not overlap. |
@@ -103,6 +106,20 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `ES_PLUGINS_DISK_MB_PER_PLUGIN` | `2048` | Disk, in MiB, that each plugin backend's own files (its HOME and TMPDIR) may take, the same for every plugin. See [Disk](#disk). |
 | `ES_PLUGINS_FILES_PER_PLUGIN` | `100000` | Files, directories and links that each plugin backend's HOME may hold, the same for every plugin. See [Disk](#disk). |
 
+**Plugin databases** (see [Plugin databases](#plugin-databases))
+
+| Variable | Default | What to set |
+|---|---|---|
+| `PLUGINS_DB_SUPERUSER_PASSWORD` | `none` | `openssl rand -hex 32`. The `postgres` superuser's password, used once, when `plugins_db` first initializes its volume. The superuser works only over the container's own socket, never over the network. |
+| `PLUGINS_DB_ADMIN_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_admin`, the plugin node's login on `plugins_db`, which creates every plugin's database and roles. `plugins_db` sets it at its first start and es_plugins logs in with it, so both must have the same value. It can read every plugin's data: keep it like a root password. |
+| `PLUGINS_DB_BACKUP_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_backup`, which may read every plugin's data for backups before upgrades. `plugins_db` creates it at its first start; nothing logs in with it in this version. |
+| `PLUGINS_DB_MAX_CONNECTIONS` | `200` | `plugins_db`'s connection limit. At least the sum of the plugins' database connection limits plus 10; 5 of these are kept for the plugin node. |
+
+The three passwords must each be at least 32 characters, and `none` is refused, whenever the
+`plugins` profile runs. `plugins_db` reads them only when it initializes an empty volume: changing
+a value in `src/.env` later changes nothing in the database (see
+[Plugin databases](#plugin-databases) for how to change one).
+
 **Platform maximums** (what a plugin may ask for; a package asking for more is refused at upload)
 
 | Variable | Default | Meaning |
@@ -111,7 +128,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE` | `120` | Highest rate a public path may declare, counted per client address. |
 | `PLUGINS_MAX_REQUEST_BODY_MB` | `20` | Largest request body nginx accepts on a plugin host (a whole number of MiB above 0); a public path's own cap may not be larger. |
 | `PLUGINS_MAX_REQUESTS_PER_MINUTE` | `600` | Highest rate of calls to EpicStaff's API a plugin may ask for. It is counted per service account, so per organization the plugin is granted to; a call over the rate gets `429` with `Retry-After`. |
-| `PLUGINS_MAX_DB_CONNECTIONS`, `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS` | `20`, `60` | Accepted and checked against manifests, not enforced yet. |
+| `PLUGINS_MAX_DB_CONNECTIONS`, `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS` | `20`, `60` | Highest connection limit and statement timeout a plugin's database may ask for. The node sets both on the plugin's database role and restores them within a minute if the plugin changes them. |
 
 [Limits](../reference/limits.md) says which limits this version enforces and how.
 
@@ -123,10 +140,15 @@ the node:
 ```bash
 cd src
 docker compose -f docker-compose.yaml --env-file ./.env up -d django_app epicstaff-nginx frontend
-docker compose -f docker-compose.yaml --env-file ./.env --profile plugins up -d es_plugins
+docker compose -f docker-compose.yaml --env-file ./.env --profile plugins up -d plugins_db plugins_egress es_plugins
 ```
 
-With `plugins` in `COMPOSE_PROFILES`, a plain `docker compose up -d` starts the node too.
+With `plugins` in `COMPOSE_PROFILES`, a plain `docker compose up -d` starts these three too.
+
+`docker compose ps plugins_db` shows it `healthy` once its first start has created its roles.
+`docker compose logs plugins_egress` shows `egress firewall installed`, then `waiting for the plugin
+node's policy files` until the node has started, and then Squid starting; it turns `healthy` once
+Squid accepts connections.
 
 The frontend writes its `config.json` when it starts. If you mount your own `config.json` instead,
 add `"isPluginsEnabled": true` to it.
@@ -167,8 +189,19 @@ plugins off nginx does not read the plugin values at all.
 
 **es_plugins** exits when `PLUGINS_NODE_UID_RANGE` is not a valid range, `PLUGINS_NODE_KEY` is
 `none` or shorter than 32 characters, or `ES_PLUGINS_DISK_MB_PER_PLUGIN` or
-`ES_PLUGINS_FILES_PER_PLUGIN` is not a whole number above 0, and when a port of its range (20001–20999) cannot be bound
+`ES_PLUGINS_FILES_PER_PLUGIN` is not a whole number above 0, `PLUGINS_DB_ADMIN_PASSWORD` is
+`none` or shorter than 32 characters, the egress policy volume cannot be written, and when a port of its range (20001–20999) cannot be bound
 at start-up; Docker then restarts it, and its log names the variable or the port.
+
+**plugins_db**, when it initializes an empty volume, refuses a password variable that is `none`
+or shorter than 32 characters. Its log names the variables, never their values, and it removes the
+cluster it had begun, so every later start initializes again and refuses again until the values
+are fixed. Once it has initialized, it no longer reads them.
+
+**plugins_egress** exits when IPv6 is on in its container (the compose file's sysctls turn it
+off), when it cannot install or verify its firewall, or when Squid would start with more than the
+`SETUID` and `SETGID` capabilities (`refusing to start`: the container lacks `SETPCAP`; see
+[Outbound access](#outbound-access)).
 
 **frontend** exits when `PLUGINS_ENABLED` is not a boolean.
 
@@ -255,11 +288,32 @@ refused with `plugin_suspended`, then resumes and checks that a new key appears 
 one stays refused, and the run starts. It starts one session of the flow and stops it again. Extra
 arguments go to curl as above.
 
-The repository has two labs that need nothing but Docker: `bash src/nginx/tests/gateway/run.sh`
-checks the gateway's header and path rules and its overhead under load, and
+Then check outbound access, on the machine that runs the stack, with a plugin that declares an
+outbound host (Weather 0.5.0 declares `geocoding-api.open-meteo.com`). Pass the plugin's user id,
+which its Runtime tab shows:
+
+```bash
+PLUGIN_IDENTIFIER=weather PLUGIN_UID=20001 bash src/plugins_egress/smoke/check_egress.sh
+```
+
+It asks the egress proxy from inside `es_plugins` as the plugin's own user id, with the proxy URL
+the plugin's process got, which it reads the way the plugin could and never prints. It checks that
+the declared host is reached; that an undeclared host, IP addresses in several spellings, other
+ports and plain http are refused, each with its reason; that wrong or missing credentials get
+`407`; that there is no way out around the proxy; that the plugin cannot read the proxy's policy;
+the proxy container's IPv6, firewall and capabilities; and that its log names the plugin and holds
+no credential. `DECLARED_URL` changes the URL it fetches.
+
+The repository has four labs that need nothing but Docker: `bash src/nginx/tests/gateway/run.sh`
+checks the gateway's header and path rules and its overhead under load;
 `bash src/es_plugins/lab/run.sh` runs the node exactly as compose defines it with probe plugins
 and checks what a plugin process can and cannot do (it downloads wheels, so it needs network
-access). If you change the nginx templates, `bash src/nginx/tests/check_templates.sh`
+access); `bash src/plugins_db/lab/run.sh` starts `plugins_db` as compose defines it, runs the
+node's database tests against it and checks its roles and grants (it needs the es_plugins and
+plugin_sdk venvs, `make uv-sync svc=<service>`); and `bash src/plugins_egress/lab/run.sh` runs the
+egress proxy as compose defines it against lab clients, a lab DNS server and a private "victim",
+including a forced DNS-rebinding attempt (it needs internet access; `--timings` also measures how
+long policy changes take). If you change the nginx templates, `bash src/nginx/tests/check_templates.sh`
 renders them with every combination of settings, runs `nginx -t` on each and checks that only
 Django receives or sets cookies (needs Docker and `openssl`).
 
@@ -298,7 +352,8 @@ The node container runs with a read-only root file system, `no-new-privileges`, 
 `SETUID`, `SETGID` and `CHOWN` capabilities, for its launcher process. Each plugin backend runs
 as its own user id from `PLUGINS_NODE_UID_RANGE`, without any capability, with at most 64
 processes and 1024 open files, in its own session. Its secret settings reach it only in a file
-that only its own user id can read.
+that only its own user id can read; its database URL and its proxy URL, credentials included, are
+in its environment, which only its own user id can read too.
 
 A plugin **cannot** read another plugin's settings, environment, code, data or Python
 environment, signal or trace its processes, or reach the node's launcher. A plugin **can** see
@@ -312,9 +367,11 @@ When it starts, the node binds every port of its range (20001–20999) and keeps
 each plugin's process the listening socket of that plugin's port, and `epicstaff-plugin` serves
 on it. No plugin can bind a port of the range at all.
 
-The node is on an internal Docker network only, `plugins-network`, which it shares with nothing
-but nginx: plugin backends cannot reach the internet or EpicStaff's other services in this
-version. nginx refuses every request from the network's subnet (`PLUGINS_NETWORK_SUBNET`) on
+The node is on two internal Docker networks only: `plugins-network`, which it shares with nothing
+but nginx and the egress proxy, and `plugins-db-network`, which it shares with nothing but
+`plugins_db`. Plugin backends cannot reach EpicStaff's other services, and reach the internet only
+through the egress proxy, to the hosts their package declares (see
+[Outbound access](#outbound-access)). nginx refuses every request from the network's subnet (`PLUGINS_NETWORK_SUBNET`) on
 EpicStaff's own site and on the plugin hosts, so a plugin backend cannot use EpicStaff or another
 plugin the way a browser does. All it can reach is EpicStaff's API through nginx's internal
 listener (`epicstaff-api:8081`), which serves only that subnet and refuses the API's login,
@@ -327,6 +384,119 @@ process of the plugin's user id holds, so a plugin can overshoot it briefly; the
 `ES_PLUGINS_MEMORY` is the hard limit for all of them. `/dev/shm` is read-only, so plugin
 backends have no POSIX shared memory (see [Limits](../reference/limits.md)). Disk is capped per
 plugin too; see [Disk](#disk).
+
+## Plugin databases
+
+A plugin whose package declares a database gets one on `plugins_db`, a PostgreSQL server of its
+own that only the plugin node reaches (Django never connects to it). When a SuperAdmin approves the
+plugin, the node creates the database `plugin_<id>` and three roles, `<id>_owner`, `<id>_app` and
+`<id>_job`, where `<id>` is the plugin's identifier with `-` turned into `_`, and runs the
+package's migrations. The backend connects as `<id>_app` with the `DATABASE_URL` in its
+environment. No role of one plugin can connect to another plugin's database, nor to the server's
+own `postgres` and `template1`. What a plugin sees of its database is in
+[Plugin database](../reference/database.md).
+
+- **One superuser step.** At its first start, `plugins_db` creates `plugins_admin` and
+  `plugins_backup` and closes the maintenance databases to everyone else. The `postgres`
+  superuser works only over the container's own socket (`docker compose exec -u postgres plugins_db
+  psql`), never over the network; `pg_hba.conf` refuses it there.
+- **`plugins_admin` lives only in the plugin node.** It creates every plugin's roles, can read
+  every plugin's data and can take over any plugin's roles. Keep `PLUGINS_DB_ADMIN_PASSWORD` like a
+  root password. The node never runs a plugin's SQL as `plugins_admin`: migrations run as the
+  plugin's owner role, which can log in only while they run.
+- **Changing a password.** `plugins_db` reads the password variables only on its first start. To
+  change `plugins_admin`'s, set it in the server first, then in `src/.env`, and recreate
+  es_plugins:
+  ```bash
+  docker compose exec -u postgres plugins_db psql -c '\password plugins_admin'
+  docker compose up -d es_plugins
+  ```
+- **Limits.** Each plugin's database role gets its effective connection limit and statement
+  timeout (the Limits tab). The node checks them every minute: a changed timeout is restored
+  ("Timeout restored at …" on the Runtime tab), and a membership or database privilege changed
+  outside EpicStaff stops the plugin ("database permissions changed outside EpicStaff").
+- **Sizing.** Set `PLUGINS_DB_MAX_CONNECTIONS` to at least the sum of the plugins' connection
+  limits plus 10. Five connections are kept for the plugin node, so plugins can never lock it out,
+  but plugins can take each other's slots: together they may use every free one, and a new
+  connection then fails until one closes.
+- **Disk.** PostgreSQL cannot cap one database's size. The Runtime tab shows each plugin's
+  database size; watch the `plugins_pgdata` volume, and put it on a file system of its own for a
+  hard limit.
+
+### Backing up plugin databases
+
+Back up the `plugins_pgdata` volume together with EpicStaff's database, taken at the same moment:
+each plugin's database belongs to that plugin's installation in EpicStaff's database. Stop
+`es_plugins` and `plugins_db`, copy the volume, and start them again. Restore the volume the same
+way. Do not restore a plugin database with `psql` or `pg_restore` as the superuser: a dump holds
+SQL the plugin wrote, which would then run with the superuser's rights.
+
+### Leftovers from another EpicStaff database
+
+Restoring one of the two without the other, or resetting EpicStaff's database while
+`plugins_pgdata` stays, leaves databases and roles in `plugins_db` that the current installation
+did not create. The node refuses to use them, and the Runtime tab shows "plugins_db already has …
+that this plugin installation did not create". Either restore the matching pair, or remove the
+leftovers over the socket, which deletes that plugin's data:
+
+```bash
+docker compose exec -u postgres plugins_db psql -c 'DROP DATABASE "plugin_<id>" WITH (FORCE)' \
+  -c 'DROP ROLE "<id>_app", "<id>_job", "<id>_owner"'
+```
+
+Then press Restart on the plugin's Runtime tab.
+
+## Outbound access
+
+A plugin backend reaches the internet only through `plugins_egress`, a Squid proxy on
+`plugins-network` with a network of its own to the outside (`plugins-egress-network`). The node
+gives each backend its proxy URL in `HTTPS_PROXY` (and `https_proxy`, `HTTP_PROXY`, `http_proxy`).
+The proxy allows a plugin an HTTPS tunnel (`CONNECT`) to port 443 of the hosts its package declares
+in `outbound_hosts`, which the review shows before approval, and nothing else. Writing a backend
+for it is in [Call the internet from your backend](../how-to/outbound-hosts.md).
+
+- **One password per plugin.** The node makes a plugin's proxy password when it starts the
+  plugin's process and keeps it only in memory and in that process's environment; the proxy gets
+  a bcrypt hash of it. The node writes the hashes and the host lists into the `plugin_egress_policy`
+  volume, below a directory no plugin's user id can enter, so no plugin reads another's. The
+  volume is rebuilt at every start of the node and needs no backup.
+- **Changes apply within about 30 s.** A newly started plugin works at once. A host leaving a
+  plugin's list, or a plugin stopping for good, ends its access within about 30 s, without a
+  restart of the proxy. Suspending a plugin in one organization does not change its outbound
+  access: that belongs to the plugin, whose process keeps serving its other organizations.
+- **HTTPS on 443 only.** Plain http, other ports, hosts off the list and IP addresses get `403`,
+  with the reason in the `X-Squid-Error` header; wrong or missing credentials get `407`. A name
+  that resolves to a private, loopback, link-local or multicast address is refused
+  (`ERR_PRIVATE_DST`).
+- **A firewall behind Squid.** Squid checks the resolved address before it connects, but looks
+  the name up again to connect, so a DNS answer that changes in between could reach a private
+  address. At start-up the proxy's entrypoint installs a firewall in its own container's network
+  namespace that refuses every connection to those ranges. That is the only use of `NET_ADMIN`.
+  The entrypoint then takes every capability but `SETUID` and `SETGID`, which Squid needs to
+  switch to its own user, out of Squid's bounding set: no Squid or helper process holds
+  `NET_ADMIN`, so none can change the firewall. Taking capabilities out of the bounding set needs
+  `SETPCAP`, so the container has it too; without it, `setpriv` reports success and changes
+  nothing, so the entrypoint checks the result and refuses to start Squid when anything more would
+  remain. `CHOWN` lets the entrypoint hand the container's log output to Squid's user.
+- **IPv6 is off** in that container (the compose file's sysctls; the entrypoint checks it).
+  Squid therefore logs `aclIpParseIpData: IPv6 has not been enabled` and
+  `BCP 177 violation. Detected non-functional IPv6 loopback` at start: it ignores the IPv6 lines
+  of its private ranges, and no IPv6 connection can leave the container. A host with IPv6
+  addresses only cannot be reached.
+- **DNS works with Docker's resolver or the host's**, private resolvers included: the firewall
+  lets DNS out to any address, and Squid opens tunnels to port 443 only.
+- **Logs.** `docker compose logs plugins_egress` has a line per request with `user=<identifier>`,
+  the host and port, the address connected to and the refusal reason, and never a credential or a
+  header. Squid starts without `-d`: its log is already the container's output, which `-d` would
+  print twice.
+- **Your own public address.** An approved host that resolves to this deployment's own public
+  address reaches services on that address that the internet cannot reach. Review such hosts, or
+  block that address with the Docker host's firewall.
+- **What a host list does not stop.** The proxy does not decrypt tunnels, so a host on a content
+  delivery network can be asked, inside TLS, for another site it serves; a `*.` entry allows every
+  name below it. Read such hosts in a review as access to more than their name.
+- **No upstream proxy.** The proxy connects to the internet directly; an upstream corporate proxy
+  is not supported in this version.
 
 ## Service accounts
 
@@ -482,6 +652,12 @@ memory, the last error and, for a failed plugin, the end of its log.
 | `its disk use cannot be measured: …` | The plugin hid part of its files from the node (an unreadable directory, more than 128 nested directories, a process that does not let the node see its open files). The publisher must fix the backend. |
 | `the node's disk has only … MB free, and installing needs 2048 MB` | The `es_plugins_data` volume is below its install reserve. Free space on it (or give it more), then press Restart. |
 | `the node's disk is almost full (…), and this plugin uses the most of it (…)` | The volume fell below its floor and this plugin used the most of it. Free space, then press Restart; consider a file system of its own for the volume. |
+| Database: provisioning, with a connection error as the last error | The node cannot reach or log in to `plugins_db`, and tries again every 30 s. Check `docker compose ps plugins_db`; `PLUGINS_DB_ADMIN_PASSWORD` must be the value `plugins_db` was first started with (see [Plugin databases](#plugin-databases)). |
+| "plugins_db already has … that this plugin installation did not create" | A database or roles of that name are left from another EpicStaff database. See [Leftovers from another EpicStaff database](#leftovers-from-another-epicstaff-database). |
+| A migration's name with a line and an SQL error, or "… changed after it was applied" | A migration of the package failed and was rolled back, or differs from the one that ran. The publisher fixes the package ([Plugin database](../reference/database.md)). |
+| "database permissions changed outside EpicStaff: …" | Someone changed the plugin's roles or its database's grants by hand; the node stopped the plugin. Undo the change, or remove the plugin's database (see above), then press Restart. |
+| The backend's outbound requests fail with `403` and `ERR_HOST_NOT_ALLOWED` | The host is not in the package's `outbound_hosts`. The publisher declares it in a new version. |
+| The backend's outbound requests time out or fail with `Connection refused` | `plugins_egress` is not running, or still waits for the node's policy files: `docker compose logs plugins_egress`. |
 | Restarts with `more than its memory limit` | The plugin needs more memory than its effective limit: remove a lower override on the Limits tab, or ask the publisher to request more (up to `PLUGINS_MAX_PROCESS_MEMORY_MB`). |
 | Sign-in works when the plugin is opened in its own tab, not inside EpicStaff | EpicStaff and the plugin hosts are not on the same registrable domain, so the browser does not send EpicStaff's login cookie inside the frame (see [Before you start](#before-you-start)). |
 | A person sees "You do not have access to <plugin> in this organization" | Their role in that organization gives no View on the plugin, the plugin is not granted to the organization (or the grant is suspended), or they are not a member of it. A SuperAdmin is no exception: only a membership counts. |
@@ -501,7 +677,7 @@ A backend's output is also in the node's log, each line prefixed with `[<identif
 | `NGINX_SSL_MODE` | `off` |
 | `DJANGO_FRONTEND_BASE_URL` | `http://epicstaff.localhost` |
 | `DJANGO_REFRESH_COOKIE_SECURE` | `false` |
-| `PLUGINS_GATEWAY_SECRET`, `PLUGINS_NODE_KEY` | each the output of `openssl rand -hex 32` |
+| `PLUGINS_GATEWAY_SECRET`, `PLUGINS_NODE_KEY`, `PLUGINS_DB_SUPERUSER_PASSWORD`, `PLUGINS_DB_ADMIN_PASSWORD`, `PLUGINS_DB_BACKUP_PASSWORD` | each the output of `openssl rand -hex 32` |
 | `COMPOSE_PROFILES` | add `plugins` |
 
 Open EpicStaff at `http://epicstaff.localhost`, not `http://localhost`: a plugin at
@@ -520,18 +696,23 @@ differently, so test Safari against a real domain over HTTPS, or against `*.test
 | Approved plugins' web files, as served | The `plugin_spa` Docker volume: django_app writes it, epicstaff-nginx reads it |
 | Plugins, approvals, grants, settings (secrets encrypted) and limits | EpicStaff's database |
 | Plugin backends' own files, their installed code and Python environments, their logs | The `es_plugins_data` Docker volume |
+| Plugin databases | The `plugins_pgdata` Docker volume (`plugins_db`) |
+| The egress proxy's host lists and password hashes | The `plugin_egress_policy` Docker volume, rebuilt at every start of the node |
 
-Back up the `plugin_spa` and `es_plugins_data` volumes with the bucket and the database. The node
-rebuilds code and Python environments from the packages when they are missing; plugins' own files
-in the volume it cannot rebuild.
+Back up the `plugin_spa`, `es_plugins_data` and `plugins_pgdata` volumes with the bucket and the
+database, `plugins_pgdata` from the same moment as the database (see
+[Backing up plugin databases](#backing-up-plugin-databases)). The node rebuilds code and Python
+environments from the packages when they are missing; plugins' own files in the volume it cannot
+rebuild. `plugin_egress_policy` needs no backup.
 
 ## Turning plugins off
 
-Set `PLUGINS_ENABLED=false`, recreate django_app, epicstaff-nginx and frontend, and stop the node
-(`docker compose stop es_plugins`, and remove `plugins` from `COMPOSE_PROFILES`). Plugin host
+Set `PLUGINS_ENABLED=false`, recreate django_app, epicstaff-nginx and frontend, and stop the node,
+the plugin databases and the egress proxy (`docker compose stop es_plugins plugins_db
+plugins_egress`, and remove `plugins` from `COMPOSE_PROFILES`). Plugin host
 names then reach EpicStaff's own pages, the plugin API answers 404, the plugins leave the left
-bar and no plugin key is accepted any more (401); people and API keys work as before. Nothing is deleted: packages, approvals, grants, settings, published files and the node's
-volume stay, and come back when you turn the platform on again.
+bar and no plugin key is accepted any more (401); people and API keys work as before. Nothing is deleted: packages, approvals, grants, settings, published files, the node's
+volume and the plugin databases stay, and come back when you turn the platform on again.
 
 ## Behind another proxy or load balancer
 
@@ -573,10 +754,12 @@ This version adds required variables: `PLUGINS_GATEWAY_SECRET`, `PLUGINS_NODE_NA
 `PLUGINS_NETWORK_SUBNET`, `PLUGINS_MAX_PROCESS_MEMORY_MB`, `PLUGINS_MAX_DB_CONNECTIONS`,
 `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS`, `PLUGINS_MAX_REQUESTS_PER_MINUTE`,
 `PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE`, `PLUGINS_MAX_REQUEST_BODY_MB`, `ES_PLUGINS_CPUS`,
-`ES_PLUGINS_MEMORY`, `ES_PLUGINS_DISK_MB_PER_PLUGIN` and `ES_PLUGINS_FILES_PER_PLUGIN`. `docker compose` refuses to start until `src/.env` has them; `make
-env-update` adds them with their defaults, which keep plugins off. Set the two secrets before
-turning plugins on, and check that the default `PLUGINS_NETWORK_SUBNET` overlaps none of your
-networks: it applies with plugins off too.
+`ES_PLUGINS_MEMORY`, `ES_PLUGINS_DISK_MB_PER_PLUGIN`, `ES_PLUGINS_FILES_PER_PLUGIN`,
+`PLUGINS_DB_SUPERUSER_PASSWORD`, `PLUGINS_DB_ADMIN_PASSWORD`, `PLUGINS_DB_BACKUP_PASSWORD` and
+`PLUGINS_DB_MAX_CONNECTIONS`. `docker compose` refuses to start until `src/.env` has them; `make
+env-update` adds them with their defaults, which keep plugins off. Set the two secrets and the
+three database passwords before turning plugins on, and check that the default
+`PLUGINS_NETWORK_SUBNET` overlaps none of your networks: it applies with plugins off too.
 
 On HTTPS deployments everyone is signed out once after this upgrade, plugins on or off: EpicStaff's
 login cookie is now `__Host-auth.refresh` (see

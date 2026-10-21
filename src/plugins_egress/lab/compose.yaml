@@ -1,0 +1,86 @@
+# The egress proxy lab: plugins_egress exactly as src/docker-compose.yaml defines it (extends: the
+# production image, capabilities, read-only root, sysctls, policy volume), with the plugin node's
+# real policy writer, two plugin clients on an internal network, and a lab DNS server and a
+# private "victim" on the way out. Run with run.sh (project plugins-egress-lab), which sets the
+# variables below and removes everything afterwards. No host ports.
+name: plugins-egress-lab
+
+x-tools: &tools
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: plugins-egress-lab-tools:local
+  init: true
+  volumes:
+    - ./tools:/lab/tools:ro
+    - ../smoke/egress_probe.py:/lab/egress_probe.py:ro
+
+x-proxy: &proxy
+  extends:
+    file: ../../docker-compose.yaml
+    service: plugins_egress
+  image: plugins-egress-lab-proxy:local
+
+services:
+  # The proxy as it ships, resolving through Docker's resolver, which forwards to labdns.
+  egress:
+    <<: *proxy
+    container_name: plugins-egress-lab
+    dns: ["${EGRESS_LAB_DNS_ADDRESS:?}"]
+
+  # The proxy as it ships, with Docker's resolver forwarding to the host's, as in the stack.
+  egress-plain:
+    <<: *proxy
+    container_name: plugins-egress-lab-plain
+    profiles: [lab]
+
+  # The rebinding race only: the production squid.conf included whole by a lab file that shortens
+  # the DNS cache to 1 s and pauses 3 s after the access rules (run.sh writes it).
+  egress-race:
+    <<: *proxy
+    container_name: plugins-egress-lab-race
+    profiles: [lab]
+    volumes:
+      - ${EGRESS_LAB_WORK:?}/race.conf:/etc/squid/squid.conf:ro
+      - ../squid.conf:/etc/squid/production.conf:ro
+      - ./tools/delay_acl.py:/lab/delay_acl:ro
+
+  # Stands in for the plugin node's agent: the only writer of the policy volume, no network.
+  writer:
+    <<: *tools
+    command: ["python", "-u", "/lab/tools/policy_writer.py", "serve"]
+    network_mode: none
+    environment:
+      PYTHONPATH: /opt/es_plugins
+    volumes:
+      - ./tools:/lab/tools:ro
+      - ../../es_plugins/es_plugins:/opt/es_plugins/es_plugins:ro
+      - plugin_egress_policy:/policy
+
+  # Plugin processes: on the internal network only, like es_plugins.
+  plugin-a:
+    <<: *tools
+    command: ["sleep", "infinity"]
+    networks: [plugins-network]
+  plugin-b:
+    <<: *tools
+    command: ["sleep", "infinity"]
+    networks: [plugins-network]
+
+  labdns:
+    <<: *tools
+    command: ["python", "-u", "/lab/tools/labdns.py"]
+    networks: [plugins-egress-network]
+
+  victim:
+    <<: *tools
+    command: ["python", "-u", "/lab/tools/victim.py"]
+    networks: [plugins-egress-network]
+
+volumes:
+  plugin_egress_policy: {}
+
+networks:
+  plugins-network:
+    internal: true
+  plugins-egress-network: {}

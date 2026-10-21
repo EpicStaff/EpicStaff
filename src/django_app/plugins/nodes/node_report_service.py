@@ -7,12 +7,14 @@ from pydantic import ValidationError
 from src.shared.models.plugin_nodes import NodeReport, PlacementReport
 from utils.logger import logger
 
+from plugins.databases.database_reports import DatabaseReportRecorder
 from plugins.exceptions import InvalidNodeReportError
 from plugins.lifecycle.hook_job_service import HookJobService
 from plugins.models import (
     PlacementHealth,
     PlacementObservedState,
     Plugin,
+    PluginDatabase,
     PluginNode,
     PluginPlacement,
     PluginState,
@@ -48,8 +50,9 @@ class NodeReportService:
         `provisioning` or `failed` plugin `running`; one reported failed makes a
         `provisioning` or `running` plugin `failed`; anything else leaves the state. A report
         about a process older than the latest restart or settings change is stored for the
-        Runtime tab but moves no state. A running hook job of the node whose result is
-        overdue fails.
+        Runtime tab but moves no state. What it says about a plugin's database goes to the
+        database's record (`DatabaseReportRecorder`), in one more query for all of them. A
+        running hook job of the node whose result is overdue fails.
         """
         now = timezone.now()
         by_id = {placement.placement_id: placement for placement in report.placements}
@@ -57,16 +60,22 @@ class NodeReportService:
             PluginNode.objects.filter(pk=node.pk).update(
                 last_seen_at=now, agent_version=report.agent_version
             )
-            placements = (
+            placements = list(
                 PluginPlacement.objects.select_for_update(of=("self",))
                 .select_related("plugin__current_package")
                 .defer("plugin__current_package__icon_bytes", "plugin__current_package__manifest")
                 .filter(node=node, pk__in=list(by_id))
             )
+            databases = _locked_reported_databases(placements, by_id)
             for placement in placements:
                 observed = by_id.pop(placement.pk)
                 _store_observation(placement, observed, now)
                 _follow_plugin_state(placement, observed)
+                record = databases.get(placement.plugin_id)
+                if record is not None:
+                    DatabaseReportRecorder().apply(
+                        record, placement.plugin.identifier, observed.database, now
+                    )
         HookJobService().fail_overdue(node)
         if by_id:
             logger.warning(
@@ -74,6 +83,22 @@ class NodeReportService:
                 node=node.name,
                 placement_ids=sorted(by_id),
             )
+
+
+def _locked_reported_databases(
+    placements: list[PluginPlacement], by_id: dict[int, PlacementReport]
+) -> dict[int, PluginDatabase]:
+    """The database records of the plugins whose report has a database section, locked, by
+    plugin id; no query when no report has one."""
+    plugin_ids = [
+        placement.plugin_id for placement in placements if by_id[placement.pk].database is not None
+    ]
+    if not plugin_ids:
+        return {}
+    return {
+        record.plugin_id: record
+        for record in PluginDatabase.objects.select_for_update().filter(plugin_id__in=plugin_ids)
+    }
 
 
 def _store_observation(placement: PluginPlacement, observed: PlacementReport, now) -> None:

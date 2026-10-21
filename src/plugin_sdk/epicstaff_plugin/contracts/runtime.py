@@ -27,6 +27,23 @@ from epicstaff_plugin.contracts.manifest import SETTING_KEY_PATTERN, PublicPath
 RUNTIME_FILE_FORMAT = 1
 RUNTIME_FILE_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_RUNTIME_FILE"
 
+# The plugin node sets these in the environment of a backend process, which only the
+# plugin's own user can read. Setting secrets stay in the runtime file; these carry the
+# platform's database and egress-proxy credentials.
+DATABASE_URL_ENVIRONMENT_VARIABLE = "DATABASE_URL"
+"""`postgresql://` URL of the plugin's own database, as its app role. Only with a database."""
+
+DATABASE_CONNECTIONS_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_DB_CONNECTIONS"
+"""The app role's connection limit, a positive integer. Only with a database."""
+
+PROXY_ENVIRONMENT_VARIABLES = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
+"""Each holds the egress proxy's URL with the plugin's own credentials. Every backend gets them."""
+
+NO_PROXY_ENVIRONMENT_VARIABLES = ("NO_PROXY", "no_proxy")
+"""Hosts reached directly: EpicStaff's internal API host, then the loopback names."""
+
+LOOPBACK_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1")
+
 
 def _http_url(value: str) -> str:
     try:

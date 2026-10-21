@@ -2,7 +2,10 @@ import json
 
 import pytest
 
+from pydantic import ValidationError
+
 from epicstaff_plugin.contracts.manifest import (
+    MAX_OUTBOUND_HOSTS,
     PluginManifest,
     manifest_json_schema,
     parse_manifest,
@@ -96,6 +99,7 @@ INVALID_CASES = [
     ("backend python 3.11", _set(("backend",), {**BACKEND, "python": "3.11"}), "manifest.backend.python"),
     ("backend entrypoint without attribute", _set(("backend",), {**BACKEND, "entrypoint": "plugin.app"}), "manifest.backend.entrypoint"),
     ("database with a migrations field", _set(("database",), {"migrations": "database/migrations/"}), "manifest.database.migrations"),
+    ("database without a backend", _set(("database",), {}), "manifest.database"),
     ("access without a backend", _set(("access",), ACCESS), "manifest.access"),
     ("access action list", _set(("access",), [{**ACCESS[0], "actions": ["list"]}], backend=True), "manifest.access[0].actions[0]"),
     ("access action repeated", _set(("access",), [{**ACCESS[0], "actions": ["read", "read"]}], backend=True), "manifest.access[0].actions"),
@@ -147,6 +151,11 @@ INVALID_CASES = [
     ("outbound IP literal", _set(("outbound_hosts",), [{**OUTBOUND_HOST, "host": "10.0.0.1"}], backend=True), "manifest.outbound_hosts[0].host"),
     ("outbound upper-case host", _set(("outbound_hosts",), [{**OUTBOUND_HOST, "host": "API.example.com"}], backend=True), "manifest.outbound_hosts[0].host"),
     ("outbound wildcard in the middle", _set(("outbound_hosts",), [{**OUTBOUND_HOST, "host": "api.*.example.com"}], backend=True), "manifest.outbound_hosts[0].host"),
+    (
+        "more outbound hosts than the cap",
+        _set(("outbound_hosts",), [{**OUTBOUND_HOST, "host": f"api{index}.example.com"} for index in range(101)], backend=True),
+        "manifest.outbound_hosts",
+    ),
     ("setting without a backend", _set(("settings",), [SETTING]), "manifest.settings"),
     ("setting key with upper case", _set(("settings",), _setting(key="Units"), backend=True), "manifest.settings[0].key"),
     ("setting type float", _set(("settings",), _setting(type="float"), backend=True), "manifest.settings[0].type"),
@@ -250,6 +259,37 @@ def test_dns_names_and_wildcards_are_accepted_outbound_hosts(manifest_document, 
     manifest_document["outbound_hosts"] = [{"host": host, "reason": "Calls it."}]
 
     assert validate_manifest(manifest_document).outbound_hosts[0].host == host
+
+
+def test_a_database_without_a_backend_is_refused_as_requires_backend(manifest_document):
+    manifest_document["database"] = {}
+
+    with pytest.raises(ValidationError) as raised:
+        PluginManifest.model_validate(manifest_document)
+
+    (error,) = raised.value.errors()
+    assert (error["loc"], error["type"], error["msg"]) == (("database",), "requires_backend", "needs a backend section")
+
+
+def test_a_database_with_a_backend_is_accepted(manifest_document):
+    _with_backend(manifest_document)
+    manifest_document["database"] = {}
+
+    assert validate_manifest(manifest_document).database is not None
+
+
+def test_the_outbound_host_cap_is_one_hundred(manifest_document):
+    _with_backend(manifest_document)
+    manifest_document["outbound_hosts"] = [
+        {"host": f"api{index}.example.com", "reason": "Calls it."} for index in range(MAX_OUTBOUND_HOSTS)
+    ]
+
+    assert MAX_OUTBOUND_HOSTS == 100
+    assert len(validate_manifest(manifest_document).outbound_hosts) == 100
+
+
+def test_the_json_schema_caps_outbound_hosts():
+    assert manifest_json_schema()["properties"]["outbound_hosts"]["maxItems"] == MAX_OUTBOUND_HOSTS
 
 
 def test_the_spa_entry_defaults_to_index_html(manifest_document):

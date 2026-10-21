@@ -51,7 +51,7 @@ describe('PluginSuspendDialogComponent', () => {
         getSuspendPreview: Mock<(identifier: string, grantId: number) => Observable<PluginSuspendPreview>>;
         suspendGrant: Mock<(identifier: string, grantId: number) => Observable<PluginGrant>>;
     };
-    let dialogRef: { close: Mock<(result?: PluginGrant) => void> };
+    let dialogRef: { close: Mock<(result?: PluginGrant) => void>; keydownEvents: Subject<KeyboardEvent> };
 
     function render(): void {
         fixture = TestBed.createComponent(PluginSuspendDialogComponent);
@@ -94,7 +94,7 @@ describe('PluginSuspendDialogComponent', () => {
             getSuspendPreview: vi.fn(() => of(buildSuspendPreview())),
             suspendGrant: vi.fn(() => of(SUSPENDED)),
         };
-        dialogRef = { close: vi.fn() };
+        dialogRef = { close: vi.fn(), keydownEvents: new Subject<KeyboardEvent>() };
         const data: PluginSuspendDialogData = { identifier: 'weather', pluginName: 'Weather', grant: GRANT };
         TestBed.configureTestingModule({
             imports: [PluginSuspendDialogComponent],
@@ -108,22 +108,34 @@ describe('PluginSuspendDialogComponent', () => {
 
     afterEach(() => vi.unstubAllGlobals());
 
-    it('waits for the preview with a spinner, and Suspend waits with it', () => {
+    it('suspends while the preview is still loading: the preview never holds the suspension back', () => {
         const preview = new Subject<PluginSuspendPreview>();
         storage.getSuspendPreview.mockReturnValue(preview);
         render();
 
         expect(storage.getSuspendPreview).toHaveBeenCalledWith('weather', GRANT.id);
         expect(element.querySelector('app-loading-spinner')).not.toBeNull();
-        expect(button('Suspend').disabled).toBe(true);
         expect(text(element.querySelector('.dialog__title'))).toBe('Suspend Weather in Acme');
         expect(text(element.querySelector('.suspend__summary'))).toContain('Weather will stop working in Acme.');
+        expect(button('Suspend').disabled).toBe(false);
+
+        button('Suspend').click();
+
+        expect(storage.suspendGrant).toHaveBeenCalledWith('weather', GRANT.id);
+        expect(dialogRef.close).toHaveBeenCalledWith(SUSPENDED);
+    });
+
+    it('shows the preview once it arrives', () => {
+        const preview = new Subject<PluginSuspendPreview>();
+        storage.getSuspendPreview.mockReturnValue(preview);
+        render();
 
         preview.next(buildSuspendPreview());
         preview.complete();
         fixture.detectChanges();
 
         expect(element.querySelector('app-loading-spinner')).toBeNull();
+        expect(items(ORGANIZATION_FLOWS)).toEqual(['Daily digest']);
         expect(button('Suspend').disabled).toBe(false);
     });
 
@@ -319,6 +331,19 @@ describe('PluginSuspendDialogComponent', () => {
         expect(dialogRef.close).toHaveBeenCalledWith();
     });
 
+    it('closes without a request on Escape, and ignores other keys', () => {
+        render();
+
+        dialogRef.keydownEvents.next(new KeyboardEvent('keydown', { key: 'Enter' }));
+        expect(dialogRef.close).not.toHaveBeenCalled();
+
+        dialogRef.keydownEvents.next(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+        expect(dialogRef.close).toHaveBeenCalledTimes(1);
+        expect(dialogRef.close).toHaveBeenCalledWith();
+        expect(storage.suspendGrant).not.toHaveBeenCalled();
+    });
+
     it('stays open with the reason when the suspension is refused', () => {
         storage.suspendGrant.mockReturnValue(
             throwError(
@@ -352,6 +377,9 @@ describe('PluginSuspendDialogComponent', () => {
         expect(element.querySelector<HTMLButtonElement>('.dialog__close')!.disabled).toBe(true);
         button('Suspend').click();
         expect(storage.suspendGrant).toHaveBeenCalledTimes(1);
+
+        dialogRef.keydownEvents.next(new KeyboardEvent('keydown', { key: 'Escape' }));
+        expect(dialogRef.close).not.toHaveBeenCalled();
 
         answer.next(SUSPENDED);
         expect(dialogRef.close).toHaveBeenCalledWith(SUSPENDED);

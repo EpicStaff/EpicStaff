@@ -90,7 +90,7 @@ describe('PluginGrantsTableComponent', () => {
     };
     let openSuspend: Mock<(data: PluginSuspendDialogData) => Observable<PluginGrant | undefined>>;
     let confirm: Mock<(options: ConfirmationDialogData) => Observable<boolean | 'close'>>;
-    let toast: { success: Mock; error: Mock };
+    let toast: { success: Mock; warning: Mock; error: Mock };
     let changes: number;
 
     function render(): void {
@@ -148,7 +148,7 @@ describe('PluginGrantsTableComponent', () => {
         };
         openSuspend = vi.fn(() => of<PluginGrant | undefined>(undefined));
         confirm = vi.fn(() => of<boolean | 'close'>(true));
-        toast = { success: vi.fn(), error: vi.fn() };
+        toast = { success: vi.fn(), warning: vi.fn(), error: vi.fn() };
         TestBed.configureTestingModule({
             imports: [PluginGrantsTableComponent],
             providers: [
@@ -502,6 +502,29 @@ describe('PluginGrantsTableComponent', () => {
         expect(storage.listGrants).toHaveBeenCalledTimes(2);
         expect(rowOf('Echo').textContent).toContain('Active');
         expect(actionLabels('Echo')).toEqual(['Suspend…']);
+    });
+
+    it('warns that the install has not finished when a resumed grant comes back with its install failed', () => {
+        const resumedFailed: PluginGrant = {
+            ...SUSPENDED,
+            state: 'install_failed',
+            allowed_actions: ['retry_install', 'suspend'],
+            suspended_at: null,
+            purge_after: null,
+        };
+        storage.listGrants.mockReturnValue(of(page([SUSPENDED])));
+        storage.resumeGrant.mockReturnValue(of(resumedFailed));
+        render();
+        storage.listGrants.mockReturnValue(of(page([resumedFailed])));
+
+        actionButton('Echo', 'Resume')!.click();
+        refresh();
+
+        expect(toast.warning).toHaveBeenCalledWith(
+            'Weather is resumed in Echo; its install has not finished. Retry it.'
+        );
+        expect(toast.success).not.toHaveBeenCalled();
+        expect(actionLabels('Echo')).toEqual(['Retry install', 'Suspend…']);
     });
 
     it('escapes the names in the resume confirmation', () => {

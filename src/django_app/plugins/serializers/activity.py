@@ -103,7 +103,8 @@ def activity_context(events: list[PluginActivityEvent]) -> dict:
 
 
 class OrganizationServiceAccountSerializer(serializers.ModelSerializer):
-    """A plugin acting in the organization, with what it declared it may do there.
+    """A plugin acting in the organization, with what it declared it may do there, the hosts it
+    may call and whether it keeps its data in a database of its own.
 
     Expects an account with its grant's plugin and current package, and `key_last_used_at`.
     """
@@ -112,10 +113,20 @@ class OrganizationServiceAccountSerializer(serializers.ModelSerializer):
     grant_state = serializers.CharField(source="grant.state")
     key_last_used_at = serializers.SerializerMethodField()
     access = serializers.SerializerMethodField()
+    outbound_hosts = serializers.SerializerMethodField()
+    has_database = serializers.SerializerMethodField()
 
     class Meta:
         model = PluginServiceAccount
-        fields = ["plugin", "grant_state", "created_at", "key_last_used_at", "access"]
+        fields = [
+            "plugin",
+            "grant_state",
+            "created_at",
+            "key_last_used_at",
+            "access",
+            "outbound_hosts",
+            "has_database",
+        ]
         read_only_fields = fields
 
     def get_plugin(self, account: PluginServiceAccount) -> dict:
@@ -127,3 +138,13 @@ class OrganizationServiceAccountSerializer(serializers.ModelSerializer):
 
     def get_access(self, account: PluginServiceAccount) -> list[dict]:
         return declared_access_rows(account.grant.plugin.current_package.parsed_manifest)
+
+    def get_outbound_hosts(self, account: PluginServiceAccount) -> list[dict]:
+        manifest = account.grant.plugin.current_package.parsed_manifest
+        return [
+            {"host": outbound.host, "reason": outbound.reason}
+            for outbound in manifest.outbound_hosts
+        ]
+
+    def get_has_database(self, account: PluginServiceAccount) -> bool:
+        return account.grant.plugin.current_package.parsed_manifest.database is not None

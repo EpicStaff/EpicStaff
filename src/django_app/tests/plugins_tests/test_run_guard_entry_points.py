@@ -4,7 +4,15 @@ import pytest
 from django.urls import reverse
 from plugins.models import GrantState
 from rest_framework.test import APIClient
-from tables.models import PythonCode, PythonCodeResult, PythonCodeTool, RealtimeAgentDefinition, RealtimeChannel, Session
+from tables.models import (
+    OpenAIRealtimeConfig,
+    PythonCode,
+    PythonCodeResult,
+    PythonCodeTool,
+    RealtimeAgentDefinition,
+    RealtimeChannel,
+    Session,
+)
 from tables.models.graph_models import PythonNode, ScheduleTriggerNode, WebhookTriggerNode
 from tables.models.webhook_models import WebhookTrigger
 from tables.services.schedule_trigger_service import ScheduleTriggerService
@@ -89,6 +97,16 @@ def test_a_trigger_test_run_is_refused(grant, acme, olga, redis_client_mock):
 
 def test_a_realtime_conversation_with_an_agent_using_the_plugin_s_config_is_refused(voice_agent, acme, olga):
     _assert_refused(olga.post("/api/init-realtime/", {"agent_definition_id": voice_agent.pk}, format="json"), acme)
+
+
+def test_a_realtime_conversation_whose_voice_config_uses_the_plugin_s_secret_is_refused(grant, acme, olga):
+    key = secret_row(acme, "Weather · voice key")
+    own(key, grant)
+    voice = OpenAIRealtimeConfig.objects.create(org=acme, custom_name="Acme voice", api_key_secret=key)
+    announcer = agent(acme, "announcer", llm_config=llm_config(acme, "Acme summaries"))
+    RealtimeAgentDefinition.objects.create(agent_definition=announcer, openai_config=voice)
+
+    _assert_refused(olga.post("/api/init-realtime/", {"agent_definition_id": announcer.pk}, format="json"), acme)
 
 
 def test_the_voice_bridge_s_realtime_start_is_refused_too(voice_agent, acme, system_client):

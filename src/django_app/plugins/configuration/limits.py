@@ -1,9 +1,10 @@
 """Per-plugin limits: what the manifest asks for, the platform maximums, and the SuperAdmin's overrides.
 
 The effective limit is the lowest of the three, so an override can only lower what the
-plugin gets. This version enforces `memory_mb` (the node's watchdog), `cpu_priority` (nice)
-and `requests_per_minute` (the service-account throttle, per organization); the database
-limits are recorded and checked against the maximums but nothing applies them yet.
+plugin gets. `memory_mb` is enforced by the node's watchdog, `cpu_priority` by nice and
+`requests_per_minute` by the service-account throttle, per organization. For a plugin with a
+database, `db_connections` is its app role's connection limit and `statement_timeout_seconds`
+its app role's statement timeout, which the node restores when the plugin changes it.
 """
 
 from dataclasses import dataclass
@@ -32,15 +33,8 @@ PLATFORM_DEFAULTS: dict[str, Any] = {
     "requests_per_minute": 120,
     CPU_PRIORITY: NORMAL_PRIORITY,
 }
-# Which limits something applies in this version (the database ones arrive with plugin
-# databases).
-ENFORCED_LIMITS = {
-    "memory_mb": True,
-    CPU_PRIORITY: True,
-    "db_connections": False,
-    "statement_timeout_seconds": False,
-    "requests_per_minute": True,
-}
+# The limits only a plugin with a database has something to apply them to.
+DATABASE_LIMITS = ("db_connections", "statement_timeout_seconds")
 # The environment variable behind each platform maximum, for the plugins.E009 check.
 MAXIMUM_SETTINGS = {
     "memory_mb": "PLUGINS_MAX_PROCESS_MEMORY_MB",
@@ -141,12 +135,14 @@ class PluginLimits:
     overrides: dict[str, Any]
     effective: dict[str, Any]
     enforced: dict[str, bool]
+    has_database: bool
 
 
 def plugin_limits(plugin: Plugin, manifest: PluginManifest) -> PluginLimits:
     """Work out a plugin's limits from its current manifest, the maximums and its overrides."""
     maximums = PlatformMaximums.from_settings()
     requested = _requested(manifest, maximums)
+    has_database = manifest.database is not None
     overrides = dict(plugin.limit_overrides or {})
     effective = {
         name: min(
@@ -166,7 +162,8 @@ def plugin_limits(plugin: Plugin, manifest: PluginManifest) -> PluginLimits:
         platform_max=maximums.as_limit_values(),
         overrides=overrides,
         effective=effective,
-        enforced=dict(ENFORCED_LIMITS),
+        enforced={name: name not in DATABASE_LIMITS or has_database for name in LIMIT_NAMES},
+        has_database=has_database,
     )
 
 
@@ -198,7 +195,8 @@ class PluginLimitsService:
         """Apply `changes` (`null` removes an override) and return the plugin's limits.
 
         A changed `memory_mb` or `cpu_priority` changes the node's desired state, which
-        restarts the process with the new cap.
+        restarts the process with the new cap; so does a changed database limit of a plugin
+        with a database, after the node applies it to the app role.
 
         Raises:
             InvalidPluginLimitsError: An unknown limit, a value that is not a positive

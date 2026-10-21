@@ -15,6 +15,10 @@ export const UNTRUSTED_PACKAGE_WARNING =
     'This package is not signed by a key this deployment trusts. Installing it runs code nobody here has verified, ' +
     'with the access listed below.';
 
+/** Under the outbound hosts a package declares. */
+export const OUTBOUND_HOSTS_NOTE =
+    'Reached over HTTPS on port 443 only, through the egress proxy. Every other host is refused.';
+
 /** The only icon sources a review may carry; anything else is not shown. */
 const ICON_DATA_URL_PREFIXES = ['data:image/svg+xml;base64,', 'data:image/png;base64,'];
 
@@ -25,7 +29,7 @@ export interface PluginApproveRequest {
 /**
  * Everything in a package a SuperAdmin decides on: identity and publisher, trust and signature, review warnings, the
  * access it declares to EpicStaff, the permissions it gives people (with the built-in role defaults), public paths,
- * outbound hosts, settings, limits, hooks and the package itself.
+ * outbound hosts, its database, settings, limits, hooks and the package itself.
  *
  * For a pending package it offers Approve and Reject. Approving an untrusted package needs the acknowledgement box
  * ticked; rejecting asks for confirmation. The panel only asks — its container calls the API.
@@ -77,6 +81,17 @@ export class PluginReviewPanelComponent {
             methodsLabel: publicPath.methods.join(', '),
         }))
     );
+    /** What approving sets up for a package with a database; `null` without one. */
+    protected readonly databaseText = computed(() => {
+        const contents = this.review().contents;
+        if (!contents.has_database) return null;
+        const count = contents.migration_count;
+        const migrations = count === 1 ? '1 migration runs' : `${count} migrations run`;
+        return (
+            "Gets its own database on this deployment's plugin database server, set up when you approve. " +
+            `${migrations} before the backend first starts. Only this plugin's backend can connect to it.`
+        );
+    });
     protected readonly hooksLabel = computed(() => {
         const hooks = this.review().hooks;
         const enabled = [
@@ -88,6 +103,7 @@ export class PluginReviewPanelComponent {
     });
 
     protected readonly untrustedWarning = UNTRUSTED_PACKAGE_WARNING;
+    protected readonly outboundHostsNote = OUTBOUND_HOSTS_NOTE;
 
     private readonly confirmation = inject(ConfirmationDialogService);
     private readonly destroyRef = inject(DestroyRef);

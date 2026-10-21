@@ -65,6 +65,8 @@ MAX_COMPRESSION_RATIO = 100
 MIN_RATIO_CHECKED_BYTES = 1024 * 1024
 MAX_SPA_FILES = 2000
 MAX_SPA_BYTES = 50 * 1024 * 1024
+# The plugin node holds a package's migrations in memory while it runs them.
+MAX_MIGRATIONS_TOTAL_BYTES = 64 * 1024 * 1024
 MAX_ICON_BYTES = 64 * 1024
 MAX_MANIFEST_BYTES = 256 * 1024
 MAX_CONTENTS_BYTES = 16 * 1024 * 1024
@@ -438,15 +440,24 @@ def _backend_problems(manifest: PluginManifest, files: Mapping[str, PackageFile]
 def _migration_problems(files: Mapping[str, PackageFile]) -> list[Problem]:
     problems = []
     numbers: dict[str, str] = {}
+    total_bytes = 0
     for path in sorted(files):
         if not (match := MIGRATION_PATTERN.match(path)):
             continue
+        total_bytes += files[path].size
         number = match.group(1)
         if number in numbers:
             problems.append(
                 Problem(archive_file_loc(path), f"has the same number as {numbers[number]}")
             )
         numbers[number] = path
+    if total_bytes > MAX_MIGRATIONS_TOTAL_BYTES:
+        problems.append(
+            Problem(
+                f"{PACKAGE_LOC}.database",
+                f"holds more than {MAX_MIGRATIONS_TOTAL_BYTES} bytes of migrations",
+            )
+        )
     return problems
 
 

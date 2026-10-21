@@ -26,6 +26,11 @@
     box-sizing: border-box;
 }
 
+/* A class that sets `display` would otherwise win over the browser's own rule for `hidden`. */
+[hidden] {
+    display: none !important;
+}
+
 body {
     margin: 0;
     background: var(--es-color-background);
@@ -64,6 +69,7 @@ body {
 
 .nav {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
@@ -249,4 +255,37 @@ body {
 
 .form--inline .button {
     align-self: flex-end;
+}
+
+a.button {
+    text-decoration: none;
+}
+
+.section-title {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 500;
+}
+
+.places {
+    display: flex;
+    flex-direction: column;
+    max-width: 640px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.place {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--es-color-divider-subtle);
+}
+
+.place .button {
+    align-self: center;
 }

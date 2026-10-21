@@ -57,10 +57,28 @@ export interface LlmConfigRef {
     name: string;
 }
 
+/** A place the search found, and what saving it sends. */
+export interface PlaceCandidate {
+    name: string;
+    /** The region within the country, when the search knows one. */
+    admin1: string | null;
+    country: string;
+    latitude: number;
+    longitude: number;
+}
+
+/** A place the organization saved. */
+export interface SavedPlace extends PlaceCandidate {
+    id: number;
+    created_at: string;
+}
+
 /** The longest city name the backend takes. */
 export const MAX_CITY_LENGTH = 100;
 /** The longest API key the backend takes. */
 export const MAX_API_KEY_LENGTH = 4096;
+/** The longest place name the search takes. */
+export const MAX_PLACE_QUERY_LENGTH = 100;
 
 const JSON_HEADERS = { 'content-type': 'application/json', accept: 'application/json' };
 
@@ -115,6 +133,50 @@ export function saveLlmSettings(
         const config = parseLlmConfigAnswer(body);
         return config === null ? undefined : config;
     });
+}
+
+/** The organization's saved places, in the order the backend lists them. */
+export function listPlaces(fetchApi: ApiFetch): Promise<ApiResult<SavedPlace[]>> {
+    return call(fetchApi, '/api/places', { method: 'GET' }, 200, [], (body) => {
+        if (!isRecord(body)) return undefined;
+        const places = body['places'];
+        return Array.isArray(places) && places.every(isSavedPlace) ? places : undefined;
+    });
+}
+
+/** Up to five places named like `query`, which the backend looks up at Open-Meteo through the egress proxy. */
+export function searchPlaces(
+    fetchApi: ApiFetch,
+    query: string
+): Promise<ApiResult<PlaceCandidate[], 'invalid_request' | 'lookup_failed'>> {
+    const path = `/api/places/search?q=${encodeURIComponent(query)}`;
+    return call(fetchApi, path, { method: 'GET' }, 200, ['invalid_request', 'lookup_failed'], (body) => {
+        if (!isRecord(body)) return undefined;
+        const results = body['results'];
+        return Array.isArray(results) && results.every(isPlaceCandidate) ? results : undefined;
+    });
+}
+
+/** Saves a search result for the organization. */
+export function addPlace(
+    fetchApi: ApiFetch,
+    place: PlaceCandidate
+): Promise<ApiResult<SavedPlace, 'already_saved' | 'forbidden'>> {
+    // Exactly the search result's fields: the backend refuses any other key.
+    const { name, admin1, country, latitude, longitude } = place;
+    const init = {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ name, admin1, country, latitude, longitude }),
+    };
+    return call(fetchApi, '/api/places', init, 201, ['already_saved', 'forbidden'], (body) =>
+        isSavedPlace(body) ? body : undefined
+    );
+}
+
+/** Removes one of the organization's places; `not_found` when it is gone already. */
+export function removePlace(fetchApi: ApiFetch, placeId: number): Promise<ApiResult<null, 'not_found' | 'forbidden'>> {
+    return call(fetchApi, `/api/places/${placeId}`, { method: 'DELETE' }, 204, ['not_found', 'forbidden'], () => null);
 }
 
 /** What to show for a failure every route may answer, or for one the caller did not expect. */
@@ -210,6 +272,30 @@ function isForecastDay(value: unknown): value is ForecastDay {
         typeof value['temperature_max'] === 'number' &&
         typeof value['temperature_min'] === 'number'
     );
+}
+
+function isPlaceCandidate(value: unknown): value is PlaceCandidate {
+    return (
+        isRecord(value) &&
+        typeof value['name'] === 'string' &&
+        (value['admin1'] === null || typeof value['admin1'] === 'string') &&
+        typeof value['country'] === 'string' &&
+        isFiniteNumber(value['latitude']) &&
+        isFiniteNumber(value['longitude'])
+    );
+}
+
+function isSavedPlace(value: unknown): value is SavedPlace {
+    return (
+        isRecord(value) &&
+        isPositiveInteger(value['id']) &&
+        typeof value['created_at'] === 'string' &&
+        isPlaceCandidate(value)
+    );
+}
+
+function isFiniteNumber(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value);
 }
 
 function isIdName(value: unknown): value is { id: number; name: string } {

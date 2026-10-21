@@ -1,4 +1,4 @@
-import { PluginUserRef } from './plugin-admin.model';
+import { PluginOutboundHost, PluginUserRef } from './plugin-admin.model';
 
 /** The setting types a manifest may declare. */
 export type PluginSettingType = 'string' | 'text' | 'integer' | 'boolean' | 'url' | 'enum' | 'secret';
@@ -62,8 +62,10 @@ export interface PluginLimitsResponse {
     overrides: Partial<PluginLimitValues>;
     /** `min(requested, platform_max, override)`; CPU priority `low` when either side says so. */
     effective: PluginLimitValues;
-    /** Whether this version applies each limit at all. */
+    /** Whether each limit applies to this plugin; the database limits only when it has a database. */
     enforced: Record<PluginLimitKey, boolean>;
+    /** The current package has a database. */
+    has_database: boolean;
 }
 
 /** Only the overrides to change; `null` removes one. */
@@ -111,9 +113,41 @@ export interface PluginPlacement {
     last_report_at: string | null;
 }
 
+/** `pending` until the node first tries to set it up. */
+export type PluginDatabaseState = 'pending' | 'provisioning' | 'ready' | 'failed';
+
+/** The plugin's own database on the deployment's plugin database server. No password ever reaches the browser. */
+export interface PluginRuntimeDatabase {
+    state: PluginDatabaseState;
+    server: { name: string; host: string; port: number };
+    database_name: string;
+    roles: { owner: string; app: string; job: string };
+    /** `applied` in the order they ran; `in_package`: how many the current package has. */
+    migrations: { applied: string[]; in_package: number };
+    /** Effective. */
+    connection_limit: number;
+    /** Effective. */
+    statement_timeout_seconds: number;
+    size_bytes: number | null;
+    last_error: string | null;
+    ready_at: string | null;
+    /** When the platform last set the timeout back after the plugin changed its own default. */
+    limits_restored_at: string | null;
+}
+
+/** The hosts the backend may reach through the egress proxy. */
+export interface PluginRuntimeEgress {
+    /** In manifest order; `[]`: the backend cannot reach the internet. */
+    hosts: PluginOutboundHost[];
+}
+
 /** `GET .../runtime/` and `POST .../restart/` (202). */
 export interface PluginRuntimeResponse {
     node: PluginRuntimeNode | null;
     /** `null` before the first approval of a package with a backend. */
     placement: PluginPlacement | null;
+    /** `null`: the current package has no database. */
+    database: PluginRuntimeDatabase | null;
+    /** `null`: the plugin has no backend. */
+    egress: PluginRuntimeEgress | null;
 }

@@ -2,7 +2,7 @@ import { DatePipe, DecimalPipe, DOCUMENT } from '@angular/common';
 import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, formatFileSize } from '@shared/utils';
 import { catchError, EMPTY, exhaustMap, filter, finalize, switchMap, timer } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -10,9 +10,11 @@ import { PluginBlockedReason, PluginRuntimeResponse } from '../../models/plugin-
 import { PluginErrorView } from '../../models/plugin-error.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import {
+    PLUGIN_DATABASE_STATE_LABELS,
     PLUGIN_DESIRED_STATE_LABELS,
     PLUGIN_HEALTH_LABELS,
     PLUGIN_OBSERVED_STATE_LABELS,
+    pluginDatabaseStateTone,
     pluginHealthTone,
     pluginObservedStateTone,
 } from '../../utils/plugin-display.util';
@@ -29,7 +31,9 @@ const BLOCKED_REASON_MESSAGES: Readonly<Record<PluginBlockedReason, string>> = {
 
 /**
  * Where a backend plugin runs and how it is doing: its node, its placement (port, UID, desired and observed state,
- * health, version, process, memory), why it is held stopped, and its last error and log lines when it failed.
+ * health, version, process, memory), why it is held stopped, and its last error and log lines when it failed. For a
+ * plugin with a database: its state, server, names, migrations, effective limits, size, last error, and when the
+ * platform last set the statement timeout back. For a plugin with a backend: the hosts it may reach on the internet.
  *
  * Polls the runtime every few seconds while it is shown (not while the browser tab is hidden) and stops when it is
  * destroyed. Restart asks for confirmation first.
@@ -77,6 +81,21 @@ export class PluginRuntimePanelComponent {
         return reason ? BLOCKED_REASON_MESSAGES[reason] : null;
     });
     protected readonly logText = computed(() => this.placement()?.log_tail.join('\n') ?? '');
+    /** `null` hides the section: the current package has no database. */
+    protected readonly database = computed(() => {
+        const database = this.runtime()?.database ?? null;
+        if (!database) return null;
+        return {
+            ...database,
+            stateLabel: PLUGIN_DATABASE_STATE_LABELS[database.state],
+            stateTone: pluginDatabaseStateTone(database.state),
+            server: `${database.server.name} (${database.server.host}:${database.server.port})`,
+            migrationsCount: `${database.migrations.applied.length} of ${database.migrations.in_package}`,
+            size: database.size_bytes === null ? null : formatFileSize(database.size_bytes, 'auto'),
+        };
+    });
+    /** `null` hides the section: the plugin has no backend. */
+    protected readonly egress = computed(() => this.runtime()?.egress ?? null);
 
     private readonly storage = inject(PluginsAdminStorageService);
     private readonly confirmation = inject(ConfirmationDialogService);

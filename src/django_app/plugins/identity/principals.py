@@ -1,6 +1,5 @@
 """`request.user` of a request a plugin's backend makes with its service-account key."""
 
-from django.db.models import Model
 from rbac.access.effective import EffectivePermissions
 from rbac.exceptions import OrgMembershipRequiredError
 from tables.models import Secret
@@ -46,6 +45,10 @@ class PluginServiceAccountPrincipal:
         self.requests_per_minute = requests_per_minute
         self.person = person
         self._package = package
+        # Secret ids already confirmed as the plugin's own and still existing. The principal
+        # lives for one request, so a bulk save of many rows that reference the same secrets
+        # asks the database about each id once.
+        self._confirmed_own_secret_ids: set[int] = set()
 
     def resolve_effective_permissions(self, org_id: int) -> EffectivePermissions:
         """The plugin's declared access in the pinned organization; no rights anywhere else.
@@ -69,15 +72,14 @@ class PluginServiceAccountPrincipal:
         value, so referencing a secret it did not create would hand it the value.
         """
         # Imported here: the ownership modules import this one.
-        from plugins.ownership.existing_owned import grant_owns_every
+        from plugins.ownership.existing_owned import owned_existing_ids
 
-        return grant_owns_every(self.grant_id, Secret, secret_ids)
-
-    def owns(self, instance: Model) -> bool:
-        """Whether the plugin created `instance` under this grant, and it still exists."""
-        from plugins.ownership.existing_owned import grant_owns_every
-
-        return grant_owns_every(self.grant_id, type(instance), frozenset({instance.pk}))
+        unconfirmed = secret_ids - self._confirmed_own_secret_ids
+        if not unconfirmed:
+            return True
+        found = owned_existing_ids(self.grant_id, Secret, unconfirmed)
+        self._confirmed_own_secret_ids |= found
+        return unconfirmed <= found
 
     def __str__(self) -> str:
         return f"plugin {self.plugin_identifier} (org {self.pinned_org_id})"

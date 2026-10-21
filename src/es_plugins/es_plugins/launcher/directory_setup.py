@@ -74,7 +74,7 @@ class DirectorySetup:
         self._plugin_gid = plugin_gid
 
     def prepare_tree(self) -> None:
-        """Create or repair the node-wide directories and the heartbeat file."""
+        """Create or repair the node-wide directories, the heartbeat file and the egress policy root."""
         layout = self._layout
         launcher = self._launcher
         for path, mode, owner in (
@@ -91,6 +91,11 @@ class DirectorySetup:
             self._ensure_directory(path, mode, owner)
         with self._open_trusted(layout.run_root) as run_root:
             self._ensure_file(run_root, HEARTBEAT_FILE_NAME, 0o644, self._agent)
+        # The egress policy volume's root, when it is mounted. Its parent is the image's (on a
+        # read-only root), so nothing is created there: without the volume the agent refuses to
+        # start, naming the directory.
+        if layout.egress_policy_directory.is_dir():
+            self._ensure_directory(layout.egress_policy_directory, 0o755, self._agent)
 
     def prepare_plugin(self, plugin: str, uid: int) -> None:
         """Create or repair one plugin's directories (see `es_plugins.layout`).

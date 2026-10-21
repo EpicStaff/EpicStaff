@@ -7,6 +7,7 @@ from plugins.lifecycle.grant_actions import GrantAction, allowed_grant_actions, 
 from plugins.lifecycle.hook_job_service import HookJobService
 from plugins.lifecycle.suspension_service import PluginSuspensionService
 from plugins.models import GrantState, PluginGrant
+from plugins.ownership.owned_resource_summary import with_owned_resource_counts
 from plugins.serializers.admin import PluginGrantSerializer
 
 from tests.plugins_tests.suspension_helpers import set_state
@@ -60,7 +61,7 @@ def test_an_action_outside_the_state_s_list_raises_its_own_conflict(grant, state
 @pytest.mark.parametrize("state", list(GrantState))
 def test_the_serializer_s_allowed_actions_are_the_function_s(grant, state):
     set_state(grant, state)
-    row = PluginGrant.objects.with_admin_details().get(pk=grant.pk)
+    [row] = with_owned_resource_counts([PluginGrant.objects.with_admin_details().get(pk=grant.pk)])
 
     assert PluginGrantSerializer(row).data["allowed_actions"] == [action.value for action in allowed_grant_actions(row)]
 

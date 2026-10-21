@@ -4,7 +4,11 @@ from datetime import timedelta
 
 import pytest
 from django.utils import timezone
-from plugins.models import Plugin, PluginNode, PluginPlacement, PluginState
+from plugins.databases.database_records import app_password_of
+from plugins.models import Plugin, PluginDatabase, PluginNode, PluginPlacement, PluginState
+from rest_framework import serializers
+
+from tests.plugins_tests.package_builder import GEOCODING_HOST
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -119,3 +123,90 @@ def test_an_org_admin_cannot_restart(backend_plugin, client_as, admin_acme):
 
     assert client_as(admin_acme).post(RESTART_URL).status_code == 403
     assert PluginPlacement.objects.get(plugin=plugin).restart_generation == 0
+
+
+# ---- the database and outbound access ----
+
+
+def _keys_of(document):
+    if isinstance(document, dict):
+        return set(document) | {key for value in document.values() for key in _keys_of(value)}
+    if isinstance(document, list):
+        return {key for value in document for key in _keys_of(value)}
+    return set()
+
+
+def test_a_plugin_without_a_database_shows_none_and_no_outbound_access(backend_plugin, superadmin_client):
+    backend_plugin()
+
+    body = superadmin_client.get(RUNTIME_URL).json()
+
+    assert body["database"] is None
+    assert body["egress"] == {"hosts": []}
+
+
+def test_a_plugin_with_a_database_shows_its_database_and_outbound_hosts(database_plugin, superadmin_client):
+    database_plugin(limits={"db_connections": 3, "statement_timeout_seconds": 10})
+
+    body = superadmin_client.get(RUNTIME_URL).json()
+
+    assert body["database"] == {
+        "state": "pending",
+        "server": {"name": "plugins_db", "host": "plugins_db", "port": 5432},
+        "database_name": "plugin_weather",
+        "roles": {"owner": "weather_owner", "app": "weather_app", "job": "weather_job"},
+        "migrations": {"applied": [], "in_package": 1},
+        "connection_limit": 3,
+        "statement_timeout_seconds": 10,
+        "size_bytes": None,
+        "last_error": None,
+        "ready_at": None,
+        "limits_restored_at": None,
+    }
+    assert body["egress"] == {"hosts": [dict(GEOCODING_HOST)]}
+
+
+def test_the_database_shows_what_the_node_reported_and_the_effective_limits(database_plugin, superadmin_client):
+    database_plugin(limits={"db_connections": 3, "statement_timeout_seconds": 10})
+    ready_at = timezone.now() - timedelta(minutes=5)
+    restored_at = timezone.now() - timedelta(minutes=1)
+    PluginDatabase.objects.update(
+        state="ready",
+        applied_migrations=["001_places.sql"],
+        size_bytes=8_421_376,
+        ready_at=ready_at,
+        limits_restored_at=restored_at,
+    )
+    superadmin_client.patch("/api/admin/plugins/weather/limits/", {"overrides": {"db_connections": 2}}, format="json")
+
+    database = superadmin_client.get(RUNTIME_URL).json()["database"]
+
+    assert database["state"] == "ready"
+    assert database["migrations"] == {"applied": ["001_places.sql"], "in_package": 1}
+    assert (database["size_bytes"], database["connection_limit"]) == (8_421_376, 2)
+    assert database["ready_at"] == serializers.DateTimeField().to_representation(ready_at)
+    assert database["limits_restored_at"] == serializers.DateTimeField().to_representation(restored_at)
+
+
+def test_a_restart_answers_with_the_database_too(database_plugin, superadmin_client):
+    database_plugin()
+
+    response = superadmin_client.post(RESTART_URL)
+
+    assert response.status_code == 202
+    assert response.json()["database"]["database_name"] == "plugin_weather"
+
+
+@pytest.mark.parametrize(
+    ("method", "url"),
+    [("get", RUNTIME_URL), ("post", RESTART_URL), ("get", "/api/admin/plugins/weather/limits/")],
+    ids=["runtime", "restart", "limits"],
+)
+def test_no_response_carries_the_app_password(database_plugin, superadmin_client, method, url):
+    database_plugin()
+    password = app_password_of(PluginDatabase.objects.get())
+
+    response = getattr(superadmin_client, method)(url)
+
+    assert password not in response.content.decode()
+    assert not {key for key in _keys_of(response.json()) if "password" in key}

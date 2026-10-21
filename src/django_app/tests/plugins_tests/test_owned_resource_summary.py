@@ -49,7 +49,19 @@ def test_a_binned_resource_still_counts_and_a_deleted_one_does_not(grant, acme):
     assert owned_resource_summary(grant) == [{"model": "tables.Graph", "label": "Flows", "count": 1}]
 
 
-def test_the_summary_is_one_query(grant, acme):
+def test_the_summary_is_one_query_for_the_kinds_present_and_one_per_kind(grant, acme):
+    own(flow(acme, "Forecast"), grant)
+    own(flow(acme, "Alerts"), grant)
+    own(secret_row(acme, "Weather · LLM key"), grant)
+    owned_resource_summary(grant)
+
+    with CaptureQueriesContext(connection) as captured:
+        owned_resource_summary(grant)
+
+    assert len(captured.captured_queries) == 3
+
+
+def test_each_kind_is_counted_with_only_its_own_existence_check(grant, acme):
     own(flow(acme, "Forecast"), grant)
     own(secret_row(acme, "Weather · LLM key"), grant)
     owned_resource_summary(grant)
@@ -57,4 +69,5 @@ def test_the_summary_is_one_query(grant, acme):
     with CaptureQueriesContext(connection) as captured:
         owned_resource_summary(grant)
 
-    assert len(captured.captured_queries) == 1
+    per_kind = [query["sql"] for query in captured.captured_queries[1:]]
+    assert [sql.count("EXISTS") for sql in per_kind] == [1, 1]

@@ -183,23 +183,31 @@ def test_a_list_holds_at_most_a_hundred_items_and_its_total(grant, acme, superad
 def _queries_of_a_preview(grant, acme, flow_count):
     secret = secret_row(acme, f"Weather · key {flow_count}")
     own(secret, grant)
+    voice_config = OpenAIRealtimeConfig.objects.create(org=acme, custom_name=f"Weather voice {flow_count}")
+    own(voice_config, grant)
     for number in range(flow_count):
         digest = flow(acme, f"Digest {flow_count}-{number}")
         PythonNode.objects.get(graph=digest).python_code.secrets.set([secret])
         Session.objects.create(graph=digest, status=Session.SessionStatus.RUN)
         ScheduleTriggerNode.objects.create(graph=digest, node_name="schedule", is_active=True)
         own(flow(acme, f"Forecast {flow_count}-{number}"), grant)
+        announcer = agent(acme, f"announcer {flow_count}-{number}")
+        voice = RealtimeAgentDefinition.objects.create(agent_definition=announcer, openai_config=voice_config)
+        RealtimeChannel.objects.create(org=acme, name=f"Hotline {flow_count}-{number}", realtime_agent_definition=voice)
+        own(RealtimeChannel.objects.create(org=acme, name=f"Alerts {flow_count}-{number}"), grant)
     SuspendPreviewService().build("weather", grant.pk)
     with CaptureQueriesContext(connection) as captured:
         preview = SuspendPreviewService().build("weather", grant.pk)
     return len(captured.captured_queries), preview
 
 
-def test_the_query_count_does_not_grow_with_the_number_of_flows(weather, grant_to, acme, beta):
+def test_the_query_count_does_not_grow_with_the_number_of_flows_agents_or_channels(weather, grant_to, acme, beta):
     few, few_preview = _queries_of_a_preview(grant_to(weather, acme), acme, 5)
     many, many_preview = _queries_of_a_preview(grant_to(weather, beta), beta, 50)
 
     assert (few_preview.organization_flows.total, many_preview.organization_flows.total) == (5, 50)
+    assert (few_preview.realtime_agents.total, many_preview.realtime_agents.total) == (5, 50)
+    assert (few_preview.voice_channels.total, many_preview.voice_channels.total) == (10, 100)
     assert few == many
 
 

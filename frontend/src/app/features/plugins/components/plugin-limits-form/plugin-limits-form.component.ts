@@ -18,7 +18,12 @@ import {
 } from '../../models/plugin-backend.model';
 import { PluginErrorItem, PluginErrorView } from '../../models/plugin-error.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
-import { PLUGIN_CPU_PRIORITY_LABELS, PLUGIN_LIMIT_LABELS } from '../../utils/plugin-display.util';
+import {
+    formatPluginLimit,
+    PLUGIN_CPU_PRIORITY_LABELS,
+    PLUGIN_DATABASE_LIMIT_KEYS,
+    PLUGIN_LIMIT_LABELS,
+} from '../../utils/plugin-display.util';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
 import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
 
@@ -30,12 +35,17 @@ const NUMERIC_LIMIT_KEYS: readonly PluginNumericLimitKey[] = [
     'requests_per_minute',
 ];
 
-const LIMIT_UNITS: Readonly<Record<PluginNumericLimitKey, string>> = {
-    memory_mb: 'MB',
-    db_connections: '',
-    statement_timeout_seconds: 's',
-    requests_per_minute: '/ min',
+/** Under a limit's name, where the limit needs saying how it works. */
+export const PLUGIN_LIMIT_HINTS: Readonly<Partial<Record<PluginNumericLimitKey, string>>> = {
+    statement_timeout_seconds:
+        'A default the plugin can change for its own sessions; EpicStaff restores it within a minute.',
 };
+
+/** The badge of a database limit of a plugin without a database. */
+export const NO_DATABASE_BADGE = 'No database';
+
+/** The badge of any other limit the server says does not apply. */
+export const NOT_ENFORCED_BADGE = 'Not enforced';
 
 /** `overrides.<key>` in an `errors[]` item's `loc`. */
 const LIMIT_LOC_PREFIX = 'overrides.';
@@ -49,6 +59,9 @@ interface NumericLimitRow {
     /** The highest override allowed: `min(requested, platform max)`. */
     bound: number;
     enforced: boolean;
+    /** Why the limit does not apply, or `null` when it does. */
+    badge: string | null;
+    hint: string | null;
     /** An override is stored for this limit. */
     hasOverride: boolean;
     /** What the override input holds now. */
@@ -59,8 +72,9 @@ interface NumericLimitRow {
 
 /**
  * A backend plugin's limits: for each, what the plugin asks for, the platform maximum, the override a SuperAdmin set
- * (only ever lower) and the effective value. Limits this version does not enforce yet are shown disabled. A save sends
- * only the changed overrides; Reset removes one (`null`). The plugin restarts with the new limits.
+ * (only ever lower) and the effective value. A limit the server says does not apply is shown disabled, with why: the
+ * database limits of a plugin without a database say "No database". A save sends only the changed overrides; Reset
+ * removes one (`null`). The plugin restarts with the new limits.
  */
 @Component({
     selector: 'app-plugin-limits-form',
@@ -102,11 +116,13 @@ export class PluginLimitsFormComponent {
             return {
                 key,
                 label: PLUGIN_LIMIT_LABELS[key],
-                requested: formatLimit(key, response.requested[key]),
-                platformMax: formatLimit(key, response.platform_max[key]),
-                effective: formatLimit(key, response.effective[key]),
+                requested: formatPluginLimit(key, response.requested[key]),
+                platformMax: formatPluginLimit(key, response.platform_max[key]),
+                effective: formatPluginLimit(key, response.effective[key]),
                 bound,
                 enforced: response.enforced[key],
+                badge: notEnforcedBadge(key, response),
+                hint: PLUGIN_LIMIT_HINTS[key] ?? null,
                 hasOverride: stored !== null,
                 draft,
                 problem: overrideProblem(draft, bound),
@@ -121,6 +137,7 @@ export class PluginLimitsFormComponent {
             requested: PLUGIN_CPU_PRIORITY_LABELS[response.requested.cpu_priority],
             effective: PLUGIN_CPU_PRIORITY_LABELS[response.effective.cpu_priority],
             enforced: response.enforced.cpu_priority,
+            badge: notEnforcedBadge('cpu_priority', response),
             /** The plugin asks for low priority itself: an override would change nothing. */
             requestsLow: response.requested.cpu_priority === 'low',
             storedLow,
@@ -241,9 +258,10 @@ export class PluginLimitsFormComponent {
     }
 }
 
-function formatLimit(key: PluginNumericLimitKey, value: number): string {
-    const unit = LIMIT_UNITS[key];
-    return unit ? `${value} ${unit}` : String(value);
+/** `null` while the server applies the limit; it alone decides that, `has_database` only says why it does not. */
+function notEnforcedBadge(key: PluginLimitKey, response: PluginLimitsResponse): string | null {
+    if (response.enforced[key]) return null;
+    return PLUGIN_DATABASE_LIMIT_KEYS.has(key) && !response.has_database ? NO_DATABASE_BADGE : NOT_ENFORCED_BADGE;
 }
 
 function overrideProblem(draft: number | null, bound: number): string | null {

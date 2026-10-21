@@ -43,6 +43,13 @@ BACKEND_LOCK = (
     "epicstaff-plugin==0.1.0 --hash=sha256:" + "b" * 64 + "\n"
 ).encode("utf-8")
 BACKEND_FILES = {"backend/requirements.lock": BACKEND_LOCK, "backend/src/plugin/app.py": b"app = None\n"}
+# The migration every package with a database carries unless a test gives its own files.
+SAMPLE_MIGRATION = "database/migrations/001_places.sql"
+SAMPLE_MIGRATION_SQL = b"CREATE TABLE places (id bigint PRIMARY KEY, org_id bigint NOT NULL);\n"
+GEOCODING_HOST = {
+    "host": "geocoding-api.open-meteo.com",
+    "reason": "Looks up places by name when someone adds a saved place.",
+}
 
 PING_PATH = {"path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0}
 UNITS_SETTING = {
@@ -102,6 +109,8 @@ def sample_files(manifest: dict | None = None) -> dict[str, bytes]:
     }
     if "backend" in manifest:
         files.update(BACKEND_FILES)
+    if "database" in manifest:
+        files[SAMPLE_MIGRATION] = SAMPLE_MIGRATION_SQL
     return files
 
 

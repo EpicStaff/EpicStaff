@@ -145,8 +145,18 @@
                     }
                 </tbody>
             </table>
+            <p class="review__note text-body-small">{{ outboundHostsNote }}</p>
         } @else {
             <p class="review__none text-body">None. The plugin's backend cannot reach the internet.</p>
+        }
+    </section>
+
+    <section class="review__section">
+        <h4 class="review__section-title text-body-bold">Database</h4>
+        @if (databaseText(); as text) {
+            <p class="review__database text-body">{{ text }}</p>
+        } @else {
+            <p class="review__none text-body">None.</p>
         }
     </section>
 
@@ -213,9 +223,6 @@
                 }
                 @if (reviewed.contents.has_backend) {
                     Backend: {{ reviewed.contents.wheel_count }} wheels.
-                }
-                @if (reviewed.contents.has_database) {
-                    Database: {{ reviewed.contents.migration_count }} migrations.
                 }
             </dd>
             <dt>Size</dt>

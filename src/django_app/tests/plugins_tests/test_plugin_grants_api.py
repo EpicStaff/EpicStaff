@@ -3,7 +3,8 @@
 from datetime import datetime, timedelta
 
 import pytest
-from django.db import IntegrityError
+from django.db import IntegrityError, connection
+from django.test.utils import CaptureQueriesContext
 from plugins.lifecycle.grant_service import PluginGrantService
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
@@ -13,6 +14,7 @@ from tables.models import Graph
 
 from tests.plugins_tests.conftest import upload_file
 from tests.plugins_tests.package_builder import build_package
+from tests.plugins_tests.suspension_helpers import secret_row
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -229,3 +231,60 @@ def test_the_grant_list_takes_a_fixed_number_of_queries(
 
     assert page["count"] == 5
     assert {grant["install_hook"]["state"] for grant in page["results"]} == {"pending"}
+
+
+def _own_rows(grant, rows):
+    PluginOwnedResource.objects.bulk_create(
+        PluginOwnedResource(
+            org_id=grant.org_id,
+            grant=grant,
+            plugin_identifier=grant.plugin.identifier,
+            content_type=ContentType.objects.get_for_model(row),
+            object_id=row.pk,
+        )
+        for row in rows
+    )
+
+
+def _owned_queries(captured):
+    return [query["sql"] for query in captured.captured_queries if '"plugins_pluginownedresource"' in query["sql"]]
+
+
+def test_owned_resources_are_counted_for_the_page_only_one_kind_at_a_time(
+    running_plugin, superadmin_client, superadmin, acme, beta
+):
+    plugin = running_plugin()
+    gamma = Organization.objects.create(name="Gamma")
+    grants = {
+        organization.pk: PluginGrantService().grant(plugin.identifier, organization.pk, superadmin)
+        for organization in (acme, beta, gamma)
+    }
+    _own_rows(grants[acme.pk], [Graph.objects.create(name="Acme flow", org=acme), secret_row(acme, "Acme key")])
+    _own_rows(grants[beta.pk], [Graph.objects.create(name=f"Beta flow {index}", org=beta) for index in range(3)])
+    _own_rows(grants[gamma.pk], [secret_row(gamma, "Gamma key")])
+    superadmin_client.get(_grants_url())
+
+    with CaptureQueriesContext(connection) as captured:
+        first_page = superadmin_client.get(_grants_url(), {"page_size": 2}).json()
+
+    assert {row["organization"]["name"]: row["owned_resource_count"] for row in first_page["results"]} == {
+        acme.name: 2,
+        beta.name: 3,
+    }
+    owned = _owned_queries(captured)
+    # The kinds present on the page, then one count per kind with only its own existence check.
+    assert len(owned) == 3
+    assert [sql.count("EXISTS") for sql in owned[1:]] == [1, 1]
+    assert all(str(grants[gamma.pk].pk) not in sql.split(" IN ", 1)[1].split(")", 1)[0] for sql in owned)
+    [last] = superadmin_client.get(_grants_url(), {"page_size": 2, "page": 2}).json()["results"]
+    assert (last["organization"]["name"], last["owned_resource_count"]) == ("Gamma", 1)
+
+
+def test_a_grant_read_again_after_a_change_has_its_owned_count(weather_backend, superadmin_client, superadmin, acme):
+    plugin = weather_backend()
+    grant = PluginGrantService().grant(plugin.identifier, acme.pk, superadmin)
+    _own_rows(grant, [Graph.objects.create(name="Owned", org=acme)])
+
+    response = superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant.pk}/suspend/")
+
+    assert (response.status_code, response.json()["owned_resource_count"]) == (200, 1)

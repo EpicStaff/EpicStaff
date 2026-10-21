@@ -11,8 +11,8 @@ actually enforces.
 |---|---|---|---|---|
 | `memory_mb` | 64–8192 | 256 | `PLUGINS_MAX_PROCESS_MEMORY_MB` (1024) | Yes, by the plugin node (see below) |
 | `cpu_priority` | `normal` or `low` | `normal` | — | Yes: `normal` runs at nice 0, `low` at nice 10 |
-| `db_connections` | 1–100 | 5 | `PLUGINS_MAX_DB_CONNECTIONS` (20) | No: plugins have no database yet |
-| `statement_timeout_seconds` | 1–600 | 30 | `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS` (60) | No: plugins have no database yet |
+| `db_connections` | 1–100 | 5 | `PLUGINS_MAX_DB_CONNECTIONS` (20) | Yes, for a plugin with a database: a hard limit on its connections (see below) |
+| `statement_timeout_seconds` | 1–600 | 30 | `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS` (60) | Yes, for a plugin with a database: a default the platform restores (see below) |
 | `requests_per_minute` | 1–6000 | 120 | `PLUGINS_MAX_REQUESTS_PER_MINUTE` (600) | Yes, by EpicStaff's API, per organization (see below) |
 
 `limits` and each of its fields are optional. A limit the manifest leaves out (or sets to `null`)
@@ -47,7 +47,9 @@ of the requested value and the platform maximum, and `cpu_priority` can only be 
 platform maximum below what a running plugin asked for, the effective limit drops with it.
 
 Changing the effective `memory_mb` or `cpu_priority` restarts the plugin's process with the new
-value. The tab marks the limits this version does not enforce as such.
+value. Changing the effective `db_connections` or `statement_timeout_seconds` of a plugin with a
+database does too, once the plugin node has applied the new value to the database. For a plugin
+without a database, the tab shows the two database limits as not applying.
 
 ## How the request rate is enforced
 
@@ -58,6 +60,21 @@ starts on the minute. Every endpoint counts, the upload stream and `/api/plugin-
 A call over the rate gets `429 throttled` with `Retry-After` set to the seconds left in the
 minute; wait that long before calling again. The rate is the effective limit, so a SuperAdmin's
 override applies at once. People's requests and API keys are never counted against a plugin.
+
+## How the database limits are enforced
+
+Both apply only to a plugin with a database ([Plugin database](database.md)), to the role its
+backend connects as.
+
+- **`db_connections` is a hard limit.** It is the role's connection limit: the database server
+  refuses a connection beyond it. Your backend reads the value from
+  `EPICSTAFF_PLUGIN_DB_CONNECTIONS`; size your connection pool to it.
+- **`statement_timeout_seconds` is a default.** It is the role's `statement_timeout`, so a
+  statement that runs longer is cancelled. Your backend may change it for its own sessions (`SET
+  statement_timeout`), and a migration may set a default on its database with `ALTER DATABASE …
+  SET`. A change to the role's own setting, by the plugin or anyone else, is put back by the
+  plugin node within about a minute; the Runtime tab then shows when, and the plugin's activity
+  records it at most once an hour.
 
 ## How memory is enforced
 

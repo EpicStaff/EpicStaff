@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { PackageReview } from '../../models/plugin-admin.model';
 import { buildPackageReview } from '../../testing/plugin-fixtures';
 import {
+    OUTBOUND_HOSTS_NOTE,
     PluginApproveRequest,
     PluginReviewPanelComponent,
     UNTRUSTED_PACKAGE_WARNING,
@@ -30,6 +31,17 @@ describe('PluginReviewPanelComponent', () => {
         return Array.from(element.querySelectorAll<HTMLButtonElement>('button')).find(
             (button) => button.textContent?.trim() === text
         );
+    }
+
+    /** The text of a section below its title, one element after another. */
+    function section(title: string): string {
+        const found = Array.from(element.querySelectorAll('.review__section')).find(
+            (candidate) => candidate.querySelector('h4')?.textContent?.trim() === title
+        );
+        return Array.from(found?.children ?? [])
+            .slice(1)
+            .map((child) => child.textContent?.replace(/\s+/g, ' ').trim() ?? '')
+            .join(' ');
     }
 
     function acknowledgement(): HTMLInputElement | null {
@@ -149,6 +161,69 @@ describe('PluginReviewPanelComponent', () => {
 
             expect(approveButton().disabled).toBe(true);
             expect(buttonByText('Reject')!.disabled).toBe(true);
+        });
+    });
+
+    describe('the database and the outbound hosts', () => {
+        const withDatabase = (migrationCount: number): PackageReview => {
+            const review = buildPackageReview();
+            return buildPackageReview({
+                contents: {
+                    ...review.contents,
+                    has_backend: true,
+                    has_database: true,
+                    migration_count: migrationCount,
+                },
+            });
+        };
+
+        it('says what approving sets up for a package with a database, once', () => {
+            render(withDatabase(3));
+
+            expect(section('Package')).not.toContain('migration');
+            expect(element.textContent?.match(/migrations? runs?/g)).toHaveLength(1);
+
+            expect(section('Database')).toBe(
+                "Gets its own database on this deployment's plugin database server, set up when you approve. " +
+                    "3 migrations run before the backend first starts. Only this plugin's backend can connect to it."
+            );
+        });
+
+        it('says "1 migration runs" for a single migration', () => {
+            render(withDatabase(1));
+
+            expect(section('Database')).toContain('1 migration runs before the backend first starts.');
+        });
+
+        it('says None for a package without a database', () => {
+            render(buildPackageReview());
+
+            expect(section('Database')).toBe('None.');
+        });
+
+        it('says the declared hosts are reached over HTTPS through the egress proxy, and every other is refused', () => {
+            render(
+                buildPackageReview({
+                    outbound_hosts: [
+                        {
+                            host: 'geocoding-api.open-meteo.com',
+                            reason: 'Looks up places by name when someone adds a saved place.',
+                        },
+                    ],
+                })
+            );
+
+            expect(section('Outbound hosts')).toContain('geocoding-api.open-meteo.com');
+            expect(section('Outbound hosts')).toContain(OUTBOUND_HOSTS_NOTE);
+            expect(OUTBOUND_HOSTS_NOTE).toBe(
+                'Reached over HTTPS on port 443 only, through the egress proxy. Every other host is refused.'
+            );
+        });
+
+        it('says the backend cannot reach the internet without an outbound host, and no egress line', () => {
+            render(buildPackageReview());
+
+            expect(section('Outbound hosts')).toBe("None. The plugin's backend cannot reach the internet.");
         });
     });
 

@@ -1,14 +1,12 @@
 from rest_framework import serializers
 
-from plugins.lifecycle.suspend_preview_service import SuspendPreview
-
 
 class NamedRowSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
 
 
-class PreviewFlowListSerializer(serializers.Serializer):
+class PreviewNamedListSerializer(serializers.Serializer):
     total = serializers.IntegerField()
     items = NamedRowSerializer(many=True)
 
@@ -38,14 +36,29 @@ class PreviewTriggerListSerializer(serializers.Serializer):
 
 
 class PreviewFlowsSerializer(serializers.Serializer):
-    organization = PreviewFlowListSerializer(source="organization_flows")
-    plugin = PreviewFlowListSerializer(source="plugin_flows")
+    organization = PreviewNamedListSerializer(source="organization_flows")
+    plugin = PreviewNamedListSerializer(source="plugin_flows")
 
 
 class OwnedResourceCountSerializer(serializers.Serializer):
     model = serializers.CharField()
     label = serializers.CharField()
     count = serializers.IntegerField()
+
+
+class PreviewGrantSerializer(serializers.Serializer):
+    id = serializers.IntegerField(source="pk")
+    state = serializers.CharField()
+
+
+class PreviewPluginSerializer(serializers.Serializer):
+    identifier = serializers.CharField()
+    name = serializers.CharField()
+
+
+class PreviewOrganizationSerializer(serializers.Serializer):
+    id = serializers.IntegerField(source="pk")
+    name = serializers.CharField()
 
 
 class PreviewDefaultModelSerializer(serializers.Serializer):
@@ -56,24 +69,14 @@ class PreviewDefaultModelSerializer(serializers.Serializer):
 class SuspendPreviewSerializer(serializers.Serializer):
     """What suspending a grant stops; renders a `SuspendPreview`."""
 
-    grant = serializers.SerializerMethodField()
-    plugin = serializers.SerializerMethodField()
-    organization = serializers.SerializerMethodField()
+    grant = PreviewGrantSerializer()
+    plugin = PreviewPluginSerializer(source="grant.plugin")
+    organization = PreviewOrganizationSerializer(source="grant.org")
     data_kept_until = serializers.DateTimeField()
     owned_resources = OwnedResourceCountSerializer(many=True)
     flows = PreviewFlowsSerializer(source="*")
     running_sessions = PreviewSessionListSerializer()
     triggers = PreviewTriggerListSerializer()
-    realtime_agents = PreviewFlowListSerializer()
-    voice_channels = PreviewFlowListSerializer()
+    realtime_agents = PreviewNamedListSerializer()
+    voice_channels = PreviewNamedListSerializer()
     default_models = PreviewDefaultModelSerializer(many=True)
-
-    def get_grant(self, preview: SuspendPreview) -> dict:
-        return {"id": preview.grant.pk, "state": preview.grant.state}
-
-    def get_plugin(self, preview: SuspendPreview) -> dict:
-        plugin = preview.grant.plugin
-        return {"identifier": plugin.identifier, "name": plugin.name}
-
-    def get_organization(self, preview: SuspendPreview) -> dict:
-        return {"id": preview.grant.org_id, "name": preview.grant.org.name}

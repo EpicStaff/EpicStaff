@@ -1,8 +1,8 @@
-from rbac.access.principals import is_pinned_org_principal
+from rbac.access.principals import is_pinned_org_principal, is_plugin_credential
 from rbac.access.resolver import PermissionResolver
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
-from rest_framework import serializers
+from rest_framework import exceptions, serializers
 from utils.logger import logger
 
 _DENIED = (
@@ -15,10 +15,12 @@ _NOT_REFERENCEABLE = (
     "This credential can reference only secrets it created, so it cannot save a row "
     "that references any other secret."
 )
-_NOT_REPOINTABLE = (
-    "This credential can change where requests are sent only on models it created: "
-    "configurations of the organization use this one with their own keys."
+_ENDPOINT_NOT_SETTABLE = (
+    "This credential cannot set where a model sends requests; the organization's "
+    "configurations may use this model with their own keys."
 )
+_INCOMPLETE_PRINCIPAL = "This credential cannot write here."
+_MAY_USE_SECRETS_ATTRIBUTE = "_secret_reference_guard_may_use"
 
 
 class SecretReferenceGuard:
@@ -40,6 +42,11 @@ class SecretReferenceGuard:
         A field whose value changes needs secrets:USE. For a pinned-org principal, every
         guarded field is checked on every create and update, whether the payload carries
         it or not: the incoming value when it does, the persisted one when it does not.
+
+        The persisted value is read only when it decides something: for a field the
+        payload carries, when the caller lacks secrets:USE (resending it unchanged is
+        allowed); for a field it leaves out, when the caller is a pinned-org principal.
+        secrets:USE is resolved once per request, so a bulk save of many rows asks once.
         """
         principal = _pinned_principal(serializer=serializer)
         for field_name in fields:
@@ -49,8 +56,10 @@ class SecretReferenceGuard:
             source = field.source
             if source in attrs:
                 referenced = self._normalize(value=attrs[source])
-                if referenced != self.current_ids(serializer=serializer, source=source):
-                    self._assert_may_use(serializer=serializer, field_name=field_name)
+                if not self._caller_may_use(
+                    serializer=serializer
+                ) and referenced != self.current_ids(serializer=serializer, source=source):
+                    self._refuse_change(serializer=serializer, field_name=field_name)
             elif principal is not None:
                 referenced = self.current_ids(serializer=serializer, source=source)
             else:
@@ -97,63 +106,124 @@ class SecretReferenceGuard:
             return frozenset(getattr(item, "pk", item) for item in value)
         return frozenset({getattr(value, "pk", value)})
 
-    def _assert_may_use(self, *, serializer, field_name) -> None:
-        """Raise unless the caller holds secrets:USE in the active org."""
+    def _caller_may_use(self, *, serializer) -> bool:
+        """Whether the caller holds secrets:USE in the active org; False without a request.
+
+        Kept on the request: rights do not change within it, and a bulk save validates
+        many rows with one request.
+        """
         request = serializer.context.get("request")
         if request is None:
+            return False
+        may_use = getattr(request, _MAY_USE_SECRETS_ATTRIBUTE, None)
+        if may_use is None:
+            effective = self._resolver.resolve(
+                user=request.user, org_id=resolve_active_org_id(request)
+            )
+            may_use = effective.can(ResourceType.SECRETS.value, Permission.USE)
+            setattr(request, _MAY_USE_SECRETS_ATTRIBUTE, may_use)
+        return may_use
+
+    @staticmethod
+    def _refuse_change(*, serializer, field_name) -> None:
+        if serializer.context.get("request") is None:
             logger.warning(
                 "SecretReferenceGuard denied '{}' on {}: no request in serializer "
                 "context, so the active org cannot be resolved.",
                 field_name,
                 type(serializer).__name__,
             )
-            raise serializers.ValidationError({field_name: _DENIED})
-        effective = self._resolver.resolve(user=request.user, org_id=resolve_active_org_id(request))
-        if not effective.can(ResourceType.SECRETS.value, Permission.USE):
-            raise serializers.ValidationError({field_name: _DENIED})
+        raise serializers.ValidationError({field_name: _DENIED})
 
 
 class SecretDestinationGuard:
-    """Keeps a pinned-org principal from moving where an organization's secrets are sent.
+    """Keeps a pinned-org principal from deciding where any model sends requests.
 
-    A config that holds a secret sends it to the endpoint of the model it points at (an
-    LLM model's `base_url` and provider). The config itself is covered by
-    `SecretReferenceGuard`, but the model row is not: it references no secret. A pinned-org
-    principal may change those endpoint fields only on a row it owns
-    (`PinnedOrgPrincipal.owns`), which a row it created always is. People are not limited.
+    A config sends its key to the endpoint of the model it points at (an LLM model's
+    `base_url`, an Azure `deployment_id`), and a person's config may come to use any model
+    of the organization: quickstart reuses one by name, and a person can pick one. So a
+    pinned-org principal never sets or changes a model's endpoint fields, on its own rows
+    or the organization's, on create or on update. The model's name and provider only
+    choose between vendor hosts and stay editable. People are not limited.
     """
 
     def assert_may_change_endpoints(self, *, serializer, attrs, fields) -> None:
-        """Raise ValidationError when a pinned-org principal changes an endpoint field of a row it does not own.
+        """Raise ValidationError when a pinned-org principal sets or changes an endpoint field.
 
         Args:
-            fields: Sources of the fields that decide where requests carrying a config's
-                key go. A field the payload leaves out, or sends unchanged, never counts.
+            fields: Sources of the fields that decide where the model sends requests.
         """
-        instance = serializer.instance
-        principal = _pinned_principal(serializer=serializer)
-        if instance is None or principal is None:
+        self.assert_endpoints_untouched(
+            principal=_pinned_principal(serializer=serializer),
+            instance=serializer.instance,
+            values=attrs,
+            fields=fields,
+        )
+
+    def assert_endpoints_untouched(self, *, principal, instance, values, fields) -> None:
+        """Raise ValidationError for each of `fields` the write would leave different from the row.
+
+        Nothing happens for a person (`principal` None). A field the write leaves out, or
+        sends unchanged, never counts; on a new row (`instance` None) any non-empty value
+        does.
+        """
+        if principal is None:
             return
         changed = [
             source
             for source in fields
-            if source in attrs
-            and _endpoint_value(attrs[source]) != _endpoint_value(getattr(instance, source))
+            if source in values
+            and _endpoint_value(values[source]) != _endpoint_value(getattr(instance, source, None))
         ]
-        if changed and not principal.owns(instance):
-            raise serializers.ValidationError(dict.fromkeys(changed, _NOT_REPOINTABLE))
+        if changed:
+            raise serializers.ValidationError(dict.fromkeys(changed, _ENDPOINT_NOT_SETTABLE))
 
 
-def _endpoint_value(value):
-    # An empty URL and no URL both mean the provider's default endpoint; a row compares by pk.
-    return getattr(value, "pk", value) or None
+def pinned_principal_of_user(user):
+    """Return `user` when it is a pinned-org principal, None for anyone else.
+
+    Fails closed: a caller that carries the plugin-credential flag but does not implement
+    `PinnedOrgPrincipal` is refused, never taken for a person whose writes nothing limits.
+
+    Raises:
+        PermissionDenied: The caller is a plugin credential without the protocol.
+    """
+    if is_pinned_org_principal(user):
+        return user
+    if getattr(user, "is_plugin_credential", False) is True:
+        _refuse_incomplete_principal(user)
+    return None
 
 
 def _pinned_principal(*, serializer):
-    """The request's pinned-org principal, or None for a person and without a request."""
+    """The request's pinned-org principal, or None for a person and without a request.
+
+    Raises:
+        PermissionDenied: The request authenticated with a plugin credential whose user
+            does not implement `PinnedOrgPrincipal`.
+    """
     request = serializer.context.get("request")
+    if request is None:
+        return None
     user = getattr(request, "user", None)
-    return user if is_pinned_org_principal(user) else None
+    principal = pinned_principal_of_user(user)
+    if principal is None and is_plugin_credential(request):
+        _refuse_incomplete_principal(user)
+    return principal
+
+
+def _refuse_incomplete_principal(user) -> None:
+    logger.error(
+        "A plugin credential's user ({}) does not implement PinnedOrgPrincipal; its write "
+        "was refused",
+        type(user).__name__,
+    )
+    raise exceptions.PermissionDenied(_INCOMPLETE_PRINCIPAL)
+
+
+def _endpoint_value(value):
+    # An empty value and no value both mean the provider's default endpoint.
+    return value or None
 
 
 secret_reference_guard = SecretReferenceGuard()

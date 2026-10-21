@@ -8,7 +8,7 @@ import {
 
 import type { ApiFetch } from './api';
 import { element } from './dom';
-import { FORECAST_PATH, ForecastPage } from './forecast';
+import { FORECAST_PATH, ForecastPage, requestedCity } from './forecast';
 import {
     CONNECT_PATH,
     type ConnectState,
@@ -24,6 +24,7 @@ import {
 } from './login-pages';
 import { ORG_SETTINGS_PATH, ORG_SETTINGS_PERMISSION, OrgSettingsPage, type Permissions } from './org-settings';
 import { ABOUT_PATH, renderAbout, renderNotFound } from './pages';
+import { PLACES_PATH, PlacesPage } from './places';
 
 interface NavigationEntry {
     path: string;
@@ -34,6 +35,7 @@ interface NavigationEntry {
 
 const NAVIGATION: readonly NavigationEntry[] = [
     { path: FORECAST_PATH, label: 'Forecast' },
+    { path: PLACES_PATH, label: 'Places' },
     { path: ORG_SETTINGS_PATH, label: 'Organization settings', permission: ORG_SETTINGS_PERMISSION },
     { path: WHO_AM_I_PATH, label: 'Who am I' },
     { path: CONNECT_PATH, label: 'Connect' },
@@ -41,7 +43,7 @@ const NAVIGATION: readonly NavigationEntry[] = [
 ];
 
 /** The pages that need the person signed in. */
-const SIGNED_IN_PATHS: readonly string[] = [FORECAST_PATH, ORG_SETTINGS_PATH, WHO_AM_I_PATH, CONNECT_PATH];
+const SIGNED_IN_PATHS: readonly string[] = [FORECAST_PATH, PLACES_PATH, ORG_SETTINGS_PATH, WHO_AM_I_PATH, CONNECT_PATH];
 
 /** The address the page starts on; it shows the forecast. */
 const HOME_PATH = '/';
@@ -84,6 +86,7 @@ async function main(): Promise<void> {
     let connect: ConnectState = { status: 'idle' };
     // Built on first visit and kept, so what the person typed and the running forecast survive moving around.
     let forecastPage: ForecastPage | null = null;
+    let placesPage: PlacesPage | null = null;
     let orgSettingsPage: OrgSettingsPage | null = null;
 
     // The header is built once and updated in place, so a re-render never takes the focus from a link in it.
@@ -147,10 +150,21 @@ async function main(): Promise<void> {
         if (notSignedIn !== null) return notSignedIn;
         const fetchApi: ApiFetch = (apiPath, init) => signedIn.fetch(apiPath, init);
         switch (path) {
-            case FORECAST_PATH:
+            case FORECAST_PATH: {
                 forecastPage ??= new ForecastPage(fetchApi, pluginName, render);
+                const city = requestedCity(location.search);
+                if (city !== null) {
+                    // Taken once: a re-render keeps what the person typed since, and the next link here fills it again.
+                    history.replaceState(null, '', FORECAST_PATH);
+                    forecastPage.prefill(city);
+                }
                 forecastPage.update();
                 return [forecastPage.root];
+            }
+            case PLACES_PATH:
+                placesPage ??= new PlacesPage(fetchApi, pluginName, render);
+                placesPage.update(permissions());
+                return [placesPage.root];
             case ORG_SETTINGS_PATH:
                 orgSettingsPage ??= new OrgSettingsPage(fetchApi, pluginName, render);
                 orgSettingsPage.update(permissions());
@@ -213,7 +227,8 @@ async function main(): Promise<void> {
         if (!link || link.origin !== location.origin || event.defaultPrevented || event.button !== 0) return;
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        if (link.pathname !== location.pathname) history.pushState(null, '', link.pathname);
+        const target = link.pathname + link.search;
+        if (target !== location.pathname + location.search) history.pushState(null, '', target);
         render();
     });
     // EpicStaff's back/forward and links arrive as popstate (the SDK's default nav.navigate handling).

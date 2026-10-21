@@ -2,8 +2,8 @@
 
 A plugin's backend runs as its own process on the deployment's plugin node, under a Unix user
 of its own, on a port of its own. This page is what that process can rely on: how it is
-started, its environment, its runtime file, its file system, and what other plugins on the same
-node can and cannot see of it. The [Python SDK](python-sdk.md) reads all of it for you.
+started, its environment, its runtime file, its file system, its network, and what other plugins
+on the same node can and cannot see of it. The [Python SDK](python-sdk.md) reads all of it for you.
 
 ## How the backend is started
 
@@ -74,8 +74,16 @@ The process gets exactly these variables; nothing is inherited from the node.
 | `EPICSTAFF_API_URL` | EpicStaff's API as the plugin reaches it, the runtime file's `epicstaff_api_url` |
 | `EPICSTAFF_PUBLIC_URL` | EpicStaff's address in people's browsers, the runtime file's `epicstaff_public_url` |
 | `EPICSTAFF_PLUGIN_PUBLIC_URL` | The plugin's own public address, the runtime file's `public_url` |
+| `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy` | `http://<id>:<password>@plugins_egress:3128`: the egress proxy, with the plugin's own credentials ([Call the internet from your backend](../how-to/outbound-hosts.md)) |
+| `NO_PROXY`, `no_proxy` | The host of `epicstaff_api_url`, then `localhost,127.0.0.1,::1`: reached directly, not through the proxy |
+| `DATABASE_URL` | With a `database` section only: `postgresql://<id_>_app:<password>@<host>:<port>/plugin_<id_>?application_name=<id>`, the plugin's own database as its app role ([Plugin database](database.md)) |
+| `EPICSTAFF_PLUGIN_DB_CONNECTIONS` | With a `database` section only: the app role's connection limit |
 
-Secrets are never in the environment or on the command line; they are only in the runtime file.
+Your settings' secrets are only in the runtime file, never in the environment or on the command
+line. The platform's own credentials for your database and for the egress proxy are in the
+environment: `DATABASE_URL` and the proxy variables. Both the file and the environment are
+readable only by your plugin's user. Don't hand your environment to code you don't trust: a
+child process gets all of it unless you start it with a smaller one.
 
 ## Runtime file
 
@@ -164,6 +172,14 @@ The plugin's user has a number but no entry in `/etc/passwd`: `pwd.getpwuid(os.g
 Write logs to standard output and standard error. The node keeps the last 30 MB of them per
 plugin, and shows the last 200 lines on the Runtime tab when the plugin fails.
 
+## Network
+
+The backend reaches EpicStaff's API at `epicstaff_api_url`, its own database when it has one,
+and the egress proxy, and nothing else. There is no route to the internet but through the proxy,
+which lets through HTTPS on port 443 to the hosts in the manifest's `outbound_hosts`, and
+outside names do not resolve
+([Call the internet from your backend](../how-to/outbound-hosts.md)).
+
 ## Other plugins on the same node
 
 Several plugins share a node. Each runs as a different user, so a plugin **cannot**:
@@ -181,7 +197,8 @@ But every plugin on the node **can**:
 Hence two rules:
 
 - **Never put a secret in a command line**, your own or a child process's: every plugin on the
-  node can read it. Pass secrets in environment variables of the child or in files under
+  node can read it. That includes `DATABASE_URL` and the proxy URL (`psql "$DATABASE_URL"` puts
+  the password on one). Pass secrets in environment variables of the child or in files under
   `HOME`.
 - **Trust a request only through its gateway context or hook assertion.** Another plugin can
   call your port directly, but it can forge neither: `epicstaff_plugin.serve` refuses every

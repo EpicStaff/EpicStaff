@@ -47,8 +47,11 @@ COPY --from=plugin-python-3-13 /usr/local/ /opt/plugin-python/3.13/
 COPY --from=plugin-python-3-12 /usr/local/ /opt/plugin-python/3.12/
 COPY --from=builder /app /app
 
-# The node's volume is mounted here; the launcher sets the owners and modes at start-up.
-RUN mkdir -p /var/lib/es_plugins
+# The node's volume is mounted at /var/lib/es_plugins; the launcher sets the owners and modes
+# at start-up. The egress policy volume is mounted below /var/lib/es_plugins_egress, which only
+# root and the agent's group may pass through: no plugin UID reads the proxy's policy.
+RUN mkdir -p /var/lib/es_plugins \
+    && install -d -m 0710 -o root -g 10000 /var/lib/es_plugins_egress
 
 # `src.shared` resolves from /app and the service's own package from /app/src/es_plugins.
 # PYTHONSAFEPATH=1 keeps the working directory off sys.path.

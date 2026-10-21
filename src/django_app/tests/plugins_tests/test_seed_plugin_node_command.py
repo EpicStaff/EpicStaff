@@ -3,7 +3,7 @@
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from plugins.models import PluginNode, PluginSigningKey
+from plugins.models import PluginDatabaseServer, PluginNode, PluginSigningKey
 from plugins.nodes.node_authentication import node_key_hash
 from rest_framework.test import APIClient
 
@@ -105,3 +105,41 @@ def test_a_renamed_node_s_old_key_stops_working(node_settings, plugins_enabled):
     assert client.get("/api/plugin-nodes/self/desired-state/").status_code == 401
     client.credentials(HTTP_AUTHORIZATION=f"PluginNodeKey new-{KEY}", HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET)
     assert client.get("/api/plugin-nodes/self/desired-state/").status_code == 200
+
+
+# ---- the plugin database server ----
+
+
+def test_the_database_server_is_registered_while_plugins_are_on(node_settings, capsys):
+    call_command("seed_plugin_node")
+
+    server = PluginDatabaseServer.objects.get()
+    assert (server.name, server.host, server.port) == ("plugins_db", "plugins_db", 5432)
+    assert "Plugin database server 'plugins_db' registered at plugins_db:5432." in capsys.readouterr().out
+
+
+def test_the_database_server_is_registered_without_a_node_key(node_settings):
+    node_settings.PLUGINS_NODE_KEY = "none"
+
+    call_command("seed_plugin_node")
+
+    assert PluginDatabaseServer.objects.filter(name="plugins_db").exists()
+    assert not PluginNode.objects.exists()
+
+
+def test_seeding_again_keeps_one_database_server_with_the_compose_address(node_settings):
+    call_command("seed_plugin_node")
+    PluginDatabaseServer.objects.update(host="elsewhere", port=6543)
+
+    call_command("seed_plugin_node")
+
+    server = PluginDatabaseServer.objects.get()
+    assert (server.host, server.port) == ("plugins_db", 5432)
+
+
+def test_no_database_server_is_registered_while_plugins_are_off(node_settings):
+    node_settings.PLUGINS_ENABLED = False
+
+    call_command("seed_plugin_node")
+
+    assert not PluginDatabaseServer.objects.exists()

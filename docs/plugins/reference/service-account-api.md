@@ -60,9 +60,9 @@ X-EpicStaff-On-Behalf-Of: 17            (optional: see below)
   references any other secret of the organization is refused (`400 invalid`) on create and on
   every update. A secret's value is never returned. There is no `update`: create a new secret and
   delete the old one.
-- **Models.** A service account may change where a model sends requests (`base_url`, the provider)
-  only on models it created; the organization's configurations use its other models with their
-  own keys (`400 invalid`). Its other fields stay editable with `llm_configs: update`.
+- **Models.** A service account cannot set where a model sends requests (`base_url`,
+  `deployment_id`), on its own models or the organization's; for its own endpoint, put it on its
+  own configuration with its own secret. Its other fields stay editable with `llm_configs: update`.
 - **Rate.** Each organization's service account may make `requests_per_minute` calls a minute,
   every endpoint counted; over it, `429 throttled` with `Retry-After` ([Limits](limits.md)).
 - **What it creates is the plugin's.** EpicStaff records every flow, secret, LLM, embedding or
@@ -166,11 +166,14 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 | `settings_changed` | A SuperAdmin changed settings (the keys only, never values) | SuperAdmin | none |
 | `limits_changed` | A SuperAdmin changed limit overrides (the overrides in force afterwards, one key per limit, such as `memory_mb` and `cpu_priority`) | SuperAdmin | none |
 | `restarted` | A SuperAdmin restarted the backend (`restart_generation`) | SuperAdmin | none |
+| `database_ready` | The plugin's database is ready: the first time, again after a failure, and after new migrations ran (`migrations_applied`, the number of migrations applied so far) | Platform | none |
+| `database_failed` | Setting up the plugin's database failed (`error`); recorded when it starts failing, not again while it keeps failing | Platform | none |
+| `database_limit_restored` | The plugin node put back a database limit the plugin's role had changed (`setting`: `statement_timeout`); at most once an hour | Platform | none |
 
 Events name the plugin by its identifier, so they outlive the plugin. Logins to the plugin are
 not activity, and neither are runs refused while the plugin is suspended. An event's `detail` holds
 only numbers, text, booleans and lists of text. `request.route` is the URL path pattern of the
-endpoint, such as `api/graphs/<pk>/`, the same form for every endpoint.
+endpoint, the same form for every endpoint: `api/graphs/<pk>/`, `api/sessions/<session_id>/stop/`.
 
 ## Errors
 

@@ -4,7 +4,7 @@ import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angula
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
 import { getRelativeTime } from '@shared/utils';
-import { finalize } from 'rxjs';
+import { filter, finalize } from 'rxjs';
 
 import { PluginGrant } from '../../models/plugin-admin.model';
 import {
@@ -64,7 +64,8 @@ interface SuspendPreviewView {
  * Suspends a plugin in one organization after showing what that stops: what the plugin owns there, the
  * organization's flows and the plugin's own flows that will stop, their running sessions and triggers, the realtime
  * agents and voice channels, the default-model settings that point at the plugin's configs, and until when the data is
- * kept. Suspension is undone by Resume, so no typed phrase is asked for. Closes with the suspended grant.
+ * kept. Suspension is undone by Resume, so no typed phrase is asked for. Closes with the suspended grant. A click
+ * outside does not close it; Escape, Cancel and the close button do, except while the suspension is under way.
  */
 @Component({
     selector: 'app-plugin-suspend-dialog',
@@ -82,8 +83,11 @@ export class PluginSuspendDialogComponent implements OnInit {
         const preview = this.preview();
         return preview ? toPreviewView(preview) : null;
     });
-    /** A preview that failed to load does not block the suspension: it must work when something is wrong. */
-    protected readonly canSuspend = computed(() => !this.isLoading() && !this.isSuspending());
+    /**
+     * Neither a preview still loading nor one that failed blocks the suspension: it is the way to stop a plugin, so it
+     * must work when something is wrong.
+     */
+    protected readonly canSuspend = computed(() => !this.isSuspending());
 
     protected readonly data = inject<PluginSuspendDialogData>(DIALOG_DATA);
     protected readonly organizationName = this.data.grant.organization.name;
@@ -98,6 +102,12 @@ export class PluginSuspendDialogComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
 
     ngOnInit(): void {
+        this.dialogRef.keydownEvents
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.close());
         this.loadPreview();
     }
 

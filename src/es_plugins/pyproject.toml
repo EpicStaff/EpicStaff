@@ -5,10 +5,14 @@ description = "EpicStaff plugin node: runs approved plugin backends, each as its
 authors = [{ name = "EpicStaff" }]
 requires-python = "==3.12.10"
 dependencies = [
+    # Hashes the egress proxy's per-plugin passwords for Squid's basic_ncsa_auth.
+    "bcrypt==5.0.0",
     "epicstaff-plugin",
     "httpx==0.28.1",
     "loguru==0.7.3",
     "packaging==26.3",
+    # Provisions plugin databases on plugins_db; the version django_app and chat ship.
+    "psycopg[binary]==3.3.4",
     "pydantic==2.13.4",
 ]
 
@@ -45,4 +49,5 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
     "linux: needs Linux kernel features (SOCK_SEQPACKET, SO_PEERCRED, pidfd, /proc); skipped elsewhere",
     "root: needs root with CAP_SETUID, CAP_SETGID and CAP_CHOWN (the node's container); skipped otherwise",
+    "postgres: needs a plugins_db server (ES_PLUGINS_TEST_PG_HOST, _PORT, _ADMIN_PASSWORD; src/plugins_db/lab/run.sh); skipped otherwise",
 ]

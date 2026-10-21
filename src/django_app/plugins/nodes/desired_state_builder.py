@@ -17,7 +17,7 @@ from plugins.configuration.limits import plugin_limits
 from plugins.configuration.setting_values import blocked_reason
 from plugins.identity.signing_keys import PluginSigningKeyService
 from plugins.lifecycle.hook_job_service import HookJobService
-from plugins.models import PluginNode, PluginPlacement, PluginSettingValue, PluginState
+from plugins.models import Plugin, PluginNode, PluginPlacement, PluginSettingValue, PluginState
 from plugins.nodes.runtime_credentials_service import (
     Roster,
     RuntimeFileBuilder,
@@ -37,7 +37,7 @@ def placements_to_run(node: PluginNode):
             plugin__state__in=PLACED_PLUGIN_STATES,
             plugin__current_package__isnull=False,
         )
-        .select_related("plugin__current_package")
+        .select_related("plugin__current_package", "plugin__database__server")
         .defer("plugin__current_package__icon_bytes")
         .order_by("pk")
     )
@@ -49,8 +49,8 @@ class DesiredStateBuilder:
     `revision` is the sha256 of the canonical JSON of the document without `revision` and
     `generated_at`, so it changes exactly when something the node acts on changes, and
     serves as the ETag. Five queries plus the signing keys, whatever the number of plugins:
-    the placements, the stored setting keys, the service-account rosters and the pending
-    hook jobs.
+    the placements (with each plugin's database record and its server), the stored setting
+    keys, the service-account rosters and the pending hook jobs.
     """
 
     def build(self, node: PluginNode) -> DesiredState:
@@ -133,5 +133,29 @@ class DesiredStateBuilder:
                 ),
                 "settings_revision": placement.settings_revision,
                 "hook_jobs": hook_jobs,
+                "database": _database_section(plugin, manifest, effective),
+                "egress": {"hosts": [outbound.host for outbound in manifest.outbound_hosts]},
             }
         )
+
+
+def _database_section(plugin: Plugin, manifest: PluginManifest, effective: dict) -> dict | None:
+    """The plugin's database as its node provisions it, with the effective limits; None
+    when the current package has no database.
+
+    Approval creates the record of every package with a database, so the record is there.
+    """
+    if manifest.database is None:
+        return None
+    record = plugin.database
+    server = record.server
+    return {
+        "server": {"name": server.name, "host": server.host, "port": server.port},
+        "installation_id": record.installation_id,
+        "database_name": record.database_name,
+        "owner_role": record.owner_role,
+        "app_role": record.app_role,
+        "job_role": record.job_role,
+        "connection_limit": effective["db_connections"],
+        "statement_timeout_seconds": effective["statement_timeout_seconds"],
+    }

@@ -15,6 +15,7 @@ import { PluginActivityEvent } from '../../models/plugin-activity.model';
 import {
     PLUGIN_ACTIVITY_ACTION_LABELS,
     pluginActivityActorText,
+    pluginActivityDetailText,
     pluginActivityErrorText,
     pluginActivityOrganizationText,
     pluginActivityPluginText,
@@ -36,6 +37,7 @@ interface ActivityEntry {
     action: string;
     requestLine: string | null;
     target: string | null;
+    detail: string | null;
     error: string | null;
 }
 
@@ -52,7 +54,8 @@ const DETAILS_COLUMN: AppTableColumnDef = { key: 'details', label: 'Details', wi
 
 /**
  * A page of plugin activity, newest first: when, who (the plugin, on behalf of whom, a SuperAdmin or the platform),
- * what, and the request line or the target. The container loads the pages; this list only asks for another one.
+ * what, and the request line, the target, the overrides a limits change left, or the error of a failure. The container
+ * loads the pages; this list only asks for another one.
  */
 @Component({
     selector: 'app-plugin-activity-list',
@@ -115,6 +118,7 @@ function toEntry(event: PluginActivityEvent): ActivityEntry {
         action: PLUGIN_ACTIVITY_ACTION_LABELS[event.action],
         requestLine: pluginActivityRequestLine(event),
         target: pluginActivityTargetText(event),
+        detail: pluginActivityDetailText(event),
         error: pluginActivityErrorText(event),
     };
 }

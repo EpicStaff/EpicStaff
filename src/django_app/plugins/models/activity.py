@@ -16,6 +16,9 @@ class ActivityAction(models.TextChoices):
     SETTINGS_CHANGED = "settings_changed"
     LIMITS_CHANGED = "limits_changed"
     RESTARTED = "restarted"
+    DATABASE_READY = "database_ready"
+    DATABASE_FAILED = "database_failed"
+    DATABASE_LIMIT_RESTORED = "database_limit_restored"
 
 
 class ActorKind(models.TextChoices):

@@ -1,7 +1,8 @@
 # Weather sample plugin
 
 A complete EpicStaff plugin: a single-page app in EpicStaff's frame (`spa/`, using the JS SDK
-in `plugin-sdk/`) and a FastAPI backend (`backend/`, using the Python SDK in `src/plugin_sdk/`).
+in `plugin-sdk/`), a FastAPI backend (`backend/`, using the Python SDK in `src/plugin_sdk/`),
+and a database of its own (`database/migrations/`).
 [Build your first plugin](../../docs/plugins/tutorial/build-your-first-plugin.md) walks through
 it, and shows how to pack it.
 
@@ -14,6 +15,11 @@ it, and shows how to pack it.
 - **Organization settings** (`/api/org-settings`). For people with Weather's Delete permission:
   stores an LLM key as the Secret "Weather · LLM key" and creates the LLM config
   "Weather summaries", on behalf of the admin.
+- **Saved places** (`/api/places`). Each organization's list of places, in Weather's database;
+  adding and removing need Weather's Edit permission.
+- **Place search** (`/api/places/search`). Finds places by name at Open-Meteo's geocoding API,
+  through the egress proxy: `geocoding-api.open-meteo.com` is the one outbound host the manifest
+  declares.
 
 ## Things to know
 
@@ -27,10 +33,11 @@ it, and shows how to pack it.
   fails after the Secret was created, trying again with the same key finishes the job; with
   another key Weather asks the admin to delete "Weather · LLM key" in Settings → Secrets first.
   To change the key later, change the LLM config in EpicStaff's own settings.
-- **The in-process stores are for the demo only.** Which person started which forecast run
-  (`forecast_runs.py`) and the popup relay's results (`popup_relay.py`) live in the backend
-  process's memory: enough for one sample process, but lost on every restart. A real plugin
-  keeps them in its database.
+- **Everything Weather keeps is in its database**, in the schema `weather`: the saved places,
+  which person started which forecast run (`forecast_runs.py`) and the popup relay's results
+  (`popup_relay.py`). Every table has row-level security on `org_id`, and every query runs in
+  one organization's transaction (`database.py`), so an organization never sees another's rows.
+  A restart loses nothing.
 - **The demo OAuth provider** (`/api/demo-provider`, a public path) stands in for an external
   service, to show the popup hand-off; see
   [Receive an external provider's callback](../../docs/plugins/how-to/external-callbacks.md).

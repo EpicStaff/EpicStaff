@@ -6,23 +6,21 @@ and cannot post the result back. It then logs itself in (in the organization `st
 posts the result here, and the framed page polls for it. Each result is kept for the person
 and organization that posted it, so nobody else can read it or replace it.
 
-The results live in this process's memory: enough for the sample, which runs one process, but
-lost on every restart. This store is for the demo only; a real plugin keeps them in its
-database.
+The results are kept in Weather's database for five minutes, so a restart in between loses
+none. Expired results are deleted whenever the organization's relay is used.
 """
 
-import time
-from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Annotated
+import re
+from typing import Annotated, Any
 
+from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+from weather_plugin.database import Connection, WeatherDatabase
 
 # Equals `patterns.popup_state` of the JS SDK's login protocol (`createPopupState`).
 POPUP_STATE_PATTERN = r"^[1-9][0-9]{0,9}\.[A-Za-z0-9_-]{22,64}$"
 RESULT_LIFETIME_SECONDS = 300
-# Bounds the memory a burst of posted results can take; the oldest result goes first.
-MAX_STORED_RESULTS = 256
 MAX_PARAMS = 20
 MAX_PARAM_NAME_LENGTH = 256
 MAX_PARAM_VALUE_LENGTH = 2048
@@ -46,40 +44,41 @@ class RelayedResult(BaseModel):
     params: Annotated[dict[ParamName, ParamValue], Field(max_length=MAX_PARAMS)]
 
 
-@dataclass(frozen=True)
-class _StoredResult:
-    params: dict[str, str]
-    expires_at: float
+def is_popup_state(value: str) -> bool:
+    """Whether `value` has the form of a popup state, so a lookup for it can find anything."""
+    return re.fullmatch(POPUP_STATE_PATTERN, value) is not None
 
 
 class PopupRelayStore:
-    """Results posted by popups, each readable once by the person and organization that posted it.
+    """Results posted by popups, each readable once by the person and organization that posted it."""
 
-    Not thread-safe: the app's routes are coroutines, which run on one event loop.
-    """
+    def __init__(self, database: WeatherDatabase):
+        self._database = database
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic):
-        self._clock = clock
-        self._results: dict[tuple[int, int, str], _StoredResult] = {}
-
-    def put(self, user_id: int, org_id: int, state: str, params: dict[str, str]) -> None:
+    async def put(self, org_id: int, user_id: int, state: str, params: dict[str, str]) -> None:
         """Keep `params` for five minutes, replacing what this person posted for `state`."""
-        self._drop_expired()
-        key = (user_id, org_id, state)
-        self._results.pop(key, None)
-        while len(self._results) >= MAX_STORED_RESULTS:
-            del self._results[next(iter(self._results))]
-        self._results[key] = _StoredResult(
-            params=dict(params), expires_at=self._clock() + RESULT_LIFETIME_SECONDS
-        )
+        async with self._database.transaction(org_id) as connection:
+            await _delete_expired(connection)
+            await connection.execute(
+                "INSERT INTO weather.popup_results (org_id, user_id, state, params, expires_at)"
+                " VALUES (%s, %s, %s, %s, now() + make_interval(secs => %s))"
+                " ON CONFLICT (org_id, user_id, state)"
+                " DO UPDATE SET params = EXCLUDED.params, expires_at = EXCLUDED.expires_at",
+                (org_id, user_id, state, Jsonb(params), RESULT_LIFETIME_SECONDS),
+            )
 
-    def take(self, user_id: int, org_id: int, state: str) -> dict[str, str] | None:
+    async def take(self, org_id: int, user_id: int, state: str) -> dict[str, Any] | None:
         """Return and forget what this person posted for `state` in this organization, if any."""
-        self._drop_expired()
-        stored = self._results.pop((user_id, org_id, state), None)
-        return stored.params if stored else None
+        async with self._database.transaction(org_id) as connection:
+            await _delete_expired(connection)
+            cursor = await connection.execute(
+                "DELETE FROM weather.popup_results WHERE user_id = %s AND state = %s"
+                " RETURNING params",
+                (user_id, state),
+            )
+            row = await cursor.fetchone()
+        return None if row is None else row["params"]
 
-    def _drop_expired(self) -> None:
-        now = self._clock()
-        for key in [key for key, stored in self._results.items() if stored.expires_at <= now]:
-            del self._results[key]
+
+async def _delete_expired(connection: Connection) -> None:
+    await connection.execute("DELETE FROM weather.popup_results WHERE expires_at <= now()")

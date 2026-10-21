@@ -16,9 +16,11 @@ These pages are for people who build plugins and for operators who run them.
 - A plugin's frontend files are public, like EpicStaff's own: the page has to load before anyone
   can log in. Keep secrets out of them.
 - A plugin is a single-page app built to static files, in any framework, and optionally a Python
-  ASGI backend. This version does not offer plugin databases yet: a package that declares one is
-  refused, and the manifest format already describes it, so manifests will not change when it
-  arrives.
+  ASGI backend. A backend may keep its data in a PostgreSQL database of its own
+  ([Plugin database](reference/database.md)), and may call the internet hosts its manifest
+  declares, over HTTPS through the deployment's egress proxy
+  ([Call the internet from your backend](how-to/outbound-hosts.md)). Every other outbound request
+  is refused.
 - People log in to a plugin through EpicStaff, never with a password of the plugin's own: the
   [JS SDK](reference/js-sdk.md) gets a plugin login token for the person and the organization
   ([token exchange](reference/token-exchange.md)) and sends it to the plugin's backend, which
@@ -49,6 +51,9 @@ These pages are for people who build plugins and for operators who run them.
 | [Give people permissions](how-to/user-permissions.md) | `user_permissions`, built-in role defaults, custom roles in the Roles matrix and their ceiling |
 | [Python SDK](reference/python-sdk.md) | `epicstaff-plugin` for backends: serving, the context check, the runtime configuration, testing |
 | [Runtime](reference/runtime.md) | How a backend runs: environment, runtime file, file system, what other plugins can see |
+| [Plugin database](reference/database.md) | The database a backend gets: when it is set up, its names, roles and grants, the environment, limits, the migration ledger |
+| [Write database migrations](how-to/database-migrations.md) | SQL migrations in the package, role placeholders, keeping organizations apart with row-level security, testing them |
+| [Call the internet from your backend](how-to/outbound-hosts.md) | `outbound_hosts`, the egress proxy, clients that read the proxy from the environment, what a refusal looks like |
 | [Gateway context](reference/gateway-context.md) | The signed statement every backend request carries (public or a logged-in person), and how it is verified |
 | [Serve public paths](how-to/public-paths.md) | Paths reached without a login: canonical paths, body caps, rate limits |
 | [Use settings](how-to/settings.md) | Settings a SuperAdmin fills in, secrets, required settings |
@@ -77,7 +82,7 @@ EpicStaff supports:
 
 | Contract | Version | Status |
 |---|---|---|
-| Manifest (`manifest_version`) | 1 | Supported. A `database` section is refused with `plugin_feature_unavailable`; `outbound_hosts` is accepted and shown at review, but not used yet |
+| Manifest (`manifest_version`) | 1 | Supported. A `database` section gives the backend a database of its own; `outbound_hosts` are the only hosts it can reach, through the egress proxy |
 | Frame protocol (`platform.frame_protocol`) | 1 | Supported |
 | Gateway context (`platform.gateway_context`) | 1 | Supported: `public` mode on public paths, `user` mode for logged-in people |
 | Login protocol (`plugin-sdk/contracts/login-protocol.json`, `protocol`) | 1 | Supported, for plugins with a backend |

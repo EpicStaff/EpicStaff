@@ -17,6 +17,7 @@ from es_plugins.agent.launcher_client import LauncherClient, LauncherError
 from es_plugins.disk_usage import DiskUsage
 from es_plugins.launcher import protocol
 from es_plugins.launcher.directory_setup import DirectorySetup
+from es_plugins.launcher.__main__ import agent_environment
 from es_plugins.launcher.kill_by_uid import kill_uid
 from es_plugins.launcher.privileged_launcher import (
     PLUGIN_OOM_SCORE_ADJ,
@@ -43,6 +44,19 @@ def spawn_request(**overrides):
         **overrides,
     }
     return protocol.decode_request(json.dumps(request).encode())
+
+
+def test_the_agent_gets_the_database_admin_password_and_nothing_else_of_the_launchers(layout, monkeypatch):
+    monkeypatch.setenv("PLUGINS_DB_ADMIN_PASSWORD", "d" * 64)
+    monkeypatch.setenv("PLUGINS_NODE_KEY", "n" * 64)
+    monkeypatch.setenv("POSTGRES_PASSWORD", "s" * 64)
+    monkeypatch.setenv("PLUGINS_DB_BACKUP_PASSWORD", "b" * 64)
+
+    environment = agent_environment(layout)
+
+    assert (environment["PLUGINS_DB_ADMIN_PASSWORD"], environment["PLUGINS_NODE_KEY"]) == ("d" * 64, "n" * 64)
+    assert "POSTGRES_PASSWORD" not in environment
+    assert "PLUGINS_DB_BACKUP_PASSWORD" not in environment
 
 
 def test_a_valid_request_is_decoded():

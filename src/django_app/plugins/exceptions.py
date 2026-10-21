@@ -33,14 +33,6 @@ class InvalidPluginError(_ProblemListError):
     default_code = "invalid_plugin"
 
 
-class PluginFeatureUnavailableError(_ProblemListError):
-    """The package declares a part this EpicStaff cannot run yet (a backend or a database)."""
-
-    status_code = 400
-    default_detail = "The plugin needs a feature this EpicStaff does not offer yet."
-    default_code = "plugin_feature_unavailable"
-
-
 class InvalidSignatureError(CustomAPIExeption):
     status_code = 400
     default_detail = "The package signature is invalid."
@@ -150,6 +142,18 @@ class NoPluginNodeError(CustomAPIExeption):
         "EpicStaff, and check that PLUGINS_NODE_NAME has not changed since the node was set up."
     )
     default_code = "no_plugin_node"
+
+
+class NoPluginDatabaseServerError(CustomAPIExeption):
+    """A package with a database needs a database server for it, and none is registered."""
+
+    status_code = 409
+    default_detail = (
+        "No plugin database server is registered, so a plugin with a database cannot be "
+        "approved. EpicStaff registers it at start-up while plugins are on (manage.py "
+        "seed_plugin_node): restart EpicStaff with PLUGINS_ENABLED=true."
+    )
+    default_code = "no_plugin_database_server"
 
 
 class PluginNodeFullError(CustomAPIExeption):

@@ -268,7 +268,8 @@ class PluginDetailSerializer(PluginSummarySerializer):
 
 
 class PluginGrantSerializer(serializers.ModelSerializer):
-    """A grant in the SuperAdmin's list; expects a `PluginGrant.objects.with_admin_details()` row."""
+    """A grant in the SuperAdmin's list: a `PluginGrant.objects.with_admin_details()` row, with
+    `owned_resource_count` set by `with_owned_resource_counts`."""
 
     plugin_identifier = serializers.CharField(source="plugin.identifier")
     organization = serializers.SerializerMethodField()

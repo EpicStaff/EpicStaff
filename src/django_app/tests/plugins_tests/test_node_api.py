@@ -3,20 +3,27 @@
 import hashlib
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from plugins.lifecycle.grant_service import PluginGrantService
+from plugins.lifecycle.suspension_service import PluginSuspensionService
 from plugins.models import (
     PlacementObservedState,
     Plugin,
+    PluginDatabase,
     PluginNode,
     PluginPlacement,
     PluginSettingValue,
     PluginSigningKey,
     PluginState,
 )
+from plugins.nodes.desired_state_builder import DesiredStateBuilder
 from rest_framework.test import APIClient
+from src.shared.models.plugin_nodes import DesiredState, database_names_for
 
-from tests.plugins_tests.conftest import upload_file
-from tests.plugins_tests.package_builder import TOKEN_SETTING, backend_manifest, build_package
+from tests.plugins_tests.conftest import mark_running, upload_file
+from tests.plugins_tests.package_builder import GEOCODING_HOST, TOKEN_SETTING, backend_manifest, build_package
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -129,8 +136,108 @@ def test_the_desired_state_describes_each_backend_on_the_node(backend_plugin, pl
         "credentials_revision": placement["credentials_revision"],
         "settings_revision": 0,
         "hook_jobs": [],
+        "database": None,
+        "egress": {"hosts": []},
     }
     assert len(placement["credentials_revision"]) == 64
+
+
+# ---- the database and egress sections ----
+
+
+def _placement_of(node_client):
+    [placement] = node_client.get(DESIRED_STATE_URL).json()["placements"]
+    return placement
+
+
+def test_a_plugin_with_a_database_gets_its_names_server_and_effective_limits(
+    database_plugin, plugin_node, node_client, plugin_database_server
+):
+    database_plugin(limits={"db_connections": 3, "statement_timeout_seconds": 10})
+    record = PluginDatabase.objects.get()
+
+    response = node_client.get(DESIRED_STATE_URL)
+
+    [placement] = response.json()["placements"]
+    assert placement["database"] == {
+        "server": {"name": "plugins_db", "host": "plugins_db", "port": 5432},
+        "installation_id": record.installation_id,
+        "database_name": "plugin_weather",
+        "owner_role": "weather_owner",
+        "app_role": "weather_app",
+        "job_role": "weather_job",
+        "connection_limit": 3,
+        "statement_timeout_seconds": 10,
+    }
+    # The node reads it through the shared model, whose name rule it passes.
+    [parsed] = DesiredState.model_validate_json(response.content, extra="ignore").placements
+    assert parsed.database.app_role == database_names_for("weather").app_role
+
+
+def test_the_database_limits_are_capped_by_the_platform_maximums(database_plugin, plugin_node, node_client, settings):
+    settings.PLUGINS_MAX_DB_CONNECTIONS = 4
+    settings.PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS = 8
+    database_plugin(limits={"db_connections": 4, "statement_timeout_seconds": 8})
+    settings.PLUGINS_MAX_DB_CONNECTIONS = 2
+
+    database = _placement_of(node_client)["database"]
+
+    assert (database["connection_limit"], database["statement_timeout_seconds"]) == (2, 8)
+
+
+def test_egress_lists_the_outbound_hosts_in_manifest_order(backend_plugin, plugin_node, node_client):
+    hosts = [
+        {"host": "api.open-meteo.com", "reason": "Forecasts."},
+        dict(GEOCODING_HOST),
+        {"host": "*.example.org", "reason": "Tiles."},
+    ]
+    backend_plugin(outbound_hosts=hosts)
+
+    assert _placement_of(node_client)["egress"] == {"hosts": [host["host"] for host in hosts]}
+
+
+def test_lowering_a_database_limit_changes_the_section_and_the_revision(
+    database_plugin, plugin_node, node_client, superadmin_client
+):
+    database_plugin(limits={"db_connections": 3, "statement_timeout_seconds": 10})
+    before = node_client.get(DESIRED_STATE_URL).json()
+
+    response = superadmin_client.patch(
+        "/api/admin/plugins/weather/limits/", {"overrides": {"db_connections": 2}}, format="json"
+    )
+
+    assert response.status_code == 200
+    after = node_client.get(DESIRED_STATE_URL).json()
+    assert after["revision"] != before["revision"]
+    assert after["placements"][0]["database"]["connection_limit"] == 2
+
+
+def test_suspending_a_grant_changes_neither_the_database_nor_the_egress(
+    database_plugin, plugin_node, node_client, superadmin, acme
+):
+    plugin = mark_running(database_plugin())
+    grant = PluginGrantService().grant(plugin.identifier, acme.pk, superadmin)
+    before = _placement_of(node_client)
+
+    PluginSuspensionService().suspend(plugin.identifier, grant.pk, superadmin)
+
+    after = _placement_of(node_client)
+    assert (after["database"], after["egress"]) == (before["database"], before["egress"])
+
+
+def test_the_desired_state_costs_the_same_queries_for_one_plugin_and_for_five(database_plugin, plugin_node):
+    def queries_of_build():
+        DesiredStateBuilder().build(plugin_node)
+        with CaptureQueriesContext(connection) as captured:
+            DesiredStateBuilder().build(plugin_node)
+        return len(captured.captured_queries)
+
+    database_plugin()
+    with_one = queries_of_build()
+    for identifier in ("forecast", "tides", "winds", "storms"):
+        database_plugin(id=identifier)
+
+    assert queries_of_build() == with_one
 
 
 def test_a_trusted_package_names_its_signer(installation, superadmin, plugin_node, node_client, trusts_release_key, django_capture_on_commit_callbacks):

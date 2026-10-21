@@ -6,10 +6,14 @@ from src.shared.envtools import Env
 
 from es_plugins import AGENT_VERSION
 from es_plugins.agent.django_client import DjangoNodeClient
-from es_plugins.agent.main import NodeAgent, Reporter
+from es_plugins.agent import __main__ as agent_entry
+from es_plugins.agent.main import NodeAgent, Reporter, run_agent
 from es_plugins.agent.settings import AgentSettings, AgentSettingsError
+from es_plugins.egress.policy_writer import EgressPolicyError
 from es_plugins.uid_range import UidRange
 from tests.helpers import API_URL, NODE_KEY, FakeDjango, desired_state, placement
+
+DATABASE_ADMIN_PASSWORD = "d" * 64
 
 
 def test_the_reported_agent_version_is_the_projects():
@@ -28,6 +32,7 @@ def environment(monkeypatch):
             "PLUGINS_NODE_UID_RANGE": "20000-20999",
             "ES_PLUGINS_DISK_MB_PER_PLUGIN": "2048",
             "ES_PLUGINS_FILES_PER_PLUGIN": "100000",
+            "PLUGINS_DB_ADMIN_PASSWORD": DATABASE_ADMIN_PASSWORD,
             **overrides,
         }
         for name, value in variables.items():
@@ -43,6 +48,51 @@ def test_the_settings_come_from_the_node_variables(environment):
     assert settings.api_url == "http://epicstaff-api:8081/api/"
     assert settings.uid_range == UidRange(20000, 20999)
     assert (settings.disk_megabytes_per_plugin, settings.files_per_plugin) == (2048, 100000)
+    assert settings.database_admin_password == DATABASE_ADMIN_PASSWORD
+
+
+def test_the_settings_never_show_the_node_key_or_the_database_admin_password(environment):
+    shown = repr(AgentSettings.from_environment(environment()))
+
+    assert NODE_KEY not in shown and DATABASE_ADMIN_PASSWORD not in shown
+
+
+@pytest.mark.parametrize("password", ["none", "too-short-for-a-password", ""])
+def test_a_node_without_a_usable_database_admin_password_refuses_to_start(environment, password):
+    with pytest.raises(AgentSettingsError, match="PLUGINS_DB_ADMIN_PASSWORD") as refused:
+        AgentSettings.from_environment(environment(PLUGINS_DB_ADMIN_PASSWORD=password))
+
+    assert password == "" or password not in str(refused.value)
+
+
+def test_a_node_without_the_database_admin_password_refuses_to_start(environment, monkeypatch):
+    environment()
+    monkeypatch.delenv("PLUGINS_DB_ADMIN_PASSWORD")
+
+    with pytest.raises(AgentSettingsError, match="PLUGINS_DB_ADMIN_PASSWORD"):
+        AgentSettings.from_environment(Env())
+
+
+async def test_the_agent_refuses_to_start_without_a_writable_egress_policy_directory(layout, environment):
+    layout.agent_directory.mkdir(parents=True)
+    layout.egress_policy_directory.rmdir()
+
+    with pytest.raises(EgressPolicyError, match=str(layout.egress_policy_directory)):
+        await run_agent(AgentSettings.from_environment(environment()), layout)
+
+
+def test_an_unwritable_egress_policy_directory_is_a_configuration_error(monkeypatch):
+    async def refuse(settings, layout):
+        raise EgressPolicyError("the egress policy file /var/lib/es_plugins_egress/policy/passwords cannot be written")
+
+    monkeypatch.setattr(agent_entry, "run_agent", refuse)
+    monkeypatch.setattr(agent_entry, "make_not_dumpable", lambda: None)
+    monkeypatch.setattr(agent_entry, "configure_logging", lambda component: None)
+    monkeypatch.setattr(
+        agent_entry.AgentSettings, "from_environment", classmethod(lambda cls: object())
+    )
+
+    assert agent_entry.main() == agent_entry.EXIT_CONFIGURATION_ERROR
 
 
 @pytest.mark.parametrize(

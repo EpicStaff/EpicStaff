@@ -13,6 +13,8 @@ PAGES_NAMING_THE_SAMPLE = [
     TUTORIAL,
     DOCS / "how-to" / "install-hook.md",
     DOCS / "how-to" / "call-epicstaff-from-the-backend.md",
+    DOCS / "how-to" / "database-migrations.md",
+    DOCS / "how-to" / "external-callbacks.md",
     DOCS / "reference" / "python-sdk.md",
 ]
 SAMPLE_MANIFEST = REPO_ROOT / "plugin-samples" / "weather" / "manifest.json"
@@ -38,6 +40,25 @@ def test_the_tutorial_names_the_sample_files_it_explains():
         "plugin-samples/weather/backend/src/weather_plugin/app.py",
         "plugin-samples/weather/backend/src/weather_plugin/install_hook.py",
     } <= named
+
+
+def test_parts_two_and_three_name_the_files_they_explain():
+    named = set(SAMPLE_PATH.findall(TUTORIAL.read_text()))
+
+    assert {
+        "plugin-samples/weather/database/migrations/001_weather.sql",
+        "plugin-samples/weather/backend/src/weather_plugin/database.py",
+        "plugin-samples/weather/backend/src/weather_plugin/places.py",
+        "plugin-samples/weather/backend/src/weather_plugin/place_search.py",
+    } <= named
+
+
+def test_the_sql_the_tutorial_quotes_is_in_the_samples_migration():
+    migration = (REPO_ROOT / "plugin-samples" / "weather" / "database" / "migrations" / "001_weather.sql").read_text()
+    quoted = re.findall(r"```sql\n(.*?)\n```", TUTORIAL.read_text(), re.DOTALL)
+
+    assert quoted
+    assert [block for block in quoted if block not in migration] == []
 
 
 def test_the_manifest_the_tutorial_shows_is_the_samples():

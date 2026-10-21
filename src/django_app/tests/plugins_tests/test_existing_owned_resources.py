@@ -7,6 +7,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from plugins.models import PluginGrant, PluginOwnedResource
 from plugins.ownership.existing_owned import existing_owned_resources
+from plugins.ownership.owned_resource_summary import with_owned_resource_counts
 from tables.models import Graph, KeyValueTable, StorageFile
 
 pytestmark = [pytest.mark.django_db]
@@ -81,21 +82,30 @@ def test_one_statement_for_one_row_or_twenty_of_three_models(acme, beta):
     assert statements(beta) == (20, 1)
 
 
-def test_the_grants_list_counts_only_existing_resources_in_one_subquery(running_plugin, grant_to, acme, beta, django_assert_num_queries):
+def test_the_grants_list_counts_only_resources_that_still_exist_in_one_statement_per_kind(
+    running_plugin, grant_to, acme, beta
+):
     plugin = running_plugin()
     acme_grant, beta_grant = grant_to(plugin, acme), grant_to(plugin, beta)
     kept = Graph.objects.create(name="Kept", org=acme)
     binned = Graph.objects.create(name="Binned", org=acme)
     purged = Graph.objects.create(name="Purged", org=acme)
-    for resource in (kept, binned, purged):
-        PluginOwnedResource.objects.filter(pk=_own(resource).pk).update(grant=acme_grant)
+    beta_flow = Graph.objects.create(name="Beta flow", org=beta)
+    for resource, grant in ((kept, acme_grant), (binned, acme_grant), (purged, acme_grant), (beta_flow, beta_grant)):
+        PluginOwnedResource.objects.filter(pk=_own(resource).pk).update(grant=grant)
     binned.delete()
     purged.delete()
     Graph.all_objects.get(pk=purged.pk).purge()
     # Django caches content types per process; the first lookup fills the cache.
-    _existing(acme)
+    with_owned_resource_counts(list(PluginGrant.objects.all()))
 
-    with django_assert_num_queries(2):
-        counts = {grant.pk: grant.owned_resource_count for grant in PluginGrant.objects.with_admin_details()}
+    with CaptureQueriesContext(connection) as captured:
+        counted = with_owned_resource_counts(list(PluginGrant.objects.order_by("org_id")))
 
-    assert counts == {acme_grant.pk: 2, beta_grant.pk: 0}
+    # Live and binned resources count; the purged one is a tombstone and does not.
+    assert {grant.pk: grant.owned_resource_count for grant in counted} == {acme_grant.pk: 2, beta_grant.pk: 1}
+    # The page's grants, the kinds present among their rows, then one statement for the one
+    # kind (flows) for both grants, with only that kind's existence check.
+    grants_query, kinds_query, flows_query = (query["sql"] for query in captured.captured_queries)
+    assert "DISTINCT" in kinds_query
+    assert flows_query.count("EXISTS") == 1

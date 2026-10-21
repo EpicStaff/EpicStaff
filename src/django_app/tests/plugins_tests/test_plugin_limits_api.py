@@ -48,7 +48,32 @@ def test_limits_show_every_view(weather, superadmin_client):
             "statement_timeout_seconds": False,
             "requests_per_minute": True,
         },
+        "has_database": False,
     }
+
+
+def test_a_plugin_with_a_database_has_its_database_limits_enforced(database_plugin, maximums, superadmin_client):
+    database_plugin()
+
+    body = superadmin_client.get(LIMITS_URL).json()
+
+    assert body["has_database"] is True
+    assert body["enforced"] == {
+        "memory_mb": True,
+        "cpu_priority": True,
+        "db_connections": True,
+        "statement_timeout_seconds": True,
+        "requests_per_minute": True,
+    }
+
+
+def test_lowering_a_database_limit_answers_with_the_new_effective_value(database_plugin, maximums, superadmin_client):
+    database_plugin()
+
+    response = _patch(superadmin_client, statement_timeout_seconds=5)
+
+    assert response.status_code == 200
+    assert (response.json()["effective"]["statement_timeout_seconds"], response.json()["has_database"]) == (5, True)
 
 
 def test_a_manifest_without_limits_gets_the_platform_defaults_capped_by_the_maximums(backend_plugin, maximums, superadmin_client):

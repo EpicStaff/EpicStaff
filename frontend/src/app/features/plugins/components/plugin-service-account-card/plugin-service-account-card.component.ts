@@ -9,7 +9,10 @@ import { PluginAccessTableComponent } from '../plugin-access-table/plugin-access
 import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
 import { PluginIconComponent } from '../plugin-icon/plugin-icon.component';
 
-/** A plugin acting in the organization: its state, when its key was last used, and the access it declared. */
+/**
+ * A plugin acting in the organization: its state, when its key was last used, the access it declared, the hosts its
+ * backend may reach on the internet, and whether it keeps its data in a database of its own.
+ */
 @Component({
     selector: 'app-plugin-service-account-card',
     imports: [DatePipe, MatTooltip, PluginAccessTableComponent, PluginBadgeComponent, PluginIconComponent],

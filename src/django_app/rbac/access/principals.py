@@ -15,7 +15,6 @@ from django.contrib.auth import get_user_model
 from rbac.access.effective import EffectivePermissions
 
 if TYPE_CHECKING:
-    from django.db.models import Model
     from tables.models.user import User
 
 
@@ -55,14 +54,6 @@ class PinnedOrgPrincipal(Protocol):
         secret also says where its value is sent (an LLM config's `base_url`, a Python
         node's code), so a principal that could reference any of the organization's
         secrets could send their values anywhere.
-        """
-        ...
-
-    def owns(self, instance: "Model") -> bool:
-        """Return whether the principal created `instance`, a row that still exists.
-
-        Asked by `SecretDestinationGuard` before the principal changes where a model row
-        sends the keys of the organization's configs that use it: only its own rows.
         """
         ...
 

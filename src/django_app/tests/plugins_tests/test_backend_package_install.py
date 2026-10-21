@@ -2,7 +2,7 @@
 
 import pytest
 from plugins.exceptions import PluginNodeFullError
-from plugins.models import Plugin, PluginPackage, PluginPlacement, PluginState, ReviewState
+from plugins.models import Plugin, PluginDatabase, PluginPackage, PluginPlacement, PluginState, ReviewState
 
 from tests.plugins_tests.conftest import upload_file
 from tests.plugins_tests.package_builder import backend_manifest, build_package, sample_files
@@ -37,12 +37,24 @@ def test_a_package_with_a_backend_is_accepted(superadmin_client, plugin_node):
     assert response.json()["review_state"] == "pending"
 
 
-def test_a_package_with_a_database_is_still_refused(superadmin_client, plugin_node):
+def test_a_package_with_a_database_is_accepted(superadmin_client, plugin_node):
     response = _upload(superadmin_client, build_package(manifest=backend_manifest(database={})))
 
-    assert response.status_code == 400
-    assert response.json()["code"] == "plugin_feature_unavailable"
-    assert _locs(response) == ["manifest.database"]
+    assert response.status_code == 201
+    contents = response.json()["contents"]
+    assert (contents["has_database"], contents["migration_count"]) == (True, 1)
+
+
+def test_a_package_with_a_database_installs(superadmin_client, plugin_node, plugin_database_server):
+    package_id = _upload(superadmin_client, build_package(manifest=backend_manifest(database={}))).json()["id"]
+
+    response = _approve(superadmin_client, package_id)
+
+    assert response.status_code == 200
+    plugin = Plugin.objects.get()
+    assert (plugin.state, plugin.current_package_id) == (PluginState.PROVISIONING, package_id)
+    assert PluginPlacement.objects.filter(plugin=plugin).exists()
+    assert PluginDatabase.objects.filter(plugin=plugin, database_name="plugin_weather").exists()
 
 
 @pytest.mark.parametrize(

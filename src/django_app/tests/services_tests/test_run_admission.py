@@ -17,13 +17,19 @@ from rbac.models import OrganizationUser
 from tables.models import Graph, PythonCode, PythonCodeResult, PythonNode, Session
 from tables.models.graph_models import (
     GraphOrganizationUser,
+    GraphStorageFile,
     ScheduleTriggerNode,
     StartNode,
+    StorageFile,
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
 from tables.models import RealtimeChannel
-from tables.models.realtime_models import RealtimeAgentChat, RealtimeAgentDefinition
+from tables.models.realtime_models import (
+    OpenAIRealtimeConfig,
+    RealtimeAgentChat,
+    RealtimeAgentDefinition,
+)
 from tables.models.session_models import SessionPrincipal, SessionTrigger
 from tables.models.webhook_models import WebhookTrigger
 from tables.services.run_admission import (
@@ -35,11 +41,13 @@ from tables.services.run_admission import (
     register_run_admission_check,
     registered_run_admission_checks,
 )
+from tables.services.run_resources import ResourceRef, RunResourceCollector
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tests.fixtures import _make_secret
 from tests.services_tests.run_admission_fixtures import *  # noqa: F401,F403
 from tests.services_tests.run_admission_fixtures import (
     REFUSAL_EXTRA,
@@ -48,7 +56,10 @@ from tests.services_tests.run_admission_fixtures import (
     RefusedForTestError,
     RefusingCheck,
 )
-from tests.services_tests.session_trigger_creation_test import _stub_publish
+from tests.services_tests.session_trigger_creation_test import (
+    _empty_session_data,
+    _stub_publish,
+)
 
 
 @pytest.fixture
@@ -116,6 +127,26 @@ def test_checks_run_in_registration_order_and_the_first_refusal_wins(run_admissi
     assert after.subjects == []
 
 
+def test_a_subject_reads_its_kind_and_ids_from_text():
+    subject = RunSubject("code", "5", "7")
+
+    assert subject == RunSubject(RunKind.CODE, 5, 7)
+    assert (type(subject.kind), type(subject.subject_id), type(subject.organization_id)) == (
+        RunKind,
+        int,
+        int,
+    )
+
+
+@pytest.mark.parametrize(
+    "kind, subject_id, organization_id",
+    [("no-such-kind", 5, 7), (RunKind.FLOW, None, 7), (RunKind.FLOW, 5, "seven")],
+)
+def test_a_subject_that_names_no_kind_or_id_cannot_be_created(kind, subject_id, organization_id):
+    with pytest.raises((TypeError, ValueError)):
+        RunSubject(kind, subject_id, organization_id)
+
+
 @pytest.mark.django_db
 def test_a_refused_trigger_is_logged_once_per_node_and_cause(logged_warnings):
     refusal = RefusedForTestError("cause-a")
@@ -165,7 +196,8 @@ def test_run_session_asks_admission_for_the_flow_in_its_organization(
     )
 
     assert Session.objects.filter(pk=session_id).exists()
-    assert recording.subjects == [RunSubject(RunKind.FLOW, flow.pk, flow.org_id)]
+    # Once before anything is written, and again just before the publish.
+    assert recording.subjects == [RunSubject(RunKind.FLOW, flow.pk, flow.org_id)] * 2
 
 
 @pytest.mark.django_db
@@ -200,6 +232,80 @@ def test_an_admitted_run_session_creates_the_rows_a_refusal_must_not(
     assert GraphOrganizationUser.objects.filter(graph=flow, organization_user=membership).exists()
 
 
+class RefusingFromTheSecondCheck(RecordingCheck):
+    """Admits a run's first check and refuses the next, as a suspension in between would."""
+
+    def check(self, subject: RunSubject) -> None:
+        super().check(subject)
+        if len(self.subjects) > 1:
+            raise RefusedForTestError("suspended-meanwhile")
+
+
+@pytest.fixture
+def refused_before_the_publish(run_admission_checks):
+    check = RefusingFromTheSecondCheck()
+    run_admission_checks.append(check)
+    yield check
+
+
+@pytest.fixture
+def built_and_published(monkeypatch):
+    """Build no real session payload, and record what would be published and revoked."""
+    session_manager = SessionManagerService()
+    published, revoked = [], []
+    monkeypatch.setattr(
+        session_manager, "create_session_data", lambda session, **kwargs: _empty_session_data()
+    )
+    monkeypatch.setattr(
+        session_manager.redis_service,
+        "publish_session_data",
+        lambda **kwargs: published.append(kwargs) or 1,
+    )
+    from storage_credentials.services.session_credential_service import (
+        session_credential_service,
+    )
+
+    monkeypatch.setattr(session_credential_service, "revoke_for_session", revoked.append)
+    yield published, revoked
+
+
+@pytest.mark.django_db
+def test_a_run_refused_just_before_the_publish_is_stopped_and_never_published(
+    refused_before_the_publish, built_and_published, flow, regular_user
+):
+    published, revoked = built_and_published
+
+    with pytest.raises(RefusedForTestError):
+        SessionManagerService().run_session(
+            graph_id=flow.pk, variables={}, user=regular_user, trigger=TriggerSpec.manual()
+        )
+
+    session = Session.objects.get(graph=flow)
+    assert session.status == Session.SessionStatus.STOP
+    assert session.status_data == {"reason": REFUSAL_MESSAGE}
+    assert session.finished_at is not None
+    assert published == []
+    assert revoked == [session.pk]
+    assert refused_before_the_publish.subjects == [
+        RunSubject(RunKind.FLOW, flow.pk, flow.org_id)
+    ] * 2
+
+
+@pytest.mark.django_db
+def test_run_session_endpoint_answers_a_refusal_before_the_publish_with_the_same_409(
+    refused_before_the_publish, built_and_published, flow, auth_client
+):
+    published, _ = built_and_published
+
+    response = auth_client.post("/api/run-session/", {"graph_id": flow.pk}, format="json")
+
+    _assert_refusal_envelope(response)
+    assert published == []
+    assert list(Session.objects.filter(graph=flow).values_list("status", flat=True)) == [
+        Session.SessionStatus.STOP
+    ]
+
+
 @pytest.mark.django_db
 def test_run_session_endpoint_answers_a_refusal_with_its_409_envelope(
     refusing_check, flow, auth_client, redis_client_mock
@@ -231,6 +337,17 @@ def test_trigger_test_run_endpoint_answers_a_refusal_with_409(
     _assert_refusal_envelope(response)
     assert not Session.objects.exists()
     assert refusing_check.subjects == [RunSubject(RunKind.FLOW, flow.pk, default_org.pk)]
+
+
+class RefusesRunsUsing:
+    """Refuses a run whose collected resources include `refused`, as a suspension would."""
+
+    def __init__(self, refused):
+        self.refused = refused
+
+    def check(self, subject: RunSubject) -> None:
+        if self.refused in RunResourceCollector().collect(subject).refs:
+            raise RefusedForTestError("uses-a-refused-row")
 
 
 # --- Realtime and voice channels --------------------------------------------------------
@@ -312,6 +429,56 @@ def test_voice_channel_lookup_of_an_unknown_token_never_asks_admission(
     assert refusing_check.subjects == []
 
 
+@pytest.mark.django_db
+def test_realtime_init_is_refused_when_the_agent_s_realtime_config_uses_a_refused_secret(
+    run_admission_checks, default_org, auth_client, redis_client_mock
+):
+    refused = _make_secret(default_org, "admission-realtime-key", "sk-refused")
+    agent = AgentDefinition.objects.create(org=default_org, name="admission-realtime")
+    RealtimeAgentDefinition.objects.create(
+        agent_definition=agent,
+        openai_config=OpenAIRealtimeConfig.objects.create(
+            custom_name="admission-openai", api_key_secret=refused, org=default_org
+        ),
+    )
+    run_admission_checks.append(RefusesRunsUsing(ResourceRef("tables.Secret", refused.pk)))
+
+    response = auth_client.post(
+        "/api/init-realtime/", {"agent_definition_id": agent.pk}, format="json"
+    )
+
+    _assert_refusal_envelope(response)
+    redis_client_mock.publish.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_a_refused_secret_named_in_the_realtime_config_override_is_never_used(
+    run_admission_checks, default_org, auth_client, redis_client_mock
+):
+    refused = _make_secret(default_org, "admission-override-key", "sk-refused-override")
+    agent = AgentDefinition.objects.create(org=default_org, name="admission-override")
+    RealtimeAgentDefinition.objects.create(
+        agent_definition=agent,
+        openai_config=OpenAIRealtimeConfig.objects.create(
+            custom_name="admission-own-openai",
+            api_key_secret=_make_secret(default_org, "admission-own-key", "sk-own"),
+            org=default_org,
+        ),
+    )
+    run_admission_checks.append(RefusesRunsUsing(ResourceRef("tables.Secret", refused.pk)))
+
+    response = auth_client.post(
+        "/api/init-realtime/",
+        {"agent_definition_id": agent.pk, "config": {"rt_api_key_secret_id": refused.pk}},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.content
+    published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
+    assert "sk-refused-override" not in published
+    assert "sk-own" in published
+
+
 # --- Code test runs ---------------------------------------------------------------------
 
 
@@ -355,6 +522,33 @@ def test_code_run_of_a_target_answers_a_refusal_with_409_and_writes_no_result(
     assert refusing_check.subjects == [
         RunSubject(RunKind.CODE, python_node.python_code_id, python_node.graph.org_id)
     ]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("use_storage, expected_status", [(True, 409), (False, 200)])
+def test_a_code_test_run_that_can_read_a_refused_attached_file_is_refused(
+    run_admission_checks,
+    flow,
+    default_org,
+    auth_client,
+    redis_client_mock,
+    use_storage,
+    expected_status,
+):
+    attached = StorageFile.objects.create(org=default_org, name="input.csv", path="input.csv")
+    GraphStorageFile.objects.create(graph=flow, storage_file=attached)
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    node = PythonNode.objects.create(graph=flow, python_code=code, use_storage=use_storage)
+    run_admission_checks.append(RefusesRunsUsing(ResourceRef("tables.StorageFile", attached.pk)))
+
+    response = auth_client.post(
+        "/api/run-python-code/",
+        {"target": {"type": "python_node", "id": node.pk}, "variables": {}},
+        format="json",
+    )
+
+    assert response.status_code == expected_status, response.content
+    assert PythonCodeResult.objects.exists() is (expected_status == 200)
 
 
 # --- Triggers: refused quietly, logged once ---------------------------------------------

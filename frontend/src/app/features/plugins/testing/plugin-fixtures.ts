@@ -4,6 +4,7 @@ import { PackageReview, PluginDetail, PluginGrant } from '../models/plugin-admin
 import {
     PluginLimitsResponse,
     PluginPlacement,
+    PluginRuntimeDatabase,
     PluginRuntimeResponse,
     PluginSettingsResponse,
     PluginSettingState,
@@ -156,7 +157,7 @@ export function buildPluginSettings(overrides: Partial<PluginSettingsResponse> =
     };
 }
 
-/** The manifest asks for 256 MB; nothing is overridden; only memory and CPU are enforced. */
+/** The manifest asks for 256 MB; nothing is overridden; no database, so only the database limits do not apply. */
 export function buildPluginLimits(overrides: Partial<PluginLimitsResponse> = {}): PluginLimitsResponse {
     return {
         requested: {
@@ -179,9 +180,10 @@ export function buildPluginLimits(overrides: Partial<PluginLimitsResponse> = {})
             memory_mb: true,
             db_connections: false,
             statement_timeout_seconds: false,
-            requests_per_minute: false,
+            requests_per_minute: true,
             cpu_priority: true,
         },
+        has_database: false,
         ...overrides,
     };
 }
@@ -205,11 +207,31 @@ export function buildPluginPlacement(overrides: Partial<PluginPlacement> = {}): 
     };
 }
 
-/** Weather running healthy on an online node. */
+/** Weather running healthy on an online node, with no database and no outbound host. */
 export function buildPluginRuntime(overrides: Partial<PluginRuntimeResponse> = {}): PluginRuntimeResponse {
     return {
         node: { name: 'node-1', online: true, last_seen_at: '2026-10-21T08:00:05Z', agent_version: '0.1.0' },
         placement: buildPluginPlacement(),
+        database: null,
+        egress: { hosts: [] },
+        ...overrides,
+    };
+}
+
+/** Weather 0.5.0's database, ready: its one migration applied, 3 connections, a 10 s statement timeout. */
+export function buildPluginRuntimeDatabase(overrides: Partial<PluginRuntimeDatabase> = {}): PluginRuntimeDatabase {
+    return {
+        state: 'ready',
+        server: { name: 'plugins_db', host: 'plugins_db', port: 5432 },
+        database_name: 'plugin_weather',
+        roles: { owner: 'weather_owner', app: 'weather_app', job: 'weather_job' },
+        migrations: { applied: ['001_weather.sql'], in_package: 1 },
+        connection_limit: 3,
+        statement_timeout_seconds: 10,
+        size_bytes: 7_654_321,
+        last_error: null,
+        ready_at: '2026-10-21T08:00:30Z',
+        limits_restored_at: null,
         ...overrides,
     };
 }
@@ -301,7 +323,7 @@ export function buildPluginActivityEvent(overrides: Partial<PluginActivityEvent>
     };
 }
 
-/** Weather acting in the active organization, with the flows and files access it declares. */
+/** Weather acting in the active organization, with the flows and files access it declares, no host and no database. */
 export function buildOrganizationServiceAccount(
     overrides: Partial<OrganizationServiceAccount> = {}
 ): OrganizationServiceAccount {
@@ -324,6 +346,8 @@ export function buildOrganizationServiceAccount(
                 reason: "Stores the Weather readme in your organization's storage.",
             },
         ],
+        outbound_hosts: [],
+        has_database: false,
         ...overrides,
     };
 }

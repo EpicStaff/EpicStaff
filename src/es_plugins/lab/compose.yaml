@@ -47,7 +47,11 @@ services:
 volumes:
   packages: {}
   es_plugins_data: {}
+  plugin_egress_policy: {}
 
 networks:
   plugins-network:
+    internal: true
+  # The extended service also joins the plugin database network; the lab runs no database.
+  plugins-db-network:
     internal: true

@@ -42,6 +42,7 @@ PLUGINS = {
         "uid": 20001,
         "memory_mb": 128,
         "cpu_priority": "normal",
+        "outbound_hosts": ["geocoding-api.open-meteo.com", "*.wikipedia.org"],
     },
     "probe-b": {
         "placement_id": 2,
@@ -99,6 +100,7 @@ def build_placements() -> None:
             },
             "credentials_revision": "0" * 64,
             "settings_revision": 0,
+            "egress": {"hosts": plugin.get("outbound_hosts", [])},
         }
 
 

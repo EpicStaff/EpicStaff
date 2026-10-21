@@ -12,6 +12,7 @@ from epicstaff_plugin.json_documents import canonical_json
 from src.shared.models.plugin_nodes import RuntimeCredentials
 
 from plugins.configuration.setting_values import runtime_settings
+from plugins.databases.database_records import app_password_of
 from plugins.exceptions import PlacementNotFoundError
 from plugins.identity.service_account_keys import MintedKey, ServiceAccountKeyService
 from plugins.identity.signing_keys import PluginSigningKeyService
@@ -126,13 +127,16 @@ class RuntimeCredentialsService:
     def credentials_for(self, node: PluginNode, placement_id: int) -> RuntimeCredentials:
         """Return the runtime credentials of a placement on `node`, with freshly minted keys.
 
+        For a plugin whose current package has a database, they also carry its app role's
+        password, decrypted. It never goes into the runtime file, and only this node gets it.
+
         Every call mints a new key for each of the plugin's key-holding service accounts
         (`ServiceAccountKeyService`): EpicStaff keeps only hashes, so a key cannot be handed
         over twice. The keys the previous call minted keep working for ten minutes.
 
-        All or nothing, in one transaction: when the secret settings cannot be decrypted or
-        the document does not validate, no key is minted and none is superseded or revoked,
-        so the process keeps running on the keys it has.
+        All or nothing, in one transaction: when the secret settings or the app password
+        cannot be decrypted or the document does not validate, no key is minted and none is
+        superseded or revoked, so the process keeps running on the keys it has.
 
         Raises:
             PlacementNotFoundError: No such placement on this node, or its plugin has no
@@ -140,7 +144,9 @@ class RuntimeCredentialsService:
         """
         with transaction.atomic():
             placement = (
-                PluginPlacement.objects.select_related("plugin__current_package")
+                PluginPlacement.objects.select_related(
+                    "plugin__current_package", "plugin__database"
+                )
                 .defer("plugin__current_package__icon_bytes")
                 .filter(pk=placement_id, node=node, plugin__current_package__isnull=False)
                 .first()
@@ -152,8 +158,13 @@ class RuntimeCredentialsService:
             if manifest.backend is None:
                 raise PlacementNotFoundError()
             builder = RuntimeFileBuilder(PluginSigningKeyService().jwks())
-            # Decrypted before minting, so a setting that cannot be decrypted never mints.
+            # Decrypted before minting, so a secret that cannot be decrypted never mints.
             settings_and_secrets = runtime_settings(manifest, plugin.setting_values.all())
+            database = (
+                {"app_password": app_password_of(plugin.database)}
+                if manifest.database is not None
+                else None
+            )
             minted = ServiceAccountKeyService().mint_for_plugin(plugin)
             return RuntimeCredentials.model_validate(
                 {
@@ -165,5 +176,6 @@ class RuntimeCredentialsService:
                     "runtime_file": builder.runtime_file_document(
                         plugin, manifest, settings_and_secrets, minted
                     ),
+                    "database": database,
                 }
             )

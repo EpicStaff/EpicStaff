@@ -17,6 +17,11 @@ A plugin without an install hook is `active` as soon as it is granted. The plugi
 organizations are not affected by anything that happens in this one: a suspended plugin's
 process keeps running for them.
 
+A plugin with a database gets it before its backend first starts: when its package is
+approved, the plugin node creates the database and runs the package's migrations, then starts
+the process ([Plugin database](../reference/database.md)). So the database is there for the
+first install hook of every organization.
+
 A pending install hook never times out. It waits for as long as the plugin's process is stopped,
 failed or restarting, and runs once the process is healthy. A running hook fails when it
 overruns its timeout. A SuperAdmin who gives up on a waiting install suspends the grant, which
@@ -62,7 +67,9 @@ will be refused, the realtime agents and voice channels that will be refused, th
 settings that point at the plugin's configurations, and the date until which the data is kept.
 
 Default-model settings are not changed by a suspension: new agents and features outside runs
-keep using them. Repoint them in **Settings → Default models**.
+keep using them. The Agent LLM and Agent Function Calling LLM settings can be repointed in
+**Settings → Default LLMs**; the preview also lists the other default-model settings that point
+at the plugin's configurations, which that page does not show.
 
 ## What a suspension does not stop
 
@@ -74,6 +81,13 @@ keep using them. Repoint them in **Settings → Default models**.
 - **Voice conversations already open.** New ones are refused. A voice call can also still
   connect for a short while if the realtime service looked the channel up just before the
   suspension.
+- **The plugin's database and its outbound access.** Both belong to the plugin, not to one
+  organization, and its process keeps running for its other organizations. The database keeps
+  this organization's rows, and the process still reaches its declared hosts, but it no longer
+  has a key for this organization, so it cannot act in it.
+
+Outbound access ends within about 30 seconds of the plugin's process stopping, or of a host
+leaving its allow-list ([Call the internet from your backend](../how-to/outbound-hosts.md)).
 
 ## Resume
 

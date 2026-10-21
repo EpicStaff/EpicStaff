@@ -8,9 +8,11 @@ import {
 } from '../models/plugin-admin.model';
 import {
     PluginCpuPriority,
+    PluginDatabaseState,
     PluginDesiredState,
     PluginHealth,
     PluginLimitKey,
+    PluginNumericLimitKey,
     PluginObservedState,
 } from '../models/plugin-backend.model';
 import {
@@ -185,6 +187,47 @@ export const PLUGIN_LIMIT_LABELS: Readonly<Record<PluginLimitKey, string>> = {
     requests_per_minute: 'Requests per minute',
     cpu_priority: 'CPU priority',
 };
+
+const PLUGIN_LIMIT_UNITS: Readonly<Record<PluginNumericLimitKey, string>> = {
+    memory_mb: 'MB',
+    db_connections: '',
+    statement_timeout_seconds: 's',
+    requests_per_minute: '/ min',
+};
+
+/** The limits of a plugin's database: they apply only to a plugin that has one. */
+export const PLUGIN_DATABASE_LIMIT_KEYS: ReadonlySet<PluginLimitKey> = new Set<PluginLimitKey>([
+    'db_connections',
+    'statement_timeout_seconds',
+]);
+
+/** A limit's value with its unit: `256 MB`, `10 s`, `3`. */
+export function formatPluginLimit(key: PluginNumericLimitKey, value: number): string {
+    const unit = PLUGIN_LIMIT_UNITS[key];
+    return unit ? `${value} ${unit}` : String(value);
+}
+
+export function isPluginNumericLimitKey(key: string): key is PluginNumericLimitKey {
+    return Object.hasOwn(PLUGIN_LIMIT_UNITS, key);
+}
+
+export const PLUGIN_DATABASE_STATE_LABELS: Readonly<Record<PluginDatabaseState, string>> = {
+    pending: 'Waiting for the node',
+    provisioning: 'Setting up',
+    ready: 'Ready',
+    failed: 'Failed',
+};
+
+const PLUGIN_DATABASE_STATE_TONES: Readonly<Record<PluginDatabaseState, PluginBadgeTone>> = {
+    pending: 'neutral',
+    provisioning: 'neutral',
+    ready: 'success',
+    failed: 'danger',
+};
+
+export function pluginDatabaseStateTone(state: PluginDatabaseState): PluginBadgeTone {
+    return PLUGIN_DATABASE_STATE_TONES[state];
+}
 
 export function pluginObservedStateTone(state: PluginObservedState): PluginBadgeTone {
     return PLUGIN_OBSERVED_STATE_TONES[state];

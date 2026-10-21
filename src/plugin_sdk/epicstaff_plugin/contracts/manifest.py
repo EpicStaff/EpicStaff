@@ -65,6 +65,8 @@ _HOST_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 # so neither is a port (outbound traffic is HTTPS on 443 only).
 OUTBOUND_HOST_PATTERN = rf"^(?:\*\.)?(?:{_HOST_LABEL}\.)+[a-z](?:[a-z0-9-]{{0,61}}[a-z0-9])?$"
 WILDCARD_HOST_PREFIX = "*."
+# Keeps the review of a package readable; the node contract caps the egress allow-list too.
+MAX_OUTBOUND_HOSTS = 100
 
 MAX_HOOK_TIMEOUT_SECONDS = {"install": 900, "upgrade": 1800, "org_removed": 900}
 
@@ -365,7 +367,9 @@ class PluginManifest(_ManifestPart):
     access: list[AccessDeclaration] = Field(default_factory=list)
     user_permissions: Annotated[list[UserPermission], Field(min_length=1)]
     public_paths: list[PublicPath] = Field(default_factory=list)
-    outbound_hosts: list[OutboundHost] = Field(default_factory=list)
+    outbound_hosts: Annotated[list[OutboundHost], Field(max_length=MAX_OUTBOUND_HOSTS)] = Field(
+        default_factory=list
+    )
     settings: list[Setting] = Field(default_factory=list)
     limits: Limits | None = None
     hooks: Hooks = Field(default_factory=Hooks)
@@ -378,12 +382,14 @@ class PluginManifest(_ManifestPart):
             raise _rule_error("requires_backend", "needs a backend section")
         return values
 
-    @field_validator("limits")
+    @field_validator("database", "limits")
     @classmethod
-    def _limits_require_backend(cls, limits: Limits | None, info: ValidationInfo) -> Limits | None:
-        if limits is not None and info.data.get("backend") is None:
+    def _sections_require_backend(
+        cls, section: Database | Limits | None, info: ValidationInfo
+    ) -> Database | Limits | None:
+        if section is not None and info.data.get("backend") is None:
             raise _rule_error("requires_backend", "needs a backend section")
-        return limits
+        return section
 
     @field_validator("hooks")
     @classmethod

@@ -61,6 +61,9 @@
                 @if (entry.target) {
                     <span class="activity__text">{{ entry.target }}</span>
                 }
+                @if (entry.detail) {
+                    <span class="activity__text">{{ entry.detail }}</span>
+                }
                 @if (entry.error) {
                     <span class="activity__error">{{ entry.error }}</span>
                 }

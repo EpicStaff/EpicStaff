@@ -90,6 +90,18 @@ describe('ConsoleService', () => {
         expect(toast.error).toHaveBeenCalledWith('The agent has no realtime config.');
     });
 
+    it("shows the envelope's message when the error text is empty, never an empty toast", () => {
+        startAndFail(409, { error: '', message: 'This run uses a suspended plugin.' });
+
+        expect(toast.error).toHaveBeenCalledWith('This run uses a suspended plugin.');
+    });
+
+    it('falls back to a generic message when the error text is empty and there is no message', () => {
+        startAndFail(400, { error: '' });
+
+        expect(toast.error).toHaveBeenCalledWith('Failed to start the realtime conversation');
+    });
+
     it('explains conflicting RAG settings', () => {
         startAndFail(400, { error: 'The surfaces have conflicting RAG configs for collection 3.' });
 

@@ -63,31 +63,32 @@ def request(app, method, path, headers=None, body=b"", *, query=""):
 
     `query` is the raw query string, without the `?`.
     """
+    return asyncio.run(send_request(app, method, path, headers, body, query=query))
+
+
+async def send_request(app, method, path, headers=None, body=b"", *, query=""):
+    """`request`, from inside a running event loop (for an app whose resources live in it)."""
     pairs = list(headers.items()) if isinstance(headers, dict) else list(headers or [])
+    sent = []
+    pending = [{"type": "http.request", "body": body, "more_body": False}]
 
-    async def run():
-        sent = []
-        pending = [{"type": "http.request", "body": body, "more_body": False}]
+    async def receive():
+        if pending:
+            return pending.pop(0)
+        await asyncio.sleep(3600)
 
-        async def receive():
-            if pending:
-                return pending.pop(0)
-            await asyncio.sleep(3600)
+    async def send(message):
+        sent.append(message)
 
-        async def send(message):
-            sent.append(message)
-
-        await app(_scope("http", method, path, pairs, query.encode("latin-1")), receive, send)
-        start = next(message for message in sent if message["type"] == "http.response.start")
-        response_body = b"".join(
-            message.get("body", b"") for message in sent if message["type"] == "http.response.body"
-        )
-        response_headers = {
-            name.decode("latin-1"): value.decode("latin-1") for name, value in start.get("headers", [])
-        }
-        return Response(start["status"], response_headers, response_body)
-
-    return asyncio.run(run())
+    await app(_scope("http", method, path, pairs, query.encode("latin-1")), receive, send)
+    start = next(message for message in sent if message["type"] == "http.response.start")
+    response_body = b"".join(
+        message.get("body", b"") for message in sent if message["type"] == "http.response.body"
+    )
+    response_headers = {
+        name.decode("latin-1"): value.decode("latin-1") for name, value in start.get("headers", [])
+    }
+    return Response(start["status"], response_headers, response_body)
 
 
 def websocket(app, path, headers=None, *, denial_response=False):

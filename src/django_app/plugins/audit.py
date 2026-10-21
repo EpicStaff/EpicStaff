@@ -153,6 +153,16 @@ def log_restart(actor, identifier: str, restart_generation: int) -> None:
     )
 
 
+def log_database_record_created(*, identifier: str, database: str, server: str) -> None:
+    """Log that a plugin got the record of its own database; its app password never is."""
+    logger.info(
+        "plugins.database.record_created plugin={identifier} database={database} server={server}",
+        identifier=identifier,
+        database=database,
+        server=server,
+    )
+
+
 def log_signing_key_rotation(new_kid: str, retired_kids: list[str]) -> None:
     logger.info(
         "PluginSigningKeyService.rotate kid={kid} retired={retired}",

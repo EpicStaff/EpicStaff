@@ -1,16 +1,20 @@
 """The plugin run guard: a run that uses anything a non-active grant owns is refused before it starts."""
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from plugins.exceptions import PluginSuspendedError
-from plugins.models import GrantState, Plugin
+from plugins.models import GrantState, Plugin, PluginOwnedResource
+from plugins.ownership.owned_resource_summary import owned_resource_summary
 from plugins.runs import run_guard
+from plugins.runs.owned_resource_index import BlockingOwner, OwnedResourceIndex
 from plugins.runs.run_guard import PluginRunGuard
 from tables.models import Session
 from tables.models.graph_models import PythonNode
 from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
+from tables.services.run_resources import RunResources
 
 from tests.plugins_tests.suspension_helpers import REACHES, flow, orphan, own, secret_row, set_state
 
@@ -271,3 +275,76 @@ def test_the_guard_refuses_with_the_plugin_platform_off(grant, acme, olga, setti
 
     assert _run(olga, forecast).status_code == 409
     assert not Session.objects.exists()
+
+
+def test_a_non_active_grant_that_owns_nothing_keeps_the_fast_path(weather, grant_to, acme, monkeypatch):
+    set_state(grant_to(weather, acme), GrantState.GRANTING)
+    plain = flow(acme, "Plain")
+    monkeypatch.setattr(run_guard, "RunResourceCollector", _CollectorThatMustNotRun)
+
+    with CaptureQueriesContext(connection) as captured:
+        PluginRunGuard().check(_flow_subject(plain))
+
+    assert len(captured.captured_queries) == 1
+
+
+def test_a_non_active_grant_that_owns_a_row_leaves_the_fast_path(weather, grant_to, acme, monkeypatch):
+    granting = set_state(grant_to(weather, acme), GrantState.GRANTING)
+    own(flow(acme, "Weather forecast"), granting)
+    monkeypatch.setattr(run_guard, "RunResourceCollector", _CollectorThatMustNotRun)
+
+    with pytest.raises(AssertionError, match="walked"):
+        PluginRunGuard().check(_flow_subject(flow(acme, "Plain")))
+
+
+def test_another_organization_s_owning_suspended_grant_keeps_this_one_on_the_fast_path(
+    weather, grant_to, acme, beta, monkeypatch
+):
+    suspended_in_beta = set_state(grant_to(weather, beta), GrantState.SUSPENDED)
+    own(flow(beta, "Weather forecast"), suspended_in_beta)
+    monkeypatch.setattr(run_guard, "RunResourceCollector", _CollectorThatMustNotRun)
+
+    PluginRunGuard().check(_flow_subject(flow(acme, "Plain")))
+
+
+# ---- the index of owned rows ----
+
+
+def _owner(identifier, grant_id=1):
+    return BlockingOwner(
+        plugin_identifier=identifier, plugin_name=identifier, grant_id=grant_id, grant_state="suspended", since=None
+    )
+
+
+def _uses(*prefixes):
+    return RunResources(refs=frozenset(), storage_prefixes=frozenset(prefixes))
+
+
+def test_a_file_is_found_under_each_folder_a_run_reaches_and_nowhere_else():
+    weather_owner, alerts_owner = _owner("weather"), _owner("alerts", 2)
+    index = OwnedResourceIndex(
+        {},
+        [("b/4.txt", weather_owner), ("a/b/2.txt", alerts_owner), ("ab/3.txt", weather_owner), ("a/1.txt", weather_owner)],
+    )
+
+    assert index.first_owner(_uses("a/")) == alerts_owner
+    assert index.first_owner(_uses("a/b/")) == alerts_owner
+    assert index.first_owner(_uses("ab/")) == weather_owner
+    assert index.first_owner(_uses("b/", "c/")) == weather_owner
+    assert index.first_owner(_uses("c/")) is None
+    assert index.first_owner(_uses("a/c/")) is None
+
+
+def test_rows_of_a_model_gone_from_the_code_are_skipped(weather, grant_to, acme):
+    grant = set_state(grant_to(weather, acme), GrantState.SUSPENDED)
+    forecast = flow(acme, "Weather forecast")
+    own(forecast, grant)
+    gone = ContentType.objects.create(app_label="tables", model="removedmodel")
+    PluginOwnedResource.objects.create(
+        org=acme, grant=grant, plugin_identifier="weather", content_type=gone, object_id=forecast.pk
+    )
+
+    index = OwnedResourceIndex.for_grant(grant)
+
+    assert index.holds("tables.Graph", forecast.pk)
+    assert owned_resource_summary(grant) == [{"model": "tables.Graph", "label": "Flows", "count": 1}]

@@ -20,7 +20,10 @@ from tables.serializers.model_serializers.tag_serializers import (
     EmbeddingTagSerializer,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
-from tables.serializers.utils.secret_destination_guard_mixin import SecretDestinationGuardMixin
+from tables.serializers.utils.secret_destination_guard_mixin import (
+    EMBEDDING_MODEL_ENDPOINT_FIELDS,
+    SecretDestinationGuardMixin,
+)
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 
@@ -31,7 +34,7 @@ class EmbeddingModelSerializer(
     TagHandlingMixin,
     serializers.ModelSerializer,
 ):
-    secret_destination_fields = ("base_url", "embedding_provider")
+    secret_destination_fields = EMBEDDING_MODEL_ENDPOINT_FIELDS
 
     tags = EmbeddingTagSerializer(many=True, required=False)
     tag_model = EmbeddingModelTag

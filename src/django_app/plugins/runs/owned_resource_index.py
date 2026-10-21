@@ -6,6 +6,7 @@ is a file under a storage folder the run reaches (`RunResources.storage_prefixes
 """
 
 import operator
+from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import datetime
 from functools import reduce
@@ -57,7 +58,9 @@ class OwnedResourceIndex:
         owned_file_paths: list[tuple[str, BlockingOwner]],
     ):
         self._owners_by_ref = owners_by_ref
-        self._owned_file_paths = owned_file_paths
+        # Sorted by path, so the files under a prefix are one run found by binary search.
+        self._owned_file_paths = sorted(owned_file_paths, key=lambda entry: entry[0])
+        self._sorted_paths = [path for path, _ in self._owned_file_paths]
 
     @classmethod
     def for_inactive_grants(
@@ -109,14 +112,19 @@ class OwnedResourceIndex:
     def first_owner(self, resources: RunResources) -> BlockingOwner | None:
         """The owner of a row `resources` uses, the lowest plugin identifier first; None if none."""
         owners = [self._owners_by_ref[ref] for ref in resources.refs if ref in self._owners_by_ref]
-        if resources.storage_prefixes:
-            prefixes = tuple(resources.storage_prefixes)
-            owners.extend(
-                owner for path, owner in self._owned_file_paths if path.startswith(prefixes)
-            )
+        for prefix in resources.storage_prefixes:
+            owners.extend(self._owners_of_files_under(prefix))
         return min(
             owners, key=lambda owner: (owner.plugin_identifier, owner.grant_id or 0), default=None
         )
+
+    def _owners_of_files_under(self, prefix: str) -> list[BlockingOwner]:
+        owners = []
+        index = bisect_left(self._sorted_paths, prefix)
+        while index < len(self._sorted_paths) and self._sorted_paths[index].startswith(prefix):
+            owners.append(self._owned_file_paths[index][1])
+            index += 1
+        return owners
 
 
 def _ownable_labels() -> frozenset[str]:
@@ -141,13 +149,20 @@ def _with_owner(owned: QuerySet) -> QuerySet:
 
 
 def _owners_by_ref(owned: QuerySet) -> dict[ResourceRef, BlockingOwner]:
+    """The owner of each owned row, by the row it names. A row of a content type whose model
+    is gone from the code is skipped: no run can reach it."""
     owners: dict[tuple, BlockingOwner] = {}
+    labels: dict[int, str | None] = {}
     by_ref = {}
     for content_type_id, object_id, *owner_fields in _with_owner(owned).values_list(
         "content_type_id", "object_id", *_OWNER_FIELDS
     ):
-        label = ContentType.objects.get_for_id(content_type_id).model_class()._meta.label
-        by_ref[ResourceRef(model_label=label, pk=object_id)] = _owner(owners, owner_fields)
+        if content_type_id not in labels:
+            model = ContentType.objects.get_for_id(content_type_id).model_class()
+            labels[content_type_id] = model._meta.label if model is not None else None
+        label = labels[content_type_id]
+        if label is not None:
+            by_ref[ResourceRef(model_label=label, pk=object_id)] = _owner(owners, owner_fields)
     return by_ref
 
 

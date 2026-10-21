@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import bcrypt
 import pytest
 from loguru import logger
 
@@ -21,6 +22,8 @@ from es_plugins.agent.django_client import DjangoNodeClient
 from es_plugins.agent.main import prepare_agent_directories
 from es_plugins.agent.port_reservation import PortReservation
 from es_plugins.agent.reconciler import AgentServices, Reconciler
+from es_plugins.database.connections import DatabaseProvisioningError, DatabaseUnreachableError
+from es_plugins.egress.policy_writer import HOSTS_FILE_NAME, PASSWORDS_FILE_NAME, EgressPolicyWriter
 from es_plugins.health.health_checker import HealthChecker
 from es_plugins.hooks.hook_caller import PluginHookCaller
 from es_plugins.hooks.hook_runner import RESTARTED_DURING_HOOK, STOPPED_DURING_HOOK
@@ -33,7 +36,9 @@ from tests.helpers import (
     SERVICE_ACCOUNT_KEY,
     FakeDjango,
     FakeLauncher,
+    RecordingProvisioner,
     backend_wheels,
+    database_section,
     desired_state,
     free_port,
     free_ports,
@@ -101,6 +106,18 @@ def port_is_free(port: int) -> bool:
         return True
 
 
+class RecordingEgress(EgressPolicyWriter):
+    """The real policy writer, noting when a password is issued next to the launcher's steps."""
+
+    def __init__(self, directory, events):
+        super().__init__(directory)
+        self._events = events
+
+    async def issue_password(self, identifier):
+        self._events.append(("issue_password", identifier))
+        return await super().issue_password(identifier)
+
+
 @pytest.fixture
 async def node(tmp_path, layout, package_bytes):
     layout.agent_directory.mkdir(parents=True)
@@ -111,6 +128,9 @@ async def node(tmp_path, layout, package_bytes):
     client = DjangoNodeClient(API_URL, NODE_KEY, transport=django.transport)
     launcher = FakeLauncher()
     launcher.hook_record = tmp_path / "hooks.jsonl"
+    provisioner = RecordingProvisioner(launcher.operations)
+    egress = RecordingEgress(layout.egress_policy_directory, launcher.operations)
+    await egress.start()
     venv_builder = RecordingVenvBuilder()
     health_checker = HealthChecker()
     hook_caller = PluginHookCaller()
@@ -128,6 +148,8 @@ async def node(tmp_path, layout, package_bytes):
         ports=ports,
         disk=NodeDisk(layout.data_root, statvfs=volume),
         hook_caller=hook_caller,
+        provisioner=provisioner,
+        egress=egress,
         on_change=lambda: changes.append(reconciler.reports()),
         interpreter_for=lambda python: Path(sys.executable),
         venv_builder=venv_builder,
@@ -144,6 +166,7 @@ async def node(tmp_path, layout, package_bytes):
     desired.volume = volume
     desired.changes = changes
     desired.services = services
+    desired.provisioner = provisioner
     yield reconciler, django, launcher, venv_builder, desired
     await reconciler.close()
     ports.close()
@@ -151,6 +174,22 @@ async def node(tmp_path, layout, package_bytes):
     await health_checker.aclose()
     await hook_caller.aclose()
     await client.aclose()
+
+
+def proxy_password(layout, spawned) -> str:
+    """The proxy password in the process's environment, checked against the password file."""
+    password = spawned["environment"]["HTTPS_PROXY"].removeprefix("http://weather:").split("@")[0]
+    lines = dict(
+        line.split(":", 1)
+        for line in (layout.egress_policy_directory / PASSWORDS_FILE_NAME).read_text().splitlines()
+    )
+    assert bcrypt.checkpw(password.encode(), lines["weather"].encode())
+    return password
+
+
+def listed_passwords(layout) -> list[str]:
+    text = (layout.egress_policy_directory / PASSWORDS_FILE_NAME).read_text()
+    return [line.split(":", 1)[0] for line in text.splitlines()]
 
 
 def running(reconciler):
@@ -189,8 +228,15 @@ async def test_a_new_placement_is_installed_configured_and_started(node, layout)
         "EPICSTAFF_API_URL": "http://epicstaff-api:8081/api/",
         "EPICSTAFF_PUBLIC_URL": "https://epicstaff.example.com",
         "EPICSTAFF_PLUGIN_PUBLIC_URL": "https://weather.plugins.example.com",
+        **dict.fromkeys(
+            ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"),
+            f"http://weather:{proxy_password(layout, spawned)}@plugins_egress:3128",
+        ),
+        "NO_PROXY": "epicstaff-api,localhost,127.0.0.1,::1",
+        "no_proxy": "epicstaff-api,localhost,127.0.0.1,::1",
     }
     assert not any("secret" in argument for argument in spawned["argv"])
+    assert reconciler.reports()[0].database is None
     report = reconciler.reports()[0]
     assert (report.observed_version, report.applied_restart_generation) == ("0.2.0", 0)
     assert report.applied_credentials_revision == "c" * 64
@@ -555,3 +601,252 @@ async def test_no_key_assertion_or_hook_body_reaches_a_log_line_or_a_report(node
         assert not [line for line in lines if secret in line], secret
         assert not [report for report in reports if secret in report], secret
     assert SERVICE_ACCOUNT_KEY not in json.dumps(django.hook_results)
+
+
+APP_PASSWORD = "A" * 21 + "-_" + "z" * 20
+DATABASE_MIGRATIONS = {"002_more.sql": b"SELECT 2;\n", "001_places.sql": b"CREATE TABLE places (id int);\n"}
+
+
+@pytest.fixture
+def database_package_bytes(tmp_path):
+    files = package_files(backend_wheels(tmp_path / "database-wheels"), {**manifest(), "database": {}})
+    files.update({f"database/migrations/{name}": content for name, content in DATABASE_MIGRATIONS.items()})
+    return write_package(tmp_path / "weather-database.esplugin", files).read_bytes()
+
+
+@pytest.fixture
+def database_node(node, database_package_bytes):
+    reconciler, django, launcher, venv_builder, desired = node
+    django.packages[12] = database_package_bytes
+    django.database_passwords[7] = APP_PASSWORD
+
+    def with_database(**overrides):
+        database = database_section(**overrides.pop("database", {}))
+        return desired(database_package_bytes, database=database, **overrides)
+
+    return reconciler, django, launcher, desired, with_database
+
+
+async def test_a_database_is_provisioned_after_the_credentials_and_before_the_proxy_password_runtime_file_and_spawn(
+    database_node, monkeypatch
+):
+    reconciler, django, launcher, desired, with_database = database_node
+    real_fetch = DjangoNodeClient.fetch_runtime_credentials
+
+    async def noting_fetch(client, placement_id):
+        launcher.operations.append(("fetch_credentials", placement_id))
+        return await real_fetch(client, placement_id)
+
+    monkeypatch.setattr(DjangoNodeClient, "fetch_runtime_credentials", noting_fetch)
+
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+
+    steps = [operation[0] for operation in launcher.operations]
+    start = steps.index("fetch_credentials")
+    assert [step for step in steps[start:] if step != "prepare_plugin"][:5] == [
+        "fetch_credentials",
+        "provision",
+        "issue_password",
+        "write_runtime_file",
+        "spawn",
+    ]
+    [call] = desired.provisioner.calls
+    assert call["plugin"] == "weather"
+    assert call["app_password"] == APP_PASSWORD
+    assert call["desired"] == with_database().placements[0].database
+    assert sorted((migration.name, migration.content) for migration in call["migrations"]) == sorted(
+        DATABASE_MIGRATIONS.items()
+    )
+    environment = launcher.spawned[0]["environment"]
+    assert environment["DATABASE_URL"] == (
+        f"postgresql://weather_app:{APP_PASSWORD}@plugins_db:5432/plugin_weather?application_name=weather"
+    )
+    assert environment["EPICSTAFF_PLUGIN_DB_CONNECTIONS"] == "3"
+    report = reconciler.reports()[0].database
+    assert (report.state, report.applied_migrations, report.size_bytes, report.last_error) == (
+        "ready",
+        ["001_places.sql", "002_more.sql"],
+        8192,
+        None,
+    )
+    assert report.installation_id == "0123456789abcdef0123456789abcdef"
+    # The app password is a secret: never in the runtime file, a report or a log line.
+    assert APP_PASSWORD.encode() not in launcher.runtime_files["weather"]
+    assert not [reports for reports in desired.changes if APP_PASSWORD in str([item.model_dump_json() for item in reports])]
+
+
+async def test_a_failed_provisioning_starts_nothing_and_a_restart_tries_again(database_node):
+    reconciler, django, launcher, desired, with_database = database_node
+    message = 'plugins_db already has role "weather_owner" that this plugin installation did not create'
+    desired.provisioner.failures.append(DatabaseProvisioningError("conflict", message))
+
+    await reconciler.apply(with_database())
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "failed")
+
+    report = reconciler.reports()[0]
+    assert report.last_error == message
+    assert (report.database.state, report.database.last_error) == ("failed", message)
+    assert launcher.spawned == []
+    assert listed_passwords(layout_of(desired)) == []
+
+    await reconciler.apply(with_database(restart_generation=1))
+    await wait_until(lambda: running(reconciler))
+
+    assert len(desired.provisioner.calls) == 2
+    assert reconciler.reports()[0].database.state == "ready"
+    assert reconciler.reports()[0].last_error is None
+
+
+async def test_an_unreachable_plugins_db_is_reported_and_retried(database_node, monkeypatch):
+    monkeypatch.setattr(reconciler_module, "TRANSIENT_RETRY_SECONDS", 0.3)
+    reconciler, django, launcher, desired, with_database = database_node
+    desired.provisioner.failures.append(DatabaseUnreachableError("plugins_db at plugins_db:5432 cannot be reached: refused"))
+
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+
+    reports_during = [
+        reports[0].database
+        for reports in desired.changes
+        if reports and reports[0].database is not None and reports[0].database.last_error
+    ]
+    assert reports_during and reports_during[0].state == "provisioning"
+    assert "cannot be reached" in reports_during[0].last_error
+    assert len(desired.provisioner.calls) == 2
+    assert len(launcher.spawned) == 1
+
+
+async def test_a_changed_database_section_is_provisioned_again_and_restarts_the_process(database_node):
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+
+    await reconciler.apply(with_database(database={"connection_limit": 2}))
+    await wait_until(lambda: len(launcher.spawned) == 2)
+    await wait_until(lambda: running(reconciler))
+
+    assert [call["desired"].connection_limit for call in desired.provisioner.calls] == [3, 2]
+    assert launcher.spawned[1]["environment"]["EPICSTAFF_PLUGIN_DB_CONNECTIONS"] == "2"
+
+
+async def test_a_restart_of_an_unchanged_database_does_not_provision_it_again(database_node):
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+
+    await reconciler.apply(with_database(restart_generation=1))
+    await wait_until(lambda: len(launcher.spawned) == 2)
+
+    assert len(desired.provisioner.calls) == 1
+
+
+async def test_a_changed_host_list_rewrites_the_policy_without_a_restart(node, layout):
+    reconciler, django, launcher, _, desired = node
+    await reconciler.apply(desired())
+    await wait_until(lambda: running(reconciler))
+    hosts_file = layout.egress_policy_directory / HOSTS_FILE_NAME
+    assert json.loads(hosts_file.read_text()) == {"weather": []}
+
+    await reconciler.apply(desired(egress={"hosts": ["geocoding-api.open-meteo.com"]}))
+    await asyncio.sleep(0.5)
+
+    assert json.loads(hosts_file.read_text()) == {"weather": ["geocoding-api.open-meteo.com"]}
+    assert len(launcher.spawned) == 1
+
+
+async def test_the_proxy_password_is_kept_across_restarts_and_removed_once_stopped_for_good(node, layout):
+    reconciler, django, launcher, _, desired = node
+    await reconciler.apply(desired())
+    await wait_until(lambda: running(reconciler))
+    first = proxy_password(layout, launcher.spawned[0])
+
+    await reconciler.apply(desired(restart_generation=1))
+    await wait_until(lambda: len(launcher.spawned) == 2)
+    assert proxy_password(layout, launcher.spawned[1]) == first
+
+    await reconciler.apply(desired(restart_generation=1, desired_state="stopped"))
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "stopped")
+    assert listed_passwords(layout) == []
+
+    await reconciler.apply(desired(restart_generation=1))
+    await wait_until(lambda: len(launcher.spawned) == 3)
+    assert proxy_password(layout, launcher.spawned[2]) != first
+
+    await reconciler.apply(desired_state([]))
+    assert listed_passwords(layout) == []
+
+
+async def test_permissions_changed_outside_epicstaff_stop_and_fail_the_plugin_until_a_restart(database_node):
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+    [controller] = reconciler.watched_databases()
+    error = "database permissions changed outside EpicStaff: unexpected membership"
+
+    await controller.fail_database(error)
+
+    report = reconciler.reports()[0]
+    assert (report.observed_state, report.last_error) == ("failed", error)
+    assert (report.database.state, report.database.last_error) == ("failed", error)
+    assert launcher.processes_of(UID)[0].poll() is not None
+    assert listed_passwords(layout_of(desired)) == []
+    assert not reconciler.watched_databases()[0].database.ready
+
+    await reconciler.apply(with_database(restart_generation=1))
+    await wait_until(lambda: running(reconciler))
+
+    assert len(desired.provisioner.calls) == 2
+
+
+def layout_of(desired):
+    return desired.services.layout
+
+
+def credential_fetches(django) -> int:
+    return len([request for request in django.requests if request.url.path.endswith("/runtime-credentials/")])
+
+
+async def test_retries_after_transient_failures_reuse_the_credentials_they_fetched(database_node, monkeypatch):
+    monkeypatch.setattr(reconciler_module, "TRANSIENT_RETRY_SECONDS", 0.2)
+    reconciler, django, launcher, desired, with_database = database_node
+    desired.provisioner.failures.extend(
+        DatabaseUnreachableError("plugins_db at plugins_db:5432 cannot be reached: refused") for _ in range(3)
+    )
+
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+
+    assert len(desired.provisioner.calls) == 4
+    assert credential_fetches(django) == 1
+
+
+async def test_credentials_older_than_the_reuse_window_are_fetched_again(database_node, monkeypatch):
+    monkeypatch.setattr(reconciler_module, "TRANSIENT_RETRY_SECONDS", 0.2)
+    monkeypatch.setattr(reconciler_module, "CREDENTIALS_REUSE_SECONDS", 0.0)
+    reconciler, django, launcher, desired, with_database = database_node
+    desired.provisioner.failures.extend(
+        DatabaseUnreachableError("plugins_db at plugins_db:5432 cannot be reached: refused") for _ in range(3)
+    )
+
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+
+    assert credential_fetches(django) == 4
+
+
+async def test_a_placement_that_changes_during_an_outage_gets_fresh_credentials(database_node, monkeypatch):
+    monkeypatch.setattr(reconciler_module, "TRANSIENT_RETRY_SECONDS", 0.2)
+    reconciler, django, launcher, desired, with_database = database_node
+    desired.provisioner.failures.extend(
+        DatabaseUnreachableError("plugins_db at plugins_db:5432 cannot be reached: refused") for _ in range(2)
+    )
+    await reconciler.apply(with_database())
+    await wait_until(lambda: len(desired.provisioner.calls) == 1)
+    django.credentials_revisions[7] = "d" * 64
+
+    await reconciler.apply(with_database(credentials_revision="d" * 64))
+    await wait_until(lambda: running(reconciler))
+
+    assert credential_fetches(django) == 2
+    assert reconciler.reports()[0].applied_credentials_revision == "d" * 64

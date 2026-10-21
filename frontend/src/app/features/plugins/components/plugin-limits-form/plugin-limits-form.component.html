@@ -38,10 +38,13 @@
                         <th scope="row">
                             <span class="limits__name">
                                 {{ row.label }}
-                                @if (!row.enforced) {
-                                    <app-plugin-badge label="Not enforced yet" />
+                                @if (row.badge) {
+                                    <app-plugin-badge [label]="row.badge" />
                                 }
                             </span>
+                            @if (row.hint) {
+                                <p class="limits__hint text-body-small">{{ row.hint }}</p>
+                            }
                         </th>
                         <td>{{ row.requested }}</td>
                         <td>{{ row.platformMax }}</td>
@@ -81,8 +84,8 @@
                         <th scope="row">
                             <span class="limits__name">
                                 {{ cpuLabel }}
-                                @if (!cpuRow.enforced) {
-                                    <app-plugin-badge label="Not enforced yet" />
+                                @if (cpuRow.badge) {
+                                    <app-plugin-badge [label]="cpuRow.badge" />
                                 }
                             </span>
                         </th>

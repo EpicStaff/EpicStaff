@@ -10,6 +10,7 @@ from django.utils import timezone
 from epicstaff_plugin.contracts.hook_api import HookRequest
 from epicstaff_plugin.contracts.manifest import MAX_HOOK_TIMEOUT_SECONDS
 from epicstaff_plugin.hooks import verify_hook_assertion
+from plugins.identity.service_account_keys import ServiceAccountKeyService
 from plugins.identity.signing_keys import PluginSigningKeyService
 from plugins.lifecycle.hook_job_service import HookJobService
 from plugins.lifecycle.suspension_service import PluginSuspensionService
@@ -394,7 +395,7 @@ def test_a_job_of_a_suspended_grant_cannot_be_claimed(job, node_client, superadm
     assert (response.status_code, response.json()["code"]) == (409, "hook_job_not_claimable")
 
 
-# ---- lock order: the grant first, then its jobs, everywhere ----
+# ---- lock order: the grant first, then its jobs, then its service account, everywhere ----
 
 
 def _locked_tables(captured):
@@ -409,6 +410,8 @@ def _locked_tables(captured):
             tables.append("grant")
         elif from_clause.startswith('"plugins_pluginhookjob"'):
             tables.append("job")
+        elif from_clause.startswith('"plugins_pluginserviceaccount"'):
+            tables.append("account")
         else:
             tables.append(from_clause.split(" ", 1)[0])
     return tables
@@ -450,8 +453,22 @@ def test_a_retry_locks_the_grant_before_the_job(job, plugin_node, superadmin):
     assert _locks_of(lambda: HookJobService().retry("weather", job.grant_id, superadmin)) == ["grant", "job"]
 
 
-def test_a_suspension_locks_the_grant_before_the_jobs(job, superadmin):
-    assert _locks_of(lambda: PluginSuspensionService().suspend("weather", job.grant_id, superadmin)) == ["grant", "job"]
+def test_a_suspension_locks_the_grant_then_its_jobs_then_its_service_account(job, superadmin):
+    locks = _locks_of(lambda: PluginSuspensionService().suspend("weather", job.grant_id, superadmin))
+
+    assert locks == ["grant", "job", "account"]
+
+
+def test_a_resume_locks_the_grant_before_its_service_account(job, superadmin):
+    PluginSuspensionService().suspend("weather", job.grant_id, superadmin)
+
+    assert _locks_of(lambda: PluginSuspensionService().resume("weather", job.grant_id, superadmin)) == ["grant", "account"]
+
+
+def test_minting_keys_locks_the_service_accounts_before_their_keys(job, hooked_weather):
+    # The keys are changed by UPDATEs once the accounts are locked, as `_revoke_keys` does
+    # after it locks the account: both take the account first, so neither waits on the other.
+    assert _locks_of(lambda: ServiceAccountKeyService().mint_for_plugin(hooked_weather)) == ["account"]
 
 
 # ---- many pending jobs ----

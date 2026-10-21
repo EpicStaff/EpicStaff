@@ -4,6 +4,7 @@
 row, so a reference the walk failed to follow leaves its target out of the result.
 """
 
+import dataclasses
 import itertools
 import uuid
 from collections import defaultdict
@@ -16,12 +17,15 @@ from django.utils import timezone
 
 from tables.services.run_admission import RunKind, RunSubject
 from tables.services.run_resources import (
+    CODE_SLOT_STORAGE_FLAGS,
     RUN_REFERENCES,
     FollowChildren,
     FollowField,
     ResourceRef,
     RunResourceCollector,
     RunResources,
+    _Walk,
+    _walk_plan,
     unqueried_child_references,
 )
 from tests.fixtures import _make_secret
@@ -490,6 +494,18 @@ def test_the_query_count_does_not_grow_with_the_number_of_nodes(world):
     )
 
 
+@pytest.mark.django_db
+def test_each_level_of_subflows_costs_one_query(world):
+    flat = world.flow()
+    one_level = world.flow(subflow=world.flow())
+    two_levels = world.flow(subflow=world.flow(subflow=world.flow()))
+
+    counts = [_queries_to_collect(RunKind.FLOW, [flow.pk]) for flow in (flat, one_level, two_levels)]
+
+    assert counts == [counts[0], counts[0] + 1, counts[0] + 2]
+    assert _queries_to_collect(RunKind.FLOW, [flat.pk, one_level.pk, two_levels.pk]) == counts[2]
+
+
 def _small_flow(world: World):
     flow = world.make("tables.Graph", name=world.name("small"), org=world.org)
     world.make("tables.PythonNode", graph=flow, python_code=world.python_code())
@@ -593,6 +609,103 @@ def test_a_code_start_is_held_by_the_flow_of_every_node_kind_with_code(
     for code in codes.values():
         resources = RunResourceCollector().collect(RunSubject(RunKind.CODE, code.pk, world.org.pk))
         assert ref(flow) in resources.refs
+
+
+@pytest.fixture
+def flow_with_attached_storage(world):
+    flow = world.make("tables.Graph", name="attached-storage", org=world.org)
+    attached_file = world.storage_file()
+    attached_folder = world.storage_file(folder=True)
+    for storage_file in (attached_file, attached_folder):
+        world.make("tables.GraphStorageFile", graph=flow, storage_file=storage_file)
+    return flow, attached_file, attached_folder
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("uses_storage", [True, False], ids=["storage-on", "storage-off"])
+@pytest.mark.parametrize("model_label, code_field", sorted(CODE_SLOT_STORAGE_FLAGS))
+def test_a_code_run_counts_the_flow_s_attached_storage_while_its_slot_uses_storage(
+    world, flow_with_attached_storage, model_label, code_field, uses_storage
+):
+    flow, attached_file, attached_folder = flow_with_attached_storage
+    code = world.python_code()
+    world.make(
+        model_label,
+        graph=flow,
+        node_name="holder",
+        **{code_field: code, CODE_SLOT_STORAGE_FLAGS[(model_label, code_field)]: uses_storage},
+    )
+
+    resources = RunResourceCollector().collect(RunSubject(RunKind.CODE, code.pk, world.org.pk))
+
+    attached = {ref(attached_file), ref(attached_folder)}
+    assert ref(flow) in resources.refs
+    if uses_storage:
+        assert attached <= resources.refs
+        assert resources.storage_prefixes == {attached_folder.path}
+    else:
+        assert not attached & resources.refs
+        assert resources.storage_prefixes == frozenset()
+
+
+@pytest.mark.django_db
+def test_a_code_run_counts_only_the_storage_of_the_flows_holding_its_code(
+    world, flow_with_attached_storage
+):
+    flow, attached_file, _ = flow_with_attached_storage
+    other_flow = world.make("tables.Graph", name="other-storage", org=world.org)
+    code = world.python_code()
+    world.make("tables.PythonNode", graph=other_flow, python_code=code, use_storage=True)
+    unrelated = world.python_code()
+    world.make("tables.PythonNode", graph=flow, python_code=unrelated, use_storage=True)
+
+    resources = RunResourceCollector().collect_many(RunKind.CODE, [code.pk, unrelated.pk])
+
+    assert ref(attached_file) not in resources[code.pk].refs
+    assert ref(attached_file) in resources[unrelated.pk].refs
+
+
+def test_every_storage_flag_belongs_to_a_followed_code_slot_of_a_flow_node():
+    flow_nodes = {
+        row.child for row in RUN_REFERENCES if isinstance(row, FollowChildren) and row.fk == "graph"
+    }
+    wrong = []
+    for (model_label, code_field), flag in CODE_SLOT_STORAGE_FLAGS.items():
+        model = apps.get_model(model_label)
+        code_slot = model._meta.get_field(code_field)
+        if (
+            FollowField(model_label, code_field) not in RUN_REFERENCES
+            or code_slot.related_model._meta.label != "tables.PythonCode"
+            or model_label not in flow_nodes
+            or model._meta.get_field(flag).get_internal_type() != "BooleanField"
+        ):
+            wrong.append((model_label, code_field, flag))
+
+    assert wrong == []
+
+
+@pytest.mark.django_db
+def test_ids_given_as_text_reach_the_same_rows(world):
+    flow = world.flow()
+    collector = RunResourceCollector()
+
+    as_text = collector.collect(RunSubject(RunKind.FLOW, str(flow.pk), str(world.org.pk)))
+
+    assert as_text == collector.collect(RunSubject(RunKind.FLOW, flow.pk, world.org.pk))
+    assert ref(world.made["tables.PythonNode"][0]) in as_text.refs
+    assert list(collector.collect_many(RunKind.FLOW, [str(flow.pk)])) == [flow.pk]
+
+
+@pytest.mark.django_db
+def test_a_walk_with_no_place_for_a_reached_model_fails_instead_of_looping(world):
+    code = world.python_code()
+    plan = _walk_plan()
+    without_secrets = dataclasses.replace(
+        plan, model_order=tuple(label for label in plan.model_order if label != "tables.Secret")
+    )
+
+    with pytest.raises(RuntimeError, match=r"no place for \['tables.Secret'\]"):
+        _Walk(without_secrets).run([ref(code)])
 
 
 @pytest.mark.django_db

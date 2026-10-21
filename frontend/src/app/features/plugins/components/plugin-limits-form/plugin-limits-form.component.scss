@@ -82,6 +82,13 @@
         color: var(--color-text-secondary);
     }
 
+    &__hint {
+        max-width: 280px;
+        margin: 4px 0 0;
+        color: var(--color-text-secondary);
+        font-weight: var(--text-body-small-weight);
+    }
+
     &__footer {
         display: flex;
         align-items: center;

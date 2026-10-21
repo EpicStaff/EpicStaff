@@ -37,11 +37,20 @@ class RunKind(StrEnum):
 
 @dataclass(frozen=True)
 class RunSubject:
-    """What a run is about to start, in the organization it runs in."""
+    """What a run is about to start, in the organization it runs in.
+
+    The kind and ids are converted on creation: an id given as text would otherwise match
+    no row, and every check would admit the run.
+    """
 
     kind: RunKind
     subject_id: int
     organization_id: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", RunKind(self.kind))
+        object.__setattr__(self, "subject_id", int(self.subject_id))
+        object.__setattr__(self, "organization_id", int(self.organization_id))
 
 
 class RunAdmissionRefusedError(CustomAPIExeption):

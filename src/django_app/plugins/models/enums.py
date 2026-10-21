@@ -53,3 +53,10 @@ class PlacementHealth(models.TextChoices):
     OK = "ok"
     FAILING = "failing"
     UNKNOWN = "unknown"
+
+
+class PluginDatabaseState(models.TextChoices):
+    PENDING = "pending"
+    PROVISIONING = "provisioning"
+    READY = "ready"
+    FAILED = "failed"

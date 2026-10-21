@@ -1,10 +1,14 @@
+import asyncio
+import base64
 import importlib
 import io
 import json
 import re
 import tomllib
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
+import httpx
 import pytest
 from packaging.requirements import Requirement
 
@@ -17,6 +21,8 @@ from epicstaff_plugin.runtime import RuntimeConfig
 from epicstaff_plugin.serve import build_app
 from epicstaff_plugin.testing import HookSigner, service_account_key, write_runtime_file
 from fake_epicstaff import FakeEpicStaff
+from fake_weather_stores import FakeForecastRuns, FakePopupRelay, FakeSavedPlaces
+from local_servers import EmptyApi, RefusingProxy, serving
 
 SAMPLE = REPO_ROOT / "plugin-samples" / "weather"
 SDK_PYPROJECT = REPO_ROOT / "src" / "plugin_sdk" / "pyproject.toml"
@@ -31,26 +37,29 @@ CONTOSO = {"id": 5, "name": "Contoso"}
 # A popup state made for Acme (org 3), as the JS SDK's createPopupState makes it.
 ACME_STATE = "3.k3Jq9_x-Lm2Np4Qr6St8Uv"
 INVALID_REQUEST = (400, {"code": "invalid_request"})
-
-
-class FakeClock:
-    def __init__(self):
-        self.now = 1000.0
-
-    def __call__(self):
-        return self.now
+GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
+# What Open-Meteo's geocoding API answers, trimmed: the second result has no country.
+LISBON_ANSWER = {
+    "results": [
+        {"id": 2267057, "name": "Lisbon", "latitude": 38.71667, "longitude": -9.13333, "country_code": "PT", "country": "Portugal", "admin1": "Lisbon"},
+        {"id": 9999001, "name": "Lisbon Seamount", "latitude": 37.5, "longitude": -11.0},
+        {"id": 4964811, "name": "Lisbon", "latitude": 44.03, "longitude": -70.1, "country": "United States", "admin1": "Maine"},
+    ],
+    "generationtime_ms": 0.6,
+}
+LISBON = {"name": "Lisbon", "country": "Portugal", "admin1": "Lisbon", "latitude": 38.71667, "longitude": -9.13333}
 
 
 @pytest.fixture
 def sample_modules(monkeypatch):
     """The sample backend's modules, imported from its source directory."""
     monkeypatch.syspath_prepend(str(SAMPLE / "backend" / "src"))
-    return importlib.import_module("weather_plugin.app"), importlib.import_module("weather_plugin.popup_relay")
-
-
-@pytest.fixture
-def relay_clock():
-    return FakeClock()
+    return SimpleNamespace(
+        app=importlib.import_module("weather_plugin.app"),
+        places=importlib.import_module("weather_plugin.places"),
+        place_search=importlib.import_module("weather_plugin.place_search"),
+        popup_relay=importlib.import_module("weather_plugin.popup_relay"),
+    )
 
 
 @pytest.fixture
@@ -60,11 +69,53 @@ def epicstaff_api():
 
 
 @pytest.fixture
-def weather(monkeypatch, tmp_path, signer, sample_modules, relay_clock, epicstaff_api):
+def stores(sample_modules):
+    """In-memory stand-ins for the sample's database stores, empty in every test."""
+    return SimpleNamespace(
+        places=FakeSavedPlaces(sample_modules.places),
+        forecast_runs=FakeForecastRuns(),
+        popup_relay=FakePopupRelay(),
+    )
+
+
+class FakeGeocoding:
+    """Open-Meteo's geocoding API: records every request and answers `answer` (or raises it)."""
+
+    def __init__(self):
+        self.requests = []
+        self.answer = httpx.Response(200, json=LISBON_ANSWER)
+
+    def __call__(self, request):
+        self.requests.append(request)
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+@pytest.fixture
+def geocoding():
+    return FakeGeocoding()
+
+
+def _serve_with(monkeypatch, app_module, runtime, epicstaff, stores, place_search):
+    for name, value in {
+        "places": stores.places,
+        "forecast_runs": stores.forecast_runs,
+        "popup_relay": stores.popup_relay,
+        "place_search": place_search,
+        "epicstaff": epicstaff,
+    }.items():
+        # The lifespan sets the stores; tests that do not run it set them here.
+        monkeypatch.setattr(app_module.app.state, name, value, raising=False)
+    return build_app(app_module.app, runtime, epicstaff=epicstaff)
+
+
+@pytest.fixture
+def weather(monkeypatch, tmp_path, signer, sample_modules, epicstaff_api, stores, geocoding):
     """The sample's app, served as the node serves it, with `units` set to imperial.
 
-    It holds a service account for Acme and calls `epicstaff_api`. Its popup relay and its
-    forecast runs start empty in every test; the relay runs on `relay_clock`.
+    It holds a service account for Acme and calls `epicstaff_api`. Its stores are `stores`,
+    and its place search calls `geocoding`.
     """
     runtime_file = tmp_path / "runtime.json"
     write_runtime_file(
@@ -75,13 +126,10 @@ def weather(monkeypatch, tmp_path, signer, sample_modules, relay_clock, epicstaf
         service_accounts={"3": {"key": ACME_KEY, "org_name": "Acme", "grant_state": "active"}},
     )
     monkeypatch.setenv("EPICSTAFF_PLUGIN_RUNTIME_FILE", str(runtime_file))
-    app_module, relay_module = sample_modules
     runtime = RuntimeConfig.load(runtime_file)
     epicstaff = EpicStaffClient(runtime, transport=epicstaff_api.transport())
-    monkeypatch.setattr(app_module.app.state, "popup_relay", relay_module.PopupRelayStore(clock=relay_clock))
-    monkeypatch.setattr(app_module.app.state, "forecast_runs", importlib.import_module("weather_plugin.forecast_runs").ForecastRuns())
-    monkeypatch.setattr(app_module.app.state, "epicstaff", epicstaff)
-    return build_app(app_module.app, runtime, epicstaff=epicstaff)
+    place_search = sample_modules.place_search.PlaceSearch(transport=httpx.MockTransport(geocoding))
+    return _serve_with(monkeypatch, sample_modules.app, runtime, epicstaff, stores, place_search)
 
 
 def _as_person(signer, method, path, person=ADA, org=ACME):
@@ -156,18 +204,29 @@ def test_the_sample_has_no_generated_api_pages(weather, signer):
 
 def test_the_sample_source_is_a_valid_backend_plugin():
     source = collect_source(SAMPLE, None)
+    contents = source.describe()
 
-    assert source.problems(source.describe(), require_sdk_pin=False) == []
-    assert source.manifest.version == "0.4.0"
+    assert source.problems(contents, require_sdk_pin=False) == []
+    assert source.manifest.version == "0.5.0"
     assert source.manifest.hooks.install
+    assert source.manifest.database is not None
+    assert [path for path in contents if path.startswith("database/")] == ["database/migrations/001_weather.sql"]
+    assert [(host.host, host.reason) for host in source.manifest.outbound_hosts] == [
+        ("geocoding-api.open-meteo.com", "Looks up places by name when someone adds a saved place.")
+    ]
+    assert source.manifest.limits.model_dump(exclude_none=True) == {
+        "memory_mb": 256,
+        "db_connections": 3,
+        "statement_timeout_seconds": 10,
+    }
     assert {declaration.resource_type: declaration.actions for declaration in source.manifest.access} == {
         "flows": ["read", "create", "update", "use"],
         "files": ["read", "create"],
         "secrets": ["read", "create", "use"],
         "llm_configs": ["read", "create"],
     }
-    assert source.manifest.user_permission_defaults("org_admin") == ["read", "delete"]
-    assert source.manifest.user_permission_defaults("member") == ["read"]
+    assert source.manifest.user_permission_defaults("org_admin") == ["read", "update", "delete"]
+    assert source.manifest.user_permission_defaults("member") == ["read", "update"]
     assert source.manifest.user_permission_defaults("viewer") == []
     assert [public_path.model_dump(mode="json") for public_path in source.manifest.public_paths] == [
         {"path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0},
@@ -326,16 +385,6 @@ def test_another_person_posting_the_same_state_does_not_replace_the_result(weath
     assert _poll(weather, signer, person=EVE).json() == {"status": "done", "params": {"code": "eve"}}
 
 
-def test_a_result_is_kept_for_five_minutes(weather, signer, relay_clock):
-    _post_result(weather, signer, {"state": ACME_STATE, "params": {"code": "ada"}})
-    relay_clock.now += 299
-    assert _poll(weather, signer).json()["status"] == "done"
-
-    _post_result(weather, signer, {"state": ACME_STATE, "params": {"code": "ada"}})
-    relay_clock.now += 300
-    assert _poll(weather, signer).json() == {"status": "pending"}
-
-
 def test_a_result_posted_as_text_plain_is_accepted(weather, signer):
     # What `fetch(url, {method: "POST", body: JSON.stringify(...)})` sends without a header.
     response = _post_result(
@@ -398,31 +447,24 @@ def test_a_malformed_result_is_refused(weather, signer, body):
     assert (response.status, response.json()) == INVALID_REQUEST
 
 
-@pytest.mark.parametrize("state", ["not-a-state", "3.short", "0.k3Jq9_x-Lm2Np4Qr6St8Uv"])
-def test_polling_a_state_that_cannot_exist_is_pending(weather, signer, state):
+def test_a_result_is_kept_for_its_person_in_its_organization(weather, signer, stores):
+    _post_result(weather, signer, {"state": ACME_STATE, "params": {"code": "ada"}})
+
+    assert stores.popup_relay.results == {(3, 42, ACME_STATE): {"code": "ada"}}
+
+
+@pytest.mark.parametrize("state", ["not-a-state", "3.short", "0.k3Jq9_x-Lm2Np4Qr6St8Uv", "3." + "a" * 65])
+def test_polling_a_state_that_cannot_exist_is_pending_without_a_lookup(weather, signer, stores, state):
     response = _poll(weather, signer, state)
 
     assert (response.status, response.json()) == (200, {"status": "pending"})
-
-
-def test_the_store_drops_the_oldest_result_when_full(sample_modules, relay_clock):
-    _, relay_module = sample_modules
-    store = relay_module.PopupRelayStore(clock=relay_clock)
-    limit = relay_module.MAX_STORED_RESULTS
-
-    for index in range(limit + 1):
-        store.put(42, 3, f"3.{index:022d}", {"code": str(index)})
-
-    assert store.take(42, 3, f"3.{0:022d}") is None
-    assert store.take(42, 3, f"3.{1:022d}") == {"code": "1"}
-    assert store.take(42, 3, f"3.{limit:022d}") == {"code": str(limit)}
+    assert stores.popup_relay.lookups == 0
 
 
 def test_the_popup_state_pattern_is_the_login_protocols(sample_modules):
-    _, relay_module = sample_modules
     protocol = json.loads(LOGIN_PROTOCOL.read_text())
 
-    assert relay_module.POPUP_STATE_PATTERN == protocol["patterns"]["popup_state"]
+    assert sample_modules.popup_relay.POPUP_STATE_PATTERN == protocol["patterns"]["popup_state"]
 
 
 # --- The install hook ---
@@ -648,7 +690,7 @@ def test_the_status_names_the_flow_once_installed(weather, signer, epicstaff_api
     assert epicstaff_api.requests[-1].headers["x-epicstaff-on-behalf-of"] == "42"
 
 
-def test_a_forecast_runs_the_flow_on_behalf_of_the_person(weather, signer, epicstaff_api):
+def test_a_forecast_runs_the_flow_on_behalf_of_the_person(weather, signer, epicstaff_api, stores):
     _install(weather, signer)
 
     response = _start_forecast(weather, signer, {"city": " Paris "})
@@ -659,6 +701,7 @@ def test_a_forecast_runs_the_flow_on_behalf_of_the_person(weather, signer, epics
     assert run.body == {"graph_id": 101, "variables": {"city": "Paris"}}
     assert run.headers["x-epicstaff-on-behalf-of"] == "42"
     assert epicstaff_api.sessions[session_id]["graph"] == 101
+    assert stores.forecast_runs.runs == {(3, session_id): (42, "Paris")}
 
 
 def test_a_forecast_before_the_install_hook_ran_is_refused(weather, signer, epicstaff_api):
@@ -736,8 +779,8 @@ def test_a_forecast_is_only_for_the_person_who_started_it(weather, signer, epics
     assert _forecast(weather, signer, session_id).status == 200
 
 
-@pytest.mark.parametrize("session_id", ["999", "abc", "-1"])
-def test_a_forecast_this_process_did_not_start_is_not_found(weather, signer, epicstaff_api, session_id):
+@pytest.mark.parametrize("session_id", ["999", "abc", "-1", "0", "\u0663", str(2**63)])
+def test_a_forecast_weather_did_not_start_is_not_found(weather, signer, epicstaff_api, session_id):
     epicstaff_api.sessions[999] = {"id": 999, "status": "end", "status_data": {}}
 
     response = _forecast(weather, signer, session_id)
@@ -931,3 +974,233 @@ def test_other_secrets_are_not_taken_for_weathers(weather, signer, epicstaff_api
 
     assert response.status == 200
     assert sorted(secret["name"] for secret in epicstaff_api.secrets.values()) == ["Another plugin's key", "Weather \u00b7 LLM key"]
+
+
+# --- Saved places, kept per organization ---
+
+EDITOR = ("read", "update")
+
+
+def _places_call(weather, signer, method, path, body=None, *, person=ADA, org=ACME, permissions=EDITOR, query=""):
+    headers = {**_as(signer, method, path, person, org, permissions=permissions), "content-type": "application/json"}
+    raw = b"" if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
+    return request(weather, method, path, headers, raw, query=query)
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "query"),
+    [("GET", "/api/places", ""), ("GET", "/api/places/search", "q=Lisbon"), ("POST", "/api/places", ""), ("DELETE", "/api/places/1", "")],
+)
+def test_places_are_for_logged_in_people_only(weather, signer, method, path, query):
+    response = request(weather, method, path, signer.headers(method, path), query=query)
+
+    assert (response.status, response.json()) == (401, {"code": "login_required"})
+
+
+def test_the_list_shows_only_the_organizations_own_places(weather, signer, stores):
+    lisbon = stores.places.seed(3, 42, "Lisbon", "Portugal", 38.7, -9.1, admin1="Lisbon")
+    stores.places.seed(5, 77, "Kyiv", "Ukraine", 50.45, 30.52)
+
+    response = _places_call(weather, signer, "GET", "/api/places", permissions=("read",))
+
+    assert response.status == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "places": [
+            {"id": lisbon.id, "name": "Lisbon", "admin1": "Lisbon", "country": "Portugal", "latitude": 38.7, "longitude": -9.1, "created_at": "2026-10-21T12:00:00Z"}
+        ]
+    }
+
+
+def test_adding_a_search_result_saves_it_for_the_persons_organization(weather, signer, stores):
+    response = _places_call(weather, signer, "POST", "/api/places", LISBON)
+
+    assert response.status == 201
+    body = response.json()
+    assert {key: body[key] for key in ("name", "admin1", "country", "latitude", "longitude")} == {
+        "name": "Lisbon",
+        "admin1": "Lisbon",
+        "country": "Portugal",
+        "latitude": 38.71667,
+        "longitude": -9.13333,
+    }
+    ((org_id, created_by, saved),) = stores.places.rows.values()
+    assert (org_id, created_by, saved.id) == (3, 42, body["id"])
+
+
+@pytest.mark.parametrize(("method", "path"), [("POST", "/api/places"), ("DELETE", "/api/places/1")])
+def test_adding_and_removing_places_need_the_update_permission(weather, signer, stores, method, path):
+    stores.places.seed(3, 42, "Lisbon", "Portugal")
+
+    response = _places_call(weather, signer, method, path, LISBON if method == "POST" else None, person=EVE, permissions=("read",))
+
+    assert (response.status, response.json()) == (403, {"code": "forbidden"})
+    assert len(stores.places.rows) == 1
+
+
+@pytest.mark.parametrize("admin1", ["Lisbon", None], ids=["with a region", "without a region"])
+def test_a_place_the_organization_already_saved_is_refused(weather, signer, stores, admin1):
+    stores.places.seed(3, 44, "Lisbon", "Portugal", admin1=admin1)
+
+    response = _places_call(weather, signer, "POST", "/api/places", {**LISBON, "admin1": admin1})
+
+    assert (response.status, response.json()) == (409, {"code": "already_saved"})
+    assert len(stores.places.rows) == 1
+
+
+def test_places_of_one_name_in_one_country_are_told_apart_by_their_region(weather, signer, stores):
+    springfield = {"name": "Springfield", "country": "United States", "latitude": 39.8, "longitude": -89.64}
+    stores.places.seed(3, 44, "Springfield", "United States", admin1="Illinois")
+
+    missouri = _places_call(weather, signer, "POST", "/api/places", {**springfield, "admin1": "Missouri"})
+    no_region = _places_call(weather, signer, "POST", "/api/places", {**springfield, "admin1": None})
+    listed = _places_call(weather, signer, "GET", "/api/places")
+
+    assert (missouri.status, no_region.status) == (201, 201)
+    assert [place["admin1"] for place in listed.json()["places"]] == [None, "Illinois", "Missouri"]
+
+
+def test_another_organization_may_save_the_same_place(weather, signer, stores):
+    stores.places.seed(5, 77, "Lisbon", "Portugal")
+
+    assert _places_call(weather, signer, "POST", "/api/places", LISBON).status == 201
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"",
+        b"not json",
+        {key: value for key, value in LISBON.items() if key != "country"},
+        {**LISBON, "name": ""},
+        {**LISBON, "country": "c" * 101},
+        {**LISBON, "latitude": 91},
+        {**LISBON, "longitude": "-9.1"},
+        {**LISBON, "latitude": True},
+        {**LISBON, "org_id": 5},
+    ],
+    ids=["empty", "not json", "no country", "empty name", "country too long", "latitude off the globe", "longitude as text", "latitude a boolean", "extra key"],
+)
+def test_a_malformed_place_is_refused(weather, signer, stores, body):
+    response = _places_call(weather, signer, "POST", "/api/places", body)
+
+    assert (response.status, response.json()) == INVALID_REQUEST
+    assert stores.places.rows == {}
+
+
+def test_removing_a_place(weather, signer, stores):
+    lisbon = stores.places.seed(3, 44, "Lisbon", "Portugal")
+
+    response = _places_call(weather, signer, "DELETE", f"/api/places/{lisbon.id}")
+
+    assert (response.status, response.body) == (204, b"")
+    assert stores.places.rows == {}
+
+
+@pytest.mark.parametrize("place_id", ["other-org", "999", "abc", "0", "-1", str(2**63)])
+def test_removing_another_organizations_or_an_unknown_place_is_not_found(weather, signer, stores, place_id):
+    kyiv = stores.places.seed(5, 77, "Kyiv", "Ukraine")
+    path = f"/api/places/{kyiv.id if place_id == 'other-org' else place_id}"
+
+    response = _places_call(weather, signer, "DELETE", path)
+
+    assert (response.status, response.json()) == (404, {"code": "not_found"})
+    assert list(stores.places.rows) == [kyiv.id]
+
+
+# --- Place search, through the egress proxy ---
+
+
+def test_a_search_asks_the_geocoding_api_for_five_places_by_name(weather, signer, geocoding):
+    response = _places_call(weather, signer, "GET", "/api/places/search", permissions=("read",), query="q=%20Lisbon%20")
+
+    assert response.status == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "results": [
+            LISBON,
+            {"name": "Lisbon", "country": "United States", "admin1": "Maine", "latitude": 44.03, "longitude": -70.1},
+        ]
+    }
+    (sent,) = geocoding.requests
+    assert (sent.method, str(sent.url.copy_with(query=None)), dict(sent.url.params)) == (
+        "GET",
+        GEOCODING_URL,
+        {"name": "Lisbon", "count": "5", "format": "json"},
+    )
+
+
+def test_a_search_that_finds_nothing_has_no_results(weather, signer, geocoding):
+    geocoding.answer = httpx.Response(200, json={"generationtime_ms": 0.4})
+
+    response = _places_call(weather, signer, "GET", "/api/places/search", query="q=Nowhereville")
+
+    assert (response.status, response.json()) == (200, {"results": []})
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["", "q=", "q=%20%20", "q=" + "x" * 101, "q=a&q=b", "q=a&count=9", "name=Lisbon"],
+    ids=["nothing", "empty", "blank", "too long", "repeated", "extra parameter", "no q"],
+)
+def test_a_malformed_search_is_refused_without_a_lookup(weather, signer, geocoding, query):
+    response = _places_call(weather, signer, "GET", "/api/places/search", query=query)
+
+    assert (response.status, response.json()) == INVALID_REQUEST
+    assert geocoding.requests == []
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        httpx.Response(500, text="upstream down"),
+        httpx.Response(429, json={"error": True, "reason": "Too many requests"}),
+        httpx.Response(200, text="<html>not json</html>"),
+        httpx.Response(200, json={"results": [{"name": "Lisbon"}]}),
+        httpx.Response(200, json={"results": [{**LISBON, "latitude": 300}]}),
+        httpx.ProxyError("403 Forbidden"),
+        httpx.ConnectError("unreachable"),
+        httpx.ReadTimeout("slow"),
+    ],
+    ids=["server error", "rate limited", "not json", "no coordinates", "latitude off the globe", "proxy refusal", "unreachable", "timeout"],
+)
+def test_a_failed_lookup_is_lookup_failed(weather, signer, geocoding, answer):
+    geocoding.answer = answer
+
+    response = _places_call(weather, signer, "GET", "/api/places/search", query="q=Lisbon")
+
+    assert (response.status, response.json()) == (502, {"code": "lookup_failed"})
+
+
+def test_the_search_goes_through_the_egress_proxy_and_epicstaff_calls_do_not(monkeypatch, tmp_path, signer, sample_modules, stores):
+    with serving(RefusingProxy()) as proxy, serving(EmptyApi()) as epicstaff_api:
+        proxy_url = f"http://weather:proxy-password@127.0.0.1:{proxy.port}"
+        for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+            monkeypatch.setenv(name, proxy_url)
+        for name in ("NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy"):
+            monkeypatch.delenv(name, raising=False)
+        runtime_file = tmp_path / "runtime.json"
+        write_runtime_file(
+            runtime_file,
+            signer=signer,
+            epicstaff_api_url=f"http://127.0.0.1:{epicstaff_api.port}/api/",
+            service_accounts={"3": {"key": ACME_KEY, "org_name": "Acme", "grant_state": "active"}},
+        )
+        runtime = RuntimeConfig.load(runtime_file)
+        # Both clients as the app makes them, on the network.
+        epicstaff = EpicStaffClient(runtime)
+        place_search = sample_modules.place_search.PlaceSearch()
+        weather = _serve_with(monkeypatch, sample_modules.app, runtime, epicstaff, stores, place_search)
+
+        search = _places_call(weather, signer, "GET", "/api/places/search", query="q=Lisbon")
+        status = request(weather, "GET", "/api/forecast/status", _as(signer, "GET", "/api/forecast/status"))
+        asyncio.run(place_search.aclose())
+        asyncio.run(epicstaff.aclose())
+
+    assert (search.status, search.json()) == (502, {"code": "lookup_failed"})
+    ((connect, *headers),) = proxy.requests
+    assert connect == "CONNECT geocoding-api.open-meteo.com:443 HTTP/1.1"
+    credentials = base64.b64encode(b"weather:proxy-password").decode()
+    assert f"Proxy-Authorization: Basic {credentials}" in headers
+    assert (status.status, status.json()) == (200, {"flow": None})
+    assert epicstaff_api.paths == ["/api/graph-light/"]

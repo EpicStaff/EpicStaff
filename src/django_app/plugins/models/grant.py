@@ -1,6 +1,6 @@
 from django.db import models
-from django.db.models import Count, F, OuterRef, Prefetch, Subquery
-from django.db.models.functions import Coalesce, Lower
+from django.db.models import F, Prefetch
+from django.db.models.functions import Lower
 from rbac.models import OrgScopedModel
 
 from plugins.models.enums import GrantState, PluginState
@@ -19,32 +19,20 @@ class PluginGrantQuerySet(models.QuerySet):
         )
 
     def with_admin_details(self) -> "PluginGrantQuerySet":
-        """Load what the SuperAdmin's grant list shows, in three queries for any number of grants.
+        """Load what the SuperAdmin's grant list shows, in two queries for any number of grants.
 
-        Adds `owned_resource_count` (the resources the plugin created there that still
-        exist), `key_last_used_at` (when the grant's service account last called EpicStaff,
+        Adds `key_last_used_at` (when the grant's service account last called EpicStaff,
         `PluginServiceAccount.last_used_at`) and `install_jobs` (its install hook jobs,
         newest first), and comes with the plugin, organization, granting SuperAdmin and
-        service account.
+        service account. The owned-resource count is set on the page afterwards
+        (`ownership.owned_resource_summary.with_owned_resource_counts`).
         """
-        # Imported here: each of these modules imports this one.
+        # Imported here: the hook job module imports this one.
         from plugins.models.hook_job import HookJobKind, PluginHookJob
-        from plugins.models.ownership import PluginOwnedResource
-        from plugins.ownership.existing_owned import existing_owned_resources
 
-        owned = (
-            existing_owned_resources(PluginOwnedResource.objects.filter(grant=OuterRef("pk")))
-            .order_by()
-            .values("grant")
-            .annotate(count=Count("pk"))
-            .values("count")
-        )
         return (
             self.select_related("plugin", "org", "created_by", "service_account")
-            .annotate(
-                owned_resource_count=Coalesce(Subquery(owned), 0),
-                key_last_used_at=F("service_account__last_used_at"),
-            )
+            .annotate(key_last_used_at=F("service_account__last_used_at"))
             .prefetch_related(
                 Prefetch(
                     "hook_jobs",

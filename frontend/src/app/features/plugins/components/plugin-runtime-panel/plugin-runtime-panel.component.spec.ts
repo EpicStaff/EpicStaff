@@ -4,9 +4,9 @@ import { Observable, of } from 'rxjs';
 import type { Mock } from 'vitest';
 
 import { ToastService } from '../../../../services/notifications';
-import { PluginRuntimeResponse } from '../../models/plugin-backend.model';
+import { PluginDatabaseState, PluginRuntimeResponse } from '../../models/plugin-backend.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
-import { buildPluginPlacement, buildPluginRuntime } from '../../testing/plugin-fixtures';
+import { buildPluginPlacement, buildPluginRuntime, buildPluginRuntimeDatabase } from '../../testing/plugin-fixtures';
 import { PLUGIN_RUNTIME_POLL_MS, PluginRuntimePanelComponent } from './plugin-runtime-panel.component';
 
 class ResizeObserverStub {
@@ -48,6 +48,22 @@ describe('PluginRuntimePanelComponent', () => {
             .find((dt) => dt.textContent?.trim() === term)
             ?.nextElementSibling?.textContent?.replace(/\s+/g, ' ')
             .trim();
+    }
+
+    function section(title: string): HTMLElement | undefined {
+        return Array.from(element.querySelectorAll<HTMLElement>('.runtime__section')).find(
+            (candidate) => candidate.querySelector('h3')?.textContent?.trim() === title
+        );
+    }
+
+    function sectionTitles(): string[] {
+        return Array.from(element.querySelectorAll('.runtime__section h3')).map(
+            (heading) => heading.textContent?.trim() ?? ''
+        );
+    }
+
+    function text(node: Element | null | undefined): string {
+        return node?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
     }
 
     function restartButton(): HTMLButtonElement {
@@ -134,12 +150,130 @@ describe('PluginRuntimePanelComponent', () => {
     });
 
     it('says when the plugin has no node or no process yet', () => {
-        storage.getRuntime.mockReturnValue(of({ node: null, placement: null }));
+        storage.getRuntime.mockReturnValue(of({ node: null, placement: null, database: null, egress: null }));
         render();
 
         expect(element.textContent).toContain('No plugin node is registered');
         expect(element.textContent).toContain('The plugin has no process yet.');
         expect(restartButton().disabled).toBe(true);
+    });
+
+    it('shows the database of a plugin that has one, and lists its migrations on request', () => {
+        storage.getRuntime.mockReturnValue(of(buildPluginRuntime({ database: buildPluginRuntimeDatabase() })));
+        render();
+
+        const database = section('Database')!;
+        expect(text(database.querySelector('app-plugin-badge'))).toBe('Ready');
+        expect(fact('Server')).toBe('plugins_db (plugins_db:5432)');
+        expect(fact('Database')).toBe('plugin_weather');
+        expect(fact('Owner role')).toBe('weather_owner');
+        expect(fact('App role')).toBe('weather_app');
+        expect(fact('Job role')).toBe('weather_job');
+        expect(fact('Migrations')).toMatch(/^1 of 1 /);
+        const disclosure = database.querySelector('details')!;
+        expect(disclosure.open).toBe(false);
+        expect(text(disclosure.querySelector('summary'))).toBe('Applied migrations');
+        expect(Array.from(disclosure.querySelectorAll('li')).map((item) => text(item))).toEqual(['001_weather.sql']);
+        expect(fact('Connection limit')).toBe('3');
+        expect(fact('Statement timeout')).toBe('10 s');
+        expect(fact('Size')).toBe('7.3 MB');
+        expect(database.querySelector('.runtime__note')).toBeNull();
+        expect(database.querySelector('.runtime__error')).toBeNull();
+    });
+
+    it.each<[PluginDatabaseState, string]>([
+        ['pending', 'Waiting for the node'],
+        ['provisioning', 'Setting up'],
+        ['ready', 'Ready'],
+        ['failed', 'Failed'],
+    ])('shows a database that is %s as "%s"', (state, label) => {
+        storage.getRuntime.mockReturnValue(of(buildPluginRuntime({ database: buildPluginRuntimeDatabase({ state }) })));
+        render();
+
+        expect(text(section('Database')!.querySelector('app-plugin-badge'))).toBe(label);
+    });
+
+    it('shows a database not set up yet with no migration list and no size', () => {
+        storage.getRuntime.mockReturnValue(
+            of(
+                buildPluginRuntime({
+                    database: buildPluginRuntimeDatabase({
+                        state: 'pending',
+                        migrations: { applied: [], in_package: 1 },
+                        size_bytes: null,
+                        ready_at: null,
+                    }),
+                })
+            )
+        );
+        render();
+
+        expect(fact('Migrations')).toBe('0 of 1');
+        expect(section('Database')!.querySelector('details')).toBeNull();
+        expect(fact('Size')).toBe('—');
+    });
+
+    it('says when EpicStaff set the timeout back, and shows why setting the database up failed', () => {
+        storage.getRuntime.mockReturnValue(
+            of(
+                buildPluginRuntime({
+                    database: buildPluginRuntimeDatabase({
+                        state: 'failed',
+                        last_error: 'Migration 001_weather.sql failed: syntax error at or near "TABLEE"',
+                        limits_restored_at: '2026-10-21T08:05:00Z',
+                    }),
+                })
+            )
+        );
+        render();
+
+        const database = section('Database')!;
+        expect(text(database.querySelector('.runtime__note'))).toMatch(
+            /^Timeout restored at Oct 21, 2026, .+: the plugin changed its own default, and EpicStaff set it back\.$/
+        );
+        expect(text(database.querySelector('.runtime__error'))).toBe(
+            'Migration 001_weather.sql failed: syntax error at or near "TABLEE"'
+        );
+    });
+
+    it('lists the hosts the backend may reach, with their reasons', () => {
+        storage.getRuntime.mockReturnValue(
+            of(
+                buildPluginRuntime({
+                    egress: {
+                        hosts: [
+                            {
+                                host: 'geocoding-api.open-meteo.com',
+                                reason: 'Looks up places by name when someone adds a saved place.',
+                            },
+                        ],
+                    },
+                })
+            )
+        );
+        render();
+
+        const items = Array.from(section('Outbound access')!.querySelectorAll('li')).map((item) => [
+            text(item.querySelector('code')),
+            text(item.querySelector('span')),
+        ]);
+        expect(items).toEqual([
+            ['geocoding-api.open-meteo.com', 'Looks up places by name when someone adds a saved place.'],
+        ]);
+    });
+
+    it('says when the backend cannot reach the internet, and leaves out the database it does not have', () => {
+        render();
+
+        expect(sectionTitles()).toEqual(['Node', 'Process', 'Outbound access']);
+        expect(text(section('Outbound access'))).toContain('None: the backend cannot reach the internet.');
+    });
+
+    it('leaves out both sections for a plugin with neither', () => {
+        storage.getRuntime.mockReturnValue(of(buildPluginRuntime({ database: null, egress: null })));
+        render();
+
+        expect(sectionTitles()).toEqual(['Node', 'Process']);
     });
 
     it('polls while shown and stops when destroyed', () => {

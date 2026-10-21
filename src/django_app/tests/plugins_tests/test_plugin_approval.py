@@ -175,3 +175,30 @@ def test_a_failing_cleanup_does_not_hide_why_the_upload_failed(superadmin, spa_r
         _upload(installation, superadmin)
 
     assert logger.exception.called
+
+
+def test_a_cleanup_that_fails_after_a_reject_commits_leaves_the_reject_done(
+    superadmin, spa_root, django_capture_on_commit_callbacks
+):
+    installation = PluginInstallationService(store=FailingDeleteStore(), publisher=SpaPublisher(spa_root))
+    package = _upload(installation, superadmin)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        installation.reject(package.pk, superadmin)
+
+    assert not PluginPackage.objects.filter(pk=package.pk).exists()
+    assert not Plugin.objects.exists()
+
+
+def test_a_cleanup_that_fails_after_a_replacing_upload_leaves_the_new_package(
+    superadmin, spa_root, django_capture_on_commit_callbacks
+):
+    installation = PluginInstallationService(store=FailingDeleteStore(), publisher=SpaPublisher(spa_root))
+    first = _upload(installation, superadmin)
+    data = build_package(manifest=sample_manifest(description="A newer description."))
+
+    with django_capture_on_commit_callbacks(execute=True):
+        replacing = installation.upload(upload_file(data), len(data), superadmin)
+
+    assert list(PluginPackage.objects.values_list("pk", flat=True)) == [replacing.pk]
+    assert replacing.pk != first.pk

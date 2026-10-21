@@ -19,6 +19,7 @@ from plugins.lifecycle.grant_service import PluginGrantService
 from plugins.lifecycle.hook_job_service import HookJobService
 from plugins.lifecycle.installation_service import PluginInstallationService, max_package_bytes
 from plugins.models import Plugin, PluginGrant, PluginPackage
+from plugins.ownership.owned_resource_summary import with_owned_resource_counts
 from plugins.serializers.admin import (
     GrantCreateSerializer,
     PackageApprovalSerializer,
@@ -164,6 +165,9 @@ class PluginGrantListView(generics.ListAPIView):
             .order_by(Lower("org__name"), "id")
         )
 
+    def paginate_queryset(self, queryset):
+        return with_owned_resource_counts(super().paginate_queryset(queryset))
+
     def post(self, request, identifier: str):
         serializer = GrantCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -186,4 +190,7 @@ class PluginGrantRetryHookView(APIView):
 
 def grant_details(grant_id: int) -> dict:
     """A grant as the SuperAdmin's grant list shows it, read again after a change."""
-    return PluginGrantSerializer(PluginGrant.objects.with_admin_details().get(pk=grant_id)).data
+    [grant] = with_owned_resource_counts(
+        [PluginGrant.objects.with_admin_details().get(pk=grant_id)]
+    )
+    return PluginGrantSerializer(grant).data

@@ -121,8 +121,9 @@ it is from the [gateway context](../reference/gateway-context.md).
 | `POST /api/<relay>` | Body `{"state": "<org id>.<random>", "params": {"name": "value", …}}`. Refuse it unless the `state` prefix equals the context's organization id. Store `{user id, org id, params}` under `state`, briefly (minutes). Answer `204`. **Only store**: never exchange the code, link an account or act on the parameters here |
 | `GET /api/<relay>/{state}` | When `state` is stored **for the same user and organization** as the context: `200 {"status":"done","params":{…}}`, and delete it. Anything else, including another person's `state`: `200 {"status":"pending"}` |
 
-The SDK asks the `GET` every 2 seconds for up to 10 minutes. Keep the store in your database; the Weather sample keeps
-it in memory, which only works for a sample with one process.
+The SDK asks the `GET` every 2 seconds for up to 10 minutes. Keep the store in your database, as the Weather sample
+does (`plugin-samples/weather/backend/src/weather_plugin/popup_relay.py`, in its table `weather.popup_results`), so a
+backend restart in between loses nothing.
 
 **Checks that matter:** the `state` must belong to the person and organization asking; answer `pending`, not an error,
 for a `state` that is not theirs, so a guessed `state` reveals nothing; delete the entry once read; never put the

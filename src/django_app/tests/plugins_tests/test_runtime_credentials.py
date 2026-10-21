@@ -1,17 +1,20 @@
 """The runtime credentials a node fetches for a placement: the runtime file and its revisions."""
 
+import json
 from datetime import timedelta
 
 import pytest
 from django.utils import timezone
 from epicstaff_plugin.contracts.runtime import RuntimeFile
+from plugins.databases.database_records import app_password_of
 from plugins.identity.service_account_keys import ServiceAccountKeyService
 from plugins.identity.signing_keys import PluginSigningKeyService
 from plugins.lifecycle.grant_service import PluginGrantService
 from plugins.nodes.runtime_credentials_service import RuntimeCredentialsService
 from pydantic import ValidationError
-from plugins.models import GrantState, PluginGrant, PluginServiceAccountKey, PluginSigningKey
+from plugins.models import GrantState, PluginDatabase, PluginGrant, PluginServiceAccountKey, PluginSigningKey
 from rbac.models import Organization
+from tables.services.secrets import secret_encryption
 
 from src.shared.models.plugin_nodes import RuntimeCredentials
 from tests.plugins_tests.conftest import mark_running, service_account_client
@@ -326,3 +329,58 @@ def test_renaming_a_granted_organization_changes_the_revision(weather, node_clie
     granted(acme)
 
     _revision_change(node_client, weather, lambda: Organization.objects.filter(pk=acme.pk).update(name="Acme renamed"))
+
+
+# ---- the app password of a plugin's database ----
+
+
+def test_a_plugin_with_a_database_gets_its_app_password(database_plugin, node_client):
+    plugin = database_plugin()
+
+    body = _credentials(node_client, plugin).json()
+
+    assert body["database"] == {"app_password": app_password_of(PluginDatabase.objects.get())}
+    assert "database" not in body["runtime_file"]
+    assert body["database"]["app_password"] not in json.dumps(body["runtime_file"])
+
+
+def test_a_plugin_without_a_database_gets_none(weather, node_client):
+    assert _credentials(node_client, weather).json()["database"] is None
+
+
+def test_the_document_with_a_database_validates_with_the_shared_model(database_plugin, node_client):
+    plugin = database_plugin()
+
+    credentials = RuntimeCredentials.model_validate_json(_credentials(node_client, plugin).content, extra="ignore")
+
+    assert credentials.database.app_password == app_password_of(PluginDatabase.objects.get())
+
+
+def test_another_node_never_gets_a_database_s_password(database_plugin, other_node_client):
+    plugin = database_plugin()
+
+    response = other_node_client.post(_credentials_url(plugin.placement.pk))
+
+    assert (response.status_code, response.json()["code"]) == (404, "placement_not_found")
+    assert app_password_of(PluginDatabase.objects.get()) not in response.content.decode()
+
+
+def test_the_app_password_never_changes_the_credentials_revision(database_plugin, node_client):
+    plugin = database_plugin()
+    first = _credentials(node_client, plugin).json()
+
+    PluginDatabase.objects.update(app_password_encrypted=secret_encryption.encrypt(text="b" * 43).encryptedtext)
+
+    second = _credentials(node_client, plugin).json()
+    assert second["database"]["app_password"] == "b" * 43
+    assert second["credentials_revision"] == first["credentials_revision"]
+
+
+def test_the_app_password_is_in_no_log_line(database_plugin, node_client, log_messages):
+    plugin = database_plugin()
+    password = app_password_of(PluginDatabase.objects.get())
+
+    _credentials(node_client, plugin)
+
+    assert any("plugins.database.record_created" in message for message in log_messages)
+    assert all(password not in message for message in log_messages)

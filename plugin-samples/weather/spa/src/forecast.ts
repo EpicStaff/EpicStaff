@@ -11,6 +11,18 @@ import {
 import { button, element } from './dom';
 
 export const FORECAST_PATH = '/forecast';
+/** `/forecast?city=Lisbon` opens the Forecast page with "Lisbon" in the field. */
+const CITY_PARAMETER = 'city';
+
+/** The address of the Forecast page with `city` in the field. */
+export function forecastAddress(city: string): string {
+    return `${FORECAST_PATH}?${CITY_PARAMETER}=${encodeURIComponent(city)}`;
+}
+
+/** The city an address query (`location.search`) asks the Forecast page to start with, or `null`. */
+export function requestedCity(search: string): string | null {
+    return new URLSearchParams(search).get(CITY_PARAMETER);
+}
 
 /** How often the page asks how the run is doing. */
 export const FORECAST_POLL_INTERVAL_MS = 2_000;
@@ -138,6 +150,11 @@ export class ForecastPage {
             this.shownRun = this.run;
             this.result.replaceChildren(...this.resultContent());
         }
+    }
+
+    /** Puts `city` in the field; the person still asks for the forecast. */
+    prefill(city: string): void {
+        this.cityInput.value = city;
     }
 
     private checkSetupAgain(): void {

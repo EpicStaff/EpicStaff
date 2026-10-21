@@ -1,11 +1,15 @@
 from tables.services.secrets.reference_guard import secret_destination_guard
 
+# The fields that decide where a model sends requests, beyond the provider's vendor host.
+LLM_MODEL_ENDPOINT_FIELDS = ("base_url", "deployment_id")
+EMBEDDING_MODEL_ENDPOINT_FIELDS = ("base_url", "deployment")
+
 
 class SecretDestinationGuardMixin:
-    """Lets a pinned-org principal change where a model sends a config's key only on its own rows.
+    """Keeps a pinned-org principal from setting where a model sends a config's key.
 
     For the models a secret-holding config points at; `secret_destination_fields` names the
-    sources that decide the endpoint (a URL, the provider).
+    sources that decide the endpoint (a URL, a deployment).
     """
 
     secret_destination_fields: tuple[str, ...] = ()

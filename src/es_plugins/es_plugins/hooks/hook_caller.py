@@ -15,8 +15,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
-from epicstaff_plugin.contracts.hook_api import HOOK_HEADER, HOOK_PATHS
-from src.shared.models.plugin_nodes import MAX_HOOK_ERROR_LENGTH, HookInvocation
+from epicstaff_plugin.contracts.hook_api import (
+    HOOK_HEADER,
+    HOOK_PATHS,
+    MAX_HOOK_ERROR_MESSAGE_LENGTH,
+)
+from src.shared.models.plugin_nodes import HookInvocation
 
 MAX_HOOK_RESPONSE_BYTES = 64 * 1024
 # The Unicode categories an error does not keep: control characters, and surrogates.
@@ -132,7 +136,7 @@ def clean_error(error: str) -> str:
         " " if unicodedata.category(character) in _UNSENDABLE else character for character in error
     )
     one_line = " ".join(word for word in spaced.split(" ") if word)
-    return one_line[:MAX_HOOK_ERROR_LENGTH].rstrip()
+    return one_line[:MAX_HOOK_ERROR_MESSAGE_LENGTH].rstrip()
 
 
 def _reason(error: httpx.HTTPError) -> str:

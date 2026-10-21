@@ -12,7 +12,7 @@ from rest_framework.test import APIRequestFactory
 from tables.models import Graph, LLMConfig
 
 from tests.plugins_tests.conftest import GATEWAY_SECRET, WEATHER_ACCESS, service_account_client, upload_file
-from tests.plugins_tests.package_builder import backend_manifest, build_package
+from tests.plugins_tests.package_builder import GEOCODING_HOST, backend_manifest, build_package
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("service_account_platform")]
 
@@ -268,6 +268,35 @@ def test_the_service_accounts_list_shows_each_plugin_acting_here_with_its_declar
         "actions": ["read", "create", "update", "use"],
         "reason": WEATHER_ACCESS[0]["reason"],
     }
+    assert (account["outbound_hosts"], account["has_database"]) == ([], False)
+
+
+@pytest.fixture
+def forecast_with_database(weather_backend, plugin_database_server, service_account_key, acme):
+    """A second plugin, with a database and one outbound host, granted to Acme only."""
+    plugin = weather_backend(id="forecast", name="Forecast", database={}, outbound_hosts=[dict(GEOCODING_HOST)])
+    service_account_key(plugin, acme)
+    return plugin
+
+
+def test_the_service_accounts_list_shows_the_outbound_hosts_and_the_database(
+    forecast_with_database, org_admin_client
+):
+    body = org_admin_client.get(SERVICE_ACCOUNTS_URL).json()
+
+    [account] = [account for account in body if account["plugin"]["identifier"] == "forecast"]
+    assert account["outbound_hosts"] == [dict(GEOCODING_HOST)]
+    assert account["has_database"] is True
+
+
+def test_another_organization_s_admin_never_sees_a_plugin_granted_only_here(
+    forecast_with_database, client_as, make_member, role_org_admin, beta
+):
+    admin_beta = make_member(beta, role_org_admin, "admin-beta-db@example.com")
+    beta_client = client_as(admin_beta)
+    beta_client.credentials(HTTP_X_ORGANIZATION_ID=str(beta.pk))
+
+    assert beta_client.get(SERVICE_ACCOUNTS_URL).json() == []
 
 
 def test_the_service_accounts_list_shows_only_the_active_organization_s(client, client_as, make_member, role_org_admin, beta):
@@ -294,6 +323,44 @@ def test_a_superadmin_sees_every_organization_s_and_the_deployment_wide_events(
     assert organizations == {acme.pk, beta.pk, None}
     filtered = superadmin_client.get(ADMIN_ACTIVITY_URL, {"organization_id": beta.pk, "action": "grant_created"}).json()
     assert [event["organization"]["id"] for event in filtered["results"]] == [beta.pk]
+
+
+def _database_events(identifier):
+    recorder = ActivityRecorder()
+    recorder.database_ready(identifier, 1)
+    recorder.database_failed(identifier, "plugins_db is not reachable")
+    recorder.database_limit_restored(identifier, "statement_timeout")
+
+
+DATABASE_ACTIONS = ["database_limit_restored", "database_failed", "database_ready"]
+
+
+def test_database_events_are_on_the_admin_endpoint(weather, superadmin_client):
+    _database_events("weather")
+
+    body = superadmin_client.get(ADMIN_ACTIVITY_URL).json()
+
+    database_events = [event for event in body["results"] if event["action"].startswith("database_")]
+    assert [event["action"] for event in database_events] == DATABASE_ACTIONS
+    assert all(event["organization"] is None for event in database_events)
+    assert all(event["actor"] == {"kind": "platform", "label": "Platform"} for event in database_events)
+    assert [event["detail"] for event in database_events] == [
+        {"setting": "statement_timeout"},
+        {"error": "plugins_db is not reachable"},
+        {"migrations_applied": 1},
+    ]
+    filtered = superadmin_client.get(ADMIN_ACTIVITY_URL, {"action": "database_ready"}).json()
+    assert [event["action"] for event in filtered["results"]] == ["database_ready"]
+
+
+def test_database_events_are_never_on_the_organization_s_endpoint(weather, org_admin_client):
+    _database_events("weather")
+
+    body = org_admin_client.get(ACTIVITY_URL).json()
+
+    assert not [event for event in body["results"] if event["action"].startswith("database_")]
+    for action in DATABASE_ACTIONS:
+        assert org_admin_client.get(ACTIVITY_URL, {"action": action}).json()["results"] == []
 
 
 def test_the_admin_endpoint_is_for_superadmins_only(org_admin_client, client):
@@ -403,10 +470,18 @@ def test_a_router_route_is_recorded_as_a_path_pattern(principal, acme):
         ("api/^graphs/$", "api/graphs/"),
         ("api/graphs/(?P<pk>[^/.]+)/copy/$", "api/graphs/<pk>/copy/"),
         (r"api/^files/(?P<path>(?:[^/]+/)*[^/]+)\.json$", "api/files/<path>.json"),
-        ("api/graphs/<int:pk>/", "api/graphs/<int:pk>/"),
+        ("api/graphs/<int:pk>/", "api/graphs/<pk>/"),
+        ("api/sessions/<int:session_id>/stop/", "api/sessions/<session_id>/stop/"),
         ("api/storage/upload/stream", "api/storage/upload/stream"),
     ],
-    ids=["router-list", "router-detail-action", "nested-groups-and-an-escape", "path-converter", "the-upload-stream"],
+    ids=[
+        "router-list",
+        "router-detail-action",
+        "nested-groups-and-an-escape",
+        "path-converter",
+        "path-converter-in-the-middle",
+        "the-upload-stream",
+    ],
 )
 def test_every_route_takes_the_same_path_pattern_form(route, pattern):
     assert url_path_pattern(route) == pattern

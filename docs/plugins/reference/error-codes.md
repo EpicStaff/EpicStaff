@@ -18,7 +18,6 @@ back.
 | Code | Status | When |
 |---|---|---|
 | `invalid_plugin` | 400 | The package breaks a format, layout or manifest rule, declares access this EpicStaff's permission catalog does not have, asks for more than the platform maximums, or holds nothing to install. `errors` lists each problem |
-| `plugin_feature_unavailable` | 400 | The package declares a part this EpicStaff cannot run yet (a `database`). `errors` names it |
 | `invalid_signature` | 400 | The package is signed, but the signature names another package or does not verify with the trusted key it claims |
 | `package_too_large` | 413 | The upload is larger than `PLUGINS_MAX_PACKAGE_MB` |
 | `plugin_upgrade_unavailable` | 409 | The plugin already has an approved package; installing a new version is not available yet |
@@ -36,6 +35,7 @@ back.
 | `invalid_plugin_limits` | 400 | A limits write with an unknown limit, a value that is not a positive integer or would raise the limit, or a `cpu_priority` other than `low`. `loc` is `overrides.<key>` |
 | `no_plugin_node` | 409 | Approving a package with a backend while no node named `PLUGINS_NODE_NAME` is registered: EpicStaff registers it at start-up (`manage.py seed_plugin_node`), so it has not started with plugins on since the node was configured, or `PLUGINS_NODE_NAME` changed |
 | `plugin_node_full` | 409 | Approving a package with a backend while every port or Unix user id of the plugin node is taken |
+| `no_plugin_database_server` | 409 | Approving a package with a `database` while no plugin database server is registered: EpicStaff registers it at start-up while plugins are on (`manage.py seed_plugin_node`), so it has not started with `PLUGINS_ENABLED=true` since |
 | `node_not_authenticated` | 401 | A plugin node request without the node key, or with a wrong one |
 | `placement_not_found` | 404 | A plugin node asks for the runtime credentials of a placement that is not its own |
 | `invalid_node_report` | 400 | A plugin node report that does not follow the report format (fields this EpicStaff does not know are ignored). `loc` is under `report` |

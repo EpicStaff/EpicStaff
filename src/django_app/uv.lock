@@ -704,6 +704,8 @@ dev = [
     { name = "h11", specifier = "==0.16.0" },
     { name = "idna", specifier = "==3.18" },
     { name = "pip", specifier = "==26.0.1" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.4" },
+    { name = "psycopg-pool", specifier = "==3.3.3" },
     { name = "pytest", specifier = "==8.4.2" },
     { name = "starlette", specifier = "==1.6.0" },
     { name = "uvicorn", specifier = "==0.52.3" },

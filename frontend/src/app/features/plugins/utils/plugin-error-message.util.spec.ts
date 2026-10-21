@@ -19,7 +19,6 @@ const ENDPOINT_CODES: PluginErrorCode[] = [
     'unsupported_media_type',
     'invalid_plugin',
     'invalid_signature',
-    'plugin_feature_unavailable',
     'package_too_large',
     'plugin_upgrade_unavailable',
     'plugin_package_not_found',
@@ -34,6 +33,7 @@ const ENDPOINT_CODES: PluginErrorCode[] = [
     'invalid_plugin_settings',
     'invalid_plugin_limits',
     'no_plugin_node',
+    'no_plugin_database_server',
     'grant_not_found',
     'hook_not_retryable',
     'grant_not_suspendable',
@@ -103,6 +103,29 @@ describe('toPluginErrorView', () => {
 
         expect(view.code).toBe('package_file_mismatch');
         expect(view.message).toContain('Reject it and upload it again.');
+    });
+
+    it('tells what to check when approving a database package finds no plugin database server', () => {
+        const view = toPluginErrorView(
+            failure(409, { status_code: 409, code: 'no_plugin_database_server', message: 'No server.' }),
+            "Couldn't approve the package."
+        );
+
+        expect(view.code).toBe('no_plugin_database_server');
+        expect(view.message).toBe(
+            'EpicStaff has no plugin database server registered. Check that plugins are enabled, then restart ' +
+                'django_app.'
+        );
+    });
+
+    it('no longer knows the code for a package needing a feature this version lacks', () => {
+        const view = toPluginErrorView(
+            failure(400, { status_code: 400, code: 'plugin_feature_unavailable', message: 'Server text.' }),
+            'fallback'
+        );
+
+        expect(view.code).toBeNull();
+        expect(view.message).toBe('Server text.');
     });
 
     it('treats any 413 as package_too_large, also the HTML page nginx answers with', () => {

@@ -31,6 +31,10 @@ dev = [
     "idna==3.18",
     "starlette==1.6.0",
     "uvicorn==0.52.3",
+    # The `postgres` tests run `epicstaff_plugin.database` and the Weather sample's stores
+    # against a real PostgreSQL, with the driver and pool django_app ships.
+    "psycopg[binary,pool]==3.3.4",
+    "psycopg-pool==3.3.3",
 ]
 # The versions django_app ships, transitive ones included. A newer version in this lock would
 # raise the shared dependency floor (.github/dependency-floor.toml) for django_app and add a
@@ -65,3 +69,6 @@ module-root = ""
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "postgres: needs a plugins_db server (ES_PLUGINS_TEST_PG_HOST, _PORT, _ADMIN_PASSWORD; src/plugins_db/lab/run.sh); skipped otherwise",
+]

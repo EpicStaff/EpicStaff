@@ -11,6 +11,14 @@ from es_plugins.layout import NodeLayout
 
 IS_LINUX = sys.platform.startswith("linux")
 IS_ROOT = IS_LINUX and os.geteuid() == 0
+# A plugins_db server to provision against: src/plugins_db/lab/run.sh starts one with the real
+# init script and pg_hba.conf and sets these.
+POSTGRES_VARIABLES = (
+    "ES_PLUGINS_TEST_PG_HOST",
+    "ES_PLUGINS_TEST_PG_PORT",
+    "ES_PLUGINS_TEST_PG_ADMIN_PASSWORD",
+)
+HAS_POSTGRES = all(os.environ.get(name) for name in POSTGRES_VARIABLES)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -20,6 +28,10 @@ def pytest_collection_modifyitems(config, items):
         if "root" in item.keywords and not IS_ROOT:
             item.add_marker(
                 pytest.mark.skip(reason="needs root on Linux (the node's container capabilities)")
+            )
+        if "postgres" in item.keywords and not HAS_POSTGRES:
+            item.add_marker(
+                pytest.mark.skip(reason="needs a plugins_db server (src/plugins_db/lab/run.sh)")
             )
 
 
@@ -33,10 +45,14 @@ def layout(tmp_path):
             directory.chmod(stat.S_IMODE(directory.stat().st_mode) | 0o011)
     (tmp_path / "lib").mkdir()
     (tmp_path / "run").mkdir()
+    # Stands in for the egress policy volume, mounted below a directory the image makes.
+    egress_policy = tmp_path / "lib" / "es_plugins_egress" / "policy"
+    egress_policy.mkdir(parents=True)
     return NodeLayout(
         data_root=tmp_path / "lib" / "es_plugins",
         run_root=tmp_path / "run" / "es_plugins",
         launcher_socket_directory=tmp_path / "run" / "es_launcher",
+        egress_policy_directory=egress_policy,
     )
 
 
@@ -53,3 +69,20 @@ def unprivileged_setup(layout, own_ownership):
     )
     setup.prepare_tree()
     return setup
+
+
+@pytest.fixture
+async def plugin_databases():
+    """Makes the desired database of a new plugin; drops whatever was made for it afterwards."""
+    from tests.plugin_databases import desired_database, drop_plugin_database, new_identifier
+
+    made = []
+
+    def make(identifier: str | None = None, **arguments):
+        desired = desired_database(identifier or new_identifier(), **arguments)
+        made.append(desired)
+        return desired
+
+    yield make
+    for desired in made:
+        await drop_plugin_database(desired)

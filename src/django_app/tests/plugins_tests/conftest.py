@@ -25,6 +25,7 @@ from plugins.models import (
     PluginGrant,
     PluginNode,
     PluginPlacement,
+    PluginDatabaseServer,
     PluginState,
 )
 from plugins.nodes.node_authentication import node_key_hash
@@ -34,7 +35,7 @@ from plugins.packages.package_store import PackageFileMissingError
 from plugins.packages.spa_publisher import SpaPublisher
 from rest_framework.test import APIClient
 
-from tests.plugins_tests.package_builder import backend_manifest, build_package, sample_manifest
+from tests.plugins_tests.package_builder import GEOCODING_HOST, backend_manifest, build_package, sample_manifest
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
@@ -241,6 +242,24 @@ def backend_plugin(installation, superadmin, plugin_node, django_capture_on_comm
         with django_capture_on_commit_callbacks(execute=True):
             installation.approve(package.pk, superadmin, untrusted_acknowledged=True)
         return Plugin.objects.select_related("placement", "current_package").get(pk=package.plugin_id)
+
+    return _make
+
+
+@pytest.fixture
+def plugin_database_server(db):
+    """The plugin database server, as `seed_plugin_node` registers it while plugins are on."""
+    return PluginDatabaseServer.objects.create(name="plugins_db", host="plugins_db", port=5432)
+
+
+@pytest.fixture
+def database_plugin(backend_plugin, plugin_database_server):
+    """Factory → a plugin with a backend, a database and one outbound host, approved: it has
+    its placement and its database record."""
+
+    def _make(**manifest_changes):
+        changes = {"database": {}, "outbound_hosts": [dict(GEOCODING_HOST)], **manifest_changes}
+        return backend_plugin(**changes)
 
     return _make
 

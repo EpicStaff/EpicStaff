@@ -23,7 +23,9 @@ export IMAGE_TAG=lab ES_PLUGINS_CPUS=2 ES_PLUGINS_MEMORY=2g PLUGINS_NODE_NAME=la
   PLUGINS_NODE_UID_RANGE=20000-20999 PLUGINS_INTERNAL_API_URL=http://control:8000/api/ \
   ES_PLUGINS_DISK_MB_PER_PLUGIN=64 ES_PLUGINS_FILES_PER_PLUGIN=5000
 PLUGINS_NODE_KEY="lab-$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
-export PLUGINS_NODE_KEY
+# The lab runs no plugins_db and no plugin with a database; the agent still requires the password.
+PLUGINS_DB_ADMIN_PASSWORD=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+export PLUGINS_NODE_KEY PLUGINS_DB_ADMIN_PASSWORD
 
 compose() {
   docker compose -p es-plugins-lab -f "$lab_dir/compose.yaml" --env-file "$work/lab.env" \
@@ -140,8 +142,8 @@ check "cpu_priority normal is nice 0, low is nice 10" \
 check "its environment is exactly the documented one (docs/plugins/reference/runtime.md), USER and LOGNAME its identifier" jq -e '
   (.environment | keys) == ["EPICSTAFF_API_URL","EPICSTAFF_PLUGIN_ENTRYPOINT","EPICSTAFF_PLUGIN_IDENTIFIER",
     "EPICSTAFF_PLUGIN_LISTEN_FD","EPICSTAFF_PLUGIN_PUBLIC_URL","EPICSTAFF_PLUGIN_RUNTIME_FILE",
-    "EPICSTAFF_PLUGIN_VERSION","EPICSTAFF_PUBLIC_URL","HOME","LANG","LOGNAME","PATH","PORT",
-    "PYTHONUNBUFFERED","TMPDIR","USER"]
+    "EPICSTAFF_PLUGIN_VERSION","EPICSTAFF_PUBLIC_URL","HOME","HTTPS_PROXY","HTTP_PROXY","LANG","LOGNAME",
+    "NO_PROXY","PATH","PORT","PYTHONUNBUFFERED","TMPDIR","USER","http_proxy","https_proxy","no_proxy"]
   and .environment.EPICSTAFF_PLUGIN_LISTEN_FD == "3" and .environment.USER == "probe-a" and .environment.LOGNAME == "probe-a" and .user == "probe-a"
   and (.passwd_entry | startswith("DENIED KeyError"))' "$work/a.json"
 check "HOME and TMPDIR are 0700 its own; it can write only there" jq -e '
@@ -158,6 +160,40 @@ in_tools curl -s -o /dev/null -w '%{http_code}' http://es_plugins:20001/api/info
 check "without a gateway context the plugin answers 401" test "$(cat "$work/status")" = 401
 in_tools curl -s -o /dev/null -w '%{http_code}' http://es_plugins:20001/_epicstaff/health > "$work/status"
 check "its health endpoint answers without a context" test "$(cat "$work/status")" = 200
+
+echo "# outbound access: the egress policy the agent writes"
+
+policy=/var/lib/es_plugins_egress/policy
+check "the egress policy volume is 0755 10000:10000 below a 0710 root:10000 directory; its files 0644 10000:10000" \
+  test "$(as_root stat -c '%a %u:%g' /var/lib/es_plugins_egress $policy $policy/passwords $policy/hosts.json | tr '\n' ' ')" \
+  = "710 0:10000 755 10000:10000 644 10000:10000 644 10000:10000 "
+check "a plugin UID cannot pass through /var/lib/es_plugins_egress" \
+  sh -c "! docker exec --user 20001:20001 $node cat $policy/hosts.json 2> '$work/denied' && grep -q 'Permission denied' '$work/denied'"
+check "hosts.json lists every placement of the desired state with its hosts, in manifest order" \
+  test "$(as_root cat $policy/hosts.json | jq -c .)" \
+  = '{"probe-a":["geocoding-api.open-meteo.com","*.wikipedia.org"],"probe-b":[],"probe-evil":[]}'
+check "the password file holds a bcrypt hash for each running probe and none for the refused package" \
+  test "$(as_root sh -c "cut -d: -f1 $policy/passwords | tr '\n' ' '; cut -d: -f2 $policy/passwords | cut -c1-7 | sort -u")" \
+  = 'probe-a probe-b $2b$10$'
+proxy_matches() { # the probe's info file: its proxy URL names it, and its password verifies
+  jq -r .environment.HTTPS_PROXY "$1" | docker exec -i "$node" python -c "
+import sys, bcrypt
+url = sys.stdin.read().strip()
+user, _, rest = url.removeprefix('http://').partition(':')
+password, _, address = rest.partition('@')
+hashes = dict(line.split(':', 1) for line in open('$policy/passwords').read().splitlines())
+sys.exit(not (user == sys.argv[1] and address == 'plugins_egress:3128' and len(password) >= 32
+              and bcrypt.checkpw(password.encode(), hashes[user].encode())))
+" "$2"
+}
+both_probes_have_their_own_proxy_credentials() {
+  proxy_matches "$work/a.json" probe-a && proxy_matches "$work/b.json" probe-b
+}
+check "each probe's proxy variables carry its own credentials, which the policy verifies" \
+  both_probes_have_their_own_proxy_credentials
+check "NO_PROXY keeps the API host and loopback direct" \
+  test "$(jq -r '.environment.NO_PROXY + " " + .environment.no_proxy' "$work/a.json")" \
+  = "control,localhost,127.0.0.1,::1 control,localhost,127.0.0.1,::1"
 
 echo "# probe-a against probe-b"
 
@@ -254,6 +290,9 @@ if wait_for 90 field_is 1 .observed_state failed; then
   check "probe-a, past its disk cap, is stopped and marked failed ($disk_error)" \
     contains "$disk_error" "MB of disk, more than its limit of 64 MB"
   check "no process of probe-a is left" test "$(placement 1 .pid)" = null
+  only_probe_b_has_a_password() { [ "$(as_root cut -d: -f1 $policy/passwords | tr '\n' ' ')" = "probe-b " ]; }
+  check "a plugin stopped for good loses its proxy password (only probe-b's is left)" \
+    wait_for 10 only_probe_b_has_a_password
   a_restarts=$(placement 1 .restarts)
   sleep 40
   check "it is not restarted (still failed, no new restart after a measurement and more)" \
@@ -351,7 +390,11 @@ check "the node reports its agent version and all three placements ($reported)" 
 check "plugin output reaches the node's log, prefixed with the plugin" \
   sh -c "docker logs $node 2>&1 | grep -q '^\[probe-a\] '"
 check "no secret is in any process's command line" \
-  sh -c "! docker exec $node sh -c 'cat /proc/[0-9]*/cmdline' | tr '\0' ' ' | grep -q -e secret-token -e \"$PLUGINS_NODE_KEY\""
+  sh -c "! docker exec $node sh -c 'cat /proc/[0-9]*/cmdline' | tr '\0' ' ' | grep -q -e secret-token -e \"$PLUGINS_NODE_KEY\" -e \"$PLUGINS_DB_ADMIN_PASSWORD\""
+check "no plugin process gets the node key or the database admin password" \
+  sh -c "! grep -q -e \"$PLUGINS_NODE_KEY\" -e \"$PLUGINS_DB_ADMIN_PASSWORD\" '$work/a.json' '$work/b.json'"
+check "no proxy password and no policy path reaches the node's log" \
+  sh -c "! docker logs $node 2>&1 | grep -q -e 'plugins_egress:3128' -e '\$2b\$'"
 
 if [ "$failures" -ne 0 ]; then
   echo "FAILED: $failures check(s)"

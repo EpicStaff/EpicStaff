@@ -15,21 +15,23 @@ needs `backend`"; those are marked *cross-field* below.
 ## What this version of EpicStaff installs
 
 The manifest format accepts every field on this page, so a manifest does not change when EpicStaff
-gains features. This version installs plugins with a single-page app, a Python backend, or both.
-A package that declares `database` is refused with `plugin_feature_unavailable`, and one with
-neither `spa` nor `backend` (nothing to install) with `invalid_plugin`.
+gains features. This version installs plugins with a single-page app, a Python backend, or both,
+and gives a backend with a `database` section a database of its own. A package with neither
+`spa` nor `backend` (nothing to install) is refused with `invalid_plugin`.
 
 A backend runs as its own process on the deployment's plugin node ([Runtime](runtime.md)). In
 this version it serves its `public_paths` and the requests of people logged in to the plugin
 through EpicStaff's gateway, reads its `settings` and `limits`, calls EpicStaff's API within its
-`access` ([Service account API](service-account-api.md)), and runs its `install` hook when an
-organization is granted the plugin ([Hook API](hook-api.md)). `outbound_hosts` and the `upgrade`
-and `org_removed` hooks are accepted and shown at review, but nothing uses them yet.
+`access` ([Service account API](service-account-api.md)), runs its `install` hook when an
+organization is granted the plugin ([Hook API](hook-api.md)), keeps its data in its
+[database](database.md), and calls the hosts in its `outbound_hosts` through the egress proxy
+([Call the internet from your backend](../how-to/outbound-hosts.md)). The `upgrade` and
+`org_removed` hooks are accepted and shown at review, but nothing calls them yet.
 
 ## Example
 
-The Weather sample (`plugin-samples/weather/manifest.json`), a page and a backend with one public
-path and two settings:
+A page and a backend with one public path and two settings (an early version of the Weather
+sample; the [tutorial](../tutorial/build-your-first-plugin.md#the-manifest) shows the current one):
 
 ```json
 {
@@ -57,8 +59,7 @@ path and two settings:
 }
 ```
 
-A manifest with every section filled in (a plugin with a database, which later EpicStaff versions
-install):
+A manifest with every section filled in:
 
 ```json
 {
@@ -120,13 +121,13 @@ install):
 | `platform` | object | yes | `frame_protocol`, `gateway_context` and `hook_api`, each `1`: the versions of the platform contracts the plugin is written for. |
 | `spa` | object | no | The plugin's single-page app. `entry` (default `index.html`) is a path inside `spa/` that must exist in the package. |
 | `backend` | object | no | `python`: `"3.12"` or `"3.13"`; `entrypoint`: `module.path:attribute` of an ASGI app, whose module is `backend/src/<module/path>.py` or `backend/src/<module/path>/__init__.py`. Its files are under `backend/` ([backend/requirements.lock](#backendrequirementslock)); [Runtime](runtime.md) says how it is run. |
-| `database` | `{}` | no | Present when the plugin needs its own database; takes no fields. Not installed by this version. |
+| `database` | `{}` | no | Present when the plugin needs its own database; takes no fields. Its migrations are `database/migrations/NNN_<name>.sql` in the package ([Plugin database](database.md), [Write database migrations](../how-to/database-migrations.md)). *Cross-field:* needs `backend`. |
 | `access` | array | no (default `[]`) | What the plugin's backend may do in EpicStaff; see [access](#access). *Cross-field:* non-empty `access` needs `backend`. |
 | `user_permissions` | array | yes | What people may do with the plugin; see [user_permissions](#user_permissions). |
 | `public_paths` | array | no (default `[]`) | Backend paths reached without an EpicStaff login. Each: `path` under `/api/` (`/api/<segment>[/…]`, no `.` or `..` segment, at most 512 characters, distinct), `match` `exact` or `prefix`, `methods` (distinct, from `GET HEAD POST PUT PATCH DELETE OPTIONS`), `rate_limit_per_minute` 1–6000, `max_body_kb` 0–20480, each at most the deployment's maximum ([Platform maximums](#platform-maximums)). *Cross-field:* needs `backend`. |
-| `outbound_hosts` | array | no (default `[]`) | Hosts the backend may call, over HTTPS on port 443 only. Each: `host` is a lower-case DNS name or `*.` and a name (no IP address, no port, distinct) and `reason` (1–200 characters). *Cross-field:* needs `backend`. |
+| `outbound_hosts` | array | no (default `[]`) | Hosts the backend may call, over HTTPS on port 443 only, through the egress proxy; at most 100. Each: `host` is a lower-case DNS name, or `*.` and a name for every name below it (no IP address, no port, distinct), and `reason` (1–200 characters). See [Call the internet from your backend](../how-to/outbound-hosts.md). *Cross-field:* needs `backend`. |
 | `settings` | array | no (default `[]`) | Deployment-wide settings a SuperAdmin fills in; see [settings](#settings). *Cross-field:* needs `backend`. |
-| `limits` | object | no | `memory_mb` 64–8192, `db_connections` 1–100, `statement_timeout_seconds` 1–600, `requests_per_minute` 1–6000, `cpu_priority` `normal` or `low`. Each is optional: one left out (or `null`) gets the platform default, and each is at most the deployment's maximum ([Platform maximums](#platform-maximums)). A SuperAdmin may lower them per plugin. *Cross-field:* needs `backend`. |
+| `limits` | object | no | `memory_mb` 64–8192, `db_connections` 1–100 and `statement_timeout_seconds` 1–600 (both used only with a `database` section), `requests_per_minute` 1–6000, `cpu_priority` `normal` or `low`. Each is optional: one left out (or `null`) gets the platform default, and each is at most the deployment's maximum ([Platform maximums](#platform-maximums)). A SuperAdmin may lower them per plugin. *Cross-field:* needs `backend`. |
 | `hooks` | object | no (default all off) | `install`, `upgrade`, `org_removed` (booleans) and optional `timeouts_seconds` with `install` ≤ 900, `upgrade` ≤ 1800, `org_removed` ≤ 900. A hook without a timeout gets that maximum. This version runs the `install` hook ([Run code when an organization gets your plugin](../how-to/install-hook.md)); the other two are reserved. *Cross-field:* any hook turned on needs `backend`. |
 
 ### access
@@ -258,6 +259,7 @@ refused when the node installs the backend, naming the wheel and the platform.
 | Paths | UTF-8 in NFC form, `/`-separated and relative: no `..` or `.` segment, no empty segment, no leading `/`, no `\`, no drive letter, no control character, at most 1024 bytes. No two paths may differ only in case, and no file may also be a folder of another (`spa/a` and `spa/a/b.js`), case ignored |
 | Entry types | Regular files only: symbolic links and special files are refused |
 | SPA | At most 2000 files and 50 MiB in total |
+| Migrations | At most 64 MiB in total under `database/migrations/` |
 | Icon | At most 64 KiB |
 
 ### Icon
@@ -325,14 +327,15 @@ lines.
 | `package` | the archive as a whole, or one file in it after the dot | `package`, `package.spa/app.js` |
 
 Other upload answers: `invalid_signature` (a signature that does not belong to the package),
-`plugin_feature_unavailable` (a `database` section, listed in `errors`),
 `package_too_large` (413) and `plugin_upgrade_unavailable` (409, the plugin already has an
 approved version; installing a new version is not available yet).
 
 Approving a package checks the stored file again before anything is published: it must still be
 the uploaded file (otherwise `409 package_file_mismatch`: upload it again), it must still pass
 every rule on this page, and its signature is judged with the trusted keys as they are at that
-moment (see [Trust and signing](../explanation/trust-and-signing.md)).
+moment (see [Trust and signing](../explanation/trust-and-signing.md)). Approving a package with
+a `database` section also records the plugin's database; an EpicStaff with no plugin database
+server registered answers `409 no_plugin_database_server`.
 
 ## Review warnings
 

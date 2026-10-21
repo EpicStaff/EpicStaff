@@ -27,6 +27,7 @@ def node_wide_modes(layout):
         layout.run_root: 0o711,
         layout.launcher_socket_directory: 0o750,
         layout.heartbeat_file: 0o644,
+        layout.egress_policy_directory: 0o755,
     }
 
 
@@ -42,6 +43,15 @@ def plugin_modes(layout):
 
 def test_the_node_tree_gets_its_modes(layout, unprivileged_setup):
     assert {path: mode_of(path) for path in node_wide_modes(layout)} == node_wide_modes(layout)
+
+
+def test_the_egress_policy_directory_is_left_to_the_volume_and_never_created(layout, own_ownership):
+    layout.egress_policy_directory.rmdir()
+    setup = DirectorySetup(layout, launcher=own_ownership, agent=own_ownership, plugin_gid=os.getgid())
+
+    setup.prepare_tree()
+
+    assert not layout.egress_policy_directory.exists()
 
 
 def test_setup_repairs_an_existing_tree_whatever_modes_it_has(layout, unprivileged_setup):
@@ -239,6 +249,7 @@ def test_root_gives_every_directory_its_owner(layout):
         layout.plugin_code_root(PLUGIN): (0, PLUGIN_UID),
         layout.plugin_venvs(PLUGIN): (AGENT_UID, PLUGIN_UID),
         layout.plugin_run_directory(PLUGIN): (0, 0),
+        layout.egress_policy_directory: (AGENT_UID, AGENT_UID),
     }
     assert {path: (os.lstat(path).st_uid, os.lstat(path).st_gid) for path in owners} == owners
 

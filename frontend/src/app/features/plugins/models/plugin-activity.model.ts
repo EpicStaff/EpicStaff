@@ -1,4 +1,4 @@
-import { PluginDeclaredAccess, PluginGrantState } from './plugin-admin.model';
+import { PluginDeclaredAccess, PluginGrantState, PluginOutboundHost } from './plugin-admin.model';
 
 /** What a plugin did, or what was done to it. */
 export type PluginActivityAction =
@@ -12,7 +12,10 @@ export type PluginActivityAction =
     | 'limits_changed'
     | 'restarted'
     | 'grant_suspended'
-    | 'grant_resumed';
+    | 'grant_resumed'
+    | 'database_ready'
+    | 'database_failed'
+    | 'database_limit_restored';
 
 /** `plugin`: its service account; `superadmin`: a SuperAdmin on the admin pages; `platform`: EpicStaff itself. */
 export type PluginActivityActorKind = 'plugin' | 'superadmin' | 'platform';
@@ -31,10 +34,13 @@ export interface PluginActivityEvent {
     /** The person a plugin acted for; `label` is their email when the event happened. */
     on_behalf_of: { user_id: number | null; label: string } | null;
     action: PluginActivityAction;
-    /** Only for `api_request`; `path` carries no query string. */
+    /** Only for `api_request`; `path` carries no query string; `route` is the URL pattern, like `api/graphs/<pk>/`. */
     request: { method: string; path: string; route: string | null; status: number } | null;
     target: { resource_type: string | null; id: string | null; label: string | null } | null;
-    /** Never holds a secret. */
+    /**
+     * Never holds a secret. `limits_changed`: the overrides in force after the change, one per limit (`{}` when none
+     * is left); `install_hook_failed` and `database_failed`: `error`.
+     */
     detail: Record<string, PluginActivityDetailValue>;
 }
 
@@ -46,6 +52,10 @@ export interface OrganizationServiceAccount {
     key_last_used_at: string | null;
     /** As the package review shows it. */
     access: PluginDeclaredAccess[];
+    /** The hosts its backend may reach on the internet, in manifest order. */
+    outbound_hosts: PluginOutboundHost[];
+    /** It keeps its data in a database of its own. */
+    has_database: boolean;
 }
 
 /** The filters of the active organization's activity list. */

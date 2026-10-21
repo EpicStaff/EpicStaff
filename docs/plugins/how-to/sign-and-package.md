@@ -39,13 +39,14 @@ weather/
 │   ├── src/weather_plugin/       your Python code (the entrypoint's module is here)
 │   ├── requirements.in           what the backend needs (stays in the source)
 │   └── requirements.lock         compiled from it, hash-pinned
-└── database/                     (later versions) migrations/NNN_<name>.sql
+└── database/                     with a "database" section: migrations/NNN_<name>.sql
 ```
 
 The built single-page app can live anywhere; you point `--spa-dir` at it. Its files become
 `spa/` in the package, so the manifest's `spa.entry` (default `index.html`) is a path inside that
 directory. A plugin with a backend also needs its wheels; see [A plugin with a
-backend](#a-plugin-with-a-backend).
+backend](#a-plugin-with-a-backend). A plugin with a database keeps its migrations in
+`database/migrations/`; see [Write database migrations](database-migrations.md).
 
 ## 1. Validate
 
@@ -125,12 +126,15 @@ rules](../reference/manifest.md#backendrequirementslock)). The Weather sample
 List what the backend needs in `backend/requirements.in`. It must include `uvicorn`, which runs
 every backend. Until `epicstaff-plugin` is published on an index, also list the SDK's own
 requirements (from `src/plugin_sdk/pyproject.toml`): the SDK wheel is added at packing time, and
-the lock must already pin what it needs. The sample's file:
+the lock must already pin what it needs. The sample's file, which also lists the driver for its
+database:
 
 ```
 fastapi
 uvicorn
+psycopg[binary,pool]
 cryptography>=50
+httpx>=0.28,<1
 packaging>=24
 pydantic>=2.13,<3
 pyjwt>=2.10,<3

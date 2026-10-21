@@ -15,13 +15,22 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.relations import ManyRelatedField
 from rest_framework.request import Request
 from rest_framework.test import APIClient, APIRequestFactory
-from tables.models import EmbeddingConfig, LLMConfig, Secret
+from django.urls import reverse
+from tables.import_export.enums import EntityType
+from tables.import_export.registry import entity_registry
+from tables.import_export.services.export_service import ExportService
+from tables.graph_versioning.services import GraphVersioningService
+from tables.models import EmbeddingConfig, Graph, LLMConfig, Secret
+from tables.models.graph_models import PythonNode, StartNode, TelegramTriggerNode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.models.webhook_models import WebhookTrigger, WebhookTriggerAuth, WebhookTriggerAuthKind
+from tables.serializers.model_serializers.llm_serializers import LLMConfigSerializer
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_service
 from tables.services.secrets.reference_guard import secret_reference_guard
 
+from tests.helpers import data_to_json_file
 from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
 
 pytestmark = [pytest.mark.django_db]
@@ -32,6 +41,8 @@ ACCESS = [
     {"resource_type": "secrets", "actions": ["read", "create", "use"], "reason": "Stores its own keys."},
     {"resource_type": "llm_configs", "actions": ["read", "create", "update"], "reason": "Its LLM configs."},
     {"resource_type": "tools", "actions": ["read", "create", "update"], "reason": "Its tools."},
+    {"resource_type": "flows", "actions": ["read", "create", "update", "use"], "reason": "Its flows."},
+    {"resource_type": "webhooks", "actions": ["read", "create", "update"], "reason": "Its bots."},
 ]
 # The guarded (serializer, field) pairs found today; a floor, so the walk below can never
 # lose serializers silently.
@@ -288,3 +299,167 @@ def test_a_plugin_in_another_organization_gets_not_found(plugin, service_account
 
     assert response.status_code == 404
     assert PluginGrant.objects.filter(org=beta).exists()
+
+
+# ---- a bulk save of a flow ----
+
+NEUTRAL_CODE = "def main(**kwargs):\n    return 1\n"
+
+
+def _python_node(graph, secret, name):
+    python_code = PythonCode.objects.create(code=NEUTRAL_CODE, entrypoint="main")
+    python_code.secrets.add(secret)
+    return PythonNode.objects.create(graph=graph, node_name=name, python_code=python_code)
+
+
+def _bulk_save(client, graph, nodes, *, code=NEUTRAL_CODE, secret_ids=None):
+    def python_code(node):
+        body = {"code": code, "entrypoint": "main", "libraries": [], "global_kwargs": {}}
+        if secret_ids is not None:
+            body["secret_ids"] = secret_ids
+        return body
+
+    graph.refresh_from_db()
+    return client.post(
+        f"/api/graphs/{graph.pk}/save/",
+        {
+            "save_version": graph.save_version,
+            "python_node_list": [
+                {"id": node.pk, "graph": graph.pk, "node_name": node.node_name, "python_code": python_code(node)}
+                for node in nodes
+            ],
+        },
+        format="json",
+    )
+
+
+def test_a_bulk_save_of_an_org_flow_whose_node_uses_an_org_secret_is_refused(client, acme, org_secret):
+    graph = Graph.objects.create(name="Acme flow", org=acme)
+    node = _python_node(graph, org_secret, "uses_the_org_key")
+
+    response = _bulk_save(client, graph, [node], code="def main(**kwargs):\n    return 2\n")
+
+    assert response.status_code == 400, response.content
+    [message] = response.json()["errors"]["python_node_list"][0]["errors"]["python_code"]["secret_ids"]
+    assert REFUSED in message
+    assert ORG_SECRET_NAME not in response.content.decode()
+    node.python_code.refresh_from_db()
+    assert node.python_code.code == NEUTRAL_CODE
+
+
+def test_the_guard_reads_a_stored_reference_only_for_a_field_the_payload_leaves_out(acme_key, acme, own_secret, mocker):
+    config = LLMConfig.objects.create(custom_name="Weather summaries", org=acme, api_key_secret=own_secret)
+    serializer = LLMConfigSerializer(config, context={"request": _plugin_request(acme_key, acme)})
+    stored_reads = mocker.spy(secret_reference_guard, "current_ids")
+
+    secret_reference_guard.assert_unchanged_or_permitted(serializer=serializer, attrs={"api_key_secret": own_secret}, fields=("api_key_secret_id",))
+    carried = stored_reads.call_count
+    secret_reference_guard.assert_unchanged_or_permitted(serializer=serializer, attrs={}, fields=("api_key_secret_id",))
+
+    assert (carried, stored_reads.call_count) == (0, 1)
+
+
+def test_a_bulk_save_of_many_nodes_resolves_secrets_use_once(client, own_secret, mocker):
+    graph = Graph.objects.get(pk=client.post("/api/graphs/", {"name": "Weather flow"}, format="json").json()["id"])
+    nodes = [_python_node(graph, own_secret, f"node_{index}") for index in range(3)]
+    use_resolutions = mocker.spy(secret_reference_guard._resolver, "resolve")
+
+    response = _bulk_save(client, graph, nodes, secret_ids=[own_secret.pk])
+
+    assert response.status_code == 200, response.content
+    assert use_resolutions.call_count == 1
+
+
+# ---- a replace-import never re-links an organization's bot key ----
+
+
+def _flow_with_a_telegram_bot(organization, bot_key, path):
+    graph = Graph.objects.create(name=f"Bot flow {path}", org=organization, metadata={"nodes": [], "edges": []})
+    StartNode.objects.create(graph=graph, variables={})
+    trigger = WebhookTrigger.objects.create(path=path, org=organization)
+    WebhookTriggerAuth.objects.create(trigger=trigger, kind=WebhookTriggerAuthKind.TELEGRAM)
+    TelegramTriggerNode.objects.create(graph=graph, node_name="Telegram Bot #1", webhook_trigger=trigger, telegram_bot_api_key_secret=bot_key)
+    return graph
+
+
+def _replace_import(client, graph):
+    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.pk])
+    return client.post(
+        reverse("graphs-import-entity"),
+        {"file": data_to_json_file(data=export_data, filename="flow.json"), "preserve_uuids": True, "replace_existing": True},
+        format="multipart",
+    )
+
+
+def test_a_plugin_s_replace_import_drops_the_org_s_bot_key(client, acme, org_secret, mock_telegram_service, log_messages):
+    graph = _flow_with_a_telegram_bot(acme, org_secret, "acme-bot")
+
+    response = _replace_import(client, graph)
+
+    assert response.status_code == 200, response.content
+    assert graph.telegram_trigger_node_list.get().telegram_bot_api_key_secret_id is None
+    trigger_id = WebhookTrigger.objects.get(path="acme-bot").pk
+    assert [
+        line
+        for line in log_messages
+        if line.startswith(f"Graph {graph.pk}: the bot key of the Telegram trigger node on webhook trigger {trigger_id}")
+        and "may not use it" in line
+    ]
+
+
+def test_a_plugin_s_replace_import_keeps_its_own_bot_key(client, acme, own_secret, mock_telegram_service):
+    graph = _flow_with_a_telegram_bot(acme, own_secret, "weather-bot")
+
+    response = _replace_import(client, graph)
+
+    assert response.status_code == 200, response.content
+    assert graph.telegram_trigger_node_list.get().telegram_bot_api_key_secret_id == own_secret.pk
+
+
+# ---- a version restore never binds a plugin's node to a secret it didn't create ----
+
+_READS_SECRET = 'def main(**kwargs):\n    return get_secret("{name}")\n'
+
+
+def _flow_with_a_declaring_node(organization, secret):
+    graph = Graph.objects.create(name="Declaring flow", org=organization, metadata={"nodes": [], "edges": []})
+    StartNode.objects.create(graph=graph, variables={})
+    python_code = PythonCode.objects.create(code=_READS_SECRET.format(name=secret.name), entrypoint="main")
+    python_code.secrets.add(secret)
+    PythonNode.objects.create(graph=graph, node_name="reader", python_code=python_code)
+    return graph
+
+
+def test_create_graph_from_version_does_not_bind_a_plugin_to_an_org_secret(acme_key, acme, org_secret, log_messages):
+    # A person's flow declares the organization's secret; a plugin builds a new flow from a
+    # version of it. The new node is the plugin's, so it must not be bound to that secret.
+    source = _flow_with_a_declaring_node(acme, org_secret)
+    version = GraphVersioningService().save_version(graph=source, name="v1")
+
+    result = GraphVersioningService().create_graph_from_version(version, user=_plugin_request(acme_key, acme).user)
+
+    new_graph = Graph.objects.get(pk=result["graph_id"])
+    reader = new_graph.python_node_list.get()
+    assert list(reader.python_code.secrets.all()) == []
+    assert any(warning["type"] == "secret_declaration_dropped" for warning in result["warnings"])
+    assert any("may not use it" in line for line in log_messages)
+
+
+def test_create_graph_from_version_keeps_a_secret_the_plugin_created(acme_key, acme, own_secret):
+    source = _flow_with_a_declaring_node(acme, own_secret)
+    version = GraphVersioningService().save_version(graph=source, name="v1")
+
+    result = GraphVersioningService().create_graph_from_version(version, user=_plugin_request(acme_key, acme).user)
+
+    reader = Graph.objects.get(pk=result["graph_id"]).python_node_list.get()
+    assert list(reader.python_code.secrets.values_list("pk", flat=True)) == [own_secret.pk]
+
+
+def test_a_person_restoring_a_version_still_rebinds_the_org_secret(acme, org_secret, admin_acme):
+    source = _flow_with_a_declaring_node(acme, org_secret)
+    version = GraphVersioningService().save_version(graph=source, name="v1")
+
+    GraphVersioningService().create_graph_from_version(version, user=admin_acme)
+
+    reader = Graph.objects.filter(org=acme).exclude(pk=source.pk).get().python_node_list.get()
+    assert list(reader.python_code.secrets.values_list("pk", flat=True)) == [org_secret.pk]

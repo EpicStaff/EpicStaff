@@ -4,9 +4,10 @@ import hashlib
 
 import jwt
 import pytest
-from plugins.exceptions import UntrustedNotAcknowledgedError
+from plugins.databases.database_records import app_password_of
+from plugins.exceptions import NoPluginDatabaseServerError, UntrustedNotAcknowledgedError
 from plugins.lifecycle.grant_service import PluginGrantService
-from plugins.models import GrantState, PluginGrant, PluginHookJob
+from plugins.models import GrantState, PluginDatabase, PluginGrant, PluginHookJob
 from rest_framework.test import APIClient
 
 from src.shared.models.plugin_nodes import HookInvocation
@@ -21,7 +22,7 @@ from tests.plugins_tests.login_helpers import (
     redirect_parts,
     session_cookie,
 )
-from tests.plugins_tests.package_builder import build_package, sample_manifest
+from tests.plugins_tests.package_builder import backend_manifest, build_package, sample_manifest
 
 pytestmark = pytest.mark.django_db
 
@@ -273,3 +274,30 @@ def test_suspension_lines_name_the_actor_and_the_grant_and_never_a_key(
     assert _actor(superadmin_user) in lines[0] and _actor(superadmin_user) in lines[2]
     assert f"plugin=weather grant={grant.pk} org={acme.pk}" in lines[1]
     _assert_no_secret(lines, key, hashlib.sha256(key.encode()).hexdigest())
+
+
+# ---- a plugin's database record: names only, never its password ----
+
+
+@pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")
+def test_a_database_record_is_logged_with_its_names_and_never_its_password(database_plugin, log_messages):
+    # The fixture approves inside a captured transaction and runs its commit callbacks.
+    database_plugin()
+
+    lines = _lines(log_messages, "plugins.database.")
+    assert lines == ["plugins.database.record_created plugin=weather database=plugin_weather server=plugins_db"]
+    record = PluginDatabase.objects.get()
+    _assert_no_secret(lines, app_password_of(record), record.app_password_encrypted)
+
+
+@pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")
+def test_an_approval_refused_for_want_of_a_server_logs_no_record(
+    installation, superadmin, plugin_node, log_messages, django_capture_on_commit_callbacks
+):
+    data = build_package(manifest=backend_manifest(database={}))
+    package = installation.upload(upload_file(data), len(data), superadmin)
+
+    with django_capture_on_commit_callbacks(execute=True), pytest.raises(NoPluginDatabaseServerError):
+        installation.approve(package.pk, superadmin, untrusted_acknowledged=True)
+
+    assert _lines(log_messages, "plugins.database.") == []

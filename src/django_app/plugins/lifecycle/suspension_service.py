@@ -8,8 +8,12 @@ until `purge_after`. Resume undoes all of it except the keys: the node's next cr
 fetch mints new ones.
 
 Lock order: a service that changes a grant and its hook jobs locks the grant first, then the
-jobs (as `HookJobService` does), so a suspension and a hook result never deadlock.
+jobs (as `HookJobService` does), so a suspension and a hook result never deadlock. Keys are
+locked through their service account: grant, then account, then keys, the order
+`ServiceAccountKeyService.mint_for_plugin` takes the account and its keys in.
 """
+
+from functools import partial
 
 from django.db import transaction
 from django.utils import timezone
@@ -26,6 +30,7 @@ from plugins.models import (
     HookJobState,
     PluginGrant,
     PluginHookJob,
+    PluginServiceAccount,
     PluginServiceAccountKey,
 )
 from plugins.models.hook_job import OPEN_HOOK_JOB_STATES
@@ -39,8 +44,9 @@ class PluginSuspensionService:
 
         Fails the grant's open hook jobs, keeps the data until now plus the grace period,
         revokes every key of its service account (the account stays) and records the
-        activity. Once the transaction commits, the organization's running sessions that
-        use what the plugin owns are stopped.
+        activity. Once the transaction commits, the suspension is logged and then the
+        organization's running sessions that use what the plugin owns are stopped; a stopper
+        that fails is logged and leaves the suspension as it is.
 
         Raises:
             GrantNotFoundError: No such grant of this plugin.
@@ -66,14 +72,18 @@ class PluginSuspensionService:
             )
             _revoke_keys(grant, now)
             ActivityRecorder().grant_suspended(actor, grant, previous_state)
-            transaction.on_commit(
-                lambda: SuspendedRunStopper().stop_for(
+            transaction.on_commit(partial(log_grant_suspended, actor, grant, previous_state))
+
+            # A named function, not a `partial`: Django logs a failed robust callback by its
+            # `__qualname__`, which a `partial` lacks, and would raise from the handler.
+            def stop_affected_sessions() -> None:
+                SuspendedRunStopper().stop_for(
                     organization_id=grant.org_id,
                     grant_id=grant.pk,
                     plugin_identifier=identifier,
                 )
-            )
-        log_grant_suspended(actor, grant, previous_state)
+
+            transaction.on_commit(stop_affected_sessions, robust=True)
         return grant
 
     def resume(self, identifier: str, grant_id: int, actor) -> PluginGrant:
@@ -149,7 +159,9 @@ def _fail_open_hook_jobs(grant: PluginGrant, now) -> None:
 
 def _revoke_keys(grant: PluginGrant, now) -> None:
     """Revoke every key of the grant's service account that is not revoked yet, superseded
-    keys still inside their overlap included."""
+    keys still inside their overlap included; the account is locked first (see the module's
+    lock order)."""
+    list(PluginServiceAccount.objects.select_for_update().filter(grant=grant).values_list("pk"))
     PluginServiceAccountKey.objects.filter(
         service_account__grant=grant, revoked_at__isnull=True
     ).update(revoked_at=now)

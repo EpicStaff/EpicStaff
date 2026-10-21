@@ -1,18 +1,18 @@
-"""The forecast runs this process started, and what a person sees of one.
+"""The forecast runs Weather started, and what a person sees of one.
 
-Which person started which run is kept in this process's memory: enough for the sample,
-which runs one process, but lost on every restart. This store is for the demo only; a real
-plugin keeps it in its database.
+Which person started which run is kept in Weather's database, so a run started before a
+restart is still found after it, by the same person in the same organization only.
 """
 
-from collections import OrderedDict
 from typing import Annotated, Any, Literal
 
 from epicstaff_plugin.client import FlowSession
 from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 
-# Bounds the memory a burst of runs can take; the oldest run is forgotten first.
-MAX_REMEMBERED_RUNS = 1024
+from weather_plugin.database import WeatherDatabase
+
+# A run's result is read within minutes; older records are deleted when a new run is added.
+RUN_RETENTION_DAYS = 7
 
 ForecastStatus = Literal["pending", "running", "finished", "failed"]
 
@@ -35,18 +35,33 @@ class Forecast(BaseModel):
 
 
 class ForecastRuns:
-    """The runs this process started, each visible only to its person in its organization."""
+    """The runs Weather started, each visible only to its person in its organization."""
 
-    def __init__(self) -> None:
-        self._owners: OrderedDict[int, tuple[int, int]] = OrderedDict()
+    def __init__(self, database: WeatherDatabase):
+        self._database = database
 
-    def add(self, session_id: int, user_id: int, org_id: int) -> None:
-        self._owners[session_id] = (user_id, org_id)
-        while len(self._owners) > MAX_REMEMBERED_RUNS:
-            self._owners.popitem(last=False)
+    async def add(self, org_id: int, user_id: int, session_id: int, city: str) -> None:
+        """Record that the person started this run, and forget runs older than the retention."""
+        async with self._database.transaction(org_id) as connection:
+            await connection.execute(
+                "DELETE FROM weather.forecast_runs"
+                " WHERE created_at < now() - make_interval(days => %s)",
+                (RUN_RETENTION_DAYS,),
+            )
+            await connection.execute(
+                "INSERT INTO weather.forecast_runs (org_id, user_id, session_id, city)"
+                " VALUES (%s, %s, %s, %s)",
+                (org_id, user_id, session_id, city),
+            )
 
-    def started_by(self, session_id: int, user_id: int, org_id: int) -> bool:
-        return self._owners.get(session_id) == (user_id, org_id)
+    async def started_by(self, org_id: int, user_id: int, session_id: int) -> bool:
+        """Whether this person started the run in this organization."""
+        async with self._database.transaction(org_id) as connection:
+            cursor = await connection.execute(
+                "SELECT 1 FROM weather.forecast_runs WHERE session_id = %s AND user_id = %s",
+                (session_id, user_id),
+            )
+            return await cursor.fetchone() is not None
 
 
 def forecast_status(session: FlowSession) -> ForecastStatus:

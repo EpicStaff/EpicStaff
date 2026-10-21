@@ -268,6 +268,19 @@ RUN_START_MODELS: Mapping[RunKind, str] = MappingProxyType(
     }
 )
 
+# The flag that gives a code slot of a flow node the flow's attached files and folders, as
+# the converter scopes its storage. A test run of the slot can read them, so a code run
+# counts them as used while the flag is on. A code slot of a flow node not listed here
+# always counts them.
+CODE_SLOT_STORAGE_FLAGS: Mapping[tuple[str, str], str] = MappingProxyType(
+    {
+        ("tables.PythonNode", "python_code"): "use_storage",
+        ("tables.WebhookTriggerNode", "python_code"): "use_storage",
+        ("tables.ClassificationDecisionTableNode", "pre_python_code"): "pre_use_storage",
+        ("tables.ClassificationDecisionTableNode", "post_python_code"): "post_use_storage",
+    }
+)
+
 _GRAPH = "tables.Graph"
 _PYTHON_CODE = "tables.PythonCode"
 _STORAGE_FILE = "tables.StorageFile"
@@ -285,7 +298,9 @@ class RunResourceCollector:
     A code run (`RunKind.CODE`) walks the code itself (its secrets) and adds, without
     walking them, the rows that hold it: a tool with that code, or the flow of a node with
     that code. A test run of one node of a flow is therefore never refused because another
-    node of the same flow uses something.
+    node of the same flow uses something. When the node's slot uses storage
+    (`CODE_SLOT_STORAGE_FLAGS`), the flow's attached files and folders count too, since the
+    test run can read them.
     """
 
     def collect(self, subject: RunSubject) -> RunResources:
@@ -295,28 +310,32 @@ class RunResourceCollector:
     def collect_many(self, kind: RunKind, subject_ids: Iterable[int]) -> dict[int, RunResources]:
         """Return what each run uses, keyed by subject id, in one walk for all of them.
 
-        Ids of rows that do not exist give resources holding only their start ref.
+        Ids are read as integers, so an id given as text still matches its row. Ids of rows
+        that do not exist give resources holding only their start ref.
         """
         start_model = RUN_START_MODELS[kind]
-        starts = {subject_id: ResourceRef(start_model, subject_id) for subject_id in subject_ids}
+        starts = {
+            int(subject_id): ResourceRef(start_model, int(subject_id)) for subject_id in subject_ids
+        }
         if not starts:
             return {}
         walk = _Walk(_walk_plan())
         walk.run(starts.values())
+        used = {subject_id: walk.reachable_from(start) for subject_id, start in starts.items()}
         folder_paths = walk.folder_paths()
-        holders = _code_holders(starts) if kind == RunKind.CODE else {}
-        resources = {}
-        for subject_id, start in starts.items():
-            reached = walk.reachable_from(start)
-            resources[subject_id] = RunResources(
-                refs=frozenset(reached | holders.get(subject_id, set())),
+        if kind == RunKind.CODE:
+            folder_paths |= _add_code_holders(starts, used)
+        return {
+            subject_id: RunResources(
+                refs=frozenset(refs),
                 storage_prefixes=frozenset(
                     folder_paths[ref.pk]
-                    for ref in reached
+                    for ref in refs
                     if ref.model_label == _STORAGE_FILE and ref.pk in folder_paths
                 ),
             )
-        return resources
+            for subject_id, refs in used.items()
+        }
 
 
 def unqueried_child_references() -> frozenset[FollowChildren]:
@@ -349,9 +368,16 @@ class _ChildLink:
 
 
 @dataclass(frozen=True)
+class _CodeSlot:
+    code_attname: str
+    # None on a flow node: the slot always counts the flow's attached storage.
+    storage_flag: str | None
+
+
+@dataclass(frozen=True)
 class _CodeHolder:
     model: str
-    code_attnames: tuple[str, ...]
+    slots: tuple[_CodeSlot, ...]
     root: str
     root_attname: str
 
@@ -361,17 +387,53 @@ class _WalkPlan:
     forward_fields: Mapping[str, tuple[_ForwardField, ...]]
     many_to_many_fields: Mapping[str, tuple[_ManyToManyField, ...]]
     child_links: Mapping[str, tuple[_ChildLink, ...]]
-    code_holders: tuple[_CodeHolder, ...]
+    # Child links whose child also points forward at another row of the parent's model
+    # (a subflow node: its flow, and the flow it runs). Followed to a fixpoint.
+    recursive_links: Mapping[str, tuple[_ChildLink, ...]]
     unqueried_children: frozenset[FollowChildren]
     model_order: tuple[str, ...]
 
 
 @cache
 def _walk_plan() -> _WalkPlan:
+    return _build_plan(RUN_REFERENCES)
+
+
+@cache
+def _attached_storage_plan() -> _WalkPlan:
+    """The part of the walk that reaches a flow's attached files and folders.
+
+    Taken from `RUN_REFERENCES`: the flow's child rows that lead to a storage file, and
+    their fields.
+    """
+    fields_of: dict[str, list[FollowField]] = defaultdict(list)
+    for reference in RUN_REFERENCES:
+        if isinstance(reference, FollowField):
+            fields_of[reference.model].append(reference)
+    attachments = [
+        reference
+        for reference in RUN_REFERENCES
+        if isinstance(reference, FollowChildren)
+        and _related_label(reference.child, reference.fk) == _GRAPH
+        and any(
+            _related_label(field.model, field.field) == _STORAGE_FILE
+            for field in fields_of[reference.child]
+        )
+    ]
+    return _build_plan(
+        (*attachments, *(field for row in attachments for field in fields_of[row.child]))
+    )
+
+
+def _related_label(model_label: str, field_name: str) -> str:
+    return apps.get_model(model_label)._meta.get_field(field_name).related_model._meta.label
+
+
+def _build_plan(references: tuple[FollowField | FollowChildren, ...]) -> _WalkPlan:
     forward_fields: dict[str, list[_ForwardField]] = defaultdict(list)
     many_to_many_fields: dict[str, list[_ManyToManyField]] = defaultdict(list)
     children: list[tuple[str, FollowChildren, _ChildLink]] = []
-    for reference in RUN_REFERENCES:
+    for reference in references:
         if isinstance(reference, FollowField):
             field = apps.get_model(reference.model)._meta.get_field(reference.field)
             target = field.related_model._meta.label
@@ -405,26 +467,32 @@ def _walk_plan() -> _WalkPlan:
                 grew = True
 
     child_links: dict[str, list[_ChildLink]] = defaultdict(list)
+    recursive_links: dict[str, list[_ChildLink]] = defaultdict(list)
     unqueried_children = set()
     for parent, reference, link in children:
-        if link.child in leads_somewhere:
-            child_links[parent].append(link)
-        else:
+        if link.child not in leads_somewhere:
             unqueried_children.add(reference)
+        elif any(
+            field.target == parent and field.attname != link.fk_attname
+            for field in forward_fields.get(link.child, ())
+        ):
+            recursive_links[parent].append(link)
+        else:
+            child_links[parent].append(link)
 
     leads_to: dict[str, set[str]] = defaultdict(set)
     for model, fields in forward_fields.items():
         leads_to[model] |= {field.target for field in fields}
     for model, fields in many_to_many_fields.items():
         leads_to[model] |= {field.target for field in fields}
-    for parent, links in child_links.items():
+    for parent, links in (*child_links.items(), *recursive_links.items()):
         leads_to[parent] |= {link.child for link in links}
 
     return _WalkPlan(
         forward_fields=MappingProxyType({k: tuple(v) for k, v in forward_fields.items()}),
         many_to_many_fields=MappingProxyType({k: tuple(v) for k, v in many_to_many_fields.items()}),
         child_links=MappingProxyType({k: tuple(v) for k, v in child_links.items()}),
-        code_holders=_plan_code_holders(children),
+        recursive_links=MappingProxyType({k: tuple(v) for k, v in recursive_links.items()}),
         unqueried_children=frozenset(unqueried_children),
         model_order=_model_order(leads_to),
     )
@@ -455,51 +523,80 @@ def _model_order(leads_to: Mapping[str, set[str]]) -> tuple[str, ...]:
     return tuple(reversed(post_order))
 
 
-def _plan_code_holders(
-    children: list[tuple[str, FollowChildren, _ChildLink]],
-) -> tuple[_CodeHolder, ...]:
+@cache
+def _code_holder_plan() -> tuple[_CodeHolder, ...]:
     """Every model with a followed reference to `PythonCode`, and the root that holds it.
 
     A node of a flow is held by its flow; any other model holds the code itself.
     """
-    code_attnames: dict[str, list[str]] = defaultdict(list)
+    slots: dict[str, list[_CodeSlot]] = defaultdict(list)
     for reference in RUN_REFERENCES:
         if not isinstance(reference, FollowField):
             continue
         field = apps.get_model(reference.model)._meta.get_field(reference.field)
         if not field.many_to_many and field.related_model._meta.label == _PYTHON_CODE:
-            code_attnames[reference.model].append(field.attname)
-    graph_links = {link.child: link.fk_attname for parent, _, link in children if parent == _GRAPH}
+            slots[reference.model].append(
+                _CodeSlot(
+                    code_attname=field.attname,
+                    storage_flag=CODE_SLOT_STORAGE_FLAGS.get((reference.model, reference.field)),
+                )
+            )
+    flow_links = {
+        reference.child: apps.get_model(reference.child)._meta.get_field(reference.fk).attname
+        for reference in RUN_REFERENCES
+        if isinstance(reference, FollowChildren)
+        and _related_label(reference.child, reference.fk) == _GRAPH
+    }
     return tuple(
         _CodeHolder(
             model=model,
-            code_attnames=tuple(attnames),
-            root=_GRAPH if model in graph_links else model,
-            root_attname=graph_links.get(model, "pk"),
+            slots=tuple(model_slots),
+            root=_GRAPH if model in flow_links else model,
+            root_attname=flow_links.get(model, "pk"),
         )
-        for model, attnames in code_attnames.items()
+        for model, model_slots in slots.items()
     )
 
 
-def _code_holders(starts: Mapping[int, ResourceRef]) -> dict[int, set[ResourceRef]]:
+def _add_code_holders(
+    starts: Mapping[int, ResourceRef], used: dict[int, set[ResourceRef]]
+) -> dict[int, str]:
+    """Add to each code run what holds its code, and the storage a flow node's slot reads.
+
+    Returns the paths of the storage folders reached on the way, by StorageFile id.
+    """
     code_ids = list(starts)
-    holders: dict[int, set[ResourceRef]] = defaultdict(set)
-    for holder in _walk_plan().code_holders:
+    flows_with_storage: dict[int, set[ResourceRef]] = defaultdict(set)
+    for holder in _code_holder_plan():
         matches = reduce(
-            or_, (Q(**{f"{attname}__in": code_ids}) for attname in holder.code_attnames)
+            or_, (Q(**{f"{slot.code_attname}__in": code_ids}) for slot in holder.slots)
         )
+        columns = [slot.code_attname for slot in holder.slots] + [
+            slot.storage_flag for slot in holder.slots if slot.storage_flag is not None
+        ]
         rows = (
             apps.get_model(holder.model)
             ._base_manager.filter(matches)
-            .values_list(holder.root_attname, *holder.code_attnames)
+            .values(holder.root_attname, *columns)
         )
-        for root_pk, *held_code_ids in rows:
-            if root_pk is None:
+        for row in rows:
+            if row[holder.root_attname] is None:
                 continue
-            for code_id in held_code_ids:
-                if code_id in starts:
-                    holders[code_id].add(ResourceRef(holder.root, root_pk))
-    return holders
+            root = ResourceRef(holder.root, row[holder.root_attname])
+            for slot in holder.slots:
+                code_id = row[slot.code_attname]
+                if code_id not in starts:
+                    continue
+                used[code_id].add(root)
+                if holder.root == _GRAPH and (slot.storage_flag is None or row[slot.storage_flag]):
+                    flows_with_storage[code_id].add(root)
+
+    storage_walk = _Walk(_attached_storage_plan())
+    storage_walk.run({flow for flows in flows_with_storage.values() for flow in flows})
+    for code_id, flows in flows_with_storage.items():
+        for flow in flows:
+            used[code_id] |= storage_walk.reachable_from(flow)
+    return storage_walk.folder_paths()
 
 
 class _Walk:
@@ -521,12 +618,20 @@ class _Walk:
         for start in starts:
             self._reach(None, start)
         while self._pending:
+            expanded = False
             for model_label in self._plan.model_order:
                 pks = self._pending.pop(model_label, None)
                 if pks:
+                    expanded = True
+                    pks = self._close_recursive_links(model_label, pks)
                     self._follow_forward_fields(model_label, pks)
                     self._follow_many_to_many_fields(model_label, pks)
                     self._follow_children(model_label, pks)
+            # Rows of a model missing from the order would wait forever; fail instead.
+            if not expanded:
+                raise RuntimeError(
+                    f"The run-resource walk has no place for {sorted(self._pending)}."
+                )
 
     def reachable_from(self, start: ResourceRef) -> set[ResourceRef]:
         reached = {start}
@@ -583,20 +688,41 @@ class _Walk:
                     ResourceRef(model_label, source_pk), ResourceRef(field.target, target_pk)
                 )
 
+    def _close_recursive_links(self, model_label: str, pks: set[int]) -> set[int]:
+        """Follow the model's recursive child links until they reach no new row of it.
+
+        One query per link and level: subflows of subflows cost a query each, not a pass.
+        Rows reached once are never queued again, so a cycle ends. Returns every row of
+        the model found, `pks` included, for the rest of its turn.
+        """
+        links = self._plan.recursive_links.get(model_label)
+        if not links:
+            return pks
+        batch, level = set(pks), set(pks)
+        while level:
+            for link in links:
+                self._follow_child_link(model_label, link, level)
+            level = self._pending.pop(model_label, set())
+            batch |= level
+        return batch
+
     def _follow_children(self, model_label: str, pks: set[int]) -> None:
         for link in self._plan.child_links.get(model_label, ()):
-            # The child's own fields come in the same query, so its rows need no second read.
-            fields = self._plan.forward_fields.get(link.child, ())
-            rows = (
-                apps.get_model(link.child)
-                ._default_manager.filter(**{f"{link.fk_attname}__in": pks})
-                .values_list("pk", link.fk_attname, *(field.attname for field in fields))
-            )
-            for pk, parent_pk, *values in rows:
-                child = ResourceRef(link.child, pk)
-                self._reach(ResourceRef(model_label, parent_pk), child)
-                if fields:
-                    self._record_forward_fields(child, fields, values)
+            self._follow_child_link(model_label, link, pks)
+
+    def _follow_child_link(self, model_label: str, link: _ChildLink, pks: set[int]) -> None:
+        # The child's own fields come in the same query, so its rows need no second read.
+        fields = self._plan.forward_fields.get(link.child, ())
+        rows = (
+            apps.get_model(link.child)
+            ._default_manager.filter(**{f"{link.fk_attname}__in": pks})
+            .values_list("pk", link.fk_attname, *(field.attname for field in fields))
+        )
+        for pk, parent_pk, *values in rows:
+            child = ResourceRef(link.child, pk)
+            self._reach(ResourceRef(model_label, parent_pk), child)
+            if fields:
+                self._record_forward_fields(child, fields, values)
 
     def _record_forward_fields(
         self, source: ResourceRef, fields: tuple[_ForwardField, ...], values: list

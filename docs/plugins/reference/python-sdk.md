@@ -12,6 +12,8 @@ Python 3.12 and 3.13.
 | `epicstaff_plugin.hooks` | Registering [lifecycle hook](hook-api.md) handlers, verifying hook calls |
 | `epicstaff_plugin.client` | Calling EpicStaff's API as the plugin's service account, alone or on behalf of a person |
 | `epicstaff_plugin.runtime` | Reading the [runtime file](runtime.md#runtime-file): settings, addresses, keys |
+| `epicstaff_plugin.database` | The plugin's own [database](database.md): its address, its connection limit, a transaction per organization |
+| `epicstaff_plugin.egress` | The egress proxy, for clients that do not read it from the environment ([outbound hosts](../how-to/outbound-hosts.md)) |
 | `epicstaff_plugin.health` | The `GET /_epicstaff/health` endpoint |
 | `epicstaff_plugin.testing` | Forged contexts, hook calls and runtime files for your tests |
 | `epicstaff_plugin.contracts` | The documents EpicStaff and plugins exchange, as Pydantic models |
@@ -129,6 +131,57 @@ last good one.
 | `jwks`, `public_paths`, `service_accounts` | As in the runtime file |
 | `document` | The whole `RuntimeFile`. It holds secrets: never log it |
 
+## `epicstaff_plugin.database`
+
+For a backend whose manifest has a `database` section ([Plugin database](database.md)). The SDK
+depends on no database driver: bring one, such as `psycopg[binary,pool]`, in your lock.
+
+| Name | What it does |
+|---|---|
+| `database_url() -> str` | `DATABASE_URL`: the database's URL, logging in as the app role. Raises `DatabaseUnavailable` when it is not set. It holds the role's password: never log it |
+| `connection_limit() -> int` | `EPICSTAFF_PLUGIN_DB_CONNECTIONS`: how many connections the app role may hold. Raises `DatabaseUnavailable` when it is not set or not a positive integer. Size your pool to it |
+| `org_transaction(connection, org_id)` | An async context manager. It opens `connection.transaction()`, runs `SELECT pg_catalog.set_config('app.org_id', %s, true)` with `(str(org_id),)`, and yields the connection. The setting lasts for the transaction only. The transaction commits when the block ends and rolls back when it raises. Raises `ValueError`, before touching the connection, when `org_id` is not a positive integer. One organization at a time in a task: nested inside an open one for the same organization it is a savepoint; for another organization it raises `NestedOrgTransactionError` before any SQL, on any connection. A task started inside the block inherits its organization |
+| `ORG_ID_SETTING` | `"app.org_id"`, the setting your row-level security policies read with `current_setting('app.org_id', true)` |
+| `DatabaseUnavailable` | The process has no database: its manifest declares none, or it runs off the plugin node |
+| `NestedOrgTransactionError` | An `org_transaction` for another organization was opened while one is open in the task |
+| `AsyncTransactionalConnection` | What `org_transaction` needs of a connection: `transaction()` and `async execute(query, params)`. psycopg 3's `AsyncConnection` has both |
+
+With psycopg's pool, opened in your app's lifespan:
+
+```python
+from epicstaff_plugin.database import connection_limit, database_url, org_transaction
+from psycopg_pool import AsyncConnectionPool
+
+pool = AsyncConnectionPool(database_url(), min_size=1, max_size=connection_limit(), open=False)
+await pool.open(wait=True)
+
+async with pool.connection() as connection, org_transaction(connection, context.org.id):
+    cursor = await connection.execute("SELECT id, name FROM places.saved ORDER BY name")
+```
+
+`plugin-samples/weather/backend/src/weather_plugin/database.py` is a complete one.
+[Write database migrations](../how-to/database-migrations.md) shows the policies that go with it.
+
+## `epicstaff_plugin.egress`
+
+Every backend's environment names the egress proxy, and clients that read the environment use it
+with no code (httpx, requests, `urllib.request`; aiohttp with `trust_env=True`). For the others:
+
+| Name | What it does |
+|---|---|
+| `proxy_url() -> str` | `HTTPS_PROXY`: the egress proxy's URL, with the plugin's own credentials. Raises `EgressProxyUnavailable` when it is not set. Never log it |
+| `HTTPS_PROXY_ENVIRONMENT_VARIABLE` | `"HTTPS_PROXY"` |
+| `EgressProxyUnavailable` | `HTTPS_PROXY` is not set: the process runs off the plugin node |
+
+```python
+import aiohttp
+from epicstaff_plugin.egress import proxy_url
+
+async with aiohttp.ClientSession() as session:
+    async with session.get("https://api.example.com/v1/items", proxy=proxy_url()) as response:
+        ...
+```
+
 ## `epicstaff_plugin.health`
 
 `HealthCheckMiddleware(app)` answers `GET /_epicstaff/health` with `200 {"status":"ok"}` and
@@ -234,6 +287,7 @@ The documents of the platform, defined once and used by EpicStaff and the SDK al
 | `contracts.manifest.PluginManifest` | `manifest.json` ([reference](manifest.md)) |
 | `contracts.gateway_context.GatewayContext`, `Jwks`, `Jwk` | The gateway context and its keys ([reference](gateway-context.md)) |
 | `contracts.runtime.RuntimeFile`, `ServiceAccountEntry` | The runtime file ([reference](runtime.md#runtime-file)) |
+| `contracts.runtime.DATABASE_URL_ENVIRONMENT_VARIABLE`, `DATABASE_CONNECTIONS_ENVIRONMENT_VARIABLE`, `PROXY_ENVIRONMENT_VARIABLES`, `NO_PROXY_ENVIRONMENT_VARIABLES`, `LOOPBACK_NO_PROXY_HOSTS` | The names of the environment variables the node sets for the database and the egress proxy ([reference](runtime.md#environment)) |
 | `contracts.hook_api.HookRequest`, `HookAssertionClaims`, `HookResponse`, `HOOK_PATHS` | Hook calls ([reference](hook-api.md)) |
 | `contracts.service_account_api.ServiceAccountInfo`, `PluginPerson`, `PeopleLookupRequest`, `PeopleLookupResponse` | What EpicStaff's `/api/plugin-runtime/` endpoints answer ([reference](service-account-api.md)) |
 

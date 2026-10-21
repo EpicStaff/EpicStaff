@@ -23,6 +23,7 @@ jobs:
       cla: ${{ steps.filter.outputs.cla }}
       sandbox: ${{ steps.filter.outputs.be_sandbox }}
       chat: ${{ steps.filter.outputs.be_chat }}
+      plugins_db: ${{ steps.filter.outputs.plugins_db }}
       plugins_js: ${{ steps.filter.outputs.plugins_js }}
       nginx: ${{ steps.filter.outputs.nginx }}
       py_services: ${{ steps.filter.outputs.py_services }}
@@ -90,18 +91,23 @@ jobs:
           #   this file    -- same self-testing rule as the filters above
           backend_wide='src/shared/|Makefile$|\.github/workflows/pr\.yml$'
 
-          # crew, agent, plugin_sdk and es_plugins need no database and nothing
-          # from the filesystem beyond an interpreter, so one matrix job covers
-          # them all and this picks its legs. A new service of that kind is not
-          # picked up by itself: add it to this list. `filter` leaves $result
-          # set, so the array is built from the same regex that writes each
-          # output rather than from a second copy of it.
+          # crew, agent, plugin_sdk, es_plugins and plugins_egress need no
+          # database and nothing from the filesystem beyond an interpreter, so
+          # one matrix job covers them all and this picks its legs. A new
+          # service of that kind is not picked up by itself: add it to this
+          # list. `filter` leaves $result set, so the array is built from the
+          # same regex that writes each output rather than from a second copy
+          # of it.
           nodb=''
-          for svc in crew agent plugin_sdk es_plugins; do
+          for svc in crew agent plugin_sdk es_plugins plugins_egress; do
             # es_plugins installs src/plugin_sdk (package rules, signatures and
-            # the runtime file contract), so a change there runs its suite too.
+            # the runtime file contract), so a change there runs its suite too,
+            # and its policy contract test runs the egress proxy's host helper
+            # on the policy it writes.
             also=''
-            if [ "$svc" = es_plugins ]; then also='src/plugin_sdk/|'; fi
+            if [ "$svc" = es_plugins ]; then
+              also='src/plugin_sdk/|src/plugins_egress/plugin_host_acl\.py$|src/plugins_egress/private_ranges\.txt$|'
+            fi
             filter "be_$svc" "^(${also}src/$svc/|$backend_wide)"
             if [ "$result" = true ]; then
               nodb="$nodb${nodb:+,}\"$svc\""
@@ -119,6 +125,11 @@ jobs:
           # $backend_wide too, plus Django's copy of the session callback
           # contract, which a chat test compares against its own.
           filter be_chat "^(src/chat/|src/django_app/tests/contracts/|$backend_wide)"
+
+          # The plugin databases: the plugin node's provisioning and the SDK's
+          # database helpers with the Weather sample, against plugins_db as
+          # src/docker-compose.yaml defines it (image, init script, pg_hba.conf).
+          filter plugins_db "^(src/es_plugins/|src/plugins_db/|src/plugin_sdk/|plugin-samples/weather/database/|plugin-samples/weather/backend/|src/docker-compose\.yaml$|$backend_wide)"
 
   # Deliberately NOT gated on vars.CLA_ENFORCED, unlike check-cla below. That
   # toggle controls signature enforcement; this is repo hygiene. An edit to
@@ -339,8 +350,8 @@ jobs:
         if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
-  # crew, agent, plugin_sdk and es_plugins: no database, no service containers,
-  # well under a minute each. One matrix job whose legs are decided at runtime,
+  # crew, agent, plugin_sdk, es_plugins and plugins_egress: no database, no
+  # service containers, well under a minute each. One matrix job whose legs are decided at runtime,
   # so a pull request touching only src/agent/ runs one leg and a pull request
   # touching none of them skips the job outright. sandbox was a leg until it
   # needed a container of its own; it has a separate job below. es_plugins'
@@ -544,6 +555,56 @@ jobs:
       - name: Unit tests
         run: make chat-tests
 
+  # The tests marked `postgres` of es_plugins and plugin_sdk, which skip in
+  # backend-tests, against a throwaway plugins_db that src/plugins_db/lab/run.sh
+  # starts as src/docker-compose.yaml defines it, with the real init script and
+  # pg_hba.conf, then that lab's checks of the server's own roles and grants.
+  # Needs Docker and python3 with PyYAML (the lab writes its env file with
+  # scripts/envtool.py), both on the runner.
+  es-plugins-database-tests:
+    needs: changes
+    if: needs.changes.outputs.plugins_db == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own
+      # interpreter instead of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Cache uv downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-plugins-db-${{ hashFiles('src/es_plugins/uv.lock', 'src/plugin_sdk/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-plugins-db-
+
+      # Same reason as the matrix job: settings read src/.env at import time.
+      # PyYAML also serves the lab's own envtool run.
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
+      # --frozen, so a uv.lock that has drifted from pyproject.toml fails here
+      # rather than silently resolving to something the Docker build never saw.
+      - name: Install es_plugins and plugin_sdk dependencies
+        run: |
+          make uv-sync svc=es_plugins
+          make uv-sync svc=plugin_sdk
+
+      - name: Plugin database lab
+        run: bash src/plugins_db/lab/run.sh
+
   # The plugin author tooling end to end: the JS SDK's tests, the sample
   # plugin's SPA build, the Python CLI validating the sample by the rules
   # Django applies on upload, and packing it with its backend's wheels as an
@@ -693,6 +754,7 @@ jobs:
       - backend-tests
       - sandbox-tests
       - chat-tests
+      - es-plugins-database-tests
       - plugin-sdk-checks
       - nginx-templates
       - build

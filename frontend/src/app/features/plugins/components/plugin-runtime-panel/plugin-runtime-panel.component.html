@@ -113,6 +113,90 @@
                 </p>
             }
         </section>
+
+        @if (database(); as pluginDatabase) {
+            <section class="runtime__section">
+                <div class="runtime__heading runtime__heading--start">
+                    <h3 class="runtime__title text-h4">Database</h3>
+                    <app-plugin-badge
+                        [label]="pluginDatabase.stateLabel"
+                        [tone]="pluginDatabase.stateTone"
+                    />
+                </div>
+                <dl class="runtime__facts text-body">
+                    <dt>Server</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.server }}</code>
+                    </dd>
+                    <dt>Database</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.database_name }}</code>
+                    </dd>
+                    <dt>Owner role</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.roles.owner }}</code>
+                    </dd>
+                    <dt>App role</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.roles.app }}</code>
+                    </dd>
+                    <dt>Job role</dt>
+                    <dd>
+                        <code>{{ pluginDatabase.roles.job }}</code>
+                    </dd>
+                    <dt>Migrations</dt>
+                    <dd>
+                        {{ pluginDatabase.migrationsCount }}
+                        @if (pluginDatabase.migrations.applied.length > 0) {
+                            <details class="runtime__disclosure">
+                                <summary class="text-body-small">Applied migrations</summary>
+                                <ol class="runtime__migrations text-body-small">
+                                    @for (name of pluginDatabase.migrations.applied; track name) {
+                                        <li>
+                                            <code>{{ name }}</code>
+                                        </li>
+                                    }
+                                </ol>
+                            </details>
+                        }
+                    </dd>
+                    <dt>Connection limit</dt>
+                    <dd>{{ pluginDatabase.connection_limit }}</dd>
+                    <dt>Statement timeout</dt>
+                    <dd>{{ pluginDatabase.statement_timeout_seconds }} s</dd>
+                    <dt>Size</dt>
+                    <dd>{{ pluginDatabase.size ?? '—' }}</dd>
+                </dl>
+                @if (pluginDatabase.limits_restored_at; as restoredAt) {
+                    <p class="runtime__note text-body">
+                        Timeout restored at {{ restoredAt | date: 'medium' }}: the plugin changed its own default, and
+                        EpicStaff set it back.
+                    </p>
+                }
+                @if (pluginDatabase.last_error; as lastError) {
+                    <h4 class="runtime__subtitle text-body-medium">Last error</h4>
+                    <pre class="runtime__code runtime__error">{{ lastError }}</pre>
+                }
+            </section>
+        }
+
+        @if (egress(); as access) {
+            <section class="runtime__section">
+                <h3 class="runtime__title text-h4">Outbound access</h3>
+                @if (access.hosts.length > 0) {
+                    <ul class="runtime__hosts text-body">
+                        @for (outboundHost of access.hosts; track outboundHost.host) {
+                            <li>
+                                <code>{{ outboundHost.host }}</code>
+                                <span class="runtime__muted">{{ outboundHost.reason }}</span>
+                            </li>
+                        }
+                    </ul>
+                } @else {
+                    <p class="runtime__muted text-body">None: the backend cannot reach the internet.</p>
+                }
+            </section>
+        }
     </div>
 } @else if (loadError(); as failure) {
     <div

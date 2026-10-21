@@ -15,7 +15,6 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
     invalid_plugin: 'This is not a valid plugin package. Fix the problems listed and upload it again.',
     invalid_signature:
         'The package signature does not match its contents. The package may have been changed after it was signed.',
-    plugin_feature_unavailable: 'This package needs a plugin database, which this version of EpicStaff cannot run yet.',
     package_too_large: 'The package is larger than this deployment accepts.',
     plugin_upgrade_unavailable: 'This plugin is already installed. Installing a new version is not available yet.',
     plugin_package_not_found: 'This package no longer exists. It may have been rejected or replaced.',
@@ -34,6 +33,8 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
     no_plugin_node:
         'No plugin node is registered, so a plugin with a backend cannot run. Set PLUGINS_NODE_KEY, restart ' +
         'EpicStaff and approve the package again.',
+    no_plugin_database_server:
+        'EpicStaff has no plugin database server registered. Check that plugins are enabled, then restart django_app.',
     grant_not_found: 'This grant no longer exists.',
     hook_not_retryable: 'The install has not failed, so there is nothing to retry.',
     grant_not_suspendable: "This organization's grant cannot be suspended in its current state. Reload the list.",

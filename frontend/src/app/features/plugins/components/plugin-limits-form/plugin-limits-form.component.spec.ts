@@ -6,7 +6,7 @@ import { ToastService } from '../../../../services/notifications';
 import { PluginLimitsResponse, PluginLimitsUpdate } from '../../models/plugin-backend.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import { buildPluginLimits } from '../../testing/plugin-fixtures';
-import { PluginLimitsFormComponent } from './plugin-limits-form.component';
+import { NO_DATABASE_BADGE, NOT_ENFORCED_BADGE, PluginLimitsFormComponent } from './plugin-limits-form.component';
 
 class ResizeObserverStub {
     observe(): void {}
@@ -125,15 +125,64 @@ describe('PluginLimitsFormComponent', () => {
         expect(storage.updateLimits).toHaveBeenCalledWith('weather', { overrides: { memory_mb: null } });
     });
 
-    it('shows the limits not enforced yet disabled and labelled', async () => {
+    function badge(key: string): string | null {
+        return row(key).querySelector('app-plugin-badge')?.textContent?.trim() ?? null;
+    }
+
+    /** Weather 0.5.0: it has a database, so the server applies every limit. */
+    function withDatabase(): PluginLimitsResponse {
+        const limits = buildPluginLimits();
+        return {
+            ...limits,
+            enforced: { ...limits.enforced, db_connections: true, statement_timeout_seconds: true },
+            has_database: true,
+        };
+    }
+
+    it('disables the database limits of a plugin without a database, saying it has none', async () => {
         await render();
 
-        for (const key of ['db_connections', 'statement_timeout_seconds', 'requests_per_minute']) {
-            expect(row(key).textContent).toContain('Not enforced yet');
+        for (const key of ['db_connections', 'statement_timeout_seconds']) {
+            expect(badge(key)).toBe(NO_DATABASE_BADGE);
+            expect(NO_DATABASE_BADGE).toBe('No database');
             expect(overrideInput(key).disabled).toBe(true);
         }
-        expect(row('memory_mb').textContent).not.toContain('Not enforced yet');
+        for (const key of ['memory_mb', 'requests_per_minute', 'cpu_priority']) {
+            expect(badge(key)).toBeNull();
+        }
         expect(overrideInput('memory_mb').disabled).toBe(false);
+        expect(overrideInput('requests_per_minute').disabled).toBe(false);
+    });
+
+    it('lets the database limits be lowered for a plugin with a database', async () => {
+        await render(withDatabase());
+
+        for (const key of ['db_connections', 'statement_timeout_seconds']) {
+            expect(badge(key)).toBeNull();
+            expect(overrideInput(key).disabled).toBe(false);
+        }
+        await typeOverride('db_connections', '2');
+        saveButton().click();
+
+        expect(storage.updateLimits).toHaveBeenCalledWith('weather', { overrides: { db_connections: 2 } });
+    });
+
+    it('explains under the statement timeout that the plugin can change it and EpicStaff restores it', async () => {
+        await render(withDatabase());
+
+        expect(row('statement_timeout_seconds').querySelector('.limits__hint')?.textContent?.trim()).toBe(
+            'A default the plugin can change for its own sessions; EpicStaff restores it within a minute.'
+        );
+        expect(element.querySelectorAll('.limits__hint')).toHaveLength(1);
+    });
+
+    it('disables any other limit the server does not apply, labelled as not enforced', async () => {
+        const limits = withDatabase();
+        await render({ ...limits, enforced: { ...limits.enforced, requests_per_minute: false } });
+
+        expect(badge('requests_per_minute')).toBe(NOT_ENFORCED_BADGE);
+        expect(overrideInput('requests_per_minute').disabled).toBe(true);
+        expect(badge('db_connections')).toBeNull();
     });
 
     it('offers only "low" as a CPU override, and not when the plugin asks for low itself', async () => {

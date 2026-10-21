@@ -13,6 +13,7 @@ from rbac.authorship import (
 )
 from rbac.authorship.user_summary import USER_SUMMARY_FIELDS
 from rbac.models import AuthorModel, LastEditTrackedModel, ResourceLastEdit
+from utils.logger import logger
 
 from tables.graph_versioning.constants import (
     _DEPENDENCY_ENTITY_TYPES,
@@ -45,6 +46,7 @@ from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
+from tables.services.secrets.reference_guard import pinned_principal_of_user
 
 
 class GraphVersioningManager:
@@ -89,22 +91,28 @@ class GraphVersioningManager:
         }
 
     def restore_secret_declarations(
-        self, *, graph: Graph, declarations: dict | None, node_mapper: IDMapper
+        self, *, graph: Graph, declarations: dict | None, node_mapper: IDMapper, user
     ) -> list[dict]:
         """Re-link the declarations a snapshot recorded, warning about the rest.
 
-        No secrets:USE check here — intentional, not a gap. Restoring a version (or
-        creating a flow from one) only reproduces a secret binding that already
-        existed in this org at some point; it never grants access to anything new.
-        This is the third of three paths our secrets-permission guard deliberately
-        leaves reachable without secrets:USE, per spec sec5 — see
+        No secrets:USE check here for a person — intentional, not a gap. Restoring a
+        version (or creating a flow from one) only reproduces a secret binding that
+        already existed in this org at some point; it never grants a person access to
+        anything new. This is the third of three paths our secrets-permission guard
+        deliberately leaves reachable without secrets:USE, per spec sec5 — see
         TestUngatedPathsStayUngated in
         tests/services_tests/test_secret_reference_coverage.py for the other two
         (copy_python_code, bulk-save node deletion) and the same rationale. Do not
         add a secrets:USE check here without revisiting that design decision first.
+
+        A plugin's service account is different: `create_graph_from_version` would make
+        it the owner of a new node bound by name to a secret it never created, which it
+        may then read by running the flow. So a secret a pinned principal (`user`) may
+        not reference is dropped and warned about, never re-linked.
         """
         if not declarations:
             return []
+        principal = pinned_principal_of_user(user)
 
         # Snapshots saved while conditional edges existed also carry a
         # "conditional_edges" key. Those edges are dropped by filter_snapshot, so
@@ -115,6 +123,7 @@ class GraphVersioningManager:
                 graph=graph,
                 recorded=declarations.get("nodes") or {},
                 node_mapper=node_mapper,
+                principal=principal,
             )
         )
         warnings.extend(
@@ -122,6 +131,7 @@ class GraphVersioningManager:
                 graph=graph,
                 recorded=declarations.get("telegram") or {},
                 node_mapper=node_mapper,
+                principal=principal,
             )
         )
         return warnings
@@ -144,7 +154,7 @@ class GraphVersioningManager:
         return resolved, missing
 
     def _restore_node_declarations(
-        self, *, graph: Graph, recorded: dict, node_mapper: IDMapper
+        self, *, graph: Graph, recorded: dict, node_mapper: IDMapper, principal=None
     ) -> list[dict]:
         warnings: list[dict] = []
         for old_node_id, by_code_field in recorded.items():
@@ -181,6 +191,7 @@ class GraphVersioningManager:
                         names=names,
                         org_id=graph.org_id,
                         node_name=getattr(row, "node_name", None) or f"node #{new_node_id}",
+                        principal=principal,
                     )
                 )
         return warnings
@@ -201,7 +212,7 @@ class GraphVersioningManager:
         return None
 
     def _restore_telegram_declarations(
-        self, *, graph: Graph, recorded: dict, node_mapper: IDMapper
+        self, *, graph: Graph, recorded: dict, node_mapper: IDMapper, principal=None
     ) -> list[dict]:
         warnings: list[dict] = []
         for old_node_id, name in recorded.items():
@@ -234,23 +245,77 @@ class GraphVersioningManager:
                     )
                 )
                 continue
-            node.telegram_bot_api_key_secret = resolved[0]
+            allowed, denied = self._referenceable(principal, resolved, graph=graph)
+            if denied:
+                warnings.extend(self._not_referenceable(secrets=denied, node_name=node.node_name))
+                continue
+            node.telegram_bot_api_key_secret = allowed[0]
             node.save(update_fields=["telegram_bot_api_key_secret"])
-            warnings.extend(self._binned(secrets=resolved, node_name=node.node_name))
+            warnings.extend(self._binned(secrets=allowed, node_name=node.node_name))
         return warnings
 
     def _link(
-        self, *, python_code: PythonCode, names: list[str], org_id: int, node_name: str
+        self,
+        *,
+        python_code: PythonCode,
+        names: list[str],
+        org_id: int,
+        node_name: str,
+        principal=None,
     ) -> list[dict]:
-        """Attach every name that still resolves; warn about every one that does not."""
+        """Attach every name that still resolves and the caller may reference; warn about the rest."""
         resolved, missing = self._resolve_names(names=names, org_id=org_id)
+        allowed, denied = self._referenceable(principal, resolved, org_id=org_id)
         # Through all_objects: a binned link the version doesn't have must go too.
-        python_code.secrets(manager="all_objects").set(resolved)
-        return self._binned(secrets=resolved, node_name=node_name) + self._dropped(
-            names=missing,
-            node_name=node_name,
-            reason_suffix="it no longer exists in this organization.",
+        python_code.secrets(manager="all_objects").set(allowed)
+        return (
+            self._binned(secrets=allowed, node_name=node_name)
+            + self._not_referenceable(secrets=denied, node_name=node_name)
+            + self._dropped(
+                names=missing,
+                node_name=node_name,
+                reason_suffix="it no longer exists in this organization.",
+            )
         )
+
+    @staticmethod
+    def _referenceable(principal, secrets, *, graph=None, org_id=None):
+        """Split `secrets` into those a pinned principal may reference and those it may not.
+
+        A person (`principal` None) may reference them all. For a pinned principal, only
+        secrets its grant created; each dropped secret is logged, so a plugin trying to
+        read a foreign secret through a version leaves a trail.
+        """
+        if principal is None:
+            return list(secrets), []
+        allowed, denied = [], []
+        for secret in secrets:
+            if principal.may_reference_secrets(frozenset({secret.pk})):
+                allowed.append(secret)
+            else:
+                denied.append(secret)
+                logger.warning(
+                    "GraphVersioningManager: the bot token or secret of a restored node in "
+                    "{} was not re-linked, as the restoring credential may not use it",
+                    f"graph {graph.id}" if graph is not None else f"org {org_id}",
+                )
+        return allowed, denied
+
+    @staticmethod
+    def _not_referenceable(*, secrets: list[Secret], node_name: str) -> list[dict]:
+        """One warning per secret a restoring plugin may not reference, so it is not re-linked."""
+        return [
+            {
+                "type": "secret_declaration_dropped",
+                "node_name": node_name,
+                "reason": (
+                    f'Secret "{secret.name}" was declared when this version was saved, but '
+                    "the credential restoring it may not use that secret. The declaration "
+                    "was not restored."
+                ),
+            }
+            for secret in secrets
+        ]
 
     @staticmethod
     def _binned(*, secrets: list[Secret], node_name: str) -> list[dict]:

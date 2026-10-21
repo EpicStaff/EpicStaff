@@ -7,12 +7,14 @@ from datetime import timezone as dt_timezone
 import pytest
 from django.core.cache import cache
 from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from plugins.access.people_service import PluginPeopleService
 from plugins.exceptions import GrantNotSuspendableError, OnBehalfOfNotAllowedError
 from plugins.identity.plugin_login_tokens import issue_plugin_login_token
 from plugins.lifecycle.grant_service import PluginGrantService
+from plugins.lifecycle.suspended_run_stopper import SuspendedRunStopper
 from plugins.lifecycle.suspension_service import SUSPENDED_BEFORE_HOOK_FINISHED, PluginSuspensionService
 from plugins.models import (
     GrantState,
@@ -30,7 +32,7 @@ from tables.models import Session
 from tables.services.session_manager_service import SessionManagerService
 
 from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
-from tests.plugins_tests.suspension_helpers import flow, own
+from tests.plugins_tests.suspension_helpers import flow, own, set_state
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -161,8 +163,11 @@ def test_suspending_while_the_hook_runs_fails_the_running_job(installing_grant, 
     assert (job.state, job.error) == (HookJobState.FAILED, SUSPENDED_BEFORE_HOOK_FINISHED)
 
 
-def test_suspending_is_recorded_and_logged(grant, superadmin_client, superadmin_user, acme, log_messages, frozen_clock):
-    _suspend(superadmin_client, grant)
+def test_suspending_is_recorded_and_logged(
+    grant, superadmin_client, superadmin_user, acme, log_messages, frozen_clock, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        _suspend(superadmin_client, grant)
 
     event = PluginActivityEvent.objects.get(action="grant_suspended")
     assert (event.plugin_identifier, event.organization_id, event.actor_kind) == ("weather", acme.pk, "superadmin")
@@ -219,6 +224,61 @@ def test_a_session_that_cannot_be_stopped_is_logged_and_the_others_still_stop(
 
     assert stopped == [healthy.pk]
     assert f"plugins.grant.sessions_stopped plugin=weather grant={grant.pk} org={acme.pk} count=1 failed=1" in log_messages
+
+
+def test_a_stopper_that_fails_leaves_the_suspension_committed_and_logged(
+    grant, superadmin, superadmin_client, monkeypatch, django_capture_on_commit_callbacks, log_messages
+):
+    def broken_stop_for(self, **kwargs):
+        raise RuntimeError("the session index is unavailable")
+
+    monkeypatch.setattr(SuspendedRunStopper, "stop_for", broken_stop_for)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = _suspend(superadmin_client, grant)
+
+    assert response.status_code == 200
+    grant.refresh_from_db()
+    assert grant.state == GrantState.SUSPENDED
+    assert any(message.startswith("plugins.grant.suspended") for message in log_messages)
+
+
+def test_the_suspension_is_logged_before_the_sessions_are_stopped(
+    grant, superadmin, monkeypatch, django_capture_on_commit_callbacks, log_messages
+):
+    seen_when_stopping = []
+
+    def stop_for(self, **kwargs):
+        seen_when_stopping.extend(message.split(" ")[0] for message in log_messages)
+
+    monkeypatch.setattr(SuspendedRunStopper, "stop_for", stop_for)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        PluginSuspensionService().suspend("weather", grant.pk, superadmin)
+
+    assert "plugins.grant.suspended" in seen_when_stopping
+
+
+def _queries_of_stopping(weather, superadmin, organization, session_count):
+    grant = set_state(PluginGrantService().grant("weather", organization.pk, superadmin), GrantState.SUSPENDED)
+    for number in range(session_count):
+        forecast = flow(organization, f"Weather forecast {session_count}-{number}")
+        own(forecast, grant)
+        Session.objects.create(graph=forecast, status=Session.SessionStatus.RUN)
+    stopper = SuspendedRunStopper()
+    with CaptureQueriesContext(connection) as captured:
+        stopper.stop_for(organization_id=organization.pk, grant_id=grant.pk, plugin_identifier="weather")
+    return len(captured.captured_queries)
+
+
+def test_stopping_costs_the_same_queries_for_three_sessions_and_for_thirty(
+    weather, superadmin, acme, beta, stopped_sessions
+):
+    few = _queries_of_stopping(weather, superadmin, acme, 3)
+    many = _queries_of_stopping(weather, superadmin, beta, 30)
+
+    assert len(stopped_sessions) == 33
+    assert few == many
 
 
 def test_nothing_is_stopped_before_the_suspension_commits(grant, superadmin, acme, stopped_sessions):

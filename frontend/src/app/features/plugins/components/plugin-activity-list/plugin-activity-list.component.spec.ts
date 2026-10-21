@@ -23,7 +23,23 @@ const EVERY_ACTION: PluginActivityAction[] = [
     'restarted',
     'grant_suspended',
     'grant_resumed',
+    'database_ready',
+    'database_failed',
+    'database_limit_restored',
 ];
+
+/** A deployment-wide event of the platform, without a request or a target. */
+function platformEvent(overrides: Partial<PluginActivityEvent>): PluginActivityEvent {
+    return buildPluginActivityEvent({
+        organization: null,
+        actor: { kind: 'platform', label: 'EpicStaff' },
+        on_behalf_of: null,
+        request: null,
+        target: null,
+        detail: {},
+        ...overrides,
+    });
+}
 
 describe('PluginActivityListComponent', () => {
     let fixture: ComponentFixture<PluginActivityListComponent>;
@@ -155,6 +171,48 @@ describe('PluginActivityListComponent', () => {
         expect(row(0)['Action']).toBe('Suspended in this organization');
         expect(row(0)['Actor']).toBe('sam@example.com (SuperAdmin)');
         expect(row(1)['Action']).toBe('Resumed in this organization');
+    });
+
+    it('names the database events, by the platform, and shows why a database setup failed', () => {
+        render([
+            platformEvent({ id: 1, action: 'database_ready', detail: { migrations_applied: 1 } }),
+            platformEvent({
+                id: 2,
+                action: 'database_failed',
+                detail: { error: 'Migration 001_weather.sql failed: syntax error' },
+            }),
+            platformEvent({ id: 3, action: 'database_limit_restored', detail: { setting: 'statement_timeout' } }),
+        ]);
+
+        expect([row(0)['Action'], row(1)['Action'], row(2)['Action']]).toEqual([
+            'Database ready',
+            'Database setup failed',
+            'Database timeout restored',
+        ]);
+        expect(row(0)['Actor']).toBe('Platform');
+        expect(details(0)).toEqual([]);
+        expect(details(1)).toEqual(['Migration 001_weather.sql failed: syntax error']);
+        expect(details(2)).toEqual([]);
+    });
+
+    it('shows the overrides a limits change left in force, as the limits form names them', () => {
+        const bySam = { kind: 'superadmin' as const, label: 'sam@example.com' };
+        render([
+            platformEvent({
+                id: 1,
+                actor: bySam,
+                action: 'limits_changed',
+                detail: { memory_mb: 128, db_connections: 2, statement_timeout_seconds: 5, cpu_priority: 'low' },
+            }),
+            platformEvent({ id: 2, actor: bySam, action: 'limits_changed', detail: {} }),
+            platformEvent({ id: 3, actor: bySam, action: 'limits_changed', detail: { disk_mb: 64 } }),
+        ]);
+
+        expect(details(0)).toEqual([
+            'Overrides: Memory 128 MB, Database connections 2, Statement timeout 5 s, CPU priority Low',
+        ]);
+        expect(details(1)).toEqual(['Overrides: none']);
+        expect(details(2)).toEqual(['Overrides: disk_mb 64']);
     });
 
     it('shows the organization and plugin columns only when asked', () => {

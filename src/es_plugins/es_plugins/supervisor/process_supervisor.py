@@ -19,7 +19,7 @@ import os
 import signal
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from loguru import logger
 
@@ -43,7 +43,9 @@ class ProcessSpec:
     uid: int
     version: str
     argv: list[str]
-    environment: dict[str, str]
+    environment: dict[str, str] = field(repr=False)
+    """Holds the plugin's database and proxy credentials: never shown."""
+
     nice: int
     port: int
     memory_mb: int

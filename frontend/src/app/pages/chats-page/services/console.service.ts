@@ -29,7 +29,7 @@ function realtimeStartErrorMessage(error: unknown): string | undefined {
     const body: unknown = error.error;
     if (typeof body !== 'object' || body === null) return undefined;
     const { error: errorText, message } = body as { error?: unknown; message?: unknown };
-    if (typeof errorText === 'string') return errorText;
+    if (typeof errorText === 'string' && errorText) return errorText;
     return typeof message === 'string' && message ? message : undefined;
 }
 

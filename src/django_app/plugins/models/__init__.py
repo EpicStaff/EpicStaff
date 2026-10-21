@@ -1,8 +1,10 @@
 from plugins.models.activity import ActivityAction, ActorKind, PluginActivityEvent
+from plugins.models.database import PluginDatabase, PluginDatabaseServer
 from plugins.models.enums import (
     GrantState,
     PlacementHealth,
     PlacementObservedState,
+    PluginDatabaseState,
     PluginState,
     ReviewState,
     SignatureStatus,
@@ -33,6 +35,9 @@ __all__ = [
     "PlacementObservedState",
     "Plugin",
     "PluginActivityEvent",
+    "PluginDatabase",
+    "PluginDatabaseServer",
+    "PluginDatabaseState",
     "PluginGrant",
     "PluginHookJob",
     "PluginNode",

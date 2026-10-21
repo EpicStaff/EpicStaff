@@ -1,7 +1,6 @@
 import hashlib
 import tempfile
 import zipfile
-from functools import partial
 from typing import BinaryIO
 
 from django.conf import settings
@@ -17,12 +16,12 @@ from plugins.access.declared_access import declared_access_problems
 from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import PackageFacts, log_package_action
 from plugins.configuration.limits import PlatformMaximums, manifest_limit_problems
+from plugins.databases.database_records import PluginDatabaseRecords
 from plugins.exceptions import (
     InvalidPluginError,
     PackageFileMismatchError,
     PackageNotPendingError,
     PackageTooLargeError,
-    PluginFeatureUnavailableError,
     PluginPackageNotFoundError,
     PluginUpgradeUnavailableError,
     UntrustedNotAcknowledgedError,
@@ -52,10 +51,11 @@ def max_package_bytes() -> int:
 class PluginInstallationService:
     """Upload of plugin packages and the review decisions on them.
 
-    In this version a plugin has at most one approved package (no upgrades) and a package
-    with a database is refused. Approving publishes the SPA; a plugin without a backend
-    runs at once, one with a backend is placed on the plugin node and is `provisioning`
-    until the node reports its process running.
+    In this version a plugin has at most one approved package (no upgrades). Approving
+    publishes the SPA; a plugin without a backend runs at once, one with a backend is placed
+    on the plugin node and is `provisioning` until the node reports its process running. A
+    package with a database also gets the record of the plugin's own database, which the
+    node creates before it first starts the backend.
     """
 
     def __init__(
@@ -80,7 +80,6 @@ class PluginInstallationService:
                 this EpicStaff's catalog does not have, asks for more than the platform
                 maximums, or holds nothing to install.
             InvalidSignatureError: The package's signature does not belong to it.
-            PluginFeatureUnavailableError: The package declares a database.
             PluginUpgradeUnavailableError: The plugin already has an approved package.
         """
         if size > max_package_bytes():
@@ -166,7 +165,7 @@ class PluginInstallationService:
             uploaded_by=uploaded_by,
         )
         if replaced_keys:
-            transaction.on_commit(partial(self._delete_unreferenced, replaced_keys), robust=True)
+            self._after_commit_robustly(self._delete_unreferenced, replaced_keys)
         return pending, replaced_facts
 
     def approve(self, package_id: int, approved_by, *, untrusted_acknowledged: bool) -> Plugin:
@@ -180,7 +179,8 @@ class PluginInstallationService:
         The SPA's files are written before the approval commits and served (`current`
         switched) only once it has; a failed approval leaves nothing served. A package with
         a backend gets its placement (port and Unix user id on the plugin node) and leaves
-        the plugin `provisioning`; the platform maximums are checked again, as they are now.
+        the plugin `provisioning`, and one with a database gets its database record, in the
+        same transaction; the platform maximums are checked again, as they are now.
 
         Raises:
             PluginPackageNotFoundError: No package with this id.
@@ -193,6 +193,8 @@ class PluginInstallationService:
                 not acknowledge it.
             NoPluginNodeError: The package has a backend and no plugin node is registered.
             PluginNodeFullError: The plugin node has no free port or user id left.
+            NoPluginDatabaseServerError: The package has a database and no plugin database
+                server is registered.
         """
         with tempfile.TemporaryFile() as local_copy:
             archive = self._reviewed_archive(self._pending_package(package_id), local_copy)
@@ -245,6 +247,8 @@ class PluginInstallationService:
                 plugin = package.plugin
                 if manifest.backend is not None:
                     self._placements.ensure_placement(plugin)
+                if manifest.database is not None:
+                    PluginDatabaseRecords().ensure_for(plugin)
                 plugin.current_package = package
                 plugin.state = (
                     PluginState.RUNNING if manifest.backend is None else PluginState.PROVISIONING
@@ -283,13 +287,21 @@ class PluginInstallationService:
             plugin_removed = plugin.current_package_id is None
             if plugin_removed:
                 plugin.delete()
-                transaction.on_commit(
-                    partial(self._publisher.remove_plugin, plugin.identifier), robust=True
-                )
-            transaction.on_commit(
-                partial(self._delete_unreferenced, [package.storage_key]), robust=True
-            )
+                self._after_commit_robustly(self._publisher.remove_plugin, plugin.identifier)
+            self._after_commit_robustly(self._delete_unreferenced, [package.storage_key])
         log_package_action("reject", rejected_by, facts, plugin_removed=plugin_removed)
+
+    @staticmethod
+    def _after_commit_robustly(cleanup, *args) -> None:
+        """Run `cleanup(*args)` once the transaction commits; a failure is logged and never
+        undoes or fails what committed."""
+
+        # A named function, not a `partial`: Django logs a failed robust callback by its
+        # `__qualname__`, which a `partial` lacks, and would raise from the handler.
+        def run_cleanup() -> None:
+            cleanup(*args)
+
+        transaction.on_commit(run_cleanup, robust=True)
 
     @staticmethod
     def _pending_package(package_id: int, *, lock: bool = False) -> PluginPackage:
@@ -384,15 +396,6 @@ def _assert_installable(manifest: PluginManifest) -> None:
                 Problem(
                     MANIFEST_LOC,
                     "declares neither an spa nor a backend section, so there is nothing to install",
-                )
-            ]
-        )
-    if manifest.database is not None:
-        raise PluginFeatureUnavailableError(
-            [
-                Problem(
-                    f"{MANIFEST_LOC}.database",
-                    "a plugin database is not available in this EpicStaff yet",
                 )
             ]
         )

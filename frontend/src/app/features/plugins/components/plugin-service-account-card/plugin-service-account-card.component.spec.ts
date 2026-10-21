@@ -45,4 +45,42 @@ describe('PluginServiceAccountCardComponent', () => {
         expect(element.querySelector('.account__name')?.textContent?.trim()).toBe('Weather');
         expect(element.querySelector('.account__facts')?.textContent).toContain('Never');
     });
+
+    it('lists the hosts its backend may reach, with their reasons', () => {
+        render(
+            buildOrganizationServiceAccount({
+                outbound_hosts: [
+                    {
+                        host: 'geocoding-api.open-meteo.com',
+                        reason: 'Looks up places by name when someone adds a saved place.',
+                    },
+                ],
+            })
+        );
+
+        const hosts = Array.from(element.querySelectorAll('.account__hosts li')).map((item) =>
+            item.textContent?.replace(/\s+/g, ' ').trim()
+        );
+        expect(hosts).toEqual([
+            'geocoding-api.open-meteo.com — Looks up places by name when someone adds a saved place.',
+        ]);
+        expect(element.textContent).toContain('Outbound hosts');
+    });
+
+    it('says when its backend cannot reach the internet', () => {
+        render(buildOrganizationServiceAccount());
+
+        expect(element.querySelector('.account__hosts')).toBeNull();
+        expect(element.textContent).toContain('None. Its backend cannot reach the internet.');
+    });
+
+    it('says it keeps its data in its own database only when it has one', () => {
+        render(buildOrganizationServiceAccount());
+        expect(element.textContent).not.toContain('Keeps its data in its own database');
+
+        render(buildOrganizationServiceAccount({ has_database: true }));
+        expect(element.querySelector('.account__database')?.textContent?.trim()).toBe(
+            'Keeps its data in its own database.'
+        );
+    });
 });

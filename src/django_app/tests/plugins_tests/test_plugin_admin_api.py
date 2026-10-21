@@ -203,15 +203,13 @@ def test_a_package_with_nothing_to_install_is_invalid(superadmin_client):
     ]
 
 
-def test_a_package_with_a_database_is_refused(superadmin_client):
-    manifest = sample_manifest(backend={"python": "3.12", "entrypoint": "plugin.app:app"}, database={})
-
-    response = _upload(superadmin_client, build_package(manifest=manifest))
+def test_a_database_without_a_backend_is_refused(superadmin_client):
+    response = _upload(superadmin_client, build_package(manifest=sample_manifest(database={})))
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "plugin_feature_unavailable"
-    assert body["errors"] == [{"loc": "manifest.database", "message": "a plugin database is not available in this EpicStaff yet"}]
+    assert body["code"] == "invalid_plugin"
+    assert "manifest.database" in [error["loc"] for error in body["errors"]]
     assert not Plugin.objects.exists()
 
 

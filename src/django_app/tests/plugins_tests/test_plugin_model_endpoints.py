@@ -1,27 +1,32 @@
-"""A plugin may change where a model sends requests only on models it created.
+"""A plugin never decides where a model sends requests, not even on a model it created.
 
-The organization's configs send their keys to the endpoint of the model they use. A plugin
-that could repoint an organization's model would receive those keys, so its endpoint fields
-(the URL, the provider) are the plugin's to change only on its own rows.
+The organization's configs send their keys to the endpoint of the model they use, and a
+person's config may come to use a plugin's model: quickstart reuses an organization's model
+by name, and a person can pick one. So a plugin never sets a model's URL or deployment. The
+name and the provider only choose between vendor hosts and stay editable.
 """
 
 import pytest
 from django.apps import apps
+from plugins.identity.service_account_authentication import PluginServiceAccountAuthentication
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
-from rest_framework.relations import RelatedField
+from rest_framework.exceptions import ValidationError
+from rest_framework.request import Request
 from rest_framework.serializers import ModelSerializer
-from rest_framework.test import APIClient
-from tables.models import Provider, Secret
+from rest_framework.test import APIClient, APIRequestFactory
+from tables.import_export.enums import EntityType
+from tables.import_export.registry import entity_registry
+from tables.models import EmbeddingConfig, LLMConfig, Provider, Secret
 from tables.models.embedding_models import EmbeddingModel
-from tables.models.llm_models import LLMModel, RealtimeModel, RealtimeTranscriptionModel
+from tables.models.llm_models import LLMModel
 from tables.serializers.utils.secret_destination_guard_mixin import SecretDestinationGuardMixin
 
-from tests.plugins_tests.conftest import service_account_client
+from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
 
 pytestmark = [pytest.mark.django_db]
 
-REFUSED = "This credential can change where requests are sent only on models it created"
+REFUSED = "This credential cannot set where a model sends requests"
 ACCESS = [{"resource_type": "llm_configs", "actions": ["read", "create", "update"], "reason": "Its models."}]
 ACME_URL = "https://llm.acme.example"
 ELSEWHERE = "https://elsewhere.example"
@@ -33,8 +38,13 @@ def plugin(weather_backend):
 
 
 @pytest.fixture
-def client(plugin, service_account_key, acme):
-    return service_account_client(service_account_key(plugin, acme), acme)
+def acme_key(plugin, service_account_key, acme):
+    return service_account_key(plugin, acme)
+
+
+@pytest.fixture
+def client(acme_key, acme):
+    return service_account_client(acme_key, acme)
 
 
 @pytest.fixture
@@ -47,94 +57,131 @@ def org_llm_model(acme, providers):
     return LLMModel.objects.create(name="acme-gpt", llm_provider=providers[0], base_url=ACME_URL, org=acme, is_custom=True)
 
 
-def _refused(response, field):
+def _refused(response, *fields):
     assert response.status_code == 400, response.content
     message = response.json()["message"]
-    assert field in message and REFUSED in message
+    assert REFUSED in message
+    assert all(field in message for field in fields)
 
 
-# ---- the organization's models ----
+# ---- no model's endpoint, the organization's or its own ----
 
 
-def test_repointing_an_org_model_with_patch_is_refused(client, org_llm_model):
-    response = client.patch(f"/api/llm-models/{org_llm_model.pk}/", {"base_url": ELSEWHERE}, format="json")
+@pytest.mark.parametrize("method", ["patch", "put"])
+def test_repointing_an_org_model_is_refused(client, org_llm_model, providers, method):
+    body = {"base_url": ELSEWHERE} if method == "patch" else {"name": "acme-gpt", "llm_provider": providers[0].pk, "base_url": ELSEWHERE}
 
-    _refused(response, "base_url")
-    org_llm_model.refresh_from_db()
-    assert org_llm_model.base_url == ACME_URL
-
-
-def test_repointing_an_org_model_with_put_is_refused(client, org_llm_model, providers):
-    response = client.put(
-        f"/api/llm-models/{org_llm_model.pk}/",
-        {"name": "acme-gpt", "llm_provider": providers[0].pk, "base_url": ELSEWHERE},
-        format="json",
-    )
+    response = getattr(client, method)(f"/api/llm-models/{org_llm_model.pk}/", body, format="json")
 
     _refused(response, "base_url")
     org_llm_model.refresh_from_db()
     assert org_llm_model.base_url == ACME_URL
 
 
-def test_moving_an_org_model_to_another_provider_is_refused(client, org_llm_model, providers):
-    response = client.patch(f"/api/llm-models/{org_llm_model.pk}/", {"llm_provider": providers[1].pk}, format="json")
-
-    _refused(response, "llm_provider")
-
-
-def test_other_fields_of_an_org_model_and_an_unchanged_endpoint_stay_editable(client, org_llm_model, providers):
-    response = client.put(
-        f"/api/llm-models/{org_llm_model.pk}/",
-        {"name": "acme-gpt", "llm_provider": providers[0].pk, "base_url": ACME_URL, "description": "Renamed by the plugin"},
-        format="json",
-    )
-
-    assert response.status_code == 200, response.content
-
-
-def test_repointing_an_org_embedding_model_is_refused(client, acme, providers):
-    model = EmbeddingModel.objects.create(name="acme-embed", embedding_provider=providers[0], base_url=ACME_URL, org=acme, is_custom=True)
-
-    response = client.patch(f"/api/embedding-models/{model.pk}/", {"base_url": ELSEWHERE}, format="json")
+def test_clearing_an_org_model_s_endpoint_is_refused(client, org_llm_model):
+    response = client.patch(f"/api/llm-models/{org_llm_model.pk}/", {"base_url": None}, format="json")
 
     _refused(response, "base_url")
 
 
 @pytest.mark.parametrize(
-    ("url", "model_class"),
-    [("/api/realtime-models/", RealtimeModel), ("/api/realtime-transcription-models/", RealtimeTranscriptionModel)],
-    ids=["realtime", "transcription"],
+    "body",
+    [{"base_url": ELSEWHERE}, {"deployment_id": "elsewhere"}, {"base_url": ELSEWHERE, "deployment_id": "elsewhere"}],
+    ids=["url", "deployment", "both"],
 )
-def test_moving_an_org_voice_model_to_another_provider_is_refused(client, acme, providers, url, model_class):
-    model = model_class.objects.create(name="acme-voice", provider=providers[0], org=acme, is_custom=True)
+def test_a_plugin_cannot_create_a_model_with_an_endpoint(client, providers, body):
+    response = client.post("/api/llm-models/", {"name": "weather-gpt", "llm_provider": providers[0].pk, **body}, format="json")
 
-    response = client.patch(f"{url}{model.pk}/", {"provider": providers[1].pk}, format="json")
-
-    _refused(response, "provider")
-
-
-# ---- its own models ----
+    _refused(response, *body)
+    assert not LLMModel.objects.filter(name="weather-gpt").exists()
 
 
-def test_a_plugin_repoints_a_model_it_created(client, providers):
-    created = client.post("/api/llm-models/", {"name": "weather-gpt", "llm_provider": providers[0].pk, "base_url": ACME_URL}, format="json")
+def test_a_plugin_cannot_repoint_a_model_it_created(client, providers):
+    created = client.post("/api/llm-models/", {"name": "weather-gpt", "llm_provider": providers[0].pk}, format="json")
     assert created.status_code == 201, created.content
 
-    patched = client.patch(f"/api/llm-models/{created.json()['id']}/", {"base_url": ELSEWHERE}, format="json")
-    put = client.put(
-        f"/api/llm-models/{created.json()['id']}/",
-        {"name": "weather-gpt", "llm_provider": providers[1].pk, "base_url": ACME_URL},
+    response = client.patch(f"/api/llm-models/{created.json()['id']}/", {"base_url": ELSEWHERE}, format="json")
+
+    _refused(response, "base_url")
+    assert LLMModel.objects.get(pk=created.json()["id"]).base_url is None
+
+
+def test_the_name_provider_and_an_unchanged_endpoint_stay_editable(client, org_llm_model, providers):
+    response = client.put(
+        f"/api/llm-models/{org_llm_model.pk}/",
+        {"name": "acme-gpt-renamed", "llm_provider": providers[1].pk, "base_url": ACME_URL, "description": "Renamed by the plugin"},
         format="json",
     )
 
-    assert (patched.status_code, put.status_code) == (200, 200), (patched.content, put.content)
-    assert LLMModel.objects.get(pk=created.json()["id"]).llm_provider == providers[1]
+    assert response.status_code == 200, response.content
+    org_llm_model.refresh_from_db()
+    assert (org_llm_model.name, org_llm_model.llm_provider, org_llm_model.base_url) == ("acme-gpt-renamed", providers[1], ACME_URL)
+
+
+@pytest.mark.parametrize("field", ["base_url", "deployment"])
+def test_an_embedding_model_s_endpoint_is_not_the_plugin_s_to_set(client, acme, providers, field):
+    model = EmbeddingModel.objects.create(name="acme-embed", embedding_provider=providers[0], org=acme, is_custom=True)
+
+    created = client.post("/api/embedding-models/", {"name": "weather-embed", "embedding_provider": providers[0].pk, field: "x"}, format="json")
+    repointed = client.patch(f"/api/embedding-models/{model.pk}/", {field: "x"}, format="json")
+
+    _refused(created, field)
+    _refused(repointed, field)
+
+
+def _authenticated_principal(raw_key):
+    request = Request(
+        APIRequestFactory().post("/", HTTP_AUTHORIZATION=f"PluginKey {raw_key}", HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET),
+        authenticators=[PluginServiceAccountAuthentication()],
+    )
+    return request.user
+
+
+@pytest.mark.parametrize(
+    ("entity_type", "data"),
+    [
+        (EntityType.LLM_MODEL, {"name": "imported-gpt", "provider_name": "openai", "base_url": ELSEWHERE, "tags": []}),
+        (EntityType.EMBEDDING_MODEL, {"name": "imported-embed", "provider_name": "openai", "deployment": "x", "tags": []}),
+    ],
+    ids=["llm", "embedding"],
+)
+def test_an_import_by_a_plugin_cannot_create_a_model_with_an_endpoint(acme_key, acme, providers, entity_type, data):
+    principal = _authenticated_principal(acme_key)
+
+    with pytest.raises(ValidationError):
+        entity_registry.get_strategy(entity_type).create_entity(dict(data), None, org_id=acme.pk, user=principal)
+
+    endpointless = {key: value for key, value in data.items() if key not in ("base_url", "deployment")}
+    created = entity_registry.get_strategy(entity_type).create_entity(endpointless, None, org_id=acme.pk, user=principal)
+    assert created.org_id == acme.pk
+
+
+# ---- quickstart reuses an organization's model by name ----
+
+
+def test_quickstart_reusing_a_plugin_s_model_sends_the_key_to_the_vendor(client, client_as, admin_acme, acme, providers):
+    for url, body in (
+        ("/api/llm-models/", {"name": "gpt-4o-mini", "llm_provider": providers[0].pk}),
+        ("/api/embedding-models/", {"name": "text-embedding-3-small", "embedding_provider": providers[0].pk}),
+    ):
+        _refused(client.post(url, {**body, "base_url": ELSEWHERE}, format="json"), "base_url")
+        assert client.post(url, body, format="json").status_code == 201
+    person = client_as(admin_acme)
+    person.credentials(HTTP_X_ORGANIZATION_ID=str(acme.pk))
+
+    response = person.post("/api/quickstart/", {"provider": "openai", "api_key": "sk-org-admin"}, format="json")
+
+    assert response.status_code == 200, response.content
+    llm_config = LLMConfig.objects.get(org=acme, custom_name=response.json()["config_name"])
+    embedding_config = EmbeddingConfig.objects.get(org=acme, custom_name=response.json()["config_name"])
+    assert (llm_config.model.name, llm_config.model.base_url, llm_config.model.deployment_id) == ("gpt-4o-mini", None, None)
+    assert (embedding_config.model.base_url, embedding_config.model.deployment) == (None, None)
 
 
 # ---- everyone else ----
 
 
-def test_a_person_with_the_same_rights_still_repoints_org_models(acme, org_llm_model, django_user_model):
+def test_a_person_with_the_same_rights_still_sets_model_endpoints(acme, org_llm_model, providers, django_user_model):
     role = Role.objects.create(name="Model editor", org=acme, is_built_in=False)
     RolePermission.objects.create(
         role=role, resource_type=ResourceType.LLM_CONFIGS.value, permissions=int(Permission.READ | Permission.CREATE | Permission.UPDATE)
@@ -145,41 +192,33 @@ def test_a_person_with_the_same_rights_still_repoints_org_models(acme, org_llm_m
     client.force_authenticate(user=person)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.pk))
 
-    response = client.patch(f"/api/llm-models/{org_llm_model.pk}/", {"base_url": ELSEWHERE}, format="json")
+    repointed = client.patch(f"/api/llm-models/{org_llm_model.pk}/", {"base_url": ELSEWHERE}, format="json")
+    created = client.post("/api/llm-models/", {"name": "person-gpt", "llm_provider": providers[0].pk, "deployment_id": "d1"}, format="json")
 
-    assert response.status_code == 200, response.content
+    assert (repointed.status_code, created.status_code) == (200, 201), (repointed.content, created.content)
 
 
 def test_a_plugin_in_another_organization_gets_not_found(plugin, service_account_key, beta, org_llm_model):
     beta_client = service_account_client(service_account_key(plugin, beta), beta)
 
-    response = beta_client.patch(f"/api/llm-models/{org_llm_model.pk}/", {"base_url": ELSEWHERE}, format="json")
+    response = beta_client.patch(f"/api/llm-models/{org_llm_model.pk}/", {"name": "renamed"}, format="json")
 
     assert response.status_code == 404
     org_llm_model.refresh_from_db()
-    assert org_llm_model.base_url == ACME_URL
+    assert org_llm_model.name == "acme-gpt"
 
 
 # ---- the guard covers every model a secret-holding config points at ----
 
-# Serializers that write an endpoint field but never change an existing row, and why.
-NEVER_UPDATE = {
-    # The import creates new rows only: an existing model is reused when every field
-    # matches (`find_existing`), never updated, and a row the plugin creates is its own.
+ENDPOINT_FIELD_NAMES = {"base_url", "deployment_id", "deployment"}
+# Serializers that write an endpoint field without going through the guard, and why.
+UNGUARDED_ON_PURPOSE = {
+    # The import strategy checks the endpoint fields itself before it creates a row
+    # (`test_an_import_by_a_plugin_cannot_create_a_model_with_an_endpoint`), and never
+    # updates one: an existing model is reused when every field matches.
     "LLMModelImportSerializer",
     "EmbeddingModelImportSerializer",
-    "RealtimeModelImportSerializer",
-    "RealtimeTranscriptionModelImportSerializer",
 }
-
-
-def _endpoint_fields(model):
-    """The fields that decide where a model row sends requests: its URL and its provider."""
-    return {
-        field.name
-        for field in model._meta.concrete_fields
-        if field.name == "base_url" or getattr(field, "related_model", None) is Provider
-    }
 
 
 def _models_secret_holding_configs_point_at():
@@ -189,8 +228,9 @@ def _models_secret_holding_configs_point_at():
             continue
         for field in config._meta.concrete_fields:
             target = getattr(field, "related_model", None)
-            if field.many_to_one and target is not None and target is not Secret and _endpoint_fields(target):
-                targets.add(target)
+            if field.many_to_one and target not in (None, Secret):
+                if ENDPOINT_FIELD_NAMES & {target_field.name for target_field in target._meta.concrete_fields}:
+                    targets.add(target)
     return targets
 
 
@@ -216,22 +256,13 @@ def test_every_endpoint_field_of_a_model_a_config_with_a_secret_uses_is_guarded(
     unguarded = []
     for model in targets:
         for serializer_class in _write_serializers_of(model):
-            if serializer_class.__name__ in NEVER_UPDATE:
+            if serializer_class.__name__ in UNGUARDED_ON_PURPOSE:
                 continue
-            serializer = serializer_class()
             writable = {
-                field.source
-                for field in serializer.fields.values()
-                if not field.read_only and field.source in _endpoint_fields(model)
-                and (isinstance(field, RelatedField) or field.source == "base_url")
+                field.source for field in serializer_class().fields.values() if not field.read_only and field.source in ENDPOINT_FIELD_NAMES
             }
             guarded = set(serializer_class.secret_destination_fields) if issubclass(serializer_class, SecretDestinationGuardMixin) else set()
             unguarded += [f"{serializer_class.__name__}.{source}" for source in sorted(writable - guarded)]
 
-    assert {model._meta.label for model in targets} >= {
-        "tables.LLMModel",
-        "tables.EmbeddingModel",
-        "tables.RealtimeModel",
-        "tables.RealtimeTranscriptionModel",
-    }
+    assert {model._meta.label for model in targets} >= {"tables.LLMModel", "tables.EmbeddingModel"}
     assert unguarded == []

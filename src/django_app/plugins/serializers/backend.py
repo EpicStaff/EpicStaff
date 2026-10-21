@@ -58,6 +58,7 @@ class PluginLimitsResponseSerializer(serializers.Serializer):
     overrides = serializers.DictField()
     effective = serializers.DictField()
     enforced = serializers.DictField()
+    has_database = serializers.BooleanField()
 
 
 class PluginLimitsUpdateSerializer(serializers.Serializer):
@@ -65,10 +66,13 @@ class PluginLimitsUpdateSerializer(serializers.Serializer):
 
 
 class PluginRuntimeResponseSerializer(serializers.Serializer):
-    """Where a plugin's backend runs and what its node last reported."""
+    """Where a plugin's backend runs, what its node last reported, its database and its
+    outbound hosts. No password of any kind is ever part of it."""
 
     node = serializers.SerializerMethodField()
     placement = serializers.SerializerMethodField()
+    database = serializers.SerializerMethodField()
+    egress = serializers.SerializerMethodField()
 
     def get_node(self, runtime: PluginRuntime) -> dict | None:
         node = runtime.node
@@ -99,6 +103,39 @@ class PluginRuntimeResponseSerializer(serializers.Serializer):
             "last_error": placement.last_error,
             "log_tail": list(placement.log_tail or []),
             "last_report_at": _datetime(placement.last_report_at),
+        }
+
+    def get_database(self, runtime: PluginRuntime) -> dict | None:
+        database = runtime.database
+        if database is None:
+            return None
+        record = database.record
+        server = record.server
+        return {
+            "state": record.state,
+            "server": {"name": server.name, "host": server.host, "port": server.port},
+            "database_name": record.database_name,
+            "roles": {"owner": record.owner_role, "app": record.app_role, "job": record.job_role},
+            "migrations": {
+                "applied": list(record.applied_migrations),
+                "in_package": database.migrations_in_package,
+            },
+            "connection_limit": database.connection_limit,
+            "statement_timeout_seconds": database.statement_timeout_seconds,
+            "size_bytes": record.size_bytes,
+            "last_error": record.last_error,
+            "ready_at": _datetime(record.ready_at),
+            "limits_restored_at": _datetime(record.limits_restored_at),
+        }
+
+    def get_egress(self, runtime: PluginRuntime) -> dict:
+        # The Runtime tab exists only for a backend, and every backend has an egress section:
+        # an empty list of hosts means no outbound access.
+        return {
+            "hosts": [
+                {"host": outbound.host, "reason": outbound.reason}
+                for outbound in runtime.outbound_hosts
+            ]
         }
 
 

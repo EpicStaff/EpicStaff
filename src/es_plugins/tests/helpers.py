@@ -18,7 +18,7 @@ from epicstaff_plugin.contracts.hook_api import HookRequest, encode_hook_body
 from epicstaff_plugin.package_layout import PackageFile, build_contents
 from epicstaff_plugin.signing import SecretKey, sign_package
 from epicstaff_plugin.testing import ContextSigner
-from src.shared.models.plugin_nodes import DesiredPlacement, DesiredState
+from src.shared.models.plugin_nodes import DesiredPlacement, DesiredState, database_names_for
 
 from es_plugins.agent.launcher_client import SpawnedProcess
 
@@ -206,6 +206,22 @@ def placement(
     return DesiredPlacement.model_validate(document)
 
 
+def database_section(identifier: str = "weather", **overrides) -> dict:
+    """A desired placement's `database`, on the `plugins_db` server."""
+    names = database_names_for(identifier)
+    return {
+        "server": {"name": "plugins_db", "host": "plugins_db", "port": 5432},
+        "installation_id": "0123456789abcdef0123456789abcdef",
+        "database_name": names.database,
+        "owner_role": names.owner_role,
+        "app_role": names.app_role,
+        "job_role": names.job_role,
+        "connection_limit": 3,
+        "statement_timeout_seconds": 10,
+        **overrides,
+    }
+
+
 def desired_state(placements: list[DesiredPlacement], node_name: str = "node-1") -> DesiredState:
     body = {
         "format": 1,
@@ -290,6 +306,8 @@ class FakeDjango:
         self.runtime_files: dict[int, dict] = {}
         self.credentials_revisions: dict[int, str] = {}
         self.settings_revisions: dict[int, int] = {}
+        self.database_passwords: dict[int, str] = {}
+        """placement id -> the app password its runtime credentials carry (for a database)."""
         self.reports: list[dict] = []
         self.requests: list[httpx.Request] = []
         self.unavailable = False
@@ -326,15 +344,15 @@ class FakeDjango:
             )
         if parts[:3] == ["plugin-nodes", "self", "placements"] and request.method == "POST":
             placement_id = int(parts[3])
-            return httpx.Response(
-                200,
-                json={
-                    "placement_id": placement_id,
-                    "credentials_revision": self.credentials_revisions.get(placement_id, "c" * 64),
-                    "settings_revision": self.settings_revisions.get(placement_id, 0),
-                    "runtime_file": self.runtime_files[placement_id],
-                },
-            )
+            credentials = {
+                "placement_id": placement_id,
+                "credentials_revision": self.credentials_revisions.get(placement_id, "c" * 64),
+                "settings_revision": self.settings_revisions.get(placement_id, 0),
+                "runtime_file": self.runtime_files[placement_id],
+            }
+            if placement_id in self.database_passwords:
+                credentials["database"] = {"app_password": self.database_passwords[placement_id]}
+            return httpx.Response(200, json=credentials)
         if path == "plugin-nodes/self/reports/" and request.method == "POST":
             self.reports.append(json.loads(request.content))
             return httpx.Response(204)
@@ -533,3 +551,31 @@ def free_ports(count: int) -> list[int]:
     finally:
         for probe in probes:
             probe.close()
+
+
+class RecordingProvisioner:
+    """The node's `DatabaseProvisioner` without a server: records each call, fails when told to.
+
+    `events`, when given, gets `("provision", plugin)` at each call, next to the launcher's.
+    """
+
+    def __init__(self, events: list | None = None):
+        self.calls: list[dict] = []
+        self.failures: list[Exception] = []
+        """Raised by the next calls, one each, first first."""
+        self._events = events
+
+    async def ensure(self, plugin, desired, app_password, migrations):
+        from es_plugins.database.provisioner import ProvisionedDatabase
+
+        self.calls.append(
+            {"plugin": plugin, "desired": desired, "app_password": app_password, "migrations": migrations}
+        )
+        if self._events is not None:
+            self._events.append(("provision", plugin))
+        if self.failures:
+            raise self.failures.pop(0)
+        names = tuple(sorted(migration.name for migration in migrations))
+        return ProvisionedDatabase(
+            created=len(self.calls) == 1, ledger=names, applied=len(names), size_bytes=8192
+        )

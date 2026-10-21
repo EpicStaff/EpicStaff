@@ -7,7 +7,11 @@ Loops, all in one event loop:
 - per placement: converge, and the hooks it lists (see `reconciler`);
 - report, every 10 s and right after anything a report shows changed;
 - memory watchdog, every 2 s;
-- disk watchdog, every 30 s.
+- disk watchdog, every 30 s;
+- database limits watchdog, every 60 s.
+
+Before any of them, the agent empties the egress proxy's policy files: no proxy password of an
+earlier run works any more.
 """
 
 import asyncio
@@ -30,6 +34,10 @@ from es_plugins.agent.launcher_client import LauncherClient
 from es_plugins.agent.port_reservation import PortReservation
 from es_plugins.agent.reconciler import AgentServices, Reconciler
 from es_plugins.agent.settings import AgentSettings
+from es_plugins.database.connections import DatabaseConnector
+from es_plugins.database.limits_watchdog import DatabaseLimitsWatchdog
+from es_plugins.database.provisioner import DatabaseProvisioner
+from es_plugins.egress.policy_writer import EgressPolicyWriter
 from es_plugins.health.health_checker import HealthChecker
 from es_plugins.hooks.hook_caller import PluginHookCaller
 from es_plugins.layout import NodeLayout
@@ -103,7 +111,7 @@ class NodeAgent:
         django: DjangoNodeClient,
         reconciler: Reconciler,
         reporter: Reporter,
-        watchdogs: Sequence[MemoryWatchdog | DiskWatchdog],
+        watchdogs: Sequence[MemoryWatchdog | DiskWatchdog | DatabaseLimitsWatchdog],
     ):
         self._settings = settings
         self._layout = layout
@@ -187,9 +195,12 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
     """Run the agent until SIGTERM.
 
     Raises:
+        EgressPolicyError: The egress policy directory is missing or cannot be written.
         PortReservationError: A port of the node's range could not be bound at start-up.
     """
     prepare_agent_directories(layout)
+    egress = EgressPolicyWriter(layout.egress_policy_directory)
+    await egress.start()
     # Before any plugin runs: from here on no plugin can bind a port of the range.
     ports = PortReservation(range(NODE_PORT_RANGE[0], NODE_PORT_RANGE[1] + 1))
     ports.reserve()
@@ -199,6 +210,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
     health_checker = HealthChecker()
     hook_caller = PluginHookCaller()
     node_disk = NodeDisk(layout.data_root)
+    database_connector = DatabaseConnector(settings.database_admin_password)
     reconciler: Reconciler
     reporter = Reporter(django, lambda: reconciler.reports())
     services = AgentServices(
@@ -210,6 +222,8 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
         ports=ports,
         disk=node_disk,
         hook_caller=hook_caller,
+        provisioner=DatabaseProvisioner(database_connector),
+        egress=egress,
         on_change=reporter.request,
     )
     reconciler = Reconciler(services)
@@ -221,6 +235,9 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
             node_disk,
             max_megabytes=settings.disk_megabytes_per_plugin,
             max_files=settings.files_per_plugin,
+        ),
+        DatabaseLimitsWatchdog(
+            database_connector, reconciler.watched_databases, on_change=reporter.request
         ),
     ]
     agent = NodeAgent(settings, layout, django, reconciler, reporter, watchdogs)

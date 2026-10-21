@@ -39,17 +39,25 @@ class PluginRunGuard:
 
 
 def _may_refuse_in(organization_id: int) -> bool:
-    """Whether any grant of the organization is not active, or any owned row lost its grant.
+    """Whether a grant of the organization that is not active owns a row there, or an owned row
+    lost its grant.
 
     One query. Without either, no run of the organization can be refused, so its resources
-    are never walked.
+    are never walked; a grant that is still `granting` but owns nothing yet keeps it that way.
+    A tombstone (an owned row whose resource is gone) still counts until the sweep removes it,
+    which only costs a walk.
     """
-    inactive_grants = PluginGrant.objects.filter(org_id=OuterRef("pk")).exclude(
-        state=GrantState.ACTIVE
+    rows_of_grant = PluginOwnedResource.objects.filter(
+        grant_id=OuterRef("pk"), org_id=OuterRef("org_id")
+    )
+    inactive_owning_grants = (
+        PluginGrant.objects.filter(org_id=OuterRef("pk"))
+        .exclude(state=GrantState.ACTIVE)
+        .filter(Exists(rows_of_grant))
     )
     orphaned_rows = PluginOwnedResource.objects.filter(org_id=OuterRef("pk"), grant__isnull=True)
     return (
         Organization.objects.filter(pk=organization_id)
-        .filter(Exists(inactive_grants) | Exists(orphaned_rows))
+        .filter(Exists(inactive_owning_grants) | Exists(orphaned_rows))
         .exists()
     )

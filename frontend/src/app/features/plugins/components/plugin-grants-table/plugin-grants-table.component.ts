@@ -59,11 +59,18 @@ const GRANT_ACTION_BUTTON_TYPES: Readonly<Record<PluginGrantAction, GrantActionB
     retry_install: 'outline-primary',
 };
 
+/** What the table says once a grant action went through: `warning` when the grant still needs something done. */
+interface GrantActionToast {
+    tone: 'success' | 'warning';
+    message: string;
+}
+
 /** A grant action that asks for confirmation, then sends one request answering with the grant. */
 interface ConfirmedGrantAction {
     confirmation: ConfirmationDialogData;
     request: () => Observable<PluginGrant>;
-    successMessage: string;
+    /** The toast for the grant as the server answered with it. */
+    successToast: (updated: PluginGrant) => GrantActionToast;
     /** Whether the plugin's count of active grants may have changed (the page reloads the plugin). */
     changesActiveCount: boolean;
     failureFallback: string;
@@ -274,7 +281,14 @@ export class PluginGrantsTableComponent {
                 cancelText: 'Cancel',
             },
             request: () => this.storage.resumeGrant(this.identifier(), grant.id),
-            successMessage: `${pluginName} is resumed in ${organizationName}.`,
+            // A grant suspended while it was installing comes back with its install failed.
+            successToast: (updated) =>
+                updated.state === 'install_failed'
+                    ? {
+                          tone: 'warning',
+                          message: `${pluginName} is resumed in ${organizationName}; its install has not finished. Retry it.`,
+                      }
+                    : { tone: 'success', message: `${pluginName} is resumed in ${organizationName}.` },
             failureFallback: "Couldn't resume the plugin.",
             changesActiveCount: true,
         });
@@ -292,7 +306,10 @@ export class PluginGrantsTableComponent {
                 cancelText: 'Cancel',
             },
             request: () => this.storage.retryInstallHook(this.identifier(), grant.id),
-            successMessage: `${pluginName} is installing in ${organizationName} again.`,
+            successToast: () => ({
+                tone: 'success',
+                message: `${pluginName} is installing in ${organizationName} again.`,
+            }),
             failureFallback: "Couldn't retry the install.",
             // The grant stays out of the active count until the hook succeeds.
             changesActiveCount: false,
@@ -314,7 +331,9 @@ export class PluginGrantsTableComponent {
             .subscribe({
                 next: (updated) => {
                     this.replaceGrant(updated);
-                    this.toast.success(run.successMessage);
+                    const toast = run.successToast(updated);
+                    if (toast.tone === 'warning') this.toast.warning(toast.message);
+                    else this.toast.success(toast.message);
                     if (run.changesActiveCount) this.grantsChanged.emit();
                     // Restarts loading and polling: a poll that was on its way must not bring the old state back.
                     this.reload();

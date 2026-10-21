@@ -6,6 +6,8 @@
 # The backend runs with `python -m epicstaff_plugin.serve`, which needs uvicorn.
 fastapi
 uvicorn
+# Weather's own database (DATABASE_URL), with a connection pool.
+psycopg[binary,pool]
 # epicstaff-plugin itself is not on an index yet: `epicstaff-plugin pack --local-wheel` adds
 # the SDK wheel to the packaged lock. Its own requirements are listed here so the lock pins
 # them; pack refuses a lock that misses one.

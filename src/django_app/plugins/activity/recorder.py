@@ -42,6 +42,7 @@ TARGET_URL_KWARGS = ("pk", "id")
 # The columns a row is labelled with, the first one its model has.
 TARGET_LABEL_FIELDS = ("name", "custom_name")
 _NAMED_GROUP_START = re.compile(r"\(\?P<(\w+)>")
+_PATH_CONVERTER = re.compile(r"<\w+:(\w+)>")
 PLATFORM_ACTOR_LABEL = "Platform"
 # The actions a finished hook job of each kind is recorded as: (succeeded, failed).
 HOOK_FINISHED_ACTIONS = {
@@ -180,6 +181,18 @@ class ActivityRecorder:
             {"restart_generation": restart_generation},
         )
 
+    def database_ready(self, identifier: str, migrations_applied: int) -> None:
+        _platform_event(
+            identifier, ActivityAction.DATABASE_READY, {"migrations_applied": migrations_applied}
+        )
+
+    def database_failed(self, identifier: str, error: str | None) -> None:
+        _platform_event(identifier, ActivityAction.DATABASE_FAILED, {"error": error})
+
+    def database_limit_restored(self, identifier: str, setting: str) -> None:
+        """Record that the node put back a limit of the app role that had been changed."""
+        _platform_event(identifier, ActivityAction.DATABASE_LIMIT_RESTORED, {"setting": setting})
+
     @staticmethod
     def _write_api_request(
         scope: "PluginRequestScope",
@@ -232,7 +245,9 @@ def url_path_pattern(route: str) -> str:
     """A resolved route as a URL path pattern, the same form for every view.
 
     A router's regular expressions lose their anchors and escapes, and each named group
-    becomes `<name>`: `api/^graphs/(?P<pk>[^/.]+)/$` is recorded as `api/graphs/<pk>/`.
+    becomes `<name>`: `api/^graphs/(?P<pk>[^/.]+)/$` is recorded as `api/graphs/<pk>/`. A
+    `path()` route loses its converters the same way: `api/sessions/<int:session_id>/stop/`
+    is recorded as `api/sessions/<session_id>/stop/`.
     """
     parts = []
     position = 0
@@ -241,7 +256,8 @@ def url_path_pattern(route: str) -> str:
         parts.append(f"<{group.group(1)}>")
         position = _end_of_group(route, group.end())
     parts.append(route[position:])
-    return re.sub(r"\\(.)", r"\1", "".join(parts).replace("^", "").replace("$", ""))
+    pattern = re.sub(r"\\(.)", r"\1", "".join(parts).replace("^", "").replace("$", ""))
+    return _PATH_CONVERTER.sub(r"<\1>", pattern)
 
 
 def _end_of_group(route: str, position: int) -> int:
@@ -307,6 +323,18 @@ def _superadmin_event(
         actor_kind=ActorKind.SUPERADMIN,
         actor_user=actor,
         actor_label=actor.email,
+        action=action,
+        detail=detail,
+    )
+
+
+def _platform_event(identifier: str, action: str, detail: dict) -> None:
+    """A deployment-wide event the platform itself caused: no organization, no person."""
+    PluginActivityEvent.objects.create(
+        plugin_identifier=identifier,
+        organization_id=None,
+        actor_kind=ActorKind.PLATFORM,
+        actor_label=PLATFORM_ACTOR_LABEL,
         action=action,
         detail=detail,
     )

@@ -39,7 +39,7 @@ from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models.enums import Permission, ResourceType
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.settings import api_settings
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory
 from src.shared.models import GraphData, SessionData
 from tables.exceptions import GraphNotFoundError
 from tables.graph_collab.utils import build_editor_info
@@ -56,7 +56,9 @@ from tables.serializers.model_serializers.session_serializers import (
 )
 from tables.services.graph_message_store import GraphMessageStore
 from tables.services.persistent_variables_service import PersistentVariablesService
+from tables.serializers.model_serializers.llm_serializers import LLMConfigSerializer, LLMModelSerializer
 from tables.services.secrets import secret_service
+from tables.services.secrets.reference_guard import secret_destination_guard, secret_reference_guard
 from tables.services.session_access import get_runnable_graph
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.storage_service.db_sync import StorageFileSync
@@ -92,7 +94,7 @@ class FakePinnedPrincipal:
     is_superadmin = False
     is_plugin_credential = True
 
-    def __init__(self, org_id: int, by_resource: dict | None = None, person=None, references_secrets=True, owns_rows=True):
+    def __init__(self, org_id: int, by_resource: dict | None = None, person=None, references_secrets=True):
         self.pinned_org_id = org_id
         self.plugin_identifier = "fakeplugin"
         self.display_name = "Fake (plugin)"
@@ -101,8 +103,6 @@ class FakePinnedPrincipal:
         self._by_resource = {str(key): int(bits) for key, bits in (by_resource or DECLARED).items()}
         self._references_secrets = references_secrets
         self.secret_reference_questions: list[frozenset[int]] = []
-        self._owns_rows = owns_rows
-        self.ownership_questions: list[object] = []
 
     def resolve_effective_permissions(self, org_id: int) -> EffectivePermissions:
         return EffectivePermissions(is_superadmin=False, role=None, by_resource=self._by_resource)
@@ -110,10 +110,6 @@ class FakePinnedPrincipal:
     def may_reference_secrets(self, secret_ids: frozenset[int]) -> bool:
         self.secret_reference_questions.append(secret_ids)
         return self._references_secrets
-
-    def owns(self, instance) -> bool:
-        self.ownership_questions.append(instance)
-        return self._owns_rows
 
 
 class FakePluginKey:
@@ -423,19 +419,55 @@ def test_the_principal_decides_which_secrets_a_row_it_writes_may_reference(plugi
     assert response.status_code == (201 if references_secrets else 400), response.content
 
 
-@pytest.mark.parametrize("owns_rows", [True, False], ids=["its_own", "not_its_own"])
-def test_the_principal_decides_whose_model_endpoints_it_may_change(plugin_client, acme, owns_rows):
-    model = LLMModel.objects.create(name="acme-model", org=acme, is_custom=True, base_url="https://llm.acme.example")
+@pytest.mark.parametrize("write", ["create", "update"])
+def test_a_pinned_principal_never_sets_where_a_model_sends_requests(plugin_client, acme, write):
+    model = LLMModel.objects.create(name="acme-model", org=acme, is_custom=True)
     principal = FakePinnedPrincipal(
-        acme.id,
-        by_resource={**DECLARED, ResourceType.LLM_CONFIGS: Permission.READ | Permission.UPDATE},
-        owns_rows=owns_rows,
+        acme.id, by_resource={**DECLARED, ResourceType.LLM_CONFIGS: Permission.READ | Permission.CREATE | Permission.UPDATE}
     )
+    client = plugin_client(principal)
 
-    response = plugin_client(principal).patch(f"/api/llm-models/{model.pk}/", {"base_url": "https://elsewhere.example"}, format="json")
+    if write == "create":
+        response = client.post("/api/llm-models/", {"name": "fake-model", "base_url": "https://elsewhere.example"}, format="json")
+    else:
+        response = client.patch(f"/api/llm-models/{model.pk}/", {"deployment_id": "elsewhere"}, format="json")
+    renamed = client.patch(f"/api/llm-models/{model.pk}/", {"name": "acme-model-2"}, format="json")
 
-    assert principal.ownership_questions == [model]
-    assert response.status_code == (200 if owns_rows else 400), response.content
+    assert response.status_code == 400, response.content
+    assert renamed.status_code == 200, renamed.content
+
+
+class _IncompletePrincipal(FakePinnedPrincipal):
+    """Carries the plugin-credential flag but not all of `PinnedOrgPrincipal`."""
+
+    may_reference_secrets = None
+
+
+def _guarded_request(user, auth=None):
+    request = APIRequestFactory().post("/")
+    request.user, request.auth = user, auth
+    return request
+
+
+@pytest.mark.parametrize("flag_on", ["user", "credential"])
+def test_a_plugin_credential_without_the_whole_protocol_is_refused_not_taken_for_a_person(acme, flag_on):
+    secret = secret_service.create(text="sk-org", org=acme, name="ORG_KEY_2")
+    if flag_on == "user":
+        request = _guarded_request(_IncompletePrincipal(acme.id))
+    else:
+        person_shaped = SimpleNamespace(is_authenticated=True, is_plugin_credential=False)
+        request = _guarded_request(person_shaped, auth=FakePluginKey())
+    serializer = LLMConfigSerializer(context={"request": request})
+
+    assert not is_pinned_org_principal(request.user)
+    with pytest.raises(PermissionDenied):
+        secret_reference_guard.assert_unchanged_or_permitted(
+            serializer=serializer, attrs={"api_key_secret": secret}, fields=("api_key_secret_id",)
+        )
+    with pytest.raises(PermissionDenied):
+        secret_destination_guard.assert_may_change_endpoints(
+            serializer=LLMModelSerializer(context={"request": request}), attrs={"base_url": "https://x.example"}, fields=("base_url",)
+        )
 
 
 def test_user_api_key_is_still_refused_on_secrets(member_only, acme, issue_api_key):

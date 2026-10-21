@@ -636,6 +636,7 @@
       "items": {
         "$ref": "#/$defs/OutboundHost"
       },
+      "maxItems": 100,
       "title": "Outbound Hosts",
       "type": "array"
     },
