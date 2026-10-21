@@ -5,6 +5,7 @@ import { take } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
 import { FileSizePipe } from '../../pipes/file-size.pipe';
+import { injectAvatarObjectUrl } from '../../services/avatar-image/avatar-image.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { FileUploaderComponent } from '../file-uploader/file-uploader.component';
 import { ImageCropperDialogComponent } from './image-cropper-dialog/image-cropper-dialog.component';
@@ -28,6 +29,7 @@ export class AvatarUploadComponent {
     existingCleared = signal(false);
 
     showExisting = computed(() => !!this.initialUrl() && !this.existingCleared() && !this.selectedFile());
+    protected readonly existingSrc = injectAvatarObjectUrl(this.initialUrl);
 
     imageChange = output<File | null>();
     existingRemoved = output<void>();

@@ -22,11 +22,16 @@
     </div>
 } @else if (showExisting()) {
     <div class="filled">
-        <img
-            class="preview"
-            [src]="initialUrl()"
-            alt="Current avatar"
-        />
+        @if (existingSrc(); as src) {
+            <img
+                class="preview"
+                [src]="src"
+                alt="Current avatar"
+            />
+        } @else {
+            <!-- Holds the layout while the image loads, or when it cannot be loaded. -->
+            <span class="preview"></span>
+        }
         <span class="name">Current avatar</span>
         <button
             class="clear"

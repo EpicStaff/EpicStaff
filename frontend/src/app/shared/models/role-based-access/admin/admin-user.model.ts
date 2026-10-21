@@ -10,7 +10,7 @@ export interface AdminCreateUserRequest {
 export interface AdminCreateUserResponse {
     id: number;
     email: string;
-    avatar_url: string;
+    avatar_url: string | null;
     display_name: string;
     is_superadmin: boolean;
     is_active: boolean;
