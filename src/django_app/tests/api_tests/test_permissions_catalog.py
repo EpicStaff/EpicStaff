@@ -1,92 +1,72 @@
+"""/api/permissions/catalog/: the permission matrix the role editor renders."""
+
 import pytest
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
-@pytest.mark.django_db
-def test_catalog_marks_org_create_delete_as_platform(client_as, admin_acme):
-    body = client_as(admin_acme).get("/api/permissions/catalog/").json()
-    orgs = next(r for r in body["resource_types"] if r["code"] == "organizations")
-    assert orgs["applicable_actions"] == ["read", "update"]
-    assert orgs["platform_actions"] == ["create", "delete"]
+@pytest.fixture
+def catalog(client_as, admin_acme):
+    return client_as(admin_acme).get("/api/permissions/catalog/").json()
 
-    members = next(r for r in body["resource_types"] if r["code"] == "memberships")
-    assert members["applicable_actions"] == ["create", "read", "update", "delete"]
-    assert members["platform_actions"] == []
 
-    # Every resource entry carries the key (default []).
-    assert all("platform_actions" in r for r in body["resource_types"])
+def _resource(catalog, code):
+    return next(resource for resource in catalog["resource_types"] if resource["code"] == code)
 
 
 @pytest.mark.django_db
-def test_catalog_exposes_recommended_with(client_as, admin_acme):
-    body = client_as(admin_acme).get("/api/permissions/catalog/").json()
-    flows = next(r for r in body["resource_types"] if r["code"] == "flows")
+def test_catalog_invariants_the_role_editor_relies_on(catalog):
+    # Matrix column order: View leads, then the actions built on it.
+    assert [action["code"] for action in catalog["actions"]] == ["read", "create", "update", "delete", "export", "use"]
+    assert [r["code"] for r in catalog["resource_types"] if r["group"] == "admin"] == [
+        "organizations", "memberships", "roles", "api_keys", "audit",
+    ]
+    for resource in catalog["resource_types"]:
+        # Every grantable action is a key (empty list included) so the client indexes without
+        # nil-checks; platform-only actions are never recommended.
+        assert set(resource["recommended_with"]) == set(resource["applicable_actions"])
+        assert not set(resource["platform_actions"]) & set(resource["recommended_with"])
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        # Org create/delete are superadmin-only; only read/update are grantable.
+        ("organizations", {"group": "admin", "applicable_actions": ["read", "update"], "platform_actions": ["create", "delete"]}),
+        ("memberships", {"applicable_actions": ["create", "read", "update", "delete"], "platform_actions": []}),
+        ("api_keys", {
+            "group": "admin", "label": "API Keys", "applicable_actions": ["read", "delete"], "platform_actions": [],
+            "recommended_with": {"delete": [{"resource_type": "api_keys", "action": "read"}], "read": []},
+        }),
+        ("secrets", {"label": "Secrets", "applicable_actions": ["create", "read", "delete", "use"]}),
+    ],
+)
+def test_catalog_entries(catalog, code, expected):
+    resource = _resource(catalog, code)
+
+    assert {key: resource[key] for key in expected} == expected
+    if code == "secrets":
+        assert "API" not in resource["description"]
+
+
+@pytest.mark.django_db
+def test_catalog_exposes_use_on_secrets_and_flows_only(catalog):
+    use = next(action for action in catalog["actions"] if action["code"] == "use")
+
+    assert use == {"code": "use", "label": "Use", "bit": 64}
+    assert [r["code"] for r in catalog["resource_types"] if "use" in r["applicable_actions"]] == ["flows", "secrets"]
+    assert _resource(catalog, "flows")["recommended_with"]["use"] == [{"resource_type": "flows", "action": "read"}]
+
+
+@pytest.mark.django_db
+def test_catalog_recommends_what_a_flow_action_needs(catalog):
+    flows = _resource(catalog, "flows")
 
     assert flows["recommended_with"]["create"] == [
         {"resource_type": "flows", "action": "read"},
         {"resource_type": "projects", "action": "read"},
         {"resource_type": "llm_configs", "action": "read"},
     ]
-    assert flows["recommended_with"]["delete"] == [
-        {"resource_type": "flows", "action": "read"}
-    ]
-
-
-@pytest.mark.django_db
-def test_recommended_with_covers_every_applicable_action(client_as, admin_acme):
-    """Every grantable action is a key, empty list included, so the client can
-    index without nil-checks."""
-    body = client_as(admin_acme).get("/api/permissions/catalog/").json()
-    for resource in body["resource_types"]:
-        assert set(resource["recommended_with"]) == set(resource["applicable_actions"])
-
-    tools = next(r for r in body["resource_types"] if r["code"] == "tools")
-    assert tools["recommended_with"]["read"] == []
-
-
-@pytest.mark.django_db
-def test_recommended_with_omits_platform_actions(client_as, admin_acme):
-    body = client_as(admin_acme).get("/api/permissions/catalog/").json()
-    orgs = next(r for r in body["resource_types"] if r["code"] == "organizations")
-    assert set(orgs["recommended_with"]) == {"read", "update"}
-
-
-@pytest.mark.django_db
-def test_catalog_exposes_api_keys_as_an_admin_resource(client_as, admin_acme):
-    body = client_as(admin_acme).get("/api/permissions/catalog/").json()
-    api_keys = next(r for r in body["resource_types"] if r["code"] == "api_keys")
-
-    assert api_keys["group"] == "admin"
-    assert api_keys["label"] == "API Keys"
-    assert api_keys["applicable_actions"] == ["read", "delete"]
-    assert api_keys["platform_actions"] == []
-
-
-@pytest.mark.django_db
-def test_catalog_orders_api_keys_after_roles(client_as, admin_acme):
-    body = client_as(admin_acme).get("/api/permissions/catalog/").json()
-    admin_codes = [r["code"] for r in body["resource_types"] if r["group"] == "admin"]
-
-    assert admin_codes == ["organizations", "memberships", "roles", "api_keys", "audit"]
-
-
-@pytest.mark.django_db
-def test_catalog_secrets_no_longer_claims_api_keys(client_as, admin_acme):
-    body = client_as(admin_acme).get("/api/permissions/catalog/").json()
-    secrets = next(r for r in body["resource_types"] if r["code"] == "secrets")
-
-    assert secrets["label"] == "Secrets"
-    assert "API" not in secrets["description"]
-    assert secrets["applicable_actions"] == ["create", "read", "update", "delete"]
-
-
-@pytest.mark.django_db
-def test_catalog_recommends_read_alongside_api_key_delete(client_as, admin_acme):
-    body = client_as(admin_acme).get("/api/permissions/catalog/").json()
-    api_keys = next(r for r in body["resource_types"] if r["code"] == "api_keys")
-
-    assert api_keys["recommended_with"]["delete"] == [
-        {"resource_type": "api_keys", "action": "read"}
-    ]
-    assert api_keys["recommended_with"]["read"] == []
+    assert flows["recommended_with"]["delete"] == [{"resource_type": "flows", "action": "read"}]
+    assert _resource(catalog, "tools")["recommended_with"]["read"] == []

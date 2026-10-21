@@ -1,5 +1,6 @@
 from datetime import UTC
 
+from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.constants.telegram_constants import TelegramRegistrationBlockerCode
@@ -24,6 +25,7 @@ from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerInputParser,
@@ -47,19 +49,23 @@ def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind
             {
                 "webhook_trigger": (
                     f"This trigger is already configured for "
-                    f"kind='{auth.kind}' auth and cannot be attached to a "
+                    f"kind='{auth.kind}' auth (by a node, possibly in the recycle "
+                    f"bin, or a reservation) and cannot be attached to a "
                     f"node expecting kind='{expected_kind}' auth."
                 )
             }
         )
 
     other_related_name = _OTHER_NODE_TYPE_RELATED_NAME[expected_kind]
-    if getattr(wt, other_related_name).exists():
+    # all_objects: a node in the recycle bin keeps its trigger until it's
+    # purged, so restoring its flow can't give the trigger two node types.
+    if getattr(wt, other_related_name)(manager="all_objects").exists():
         raise serializers.ValidationError(
             {
                 "webhook_trigger": (
                     "This trigger is already attached to a different "
-                    "trigger node type and cannot also serve a "
+                    "trigger node type (possibly in the recycle bin) and "
+                    "cannot also serve a "
                     f"kind='{expected_kind}' node -- a trigger serves "
                     "exactly one node type."
                 )
@@ -68,13 +74,15 @@ def _reject_cross_type_trigger_conflict(wt: WebhookTrigger | None, expected_kind
 
 
 class WebhookTriggerNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
     BaseGraphEntityMixin,
     NestedPythonCodeMixin,
     serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
-    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
-        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    webhook_trigger = KeptLinkPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -86,6 +94,8 @@ class WebhookTriggerNodeSerializer(
             "graph",
             "python_code",
             "webhook_trigger",
+            "use_storage",
+            "created_by",
             "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
@@ -115,20 +125,22 @@ class TelegramTriggerNodeFieldSerializer(ContentHashWritableMixin, serializers.M
 
 
 class TelegramTriggerNodeSerializer(
+    AuthorStampingSerializerMixin,
+    LastEditFieldsSerializerMixin,
     SecretReferenceGuardMixin,
     ContentHashWritableMixin,
     serializers.ModelSerializer,
 ):
     secret_reference_fields = ("telegram_bot_api_key_secret_id",)
 
-    telegram_bot_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
-        queryset=Secret.objects.all(),
+    telegram_bot_api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
+        queryset=Secret.all_objects.all(),
         source="telegram_bot_api_key_secret",
         required=False,
         allow_null=True,
     )
-    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
-        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    webhook_trigger = KeptLinkPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )
     fields = TelegramTriggerNodeFieldSerializer(many=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -142,6 +154,7 @@ class TelegramTriggerNodeSerializer(
             "graph",
             "fields",
             "webhook_trigger",
+            "created_by",
             "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
@@ -272,7 +285,9 @@ class _ScheduleConfigInputSerializer(serializers.Serializer):
     end = _ScheduleEndInputSerializer(required=False, allow_null=True)
 
 
-class ScheduleTriggerNodeSerializer(serializers.Serializer):
+class ScheduleTriggerNodeSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.Serializer
+):
     """Shape/type validation only. Domain rules → ScheduleTriggerValidator.
     Persistence → ScheduleTriggerService.
 
@@ -288,6 +303,7 @@ class ScheduleTriggerNodeSerializer(serializers.Serializer):
     content_hash = serializers.CharField(required=False, allow_null=True)
     schedule = _ScheduleConfigInputSerializer(required=False, allow_null=True, write_only=True)
     current_runs = serializers.IntegerField(read_only=True)
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
 

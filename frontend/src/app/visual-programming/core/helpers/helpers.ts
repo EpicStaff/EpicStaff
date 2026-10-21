@@ -9,12 +9,10 @@ import { obstacleRect } from '../routing/obstacles';
 import { DEFAULT_AGENT_NODE_PORTS } from '../rules/agent-ports/agent-node-default-ports';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
-import { DEFAULT_EDGE_NODE_PORTS } from '../rules/edge-ports/edge-node-default-ports';
 import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_KEY_VALUE_NODE_PORTS } from '../rules/key-value-ports/key-value-default-ports';
 import { DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS } from '../rules/knowledge-retriever-ports/knowledge-retriever-default-ports';
-import { DEFAULT_LLM_NODE_PORTS } from '../rules/llm-ports/llm-node-default-ports';
 import { DEFAULT_PYTHON_NODE_PORTS } from '../rules/python-ports/python-node-default-ports';
 import { DEFAULT_SCHEDULE_TRIGGER_NODE_PORTS } from '../rules/schedule-trigger-ports/schedule-trigger-default-ports';
 import { DEFAULT_START_NODE_PORTS } from '../rules/start-ports/start-node-default-ports';
@@ -58,14 +56,10 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
             return DEFAULT_TASK_NODE_PORTS;
         case NodeType.AGENT:
             return DEFAULT_AGENT_NODE_PORTS;
-        case NodeType.LLM:
-            return DEFAULT_LLM_NODE_PORTS;
         case NodeType.TOOL:
             return DEFAULT_TOOL_NODE_PORTS;
         case NodeType.PYTHON:
             return DEFAULT_PYTHON_NODE_PORTS;
-        case NodeType.EDGE:
-            return DEFAULT_EDGE_NODE_PORTS;
         case NodeType.START:
             return DEFAULT_START_NODE_PORTS;
         case NodeType.TABLE:
@@ -106,8 +100,65 @@ export function getPortByRole(portRole: string): BasePort | undefined {
     return port;
 }
 
+/**
+ * Checks whether `allowedConnections` includes `targetRole`, handling the
+ * `table-out` wildcard that matches any dynamic decision port role.
+ */
+export function isRoleAllowed(allowedConnections: string[], targetRole: string): boolean {
+    return allowedConnections.some((allowed) => {
+        if (allowed === targetRole) return true;
+        if (allowed === 'table-out' && isDecisionPortRole(targetRole)) return true;
+        return false;
+    });
+}
+
+/**
+ * Core compatibility check between two ports given their owning node IDs and
+ * port definitions. Used by both the strict connection validator
+ * (`isConnectionValid`) and the UI port-connectivity map (`portConnectionsMap`).
+ *
+ * Rules:
+ * - Self-connection (same node) is rejected.
+ * - Two ports of the same basic type (input+input, output+output) are rejected.
+ * - `input-output` ports can connect to other `input-output` ports (OR logic:
+ *   either direction's `allowedConnections` may allow it).
+ * - For input+output pairs the **input** port's `allowedConnections` must list
+ *   the output port's role (with `table-out` wildcard support).
+ */
+export function arePortsCompatible(
+    sourceNodeId: string,
+    sourcePort: BasePort,
+    targetNodeId: string,
+    targetPort: BasePort
+): boolean {
+    if (sourceNodeId === targetNodeId) {
+        return false;
+    }
+
+    const sourceType = sourcePort.port_type;
+    const targetType = targetPort.port_type;
+
+    // input-output + input-output: either direction may allow the connection
+    if (sourceType === 'input-output' && targetType === 'input-output') {
+        return (
+            isRoleAllowed(sourcePort.allowedConnections, targetPort.role) ||
+            isRoleAllowed(targetPort.allowedConnections, sourcePort.role)
+        );
+    }
+
+    // input + output or output + input
+    if (sourceType === 'input' && targetType === 'output') {
+        return isRoleAllowed(sourcePort.allowedConnections, targetPort.role);
+    }
+    if (sourceType === 'output' && targetType === 'input') {
+        return isRoleAllowed(targetPort.allowedConnections, sourcePort.role);
+    }
+
+    // same type (input+input, output+output) or unsupported combinations
+    return false;
+}
+
 export function isConnectionValid(sourcePortId: CustomPortId, targetPortId: CustomPortId): boolean {
-    // 1️⃣ Parse the port IDs
     const sourceInfo = parsePortId(sourcePortId);
     const targetInfo = parsePortId(targetPortId);
 
@@ -116,7 +167,6 @@ export function isConnectionValid(sourcePortId: CustomPortId, targetPortId: Cust
         return false;
     }
 
-    // 2️⃣ Look up BasePort definitions
     let sourcePort = getPortByRole(sourceInfo.portRole);
     let targetPort = getPortByRole(targetInfo.portRole);
 
@@ -144,42 +194,43 @@ export function isConnectionValid(sourcePortId: CustomPortId, targetPortId: Cust
         return false;
     }
 
-    if (sourceInfo.nodeId === targetInfo.nodeId) {
-        console.warn(`Cannot connect a node to itself: ${sourceInfo.nodeId}`);
+    // arePortsCompatible checks the input port's allowedConnections against the
+    // output port's role. For the strict connection validator we additionally
+    // verify the reverse direction so that both ports agree on the connection.
+    const compatible = arePortsCompatible(sourceInfo.nodeId, sourcePort, targetInfo.nodeId, targetPort);
+
+    if (!compatible) {
+        if (sourceInfo.nodeId === targetInfo.nodeId) {
+            console.warn(`Cannot connect a node to itself: ${sourceInfo.nodeId}`);
+        } else if (
+            (sourcePort.port_type === 'input' && targetPort.port_type === 'input') ||
+            (sourcePort.port_type === 'output' && targetPort.port_type === 'output')
+        ) {
+            console.warn(`Cannot connect two ports of the same type: ${sourcePort.port_type}-${targetPort.port_type}`);
+        } else {
+            console.warn(`Invalid connection roles: "${sourcePort.role}" -> "${targetPort.role}".`);
+        }
         return false;
     }
 
-    // 4️⃣ Disallow input→input or output→output
-    if (
-        (sourcePort.port_type === 'input' && targetPort.port_type === 'input') ||
-        (sourcePort.port_type === 'output' && targetPort.port_type === 'output')
-    ) {
-        console.warn(`Cannot connect two ports of the same type: ${sourcePort.port_type}-${targetPort.port_type}`);
-        return false;
+    // Bidirectional allowedConnections check: the output port must also list the
+    // input port's role in its allowedConnections.  arePortsCompatible already
+    // verified the input→output direction; here we verify output→input.
+    // (input-output ports use OR logic in arePortsCompatible, so skip the extra
+    // check for that case.)
+    if (sourcePort.port_type !== 'input-output' && targetPort.port_type !== 'input-output') {
+        const outputPort = sourcePort.port_type === 'output' ? sourcePort : targetPort;
+        const inputPort = sourcePort.port_type === 'input' ? sourcePort : targetPort;
+        const outputAllowsInput = isRoleAllowed(outputPort.allowedConnections, inputPort.role);
+        if (!outputAllowsInput) {
+            console.warn(
+                `Invalid connection roles: "${sourcePort.role}" -> "${targetPort.role}" ` +
+                    `(output port does not allow input port's role).`
+            );
+            return false;
+        }
     }
 
-    // 5️⃣ Validate allowedConnections
-    const sourceAllowsTarget = sourcePort.allowedConnections.some((allowed) => {
-        if (allowed === targetPort.role) return true;
-        if (allowed === 'table-out' && isDecisionPortRole(targetInfo.portRole)) return true;
-        return false;
-    });
-
-    const targetAllowsSource = targetPort.allowedConnections.some((allowed) => {
-        if (allowed === sourcePort.role) return true;
-        if (allowed === 'table-out' && isDecisionPortRole(sourceInfo.portRole)) return true;
-        return false;
-    });
-
-    if (!sourceAllowsTarget || !targetAllowsSource) {
-        console.warn(
-            `Invalid connection roles: "${sourcePort.role}" -> "${targetPort.role}".
-         sourceAllowsTarget=${sourceAllowsTarget}, targetAllowsSource=${targetAllowsSource}`
-        );
-        return false;
-    }
-
-    // 🎉 If we reach here, it's valid
     return true;
 }
 
@@ -286,15 +337,7 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
             role: 'table-in',
             multiple: true,
             label: 'In',
-            allowedConnections: [
-                'project-out',
-                'python-out',
-                'edge-out',
-                'table-out',
-                'start-start',
-                'llm-out-right',
-                'file-extractor-out',
-            ],
+            allowedConnections: ['project-out', 'python-out', 'table-out', 'start-start', 'file-extractor-out'],
             position: 'left',
             color: '#00aaff',
         }),
@@ -315,9 +358,7 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
                 allowedConnections: [
                     'project-in',
                     'python-in',
-                    'edge-in',
                     'table-in',
-                    'llm-out-left',
                     'end-in',
                     'decision-out-in',
                     'file-extractor-in',
@@ -502,15 +543,7 @@ export function generatePortsForClassificationDecisionTableNode(
             role: 'table-in',
             multiple: true,
             label: 'In',
-            allowedConnections: [
-                'project-out',
-                'python-out',
-                'edge-out',
-                'table-out',
-                'start-start',
-                'llm-out-right',
-                'file-extractor-out',
-            ],
+            allowedConnections: ['project-out', 'python-out', 'table-out', 'start-start', 'file-extractor-out'],
             position: 'left',
             color: '#00aaff',
         }),
@@ -539,9 +572,7 @@ export function generatePortsForClassificationDecisionTableNode(
                 allowedConnections: [
                     'project-in',
                     'python-in',
-                    'edge-in',
                     'table-in',
-                    'llm-out-left',
                     'end-in',
                     'decision-out-in',
                     'file-extractor-in',

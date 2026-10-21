@@ -31,12 +31,6 @@ describe('routing obstacles', () => {
         expect(rect).toEqual({ left: -20, top: -10, right: 350, bottom: visualHeight + 10 });
     });
 
-    it('uses the fixed collision box for an EDGE node', () => {
-        const edge = makeNode('edge', NodeType.EDGE, { position: { x: 0, y: 0 } });
-
-        expect(obstacleRect(edge)).toEqual({ left: 5, top: -12, right: 313, bottom: 184 });
-    });
-
     it('leaves NOTE nodes out and keys the rest by id', () => {
         const nodes = [
             makeNode('a', NodeType.PYTHON, { height: 60 }),

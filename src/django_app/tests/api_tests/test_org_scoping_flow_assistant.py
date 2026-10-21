@@ -1,25 +1,38 @@
-"""Org scoping for the Flow Assistant config endpoint
-(GET/PATCH /api/flow-assistants/<graph_id>/).
+"""Org scoping for the Flow Assistant endpoints (/api/flow-assistants/<graph_id>/...).
 
-Before the fix this APIView was IsAuthenticated-only with an unscoped graph
-lookup and a plain llm_config field, so any authenticated user could read/patch
-another org's assistant and attach a cross-org LLMConfig. Covers the RBAC guide
-layers: org context + verb gate (FLOWS) + row scope (cross-org graph → 404) +
-org-scoped llm_config FK.
+These were once IsAuthenticated-only with an unscoped graph lookup, so any user could
+read or patch another org's assistant, attach a cross-org LLMConfig, and start a
+conversation row against another org's graph. Now: org context + FLOWS verb gate +
+row scope (another org's graph is a 404, before any conversation lookup) + an
+org-scoped llm_config.
+
+The reply stream authenticates with an SSE ticket that names only the user, so it is
+gated by the org that owns the conversation's flow, before the stream (and its LLM
+call) starts.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
+from asgiref.sync import sync_to_async
+from django.db.models import Max
+from django.test import AsyncClient, Client
+from django.urls import reverse
 from rest_framework.test import APIClient
 
+from rbac.identity.tickets import sse_ticket_service
 from tables.models import Graph
-from tables.models.flow_assistant_models import FlowAssistantConversation
-from tables.models.llm_models import LLMConfig
+from tables.models.flow_assistant_models import (
+    FlowAssistant,
+    FlowAssistantConversation,
+    FlowAssistantMessage,
+)
+from tables.models.llm_models import LLMConfig, LLMModel, Provider
+from tables.services.llm_clients.base import DoneEvent, TokenEvent
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
-
-def _url(graph_id: int) -> str:
-    return f"/api/flow-assistants/{graph_id}/"
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
@@ -32,185 +45,231 @@ def org_b(db):
     return Organization.objects.create(name="Org B")
 
 
-def _client(django_user_model, org, email, role_name=BuiltInRole.ORG_ADMIN):
-    role = Role.objects.get(name=role_name, is_built_in=True, org__isnull=True)
-    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
-    OrganizationUser.objects.create(user=user, org=org, role=role)
-    c = APIClient()
-    c.force_authenticate(user=user)
-    c.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
-    return c
+def _client(django_user_model, org, role_name):
+    user = django_user_model.objects.create_user(email=f"{role_name}@example.com", password="StrongPass123!")
+    OrganizationUser.objects.create(
+        user=user, org=org, role=Role.objects.get(name=role_name, is_built_in=True, org__isnull=True)
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    return client
 
 
 @pytest.fixture
-def client_a(db, django_user_model, org_a):
-    return _client(django_user_model, org_a, "admin_a@example.com")
+def admin_a(db, django_user_model, org_a):
+    return _client(django_user_model, org_a, BuiltInRole.ORG_ADMIN)
 
 
-def _graph(org, name="g"):
-    return Graph.objects.create(name=name, metadata={"nodes": [], "edges": []}, org=org)
+@pytest.fixture
+def viewer_a(db, django_user_model, org_a):
+    return _client(django_user_model, org_a, BuiltInRole.VIEWER)
 
 
-# ---- row scope: cross-org graph is indistinguishable from missing (404) ----
+def _graph(org):
+    return Graph.objects.create(name="g", metadata={"nodes": [], "edges": []}, org=org)
 
 
-@pytest.mark.django_db
-def test_flow_assistant_config_get_cross_org_graph_404(client_a, org_a, org_b):
-    graph_b = _graph(org_b, "b")
-    resp = client_a.get(_url(graph_b.id))
+ROUTES = {
+    "config-get": ("get", "/api/flow-assistants/{graph}/", {}),
+    "config-patch": ("patch", "/api/flow-assistants/{graph}/", {}),
+    "conversations-list": ("get", "/api/flow-assistants/{graph}/conversations/", {}),
+    "conversation-start": ("post", "/api/flow-assistants/{graph}/conversations/", {}),
+    # The graph check runs before the conversation lookup, so a bogus id still 404s on the graph.
+    "conversation-get": ("get", "/api/flow-assistants/{graph}/conversations/999999/", {}),
+    "conversation-delete": ("delete", "/api/flow-assistants/{graph}/conversations/999999/", {}),
+    "message-send": ("post", "/api/flow-assistants/{graph}/conversations/999999/messages/", {"message": "hi"}),
+}
+
+
+@pytest.mark.parametrize("route", list(ROUTES))
+def test_another_orgs_graph_is_404_and_writes_nothing(admin_a, org_b, route):
+    method, url, body = ROUTES[route]
+    graph_b = _graph(org_b)
+
+    resp = getattr(admin_a, method)(url.format(graph=graph_b.id), body, format="json")
+
     assert resp.status_code == 404, resp.data
+    assert not FlowAssistantConversation.objects.filter(flow_assistant__graph_id=graph_b.id).exists()
 
 
-@pytest.mark.django_db
-def test_flow_assistant_config_patch_cross_org_graph_404(client_a, org_a, org_b):
-    graph_b = _graph(org_b, "b")
-    resp = client_a.patch(_url(graph_b.id), {}, format="json")
-    assert resp.status_code == 404, resp.data
+@pytest.mark.parametrize(
+    ("client", "method", "url", "expected_status"),
+    [
+        ("admin_a", "get", "/api/flow-assistants/{graph}/", 200),
+        ("admin_a", "get", "/api/flow-assistants/{graph}/conversations/", 200),
+        # A Viewer has FLOWS READ: it may read the config and use the assistant...
+        ("viewer_a", "get", "/api/flow-assistants/{graph}/", 200),
+        ("viewer_a", "post", "/api/flow-assistants/{graph}/conversations/", 201),
+        # ...but not change the config (no FLOWS UPDATE).
+        ("viewer_a", "patch", "/api/flow-assistants/{graph}/", 403),
+    ],
+)
+def test_own_graph_follows_the_flows_permissions(request, org_a, client, method, url, expected_status):
+    graph_a = _graph(org_a)
+    body = {"llm_config": LLMConfig.objects.create(custom_name="a-cfg", org=org_a).id} if method == "patch" else {}
+
+    resp = getattr(request.getfixturevalue(client), method)(url.format(graph=graph_a.id), body, format="json")
+
+    assert resp.status_code == expected_status, resp.data
+    if expected_status == 201:
+        assert FlowAssistantConversation.objects.filter(flow_assistant__graph_id=graph_a.id).exists()
 
 
-# ---- own graph works ----
+@pytest.mark.parametrize(("owner", "expected_status"), [("own", 200), ("another", 400)])
+def test_the_assistants_llm_config_must_be_the_orgs_own(admin_a, org_a, org_b, owner, expected_status):
+    llm_config = LLMConfig.objects.create(custom_name="cfg", org=org_a if owner == "own" else org_b)
+
+    resp = admin_a.patch(f"/api/flow-assistants/{_graph(org_a).id}/", {"llm_config": llm_config.id}, format="json")
+
+    assert resp.status_code == expected_status, resp.data
+    if expected_status == 400:
+        assert "llm_config" in str(resp.data)
 
 
-@pytest.mark.django_db
-def test_flow_assistant_config_get_own_ok(client_a, org_a):
-    graph_a = _graph(org_a, "a")
-    resp = client_a.get(_url(graph_a.id))
-    assert resp.status_code == 200, resp.data
+# ── GET /api/flow-assistants/<graph_id>/conversations/<id>/stream/ (SSE) ─────
 
 
-# ---- org-scoped llm_config FK ----
+def _member(user, org, role):
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
 
 
-@pytest.mark.django_db
-def test_flow_assistant_config_llm_config_cross_org_rejected(client_a, org_a, org_b):
-    graph_a = _graph(org_a, "a")
-    other = LLMConfig.objects.create(custom_name="b-cfg", org=org_b)
-    resp = client_a.patch(_url(graph_a.id), {"llm_config": other.id}, format="json")
-    assert resp.status_code == 400, resp.data
-    assert "llm_config" in str(resp.data)
+@pytest.fixture
+def member_role(db):
+    return Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
 
 
-@pytest.mark.django_db
-def test_flow_assistant_config_llm_config_same_org_ok(client_a, org_a):
-    graph_a = _graph(org_a, "a")
-    mine = LLMConfig.objects.create(custom_name="a-cfg", org=org_a)
-    resp = client_a.patch(_url(graph_a.id), {"llm_config": mine.id}, format="json")
-    assert resp.status_code == 200, resp.data
+@pytest.fixture
+def two_org_user(db, django_user_model, org_a, org_b, member_role):
+    """Member of Org A; in Org B their custom role holds no FLOWS permission."""
+    user = django_user_model.objects.create_user(email="two-orgs-stream@example.com", password="StrongPass123!")
+    _member(user, org_a, member_role)
+    return _member(user, org_b, Role.objects.create(name="No flows", org=org_b, is_built_in=False))
 
 
-# ---- verb gate: a Viewer (no FLOWS UPDATE) cannot PATCH ----
+@pytest.fixture
+def other_member_a(db, django_user_model, org_a, member_role):
+    user = django_user_model.objects.create_user(email="other-member-a@example.com", password="StrongPass123!")
+    return _member(user, org_a, member_role)
 
 
-@pytest.mark.django_db
-def test_flow_assistant_config_patch_denied_for_viewer(db, django_user_model, org_a):
-    graph_a = _graph(org_a, "a")
-    viewer = _client(
-        django_user_model, org_a, "viewer_a@example.com", role_name=BuiltInRole.VIEWER
+@pytest.fixture
+def superadmin_user(db, django_user_model):
+    user = django_user_model.objects.create_user(email="superadmin-stream@example.com", password="StrongPass123!")
+    user.is_superadmin = True
+    user.save()
+    return user
+
+
+def _pending_conversation(user, org) -> FlowAssistantConversation:
+    """A conversation of `user` in `org` whose last message waits for the assistant's reply."""
+    model = LLMModel.objects.create(name=f"stream-model-{org.id}", llm_provider=Provider.objects.create(name=f"p-{org.id}"))
+    assistant = FlowAssistant.objects.create(
+        graph=_graph(org), llm_config=LLMConfig.objects.create(custom_name=f"stream-cfg-{org.id}", model=model, org=org)
     )
-    mine = LLMConfig.objects.create(custom_name="a-cfg", org=org_a)
-    resp = viewer.patch(_url(graph_a.id), {"llm_config": mine.id}, format="json")
-    assert resp.status_code == 403, resp.data
-
-
-@pytest.mark.django_db
-def test_flow_assistant_config_get_allowed_for_viewer(db, django_user_model, org_a):
-    # Viewer has FLOWS READ, so GET is allowed.
-    graph_a = _graph(org_a, "a")
-    viewer = _client(
-        django_user_model, org_a, "viewer_a@example.com", role_name=BuiltInRole.VIEWER
+    conversation = FlowAssistantConversation.objects.create(
+        flow_assistant=assistant, organization_user=OrganizationUser.objects.get(user=user, org=org)
     )
-    resp = viewer.get(_url(graph_a.id))
-    assert resp.status_code == 200, resp.data
+    FlowAssistantMessage.objects.create(conversation=conversation, message_index=0, role="user", content="what does this flow do?")
+    return conversation
 
 
-# ── Conversation endpoints ────────────────────────────────────────────────────
-#
-# Before the fix these used an unscoped graph lookup (`_get_graph_or_404`) and no
-# `assert_org_permission`, so any authenticated member could list/start/read a
-# conversation against another org's graph — start_conversation in particular
-# wrote a cross-org conversation row. Now every endpoint gates on FLOWS READ and
-# resolves the graph inside the active org (cross-org graph → 404).
+def _stream_url(conversation_id, graph_id):
+    return reverse("flow-assistant-stream", args=[graph_id, conversation_id])
 
 
-def _conversations_url(graph_id: int) -> str:
-    return f"/api/flow-assistants/{graph_id}/conversations/"
+def _stream(user, conversation):
+    ticket, _ = sse_ticket_service.issue(user)
+    return Client().get(_stream_url(conversation.pk, conversation.flow_assistant.graph_id), {"ticket": ticket})
 
 
-def _conversation_url(graph_id: int, conversation_id: int) -> str:
-    return f"/api/flow-assistants/{graph_id}/conversations/{conversation_id}/"
+def _missing_conversation(conversation):
+    missing_id = FlowAssistantConversation.objects.aggregate(max_id=Max("id"))["max_id"] + 1000
+    return FlowAssistantConversation(pk=missing_id, flow_assistant=conversation.flow_assistant)
 
 
-def _messages_url(graph_id: int, conversation_id: int) -> str:
-    return f"/api/flow-assistants/{graph_id}/conversations/{conversation_id}/messages/"
+@pytest.fixture
+def llm_client():
+    """The LLM client the stream would bill; streams one short plain-text reply."""
+
+    async def reply(messages, tools):
+        yield TokenEvent(content="hi")
+        yield DoneEvent()
+
+    client = MagicMock()
+    client.stream_completion = reply
+    with patch("tables.services.flow_assistant.service.get_llm_client", return_value=client) as get_llm_client:
+        yield get_llm_client
 
 
-# ---- row scope: cross-org graph is indistinguishable from missing (404) ----
+def test_stream_in_an_org_without_flows_read_is_refused_before_the_llm_is_called(two_org_user, org_b, llm_client):
+    response = _stream(two_org_user, _pending_conversation(two_org_user, org_b))
+
+    assert response.status_code == 403, response.content
+    assert not response.streaming
+    assert response.json()["status_code"] == 403
+    llm_client.assert_not_called()
 
 
-@pytest.mark.django_db
-def test_conversations_list_cross_org_graph_404(client_a, org_a, org_b):
-    graph_b = _graph(org_b, "b")
-    resp = client_a.get(_conversations_url(graph_b.id))
-    assert resp.status_code == 404, resp.data
+@pytest.mark.parametrize("caller", ["other_member_a", "superadmin_user"])
+def test_another_users_conversation_answers_like_a_missing_one(request, two_org_user, org_a, caller, llm_client):
+    conversation = _pending_conversation(two_org_user, org_a)
+    stranger = request.getfixturevalue(caller)
+
+    foreign = _stream(stranger, conversation)
+    missing = _stream(stranger, _missing_conversation(conversation))
+
+    assert foreign.status_code == 404, foreign.content
+    assert (foreign.status_code, foreign.content) == (missing.status_code, missing.content)
+    llm_client.assert_not_called()
 
 
-@pytest.mark.django_db
-def test_conversations_start_cross_org_graph_404(client_a, org_a, org_b):
-    # The core regression: starting a conversation against another org's graph
-    # must 404 before any conversation row is written.
-    graph_b = _graph(org_b, "b")
-    resp = client_a.post(_conversations_url(graph_b.id), {}, format="json")
-    assert resp.status_code == 404, resp.data
-    assert not FlowAssistantConversation.objects.filter(
-        flow_assistant__graph_id=graph_b.id
-    ).exists()
+def _soft_delete(conversation, org_a):
+    conversation.deleted_at = conversation.started_at
+    conversation.save(update_fields=["deleted_at"])
 
 
-@pytest.mark.django_db
-def test_conversation_get_cross_org_graph_404(client_a, org_a, org_b):
-    # The graph-scope check runs before the conversation lookup, so a bogus
-    # conversation id still surfaces the cross-org graph as 404.
-    graph_b = _graph(org_b, "b")
-    resp = client_a.get(_conversation_url(graph_b.id, 999999))
-    assert resp.status_code == 404, resp.data
+def _deactivate_the_org(conversation, org_a):
+    # The user stays a member, but of an org that no longer grants anything.
+    org_a.is_active = False
+    org_a.save(update_fields=["is_active"])
 
 
-@pytest.mark.django_db
-def test_conversation_delete_cross_org_graph_404(client_a, org_a, org_b):
-    graph_b = _graph(org_b, "b")
-    resp = client_a.delete(_conversation_url(graph_b.id, 999999))
-    assert resp.status_code == 404, resp.data
+def _move_to_another_flow(conversation, org_a):
+    # The URL names this flow while the conversation belongs to another one.
+    another_flow = Graph.objects.create(name="another flow", org=org_a)
+    conversation.flow_assistant = FlowAssistant.objects.create(graph=another_flow)
 
 
-@pytest.mark.django_db
-def test_send_message_cross_org_graph_404(client_a, org_a, org_b):
-    graph_b = _graph(org_b, "b")
-    resp = client_a.post(
-        _messages_url(graph_b.id, 999999), {"message": "hi"}, format="json"
-    )
-    assert resp.status_code == 404, resp.data
+@pytest.mark.parametrize(
+    "make_unstreamable",
+    [_soft_delete, _deactivate_the_org, _move_to_another_flow],
+    ids=["soft_deleted", "org_deactivated", "graph_id_of_another_flow"],
+)
+def test_conversation_the_user_may_no_longer_stream_answers_like_a_missing_one(
+    two_org_user, org_a, llm_client, make_unstreamable
+):
+    conversation = _pending_conversation(two_org_user, org_a)
+    missing = _stream(two_org_user, _missing_conversation(conversation))
+
+    make_unstreamable(conversation, org_a)
+    response = _stream(two_org_user, conversation)
+
+    assert response.status_code == 404, response.content
+    assert response.content == missing.content
+    llm_client.assert_not_called()
 
 
-# ---- own graph works; verb gate allows a Viewer (READ) to use the assistant ----
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_in_an_org_with_flows_read_streams_the_reply(two_org_user, org_a, llm_client):
+    conversation = await sync_to_async(_pending_conversation)(two_org_user, org_a)
+    ticket, _ = await sync_to_async(sse_ticket_service.issue)(two_org_user)
 
+    response = await AsyncClient().get(_stream_url(conversation.pk, conversation.flow_assistant.graph_id), {"ticket": ticket})
+    frames = [frame async for frame in response.streaming_content]
 
-@pytest.mark.django_db
-def test_conversations_list_own_ok(client_a, org_a):
-    graph_a = _graph(org_a, "a")
-    resp = client_a.get(_conversations_url(graph_a.id))
-    assert resp.status_code == 200, resp.data
-
-
-@pytest.mark.django_db
-def test_conversations_start_allowed_for_viewer(db, django_user_model, org_a):
-    # Conversation endpoints gate on FLOWS READ, which a Viewer has, so starting
-    # a conversation (a "use the assistant" action) is allowed.
-    graph_a = _graph(org_a, "a")
-    viewer = _client(
-        django_user_model, org_a, "viewer_a@example.com", role_name=BuiltInRole.VIEWER
-    )
-    resp = viewer.post(_conversations_url(graph_a.id), {}, format="json")
-    assert resp.status_code == 201, resp.data
-    assert FlowAssistantConversation.objects.filter(
-        flow_assistant__graph_id=graph_a.id
-    ).exists()
+    assert response.status_code == 200
+    assert response["Content-Type"] == "text/event-stream"
+    assert b"event: done\n" in frames

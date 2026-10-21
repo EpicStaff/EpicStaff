@@ -1,7 +1,6 @@
 """API key tests: generator, model, authentication, self-service
 endpoints, and system key."""
 
-import hashlib
 from datetime import datetime, timedelta
 
 import pytest
@@ -15,10 +14,6 @@ from rbac.identity.api_keys.generator import (
     KEY_PREFIX,
     PREFIX_LENGTH,
     ApiKeyGenerator,
-)
-from rbac.identity.api_keys.principals import (
-    PrincipalResolver,
-    SystemServicePrincipal,
 )
 from rbac.identity.api_keys.system_key import SystemKeyService
 
@@ -38,65 +33,34 @@ def profile_key_revoke_url(key_id):
     return f"{PROFILE_KEYS_URL}{key_id}/revoke/"
 
 
-class TestApiKeyGenerator:
-    def test_generate_returns_prefixed_raw_key(self):
-        generated = ApiKeyGenerator.generate()
-        assert generated.raw_key.startswith(KEY_PREFIX)
-        assert len(generated.raw_key) > 40  # es_ + 43-char token
+def test_generated_keys_are_unique_prefixed_and_stored_only_as_a_hash():
+    first, second = ApiKeyGenerator.generate(), ApiKeyGenerator.generate()
 
-    def test_generate_prefix_is_first_12_chars(self):
-        generated = ApiKeyGenerator.generate()
-        assert generated.prefix == generated.raw_key[:PREFIX_LENGTH]
-        assert len(generated.prefix) == 12
-
-    def test_generate_hash_is_sha256_of_raw(self):
-        generated = ApiKeyGenerator.generate()
-        expected = hashlib.sha256(generated.raw_key.encode()).hexdigest()
-        assert generated.key_hash == expected
-
-    def test_generate_is_unique_per_call(self):
-        a, b = ApiKeyGenerator.generate(), ApiKeyGenerator.generate()
-        assert a.raw_key != b.raw_key
-        assert a.key_hash != b.key_hash
-
-    def test_hash_key_matches_generate(self):
-        generated = ApiKeyGenerator.generate()
-        assert ApiKeyGenerator.hash_key(generated.raw_key) == generated.key_hash
+    assert first.raw_key != second.raw_key
+    assert first.raw_key.startswith(KEY_PREFIX)
+    # The prefix is what the UI shows; it identifies a key without revealing it.
+    assert first.prefix == first.raw_key[:PREFIX_LENGTH] and len(first.prefix) == 12
+    assert first.raw_key not in first.key_hash
+    assert ApiKeyGenerator.hash_key(first.raw_key) == first.key_hash != second.key_hash
 
 
 @pytest.mark.django_db
 class TestApiKeyModel:
-    def test_user_key_without_owner_violates_constraint(self, regular_user):
+    @pytest.mark.parametrize(
+        ("key_type", "owned", "expires"),
+        [(ApiKey.KeyType.USER, False, False), (ApiKey.KeyType.SYSTEM, True, False), (ApiKey.KeyType.SYSTEM, False, True)],
+        ids=["user-key-without-owner", "system-key-with-owner", "system-key-with-expiry"],
+    )
+    def test_key_ownership_and_expiry_are_enforced_by_the_database(self, regular_user, key_type, owned, expires):
         generated = ApiKeyGenerator.generate()
         with pytest.raises(IntegrityError):
             ApiKey.objects.create(
                 name="bad",
-                key_type=ApiKey.KeyType.USER,
+                key_type=key_type,
                 prefix=generated.prefix,
                 key_hash=generated.key_hash,
-                created_by=None,
-            )
-
-    def test_system_key_with_owner_violates_constraint(self, regular_user):
-        generated = ApiKeyGenerator.generate()
-        with pytest.raises(IntegrityError):
-            ApiKey.objects.create(
-                name="bad",
-                key_type=ApiKey.KeyType.SYSTEM,
-                prefix=generated.prefix,
-                key_hash=generated.key_hash,
-                created_by=regular_user,
-            )
-
-    def test_system_key_with_expiry_violates_constraint(self):
-        generated = ApiKeyGenerator.generate()
-        with pytest.raises(IntegrityError):
-            ApiKey.objects.create(
-                name="bad",
-                key_type=ApiKey.KeyType.SYSTEM,
-                prefix=generated.prefix,
-                key_hash=generated.key_hash,
-                expires_at=timezone.now() + timedelta(days=1),
+                created_by=regular_user if owned else None,
+                expires_at=timezone.now() + timedelta(days=1) if expires else None,
             )
 
     def test_deleting_user_cascades_keys(self, regular_user, issue_api_key):
@@ -129,32 +93,19 @@ class TestApiKeyAuthentication:
         assert resp.status_code == status.HTTP_200_OK
         assert resp.json()["email"] == regular_user.email
 
-    def test_revoked_key_401(self, regular_user, issue_api_key):
-        raw, _ = issue_api_key(user=regular_user, revoked_at=timezone.now())
+    @pytest.mark.parametrize(
+        "spoil",
+        [
+            lambda issue, user: issue(user=user, revoked_at=timezone.now())[0],
+            lambda issue, user: issue(user=user, expires_at=timezone.now() - timedelta(seconds=1))[0],
+            lambda issue, user: "es_not-a-real-key",
+        ],
+        ids=["revoked", "expired", "unknown"],
+    )
+    def test_unusable_key_is_401(self, regular_user, issue_api_key, spoil):
         client = APIClient()
-        client.credentials(HTTP_X_API_KEY=raw)
+        client.credentials(HTTP_X_API_KEY=spoil(issue_api_key, regular_user))
         assert client.get(PROFILE_URL).status_code == status.HTTP_401_UNAUTHORIZED
-
-    def test_expired_key_401(self, regular_user, issue_api_key):
-        raw, _ = issue_api_key(
-            user=regular_user, expires_at=timezone.now() - timedelta(seconds=1)
-        )
-        client = APIClient()
-        client.credentials(HTTP_X_API_KEY=raw)
-        assert client.get(PROFILE_URL).status_code == status.HTTP_401_UNAUTHORIZED
-
-    def test_unknown_key_401(self):
-        client = APIClient()
-        client.credentials(HTTP_X_API_KEY="es_not-a-real-key")
-        assert client.get(PROFILE_URL).status_code == status.HTTP_401_UNAUTHORIZED
-
-    def test_system_key_is_superadmin_principal(self, env_api_key):
-        raw, key = env_api_key
-        principal = PrincipalResolver().resolve(key)
-        assert isinstance(principal, SystemServicePrincipal)
-        assert principal.is_authenticated is True
-        assert principal.is_superadmin is True
-        assert not hasattr(principal, "email")
 
     def test_system_key_blocked_on_profile_but_passes_auth(self, env_api_key):
         # Profile needs a user identity; system principal has none → 403
@@ -247,53 +198,38 @@ class TestInternalEndpointHardening:
 
 @pytest.mark.django_db
 class TestSelfServiceApiKeys:
-    def test_create_returns_raw_key_once(self, auth_client):
-        resp = auth_client.post(
-            PROFILE_KEYS_URL, data={"name": "mcp-laptop"}, format="json"
-        )
+    def test_create_returns_the_raw_key_once_with_a_90_day_default_expiry(self, auth_client):
+        resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "mcp-laptop"}, format="json")
+
         assert resp.status_code == status.HTTP_201_CREATED
         body = resp.json()
         assert body["api_key"].startswith("es-")
-        assert body["name"] == "mcp-laptop"
-        assert body["status"] == "active"
-        # default 90d expiry applied
-        assert body["expires_at"] is not None
-        # raw key never appears in the list
-        listed = auth_client.get(PROFILE_KEYS_URL).json()
-        assert "api_key" not in listed[0]
-        assert "key_hash" not in listed[0]
+        assert (body["name"], body["status"]) == ("mcp-laptop", "active")
+        expires_at = datetime.fromisoformat(body["expires_at"].replace("Z", "+00:00"))
+        assert timedelta(days=89) < expires_at - timezone.now() <= timedelta(days=90)
+        (listed,) = auth_client.get(PROFILE_KEYS_URL).json()
+        assert "api_key" not in listed and "key_hash" not in listed
 
-    def test_create_no_expiry_when_null(self, auth_client):
+    @pytest.mark.parametrize(("expires_in_days", "expected_status"), [(None, 201), (0, 400)])
+    def test_create_expiry_choice(self, auth_client, expires_in_days, expected_status):
         resp = auth_client.post(
-            PROFILE_KEYS_URL,
-            data={"name": "forever", "expires_in_days": None},
-            format="json",
+            PROFILE_KEYS_URL, data={"name": "k", "expires_in_days": expires_in_days}, format="json"
         )
-        assert resp.status_code == status.HTTP_201_CREATED
-        assert resp.json()["expires_at"] is None
 
-    def test_create_invalid_ttl_400(self, auth_client):
-        resp = auth_client.post(
-            PROFILE_KEYS_URL,
-            data={"name": "bad", "expires_in_days": 0},
-            format="json",
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.status_code == expected_status
+        if expected_status == 201:
+            assert resp.json()["expires_at"] is None
 
-    def test_cap_5_active_keys(self, auth_client, regular_user, issue_api_key):
-        for i in range(5):
-            issue_api_key(user=regular_user, name=f"k{i}")
+    @pytest.mark.parametrize(("revoked", "expected_status"), [(False, 400), (True, 201)], ids=["active", "revoked"])
+    def test_at_most_five_active_keys(self, auth_client, regular_user, issue_api_key, revoked, expected_status):
+        for index in range(5):
+            issue_api_key(user=regular_user, name=f"k{index}", revoked_at=timezone.now() if revoked else None)
+
         resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "sixth"}, format="json")
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.json()["code"] == "api_key_limit_exceeded"
 
-    def test_revoked_keys_do_not_count_toward_cap(
-        self, auth_client, regular_user, issue_api_key
-    ):
-        for i in range(5):
-            issue_api_key(user=regular_user, name=f"k{i}", revoked_at=timezone.now())
-        resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "ok"}, format="json")
-        assert resp.status_code == status.HTTP_201_CREATED
+        assert resp.status_code == expected_status
+        if expected_status == 400:
+            assert resp.json()["code"] == "api_key_limit_exceeded"
 
     def test_list_own_keys_only(self, auth_client, superadmin_user, issue_api_key):
         issue_api_key(user=superadmin_user, name="not-mine")
@@ -336,17 +272,6 @@ class TestSelfServiceApiKeys:
         client.credentials(HTTP_X_API_KEY=raw)
         resp = client.post(PROFILE_KEYS_URL, data={"name": "sneaky"}, format="json")
         assert resp.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_default_expiry_is_90_days(self, auth_client):
-        resp = auth_client.post(
-            PROFILE_KEYS_URL, data={"name": "default-ttl"}, format="json"
-        )
-        expires_at = datetime.fromisoformat(
-            resp.json()["expires_at"].replace("Z", "+00:00")
-        )
-        delta = expires_at - timezone.now()
-        assert timedelta(days=89) < delta <= timedelta(days=90)
-
 
 @pytest.mark.django_db
 class TestApiKeyPermissionParity:

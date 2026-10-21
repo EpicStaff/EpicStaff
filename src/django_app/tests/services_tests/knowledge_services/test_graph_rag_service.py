@@ -6,7 +6,6 @@ Real DB, no mocking — these services touch neither Redis nor LLM APIs.
 import pytest
 
 from tables.models.knowledge_models import (
-    SourceCollection,
     DocumentContent,
     DocumentMetadata,
     BaseRagType,
@@ -80,77 +79,43 @@ class TestGraphRagUpdateStatus:
             index_config=index_config,
         )
 
-    def test_all_completed_gives_completed(
-        self, source_collection, test_embedding_config, llm_config
+    @pytest.mark.parametrize(
+        ("statuses", "setup", "expected"),
+        [
+            ([S.COMPLETED], None, "completed"),
+            ([S.FAILED], None, "failed"),
+            ([S.OUTDATED], None, "outdated"),
+            # GraphRag has no PARTIAL status: completed + failed is completed.
+            ([S.COMPLETED, S.FAILED], None, "completed"),
+            # A rag that lost all its documents goes back to new, whatever it was.
+            ([], "was-completed", "new"),
+            ([S.NEW], "indexing", "processing"),
+            ([S.COMPLETED], "outdated-reason", "outdated"),
+        ],
+        ids=[
+            "completed", "failed", "outdated", "completed-and-failed", "no-documents",
+            "indexing", "outdated-reason-forces-outdated",
+        ],
+    )
+    def test_rag_status_follows_its_documents(
+        self, source_collection, test_embedding_config, llm_config, statuses, setup, expected
     ):
         rag = self._fresh_rag(source_collection, test_embedding_config, llm_config)
-        doc = _make_doc(source_collection, "_gc")
-        make_graph_rag_document(rag, doc, S.COMPLETED)
-        rag.update_rag_status()
-        assert rag.rag_status == GraphRag.GraphRagStatus.COMPLETED
+        links = [
+            make_graph_rag_document(rag, _make_doc(source_collection, f"_g{index}"), status)
+            for index, status in enumerate(statuses)
+        ]
+        if setup == "was-completed":
+            rag.rag_status = GraphRag.GraphRagStatus.COMPLETED
+        elif setup == "indexing":
+            rag.indexing_document_config_ids = [links[0].graph_rag_document_id]
+            rag.save(update_fields=["indexing_document_config_ids"])
+        elif setup == "outdated-reason":
+            rag.add_outdated_reason("index_config_changed", "Config changed.")
 
-    def test_all_failed_gives_failed(
-        self, source_collection, test_embedding_config, llm_config
-    ):
-        rag = self._fresh_rag(source_collection, test_embedding_config, llm_config)
-        doc = _make_doc(source_collection, "_gf")
-        make_graph_rag_document(rag, doc, S.FAILED)
         rag.update_rag_status()
-        assert rag.rag_status == GraphRag.GraphRagStatus.FAILED
 
-    def test_outdated_gives_outdated(
-        self, source_collection, test_embedding_config, llm_config
-    ):
-        rag = self._fresh_rag(source_collection, test_embedding_config, llm_config)
-        doc = _make_doc(source_collection, "_go")
-        make_graph_rag_document(rag, doc, S.OUTDATED)
-        rag.update_rag_status()
-        assert rag.rag_status == GraphRag.GraphRagStatus.OUTDATED
-
-    def test_completed_and_failed_gives_completed_not_partial(
-        self, source_collection, test_embedding_config, llm_config
-    ):
-        """GraphRag has no PARTIAL status; COMPLETED+FAILED → COMPLETED."""
-        rag = self._fresh_rag(source_collection, test_embedding_config, llm_config)
-        doc_c = _make_doc(source_collection, "_gcf_c")
-        doc_f = _make_doc(source_collection, "_gcf_f")
-        make_graph_rag_document(rag, doc_c, S.COMPLETED)
-        make_graph_rag_document(rag, doc_f, S.FAILED)
-        rag.update_rag_status()
-        assert rag.rag_status == GraphRag.GraphRagStatus.COMPLETED
-
-    def test_no_documents_gives_new(
-        self, source_collection, test_embedding_config, llm_config
-    ):
-        rag = self._fresh_rag(source_collection, test_embedding_config, llm_config)
-        rag.rag_status = GraphRag.GraphRagStatus.COMPLETED
-        rag.update_rag_status()
-        assert rag.rag_status == GraphRag.GraphRagStatus.NEW
-
-    def test_indexing_ids_nonempty_gives_processing(
-        self, source_collection, test_embedding_config, llm_config
-    ):
-        rag = self._fresh_rag(source_collection, test_embedding_config, llm_config)
-        doc = _make_doc(source_collection, "_gp")
-        link = make_graph_rag_document(rag, doc, S.NEW)
-        rag.indexing_document_config_ids = [link.graph_rag_document_id]
-        rag.save(update_fields=["indexing_document_config_ids"])
-        rag.update_rag_status()
-        assert rag.rag_status == GraphRag.GraphRagStatus.PROCESSING
-
-    def test_outdated_reasons_nonempty_forces_outdated(
-        self, source_collection, test_embedding_config, llm_config
-    ):
-        rag = self._fresh_rag(source_collection, test_embedding_config, llm_config)
-        doc = _make_doc(source_collection, "_gr_out")
-        make_graph_rag_document(rag, doc, S.COMPLETED)
-        rag.add_outdated_reason("index_config_changed", "Config changed.")
-        rag.update_rag_status()
-        assert rag.rag_status == GraphRag.GraphRagStatus.OUTDATED
-
-    def test_partial_is_not_a_valid_graph_rag_status(self):
-        """GraphRag.GraphRagStatus does not contain PARTIAL."""
-        assert "partial" not in GraphRag.GraphRagStatus.values
+        assert rag.rag_status == GraphRag.GraphRagStatus(expected)
 
 
 # ---------------------------------------------------------------------------

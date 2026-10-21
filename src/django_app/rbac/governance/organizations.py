@@ -3,6 +3,10 @@ from dataclasses import dataclass, field
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, QuerySet
 from loguru import logger
+from storage_credentials.exceptions import OrgStorageProvisioningError
+from storage_credentials.services.org_provisioning_service import (
+    org_storage_provisioning_service,
+)
 from tables.models.user import User
 
 from rbac.exceptions import (
@@ -123,12 +127,13 @@ class OrganizationManagementService(CrossOrgResourceService):
         return qs
 
     @transaction.atomic
-    def create_organization(self, name: str) -> Organization:
+    def create_organization(self, name: str, audit_retention_days: int = 0) -> Organization:
         try:
             org = Organization.objects.create(name=name)
         except IntegrityError as exc:
             raise OrganizationNameConflictError() from exc
-        OrganizationConfig.objects.create(org=org)
+        org_storage_provisioning_service.provision_for_organization(org)
+        OrganizationConfig.objects.create(org=org, audit_retention_days=audit_retention_days)
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
@@ -146,11 +151,21 @@ class OrganizationManagementService(CrossOrgResourceService):
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic
-    def update_audit_retention(self, org_id: int, audit_retention_days: int) -> Organization:
+    def update_audit_retention(
+        self, org_id: int, audit_retention_days: int, actor=None
+    ) -> Organization:
         """Lives on OrganizationConfig, not Organization itself. get_or_create
         is defensive insurance only - every org should already have a config
         row from create_organization (or the migration backfill, for
-        pre-existing orgs)."""
+        pre-existing orgs).
+
+        With `actor`, requires ORGANIZATIONS.UPDATE in `org_id` (404 when the
+        org is not visible to them), as `rename_organization` does. Without
+        it, the caller must already have authorized the org (the self-service
+        `/settings/` view gates on the active org)."""
+        if actor is not None:
+            effective = self.resolve_for_write(actor, org_id, action=Permission.UPDATE)
+            self.assert_can(effective, Permission.UPDATE)
         org = self._get_locked_org(org_id)
         config, _ = OrganizationConfig.objects.select_for_update().get_or_create(org=org)
         if config.audit_retention_days != audit_retention_days:
@@ -160,20 +175,42 @@ class OrganizationManagementService(CrossOrgResourceService):
 
     @transaction.atomic
     def deactivate_organization(self, org_id: int) -> Organization:
-        orgs = Organization.objects.filter(is_active=True).order_by("pk").select_for_update()
-        orgs_map = {o.pk: o for o in orgs}
-        if org_id in orgs_map:
-            if len(orgs_map) <= 1:
-                raise LastActiveOrganizationError()
-            target = orgs_map[org_id]
-        else:
-            target = self._get_locked_org(org_id)
+        org = self._get_locked_org(org_id)
+        if not org.is_active:
+            return self._get_organization_with_member_count(org.pk)
+        self._assert_can_deactivate()
+        org.is_active = False
+        org.save(update_fields=["is_active", "updated_at"])
+        # `is_active` must reflect the caller's intent regardless of MinIO's
+        # availability -- an org that should be deactivated (a
+        # security-relevant action) must not stay active just because MinIO
+        # is unreachable. The failure is logged, not silently swallowed, so
+        # the leftover MinIO user can be reconciled out of band.
+        self._deprovision_storage(org.id, "during deactivation")
+        return self._get_organization_with_member_count(org.pk)
 
-        if target.is_active:
-            target.is_active = False
-            target.save(update_fields=["is_active", "updated_at"])
+    @staticmethod
+    def _deprovision_storage(org_id: int, occasion: str) -> None:
+        try:
+            org_storage_provisioning_service.deprovision_for_organization(org_id)
+        except OrgStorageProvisioningError as error:
+            logger.error(
+                "Failed to deprovision MinIO storage for org_id={} {}; "
+                "the MinIO user was left in place and needs out-of-band "
+                "reconciliation: {}",
+                org_id,
+                occasion,
+                error,
+            )
 
-        return self._get_organization_with_member_count(target.pk)
+    @staticmethod
+    def _assert_can_deactivate() -> None:
+        """Refuses if this would leave zero active organizations. Locks the
+        full set of active orgs (not just the target row) so two concurrent
+        deactivate calls cannot both drive the active count to zero."""
+        active_orgs = Organization.objects.filter(is_active=True).select_for_update()
+        if len(active_orgs) <= 1:
+            raise LastActiveOrganizationError()
 
     @transaction.atomic
     def reactivate_organization(self, org_id: int) -> Organization:
@@ -182,6 +219,18 @@ class OrganizationManagementService(CrossOrgResourceService):
             return self._get_organization_with_member_count(org.pk)
         org.is_active = True
         org.save(update_fields=["is_active", "updated_at"])
+        # Same reasoning as deactivate_organization(): is_active always
+        # commits regardless of MinIO's availability.
+        try:
+            org_storage_provisioning_service.provision_for_organization(org)
+        except OrgStorageProvisioningError as error:
+            logger.error(
+                "Failed to provision MinIO storage for org_id={} during "
+                "reactivation; org.is_active is True regardless -- storage "
+                "for this org needs out-of-band provisioning: {}",
+                org.id,
+                error,
+            )
         return self._get_organization_with_member_count(org.pk)
 
     # ---- deletion ----
@@ -230,6 +279,12 @@ class OrganizationManagementService(CrossOrgResourceService):
         """Permanently delete an organization and everything it owns, refusing the default organization and the last remaining active one.
 
         `verification_phrase` must be exactly `delete-<organization name>`, compared against the unlocked read of the organization before external I/O or any lock.
+
+        Also deprovisions the org's MinIO/RustFS storage IAM user, same as
+        `deactivate_organization()` -- queued onto the same post-commit
+        `cleanups` list as the other participants' sweeps, so it runs after
+        the delete has actually committed and is failure-tolerant (a storage
+        error is logged, never rolls back or blocks the delete).
         """
         instance = self._target_org_or_404(org_id)
         self._assert_deletable_org(instance)
@@ -271,6 +326,10 @@ class OrganizationManagementService(CrossOrgResourceService):
         for participant in registered:
             participant_counts.append(participant.count(instance))
             cleanups.append(participant.sweep(instance))
+        # Snapshot the id before `collector.delete()` below: Django's
+        # Collector nulls out the PK on every instance it collected
+        organization_id = instance.pk
+        cleanups.append(lambda: self._deprovision_storage(organization_id, "after deletion"))
         collector = build_collector(instance)
         affected = self._affected_resources(
             summarize(collector), participant_counts, external_counts

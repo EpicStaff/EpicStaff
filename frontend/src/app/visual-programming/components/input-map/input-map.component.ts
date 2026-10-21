@@ -38,6 +38,13 @@ import { SidePanelService } from '../../services/side-panel.service';
 import { PickerItem } from './var-picker-flat.component';
 import { buildVariablePickerItems, isPlainEnter, VariablePathPicker, withoutUsedPaths } from './variable-path-picker';
 
+/** Keys to rename, add and remove in the visible rows, e.g. after an owner's code changed its parameter names. */
+export interface InputMapKeyChanges {
+    renamed: { from: string; to: string }[];
+    added: string[];
+    removed: string[];
+}
+
 @Component({
     selector: 'app-input-map',
     imports: [
@@ -248,7 +255,7 @@ import { buildVariablePickerItems, isPlainEnter, VariablePathPicker, withoutUsed
                     <button
                         type="button"
                         class="btn-primary"
-                        [disabled]="testRunning || !canRunTest() || !pythonNodeId"
+                        [disabled]="testRunning || !canRunTest() || !pythonNodeId || runTestBlocker() !== null"
                         [matTooltip]="getRunTestButtonTooltip()"
                         matTooltipPosition="above"
                         (click)="onRunTest()"
@@ -533,6 +540,8 @@ export class InputMapComponent implements OnInit, OnChanges {
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
     readonly = input<boolean>(false);
+    /** Why the owning panel cannot run the test now (e.g. its stored code is not the panel's), or null. */
+    readonly runTestBlocker = input<string | null>(null);
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
 
@@ -547,6 +556,8 @@ export class InputMapComponent implements OnInit, OnChanges {
     private readonly lastKnownKeys = new WeakMap<AbstractControl, string>();
     private readonly lastKnownTestKeys = new WeakMap<AbstractControl, string>();
     private isSyncing = false;
+    /** Per rows array, the values of the rows `applyKeyChanges` removed, by key, to give back if the key returns. */
+    private readonly removedValuesByRows = new WeakMap<FormArray, Map<string, string>>();
 
     private readonly pythonCodeRunService = inject(PythonCodeRunService);
     private readonly graphSessionService = inject(GraphSessionService);
@@ -613,6 +624,25 @@ export class InputMapComponent implements OnInit, OnChanges {
 
     get testPairs(): FormArray {
         return this.parentForm.get('test_input') as FormArray;
+    }
+
+    /**
+     * Renames, adds and removes visible rows (the test values in Test mode) the way the user's own edits do, so
+     * the key mirroring between the Input List and Test mode stays in step. A renamed row keeps its value; a key
+     * removed here and later added or renamed into an untouched row gets its value back.
+     */
+    applyKeyChanges(changes: InputMapKeyChanges): void {
+        for (const { from, to } of changes.renamed) {
+            const index = this.visibleIndexOf(from);
+            if (index === -1 || this.visibleIndexOf(to) !== -1) {
+                this.removeVisibleKey(from);
+                this.addVisibleKey(to);
+            } else {
+                this.setVisibleKey(index, to);
+            }
+        }
+        changes.removed.forEach((key) => this.removeVisibleKey(key));
+        changes.added.forEach((key) => this.addVisibleKey(key));
     }
 
     hasNoMeaningfulPairs(): boolean {
@@ -719,7 +749,7 @@ export class InputMapComponent implements OnInit, OnChanges {
     }
 
     onRunTest(): void {
-        if (this.testRunning) return;
+        if (this.testRunning || this.runTestBlocker() !== null) return;
         const inputs = Object.fromEntries(
             this.testPairs.controls
                 .map((c) => [((c.value.key as string) ?? '').trim(), (c.value.value as string) ?? ''] as const)
@@ -857,6 +887,61 @@ export class InputMapComponent implements OnInit, OnChanges {
         }
 
         return changed;
+    }
+
+    private get visibleRows(): FormArray {
+        return this.testMode ? this.testPairs : this.pairs;
+    }
+
+    private visibleIndexOf(key: string): number {
+        return this.testMode ? this.findTestPairIndexByKey(key) : this.findInputPairIndexByKey(key);
+    }
+
+    private removedValues(): Map<string, string> {
+        const rows = this.visibleRows;
+        let values = this.removedValuesByRows.get(rows);
+        if (!values) {
+            values = new Map<string, string>();
+            this.removedValuesByRows.set(rows, values);
+        }
+        return values;
+    }
+
+    private removeVisibleKey(key: string): void {
+        const index = this.visibleIndexOf(key);
+        if (index === -1) return;
+        this.removedValues().set(key, (this.visibleRows.at(index).value.value as string) ?? '');
+        if (this.testMode) {
+            this.removeTestVariable(index);
+        } else {
+            this.removePair(index);
+        }
+    }
+
+    private addVisibleKey(key: string): void {
+        if (this.visibleIndexOf(key) !== -1) return;
+        let index = this.visibleRows.controls.findIndex((row) => ((row.value.key as string) ?? '').trim() === '');
+        if (index === -1) {
+            if (this.testMode) {
+                this.addTestVariable();
+            } else {
+                this.addPair();
+            }
+            index = this.visibleRows.length - 1;
+        }
+        this.setVisibleKey(index, key);
+    }
+
+    /** Through the key control, so its mirroring subscription follows; restores a removed value into an untouched row. */
+    private setVisibleKey(index: number, key: string): void {
+        const row = this.visibleRows.at(index);
+        row.get('key')?.setValue(key);
+        const removedValue = this.removedValues().get(key);
+        const value = ((row.value.value as string) ?? '').trim();
+        if (removedValue !== undefined && (value === '' || value === 'variables.')) {
+            row.get('value')?.setValue(removedValue);
+            this.removedValues().delete(key);
+        }
     }
 
     private attachKeyMirroringToAllPairs(): void {
@@ -1043,6 +1128,11 @@ export class InputMapComponent implements OnInit, OnChanges {
     getRunTestButtonTooltip(): string {
         if (this.testRunning) {
             return 'Test is already running...';
+        }
+        // The owning panel's reason comes first: it knows how this node gets saved.
+        const blocker = this.runTestBlocker();
+        if (blocker !== null) {
+            return blocker;
         }
         if (!this.pythonNodeId) {
             return 'Click Save in the top panel to save the graph before running a test';

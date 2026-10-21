@@ -24,11 +24,12 @@ import {
     SpinnerComponent,
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
-import { filter, switchMap } from 'rxjs';
+import { filter, Subscription, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
+import { FlowUsePermissionRefusalService } from '../../services/flow-use-permission-refusal.service';
 import { FlowsApiService } from '../../services/flows-api.service';
 
 /** How long a click on the renameable name/description waits for a second click (double-click = rename). */
@@ -60,10 +61,13 @@ export class VersionHistoryPanelComponent implements OnInit {
     private editingVersion: GraphVersionDto | null = null;
     private isSaving = false;
     private pendingPreviewTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Only the latest load may write the list: an older, slower load must not overwrite a newer one. */
+    private versionsLoadSubscription: Subscription | null = null;
 
     @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement>;
 
     private destroyRef = inject(DestroyRef);
+    private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
 
     public graphId = input.required<number>();
     public graphSaveVersion = input<number | undefined>();
@@ -258,7 +262,8 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     public loadVersions(): void {
-        this.flowApiService
+        this.versionsLoadSubscription?.unsubscribe();
+        this.versionsLoadSubscription = this.flowApiService
             .getGraphVersions(this.graphId())
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
@@ -278,7 +283,8 @@ export class VersionHistoryPanelComponent implements OnInit {
         this.openMenuId = null;
         this.flowApiService
             .createGraphFromVersion(version.id)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            // A refusal over trigger nodes is explained there and emits nothing: no toast, no navigation.
+            .pipe(this.usePermissionRefusal.catchRefusal('createFromVersion'), takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (response) => {
                     this.toastService.success('New flow created');

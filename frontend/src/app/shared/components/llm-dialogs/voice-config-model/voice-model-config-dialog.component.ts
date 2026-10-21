@@ -2,11 +2,14 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { EnterSubmitDirective } from '@shared/directives';
 import { ModelTypes } from '@shared/models';
 import { RealtimeConfigStorageService, SecretsStorageService } from '@shared/services';
+import { trackPickedSecrets } from '@shared/utils';
 
 import { ToastService } from '../../../../services/notifications';
 import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { BinnedSecretNoteComponent } from '../../binned-secret-note/binned-secret-note.component';
 import { ButtonComponent, IconButtonComponent } from '../../buttons';
 import { CustomInputComponent } from '../../form-input/form-input.component';
 import { HintMessageComponent } from '../../hint-message/hint-message.component';
@@ -19,6 +22,7 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
     styleUrls: ['./voice-model-config-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
+        BinnedSecretNoteComponent,
         ButtonComponent,
         CustomInputComponent,
         IconButtonComponent,
@@ -27,6 +31,7 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
         ValidationErrorsComponent,
         SelectComponent,
         HintMessageComponent,
+        EnterSubmitDirective,
     ],
 })
 export class VoiceModelConfigDialogComponent {
@@ -46,13 +51,9 @@ export class VoiceModelConfigDialogComponent {
     title = computed(() => (this.isEditMode() ? 'Edit Voice Configuration' : 'Add Voice Configuration'));
     saveLabel = computed(() => (this.isEditMode() ? 'Save Changes' : 'Add Voice Model'));
 
-    secretItems = computed<SelectItem[]>(() =>
-        this.secretsStorageService.secrets().map((secret) => ({
-            name: secret.name,
-            value: secret.id,
-            tip: this.secretsStorageService.maskTail(secret.tail),
-        }))
-    );
+    /** Secret ids picked in this form: a picked secret in the recycle bin keeps its option. */
+    private readonly pickedSecretIds = signal<number[]>([]);
+    secretItems = computed<SelectItem[]>(() => this.secretsStorageService.selectItems(this.pickedSecretIds()));
 
     form!: FormGroup;
 
@@ -62,6 +63,7 @@ export class VoiceModelConfigDialogComponent {
             api_key_secret_id: [null, [Validators.required]],
             realtime_model: [null, [Validators.required]],
         });
+        trackPickedSecrets(this.form, ['api_key_secret_id'], this.pickedSecretIds, this.destroyRef);
 
         if (this.data?.configId) {
             this.loadConfig(this.data.configId);

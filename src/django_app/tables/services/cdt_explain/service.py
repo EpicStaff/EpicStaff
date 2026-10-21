@@ -6,7 +6,13 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
 from asgiref.sync import async_to_sync
+from tables.constants.cdt_explanation_limits import (
+    MAX_EXPLANATION_TEXT_LENGTH,
+    MAX_GENERATED_BY_LENGTH,
+)
 from tables.exceptions import (
+    CdtExplainLLMConfigInvalidError,
+    CdtExplainLLMConfigMissingKeyError,
     CdtExplainLLMConfigNotFoundError,
     CdtExplainUpstreamError,
     ClassificationDecisionTableNodeNotFoundError,
@@ -16,6 +22,7 @@ from tables.models.llm_models import LLMConfig
 from tables.services.llm_clients import get_llm_client
 from tables.services.llm_clients.base import (
     DoneEvent,
+    InvalidLLMConfigError,
     TokenEvent,
     UnsupportedLLMProviderError,
 )
@@ -63,19 +70,30 @@ class CdtExplainService:
             )
         except UnsupportedLLMProviderError as exc:
             raise CdtExplainLLMConfigNotFoundError(llm_config_id) from exc
+        except InvalidLLMConfigError as exc:
+            raise CdtExplainLLMConfigInvalidError(str(exc)) from exc
 
         batches = list(self._batches(blocks))
         texts, failed_batches = async_to_sync(self._run_batches)(client, table, batches)
 
         if failed_batches == len(batches):
+            if not api_key:
+                raise CdtExplainLLMConfigMissingKeyError(llm_config_id)
             raise CdtExplainUpstreamError()
 
         generated_by = self._model_label(llm_config)
         explanations, failures = [], []
         for block in blocks:
             text = texts.get(block["id"])
-            if text:
-                explanations.append({"id": block["id"], "text": text, "generated_by": generated_by})
+            if isinstance(text, str) and text:
+                # Clamped so a generated explanation always fits what a node can store.
+                explanations.append(
+                    {
+                        "id": block["id"],
+                        "text": text[:MAX_EXPLANATION_TEXT_LENGTH],
+                        "generated_by": generated_by,
+                    }
+                )
             else:
                 failures.append(
                     {"id": block["id"], "detail": "No explanation was generated for this step."}
@@ -104,7 +122,10 @@ class CdtExplainService:
     @staticmethod
     def _model_label(llm_config: LLMConfig) -> str:
         model = llm_config.model
-        return (model.name if model and model.name else llm_config.custom_name) or "Default LLM"
+        label = (model.name if model and model.name else llm_config.custom_name) or "Default LLM"
+        # Both names are unbounded text, but the frontend stores this label as an
+        # explanation's `generatedBy`, which is capped.
+        return label[:MAX_GENERATED_BY_LENGTH]
 
     @staticmethod
     def _batches(blocks: list[dict]) -> Iterator[list[dict]]:

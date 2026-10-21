@@ -10,6 +10,7 @@ from tables.serializers.serializers import (
     ToolUsageSerializer,
 )
 from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
+from tables.services.trigger_nodes import trigger_node_access
 from utils.logger import logger
 
 
@@ -27,6 +28,7 @@ class CopyActionMixin:
     @action(detail=True, methods=["post"], url_path="copy")
     def copy(self, request, pk: int):
         instance = self.get_object()
+        self.check_copy_allowed(request, instance)
         name = request.data.get("name") if isinstance(request.data, dict) else None
         # Org-scoped viewsets stamp the copy with the active org so the new row
         # satisfies the NOT NULL org constraint. This covers tool copies too:
@@ -52,9 +54,43 @@ class CopyActionMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(
-            self.copy_serializer_class(new_instance).data,
+            self.copy_serializer_class(new_instance, context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED,
         )
+
+    def check_copy_allowed(self, request, instance) -> None:
+        """Raise to refuse copying `instance`; runs after the org-scoped fetch, before writing.
+
+        Allows by default. A viewset whose copies need more than the action's own
+        permission overrides it.
+        """
+
+
+class TriggerNodeUsePermissionMixin:
+    """Require FLOWS.USE, besides the action's own bit, to create or edit a trigger node.
+
+    For the webhook, Telegram and schedule trigger node viewsets: a trigger node
+    starts flow runs by itself. Place it after the org-scoping mixin. Reads and
+    deletes keep their usual gate.
+
+    `create` is checked with the other permission checks, as there is no node to
+    look up. The detail actions are checked right after the org-scoped lookup, so
+    another org's node or a missing id is a 404 before any USE 403, and the 403
+    still comes before the body is validated or anything is written or sent.
+    """
+
+    use_gated_detail_actions = frozenset({"update", "partial_update", "register_webhook"})
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if self.action == "create":
+            trigger_node_access.assert_may_write(request.user, self.get_active_org_id())
+
+    def get_object(self):
+        instance = super().get_object()
+        if self.action in self.use_gated_detail_actions:
+            trigger_node_access.assert_may_write(self.request.user, self.get_active_org_id())
+        return instance
 
 
 class ToolUsageActionsMixin:

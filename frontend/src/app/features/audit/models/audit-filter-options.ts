@@ -1,4 +1,17 @@
+import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+
+import { auditNodeTypeLabel } from '../utils/audit-event-label.util';
 import { AuditEnumOption, AuditFilterOp } from './audit-filter.models';
+
+// same label as the table's Node Type column, so a type reads the same in both places
+function nodeTypeOption(value: string, nodeType: NodeType): AuditEnumOption {
+    return {
+        value,
+        label: auditNodeTypeLabel(value),
+        iconClass: NODE_ICONS[nodeType],
+        iconColor: NODE_COLORS[nodeType],
+    };
+}
 
 export const KIND_OPTIONS: AuditEnumOption[] = [
     { value: 'session', label: 'Session' },
@@ -11,27 +24,19 @@ export const STATUS_OPTIONS: AuditEnumOption[] = [
     { value: 'failed', label: 'Failed', icon: 'x' },
 ];
 
-export const RUN_TYPE_OPTIONS: AuditEnumOption[] = [
-    { value: 'manual', label: 'Manual' },
-    { value: 'schedule', label: 'Schedule' },
-    { value: 'webhook', label: 'Webhook' },
-    { value: 'telegram', label: 'Telegram' },
-    { value: 'parent_flow', label: 'Parent flow' },
-];
-
 export const NODE_TYPE_OPTIONS: AuditEnumOption[] = [
-    { value: 'AGENT', label: 'Agent' },
-    { value: 'TASK', label: 'Task' },
-    { value: 'PYTHON', label: 'Python' },
-    { value: 'KNOWLEDGE', label: 'Knowledge' },
-    { value: 'FILE_EXTRACTOR', label: 'File Extractor' },
-    { value: 'AUDIO_TRANSCRIPTION', label: 'Audio Transcription' },
-    { value: 'DECISION_TABLE', label: 'Decision Table' },
-    { value: 'CLASSIFICATION_DECISION_TABLE', label: 'Classification Decision Table' },
-    { value: 'END', label: 'End' },
-    { value: 'SCHEDULE_TRIGGER', label: 'Schedule Trigger' },
-    { value: 'WEBHOOK_TRIGGER', label: 'Webhook Trigger' },
-    { value: 'TELEGRAM_TRIGGER', label: 'Telegram Trigger' },
+    nodeTypeOption('AGENT', NodeType.AGENT),
+    nodeTypeOption('TASK', NodeType.TASK),
+    nodeTypeOption('PYTHON', NodeType.PYTHON),
+    nodeTypeOption('KNOWLEDGE', NodeType.KNOWLEDGE_RETRIEVER),
+    nodeTypeOption('FILE_EXTRACTOR', NodeType.FILE_EXTRACTOR),
+    nodeTypeOption('AUDIO_TRANSCRIPTION', NodeType.AUDIO_TO_TEXT),
+    nodeTypeOption('DECISION_TABLE', NodeType.TABLE),
+    nodeTypeOption('CLASSIFICATION_DECISION_TABLE', NodeType.CLASSIFICATION_TABLE),
+    nodeTypeOption('END', NodeType.END),
+    nodeTypeOption('SCHEDULE_TRIGGER', NodeType.SCHEDULE_TRIGGER),
+    nodeTypeOption('WEBHOOK_TRIGGER', NodeType.WEBHOOK_TRIGGER),
+    nodeTypeOption('TELEGRAM_TRIGGER', NodeType.TELEGRAM_TRIGGER),
 ];
 
 export const OPERATOR_LABELS: Record<string, string> = {
@@ -108,13 +113,34 @@ export const TOKEN_OPERATOR_LABELS: Record<string, string> = {
     equals: 'equals',
 };
 
-export const TOKEN_STEP = 100;
+export const TOKEN_STEP = 10;
 
 export const QUERY_EXAMPLES: string[] = [
-    'status in ["failed"] or node_type in ["AGENT", "PYTHON"]',
+    'status in ["failed"] and node_type in ["AGENT", "PYTHON"]',
     'name == "Session Start"',
     'error is not empty and not session_id == 66',
     'input : order1234 and output : Greetings',
+];
+
+export interface QueryOperatorChip {
+    label: string;
+    text: string;
+    // Where the cursor lands, counted back from the end of the inserted text; 0 or absent = after it.
+    caretFromEnd?: number;
+}
+
+export const QUERY_OPERATORS: QueryOperatorChip[] = [
+    { label: 'AND', text: ' and ' },
+    { label: 'NOT', text: ' not ' },
+    { label: 'IN', text: ' in ()', caretFromEnd: 1 },
+    { label: 'OR', text: ' or ' },
+    // the grammar only knows `is` as `is empty` / `is not empty`, so the chips insert the whole phrase
+    { label: 'IS EMPTY', text: ' is empty' },
+    { label: 'IS NOT EMPTY', text: ' is not empty' },
+    { label: '>', text: ' > ' },
+    { label: '<', text: ' < ' },
+    { label: '==', text: ' == ' },
+    { label: '!=', text: ' != ' },
 ];
 
 export const QUERY_FIELDS: string[] = [
@@ -123,7 +149,6 @@ export const QUERY_FIELDS: string[] = [
     'name',
     'flow_name',
     'node_type',
-    'run_type',
     'status',
     'event_time',
     'duration',
@@ -135,5 +160,4 @@ export const QUERY_FIELDS: string[] = [
     'task',
     'prompt',
     'message_text',
-    'id',
 ];

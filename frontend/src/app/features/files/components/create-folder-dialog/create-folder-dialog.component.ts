@@ -14,6 +14,7 @@ import {
     HelpTooltipComponent,
     Spinner2Component,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { catchError, EMPTY, merge, Observable, of, switchMap } from 'rxjs';
 import { filter, map, tap, toArray } from 'rxjs/operators';
@@ -23,6 +24,7 @@ import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageUploadBatchResult } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { StorageUploadService, toUploadBatchResult } from '../../services/storage-upload.service';
+import { flattenFolderNodes, StorageFolderNode, toFolderNodes } from '../../utils/storage-tree.utils';
 import { CLOSE_DURING_UPLOAD_CONFIRMATION } from '../../utils/upload-dialog.constants';
 import { describeUploadError, describeUploadFailures, UploadErrorDescription } from '../../utils/upload-error.utils';
 import { describeUploadLimits, isArchiveForLimits, usableUploadLimits } from '../../utils/upload-limits.utils';
@@ -46,18 +48,6 @@ export interface CreateFolderDialogResult {
     count?: number;
 }
 
-export interface FolderNode {
-    name: string;
-    path: string;
-    level: number;
-    isExpanded: boolean;
-    isLoading: boolean;
-    hasChildren: boolean;
-    children: FolderNode[];
-    isLoaded: boolean;
-    isEmpty: boolean;
-}
-
 @Component({
     selector: 'app-create-folder-dialog',
     imports: [
@@ -69,6 +59,7 @@ export interface FolderNode {
         OverlayModule,
         FileUploaderComponent,
         DragDropAreaComponent,
+        EnterSubmitDirective,
         FileSizePipe,
     ],
     templateUrl: './create-folder-dialog.component.html',
@@ -132,11 +123,11 @@ export class CreateFolderDialogComponent {
     // Destination folder dropdown
     readonly dropdownOpen = signal(false);
     readonly searchQuery = signal('');
-    readonly rootNodes = signal<FolderNode[]>([]);
+    readonly rootNodes = signal<StorageFolderNode[]>([]);
     readonly isLoadingRoot = signal(true);
     readonly selectedPath = signal<string>('');
 
-    private readonly allNodes = signal<FolderNode[]>([]);
+    private readonly allNodes = signal<StorageFolderNode[]>([]);
 
     readonly visibleNodes = computed(() => {
         const query = this.searchQuery().toLowerCase().trim();
@@ -192,7 +183,7 @@ export class CreateFolderDialogComponent {
         if (this.data.folderPath) {
             this.selectedPath.set(this.data.folderPath);
         }
-        this.loadLevel('', null);
+        this.loadFolderTree();
         this.closeThroughCancelOnDismiss();
     }
 
@@ -219,17 +210,9 @@ export class CreateFolderDialogComponent {
         return this.selectedPath() === path;
     }
 
-    toggleExpand(event: Event, node: FolderNode): void {
+    toggleExpand(event: Event, node: StorageFolderNode): void {
         event.stopPropagation();
-        if (node.isExpanded) {
-            node.isExpanded = false;
-        } else {
-            node.isExpanded = true;
-            if (!node.isLoaded && node.hasChildren) {
-                node.isLoading = true;
-                this.loadLevel(node.path, node);
-            }
-        }
+        node.isExpanded = !node.isExpanded;
         this.rootNodes.update((n) => [...n]);
     }
 
@@ -376,56 +359,23 @@ export class CreateFolderDialogComponent {
         );
     }
 
-    private loadLevel(path: string, parent: FolderNode | null): void {
+    private loadFolderTree(): void {
         this.storageApiService
-            .list(path)
+            .tree()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (items) => {
-                    const folders = items
-                        .filter((i) => i.type === 'folder')
-                        .map(
-                            (i): FolderNode => ({
-                                name: i.name,
-                                path: i.path || (path ? `${path}/${i.name}` : i.name),
-                                level: parent ? parent.level + 1 : 0,
-                                isExpanded: false,
-                                isLoading: false,
-                                hasChildren: !i.is_empty,
-                                children: [],
-                                isLoaded: false,
-                                isEmpty: i.is_empty ?? false,
-                            })
-                        );
-
-                    if (parent) {
-                        parent.children = folders;
-                        parent.isLoaded = true;
-                        parent.isLoading = false;
-                        parent.hasChildren = folders.length > 0;
-                        if (folders.length === 0) parent.isExpanded = false;
-                    } else {
-                        this.rootNodes.set(folders);
-                        this.isLoadingRoot.set(false);
-                    }
-
-                    this.rebuildAllNodes();
-                    this.rootNodes.update((n) => [...n]);
+                next: (response) => {
+                    const roots = toFolderNodes(response.tree.children);
+                    this.rootNodes.set(roots);
+                    this.allNodes.set(flattenFolderNodes(roots));
+                    this.isLoadingRoot.set(false);
                 },
-                error: () => {
-                    if (parent) {
-                        parent.isLoading = false;
-                        parent.isLoaded = true;
-                    } else {
-                        this.isLoadingRoot.set(false);
-                    }
-                    this.rootNodes.update((n) => [...n]);
-                },
+                error: () => this.isLoadingRoot.set(false),
             });
     }
 
-    private buildVisible(nodes: FolderNode[]): FolderNode[] {
-        const result: FolderNode[] = [];
+    private buildVisible(nodes: StorageFolderNode[]): StorageFolderNode[] {
+        const result: StorageFolderNode[] = [];
         for (const node of nodes) {
             result.push(node);
             if (node.isExpanded && node.children.length > 0) {
@@ -433,10 +383,6 @@ export class CreateFolderDialogComponent {
             }
         }
         return result;
-    }
-
-    private rebuildAllNodes(): void {
-        this.allNodes.set(this.buildVisible(this.rootNodes()));
     }
 
     private addFiles(newFiles: File[]): void {

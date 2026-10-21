@@ -86,14 +86,15 @@ of caller and org. Cache-friendly.
     { "code": "update", "label": "Edit",   "bit": 4 },
     { "code": "delete", "label": "Delete", "bit": 8 },
     { "code": "export", "label": "Export", "bit": 16 },
-    { "code": "use",    "label": "Use",    "bit": 64 }
+    { "code": "use",    "label": "Use",    "bit": 64 },
+    { "code": "run",    "label": "Run",    "bit": 256 }
   ],
   "resource_types": [
     { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Rename and manage organization settings",        "applicable_actions": ["read", "update"], "platform_actions": ["create", "delete"] },
     { "code": "memberships",       "label": "Members",             "group": "admin",     "description": "Add, remove, and re-role members within an org", "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "roles",             "label": "Roles",               "group": "admin",     "description": "Create/edit custom roles and assign to users",   "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "api_keys",          "label": "API Keys",            "group": "admin",     "description": "Members' personal API keys — view and revoke",   "applicable_actions": ["read", "delete"] },
-    { "code": "flows",             "label": "Flows",               "group": "workspace", "description": "Workflow definitions and their nodes",           "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "flows",             "label": "Flows",               "group": "workspace", "description": "Workflow definitions and their nodes",           "applicable_actions": ["create", "read", "update", "delete", "export", "run"] },
     { "code": "agents",            "label": "Agents",              "group": "workspace", "description": "AI agent configurations",                        "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "tools",             "label": "Tools",               "group": "workspace", "description": "Tool definitions and configurations",            "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "surfaces",          "label": "Surfaces",            "group": "workspace", "description": "Agent tool/storage/knowledge access surfaces",   "applicable_actions": ["create", "read", "update", "delete"] },
@@ -101,7 +102,7 @@ of caller and org. Cache-friendly.
     { "code": "files",             "label": "Storage (Files)",     "group": "workspace", "description": "Files and folders in organization storage",      "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "projects",          "label": "Projects",            "group": "workspace", "description": "Organize AI agents and tasks",                   "applicable_actions": ["create", "read", "update", "delete", "export"] },
     { "code": "llm_configs",       "label": "LLM Configs",         "group": "config",    "description": "LLM model configurations and settings",          "applicable_actions": ["create", "read", "update", "delete"] },
-    { "code": "secrets",           "label": "Secrets",             "group": "config",    "description": "Provider API keys, credentials, sensitive config", "applicable_actions": ["create", "read", "delete", "use"] },
+    { "code": "secrets",           "label": "Secrets",             "group": "config",    "description": "Provider credentials and sensitive configuration", "applicable_actions": ["create", "read", "delete", "use"] },
     { "code": "voice",             "label": "Voice",               "group": "config",    "description": "Voice model configurations and settings",        "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "webhooks",          "label": "Webhooks",            "group": "config",    "description": "Webhook trigger ingress routes and their auth configuration", "applicable_actions": ["create", "read", "update", "delete"], "platform_actions": [] },
     { "code": "key_value_tables",  "label": "Key-Value Tables",    "group": "workspace", "description": "Key-value tables that flows read and write across runs", "applicable_actions": ["create", "read", "update", "delete"], "platform_actions": [] }
@@ -139,7 +140,7 @@ access needed to use them.
 ```json
 {
   "code": "flows",
-  "applicable_actions": ["create", "read", "update", "delete", "export"],
+  "applicable_actions": ["create", "read", "update", "delete", "export", "run"],
   "platform_actions": [],
   "recommended_with": {
     "create": [
@@ -157,7 +158,8 @@ access needed to use them.
       { "resource_type": "llm_configs", "action": "read" }
     ],
     "delete": [{ "resource_type": "flows", "action": "read" }],
-    "export": [{ "resource_type": "flows", "action": "read" }]
+    "export": [{ "resource_type": "flows", "action": "read" }],
+    "run":    [{ "resource_type": "flows", "action": "read" }]
   }
 }
 ```
@@ -175,7 +177,7 @@ The shape of the advice:
   configs, a surface at tools, files and knowledge sources.
 - **Creating or editing** suggests the resource's own `read` plus everything
   that read suggests. You cannot sensibly author what you cannot see.
-- **Deleting and exporting** suggest only the resource's own `read`.
+- **Deleting, exporting and running** suggest only the resource's own `read`.
 
 Suggestions are direct, not transitive: `projects:create` recommends
 `flows:create`, and `flows:create` has recommendations of its own. Look up
@@ -288,13 +290,13 @@ Superadmin short-circuits to the wildcard without enumerating orgs —
       "role": { "id": 2, "name": "Org Admin" },
       "permissions": {
         "roles": ["create", "read", "update", "delete"],
-        "flows": ["create", "read", "update", "delete", "export"]
+        "flows": ["create", "read", "update", "delete", "export", "run"]
       }
     },
     {
       "org": { "id": 2, "name": "Beta" },
       "role": { "id": 3, "name": "Member" },
-      "permissions": { "roles": [], "flows": ["create", "read", "update"] }
+      "permissions": { "roles": [], "flows": ["create", "read", "update", "run"] }
     }
   ]
 }
@@ -352,7 +354,7 @@ below). **Header:** none.
       "assigned_count": 2,
       "assigned_by_org": [{ "org": { "id": 1, "name": "Acme Inc" }, "count": 2 }],
       "permissions": [
-        { "resource_type": "secrets", "actions": ["read", "update"] }
+        { "resource_type": "secrets", "actions": ["read", "use"] }
       ]
     }
   ],
@@ -469,7 +471,7 @@ the target org is `org_id` in the body.
   "name": "Billing Manager",
   "description": "Manage billing and secrets",
   "permissions": [
-    { "resource_type": "secrets", "actions": ["read", "update"] }
+    { "resource_type": "secrets", "actions": ["read", "use"] }
   ]
 }
 ```
@@ -906,6 +908,71 @@ the next step of the chain.
 
 ---
 
+## Running flows: the `run` action
+
+`run` (bit 256) is an action of `flows` only. It is separate from `read`: a role
+can see a flow without being able to start it.
+
+| What | Needs |
+|---|---|
+| `POST /api/run-session/` | `flows:run` in the flow's organization |
+| `POST /api/run-session/test/` (test-run from a trigger node) | `flows:update` **and** `flows:run` in the active organization |
+| `POST /api/sessions/{id}/stop/` | `flows:run` in the organization that owns the session's flow |
+| `POST /api/run-python-code/` running code a trigger node owns — `target.type` of a trigger node (`webhook_trigger_node`), or a `python_code_id` held by a trigger node | `flows:update` **and** `flows:run`; any other code needs `flows:update` only |
+| Create or edit a webhook, Telegram or schedule trigger node — `POST /api/graphs/{id}/save/` with a non-empty `webhook_trigger_node_list`, `telegram_trigger_node_list` or `schedule_trigger_node_list` (a position-only change counts), and `create` / `update` / `partial_update` on `/api/{webhook,telegram,schedule}-trigger-nodes/` plus `register-webhook` on Telegram trigger nodes | `flows:run`, in addition to the endpoint's own `flows` permission |
+| Update a webhook trigger (`PUT` / `PATCH /api/webhook-triggers/{id}/`) that a live webhook or Telegram trigger node is attached to — its auth, path or tunnel decides whether those nodes receive deliveries | `flows:run`, in addition to `webhooks:update`; a trigger with no attached node needs `webhooks:update` only, and creating or deleting a trigger needs no `flows:run` |
+| `GET /api/webhook-triggers/{id}/flows/` — which flows hold a live webhook or Telegram trigger node on the trigger, so the UI can warn before an edit that would need `flows:run`. Returns `{"flow_count": <int>, "flows": [{"id", "name"}]}`: every such flow counted once, at most 50 listed by name | `webhooks:read`. Without `flows:read`, `flows` is empty and `flow_count` is still the total |
+
+Deleting a trigger node, and saving a flow without touching a trigger node, do not
+need `run`. A trigger node starts runs by itself, which is why writing one is gated
+like running the flow. Trigger-node writes refused for a missing `run` answer:
+
+```json
+{
+  "status_code": 403,
+  "code": "trigger_nodes_require_run_permission",
+  "message": "Trigger nodes (webhook, Telegram, schedule) start flow runs, so creating or editing them requires the Run permission on flows."
+}
+```
+
+and write nothing. Run-session, test-run, stop and run-python-code refusals use the
+standard `permission_denied` 403.
+
+Copying, importing or restoring a flow that holds a trigger node also needs
+`flows:run`, because the recreated trigger nodes are live at once:
+
+| What | Refused without `flows:run` when |
+|---|---|
+| `POST /api/graphs/{id}/copy/` | the source flow has a trigger node |
+| `POST /api/graphs/import/` (including `replace_existing`) | any flow in the file, subflows included, has a trigger node |
+| `POST /api/graphs/{id}/partial-import/` | the imported nodes include a trigger node (the target flow's own trigger nodes don't count) |
+| `POST /api/graph-versions/{id}/create-graph/` | the version's snapshot has a trigger node |
+| `POST /api/graph-versions/{id}/restore/` | the version's snapshot has a trigger node |
+
+Each of these answers, and writes nothing:
+
+```json
+{
+  "status_code": 403,
+  "code": "flow_with_trigger_nodes_requires_run_permission",
+  "message": "This flow contains trigger nodes (webhook, Telegram, schedule). Copying, importing or restoring it requires the Run permission on flows."
+}
+```
+
+A different code from `trigger_nodes_require_run_permission`, so a client can tell a
+refused copy, import or restore from a refused trigger-node edit. Without trigger
+nodes, or with `flows:run`, these endpoints work as before; restoring a snapshot that
+has no trigger nodes needs no `flows:run` even when it removes the flow's current
+ones. Another organization's flow or version is still a 404.
+
+Built-in roles: Org Admin and Member hold `flows:run`; Viewer is read-only and does
+not, so a Viewer can no longer run or stop flows. On upgrade, migration
+`rbac/0007_flows_run_permission` grants `flows:run` to every custom role that already
+held `flows:read`, so no custom role loses the ability to run flows it had. Built-in
+roles are not touched by the migration; the built-in role seeder applies the change.
+
+---
+
 ## Resource scoping coverage
 
 Every workspace/config resource is now scoped to the active org and gated by its `resource_type`.
@@ -921,7 +988,7 @@ Two patterns beyond plain org ownership:
 
 | Resource type | Endpoints (examples) | Member | Org Admin |
 |---|---|---|---|
-| FLOWS | graphs, nodes, sessions, **labels**, **webhook-triggers** | C R U | C R U D E |
+| FLOWS | graphs, nodes, sessions, **labels**, **webhook-triggers** | C R U Run | C R U D E Run |
 | AGENTS | agent-definitions, realtime-agent-definitions | C R U | C R U D E |
 | PROJECTS | crews, tasks | C R U | C R U D E |
 | TOOLS | python-code-tool(-configs), mcp-tools | C R U | C R U D |

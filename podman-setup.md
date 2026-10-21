@@ -79,8 +79,10 @@ podman build -t frontend -f ../frontend/Dockerfile.fe ../frontend
 ### Redis
 
 ```bash
-podman run -d   --name redis   --network backend-network   -p ${REDIS_PORT}:${REDIS_PORT}   --health-cmd="redis-cli ping"   --health-interval=5s   --health-timeout=2s   --health-retries=5   --health-start-period=5s   docker.io/library/redis:latest
+podman run -d   --name redis   --network backend-network   -p ${REDIS_PORT}:${REDIS_PORT}   -v "$PWD/redis.conf":/usr/local/etc/redis/redis.conf:ro   --health-cmd="redis-cli ping"   --health-interval=5s   --health-timeout=2s   --health-retries=5   --health-start-period=5s   docker.io/library/redis:latest   redis-server /usr/local/etc/redis/redis.conf --port ${REDIS_PORT}
 ```
+
+Run this from `EpicStaff/src` so `redis.conf` is found. The config file sets the pub/sub output buffer limit (`client-output-buffer-limit pubsub`). Without it Redis uses its much smaller default and can disconnect a slow subscriber when large session events arrive in bursts. The graph message stream also needs Redis 7 or newer.
 
 ---
 
@@ -95,8 +97,10 @@ podman run -d   --name crewdb   --network backend-network   -p ${DB_PORT}:${DB_P
 ### Django App
 
 ```bash
-podman run -d   --name django_app   --network backend-network   -p 8000:8000   --env-file .env   -e DEBUG=${DEBUG:-True}   -v crew_config:/home/user/root/app/env_config   django_app ./entrypoint.sh
+podman run -d   --name django_app   --network backend-network   -p 8000:8000   --env-file .env   -v crew_config:/home/user/root/app/env_config   django_app ./entrypoint.sh
 ```
+
+Debug mode is controlled by `DJANGO_DEBUG`, which reaches the container through `--env-file .env`. `src/.env.example` sets it to `False`; keep it `False` for any deployment reachable by others. It has no fallback in code — if `.env` does not set it, `django_app` fails at startup.
 
 ---
 

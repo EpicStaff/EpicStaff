@@ -4,5 +4,6 @@
     [checked]="checked()"
     [class.secondary]="color() === 'secondary'"
     [disabled]="disabled()"
+    [attr.aria-label]="ariaLabel()"
     (change)="toggleCheckbox($event)"
 />

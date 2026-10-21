@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from django.db import transaction
+from rbac.authorship import record_last_edit
 
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.import_export.constants import IMPORT_VERSION
@@ -47,7 +48,8 @@ class PreparedVersion:
 
     Attributes:
         converted_snapshot: The stored snapshot upgraded to ``IMPORT_VERSION``, before
-            any filtering. Still carries ``name`` and ``secret_declarations``.
+            any filtering. Still carries ``name``, ``secret_declarations``,
+            ``node_authorship`` and ``node_last_edit``.
         filtered_snapshot: ``converted_snapshot`` with missing-dependency FKs nulled and
             unsupported nodes, plus the edges touching them, removed.
         available_dependencies: Dependency ids that still exist, keyed by
@@ -64,6 +66,7 @@ class PreparedVersion:
 class VersionPreview(TypedDict):
     snapshot: dict
     warnings: list[dict]
+    node_authorship: dict[str, dict]
 
 
 class GraphVersioningService:
@@ -72,12 +75,16 @@ class GraphVersioningService:
 
     @transaction.atomic
     def save_version(self, graph: Graph, name: str, description: str = "") -> GraphVersion:
-        """
-        Create a named version snapshot of the given graph.
+        """Create a named version snapshot of the given graph.
+
+        Records every node's author and last edit as they are, and changes none: saving
+        a version is not an edit of the graph.
         """
         snapshot = self._manager.create_snapshot(graph)
         snapshot["version"] = IMPORT_VERSION
         snapshot["secret_declarations"] = self._manager.collect_secret_declarations(graph=graph)
+        snapshot["node_authorship"] = self._manager.collect_node_authorship(graph=graph)
+        snapshot["node_last_edit"] = self._manager.collect_node_last_edits(graph=graph)
         dependencies = self._manager.collect_dependencies(graph)
 
         return GraphVersion.objects.create(
@@ -93,6 +100,8 @@ class GraphVersioningService:
         """
         Create a brand-new Graph from a version snapshot.
         The new graph is fully independent — own id/uuid, zero GraphVersion rows.
+        ``user`` authors and last edits the new graph and every node in it; the
+        version's recorded node authorship is not replayed.
         """
         source_graph = version.graph
         prepared = self._prepare(version)
@@ -139,7 +148,9 @@ class GraphVersioningService:
         with no warnings can still produce warnings on restore.
 
         Credential-named fields in the graph-level ``metadata`` are nulled, since old
-        snapshots can hold them in plaintext.
+        snapshots can hold them in plaintext. The recorded ``node_authorship`` and
+        ``node_last_edit`` move out of the snapshot into ``node_authorship``, their users
+        loaded in one query.
 
         Key-Value nodes carry the live id of the table a restore by ``user`` would bind, not
         the stored id (see ``GraphVersioningManager.bind_key_value_tables``).
@@ -147,6 +158,10 @@ class GraphVersioningService:
         Returns:
             ``snapshot``: the filtered snapshot, with the version's original node ids.
             ``warnings``: the dependency-filtering warnings, keyed by those same ids.
+            ``node_authorship``: each recorded node's author and last editor with their
+            times, keyed by the version's original node ids (see
+            ``GraphVersioningManager.resolve_node_authorship``); empty for a version
+            saved before node authorship was recorded.
         """
         prepared = self._prepare(version)
         snapshot = {
@@ -157,9 +172,15 @@ class GraphVersioningService:
         }
         if "metadata" in snapshot:
             snapshot = {**snapshot, "metadata": _scrub_plaintext_secrets(snapshot["metadata"])}
+        recorded_authorship = snapshot.pop("node_authorship", None)
+        recorded_last_edits = snapshot.pop("node_last_edit", None)
         return {
             "snapshot": snapshot,
             "warnings": list(prepared.filter_warnings),
+            "node_authorship": self._manager.resolve_node_authorship(
+                recorded_authorship=recorded_authorship,
+                recorded_last_edits=recorded_last_edits,
+            ),
         }
 
     @transaction.atomic
@@ -188,8 +209,14 @@ class GraphVersioningService:
             graph state is created before the restore takes place, so the
             caller can undo the operation if needed.
         user:
-            The acting user. Permission-gated node references (key-value
-            tables) are re-bound only if this user may use them.
+            The acting user: it last edits the graph and gates re-binding of key-value
+            tables. It never becomes an author, of the graph or of a node, nor a node's
+            last editor. A version's recorded ``node_authorship`` and ``node_last_edit``
+            are replayed verbatim, without re-checking membership (removing a member,
+            revoking a superadmin or deleting a user scrubs them from the snapshots of
+            every organization they no longer belong to); a node with no recorded
+            author or last edit is restored without one. When ``None``, no last edit is
+            recorded.
 
         Returns
         -------
@@ -224,6 +251,17 @@ class GraphVersioningService:
         node_mapper = self._manager.apply_snapshot_to_graph(
             graph, prepared.filtered_snapshot, prepared.available_dependencies, user=user
         )
+        self._manager.restore_node_authorship(
+            graph=graph,
+            recorded_authorship=prepared.converted_snapshot.get("node_authorship"),
+            node_mapper=node_mapper,
+        )
+        self._manager.restore_node_last_edits(
+            graph=graph,
+            recorded_last_edits=prepared.converted_snapshot.get("node_last_edit"),
+            node_mapper=node_mapper,
+        )
+        record_last_edit(graph, user)
 
         warnings.extend(
             self._manager.restore_secret_declarations(

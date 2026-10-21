@@ -5,7 +5,9 @@ Each unique (model, api_key, base_url, api_version, rpm) combination gets its
 own Router so LiteLLM's in-memory rpm counter accumulates correctly across
 calls sharing the same deployment config. Each Router holds a single deployment,
 so cooldowns are disabled — they provide no fallback benefit and would turn
-transient failures into a ~60 s "no deployments available" outage.
+transient failures into a ~60 s "no deployments available" outage. Router
+retries are disabled too: ``RetryPolicy`` owns retrying, and stacking both
+multiplies the attempts.
 """
 
 from __future__ import annotations
@@ -68,7 +70,7 @@ class RouterPool:
 
             # Single deployment per router — cooldowns give no fallback benefit and
             # turn transient failures into a ~60 s "no deployments available" outage.
-            router = Router(model_list=[deployment], disable_cooldowns=True)
+            router = Router(model_list=[deployment], disable_cooldowns=True, num_retries=0)
             self._routers[key] = router
 
         return router

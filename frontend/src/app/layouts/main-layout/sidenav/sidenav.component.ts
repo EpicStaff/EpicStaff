@@ -1,41 +1,41 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { PortalModule } from '@angular/cdk/portal';
 import {
-    AfterViewInit,
     ChangeDetectionStrategy,
     Component,
     computed,
-    CUSTOM_ELEMENTS_SCHEMA,
     DestroyRef,
-    ElementRef,
+    effect,
     inject,
+    input,
+    output,
     signal,
-    ViewChild,
+    untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink } from '@angular/router';
-import { AppSvgIconComponent } from '@shared/components';
+import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
+import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
-import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
-import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
+import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
-import { UserAvatarComponent } from '../../../features/role-base-access/components/user-avatar/user-avatar.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
-import { AuthService } from '../../../services/auth/auth.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config';
 import { EasterEggTriggerService } from '../../../services/easter-egg-trigger.service';
+import { isMainSidenavExpanded } from '../main-sidenav-width';
 import { TooltipComponent } from './tooltip/tooltip.component';
 
 interface NavItem {
     id: string;
-    routeLink?: string | (() => string | null);
+    routeLink?: string;
     /** URL path prefixes that highlight this item: its own section plus pages that belong to it
      *  but live outside its route tree (e.g. flow sessions under Flows). */
     activePaths?: string[];
@@ -45,8 +45,26 @@ interface NavItem {
     /** Function (not boolean) so signal reads inside happen at template-eval time.
      *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
     isPermitted: () => boolean;
+    /** Live counter rendered as a pill on the icon; read at template-eval time like `isPermitted`. */
+    badge?: () => number;
+    /** Where the badge itself leads, as its own link next to the item's; without it the badge is only a label. */
+    badgeLink?: string;
+    /** The badge link's accessible name for a count. */
+    badgeLabel?: (count: number) => string;
     action?: () => void;
     customClass?: string;
+}
+
+const PAGE_STEP_BY_CODE: Partial<Record<'ArrowUp' | 'ArrowDown', 1 | -1>> = { ArrowUp: -1, ArrowDown: 1 };
+
+function isPlainAltChord(event: KeyboardEvent): boolean {
+    return event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && !event.repeat;
+}
+
+function isEditableTarget(element: Element): boolean {
+    return !!element.closest(
+        'input, textarea, select, [contenteditable]:not([contenteditable="false"]), .monaco-editor, .native-edit-context'
+    );
 }
 
 @Component({
@@ -62,83 +80,33 @@ interface NavItem {
         UserAvatarComponent,
         OrgAvatarComponent,
         ClickOutsideDirective,
+        SidebarToggleButtonComponent,
     ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    schemas: [CUSTOM_ELEMENTS_SCHEMA],
+    host: { '(document:keydown)': 'onDocumentKeydown($event)' },
 })
-export class LeftSidebarComponent implements AfterViewInit {
+export class LeftSidebarComponent {
+    /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
+    public readonly width = input.required<number>();
+    /** The open/close control was used; the owner of the width decides the new one. */
+    public readonly expandedToggle = output<void>();
+
+    /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
+    protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
+    protected readonly sidebarToggleLabel = computed(() => (this.isExpanded() ? 'Close sidebar' : 'Open sidebar'));
+
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
 
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
-    public isEpicChatEnabled: boolean;
-    public apiBaseUrl: string;
-    /** Follows every token refresh so the EpicChat widget never holds a stale JWT. */
-    protected readonly accessToken = computed(() => this.authService.accessToken() ?? '');
-    public showLogoTooltip = false;
+    public recycleBinNavItem: NavItem;
+    /** Shown next to the logo when expanded; names the logo image when collapsed. */
+    protected readonly productName = 'EpicStaff';
     public showProfileTooltip = false;
-    public readonly epicChatThemeConfig = {
-        semantic: {
-            surface: 'var(--color-background-body)',
-            surfaceAlt: 'var(--color-nodes-background)',
-            text: 'var(--color-text-primary)',
-            textMuted: 'var(--color-text-secondary)',
-            border: 'var(--color-divider-regular)',
-            borderMuted: 'var(--color-divider-subtle)',
-            accent: 'var(--accent-color)',
-            accentContrast: 'var(--color-text-primary)',
-            accentSoft: 'var(--color-ghost-btn-hover)',
-            danger: 'var(--color-ks-status-failed)',
-            dangerSoft: 'var(--agent-node-accent-color)',
-            disabledBg: 'var(--gray-600)',
-            scrollbar: 'var(--color-scrollbar-thumb)',
-        },
-        components: {
-            chat: {
-                bgQuestion: 'var(--accent-color)',
-                // bgAnswer: 'var(--color-nodes-background)',
-                bgAnswer: '#2b2d30',
-                textQuestion: 'var(--color-text-primary)',
-            },
-            header: {
-                iconColor: 'var(--accent-color)',
-            },
-            table: {
-                headerBg: 'transparent',
-                headerText: 'var(--color-text-secondary)',
-                rowBg: 'transparent',
-                rowAltBg: 'color-mix(in srgb, var(--color-nodes-background) 65%, transparent)',
-                rowHoverBg: 'var(--color-ghost-btn-hover)',
-                border: 'var(--color-divider-subtle)',
-                columnDivider: 'var(--color-divider-regular)',
-                cellText: 'var(--color-text-primary)',
-            },
-            button: {
-                radius: '6px',
-                heightMd: '28px',
-                paddingMd: '6px 10px',
-                fontSizeMd: '12px',
-                secondaryBg: 'transparent',
-                secondaryBorder: 'var(--color-divider-regular)',
-                secondaryText: 'var(--color-text-primary)',
-                secondaryHoverBg: 'var(--color-ghost-btn-hover)',
-                primaryBg: 'var(--color-nodes-background)',
-                primaryBorder: 'var(--accent-color)',
-                primaryText: 'var(--accent-color)',
-                primaryHoverBg: 'color-mix(in srgb, var(--color-nodes-background) 70%, var(--accent-color) 30%)',
-                ghostBg: 'transparent',
-                ghostText: 'var(--color-text-secondary)',
-                ghostHoverBg: 'var(--color-ghost-btn-hover)',
-            },
-        },
-        foundation: {
-            shadowMd: 'rgba(0, 0, 0, 0.6)',
-        },
-    };
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
@@ -163,33 +131,54 @@ export class LeftSidebarComponent implements AfterViewInit {
         return user.memberships.find((m) => m.organization.id === orgId) ?? null;
     });
 
-    @ViewChild('epicChat', { static: false })
-    private epicChat?: ElementRef<HTMLElement>;
+    /** Mirrors the org switcher icon: the workspace icon on workspace pages, the org avatar elsewhere. */
+    protected readonly orgSwitcherLabel = computed(() =>
+        this.isWorkspaceRoute() ? 'Workspace' : (this.activeMembership()?.organization.name ?? '')
+    );
 
-    /** Gates the EpicChat widget's own flow-list request. Read as a method (not a field) so the
-     *  binding re-evaluates when active-org permissions reload after an org switch. */
-    public canReadFlows(): boolean {
-        return this.permissionService.can(ResourceCode.Flows, ActionCode.Read);
-    }
+    /**
+     * The inbox stream follows the signed-in user, the active org and the `chats:read` permission; it stops with the
+     * layout (logout).
+     */
+    private readonly chatStreamEffect = effect(() => {
+        const orgId = this.activeOrgService.activeOrgId();
+        const userId = this.user()?.id;
+        const permitted =
+            this.configService.isChatEnabled && this.permissionService.can(ResourceCode.Chats, ActionCode.Read);
+        untracked(() =>
+            permitted && orgId && userId ? this.chatInboxStream.start(orgId, userId) : this.chatInboxStream.stop()
+        );
+    });
 
-    constructor(
-        public epicChatService: EpicChatService,
-        public activeOrgService: ActiveOrgService,
-        private configService: ConfigService,
-        private configureModelsDialogService: ConfigureModelsDialogService,
-        private authService: AuthService,
-        private permissionService: PermissionsService
-    ) {
-        this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
-        // COMMIT_COMMENTS: Derive apiBaseUrl from browser origin so the EpicChat widget's
-        // syncAgentsFromApi call always matches the actual access host (localhost vs 127.0.0.1),
-        // avoiding CORS failures and hardcoded URLs.
-        // this.apiBaseUrl = `${window.location.origin}/api/`;
+    /** Same fallback as the user menu header: the display name, or the email when there is none. */
+    protected readonly accountLabel = computed(() => {
+        const user = this.user();
+        return user ? user.display_name || user.email : '';
+    });
 
-        // Comment on the comment above:
-        // Bad approach to use window.location because ui and backend can be on different domains
-        // fixed localhost vs 127.0.0.1 problem in widget code
-        this.apiBaseUrl = this.configService.apiUrl;
+    private readonly activeOrgService = inject(ActiveOrgService);
+    private readonly configService = inject(ConfigService);
+    private readonly permissionService = inject(PermissionsService);
+    private readonly chatInboxStream = inject(ChatInboxStreamService);
+    private readonly dialog = inject(Dialog);
+    private readonly activatedRoute = inject(ActivatedRoute);
+    private readonly workspaceNavItem: NavItem = {
+        id: 'workspace',
+        routeLink: 'workspace',
+        label: 'Workspace',
+        isPermitted: () => this.activeMembership() !== null && this.permissionService.canAccessWorkspace(),
+        showTooltip: false,
+    };
+    private readonly profileNavItem: NavItem = {
+        id: 'profile',
+        routeLink: 'profile',
+        label: 'Profile',
+        isPermitted: () => this.user() !== null,
+        showTooltip: false,
+    };
+
+    constructor() {
+        this.destroyRef.onDestroy(() => this.chatInboxStream.stop());
         this.topNavItems = [
             {
                 id: 'agents',
@@ -211,7 +200,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             },
             {
                 id: 'files',
-                routeLink: () => this.permissionService.resolveStorageTab(),
+                routeLink: 'storage',
                 activePaths: ['/storage'],
                 icon: 'sources',
                 label: 'Storage',
@@ -237,12 +226,27 @@ export class LeftSidebarComponent implements AfterViewInit {
                 showTooltip: false,
             },
             {
+                id: 'chat',
+                routeLink: 'chat-bindings',
+                activePaths: ['/chat-bindings'],
+                icon: 'messages',
+                label: 'Conversations',
+                isPermitted: () =>
+                    this.configService.isChatEnabled && this.permissionService.can(ResourceCode.Chats, ActionCode.Read),
+                badge: () => this.chatInboxStream.waitingCount(),
+                badgeLink: '/chat-bindings/all',
+                badgeLabel: (count) => `Conversations inbox: ${count} waiting for a person`,
+                showTooltip: false,
+            },
+            {
                 id: 'audit',
                 routeLink: 'audit',
                 activePaths: ['/audit'],
                 icon: 'audit',
                 label: 'Audit',
-                isPermitted: () => this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
+                isPermitted: () =>
+                    this.configService.isAuditTrailEnabled &&
+                    this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
                 showTooltip: false,
             },
         ];
@@ -250,31 +254,30 @@ export class LeftSidebarComponent implements AfterViewInit {
         this.bottomNavItems = [];
         this.bottomNavItems.push({
             id: 'settings',
+            routeLink: 'settings',
+            activePaths: ['/settings'],
             icon: 'settings',
             label: 'Settings',
             isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
             showTooltip: false,
-            action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',
         });
-    }
 
-    public ngAfterViewInit(): void {
-        if (this.isEpicChatEnabled) {
-            setTimeout(() => this.epicChatService.reconnectAgents(), 2000);
-        }
-    }
-
-    private onSettingsClick(): void {
-        this.configureModelsDialogService.open();
+        // Hidden when no bin tab is readable, the same rule as Files. No `icon`: that names a sprite icon,
+        // and the template draws Tabler's outline trash instead (the sprite's trash is solid).
+        this.recycleBinNavItem = {
+            id: 'recycle-bin',
+            routeLink: 'recycle-bin',
+            activePaths: ['/recycle-bin'],
+            label: 'Recycle Bin',
+            isPermitted: () =>
+                visibleRecycleBinTabs((resource, action) => this.permissionService.can(resource, action)).length > 0,
+            showTooltip: false,
+        };
     }
 
     public onLogoClick(): void {
         this.easterEggTrigger.registerLogoClick();
-    }
-
-    public toggleEpicChat(): void {
-        this.epicChatService.toggleChat(this.epicChat?.nativeElement);
     }
 
     public closeUserMenu(): void {
@@ -295,14 +298,6 @@ export class LeftSidebarComponent implements AfterViewInit {
         this.isOrgMenuOpen.update((prev) => !prev);
     }
 
-    public onEpChatCommandResult(event: Event): void {
-        this.epicChatService.onEpChatCommandResult(event);
-    }
-
-    public onEpChatEvent(event: Event): void {
-        this.epicChatService.onEpChatEvent(event);
-    }
-
     public handleItemClick(item: NavItem, event: MouseEvent): void {
         if (item.action) {
             event.preventDefault();
@@ -310,14 +305,56 @@ export class LeftSidebarComponent implements AfterViewInit {
         }
     }
 
+    protected onDocumentKeydown(event: KeyboardEvent): void {
+        if (event.defaultPrevented) return;
+        const step = PAGE_STEP_BY_CODE[event.code as keyof typeof PAGE_STEP_BY_CODE];
+        if (step === undefined || !isPlainAltChord(event) || this.dialog.openDialogs.length > 0) return;
+        if (event.target instanceof Element && isEditableTarget(event.target)) return;
+
+        const nextItem = this.findSteppedItem(step);
+        if (!nextItem?.routeLink) return;
+
+        event.preventDefault();
+        this.closeUserMenu();
+        this.closeOrgMenu();
+        void this.router.navigate([nextItem.routeLink], { relativeTo: this.activatedRoute });
+    }
+
     public isItemActive(item: NavItem): boolean {
-        const path = this.currentPath();
-        return (item.activePaths ?? []).some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+        return this.matchesCurrentPath(item.activePaths ?? []);
+    }
+
+    public badgeCount(item: NavItem): number {
+        return item.badge?.() ?? 0;
     }
 
     public resolveRouteLink(item: NavItem): string | null {
-        if (typeof item.routeLink === 'function') return item.routeLink();
         return item.routeLink ?? null;
+    }
+
+    private findSteppedItem(step: number): NavItem | null {
+        const visibleItems = [
+            this.workspaceNavItem,
+            ...this.topNavItems,
+            this.recycleBinNavItem,
+            ...this.bottomNavItems,
+            this.profileNavItem,
+        ].filter((item) => item.isPermitted());
+        const currentIndex = visibleItems.findIndex((item) => this.isCurrentPage(item));
+        if (currentIndex === -1) {
+            return (step > 0 ? visibleItems[0] : visibleItems[visibleItems.length - 1]) ?? null;
+        }
+        return visibleItems[currentIndex + step] ?? null;
+    }
+
+    private isCurrentPage(item: NavItem): boolean {
+        const ownPaths = item.routeLink ? [`/${item.routeLink}`] : [];
+        return this.matchesCurrentPath(item.activePaths ?? ownPaths);
+    }
+
+    private matchesCurrentPath(prefixes: string[]): boolean {
+        const path = this.currentPath();
+        return prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
     }
 
     private readCurrentPath(): string {

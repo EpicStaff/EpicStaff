@@ -63,152 +63,72 @@ def _run_wrapped(tmp_path: Path, code: str, env_overrides: dict[str, str]) -> su
     )
 
 
-class TestNetworkDenialMessageUnderFullBlock:
-    def test_eacces_with_no_filename_reports_network_denial(self, tmp_path):
-        """A seccomp socket() denial: OSError(EACCES) with no filename, since
-        socket() takes no path argument."""
-        result = _run_wrapped(
-            tmp_path,
-            code="def main(**kwargs):\n    raise OSError(13, 'Permission denied')\n",
-            env_overrides={"SANDBOX_NETWORK_BLOCKED": "all"},
-        )
+_EACCES = "    raise OSError(13, 'Permission denied')\n"
+_EACCES_ON_A_PATH = "    raise PermissionError(13, 'Permission denied', '/some/jailed/path')\n"
+_ENOENT = "    raise OSError(2, 'No such file or directory')\n"
+_DNS_FAILURE = (
+    "    import socket\n"
+    "    raise socket.gaierror(-3, 'Temporary failure in name resolution')\n"
+)
+_URLERROR_EACCES = (
+    "    import urllib.error\n"
+    "    raise urllib.error.URLError(OSError(13, 'Permission denied'))\n"
+)
+_URLERROR_ENOENT = (
+    "    import urllib.error\n"
+    "    raise urllib.error.URLError(OSError(2, 'No such file or directory'))\n"
+)
 
-        assert result.returncode == 1
+ALL = {"SANDBOX_NETWORK_BLOCKED": "all"}
+STORAGE_ONLY = {"SANDBOX_NETWORK_BLOCKED": "storage_only"}
+
+
+@pytest.mark.parametrize(
+    ("env", "raises", "expected_wording", "must_keep"),
+    [
+        # A seccomp socket() denial: EACCES with no filename (socket() takes no path).
+        (ALL, _EACCES, "blocks all outbound network access", None),
+        # A Landlock filesystem denial carries a filename: never blamed on the network.
+        (ALL, _EACCES_ON_A_PATH, None, "/some/jailed/path"),
+        # Only when the parent actually applied the block, never speculatively.
+        ({}, _EACCES, None, "[Errno 13]"),
+        (ALL, _ENOENT, None, "[Errno 2]"),
+        # requests hits DNS before any socket exists; under a full block DNS cannot succeed.
+        (ALL, _DNS_FAILURE, "blocks all outbound network access", None),
+        # urllib hides the errno inside URLError.reason.
+        (ALL, _URLERROR_EACCES, "blocks all outbound network access", None),
+        (ALL, _URLERROR_ENOENT, None, None),
+        # A Landlock port denial outside the storage endpoint.
+        (STORAGE_ONLY, _EACCES, "storage endpoint", None),
+        # Under storage_only DNS stays open, so a resolution failure is genuine.
+        (STORAGE_ONLY, _DNS_FAILURE, None, None),
+    ],
+    ids=[
+        "full-block-socket-denial",
+        "filesystem-denial-under-full-block",
+        "socket-denial-without-a-block",
+        "unrelated-oserror",
+        "full-block-dns-failure",
+        "full-block-urlerror",
+        "unrelated-urlerror",
+        "storage-only-socket-denial",
+        "storage-only-dns-failure",
+    ],
+)
+def test_network_denial_is_explained_only_when_the_policy_caused_it(
+    tmp_path, env, raises, expected_wording, must_keep
+):
+    result = _run_wrapped(tmp_path, code="def main(**kwargs):\n" + raises, env_overrides=env)
+
+    assert result.returncode == 1
+    if expected_wording:
         assert "sandbox network policy" in result.stderr
+        assert expected_wording in result.stderr
         assert "[Errno 13]" not in result.stderr
-
-    def test_eacces_with_filename_is_not_reported_as_a_network_denial(self, tmp_path):
-        """A Landlock filesystem denial: OSError(EACCES) WITH a filename. Must
-        not be misattributed to the network even though the flag is set."""
-        result = _run_wrapped(
-            tmp_path,
-            code=(
-                "def main(**kwargs):\n"
-                "    raise PermissionError(13, 'Permission denied', '/some/jailed/path')\n"
-            ),
-            env_overrides={"SANDBOX_NETWORK_BLOCKED": "all"},
-        )
-
-        assert result.returncode == 1
+    else:
         assert "sandbox network policy" not in result.stderr
-        assert "/some/jailed/path" in result.stderr
-
-    def test_eacces_with_no_filename_is_not_reported_when_flag_unset(self, tmp_path):
-        """The message must only appear when the parent actually applied the
-        block -- never speculatively."""
-        result = _run_wrapped(
-            tmp_path,
-            code="def main(**kwargs):\n    raise OSError(13, 'Permission denied')\n",
-            env_overrides={},
-        )
-
-        assert result.returncode == 1
-        assert "sandbox network policy" not in result.stderr
-        assert "[Errno 13]" in result.stderr
-
-    def test_non_eacces_oserror_is_not_reported_as_network_denial(self, tmp_path):
-        result = _run_wrapped(
-            tmp_path,
-            code="def main(**kwargs):\n    raise OSError(2, 'No such file or directory')\n",
-            env_overrides={"SANDBOX_NETWORK_BLOCKED": "all"},
-        )
-
-        assert result.returncode == 1
-        assert "sandbox network policy" not in result.stderr
-        assert "[Errno 2]" in result.stderr
-
-    def test_message_does_not_mention_storage_under_full_block(self, tmp_path):
-        result = _run_wrapped(
-            tmp_path,
-            code="def main(**kwargs):\n    raise OSError(13, 'Permission denied')\n",
-            env_overrides={"SANDBOX_NETWORK_BLOCKED": "all"},
-        )
-
-        assert result.returncode == 1
-        assert "storage endpoint" not in result.stderr
-
-    def test_dns_gaierror_reports_network_denial_under_full_block(self, tmp_path):
-        """The most common real path: `requests.get("https://...")` hits DNS
-        before any socket exists. Under a full block, seccomp denies the UDP
-        socket outright, so DNS cannot succeed for any external name -- no
-        false-positive risk in treating every gaierror as the block."""
-        result = _run_wrapped(
-            tmp_path,
-            code=(
-                "def main(**kwargs):\n"
-                "    import socket\n"
-                "    raise socket.gaierror(-3, 'Temporary failure in name resolution')\n"
-            ),
-            env_overrides={"SANDBOX_NETWORK_BLOCKED": "all"},
-        )
-
-        assert result.returncode == 1
-        assert "sandbox network policy" in result.stderr
-
-    def test_urlerror_wrapping_eacces_reports_network_denial_under_full_block(self, tmp_path):
-        """urllib wraps the underlying OSError in URLError.reason and drops
-        errno on the outer exception -- must unwrap one level to catch it."""
-        result = _run_wrapped(
-            tmp_path,
-            code=(
-                "def main(**kwargs):\n"
-                "    import urllib.error\n"
-                "    raise urllib.error.URLError(OSError(13, 'Permission denied'))\n"
-            ),
-            env_overrides={"SANDBOX_NETWORK_BLOCKED": "all"},
-        )
-
-        assert result.returncode == 1
-        assert "sandbox network policy" in result.stderr
-
-    def test_urlerror_wrapping_unrelated_oserror_is_not_reported(self, tmp_path):
-        """The unwrap must apply the same discriminator to the inner
-        exception, not treat every URLError as a network denial."""
-        result = _run_wrapped(
-            tmp_path,
-            code=(
-                "def main(**kwargs):\n"
-                "    import urllib.error\n"
-                "    raise urllib.error.URLError(OSError(2, 'No such file or directory'))\n"
-            ),
-            env_overrides={"SANDBOX_NETWORK_BLOCKED": "all"},
-        )
-
-        assert result.returncode == 1
-        assert "sandbox network policy" not in result.stderr
-
-
-class TestNetworkDenialMessageUnderStorageOnlyBlock:
-    def test_eacces_with_no_filename_reports_storage_only_message(self, tmp_path):
-        """A Landlock ALLOW_PORTS denial when user code reaches a non-storage
-        host: PermissionError(EACCES), no filename -- same shape as the full
-        block, different wording."""
-        result = _run_wrapped(
-            tmp_path,
-            code="def main(**kwargs):\n    raise OSError(13, 'Permission denied')\n",
-            env_overrides={"SANDBOX_NETWORK_BLOCKED": "storage_only"},
-        )
-
-        assert result.returncode == 1
-        assert "sandbox network policy" in result.stderr
-        assert "storage endpoint" in result.stderr
-
-    def test_dns_gaierror_is_not_reported_as_network_denial(self, tmp_path):
-        """Under storage_only, Landlock restricts TCP connect only -- DNS
-        (UDP) stays reachable -- so a gaierror here is a genuine resolution
-        failure, not our policy, and must not be misreported."""
-        result = _run_wrapped(
-            tmp_path,
-            code=(
-                "def main(**kwargs):\n"
-                "    import socket\n"
-                "    raise socket.gaierror(-3, 'Temporary failure in name resolution')\n"
-            ),
-            env_overrides={"SANDBOX_NETWORK_BLOCKED": "storage_only"},
-        )
-
-        assert result.returncode == 1
-        assert "sandbox network policy" not in result.stderr
+    if must_keep:
+        assert must_keep in result.stderr
 
 
 class TestGetaddrinfoMonkeypatch:
@@ -331,51 +251,28 @@ def _patch_subprocess(monkeypatch, recorded: dict, result_file_path: Path) -> No
     )
 
 
-class TestSandboxNetworkBlockedEnvVarWiring:
-    @pytest.mark.asyncio
-    async def test_env_var_is_all_when_policy_is_block_all(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", True)
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 4)
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("block_network", "use_storage", "expected"),
+    [(True, False, "all"), (False, False, None), (True, True, "storage_only")],
+    ids=["block-all", "unrestricted", "allow-storage-port"],
+)
+async def test_child_is_told_which_network_block_applies(
+    tmp_path, monkeypatch, block_network, use_storage, expected
+):
+    monkeypatch.setattr(settings, "BLOCK_NETWORK", block_network)
+    monkeypatch.setattr(settings, "STORAGE_PORT", "9000")
+    monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 4)
+    recorded: dict = {}
+    context = _make_execute_context(
+        tmp_path,
+        use_storage=use_storage,
+        temp_storage_access_key="scoped-ak",
+        temp_storage_secret_key="scoped-sk",
+    )
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-        recorded: dict = {}
-        context = _make_execute_context(tmp_path, use_storage=False)
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
+    result = await ExecuteCodeHandler().handle(context)
 
-        result = await ExecuteCodeHandler().handle(context)
-
-        assert result.returncode == 0
-        assert recorded["env"]["SANDBOX_NETWORK_BLOCKED"] == "all"
-
-    @pytest.mark.asyncio
-    async def test_env_var_absent_when_network_is_unrestricted(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", False)
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 4)
-
-        recorded: dict = {}
-        context = _make_execute_context(tmp_path)
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
-
-        result = await ExecuteCodeHandler().handle(context)
-
-        assert result.returncode == 0
-        assert "SANDBOX_NETWORK_BLOCKED" not in recorded["env"]
-
-    @pytest.mark.asyncio
-    async def test_env_var_is_storage_only_when_policy_is_allow_ports(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(settings, "BLOCK_NETWORK", True)
-        monkeypatch.setattr(settings, "STORAGE_PORT", "9000")
-        monkeypatch.setattr(dynamic_venv_executor_chain, "abi_version", lambda: 4)
-
-        recorded: dict = {}
-        context = _make_execute_context(
-            tmp_path,
-            use_storage=True,
-            temp_storage_access_key="scoped-ak",
-            temp_storage_secret_key="scoped-sk",
-        )
-        _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
-
-        result = await ExecuteCodeHandler().handle(context)
-
-        assert result.returncode == 0
-        assert recorded["env"]["SANDBOX_NETWORK_BLOCKED"] == "storage_only"
+    assert result.returncode == 0
+    assert recorded["env"].get("SANDBOX_NETWORK_BLOCKED") == expected

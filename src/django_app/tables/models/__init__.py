@@ -60,7 +60,6 @@ from .graph_models import (
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
     Condition,
-    ConditionalEdge,
     ConditionGroup,
     CrewNode,
     DecisionTableNode,
@@ -126,6 +125,7 @@ from .realtime_models import (
     RealtimeSessionItem,
 )
 from .secret_models import Secret
+from .session_callback_models import SessionCallback
 from .session_models import (
     AgentSessionMessage,
     Session,
@@ -186,7 +186,6 @@ __all__ = [
     "ClassificationDecisionTablePrompt",
     "Condition",
     "ConditionGroup",
-    "ConditionalEdge",
     "ContentHashMixin",
     "ConversationRecording",
     "Crew",
@@ -267,6 +266,7 @@ __all__ = [
     "ScheduleTriggerNode",
     "Secret",
     "Session",
+    "SessionCallback",
     "SessionStorageFile",
     "SessionTrigger",
     "SessionWarningMessage",

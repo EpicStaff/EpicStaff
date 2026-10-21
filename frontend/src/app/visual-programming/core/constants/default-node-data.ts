@@ -2,6 +2,7 @@ import { NODE_COLORS, NodeType } from '@shared/models';
 
 import { AgentNodeData } from '../models/agent-node.model';
 import { KeyValueNodeData } from '../models/key-value-node.model';
+import { TelegramTriggerNodeModel } from '../models/node.model';
 import { ScheduleTriggerNodeData } from '../models/schedule-trigger.model';
 import { TaskNodeData } from '../models/task-node.model';
 
@@ -13,31 +14,10 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         inline_surface: null,
         tasks: [],
     }),
-    [NodeType.EDGE]: () => ({
-        source: null,
-        then: null,
-        python_code: {
-            libraries: [],
-            code: 'def main(arg1: str, arg2: str) -> dict:\n    return {\n        "result": arg1 + arg2,\n    }\n',
-            entrypoint: 'main',
-        },
-    }),
     [NodeType.PYTHON]: () => ({
         name: 'Python Code Node',
         libraries: [],
-        code:
-            '# Replace this comment with your implementation.\n' +
-            '#\n' +
-            '# Purpose   : <describe the transformation or processing this node performs>\n' +
-            '# Inputs    : key = parameter name in main(), value = path to the domain variable - set via Input List\n' +
-            "# Output    : <what the returned value should contain> - written as-is to this node's Output Variable Path\n" +
-            '# Libraries : list any pip packages this code needs in the Libraries field\n' +
-            "# Secrets   : declare secrets in the Secrets field, then read them via get_secret('name')\n" +
-            '#\n' +
-            '# Required signature:\n' +
-            '#   def main(<your parameters>) -> ...:\n' +
-            '#       ...\n' +
-            "#       return ...  # written to this node's output variable\n",
+        code: 'def main():\n    return\n',
         entrypoint: 'main',
     }),
     [NodeType.TASK]: (): TaskNodeData => ({
@@ -107,9 +87,11 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
             entrypoint: 'main',
         },
         test_payload: {},
+        use_storage: false,
     }),
-    [NodeType.TELEGRAM_TRIGGER]: () => ({
+    [NodeType.TELEGRAM_TRIGGER]: (): TelegramTriggerNodeModel['data'] => ({
         telegram_bot_api_key_secret_id: null,
+        webhook_trigger: null,
         fields: [],
         test_payload: {},
     }),

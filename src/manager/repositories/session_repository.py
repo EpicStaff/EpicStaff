@@ -27,61 +27,28 @@ class SessionRepository:
                 logger.error(f"Unexpected error: {e}")
                 raise
 
-    async def get_session_fields(self, session_id: int) -> dict | None:
-        async def operation(session: AsyncSession):
-            query = text(
-                """
-                SELECT status, status_updated_at, time_to_live
-                FROM tables_session
-                WHERE id = :session_id
-                """
-            )
-            result = await session.execute(query, {"session_id": session_id})
-            row = result.fetchone()
-            if row:
-                return {
-                    "status": row.status,
-                    "status_updated_at": row.status_updated_at,
-                    "time_to_live": row.time_to_live,
-                }
-            return None
+    async def get_overdue_session_ids(self) -> list[int]:
+        """Return ids of active sessions whose time_to_live has elapsed.
 
-        try:
-            return await self._execute_with_session(operation)
-        except Exception:
-            return None
-
-    async def get_all_active_sessions(self) -> list[dict] | None:
-        """
-        Get all sessions with status 'run' or 'pending'
+        A session is overdue when more than time_to_live seconds have passed
+        since status_updated_at; time_to_live = 0 means the session never
+        expires. status_updated_at is only bumped by Session.save(), not by
+        crew's status updates (those use .update()), so in practice it is
+        usually the session's creation or last save(). Database errors
+        propagate so the caller can retry later.
         """
 
-        async def operation(session: AsyncSession):
+        async def operation(session: AsyncSession) -> list[int]:
             query = text(
                 """
-                SELECT id, status, status_updated_at, time_to_live
+                SELECT id
                 FROM tables_session
                 WHERE status IN ('run', 'pending', 'wait_for_user')
                 AND time_to_live != 0
+                AND status_updated_at + make_interval(secs => time_to_live) < now()
                 """
             )
             result = await session.execute(query)
-            rows = result.fetchall()
-            return (
-                [
-                    {
-                        "session_id": row.id,
-                        "status": row.status,
-                        "status_updated_at": row.status_updated_at,
-                        "time_to_live": row.time_to_live,
-                    }
-                    for row in rows
-                ]
-                if rows
-                else []
-            )
+            return list(result.scalars().all())
 
-        try:
-            return await self._execute_with_session(operation)
-        except Exception:
-            return None
+        return await self._execute_with_session(operation)

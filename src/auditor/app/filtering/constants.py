@@ -18,6 +18,9 @@ FLATTENED_OPS = frozenset(
         "key_not_exists",
         "key_equals_value",
         "key_not_equals",
+        # The query language has no key_not_equals form: `!=` parses to
+        # not_equal, which the compiler matches identically.
+        "not_equal",
         "contains",
         "starts_with",
         "ends_with",

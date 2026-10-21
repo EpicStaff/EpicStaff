@@ -1,899 +1,203 @@
-from conftest import TEST_BUCKET, load_tool, seed
+"""s3_bash_tool: a small bash dialect over the org's S3 storage.
+
+Every case seeds the in-memory S3 fake, runs one or more commands through the
+tool's `main()` and checks what the agent sees and what the bucket holds after.
+"""
+
+from dataclasses import dataclass, field
+
+import pytest
+from conftest import load_tool, seed
 
 tool = load_tool("s3_bash_tool")
 
-
-# =====================================================================
-# ls
-# =====================================================================
-
-
-def test_ls_flat_shows_top_level_only(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-    seed(fake_client, "dir/sub/b.txt", "y")
-
-    result = tool.main(command="ls dir")
-
-    assert "a.txt" in result
-    assert "sub/" in result
-    assert "b.txt" not in result
-
-
-def test_ls_recursive(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-    seed(fake_client, "dir/sub/b.txt", "y")
-
-    result = tool.main(command="ls -R dir")
-
-    assert "dir/a.txt" in result
-    assert "dir/sub/b.txt" in result
-
-
-def test_ls_long_shows_size(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "hello")
-
-    result = tool.main(command="ls -l dir")
-
-    assert "5" in result
-
-
-def test_ls_combined_short_flags(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "hello")
-
-    result = tool.main(command="ls -lR dir")
-
-    assert "dir/a.txt" in result
-    assert "5" in result
-
-
-def test_ls_missing_path(patched_storage, fake_client):
-    result = tool.main(command="ls nowhere")
-
-    assert "No files or folders found" in result
-
-
-def test_ls_glob_expansion(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-    seed(fake_client, "dir/b.log", "y")
-
-    result = tool.main(command="ls dir/*.txt")
-
-    assert "dir/a.txt" in result
-    assert "dir/b.log" not in result
-
-
-def test_glob_star_does_not_cross_directory_boundary(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-    seed(fake_client, "dir/sub/b.txt", "y")
-
-    result = tool.main(command="ls dir/*.txt")
-
-    assert "dir/a.txt" in result
-    assert "dir/sub/b.txt" not in result
-
-
-def test_glob_top_level_star_does_not_match_nested(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-    seed(fake_client, "dir/b.txt", "y")
-
-    result = tool.main(command="ls *.txt")
-
-    assert "a.txt" in result
-    assert "dir/b.txt" not in result
-
-
-def test_glob_question_mark_does_not_match_slash(patched_storage, fake_client):
-    seed(fake_client, "dir/file.txt", "x")
-    seed(fake_client, "dirXfile.txt", "y")
-
-    result = tool.main(command="ls dir?file.txt")
-
-    assert "dirXfile.txt" in result
-    assert "dir/file.txt" not in result
-
-
-# =====================================================================
-# cat
-# =====================================================================
-
-
-def test_cat_single_file(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello\nworld")
-
-    result = tool.main(command="cat a.txt")
-
-    assert result == "hello\nworld"
-
-
-def test_cat_with_line_numbers(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello\nworld")
-
-    result = tool.main(command="cat -n a.txt")
-
-    assert "1\thello" in result
-    assert "2\tworld" in result
-
-
-def test_cat_multiple_files_have_headers(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "AAA")
-    seed(fake_client, "b.txt", "BBB")
-
-    result = tool.main(command="cat a.txt b.txt")
-
-    assert "==> a.txt <==" in result
-    assert "==> b.txt <==" in result
-    assert "AAA" in result
-    assert "BBB" in result
-
-
-def test_cat_missing_file(patched_storage, fake_client):
-    result = tool.main(command="cat missing.txt")
-
-    assert "File not found" in result
-
-
-def test_cat_glob_expansion(patched_storage, fake_client):
-    seed(fake_client, "logs/a.log", "AAA")
-    seed(fake_client, "logs/b.log", "BBB")
-
-    result = tool.main(command="cat logs/*.log")
-
-    assert "AAA" in result
-    assert "BBB" in result
-
-
-def test_cat_glob_no_match(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-
-    result = tool.main(command="cat missing*.txt")
-
-    assert "no matches for pattern" in result
-
-
-def test_cat_folder_path_errors(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-
-    result = tool.main(command="cat dir/")
-
-    assert "folder" in result.lower()
-
-
-# =====================================================================
-# head / tail
-# =====================================================================
-
-
-def test_head_default_ten_lines(patched_storage, fake_client):
-    content = "\n".join(f"line{i}" for i in range(20))
-    seed(fake_client, "a.txt", content)
-
-    result = tool.main(command="head a.txt")
-
-    assert "line0" in result
-    assert "line9" in result
-    assert "line10" not in result
-
-
-def test_head_with_n_flag(patched_storage, fake_client):
-    content = "\n".join(f"line{i}" for i in range(20))
-    seed(fake_client, "a.txt", content)
-
-    result = tool.main(command="head -n 3 a.txt")
-
-    assert result == "line0\nline1\nline2"
-
-
-def test_tail_with_n_flag(patched_storage, fake_client):
-    content = "\n".join(f"line{i}" for i in range(20))
-    seed(fake_client, "a.txt", content)
-
-    result = tool.main(command="tail -n 2 a.txt")
-
-    assert result == "line18\nline19"
-
-
-def test_head_multiple_files_glob_errors(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-    seed(fake_client, "b.txt", "y")
-
-    result = tool.main(command="head *.txt")
-
-    assert "single path" in result or "matched" in result
-
-
-def test_head_invalid_n(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-
-    result = tool.main(command="head -n abc a.txt")
-
-    assert "integer" in result
-
-
-def test_tail_trailing_newline_returns_real_last_line(patched_storage, fake_client):
-    # Regression: "a\nb\n" is a 2-line file. A naive content.split("\n")
-    # produces a phantom trailing "" element, so `tail -n 1` would wrongly
-    # return "" instead of the real last line "b".
-    seed(fake_client, "a.txt", "a\nb\n")
-
-    result = tool.main(command="tail -n 1 a.txt")
-
-    assert result == "b"
-
-
-def test_head_trailing_newline_does_not_include_phantom_line(
-    patched_storage, fake_client
-):
-    seed(fake_client, "a.txt", "a\nb\n")
-
-    result = tool.main(command="head -n 2 a.txt")
-
-    assert result == "a\nb"
-
-
-# =====================================================================
-# wc
-# =====================================================================
-
-
-def test_wc_default_shows_all_three(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello world\nfoo")
-
-    result = tool.main(command="wc a.txt")
-
-    parts = result.split()
-    assert len(parts) == 4  # lines words bytes filename
-    assert parts[-1] == "a.txt"
-
-
-def test_wc_lines_only(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "a\nb\nc")
-
-    result = tool.main(command="wc -l a.txt")
-
-    parts = result.split()
-    assert len(parts) == 2
-    assert parts[0] == "2"
-
-
-def test_wc_multiple_files_show_total(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "one two")
-    seed(fake_client, "b.txt", "three")
-
-    result = tool.main(command="wc -w a.txt b.txt")
-
-    assert "total" in result
-
-
-# =====================================================================
-# grep
-# =====================================================================
-
-
-def test_grep_basic_match_no_line_numbers_by_default(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello\nworld")
-
-    result = tool.main(command="grep hello a.txt")
-
-    assert "a.txt: hello" in result
-    assert "a.txt:1:" not in result
-
-
-def test_grep_line_numbers_flag(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello\nworld\nhello again")
-
-    result = tool.main(command="grep -n hello a.txt")
-
-    assert "a.txt:1: hello" in result
-    assert "a.txt:3: hello again" in result
-
-
-def test_grep_ignore_case(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "Hello World")
-
-    result = tool.main(command="grep -i hello a.txt")
-
-    assert "Hello World" in result
-
-
-def test_grep_files_with_matches(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "target")
-    seed(fake_client, "b.txt", "nope")
-
-    result = tool.main(command="grep -l target")
-
-    assert result == "a.txt"
-
-
-def test_grep_non_recursive_by_default(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "target")
-    seed(fake_client, "dir/b.txt", "target")
-
-    result = tool.main(command="grep target")
-
-    assert "a.txt" in result
-    assert "dir/b.txt" not in result
-
-
-def test_grep_recursive_flag(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "target")
-    seed(fake_client, "dir/b.txt", "target")
-
-    result = tool.main(command="grep -r target")
-
-    assert "a.txt" in result
-    assert "dir/b.txt" in result
-
-
-def test_grep_combined_flags(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "Target here")
-
-    result = tool.main(command="grep -rin target dir")
-
-    assert "dir/a.txt:1: Target here" in result
-
-
-def test_grep_quoted_pattern_with_pipe_is_not_rejected(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "abc\ndef\nxyz")
-
-    result = tool.main(command='grep "(abc|def)" a.txt')
-
-    assert "abc" in result
-    assert "def" in result
-    assert "xyz" not in result
-
-
-def test_grep_invalid_regex(patched_storage, fake_client):
-    result = tool.main(command="grep [unclosed a.txt")
-
-    assert "Invalid regex" in result
-
-
-# =====================================================================
-# find
-# =====================================================================
-
-
-def test_find_lists_files_and_folders(patched_storage, fake_client):
-    seed(fake_client, "dir/a.py", "x")
-    seed(fake_client, "dir/sub/b.txt", "y")
-
-    result = tool.main(command="find")
-
-    assert "dir/a.py" in result
-    assert "dir/sub/b.txt" in result
-    assert "dir" in result
-    assert "dir/sub" in result
-
-
-def test_find_type_d_only(patched_storage, fake_client):
-    seed(fake_client, "dir/a.py", "x")
-    seed(fake_client, "dir/sub/b.txt", "y")
-
-    result = tool.main(command="find -type d")
-
-    assert "dir" in result
-    assert "dir/sub" in result
-    assert "dir/a.py" not in result
-
-
-def test_find_name_pattern(patched_storage, fake_client):
-    seed(fake_client, "dir/a.py", "x")
-    seed(fake_client, "dir/b.txt", "y")
-
-    result = tool.main(command="find dir -name *.py")
-
-    assert "dir/a.py" in result
-    assert "dir/b.txt" not in result
-
-
-def test_find_invalid_type(patched_storage, fake_client):
-    seed(fake_client, "a.py", "x")
-
-    result = tool.main(command="find -type x")
-
-    assert "must be 'f' or 'd'" in result
-
-
-# =====================================================================
-# mkdir
-# =====================================================================
-
-
-def test_mkdir_creates_folder(patched_storage, fake_client):
-    result = tool.main(command="mkdir newdir")
-
-    assert "Folder created: newdir." in result
-    assert any(k.endswith("newdir/.keep") for k in fake_client.objects)
-
-
-def test_mkdir_already_exists(patched_storage, fake_client):
-    seed(fake_client, "existing/file.txt", "x")
-
-    result = tool.main(command="mkdir existing")
-
-    assert "already exists" in result
-
-
-def test_mkdir_without_p_missing_parent_errors(patched_storage, fake_client):
-    result = tool.main(command="mkdir a/b/c")
-
-    assert "parent folder" in result
-    assert "does not exist" in result
-
-
-def test_mkdir_with_p_creates_regardless(patched_storage, fake_client):
-    result = tool.main(command="mkdir -p a/b/c")
-
-    assert "Folder created: a/b/c." in result
-
-
-# =====================================================================
-# rm
-# =====================================================================
-
-
-def test_rm_deletes_file(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-
-    result = tool.main(command="rm a.txt")
-
-    assert "Deleted a.txt." in result
-    assert "a.txt" not in fake_client.objects
-
-
-def test_rm_folder_without_r_errors(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-
-    result = tool.main(command="rm dir")
-
-    assert "pass -r" in result
-    assert "dir/a.txt" in fake_client.objects
-
-
-def test_rm_folder_with_r_deletes(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-    seed(fake_client, "dir/b.txt", "y")
-
-    result = tool.main(command="rm -r dir")
-
-    assert "Deleted folder dir" in result
-    assert "dir/a.txt" not in fake_client.objects
-    assert "dir/b.txt" not in fake_client.objects
-
-
-def test_rm_root_refused_empty(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-
-    result = tool.main(command="rm ''")
-
-    assert "refusing to remove root" in result
-    assert "a.txt" in fake_client.objects
-
-
-def test_rm_root_refused_slash(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-
-    result = tool.main(command="rm /")
-
-    assert "refusing to remove root" in result
-
-
-def test_rm_root_refused_dot(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-
-    result = tool.main(command="rm .")
-
-    assert "refusing to remove root" in result
-
-
-def test_rm_not_found_without_f_reports_error(patched_storage, fake_client):
-    result = tool.main(command="rm missing.txt")
-
-    assert "cannot remove" in result
-
-
-def test_rm_not_found_with_f_is_suppressed(patched_storage, fake_client):
-    result = tool.main(command="rm -f missing.txt")
-
-    assert "ignored" in result
-    assert "cannot remove" not in result
-
-
-def test_rm_multiple_paths(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-    seed(fake_client, "b.txt", "y")
-
-    result = tool.main(command="rm a.txt b.txt")
-
-    assert "a.txt" not in fake_client.objects
-    assert "b.txt" not in fake_client.objects
-    assert "Deleted a.txt." in result
-    assert "Deleted b.txt." in result
-
-
-def test_rm_glob_no_match_without_f(patched_storage, fake_client):
-    result = tool.main(command="rm missing*.txt")
-
-    assert "no matches for pattern" in result
-
-
-def test_rm_glob_no_match_with_f_is_silent(patched_storage, fake_client):
-    result = tool.main(command="rm -f missing*.txt")
-
-    assert result == "Nothing to remove."
-
-
-# =====================================================================
-# mv / cp
-# =====================================================================
-
-
-def test_mv_file(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello")
-
-    result = tool.main(command="mv a.txt b.txt")
-
-    assert "Moved a.txt to b.txt." in result
-    assert "a.txt" not in fake_client.objects
-    assert fake_client.objects["b.txt"]["Body"] == b"hello"
-
-
-def test_mv_folder_errors(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-
-    result = tool.main(command="mv dir otherdir")
-
-    assert "folder" in result.lower()
-    assert "cp -r" in result
-    assert "dir/a.txt" in fake_client.objects
-
-
-def test_cp_file(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello")
-
-    result = tool.main(command="cp a.txt b.txt")
-
-    assert "Copied a.txt to b.txt." in result
-    assert fake_client.objects["b.txt"]["Body"] == b"hello"
-    assert "a.txt" in fake_client.objects
-
-
-def test_cp_folder_without_r_errors(patched_storage, fake_client):
-    seed(fake_client, "srcdir/a.txt", "x")
-
-    result = tool.main(command="cp srcdir dstdir")
-
-    assert "use cp -r" in result
-
-
-def test_cp_folder_with_r_copies_all_files(patched_storage, fake_client):
-    seed(fake_client, "srcdir/a.txt", "AAA")
-    seed(fake_client, "srcdir/sub/b.txt", "BBB")
-
-    result = tool.main(command="cp -r srcdir dstdir")
-
-    assert "2 file(s)" in result
-    assert fake_client.objects["dstdir/a.txt"]["Body"] == b"AAA"
-    assert fake_client.objects["dstdir/sub/b.txt"]["Body"] == b"BBB"
-    assert "srcdir/a.txt" in fake_client.objects  # copy keeps source
-
-
-def test_cp_glob_multiple_sources_into_folder(patched_storage, fake_client):
-    seed(fake_client, "logs/a.log", "AAA")
-    seed(fake_client, "logs/b.log", "BBB")
-
-    result = tool.main(command="cp logs/*.log archive/")
-
-    assert "2 file(s)" in result
-    assert fake_client.objects["archive/a.log"]["Body"] == b"AAA"
-    assert fake_client.objects["archive/b.log"]["Body"] == b"BBB"
-
-
-# =====================================================================
-# touch
-# =====================================================================
-
-
-def test_touch_creates_empty_file(patched_storage, fake_client):
-    result = tool.main(command="touch newfile.txt")
-
-    assert "Created empty file: newfile.txt." in result
-    assert fake_client.objects["newfile.txt"]["Body"] == b""
-
-
-def test_touch_existing_file_is_noop(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello")
-
-    result = tool.main(command="touch a.txt")
-
-    assert "already exists" in result
-    assert fake_client.objects["a.txt"]["Body"] == b"hello"
-
-
-def test_touch_on_folder_errors(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-
-    result = tool.main(command="touch dir")
-
-    assert "is a folder" in result
-
-
-# =====================================================================
-# stat
-# =====================================================================
-
-
-def test_stat_file(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello")
-
-    result = tool.main(command="stat a.txt")
-
-    assert "type: file" in result
-    assert "size: 5 bytes" in result
-
-
-def test_stat_folder(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-
-    result = tool.main(command="stat dir")
-
-    assert "type: folder" in result
-    assert "entries: 1" in result
-
-
-def test_stat_missing(patched_storage, fake_client):
-    result = tool.main(command="stat missing.txt")
-
-    assert "File not found" in result
-
-
-# =====================================================================
-# du
-# =====================================================================
-
-
-def test_du_grand_total(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello")  # 5 bytes
-    seed(fake_client, "dir/b.txt", "abc")  # 3 bytes
-
-    result = tool.main(command="du")
-
-    assert "8" in result
-    assert "(total)" in result
-
-
-def test_du_summary_only(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello")
-    seed(fake_client, "dir/b.txt", "abc")
-
-    result = tool.main(command="du -s")
-
-    assert "8" in result
-    assert "(total)" not in result
-
-
-def test_du_missing_path_errors(patched_storage, fake_client):
-    result = tool.main(command="du missing")
-
-    assert "No such file or folder" in result
-
-
-def test_du_empty_existing_folder_is_zero(patched_storage, fake_client):
-    fake_client.put_object(Bucket=TEST_BUCKET, Key="emptydir/.keep", Body=b"")
-
-    result = tool.main(command="du emptydir")
-
-    assert "0" in result
-
-
-# =====================================================================
-# diff
-# =====================================================================
-
-
-def test_diff_shows_differences(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "line1\nline2\n")
-    seed(fake_client, "b.txt", "line1\nlineX\n")
-
-    result = tool.main(command="diff a.txt b.txt")
-
-    assert "-line2" in result
-    assert "+lineX" in result
-
-
-def test_diff_identical_files(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "same content")
-    seed(fake_client, "b.txt", "same content")
-
-    result = tool.main(command="diff a.txt b.txt")
-
-    assert "identical" in result
-
-
-# =====================================================================
-# echo + redirection
-# =====================================================================
-
-
-def test_echo_without_redirect(patched_storage, fake_client):
-    result = tool.main(command="echo hello world")
-
-    assert result == "hello world"
-
-
-def test_echo_redirect_creates_file(patched_storage, fake_client):
-    result = tool.main(command="echo hi > out.txt")
-
-    assert "Wrote" in result
-    assert fake_client.objects["out.txt"]["Body"] == b"hi\n"
-
-
-def test_echo_redirect_overwrites_existing_file(patched_storage, fake_client):
-    seed(fake_client, "out.txt", "old content here")
-
-    tool.main(command="echo new > out.txt")
-
-    assert fake_client.objects["out.txt"]["Body"] == b"new\n"
-
-
-def test_echo_redirect_append(patched_storage, fake_client):
-    seed(fake_client, "out.txt", "abc")
-
-    result = tool.main(command="echo def >> out.txt")
-
-    assert "Appended" in result
-    assert fake_client.objects["out.txt"]["Body"] == b"abcdef\n"
-
-
-def test_echo_redirect_append_twice_lands_as_separate_lines(
-    patched_storage, fake_client
-):
-    tool.main(command="echo a >> out.txt")
-    tool.main(command="echo b >> out.txt")
-
-    assert fake_client.objects["out.txt"]["Body"] == b"a\nb\n"
-
-
-def test_echo_without_redirect_has_no_trailing_newline(patched_storage, fake_client):
-    result = tool.main(command="echo hi")
-
-    assert result == "hi"
-
-
-def test_cat_redirect_writes_rendered_output(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "hello")
-
-    result = tool.main(command="cat -n a.txt > out.txt")
-
-    assert "Wrote" in result
-    assert b"1\thello" in fake_client.objects["out.txt"]["Body"]
-
-
-def test_redirect_not_supported_for_other_commands(patched_storage, fake_client):
-    seed(fake_client, "dir/a.txt", "x")
-
-    result = tool.main(command="ls dir > out.txt")
-
-    assert "not supported" in result
-    assert "out.txt" not in fake_client.objects
-
-
-# =====================================================================
-# test / [
-# =====================================================================
-
-
-def test_test_dash_e_true(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-
-    result = tool.main(command="test -e a.txt")
-
-    assert result == "true"
-
-
-def test_test_dash_e_false(patched_storage, fake_client):
-    result = tool.main(command="test -e missing.txt")
-
-    assert result == "false"
-
-
-def test_bracket_form(patched_storage, fake_client):
-    seed(fake_client, "a.txt", "x")
-
-    result = tool.main(command="[ -e a.txt ]")
-
-    assert result == "true"
-
-
-def test_bracket_missing_closing_bracket_errors(patched_storage, fake_client):
-    result = tool.main(command="[ -e a.txt")
-
-    assert "missing closing" in result
-
-
-# =====================================================================
-# rejected syntax
-# =====================================================================
-
-
-def test_pipe_rejected(patched_storage, fake_client):
-    result = tool.main(command="cat a.txt | grep foo")
-
-    assert "Pipes" in result
-
-
-def test_and_chaining_rejected(patched_storage, fake_client):
-    result = tool.main(command="cat a.txt && echo hi")
-
-    assert "chaining" in result.lower()
-
-
-def test_or_chaining_rejected(patched_storage, fake_client):
-    result = tool.main(command="cat a.txt || echo hi")
-
-    assert "chaining" in result.lower()
-
-
-def test_semicolon_rejected(patched_storage, fake_client):
-    result = tool.main(command="cat a.txt; echo hi")
-
-    assert "chaining" in result.lower()
-
-
-def test_variable_rejected(patched_storage, fake_client):
-    result = tool.main(command="echo $HOME")
-
-    assert "Variables" in result
-
-
-def test_backtick_subshell_rejected(patched_storage, fake_client):
-    result = tool.main(command="echo `whoami`")
-
-    assert "Subshells" in result or "backticks" in result
-
-
-def test_dollar_paren_subshell_rejected(patched_storage, fake_client):
-    result = tool.main(command="echo $(whoami)")
-
-    assert "Subshells" in result
-
-
-def test_input_redirect_rejected(patched_storage, fake_client):
-    result = tool.main(command="cat < a.txt")
-
-    assert "Input redirection" in result
-
-
-def test_quoted_dollar_is_not_rejected(patched_storage, fake_client):
-    result = tool.main(command="echo '$HOME'")
-
-    assert result == "$HOME"
-
-
-# =====================================================================
-# parsing edge cases
-# =====================================================================
-
-
-def test_empty_command_returns_usage(patched_storage, fake_client):
-    result = tool.main(command="")
-
-    assert "no command given" in result
-
-
-def test_unknown_command(patched_storage, fake_client):
-    result = tool.main(command="foobar something")
-
-    assert "Unknown command 'foobar'" in result
-    assert "s3_grep_tool" in result
-
-
-def test_quoted_args_with_spaces(patched_storage, fake_client):
-    seed(fake_client, "my file.txt", "hello there")
-
-    result = tool.main(command='cat "my file.txt"')
-
-    assert result == "hello there"
+TWENTY_LINES = "\n".join(f"line{i}" for i in range(20))
+
+
+@dataclass
+class Case:
+    command: str | list[str]
+    files: dict[str, str] = field(default_factory=dict)
+    contains: tuple[str, ...] = ()
+    excludes: tuple[str, ...] = ()
+    equals: str | None = None
+    # Compared with runs of whitespace collapsed (wc pads its columns like coreutils).
+    columns: str | None = None
+    # Bucket after the command: path -> body, or None for "must not exist".
+    bucket: dict[str, str | None] = field(default_factory=dict)
+
+
+def _run(fake_client, case: Case) -> str:
+    for path, body in case.files.items():
+        seed(fake_client, path, body)
+    commands = [case.command] if isinstance(case.command, str) else case.command
+    for command in commands:
+        result = tool.main(command=command)
+    return result
+
+
+def _check(fake_client, case: Case, result: str) -> None:
+    for expected in case.contains:
+        assert expected in result
+    for unexpected in case.excludes:
+        assert unexpected not in result
+    if case.equals is not None:
+        assert result == case.equals
+    if case.columns is not None:
+        assert " ".join(result.split()) == case.columns
+    for path, body in case.bucket.items():
+        if body is None:
+            assert path not in fake_client.objects
+        else:
+            assert fake_client.objects[path]["Body"] == body.encode()
+
+
+def cases(table: dict[str, Case]):
+    return pytest.mark.parametrize("case", list(table.values()), ids=list(table))
+
+
+READING = {
+    # ls
+    "ls-flat": Case("ls dir", {"dir/a.txt": "x", "dir/sub/b.txt": "y"}, contains=("a.txt", "sub/"), excludes=("b.txt",)),
+    "ls-recursive": Case("ls -R dir", {"dir/a.txt": "x", "dir/sub/b.txt": "y"}, contains=("dir/a.txt", "dir/sub/b.txt")),
+    "ls-long-shows-size": Case("ls -l dir", {"dir/a.txt": "hello"}, contains=("5",)),
+    "ls-combined-flags": Case("ls -lR dir", {"dir/a.txt": "hello"}, contains=("dir/a.txt", "5")),
+    "ls-missing": Case("ls nowhere", contains=("No files or folders found",)),
+    "ls-glob": Case("ls dir/*.txt", {"dir/a.txt": "x", "dir/b.log": "y"}, contains=("dir/a.txt",), excludes=("dir/b.log",)),
+    "glob-star-stays-in-folder": Case("ls dir/*.txt", {"dir/a.txt": "x", "dir/sub/b.txt": "y"}, contains=("dir/a.txt",), excludes=("dir/sub/b.txt",)),
+    "glob-top-level-star": Case("ls *.txt", {"a.txt": "x", "dir/b.txt": "y"}, contains=("a.txt",), excludes=("dir/b.txt",)),
+    "glob-question-mark-not-slash": Case("ls dir?file.txt", {"dir/file.txt": "x", "dirXfile.txt": "y"}, contains=("dirXfile.txt",), excludes=("dir/file.txt",)),
+    # cat
+    "cat": Case("cat a.txt", {"a.txt": "hello\nworld"}, equals="hello\nworld"),
+    "cat-line-numbers": Case("cat -n a.txt", {"a.txt": "hello\nworld"}, contains=("1\thello", "2\tworld")),
+    "cat-several-with-headers": Case("cat a.txt b.txt", {"a.txt": "AAA", "b.txt": "BBB"}, contains=("==> a.txt <==", "==> b.txt <==", "AAA", "BBB")),
+    "cat-missing": Case("cat missing.txt", contains=("File not found",)),
+    "cat-glob": Case("cat logs/*.log", {"logs/a.log": "AAA", "logs/b.log": "BBB"}, contains=("AAA", "BBB")),
+    "cat-glob-no-match": Case("cat missing*.txt", {"a.txt": "x"}, contains=("no matches for pattern",)),
+    "cat-folder": Case("cat dir/", {"dir/a.txt": "x"}, contains=("folder",)),
+    "cat-quoted-path-with-space": Case('cat "my file.txt"', {"my file.txt": "hello there"}, equals="hello there"),
+    # head / tail
+    "head-default-ten": Case("head a.txt", {"a.txt": TWENTY_LINES}, contains=("line0", "line9"), excludes=("line10",)),
+    "head-n": Case("head -n 3 a.txt", {"a.txt": TWENTY_LINES}, equals="line0\nline1\nline2"),
+    "tail-n": Case("tail -n 2 a.txt", {"a.txt": TWENTY_LINES}, equals="line18\nline19"),
+    "head-needs-one-path": Case("head *.txt", {"a.txt": "x", "b.txt": "y"}, contains=("single path",)),
+    "head-n-not-integer": Case("head -n abc a.txt", {"a.txt": "x"}, contains=("integer",)),
+    # "a\nb\n" has two lines; a naive split would add a phantom "" line.
+    "tail-trailing-newline": Case("tail -n 1 a.txt", {"a.txt": "a\nb\n"}, equals="b"),
+    "head-trailing-newline": Case("head -n 2 a.txt", {"a.txt": "a\nb\n"}, equals="a\nb"),
+    # wc
+    "wc": Case("wc a.txt", {"a.txt": "hello world\nfoo"}, columns="1 3 15 a.txt"),
+    "wc-lines": Case("wc -l a.txt", {"a.txt": "a\nb\nc"}, columns="2 a.txt"),
+    "wc-several-with-total": Case("wc -w a.txt b.txt", {"a.txt": "one two", "b.txt": "three"}, contains=("total",)),
+    # grep
+    "grep": Case("grep hello a.txt", {"a.txt": "hello\nworld"}, contains=("a.txt: hello",), excludes=("a.txt:1:",)),
+    "grep-line-numbers": Case("grep -n hello a.txt", {"a.txt": "hello\nworld\nhello again"}, contains=("a.txt:1: hello", "a.txt:3: hello again")),
+    "grep-ignore-case": Case("grep -i hello a.txt", {"a.txt": "Hello World"}, contains=("Hello World",)),
+    "grep-files-with-matches": Case("grep -l target", {"a.txt": "target", "b.txt": "nope"}, equals="a.txt"),
+    "grep-not-recursive-by-default": Case("grep target", {"a.txt": "target", "dir/b.txt": "target"}, contains=("a.txt",), excludes=("dir/b.txt",)),
+    "grep-recursive": Case("grep -r target", {"a.txt": "target", "dir/b.txt": "target"}, contains=("a.txt", "dir/b.txt")),
+    "grep-combined-flags": Case("grep -rin target dir", {"dir/a.txt": "Target here"}, contains=("dir/a.txt:1: Target here",)),
+    "grep-quoted-pipe-is-a-pattern": Case('grep "(abc|def)" a.txt', {"a.txt": "abc\ndef\nxyz"}, contains=("abc", "def"), excludes=("xyz",)),
+    "grep-invalid-regex": Case("grep [unclosed a.txt", contains=("Invalid regex",)),
+    # find
+    "find": Case("find", {"dir/a.py": "x", "dir/sub/b.txt": "y"}, contains=("dir/a.py", "dir/sub/b.txt", "dir\n", "dir/sub\n")),
+    "find-folders": Case("find -type d", {"dir/a.py": "x", "dir/sub/b.txt": "y"}, contains=("dir", "dir/sub"), excludes=("dir/a.py",)),
+    "find-name": Case("find dir -name *.py", {"dir/a.py": "x", "dir/b.txt": "y"}, contains=("dir/a.py",), excludes=("dir/b.txt",)),
+    "find-bad-type": Case("find -type x", {"a.py": "x"}, contains=("must be 'f' or 'd'",)),
+    # stat / du / diff / test
+    "stat-file": Case("stat a.txt", {"a.txt": "hello"}, contains=("type: file", "size: 5 bytes")),
+    "stat-folder": Case("stat dir", {"dir/a.txt": "x"}, contains=("type: folder", "entries: 1")),
+    "stat-missing": Case("stat missing.txt", contains=("File not found",)),
+    "du-total": Case("du", {"a.txt": "hello", "dir/b.txt": "abc"}, contains=("8", "(total)")),
+    "du-summary": Case("du -s", {"a.txt": "hello", "dir/b.txt": "abc"}, contains=("8",), excludes=("(total)",)),
+    "du-missing": Case("du missing", contains=("No such file or folder",)),
+    "du-empty-folder": Case("du emptydir", {"emptydir/.keep": ""}, contains=("0",)),
+    "diff": Case("diff a.txt b.txt", {"a.txt": "line1\nline2\n", "b.txt": "line1\nlineX\n"}, contains=("-line2", "+lineX")),
+    "diff-identical": Case("diff a.txt b.txt", {"a.txt": "same content", "b.txt": "same content"}, contains=("identical",)),
+    "test-exists": Case("test -e a.txt", {"a.txt": "x"}, equals="true"),
+    "test-missing": Case("test -e missing.txt", equals="false"),
+    "bracket-form": Case("[ -e a.txt ]", {"a.txt": "x"}, equals="true"),
+    "bracket-unclosed": Case("[ -e a.txt", contains=("missing closing",)),
+    # echo
+    "echo": Case("echo hello world", equals="hello world"),
+    "echo-no-trailing-newline": Case("echo hi", equals="hi"),
+    "quoted-dollar-is-literal": Case("echo '$HOME'", equals="$HOME"),
+    # parsing
+    "empty-command": Case("", contains=("no command given",)),
+    "unknown-command-points-to-tools": Case("foobar something", contains=("Unknown command 'foobar'", "s3_grep_tool")),
+}
+
+
+@cases(READING)
+def test_reading_commands(patched_storage, fake_client, case):
+    _check(fake_client, case, _run(fake_client, case))
+
+
+WRITING = {
+    "mkdir": Case("mkdir newdir", contains=("Folder created: newdir.",), bucket={"newdir/.keep": ""}),
+    "mkdir-existing": Case("mkdir existing", {"existing/file.txt": "x"}, contains=("already exists",)),
+    "mkdir-missing-parent": Case("mkdir a/b/c", contains=("parent folder", "does not exist"), bucket={"a/b/c/.keep": None}),
+    "mkdir-p": Case("mkdir -p a/b/c", contains=("Folder created: a/b/c.",)),
+    "rm": Case("rm a.txt", {"a.txt": "x"}, contains=("Deleted a.txt.",), bucket={"a.txt": None}),
+    "rm-folder-needs-r": Case("rm dir", {"dir/a.txt": "x"}, contains=("pass -r",), bucket={"dir/a.txt": "x"}),
+    "rm-r": Case("rm -r dir", {"dir/a.txt": "x", "dir/b.txt": "y"}, contains=("Deleted folder dir",), bucket={"dir/a.txt": None, "dir/b.txt": None}),
+    "rm-root-empty": Case("rm ''", {"a.txt": "x"}, contains=("refusing to remove root",), bucket={"a.txt": "x"}),
+    "rm-root-slash": Case("rm /", {"a.txt": "x"}, contains=("refusing to remove root",), bucket={"a.txt": "x"}),
+    "rm-root-dot": Case("rm .", {"a.txt": "x"}, contains=("refusing to remove root",), bucket={"a.txt": "x"}),
+    "rm-missing": Case("rm missing.txt", contains=("cannot remove",)),
+    "rm-f-missing": Case("rm -f missing.txt", contains=("ignored",), excludes=("cannot remove",)),
+    "rm-several": Case("rm a.txt b.txt", {"a.txt": "x", "b.txt": "y"}, contains=("Deleted a.txt.", "Deleted b.txt."), bucket={"a.txt": None, "b.txt": None}),
+    "rm-glob-no-match": Case("rm missing*.txt", contains=("no matches for pattern",)),
+    "rm-f-glob-no-match": Case("rm -f missing*.txt", equals="Nothing to remove."),
+    "mv": Case("mv a.txt b.txt", {"a.txt": "hello"}, contains=("Moved a.txt to b.txt.",), bucket={"a.txt": None, "b.txt": "hello"}),
+    "mv-folder-refused": Case("mv dir otherdir", {"dir/a.txt": "x"}, contains=("folder", "cp -r"), bucket={"dir/a.txt": "x"}),
+    "cp": Case("cp a.txt b.txt", {"a.txt": "hello"}, contains=("Copied a.txt to b.txt.",), bucket={"a.txt": "hello", "b.txt": "hello"}),
+    "cp-folder-needs-r": Case("cp srcdir dstdir", {"srcdir/a.txt": "x"}, contains=("use cp -r",)),
+    "cp-r": Case(
+        "cp -r srcdir dstdir", {"srcdir/a.txt": "AAA", "srcdir/sub/b.txt": "BBB"}, contains=("2 file(s)",),
+        bucket={"dstdir/a.txt": "AAA", "dstdir/sub/b.txt": "BBB", "srcdir/a.txt": "AAA"},
+    ),
+    "cp-glob-into-folder": Case(
+        "cp logs/*.log archive/", {"logs/a.log": "AAA", "logs/b.log": "BBB"}, contains=("2 file(s)",),
+        bucket={"archive/a.log": "AAA", "archive/b.log": "BBB"},
+    ),
+    "touch": Case("touch newfile.txt", contains=("Created empty file: newfile.txt.",), bucket={"newfile.txt": ""}),
+    "touch-existing-keeps-content": Case("touch a.txt", {"a.txt": "hello"}, contains=("already exists",), bucket={"a.txt": "hello"}),
+    "touch-folder": Case("touch dir", {"dir/a.txt": "x"}, contains=("is a folder",)),
+    "echo-redirect-creates": Case("echo hi > out.txt", contains=("Wrote",), bucket={"out.txt": "hi\n"}),
+    "echo-redirect-overwrites": Case("echo new > out.txt", {"out.txt": "old content here"}, bucket={"out.txt": "new\n"}),
+    "echo-append": Case("echo def >> out.txt", {"out.txt": "abc"}, contains=("Appended",), bucket={"out.txt": "abcdef\n"}),
+    "echo-append-twice-separate-lines": Case(["echo a >> out.txt", "echo b >> out.txt"], bucket={"out.txt": "a\nb\n"}),
+    "cat-redirect-writes-rendered-output": Case("cat -n a.txt > out.txt", {"a.txt": "hello"}, contains=("Wrote",), bucket={"out.txt": "     1\thello"}),
+    "redirect-only-for-echo-and-cat": Case("ls dir > out.txt", {"dir/a.txt": "x"}, contains=("not supported",), bucket={"out.txt": None}),
+}
+
+
+@cases(WRITING)
+def test_writing_commands(patched_storage, fake_client, case):
+    _check(fake_client, case, _run(fake_client, case))
+
+
+@pytest.mark.parametrize(
+    ("command", "message"),
+    [
+        ("cat a.txt | grep foo", "Pipes"),
+        ("cat a.txt && echo hi", "chaining"),
+        ("cat a.txt || echo hi", "chaining"),
+        ("cat a.txt; echo hi", "chaining"),
+        ("echo $HOME", "Variables"),
+        ("echo `whoami`", "backticks"),
+        ("echo $(whoami)", "Subshells"),
+        ("cat < a.txt", "Input redirection"),
+    ],
+)
+def test_shell_features_outside_the_dialect_are_refused(patched_storage, fake_client, command, message):
+    seed(fake_client, "a.txt", "foo")
+
+    result = tool.main(command=command)
+
+    assert message.lower() in result.lower()
+    assert set(fake_client.objects) == {"a.txt"}
 
 
 def test_output_is_capped(patched_storage, fake_client, monkeypatch):

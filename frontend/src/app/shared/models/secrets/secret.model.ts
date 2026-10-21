@@ -1,18 +1,32 @@
+import { AuthorFields } from '../authorship.model';
+
 export interface SecretUsageCount {
     readable: number;
     hidden: number;
 }
 
-export interface Secret {
+export interface Secret extends AuthorFields {
     id: number;
     name: string;
     tail: string;
     metadata: Record<string, unknown> | null;
     org: number;
-    created_by: number | null;
     created_at: string;
     updated_at: string;
     usage_count: SecretUsageCount;
+}
+
+/** A secret in the recycle bin, as its bin list names it. Its links stay until it's purged. */
+export interface BinnedSecret {
+    id: number;
+    name: string;
+}
+
+/** A secret picker option; fits the shared selects' `SelectItem`. */
+export interface SecretSelectItem {
+    name: string;
+    value: number;
+    tip?: string;
 }
 
 export interface CreateSecretRequest {

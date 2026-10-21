@@ -5,6 +5,8 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 
 import litellm
+from src.shared.models import LLMConfigData
+from tables.utils.litellm_model_info import litellm_lookup_name
 from utils.logger import logger
 
 from .base import (
@@ -26,14 +28,19 @@ JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
 # structured outputs, and litellm refuses its tool-call emulation for the others.
 NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq"}
 
-# Provider rows whose name is not a litellm provider, mapped to the litellm provider their
-# stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
-PROVIDER_ALIASES = {
-    "google_ai": "gemini",
-    "novita_ai": "novita",
-    "aws_sagemaker": "sagemaker",
-    "featherless-ai": "featherless_ai",
-}
+
+def _routed_provider(model: str) -> str:
+    """Return the provider litellm sends ``model`` to.
+
+    A bare name can belong to any provider: an OpenAI row keeps ``claude-sonnet-4-6``
+    bare (see LiteLLMClient._model_string) and litellm still routes it to Anthropic.
+    get_llm_provider is a local table lookup (no network I/O).
+    """
+    try:
+        return litellm.get_llm_provider(model=model)[1]
+    except litellm.exceptions.BadRequestError:
+        # litellm does not know the model: keep its prefix, and a bare name is OpenAI's.
+        return model.split("/", 1)[0] if "/" in model else "openai"
 
 
 class LiteLLMClient(BaseLLMClient):
@@ -60,46 +67,40 @@ class LiteLLMClient(BaseLLMClient):
 
     def __init__(
         self,
-        llm_config,
+        config: LLMConfigData,
         *,
+        provider_name: str | None,
         api_key: str | None,
         output_schema: dict | None = None,
     ) -> None:
         super().__init__(output_schema=output_schema)
-        self._llm_config = llm_config
+        self._config = config
+        self._provider_name = (provider_name or "").lower().strip()
         # Resolved by the caller; this class must not touch the ORM (see get_llm_client).
         self._api_key = api_key
         # Validate and cache the model string eagerly so callers receive
         # UnsupportedLLMProviderError at construction time (fail-fast), not
         # lazily during the first stream_completion call.
         self._model = self._model_string()
+        self._routed_provider = _routed_provider(self._model)
 
     def _model_string(self) -> str:
-        """Build the LiteLLM model string from llm_config.model.
+        """Build the LiteLLM model string from the config's model and provider.
 
-        Raises UnsupportedLLMProviderError when the provider or model name is
-        missing so callers receive a clear domain exception instead of a
-        cryptic AttributeError or litellm error.
+        Raises UnsupportedLLMProviderError when the model name is empty so callers
+        receive a clear domain exception instead of a cryptic litellm error.
         """
-        model = self._llm_config.model
-        if not model:
-            raise UnsupportedLLMProviderError("(no model configured)")
-
-        model_name = (model.name or "").strip()
+        model_name = (self._config.model or "").strip()
         if not model_name:
             raise UnsupportedLLMProviderError("(empty model name)")
 
-        provider_name = (
-            (model.llm_provider.name or "").lower().strip() if model.llm_provider else ""
-        )
-
-        if not provider_name or provider_name == "openai":
+        if not self._provider_name or self._provider_name == "openai":
             # Plain model name for OpenAI; litellm defaults to OpenAI for bare names.
             return model_name
 
-        if provider_name in ("azure", "azure_openai"):
+        if self._provider_name in ("azure", "azure_openai"):
             # Azure uses the deployment name, falling back to model name if not set.
-            deployment = (getattr(model, "deployment_id", None) or model_name).strip()
+            deployment = (self._config.deployment_id or model_name).strip()
             return f"azure/{deployment}"
 
         # All other providers: "<provider>/<model>" — litellm understands this format
@@ -107,10 +108,7 @@ class LiteLLMClient(BaseLLMClient):
         # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
         # Only the row's own provider counts: "openai/gpt-oss-120b" on a Groq row is a Groq
         # model id and must become "groq/openai/gpt-oss-120b".
-        litellm_provider = PROVIDER_ALIASES.get(provider_name, provider_name)
-        if model_name.startswith(f"{litellm_provider}/"):
-            return model_name
-        return f"{litellm_provider}/{model_name}"
+        return litellm_lookup_name(self._provider_name, model_name)
 
     def _build_tools(self, tools: list[ToolSpec]) -> list[dict] | None:
         if not tools:
@@ -128,8 +126,7 @@ class LiteLLMClient(BaseLLMClient):
         ]
 
     def _build_kwargs(self, messages: list[dict], tools: list[ToolSpec]) -> dict:
-        cfg = self._llm_config
-        model = cfg.model
+        config = self._config
 
         kwargs: dict = {
             "model": self._model,
@@ -138,40 +135,30 @@ class LiteLLMClient(BaseLLMClient):
             "drop_params": True,
         }
 
+        # litellm sends OpenAI/Azure gpt-5.4+ calls that carry function tools to the
+        # Responses API, which stores every response at the provider by default (Chat
+        # Completions does not). Nothing here reuses stored responses, so opt out.
+        if self._routed_provider in ("openai", "azure"):
+            kwargs["store"] = False
+
         if self._api_key:
             kwargs["api_key"] = self._api_key
-        if model and model.base_url:
-            kwargs["base_url"] = model.base_url
-        if model and getattr(model, "api_version", None):
-            kwargs["api_version"] = model.api_version
-        if cfg.temperature is not None:
-            kwargs["temperature"] = cfg.temperature
-        if cfg.max_tokens is not None:
-            kwargs["max_tokens"] = cfg.max_tokens
-        if cfg.top_p is not None:
-            kwargs["top_p"] = cfg.top_p
-        if getattr(cfg, "presence_penalty", None) is not None:
-            kwargs["presence_penalty"] = cfg.presence_penalty
-        if getattr(cfg, "frequency_penalty", None) is not None:
-            kwargs["frequency_penalty"] = cfg.frequency_penalty
-        if getattr(cfg, "seed", None) is not None:
-            kwargs["seed"] = cfg.seed
-        if cfg.timeout is not None:
-            kwargs["timeout"] = cfg.timeout
+        if config.base_url:
+            kwargs["base_url"] = config.base_url
+        if config.api_version:
+            kwargs["api_version"] = config.api_version
+        # Flow Assistant and CDT Explain expect a structured JSON reply; stop sequences
+        # set on the config for agents could cut that reply short.
+        kwargs.update(config.to_litellm_kwargs(provider=self._routed_provider, exclude={"stop"}))
         # Structured-output requests pass an output_schema, which becomes the
         # response_format sent to the model.
         if self._output_schema:
-            provider_name = (
-                (model.llm_provider.name or "").lower().strip()
-                if model and model.llm_provider
-                else ""
-            )
-            if provider_name in JSON_OBJECT_ONLY_PROVIDERS:
+            if self._provider_name in JSON_OBJECT_ONLY_PROVIDERS:
                 kwargs["response_format"] = {"type": "json_object"}
                 # json_object mode carries no schema, so the model only learns the
                 # expected shape from the prompt.
                 kwargs["messages"] = self._with_schema_instruction(messages)
-            elif provider_name in NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS and tools:
+            elif self._provider_name in NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS and tools:
                 # No response_format: the schema reaches the model only through the prompt,
                 # and the reply is parsed leniently by the caller.
                 kwargs["messages"] = self._with_schema_instruction(messages)
@@ -180,8 +167,8 @@ class LiteLLMClient(BaseLLMClient):
                     "type": "json_schema",
                     "json_schema": self._output_schema,
                 }
-        if getattr(cfg, "extra_headers", None):
-            kwargs["extra_headers"] = cfg.extra_headers
+        if config.extra_headers:
+            kwargs["extra_headers"] = config.extra_headers
 
         tool_list = self._build_tools(tools)
         if tool_list:

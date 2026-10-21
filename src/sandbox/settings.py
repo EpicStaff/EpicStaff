@@ -8,6 +8,8 @@ env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(env_file=BASE_DIR / "../.env")
 
+LOG_LEVEL = env.log_level("SANDBOX_LOG_LEVEL", allowed=env.LOG_LEVELS_WITH_BENCH)
+
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.str("REDIS_PORT")
 REDIS_USER = env.str("REDIS_USER")
@@ -20,12 +22,15 @@ CODE_EXEC_CHANNEL = env.str("CODE_EXEC_CHANNEL")
 OUTPUT_PATH = env.path("SANDBOX_OUTPUT_PATH")
 BASE_VENV_PATH = env.path("SANDBOX_BASE_VENV_PATH")
 
+# Non-secret object storage connection details only. Deliberately no
+# STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY here: sandbox never holds the admin
+# storage credential. Temporary, session-scoped credentials are minted by
+# django_app and passed in via CodeTaskData.storage_credentials -- see
+# dynamic_venv_executor_chain.py.
 STORAGE_HOST = env.str("STORAGE_HOST")
 STORAGE_PORT = env.str("STORAGE_PORT")
 http = "https" if env.bool("STORAGE_SSL") else "http"
 STORAGE_ENDPOINT = f"{http}://{STORAGE_HOST}:{STORAGE_PORT}"
-STORAGE_ACCESS_KEY = env.str("STORAGE_USER")
-STORAGE_SECRET_KEY = env.str("STORAGE_PASSWORD")
 STORAGE_BUCKET_NAME = env.str("STORAGE_BUCKET")
 
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET")
@@ -33,6 +38,11 @@ MASK_SECRET = env.bool("SANDBOX_MASK_SECRET")
 EXECUTION_TIMEOUT = env.time("SANDBOX_EXECUTION_TIMEOUT")
 
 BLOCK_NETWORK = env.bool("SANDBOX_BLOCK_NETWORK")
+
+# Escape hatch for kernels without Landlock: false lets executions run unconfined
+# instead of being refused. A deliberately temporary, security-relevant knob.
+REQUIRE_ISOLATION_ENV_VAR = "SANDBOX_REQUIRE_ISOLATION"
+REQUIRE_ISOLATION = env.bool(REQUIRE_ISOLATION_ENV_VAR)
 
 REQUIRE_SIGNAL_ISOLATION_ENV_VAR = "SANDBOX_REQUIRE_SIGNAL_ISOLATION"
 REQUIRE_SIGNAL_ISOLATION = env.bool(REQUIRE_SIGNAL_ISOLATION_ENV_VAR)

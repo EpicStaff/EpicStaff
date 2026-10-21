@@ -1,4 +1,12 @@
-from django_app.settings import *
+import os
+
+# litellm reads this once, at import: without it every test run fetches the live model
+# map from GitHub, and tests asserting real model capabilities change with upstream.
+# The Docker images set it too (Dockerfile.dj). Set here because pytest-django imports
+# the settings before any conftest or test module can import litellm.
+os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+
+from django_app.settings import *  # noqa: E402
 
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,

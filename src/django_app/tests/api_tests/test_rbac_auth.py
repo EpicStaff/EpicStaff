@@ -29,6 +29,7 @@ from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.test import APIClient
 from rest_framework_simplejwt.token_blacklist.models import (
     BlacklistedToken,
     OutstandingToken,
@@ -48,9 +49,20 @@ from rbac.identity.passwords.token_repository import (
     hash_token,
 )
 from rbac.identity.superadmin_bootstrap import SuperadminBootstrap
+from utils.logger import logger
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
+CONSOLE_EMAIL = "django.core.mail.backends.console.EmailBackend"
 OPAQUE_RESET_CODE = "invalid_or_expired_reset_token"
+
+
+@pytest.fixture
+def captured_log_messages():
+    """Collect every loguru message emitted while the test runs, at every level."""
+    messages: list[str] = []
+    sink_id = logger.add(messages.append, level="TRACE", format="{message}")
+    yield messages
+    logger.remove(sink_id)
 
 
 # ---------------- First-setup ----------------
@@ -93,129 +105,38 @@ def test_first_setup_flow_is_idempotent(api_client):
 
 
 @pytest.mark.django_db
-def test_login_returns_access_and_sets_refresh_cookie(api_client, regular_user):
-    r = api_client.post(
-        reverse("login"),
-        data={"email": regular_user.email, "password": "UserStrongPass123!"},
-        format="json",
-    )
+@pytest.mark.parametrize(
+    ("remember_me", "persistent"),
+    [(True, True), (False, False), (None, False)],
+    ids=["remember-me", "not-remembered", "remember-me-omitted"],
+)
+@pytest.mark.parametrize("after_refresh", [False, True], ids=["login", "after-refresh-rotation"])
+def test_login_sets_an_httponly_refresh_cookie_whose_lifetime_follows_remember_me(
+    api_client, regular_user, remember_me, persistent, after_refresh
+):
+    """Refresh lives only in an HttpOnly cookie (JavaScript cannot read it). A remembered
+    session gets the full lifetime, any other a 30-minute one, and rotation keeps it."""
+    data = {"email": regular_user.email, "password": "UserStrongPass123!"}
+    if remember_me is not None:
+        data["remember_me"] = remember_me
+
+    r = api_client.post(reverse("login"), data=data, format="json")
     assert r.status_code == 200
-    body = r.json()
-    assert "access" in body
-    # Refresh is an HttpOnly cookie so JavaScript cannot read it; keeping it
-    # out of the body is the point of that design.
-    assert "refresh" not in body
+    assert "access" in r.json()
+    assert "refresh" not in r.json()
+    if after_refresh:
+        r = api_client.post(reverse("refresh"))
+        assert r.status_code == 200
+
     cookie = r.cookies[REFRESH_COOKIE_NAME]
-    assert cookie.value
     assert cookie["httponly"]
-
-
-@pytest.mark.django_db
-def test_login_remember_me_true_sets_persistent_cookie(api_client, regular_user):
-    r = api_client.post(
-        reverse("login"),
-        data={
-            "email": regular_user.email,
-            "password": "UserStrongPass123!",
-            "remember_me": True,
-        },
-        format="json",
+    lifetime = (
+        settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"] if persistent else NON_REMEMBER_REFRESH_LIFETIME
     )
-    assert r.status_code == 200
-    cookie = r.cookies[REFRESH_COOKIE_NAME]
-    assert cookie.value
-    assert cookie["httponly"]
-    # Persistent cookie -> Max-Age is set to the configured lifetime.
-    expected = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
-    assert int(cookie["max-age"]) == expected
-    # remember_me claim baked into the token so rotation preserves persistence.
+    assert int(cookie["max-age"]) == int(lifetime.total_seconds())
     token = RefreshToken(cookie.value)
-    assert token.payload.get("remember_me") is True
-
-
-@pytest.mark.django_db
-def test_login_remember_me_false_sets_30min_cookie(api_client, regular_user):
-    """Non-remembered login -> 30-min Max-Age cookie + matching JWT exp."""
-    r = api_client.post(
-        reverse("login"),
-        data={
-            "email": regular_user.email,
-            "password": "UserStrongPass123!",
-            "remember_me": False,
-        },
-        format="json",
-    )
-    assert r.status_code == 200
-    cookie = r.cookies[REFRESH_COOKIE_NAME]
-    assert cookie.value
-    assert cookie["httponly"]
-    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
-    assert int(cookie["max-age"]) == expected
-    token = RefreshToken(cookie.value)
-    assert token.payload.get("remember_me") is False
-    now = int(timezone.now().timestamp())
-    assert 0 < token.payload["exp"] - now <= expected
-
-
-@pytest.mark.django_db
-def test_login_omitting_remember_me_defaults_to_30min_cookie(api_client, regular_user):
-    r = api_client.post(
-        reverse("login"),
-        data={"email": regular_user.email, "password": "UserStrongPass123!"},
-        format="json",
-    )
-    assert r.status_code == 200
-    cookie = r.cookies[REFRESH_COOKIE_NAME]
-    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
-    assert int(cookie["max-age"]) == expected
-    token = RefreshToken(cookie.value)
-    assert token.payload.get("remember_me") is False
-
-
-@pytest.mark.django_db
-def test_refresh_preserves_remember_me_persistent(api_client, regular_user):
-    """A persistent session must stay persistent across refresh rotation."""
-    login = api_client.post(
-        reverse("login"),
-        data={
-            "email": regular_user.email,
-            "password": "UserStrongPass123!",
-            "remember_me": True,
-        },
-        format="json",
-    )
-    assert login.status_code == 200
-    r = api_client.post(reverse("refresh"))
-    assert r.status_code == 200
-    cookie = r.cookies[REFRESH_COOKIE_NAME]
-    expected = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
-    assert int(cookie["max-age"]) == expected
-    token = RefreshToken(cookie.value)
-    assert token.payload.get("remember_me") is True
-
-
-@pytest.mark.django_db
-def test_refresh_preserves_remember_me_short(api_client, regular_user):
-    """Non-remembered session keeps its 30-min window across rotation."""
-    login = api_client.post(
-        reverse("login"),
-        data={
-            "email": regular_user.email,
-            "password": "UserStrongPass123!",
-            "remember_me": False,
-        },
-        format="json",
-    )
-    assert login.status_code == 200
-    r = api_client.post(reverse("refresh"))
-    assert r.status_code == 200
-    cookie = r.cookies[REFRESH_COOKIE_NAME]
-    expected = int(NON_REMEMBER_REFRESH_LIFETIME.total_seconds())
-    assert int(cookie["max-age"]) == expected
-    token = RefreshToken(cookie.value)
-    assert token.payload.get("remember_me") is False
-    now = int(timezone.now().timestamp())
-    assert 0 < token.payload["exp"] - now <= expected
+    assert token.payload.get("remember_me") is persistent
+    assert 0 < token.payload["exp"] - int(timezone.now().timestamp()) <= int(lifetime.total_seconds())
 
 
 @pytest.mark.django_db
@@ -414,14 +335,6 @@ def test_sse_ticket_is_single_use(auth_client, regular_user):
 
 
 @pytest.mark.django_db
-def test_sse_ticket_expired_or_unknown_returns_none():
-    cache.clear()
-    assert sse_ticket_service.consume("no-such-ticket") is None
-    assert sse_ticket_service.consume("") is None
-    assert sse_ticket_service.consume(None) is None
-
-
-@pytest.mark.django_db
 def test_sse_ticket_endpoint_requires_jwt(api_client):
     r = api_client.post(reverse("sse_ticket"))
     assert r.status_code == 401
@@ -461,8 +374,9 @@ def test_redis_never_holds_the_raw_ticket(regular_user, service, prefix: str):
 @pytest.mark.parametrize(
     "service", [sse_ticket_service, ws_ticket_service], ids=["sse", "ws"]
 )
-def test_consume_rejects_non_string_ticket(service):
+def test_consume_rejects_unknown_and_non_string_tickets(service):
     cache.clear()
+    assert service.consume("no-such-ticket") is None
     assert service.consume(None) is None
     assert service.consume(12345) is None
     assert service.consume("") is None
@@ -499,67 +413,34 @@ def test_logout_rejects_refresh_owned_by_another_user(
 
 
 @pytest.mark.django_db
-def test_first_setup_ignores_organization_name_in_body(api_client):
+@pytest.mark.parametrize(
+    ("extra_body", "default_org_name", "expected_display_name"),
+    [
+        # organization_name in the body is ignored: the org name comes from settings.
+        ({"email": "admin@example.com", "organization_name": "Rogue Corp"}, None, "Admin"),
+        ({"email": "admin@example.com"}, "Override Co", "Admin"),
+        ({"email": "admin@example.com", "display_name": "  Jane Doe  "}, None, "Jane Doe"),
+        ({"email": "john.smith@example.com", "display_name": None}, None, "John Smith"),
+        ({"email": "john.smith@example.com"}, None, "John Smith"),
+        ({"email": "admin@example.com", "display_name": "x" * 255}, None, "x" * 255),
+    ],
+    ids=["org-name-in-body-ignored", "org-name-from-settings", "display-name-trimmed",
+         "null-display-name-derived", "missing-display-name-derived", "display-name-max-length"],
+)
+def test_first_setup_creates_the_superadmin_and_default_org(
+    api_client, settings, extra_body, default_org_name, expected_display_name
+):
+    if default_org_name is not None:
+        settings.DEFAULT_ORGANIZATION_NAME = default_org_name
+
     r = api_client.post(
-        reverse("first_setup"),
-        data={
-            "email": "admin@example.com",
-            "password": "StrongPass123!",
-            "organization_name": "Rogue Corp",
-        },
-        format="json",
+        reverse("first_setup"), data={"password": "StrongPass123!", **extra_body}, format="json"
     )
-    assert r.status_code == 201
+
+    assert r.status_code == 201, r.content
     assert r.json()["organization"]["name"] == settings.DEFAULT_ORGANIZATION_NAME
-
-
-@pytest.mark.django_db
-def test_first_setup_saves_trimmed_display_name_from_body(api_client):
-    r = api_client.post(
-        reverse("first_setup"),
-        data={
-            "email": "admin@example.com",
-            "password": "StrongPass123!",
-            "display_name": "  Jane Doe  ",
-        },
-        format="json",
-    )
-    assert r.status_code == 201
-    assert r.json()["user"]["display_name"] == "Jane Doe"
-    user = get_user_model().objects.get(email="admin@example.com")
-    assert user.display_name == "Jane Doe"
-
-
-@pytest.mark.django_db
-def test_first_setup_derives_display_name_when_null(api_client):
-    r = api_client.post(
-        reverse("first_setup"),
-        data={
-            "email": "john.smith@example.com",
-            "password": "StrongPass123!",
-            "display_name": None,
-        },
-        format="json",
-    )
-    assert r.status_code == 201
-    assert r.json()["user"]["display_name"] == "John Smith"
-    user = get_user_model().objects.get(email="john.smith@example.com")
-    assert user.display_name == "John Smith"
-
-
-@pytest.mark.django_db
-def test_first_setup_accepts_display_name_of_max_length(api_client):
-    r = api_client.post(
-        reverse("first_setup"),
-        data={
-            "email": "admin@example.com",
-            "password": "StrongPass123!",
-            "display_name": "x" * 255,
-        },
-        format="json",
-    )
-    assert r.status_code == 201
-    assert get_user_model().objects.get().display_name == "x" * 255
+    assert r.json()["user"]["display_name"] == expected_display_name
+    assert get_user_model().objects.get(email=extra_body["email"]).display_name == expected_display_name
 
 
 @pytest.mark.django_db
@@ -589,102 +470,39 @@ def test_first_setup_rejects_invalid_display_name(api_client, display_name, reas
     assert not get_user_model().objects.exists()
 
 
-@pytest.mark.django_db
-def test_first_setup_aggregates_display_name_error_with_email_error(api_client):
-    r = api_client.post(
-        reverse("first_setup"),
-        data={
-            "email": "not-an-email",
-            "password": "StrongPass123!",
-            "display_name": "   ",
-        },
-        format="json",
-    )
-    assert r.status_code == 400
-    fields = {error["field"] for error in r.json()["errors"]}
-    assert {"email", "display_name"} <= fields
-
-
-@pytest.mark.django_db
-@override_settings(DEFAULT_ORGANIZATION_NAME="Override Co")
-def test_first_setup_uses_django_default_org_name_from_settings(api_client):
-    r = api_client.post(
-        reverse("first_setup"),
-        data={"email": "admin@example.com", "password": "StrongPass123!"},
-        format="json",
-    )
-    assert r.status_code == 201
-    assert r.json()["organization"]["name"] == "Override Co"
-
-
-@pytest.mark.django_db
-def test_first_setup_derives_display_name_from_email(api_client):
-    r = api_client.post(
-        reverse("first_setup"),
-        data={"email": "john.smith@example.com", "password": "StrongPass123!"},
-        format="json",
-    )
-    assert r.status_code == 201
-    assert r.json()["user"]["display_name"] == "John Smith"
-    user = get_user_model().objects.get(email="john.smith@example.com")
-    assert user.display_name == "John Smith"
-
-
 # ---------------- AuthValidationService: aggregated + redacted errors ----------------
 
 
 @pytest.mark.django_db
-def test_first_setup_validation_aggregates_email_and_password_errors(api_client):
-    r = api_client.post(
-        reverse("first_setup"),
-        data={"email": "not-an-email", "password": "12345"},
-        format="json",
-    )
+@pytest.mark.parametrize(
+    ("body", "fields", "password_reason"),
+    [
+        # Every password-policy reason comes back at once, not one per attempt.
+        ({"email": "not-an-email", "password": "12345"}, {"email", "password"}, None),
+        ({"email": "not-an-email", "password": "StrongPass123!", "display_name": "   "}, {"email", "display_name"}, None),
+        # UserAttributeSimilarityValidator used to pass silently (validate_password had no user=).
+        ({"email": "john@acme.com", "password": "john@acme.com"}, {"password"}, "similar"),
+        ({"email": "a@b.co", "password": "password"}, {"password"}, None),
+        ({}, {"email", "password"}, None),
+    ],
+    ids=["email-and-weak-password", "email-and-display-name", "password-like-email", "common-password", "nothing"],
+)
+def test_first_setup_reports_every_invalid_field_at_once_without_echoing_the_password(
+    api_client, body, fields, password_reason
+):
+    r = api_client.post(reverse("first_setup"), data=body, format="json")
+
     assert r.status_code == 400
-    body = r.json()
-    assert body["code"] == "invalid"
-    errors = body["errors"]
-    fields = {e["field"] for e in errors}
-    assert "email" in fields and "password" in fields
-    # Multiple password-policy reasons must be returned in one response, not one-by-one.
-    password_reasons = [e["reason"] for e in errors if e["field"] == "password"]
-    assert len(password_reasons) >= 2
-
-
-@pytest.mark.django_db
-def test_first_setup_password_similar_to_email_is_rejected(api_client):
-    """Regression guard for the UserAttributeSimilarityValidator gap — this
-    used to silently pass because validate_password() was called without a
-    user= argument."""
-    r = api_client.post(
-        reverse("first_setup"),
-        data={"email": "john@acme.com", "password": "john@acme.com"},
-        format="json",
-    )
-    assert r.status_code == 400
-    reasons = [e["reason"] for e in r.json()["errors"] if e["field"] == "password"]
-    assert any("similar" in reason.lower() for reason in reasons)
-
-
-@pytest.mark.django_db
-def test_first_setup_password_value_is_always_redacted(api_client):
-    r = api_client.post(
-        reverse("first_setup"),
-        data={"email": "a@b.co", "password": "password"},
-        format="json",
-    )
-    assert r.status_code == 400
-    for entry in r.json()["errors"]:
-        if entry["field"] == "password":
-            assert entry["value"] == "***"
-
-
-@pytest.mark.django_db
-def test_first_setup_missing_fields_reports_both_as_required(api_client):
-    r = api_client.post(reverse("first_setup"), data={}, format="json")
-    assert r.status_code == 400
-    fields = {e["field"] for e in r.json()["errors"]}
-    assert {"email", "password"} <= fields
+    assert r.json()["code"] == "invalid"
+    errors = r.json()["errors"]
+    assert fields <= {error["field"] for error in errors}
+    password_errors = [error for error in errors if error["field"] == "password"]
+    assert all(error["value"] == "***" for error in password_errors)
+    if body.get("password") == "12345":
+        assert len(password_errors) >= 2
+    if password_reason:
+        assert any(password_reason in error["reason"].lower() for error in password_errors)
+    assert not get_user_model().objects.exists()
 
 
 @pytest.mark.django_db
@@ -706,79 +524,6 @@ def test_login_wrong_credentials_has_no_errors_array(api_client, regular_user):
     )
     assert r.status_code == 401
     assert "errors" not in r.json()
-
-
-# ---------------- Reset-user validation ----------------
-
-
-@pytest.mark.django_db
-def test_reset_user_rejects_weak_password_with_structured_errors(superadmin_client):
-    r = superadmin_client.post(
-        reverse("reset_user"),
-        data={"email": "new@example.com", "password": "12345"},
-        format="json",
-    )
-    assert r.status_code == 400
-    assert r.json()["code"] == "invalid"
-    assert any(e["field"] == "password" for e in r.json()["errors"])
-
-
-@pytest.mark.django_db
-def test_reset_user_requires_authentication(api_client):
-    r = api_client.post(
-        reverse("reset_user"),
-        data={"email": "new@example.com", "password": "StrongPass123!"},
-        format="json",
-    )
-    assert r.status_code in (401, 403)
-
-
-@pytest.mark.django_db
-def test_reset_user_creates_default_org_membership(superadmin_client):
-    """Bug 1 regression: after POST /api/auth/reset-user/, the new superadmin
-    must have an OrganizationUser row in the DEFAULT_ORGANIZATION_NAME-named
-    org with role 'Superadmin'.
-    """
-    from django.conf import settings
-    from rbac.models import Organization, OrganizationUser
-
-    r = superadmin_client.post(
-        reverse("reset_user"),
-        data={"email": "new-admin@example.com", "password": "StrongPass123!"},
-        format="json",
-    )
-    assert r.status_code == 201, r.content
-
-    new_user = get_user_model().objects.get(email="new-admin@example.com")
-    org = Organization.objects.get(name__iexact=settings.DEFAULT_ORGANIZATION_NAME)
-    membership = OrganizationUser.objects.get(user=new_user, org=org)
-    assert membership.role.name == "Superadmin"
-    assert membership.role.is_built_in is True
-
-
-@pytest.mark.django_db
-def test_reset_user_creates_default_org_when_missing(superadmin_client):
-    """If the default org doesn't exist at reset time (e.g. it was deleted
-    out of band), reset-user creates it via SuperadminBootstrap and the
-    new superadmin's membership lands in the freshly-created org.
-    """
-    from django.conf import settings
-    from rbac.models import Organization, OrganizationUser
-
-    Organization.objects.filter(
-        name__iexact=settings.DEFAULT_ORGANIZATION_NAME
-    ).delete()
-
-    r = superadmin_client.post(
-        reverse("reset_user"),
-        data={"email": "new-admin2@example.com", "password": "StrongPass123!"},
-        format="json",
-    )
-    assert r.status_code == 201, r.content
-
-    new_user = get_user_model().objects.get(email="new-admin2@example.com")
-    org = Organization.objects.get(name__iexact=settings.DEFAULT_ORGANIZATION_NAME)
-    assert OrganizationUser.objects.filter(user=new_user, org=org).exists()
 
 
 # ---------------- Password recovery: request ----------------
@@ -815,32 +560,119 @@ def test_password_reset_request_known_user_creates_token_and_sends_email(
 
 @pytest.mark.django_db
 @override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="")
-def test_password_reset_request_smtp_off_still_creates_token(api_client, regular_user):
+def test_password_reset_request_smtp_off_issues_no_token_and_sends_nothing(
+    api_client, regular_user
+):
+    """Without SMTP the request is ignored, and a known email is indistinguishable
+    from an unknown one."""
     cache.clear()
     mail.outbox = []
+    url = reverse("password_reset_request")
+
+    known = api_client.post(url, data={"email": regular_user.email}, format="json")
+    unknown = api_client.post(
+        url, data={"email": "nobody@example.com"}, format="json"
+    )
+
+    assert known.status_code == unknown.status_code == 200
+    assert known.json() == unknown.json()
+    assert known.json()["smtp_configured"] is False
+    assert known.json()["detail"] == (
+        "Password reset by email isn't available on this server. "
+        "Ask your administrator to reset your password."
+    )
+    assert PasswordResetToken.objects.count() == 0
+    assert mail.outbox == []
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="")
+def test_password_reset_request_smtp_off_keeps_a_pending_grant(
+    api_client, regular_user
+):
+    """An anonymous caller must not be able to cancel a grant issued earlier."""
+    cache.clear()
+    pending, _raw_token = PasswordResetTokenRepository().create_for_user(regular_user)
+
+    api_client.post(
+        reverse("password_reset_request"),
+        data={"email": regular_user.email},
+        format="json",
+    )
+
+    assert PasswordResetToken.objects.filter(pk=pending.pk).exists()
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=CONSOLE_EMAIL, EMAIL_HOST="")
+def test_password_reset_request_smtp_off_writes_no_reset_link_anywhere(
+    api_client, regular_user, capsys, captured_log_messages
+):
+    """With the shipped no-SMTP default (console backend) nothing that carries a
+    reset link reaches stdout, stderr or the application log.
+
+    The console backend writes to `sys.stdout`, which `capsys` captures, and
+    loguru output is collected by a sink — so a link sent by either route would
+    show up below.
+    """
+    cache.clear()
+
     r = api_client.post(
         reverse("password_reset_request"),
         data={"email": regular_user.email},
         format="json",
     )
+
     assert r.status_code == 200
-    assert r.json()["smtp_configured"] is False
-    assert PasswordResetToken.objects.filter(user=regular_user).count() == 1
+    assert PasswordResetToken.objects.count() == 0
+    stdout, stderr = capsys.readouterr()
+    written = "\n".join([stdout, stderr, *captured_log_messages])
+    assert "token=" not in written
+    assert settings.FRONTEND_PASSWORD_RESET_PATH not in written
+    assert regular_user.email not in written
 
 
 @pytest.mark.django_db
-@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL)
-def test_password_reset_request_unknown_email_is_uniform(api_client, regular_user):
-    """No-enumeration guard: identical body, no token row, no email."""
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="")
+def test_password_reset_request_smtp_off_logs_one_operator_hint_per_window(
+    api_client, regular_user, captured_log_messages
+):
+    """The endpoint is anonymous and rotating emails beats its throttle, so the
+    operator hint must not grow with the number of requests."""
     cache.clear()
+    url = reverse("password_reset_request")
+
+    for index in range(3):
+        api_client.post(url, data={"email": f"probe{index}@example.com"}, format="json")
+
+    hints = [
+        message
+        for message in captured_log_messages
+        if "password_reset_request_ignored_smtp_not_configured" in message
+    ]
+    assert len(hints) == 1
+    assert "manage.py reset_password" in hints[0]
+    assert "probe" not in hints[0]
+
+
+@pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
+def test_password_reset_request_unknown_email_is_uniform(api_client, regular_user):
+    """No-enumeration guard with SMTP on: an unknown email gets the same body as a
+    known one, but no token row and no email."""
+    cache.clear()
+    url = reverse("password_reset_request")
+    known = api_client.post(url, data={"email": regular_user.email}, format="json")
+    PasswordResetToken.objects.all().delete()
     mail.outbox = []
-    r = api_client.post(
-        reverse("password_reset_request"),
-        data={"email": "nobody@example.com"},
-        format="json",
+
+    unknown = api_client.post(
+        url, data={"email": "nobody@example.com"}, format="json"
     )
-    assert r.status_code == 200
-    assert "detail" in r.json() and "smtp_configured" in r.json()
+
+    assert known.status_code == unknown.status_code == 200
+    assert unknown.json() == known.json()
+    assert unknown.json()["smtp_configured"] is True
     assert PasswordResetToken.objects.count() == 0
     assert mail.outbox == []
 
@@ -858,27 +690,6 @@ def test_password_reset_request_resolves_user_case_insensitively(
     )
     assert r.status_code == 200
     assert PasswordResetToken.objects.filter(user=regular_user).count() == 1
-
-
-@pytest.mark.django_db
-def test_password_reset_request_malformed_email_returns_structured_400(api_client):
-    cache.clear()
-    r = api_client.post(
-        reverse("password_reset_request"),
-        data={"email": "not-an-email"},
-        format="json",
-    )
-    assert r.status_code == 400
-    fields = {e["field"] for e in r.json()["errors"]}
-    assert "email" in fields
-
-
-@pytest.mark.django_db
-def test_password_reset_request_missing_email_returns_400(api_client):
-    cache.clear()
-    r = api_client.post(reverse("password_reset_request"), data={}, format="json")
-    assert r.status_code == 400
-    assert any(e["field"] == "email" for e in r.json()["errors"])
 
 
 @pytest.mark.django_db
@@ -928,6 +739,7 @@ def test_password_reset_request_email_failure_does_not_break_response(
 
 
 @pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
 def test_password_reset_request_throttle_blocks_after_limit(api_client, regular_user):
     cache.clear()
     url = reverse("password_reset_request")
@@ -938,6 +750,7 @@ def test_password_reset_request_throttle_blocks_after_limit(api_client, regular_
 
 
 @pytest.mark.django_db
+@override_settings(EMAIL_BACKEND=LOCMEM_EMAIL, EMAIL_HOST="smtp.example.com")
 def test_password_reset_request_throttle_is_per_email(api_client, regular_user):
     cache.clear()
     url = reverse("password_reset_request")
@@ -983,133 +796,103 @@ def test_password_reset_confirm_happy_path(api_client, regular_user, jwt_tokens)
 
 
 @pytest.mark.django_db
-def test_password_reset_confirm_unknown_token_returns_opaque_400(api_client):
-    r = api_client.post(
-        reverse("password_reset_confirm"),
-        data={
-            "token": "00000000-0000-0000-0000-000000000000",
-            "new_password": "BrandNewPass123!",
-        },
-        format="json",
-    )
-    assert r.status_code == 400
-    assert r.json()["code"] == OPAQUE_RESET_CODE
+def test_password_reset_confirm_revokes_the_users_api_keys(
+    api_client, regular_user, superadmin_user, issue_api_key
+):
+    """A key minted during an account takeover must not survive the reset."""
+    raw_key, user_key = issue_api_key(user=regular_user)
+    _, other_users_key = issue_api_key(user=superadmin_user)
+    _, system_key = issue_api_key(user=None)
+    _token, raw_token = _issue_token(regular_user)
 
-
-@pytest.mark.django_db
-def test_password_reset_confirm_used_token_returns_opaque_400(api_client, regular_user):
-    """A spent grant is a deleted row, so replaying it is the same lookup miss
-    as an unknown token - and gets the same generic answer."""
-    token, raw_token = _issue_token(regular_user)
-    token.delete()
     r = api_client.post(
         reverse("password_reset_confirm"),
         data={"token": raw_token, "new_password": "BrandNewPass123!"},
         format="json",
     )
-    assert r.status_code == 400
-    assert r.json()["code"] == OPAQUE_RESET_CODE
+
+    assert r.status_code == 200
+    user_key.refresh_from_db()
+    other_users_key.refresh_from_db()
+    system_key.refresh_from_db()
+    assert user_key.revoked_at is not None
+    assert other_users_key.revoked_at is None
+    assert system_key.revoked_at is None
+    api_client.credentials(HTTP_X_API_KEY=raw_key)
+    assert api_client.get("/api/profile/").status_code == 401
 
 
-@pytest.mark.django_db
-def test_password_reset_confirm_expired_token_returns_opaque_400(
-    api_client, regular_user
-):
-    token, raw_token = _issue_token(regular_user)
+def _expire(token):
     PasswordResetToken.objects.filter(pk=token.pk).update(
-        created_at=timezone.now()
-        - timedelta(seconds=settings.PASSWORD_RESET_TOKEN_TTL + 60)
+        created_at=timezone.now() - timedelta(seconds=settings.PASSWORD_RESET_TOKEN_TTL + 60)
     )
-    r = api_client.post(
+
+
+def _spend(api_client, raw_token):
+    assert api_client.post(
         reverse("password_reset_confirm"),
         data={"token": raw_token, "new_password": "BrandNewPass123!"},
         format="json",
-    )
-    assert r.status_code == 400
-    assert r.json()["code"] == OPAQUE_RESET_CODE
+    ).status_code == 200
 
 
 @pytest.mark.django_db
-def test_password_reset_confirm_weak_password_does_not_consume_token(
-    api_client, regular_user
+@pytest.mark.parametrize(
+    "spoil",
+    [
+        lambda api_client, token, raw: "00000000-0000-0000-0000-000000000000",
+        # The token is opaque: a malformed value is just another lookup miss.
+        lambda api_client, token, raw: "not-a-real-token",
+        lambda api_client, token, raw: _expire(token) or raw,
+        lambda api_client, token, raw: _spend(api_client, raw) or raw,
+    ],
+    ids=["unknown", "garbage", "expired", "already-used"],
+)
+def test_password_reset_confirm_with_an_unusable_token_gets_one_opaque_answer(
+    api_client, regular_user, spoil
 ):
     token, raw_token = _issue_token(regular_user)
+    presented = spoil(api_client, token, raw_token)
+
     r = api_client.post(
         reverse("password_reset_confirm"),
-        data={"token": raw_token, "new_password": "12345"},
+        data={"token": presented, "new_password": "AnotherPass456!"},
         format="json",
     )
+
     assert r.status_code == 400
-    assert any(e["field"] == "new_password" for e in r.json()["errors"])
-    # A rejected password must leave the grant spendable.
+    assert r.json()["code"] == OPAQUE_RESET_CODE
+    regular_user.refresh_from_db()
+    assert not regular_user.check_password("AnotherPass456!")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("body", "fields"),
+    [
+        ({"new_password": "12345"}, {"new_password"}),
+        ({"token": "", "new_password": "BrandNewPass123!"}, {"token"}),
+        ({}, {"token", "new_password"}),
+    ],
+    ids=["weak-password", "blank-token", "nothing"],
+)
+def test_password_reset_confirm_field_errors_keep_the_grant_and_redact_the_password(
+    api_client, regular_user, body, fields
+):
+    token, raw_token = _issue_token(regular_user)
+    if "new_password" in body and "token" not in body:
+        body = {"token": raw_token, **body}
+
+    r = api_client.post(reverse("password_reset_confirm"), data=body, format="json")
+
+    assert r.status_code == 400
+    errors = r.json()["errors"]
+    assert fields <= {error["field"] for error in errors}
+    assert all(error["value"] == "***" for error in errors if error["field"] == "new_password")
+    # A rejected request must leave the grant spendable and the password unchanged.
     assert PasswordResetToken.objects.filter(pk=token.pk).exists()
     regular_user.refresh_from_db()
     assert regular_user.check_password("UserStrongPass123!")
-
-
-@pytest.mark.django_db
-def test_password_reset_confirm_garbage_token_returns_opaque_400(api_client):
-    """The token is an opaque string, so there is no format to reject up
-    front — a malformed value is indistinguishable from an unknown one and
-    yields the same generic error, revealing nothing about token validity."""
-    r = api_client.post(
-        reverse("password_reset_confirm"),
-        data={"token": "not-a-real-token", "new_password": "BrandNewPass123!"},
-        format="json",
-    )
-    assert r.status_code == 400
-    assert r.json()["code"] == OPAQUE_RESET_CODE
-
-
-@pytest.mark.django_db
-def test_password_reset_confirm_blank_token_is_a_field_error(api_client):
-    r = api_client.post(
-        reverse("password_reset_confirm"),
-        data={"token": "", "new_password": "BrandNewPass123!"},
-        format="json",
-    )
-    assert r.status_code == 400
-    assert any(e["field"] == "token" for e in r.json()["errors"])
-
-
-@pytest.mark.django_db
-def test_password_reset_confirm_missing_fields_returns_structured_400(api_client):
-    r = api_client.post(reverse("password_reset_confirm"), data={}, format="json")
-    assert r.status_code == 400
-    fields = {e["field"] for e in r.json()["errors"]}
-    assert {"token", "new_password"} <= fields
-
-
-@pytest.mark.django_db
-def test_password_reset_confirm_redacts_new_password_in_errors(api_client):
-    token = "00000000-0000-0000-0000-000000000000"
-    r = api_client.post(
-        reverse("password_reset_confirm"),
-        data={"token": token, "new_password": "12345"},
-        format="json",
-    )
-    assert r.status_code == 400
-    for entry in r.json()["errors"]:
-        if entry["field"] == "new_password":
-            assert entry["value"] == "***"
-
-
-@pytest.mark.django_db
-def test_password_reset_confirm_token_is_single_use(api_client, regular_user):
-    _token, raw_token = _issue_token(regular_user)
-    first = api_client.post(
-        reverse("password_reset_confirm"),
-        data={"token": raw_token, "new_password": "BrandNewPass123!"},
-        format="json",
-    )
-    assert first.status_code == 200
-    second = api_client.post(
-        reverse("password_reset_confirm"),
-        data={"token": raw_token, "new_password": "AnotherPass456!"},
-        format="json",
-    )
-    assert second.status_code == 400
-    assert second.json()["code"] == OPAQUE_RESET_CODE
 
 
 # Self-service password-change tests removed in Story 6 — the single-step
@@ -1122,100 +905,72 @@ def test_password_reset_confirm_token_is_single_use(api_client, regular_user):
 # ---------------- Password recovery: admin reset ----------------
 
 
-@pytest.mark.django_db
-def test_admin_password_reset_superadmin_succeeds(
-    api_client, superadmin_user, regular_user
-):
+def _superadmin(api_client, superadmin_user):
     api_client.credentials(
         HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(superadmin_user).access_token}"
     )
-    # Pre-create an outstanding refresh for the target so the blacklist
-    # invariant has something to act on.
+    return api_client
+
+
+@pytest.mark.django_db
+def test_admin_password_reset_sets_the_password_and_ends_the_users_sessions_and_keys(
+    api_client, superadmin_user, regular_user, issue_api_key
+):
+    _, user_key = issue_api_key(user=regular_user)
+    _, other_users_key = issue_api_key(user=superadmin_user)
+    _, system_key = issue_api_key(user=None)
     RefreshToken.for_user(regular_user)
-    r = api_client.post(
+
+    r = _superadmin(api_client, superadmin_user).post(
         reverse("admin_password_reset"),
         data={"user_id": regular_user.id, "new_password": "AdminSet123!"},
         format="json",
     )
+
     assert r.status_code == 204
     regular_user.refresh_from_db()
     assert regular_user.check_password("AdminSet123!")
     assert BlacklistedToken.objects.filter(token__user=regular_user).exists()
+    for key in (user_key, other_users_key, system_key):
+        key.refresh_from_db()
+    assert user_key.revoked_at is not None
+    assert (other_users_key.revoked_at, system_key.revoked_at) == (None, None)
 
 
 @pytest.mark.django_db
-def test_admin_password_reset_non_superadmin_returns_403(auth_client, regular_user):
-    """Non-superadmin is rejected at the IsSuperadmin permission class layer
-    with the project's standard 403 envelope (code: permission_denied). The
-    in-service is_superadmin check inside admin_reset stays as defense-in-depth
-    but is unreachable in normal flows.
-    """
-    r = auth_client.post(
-        reverse("admin_password_reset"),
-        data={"user_id": regular_user.id, "new_password": "AdminSet123!"},
-        format="json",
-    )
-    assert r.status_code == 403
-    assert r.json()["code"] == "permission_denied"
-    regular_user.refresh_from_db()
-    assert regular_user.check_password("UserStrongPass123!")
-
-
-@pytest.mark.django_db
-def test_admin_password_reset_requires_authentication(api_client, regular_user):
-    r = api_client.post(
-        reverse("admin_password_reset"),
-        data={"user_id": regular_user.id, "new_password": "AdminSet123!"},
-        format="json",
-    )
-    assert r.status_code == 401
-
-
-@pytest.mark.django_db
-def test_admin_password_reset_unknown_user_returns_404(api_client, superadmin_user):
-    api_client.credentials(
-        HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(superadmin_user).access_token}"
-    )
-    r = api_client.post(
-        reverse("admin_password_reset"),
-        data={"user_id": 999_999, "new_password": "AdminSet123!"},
-        format="json",
-    )
-    assert r.status_code == 404
-    assert r.json()["code"] == "user_not_found"
-
-
-@pytest.mark.django_db
-def test_admin_password_reset_weak_password_returns_structured_400(
-    api_client, superadmin_user, regular_user
+@pytest.mark.parametrize(
+    ("caller", "body", "status_code", "check"),
+    [
+        ("anonymous", {"new_password": "AdminSet123!"}, 401, None),
+        # Rejected by IsSuperadmin with the standard envelope.
+        ("org-admin", {"new_password": "AdminSet123!"}, 403, ("code", "permission_denied")),
+        ("superadmin", {"user_id": 999_999, "new_password": "AdminSet123!"}, 404, ("code", "user_not_found")),
+        ("superadmin", {"new_password": "12345"}, 400, ("field", "new_password")),
+        ("superadmin", {"user_id": "not-an-int", "new_password": "AdminSet123!"}, 400, ("field", "user_id")),
+        ("superadmin", {"new_password": "abcd 1234"}, 400, ("field", "new_password")),
+    ],
+    ids=["anonymous", "not-superadmin", "unknown-user", "weak-password", "bad-user-id", "password-outside-alphabet"],
+)
+def test_admin_password_reset_refusals_leave_the_password_alone(
+    api_client, auth_client, superadmin_user, regular_user, caller, body, status_code, check
 ):
-    api_client.credentials(
-        HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(superadmin_user).access_token}"
+    # auth_client is api_client with credentials set, so anonymous needs a client of its own.
+    client = {
+        "anonymous": APIClient(),
+        "org-admin": auth_client,
+    }.get(caller) or _superadmin(api_client, superadmin_user)
+
+    r = client.post(
+        reverse("admin_password_reset"), data={"user_id": regular_user.id, **body}, format="json"
     )
-    r = api_client.post(
-        reverse("admin_password_reset"),
-        data={"user_id": regular_user.id, "new_password": "12345"},
-        format="json",
-    )
-    assert r.status_code == 400
-    assert any(e["field"] == "new_password" for e in r.json()["errors"])
+
+    assert r.status_code == status_code
+    if check and check[0] == "code":
+        assert r.json()["code"] == check[1]
+    elif check:
+        assert check[1] in {error["field"] for error in r.json()["errors"]}
     regular_user.refresh_from_db()
     assert regular_user.check_password("UserStrongPass123!")
-
-
-@pytest.mark.django_db
-def test_admin_password_reset_validates_user_id_shape(api_client, superadmin_user):
-    api_client.credentials(
-        HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(superadmin_user).access_token}"
-    )
-    r = api_client.post(
-        reverse("admin_password_reset"),
-        data={"user_id": "not-an-int", "new_password": "AdminSet123!"},
-        format="json",
-    )
-    assert r.status_code == 400
-    fields = {e["field"] for e in r.json()["errors"]}
-    assert "user_id" in fields
 
 
 # ------------------------------------------------------------------
@@ -1279,169 +1034,87 @@ class TestPrintableAsciiPasswordValidator:
         assert "ASCII" in text
 
 
-# ------------------------------------------------------------------
-# Password alphabet — integration tests across all 4 endpoints
-# ------------------------------------------------------------------
-
-_BAD_PASSWORDS = [
-    "        ",
-    "abcd 1234",
-    " abcd1234",
-    "abcd1234 ",
-    "abcd\t1234",
-    "abcd\n1234",
-    "Pässwörd1",
-    "♫abcd1234",
-    "emoji😀1234",
-    "abc​1234",
-    "abc\x7f1234",
-]
-
-_REJECTION_SUBSTRING = "only Latin letters, digits, and standard ASCII symbols"
-
-
-def _assert_password_rejected(response):
-    assert response.status_code == 400, response.content
-    body = response.json()
-    assert body["code"] == "invalid"
-    password_errors = [
-        e for e in body["errors"] if e["field"] in ("password", "new_password")
-    ]
-    assert password_errors, body
-    assert any(_REJECTION_SUBSTRING in e["reason"] for e in password_errors), body
+# The alphabet itself is pinned by the validator table above; each endpoint only needs
+# to prove the validator is wired in (admin reset: see the refusal table).
 
 
 @pytest.mark.django_db
-class TestFirstSetupPasswordAlphabet:
-    """POST /api/auth/first-setup/ rejects passwords outside the alphabet."""
+def test_first_setup_rejects_a_password_outside_the_alphabet(api_client):
+    r = api_client.post(
+        reverse("first_setup"), data={"email": "admin@acme.com", "password": "Pässwörd1"}, format="json"
+    )
 
-    @pytest.mark.parametrize("password", _BAD_PASSWORDS)
-    def test_rejects(self, api_client, password):
-        get_user_model().objects.all().delete()
-        r = api_client.post(
-            reverse("first_setup"),
-            data={"email": "admin@acme.com", "password": password},
-            format="json",
-        )
-        _assert_password_rejected(r)
-
-    def test_accepts_symbol_password(self, api_client):
-        get_user_model().objects.all().delete()
-        r = api_client.post(
-            reverse("first_setup"),
-            data={"email": "admin@acme.com", "password": "P@ssw0rd!9"},
-            format="json",
-        )
-        assert r.status_code == 201, r.content
+    assert r.status_code == 400
+    assert any(
+        "only Latin letters, digits, and standard ASCII symbols" in error["reason"]
+        for error in r.json()["errors"]
+        if error["field"] == "password"
+    )
 
 
 @pytest.mark.django_db
-class TestPasswordResetConfirmAlphabet:
-    """POST /api/auth/password-reset/confirm/ rejects passwords outside the alphabet."""
+def test_password_reset_confirm_rejects_a_password_outside_the_alphabet(api_client, regular_user):
+    _token, raw_token = _issue_token(regular_user)
 
-    @pytest.mark.parametrize("password", _BAD_PASSWORDS)
-    def test_rejects(self, api_client, regular_user, password):
-        _token, raw_token = _issue_token(regular_user)
-        r = api_client.post(
-            reverse("password_reset_confirm"),
-            data={"token": raw_token, "new_password": password},
-            format="json",
-        )
-        _assert_password_rejected(r)
+    r = api_client.post(
+        reverse("password_reset_confirm"),
+        data={"token": raw_token, "new_password": "Pässwörd1"},
+        format="json",
+    )
 
-
-# TestPasswordChangeAlphabet removed in Story 6 — single-step password-change
-# endpoint was deleted. Alphabet enforcement is still covered for the
-# admin-reset and password-reset confirm endpoints (below and above) and for
-# the two-step profile flow in tests/api_tests/test_rbac_user_profile.py
-# (TestPasswordChangeConfirm.test_weak_new_password_returns_400).
+    assert r.status_code == 400
+    assert any(
+        "only Latin letters, digits, and standard ASCII symbols" in error["reason"]
+        for error in r.json()["errors"]
+        if error["field"] == "new_password"
+    )
 
 
-@pytest.mark.django_db
-class TestAdminPasswordResetAlphabet:
-    """POST /api/auth/admin/password-reset/ rejects passwords outside the alphabet."""
-
-    @pytest.mark.parametrize("password", _BAD_PASSWORDS)
-    def test_rejects(self, api_client, superadmin_user, regular_user, password):
-        api_client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(superadmin_user).access_token}"
-        )
-        r = api_client.post(
-            reverse("admin_password_reset"),
-            data={"user_id": regular_user.id, "new_password": password},
-            format="json",
-        )
-        _assert_password_rejected(r)
-
-
-# ------------------------------------------------------------------
-# Email whitespace + throttle non-string guard
-# ------------------------------------------------------------------
-
-_BAD_EMAILS_WHITESPACE = [
-    "user @example.com",
-    " user@example.com",
-    "user@example.com\n",
-    "user@\texample.com",
-]
+# ---------------- Email validation ----------------
 
 
 @pytest.mark.django_db
-class TestEmailWhitespaceRejection:
-    """Email field rejects whitespace at endpoints that validate email."""
+@pytest.mark.parametrize(
+    ("email", "reason"),
+    [
+        ("not-an-email", None),
+        (None, None),
+        ("user @example.com", "must not contain whitespace"),
+        (" user@example.com", "must not contain whitespace"),
+        ("user@example.com\n", "must not contain whitespace"),
+        ("user@\texample.com", "must not contain whitespace"),
+        # Non-strings must be a 400, not a 500 from the ip|email throttle key.
+        (123, "must be a string"),
+        (["x@y.com"], "must be a string"),
+        ({"a": 1}, "must be a string"),
+        (True, "must be a string"),
+    ],
+)
+def test_password_reset_request_with_an_invalid_email_is_a_field_error(api_client, email, reason):
+    cache.clear()
+    body = {} if email is None else {"email": email}
 
-    @pytest.mark.parametrize("email", _BAD_EMAILS_WHITESPACE)
-    def test_first_setup_rejects(self, api_client, email):
-        get_user_model().objects.all().delete()
-        r = api_client.post(
-            reverse("first_setup"),
-            data={"email": email, "password": "P@ssw0rd!9"},
-            format="json",
-        )
-        assert r.status_code == 400, r.content
-        body = r.json()
-        email_errors = [e for e in body["errors"] if e["field"] == "email"]
-        assert email_errors
-        assert any(
-            "must not contain whitespace" in e["reason"].lower() for e in email_errors
-        ), body
+    r = api_client.post(reverse("password_reset_request"), data=body, format="json")
 
-    @pytest.mark.parametrize("email", _BAD_EMAILS_WHITESPACE)
-    def test_password_reset_request_rejects(self, api_client, email):
-        cache.clear()
-        r = api_client.post(
-            reverse("password_reset_request"),
-            data={"email": email},
-            format="json",
-        )
-        assert r.status_code == 400, r.content
-        body = r.json()
-        email_errors = [e for e in body["errors"] if e["field"] == "email"]
-        assert email_errors
-        assert any(
-            "must not contain whitespace" in e["reason"].lower() for e in email_errors
-        ), body
+    assert r.status_code == 400, r.content
+    email_errors = [error for error in r.json()["errors"] if error["field"] == "email"]
+    assert email_errors
+    if reason:
+        assert any(reason in error["reason"].lower() for error in email_errors)
 
 
 @pytest.mark.django_db
-class TestPasswordResetRequestThrottleNonString:
-    """POST /api/auth/password-reset/request/ returns 400 (not 500) for non-string email."""
+def test_first_setup_rejects_an_email_with_whitespace(api_client):
+    r = api_client.post(
+        reverse("first_setup"), data={"email": "user @example.com", "password": "P@ssw0rd!9"}, format="json"
+    )
 
-    @pytest.mark.parametrize("bad_value", [123, ["x@y.com"], {"a": 1}, True])
-    def test_non_string_email_returns_400(self, api_client, bad_value):
-        cache.clear()
-        r = api_client.post(
-            reverse("password_reset_request"),
-            data={"email": bad_value},
-            format="json",
-        )
-        assert r.status_code == 400, r.content
-        body = r.json()
-        email_errors = [e for e in body["errors"] if e["field"] == "email"]
-        assert email_errors
-        assert any(
-            "must be a string" in e["reason"].lower() for e in email_errors
-        ), body
+    assert r.status_code == 400
+    assert any(
+        "must not contain whitespace" in error["reason"].lower()
+        for error in r.json()["errors"]
+        if error["field"] == "email"
+    )
 
 
 # ---------------- Default-org: single-default constraint ----------------

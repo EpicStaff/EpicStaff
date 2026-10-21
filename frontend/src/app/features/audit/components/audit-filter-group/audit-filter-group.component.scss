@@ -10,25 +10,32 @@ $padding-x: 10px;
 
 .filter-group {
     padding: 4px 0;
+    border: 1px solid transparent;
     border-radius: 6px;
     background-color: var(--color-flow-card-bg);
     box-shadow: var(--shadow-card-subtle);
 }
 
 .filter-group--expanded {
+    border-color: var(--color-ks-line);
     background-color: var(--color-background-body);
+}
 
-    .filter-group__header {
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--color-divider-regular);
-    }
+.filter-group--disabled {
+    box-shadow: none;
+}
+
+.filter-group__header-row {
+    display: flex;
+    align-items: center;
 }
 
 .filter-group__header {
     display: flex;
+    flex: 1;
     align-items: center;
     gap: 8px;
-    width: 100%;
+    min-width: 0;
     min-height: 20px;
     padding: 0 $padding-x;
     border: none;
@@ -60,10 +67,44 @@ $padding-x: 10px;
 
 .filter-group__title {
     flex: none;
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
     font-size: 12px;
     font-weight: 500;
     line-height: 20px;
+}
+
+.filter-group__summary {
+    min-width: 0;
+    margin-left: auto;
+    overflow: hidden;
+    color: var(--accent-color);
+    font-size: 11px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.filter-group__clear {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    margin-right: $padding-x - 4px;
+    padding: 2px;
+    border: none;
+    border-radius: 3px;
+    background: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+        color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
 }
 
 .filter-group__body {
@@ -85,7 +126,8 @@ $padding-x: 10px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 8px $padding-x 0;
+    // bottom room keeps the last control's border and focus outline inside the clip
+    padding: 8px $padding-x 4px;
 }
 
 .filter-group__hint {

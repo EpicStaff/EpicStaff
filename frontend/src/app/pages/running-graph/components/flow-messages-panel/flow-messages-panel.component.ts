@@ -14,7 +14,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { StopButtonComponent } from '@shared/components';
-import { GraphSessionStatus, isTerminalSessionStatus } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { Subject, takeUntil } from 'rxjs';
 
 import { GraphSessionLight, GraphSessionService } from '../../../../features/flows/services/flows-sessions.service';
@@ -32,6 +33,7 @@ import { SessionIdSwitcherComponent } from '../session-id-switcher/session-id-sw
         AppSvgIconComponent,
         StopButtonComponent,
         SessionIdSwitcherComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './flow-messages-panel.component.html',
     styleUrls: ['./flow-messages-panel.component.scss'],
@@ -46,6 +48,9 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
     public sessions: GraphSessionLight[] = [];
     public selectedSessionId: string | null = null;
     public sessionsLoaded = false;
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 
     private readonly destroy$ = new Subject<void>();
 

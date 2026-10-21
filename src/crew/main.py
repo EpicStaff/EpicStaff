@@ -1,4 +1,5 @@
 import asyncio
+import gc
 
 import settings
 from clients.key_value import KeyValueClient
@@ -54,8 +55,14 @@ async def main():
         logger.info("Initializing Redis connection...")
         await redis_service.connect()
         logger.info("Redis connection established.")
+        await python_code_executor_service.subscribe_to_results()
 
         await key_value_client.start()
+
+        # Freezing moves startup objects out of the scanned generations.
+        gc.collect()
+        gc.freeze()
+        gc.set_threshold(50_000, 20, 100)
 
         logger.info("Starting Session Manager Service...")
         session_manager_service.start()

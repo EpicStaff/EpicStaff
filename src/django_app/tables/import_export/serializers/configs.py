@@ -16,6 +16,10 @@ from tables.models.realtime_models import (
     OpenAIRealtimeConfig,
 )
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
+from tables.serializers.utils.llm_config_data_validation import (
+    LLMConfigDataFieldsValidationMixin,
+)
+from tables.utils.litellm_model_info import validate_reasoning_effort
 
 
 class BaseConfigImportSerializer(serializers.ModelSerializer):
@@ -40,7 +44,7 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
         return fields
 
 
-class LLMConfigImportSerializer(BaseConfigImportSerializer):
+class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigImportSerializer):
     model_class = LLMModel
     provider_field = "llm_provider"
     model_fk_field = "model"
@@ -50,6 +54,15 @@ class LLMConfigImportSerializer(BaseConfigImportSerializer):
 
     class Meta(BaseConfigImportSerializer.Meta):
         model = LLMConfig
+        # Keep created_at out of the export: BaseConfigStrategy.find_existing filters on
+        # every exported key, and an equivalent config created by an earlier import has
+        # its own creation time, so re-imports would stop matching it and duplicate it.
+        exclude = [*BaseConfigImportSerializer.Meta.exclude, "created_at"]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        validate_reasoning_effort(attrs.get("model"), attrs.get("reasoning_effort"))
+        return attrs
 
 
 class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):
@@ -62,6 +75,10 @@ class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):
 
     class Meta(BaseConfigImportSerializer.Meta):
         model = EmbeddingConfig
+        # Keep created_at out of the export: BaseConfigStrategy.find_existing filters on
+        # every exported key, and an equivalent config created by an earlier import has
+        # its own creation time, so re-imports would stop matching it and duplicate it.
+        exclude = [*BaseConfigImportSerializer.Meta.exclude, "created_at"]
 
 
 class RealtimeConfigImportSerializer(BaseConfigImportSerializer):
@@ -88,6 +105,9 @@ class RealtimeTranscriptionConfigImportSerializer(BaseConfigImportSerializer):
         model = RealtimeTranscriptionConfig
 
 
+# The provider realtime config serializers below keep created_at out of the export, as
+# LLMConfig does: the import never writes it (it is auto_now_add), so exporting it would
+# only carry the source config's creation time into the file.
 class OpenAIRealtimeConfigImportSerializer(
     OpenAIRealtimeModelNameValidationMixin, serializers.ModelSerializer
 ):
@@ -98,16 +118,21 @@ class OpenAIRealtimeConfigImportSerializer(
 
     class Meta:
         model = OpenAIRealtimeConfig
-        exclude = ["created_by", "api_key_secret", "transcription_api_key_secret"]
+        exclude = [
+            "created_by",
+            "created_at",
+            "api_key_secret",
+            "transcription_api_key_secret",
+        ]
 
 
 class ElevenLabsRealtimeConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = ElevenLabsRealtimeConfig
-        exclude = ["created_by", "api_key_secret"]
+        exclude = ["created_by", "created_at", "api_key_secret"]
 
 
 class GeminiRealtimeConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = GeminiRealtimeConfig
-        exclude = ["created_by", "api_key_secret"]
+        exclude = ["created_by", "created_at", "api_key_secret"]

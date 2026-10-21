@@ -29,40 +29,6 @@ def _run(snippet: str) -> subprocess.CompletedProcess:
 
 
 class TestBlockNetwork:
-    def test_af_inet_socket_raises_permission_error_after_block_network(self):
-        snippet = (
-            "import socket\n"
-            "import seccomp\n"
-            "seccomp.block_network()\n"
-            "try:\n"
-            "    socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
-            "except PermissionError:\n"
-            "    pass\n"
-            "else:\n"
-            "    raise SystemExit('expected PermissionError for AF_INET')\n"
-        )
-
-        result = _run(snippet)
-
-        assert result.returncode == 0, result.stderr
-
-    def test_af_inet6_socket_raises_permission_error_after_block_network(self):
-        snippet = (
-            "import socket\n"
-            "import seccomp\n"
-            "seccomp.block_network()\n"
-            "try:\n"
-            "    socket.socket(socket.AF_INET6, socket.SOCK_STREAM)\n"
-            "except PermissionError:\n"
-            "    pass\n"
-            "else:\n"
-            "    raise SystemExit('expected PermissionError for AF_INET6')\n"
-        )
-
-        result = _run(snippet)
-
-        assert result.returncode == 0, result.stderr
-
     def test_af_unix_socket_still_succeeds_after_block_network(self):
         """AF_UNIX is not an egress path and must stay usable -- multiprocessing,
         some logging handlers, and local IPC all depend on it."""
@@ -102,26 +68,6 @@ class TestBlockNetwork:
             "import socket\n"
             "sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
             "sock.close()\n"
-        )
-
-        result = _run(snippet)
-
-        assert result.returncode == 0, result.stderr
-
-    def test_af_netlink_socket_raises_permission_error_after_block_network(self):
-        """Only AF_UNIX is permitted by the filter -- AF_NETLINK is denied like
-        every other non-AF_UNIX family. (A stale comment in seccomp.py used to
-        claim the opposite; this pins the actual behaviour.)"""
-        snippet = (
-            "import socket\n"
-            "import seccomp\n"
-            "seccomp.block_network()\n"
-            "try:\n"
-            "    socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 0)\n"
-            "except PermissionError:\n"
-            "    pass\n"
-            "else:\n"
-            "    raise SystemExit('expected PermissionError for AF_NETLINK')\n"
         )
 
         result = _run(snippet)
@@ -254,22 +200,27 @@ class TestBlockNetwork:
 
         assert result.returncode == 0, result.stderr
 
-    def test_denied_socket_error_has_the_shape_the_chain_discriminates_on(self):
-        """dynamic_venv_executor_chain separates a network denial from a
-        Landlock filesystem denial by `errno == EACCES and filename is None`.
-        Every other test of that discriminator feeds hand-authored exceptions;
-        this one pins the shape a real kernel seccomp denial actually has."""
+    @pytest.mark.parametrize(
+        ("family", "socket_type"),
+        [("AF_INET", "SOCK_STREAM"), ("AF_INET6", "SOCK_STREAM"), ("AF_NETLINK", "SOCK_RAW")],
+    )
+    def test_every_non_unix_socket_is_denied_with_the_shape_the_chain_recognises(
+        self, family, socket_type
+    ):
+        """Only AF_UNIX is allowed. The chain tells a network denial from a Landlock
+        filesystem denial by `errno == EACCES and filename is None`, so pin the shape a
+        real kernel denial has."""
         snippet = (
             "import socket\n"
             "import seccomp\n"
             "seccomp.block_network()\n"
             "try:\n"
-            "    socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
+            f"    socket.socket(socket.{family}, socket.{socket_type}, 0)\n"
             "except PermissionError as exc:\n"
             "    assert exc.errno == 13, f'expected EACCES, got {exc.errno}'\n"
-            "    assert exc.filename is None, f'expected filename None, got {exc.filename!r}'\n"
+            "    assert exc.filename is None, f'expected no filename, got {exc.filename!r}'\n"
             "else:\n"
-            "    raise SystemExit('expected PermissionError for AF_INET')\n"
+            f"    raise SystemExit('expected PermissionError for {family}')\n"
         )
 
         result = _run(snippet)

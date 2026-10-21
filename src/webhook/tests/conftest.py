@@ -1,79 +1,67 @@
+import asyncio
+import json
 import os
 import stat
 import tempfile
 from types import SimpleNamespace
-
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi.testclient import TestClient
+
+import httpx
+import pytest
+from fakeredis import FakeAsyncRedis
+
+from app.core.settings import settings
 from app.main import create_app
-from app.providers.tunnels.base import AbstractTunnelProvider
-from app.services.tunnel_registry import TunnelRegistry
-from src.shared.models import BaseTunnelConfigData
+from app.services.redis_service import RedisService, get_redis_service
+from app.services.tunnel_registry import TunnelRegistry, get_tunnel_registry
 
 
 @pytest.fixture
-def mock_redis_service():
-    redis_mock = AsyncMock()
-    redis_mock.publish_webhook.return_value = None
-    redis_mock.client.publish = AsyncMock(return_value=1)
-    return redis_mock
+async def redis_service():
+    """The real RedisService, on an in-memory Redis."""
+    service = RedisService(
+        host="unused", port=0, webhook_channel=settings.WEBHOOK_MESSAGE_CHANNEL, password=""
+    )
+    service.client = FakeAsyncRedis(decode_responses=True)
+    yield service
+    await service.client.aclose()
 
 
 @pytest.fixture
-def mock_tunnel_provider():
-    tunnel = AsyncMock(spec=AbstractTunnelProvider)
-    tunnel.public_url = "https://mock-tunnel.ngrok.io"
-    return tunnel
+async def received_events(redis_service):
+    """Stands in for Django's webhook listener: subscribes to the webhook channel and
+    returns `received()`, which collects every event published within `timeout` seconds."""
+    pubsub = redis_service.client.pubsub()
+    await pubsub.subscribe(settings.WEBHOOK_MESSAGE_CHANNEL)
+    await pubsub.get_message(timeout=1)
+
+    async def received(timeout: float = 0.2) -> list[dict]:
+        events = []
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.02)
+            if message is not None:
+                events.append(json.loads(message["data"]))
+        return events
+
+    yield received
+    await pubsub.aclose()
 
 
 @pytest.fixture
-def tunnel_registry():
-    """A fresh, unpopulated `TunnelRegistry` for route-level tests.
-
-    `handle_webhook` resolves the inbound path via
-    `TunnelRegistry.resolve_by_path`, which only reads `_tunnel_pool` -- no
-    real tunnel connection is needed, so tests populate it directly via
-    `register_tunnel_path` instead of going through `register()` (which
-    would call out to a real provider).
-    """
-    return TunnelRegistry()
+def tunnel_registry(redis_service):
+    return TunnelRegistry(redis_service=redis_service)
 
 
 @pytest.fixture
-def register_tunnel_path(tunnel_registry):
-    """Register a path in `tunnel_registry` without connecting a real tunnel.
-
-    Returns the `BaseTunnelConfigData` used, so tests can assert against its
-    `unique_id`/`auth` if needed.
-    """
-
-    def _register(
-        path: str,
-        auth=None,
-        org_id: int | None = 1,
-    ) -> BaseTunnelConfigData:
-        config = BaseTunnelConfigData(
-            name=path,
-            org_id=org_id,
-            auth=auth,
-        )
-        tunnel_registry._tunnel_pool[config.unique_id] = (None, config)
-        return config
-
-    return _register
-
-
-@pytest.fixture
-def app(mock_redis_service):
-    # The startup sweep is stubbed so no test removes anything from the real temp directory.
-    with (
-        patch("app.main.get_redis_service", new=AsyncMock(return_value=mock_redis_service)),
-        patch("app.main.close_redis_connection", new=AsyncMock()),
-        patch("app.main.listen_redis", new=AsyncMock()),
-        patch("app.main.remove_stale_working_directories"),
-    ):
-        yield create_app()
+async def client(redis_service, tunnel_registry):
+    """HTTP client for the app; no lifespan runs, so no tunnel or listener starts."""
+    app = create_app()
+    app.dependency_overrides[get_redis_service] = lambda: redis_service
+    app.dependency_overrides[get_tunnel_registry] = lambda: tunnel_registry
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://webhook") as http_client:
+        yield http_client
 
 
 @pytest.fixture
@@ -92,17 +80,6 @@ def lifespan_dependencies():
         patch("app.main.remove_stale_working_directories"),
     ):
         yield close_redis_connection
-
-
-@pytest.fixture
-def client(app, mock_redis_service, tunnel_registry):
-    from app.controllers.webhook_routes import get_redis_service, get_tunnel_registry
-
-    app.dependency_overrides[get_redis_service] = lambda: mock_redis_service
-    app.dependency_overrides[get_tunnel_registry] = lambda: tunnel_registry
-    with TestClient(app) as c:
-        yield c
-    app.dependency_overrides.clear()
 
 
 class _ReportedStatus:
@@ -177,6 +154,9 @@ def ngrok_environment(tmp_path, monkeypatch):
     source_binary.write_bytes(binary_content)
     temp_root = tmp_path / "temp"
     temp_root.mkdir()
+    # Set explicitly: under a 002 umask mkdir makes it group-writable, which the temp root
+    # safety check rightly refuses.
+    os.chmod(temp_root, 0o755)
 
     # os.access is only used to detect a system ngrok; disabling it forces the
     # pyngrok default binary, pointed here at the fake source.

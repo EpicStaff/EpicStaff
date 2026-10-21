@@ -291,5 +291,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(extract_knowledge_data, reverse_extract),
+        migrations.RunPython(extract_knowledge_data, reverse_extract, elidable=True),
     ]

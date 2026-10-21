@@ -1,8 +1,16 @@
+import uuid
+from collections.abc import Mapping
+from dataclasses import dataclass
+
 from django.db import transaction
-from django.db.models import Value
+from django.db.models import Exists, OuterRef, QuerySet, Value
 from django.db.models.functions import Concat, Substr
+from django.utils import timezone
+from rbac.authorship import record_last_edits, resolve_author
 from rbac.models import Organization
-from tables.models import StorageFile
+from tables.models import StorageFile, User
+from tables.services.recycle_bin.deleting import record_deleter
+from tables.services.storage_service.path_utils import is_trash_path
 
 
 def _name_of(path: str) -> str:
@@ -41,13 +49,48 @@ def _ancestor_paths(path: str) -> list[str]:
     return ancestors
 
 
+def _create_missing_folders(
+    org: Organization, folder_paths: list[str], author: User | None
+) -> list[StorageFile]:
+    """Create the folder rows of `folder_paths` that do not exist yet and return them."""
+    created_rows = []
+    for folder_path in folder_paths:
+        folder_row, created = StorageFile.objects.get_or_create(
+            org=org,
+            path=folder_path,
+            defaults={
+                "name": _name_of(folder_path),
+                "item_type": "folder",
+                "parent_path": _parent_of(folder_path),
+                "size": None,
+                "s3_modified": None,
+                "created_by": author,
+            },
+        )
+        if created:
+            created_rows.append(folder_row)
+    return created_rows
+
+
 _BULK_BATCH = 1000
+
+
+@dataclass(frozen=True)
+class SoftDeletedSubtree:
+    """What a soft delete binned: one batch, rooted at a file path or a folder path ending in "/"."""
+
+    batch: uuid.UUID
+    root_path: str
 
 
 class StorageFileSync:
     """
     Keeps the StorageFile DB table in sync with storage mutations.
     All path arguments are org-relative (no org_X/ prefix).
+
+    `user` is the acting user (system callers pass none): rows a call creates are authored
+    and last edited by it, and an existing row the call edits is only last edited by it;
+    its author, or the lack of one, is kept.
     """
 
     @staticmethod
@@ -56,8 +99,13 @@ class StorageFileSync:
         path: str,
         size: int | None = None,
         s3_modified=None,
+        *,
+        user: object | None = None,
     ) -> None:
+        if is_trash_path(path):
+            return  # recycle-bin objects are never live files
         org = Organization.objects.get(id=org_id)
+        author = resolve_author(user)
         file_row, created = StorageFile.objects.get_or_create(
             org=org,
             path=path,
@@ -67,6 +115,7 @@ class StorageFileSync:
                 "parent_path": _parent_of(path),
                 "size": size,
                 "s3_modified": s3_modified,
+                "created_by": author,
             },
         )
 
@@ -86,6 +135,9 @@ class StorageFileSync:
 
             file_row.save(update_fields=update_fields)
 
+        created_folders = _create_missing_folders(org, _ancestor_paths(path), author)
+        record_last_edits([file_row, *created_folders], user)
+
         for ancestor_path in _ancestor_paths(path):
             StorageFile.objects.get_or_create(
                 org=org,
@@ -100,11 +152,46 @@ class StorageFileSync:
             )
 
     @staticmethod
-    def on_bulk_upload(org_id: int, files: list[tuple[str, int]], folders=()) -> None:
-        """on_upload for many files [(path, size)] and empty folders at once, in two INSERTs."""
+    def on_bulk_upload(
+        org_id: int,
+        files: list[tuple[str, int]],
+        folders=(),
+        *,
+        user: object | None = None,
+        authors_by_path: Mapping[str, int | None] | None = None,
+    ) -> None:
+        """on_upload for many files [(path, size)] and empty folders at once, in two INSERTs.
+
+        Args:
+            authors_by_path: Author id of each inserted row whose path it names, overriding
+                `user`; a cross-org move uses it so moved rows keep their own authors. It
+                only applies to rows this call inserts: an existing file or folder keeps
+                its author. Paths it does not name (e.g. new ancestor folders) are
+                authored by `user`.
+        """
         folder_paths = {folder.rstrip("/") + "/" for folder in folders}
         for path in [*(path for path, _ in files), *folder_paths]:
             folder_paths.update(_ancestor_paths(path))
+
+        # `user` authors the rows created here, unless `authors_by_path` names them, and last
+        # edits the files and the new folders; folders that already existed are left as they are.
+        author = resolve_author(user)
+        author_overrides = authors_by_path or {}
+
+        def author_id_of(path: str) -> int | None:
+            if path in author_overrides:
+                return author_overrides[path]
+            return author.pk if author is not None else None
+
+        existing_folder_paths = (
+            set(
+                StorageFile.objects.filter(org_id=org_id, path__in=folder_paths).values_list(
+                    "path", flat=True
+                )
+            )
+            if user is not None
+            else set()
+        )
 
         StorageFile.objects.bulk_create(
             [
@@ -114,10 +201,28 @@ class StorageFileSync:
                     name=_name_of(path),
                     item_type="folder",
                     parent_path=_parent_of(path),
+                    created_by_id=author_id_of(path),
                 )
                 for path in sorted(folder_paths)
             ],
             ignore_conflicts=True,
+            batch_size=_BULK_BATCH,
+        )
+        # Update the live rows that exist, insert the rest. An upsert can't do
+        # it: the unique (org, path) index only covers live rows, and Django
+        # can't name a partial index as the ON CONFLICT target.
+        size_by_path = dict(files)
+        now = timezone.now()
+        existing = list(StorageFile.objects.filter(org_id=org_id, path__in=size_by_path))
+        for row in existing:
+            row.name = _name_of(row.path)
+            row.item_type = "file"
+            row.parent_path = _parent_of(row.path)
+            row.size = size_by_path[row.path]
+            row.updated_at = now
+        StorageFile.objects.bulk_update(
+            existing,
+            ["name", "item_type", "parent_path", "size", "updated_at"],
             batch_size=_BULK_BATCH,
         )
         StorageFile.objects.bulk_create(
@@ -129,44 +234,66 @@ class StorageFileSync:
                     item_type="file",
                     parent_path=_parent_of(path),
                     size=size,
+                    created_by_id=author_id_of(path),
                 )
                 for path, size in files
             ],
-            update_conflicts=True,
-            unique_fields=["org", "path"],
-            update_fields=["name", "item_type", "parent_path", "size", "updated_at"],
+            # NOTE: never add created_by to an update: an existing file keeps its author.
+            # Every path, not only the new ones: a row binned since the read
+            # above needs a new live row. Live rows conflict and are skipped.
+            ignore_conflicts=True,
             batch_size=_BULK_BATCH,
         )
+        if user is not None:
+            edited_paths = [*(path for path, _ in files), *(folder_paths - existing_folder_paths)]
+            record_last_edits(
+                StorageFile.objects.filter(org_id=org_id, path__in=edited_paths), user
+            )
 
     @staticmethod
-    def on_mkdir(org_id: int, path: str) -> None:
+    def on_mkdir(org_id: int, path: str, *, user: object | None = None) -> None:
         org = Organization.objects.get(id=org_id)
+        author = resolve_author(user)
         folder_path = path.rstrip("/") + "/"
 
-        StorageFile.objects.get_or_create(
-            org=org,
-            path=folder_path,
-            defaults={
-                "name": _name_of(folder_path),
-                "item_type": "folder",
-                "parent_path": _parent_of(folder_path),
-                "size": None,
-                "s3_modified": None,
-            },
+        created_folders = _create_missing_folders(
+            org, [folder_path, *_ancestor_paths(folder_path)], author
         )
+        record_last_edits(created_folders, user)
 
-        for ancestor_path in _ancestor_paths(folder_path):
-            StorageFile.objects.get_or_create(
-                org=org,
-                path=ancestor_path,
-                defaults={
-                    "name": _name_of(ancestor_path),
-                    "item_type": "folder",
-                    "parent_path": _parent_of(ancestor_path),
-                    "size": None,
-                    "s3_modified": None,
-                },
-            )
+    @staticmethod
+    def on_soft_delete(org_id: int, path: str, *, user: object | None) -> SoftDeletedSubtree | None:
+        """Bin the live file at `path`, or the folder at `path` with everything under it, as one batch.
+
+        Same lookup as on_delete: an exact live file path wins, otherwise `path`
+        is a folder. Every row pointing at a binned row (flow attachments,
+        session outputs, surface grants) is hard-deleted: a binned file is
+        linked to nothing, and a restore brings it back without its links.
+        `user` is recorded as who deleted each recycle-bin entry the batch makes.
+        Returns None when nothing live sits at `path`.
+        """
+        clean_path = path.rstrip("/")
+        live_rows = StorageFile.objects.filter(org_id=org_id)
+        if not path.endswith("/") and live_rows.filter(path=clean_path, item_type="file").exists():
+            root_path = clean_path
+            rows = live_rows.filter(path=clean_path)
+        else:
+            root_path = clean_path + "/"
+            rows = live_rows.filter(path__startswith=root_path)
+        if not rows.exists():
+            return None
+
+        batch = uuid.uuid4()
+        deleted_at = timezone.now()
+        binned = rows.update(active=False, soft_deleted_at=deleted_at, soft_delete_batch=batch)
+        if not binned:
+            # A concurrent delete binned these rows first (the UPDATE waited for
+            # its locks, then re-checked active=True). Its objects are its to move.
+            return None
+        batch_rows = StorageFile.all_objects.filter(soft_delete_batch=batch)
+        _delete_links_to(batch_rows)
+        record_deleter(_bin_entries_of(batch_rows), user, deleted_at=deleted_at)
+        return SoftDeletedSubtree(batch=batch, root_path=root_path)
 
     @staticmethod
     def on_delete(org_id: int, path: str) -> None:
@@ -178,19 +305,16 @@ class StorageFileSync:
             StorageFile.objects.filter(org_id=org_id, path=prefix).delete()
 
     @staticmethod
-    def on_move(org_id: int, src: str, dst: str) -> None:
+    def on_move(org_id: int, src: str, dst: str, *, user: object | None = None) -> None:
         """
-        Sync a move/rename operation.
+        Sync a move/rename to `dst`, the ACTUAL backend destination: a file path, or a
+        folder base path ending in "/".
 
-        dst is the ACTUAL destination path produced by the backend: an exact
-        file path (no trailing "/") for a renamed/moved file, or a folder
-        base path ending in "/" for a moved/renamed folder.
-
-        When dst does not end in "/", first try an exact single-row update.
-        If no row matches (src was a folder, not a file) or dst already ends
-        in "/", fall back to the folder branch: rewrite the path prefix for
-        every row under src, then recompute both parent_path and name for
-        the rows that landed under dst.
+        A `dst` without "/" first tries a single-row file update; otherwise (src was a
+        folder) every row under `src` gets the `dst` prefix and a recomputed name and
+        parent_path. The moved entry's own row is last edited by `user` and keeps its
+        author, or the lack of one; rows beneath a moved folder keep their authors and last
+        edits.
         """
         with transaction.atomic():
             updated = 0
@@ -201,6 +325,8 @@ class StorageFileSync:
                     name=_name_of(dst),
                     parent_path=_parent_of(dst),
                 )
+                if updated:
+                    record_last_edits(StorageFile.objects.filter(org_id=org_id, path=dst), user)
 
             if updated == 0:
                 src_prefix = src.rstrip("/") + "/"
@@ -218,3 +344,43 @@ class StorageFileSync:
                     row.name = _name_of(row.path)
 
                 StorageFile.objects.bulk_update(moved_rows, ["parent_path", "name"])
+                record_last_edits([row for row in moved_rows if row.path == dst_prefix], user)
+
+
+def _bin_entries_of(batch_rows: QuerySet) -> list[StorageFile]:
+    """The rows of one batch the recycle bin lists: those whose folder wasn't binned with them.
+
+    The same rule as StorageRecycleBinService.top_level. Usually just the deleted
+    file or folder; more only when the folder had no row of its own.
+    """
+    deleted_with_its_folder = batch_rows.filter(path=OuterRef("parent_path"))
+    return list(batch_rows.exclude(Exists(deleted_with_its_folder)).only("pk"))
+
+
+def _delete_links_to(rows: QuerySet) -> None:
+    """Hard-delete every row that points at one of `rows`: a binned file is linked to nothing.
+
+    The base manager reaches binned link rows too, such as a binned flow's
+    attachment. Listed by hand rather than found by reflection, so a new link
+    model is a deliberate choice (see test_every_storage_file_link_is_listed).
+    """
+    for model in storage_file_link_models():
+        model._base_manager.filter(storage_file__in=rows).delete()
+
+
+def storage_file_link_models() -> tuple[type, ...]:
+    """Every model with a foreign key to StorageFile."""
+    from agents.models import (
+        AgentInlineSurfaceStorageItem,
+        InlineSurfaceStorageItem,
+        SurfaceStorageItem,
+    )
+    from tables.models import GraphStorageFile, SessionStorageFile
+
+    return (
+        GraphStorageFile,
+        SessionStorageFile,
+        SurfaceStorageItem,
+        InlineSurfaceStorageItem,
+        AgentInlineSurfaceStorageItem,
+    )

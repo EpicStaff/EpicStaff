@@ -306,6 +306,7 @@
     --green-alpha-18: rgba(42, 186, 107, 0.18);
     --yellow-500: #ffcf00;
     --yellow-alpha-6: rgba(255, 207, 0, 0.06);
+    --yellow-alpha-8: rgba(255, 207, 0, 0.08);
     --yellow-alpha-30: rgba(255, 207, 0, 0.3);
     --amber-400: #e0a83a;
     --amber-450: #ffb400; // unsaved-changes-dialog warning icon
@@ -567,6 +568,7 @@
     // SEMANTIC — forms
     // ------------------------------------------------------------------
     --color-input-background: var(--graphite-800);
+    --color-input-transparent: transparent;
     --color-input-background-hover: var(--white-alpha-6);
     --color-input-border: var(--steel-alpha-14);
     --color-input-text-placeholder: var(--steel-alpha-30);
@@ -624,6 +626,20 @@
     --color-status-warning: var(--yellow-500);
     --color-status-processing: var(--orange-500);
     --color-status-failed: var(--red-600);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — avatar fills (chat desk pictures, picked by id). Bright fills under dark letters; the light theme
+    // overrides none of these primitives, so the letters keep at least 6:1 contrast in both themes. Red, green and
+    // yellow are left out: they are the status and badge colours drawn on top.
+    // ------------------------------------------------------------------
+    --color-avatar-1: var(--sky-500);
+    --color-avatar-2: var(--teal-500);
+    --color-avatar-3: var(--orange-500);
+    --color-avatar-4: var(--pink-500);
+    --color-avatar-5: var(--lavender-500);
+    --color-avatar-6: var(--blue-400);
+    // Dark text on a bright fill (avatar letters, count badges); the light theme does not flip it.
+    --color-text-on-bright: var(--gray-810);
 
     // ------------------------------------------------------------------
     // LEGACY — restored for backward compatibility (still referenced by

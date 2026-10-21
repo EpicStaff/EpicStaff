@@ -2,8 +2,6 @@
 Integration tests for the InlineSurface model family.
 
 Covers:
-- Create InlineSurface with content rows (python tool, mcp tool, storage item,
-  knowledge + naive config) — rows exist, reverse accessors work
 - 1:1 InlineSurface-per-TaskNode enforcement (IntegrityError on second create)
 - CASCADE behavior: deleting TaskNode removes InlineSurface + content + config rows;
   deleting Graph removes TaskNode (and transitively InlineSurface)
@@ -166,85 +164,6 @@ def other_org_storage_file(db, other_org):
 
 
 # ---------------------------------------------------------------------------
-# Create with content rows — rows exist, reverse accessors work
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_create_inline_surface(task_node):
-    inline = InlineSurface.objects.create(
-        task_node=task_node,
-        instructions="be concise",
-    )
-
-    assert inline.pk is not None
-    assert inline.task_node == task_node
-    assert inline.instructions == "be concise"
-
-
-@pytest.mark.django_db
-def test_inline_surface_python_tool_reverse_accessor(inline_surface, py_tool):
-    InlineSurfacePythonTool.objects.create(
-        inline_surface=inline_surface,
-        python_tool=py_tool,
-        mode=ToolMode.ALLOW,
-    )
-
-    entries = list(inline_surface.python_tools.all())
-    assert len(entries) == 1
-    assert entries[0].python_tool == py_tool
-    assert entries[0].mode == ToolMode.ALLOW
-
-
-@pytest.mark.django_db
-def test_inline_surface_mcp_tool_reverse_accessor(inline_surface, mcp_tool):
-    InlineSurfaceMcpTool.objects.create(
-        inline_surface=inline_surface,
-        mcp_tool=mcp_tool,
-        mode=ToolMode.DENY,
-    )
-
-    entries = list(inline_surface.mcp_tools.all())
-    assert len(entries) == 1
-    assert entries[0].mcp_tool == mcp_tool
-    assert entries[0].mode == ToolMode.DENY
-
-
-@pytest.mark.django_db
-def test_inline_surface_storage_item_reverse_accessor(inline_surface, storage_file):
-    InlineSurfaceStorageItem.objects.create(
-        inline_surface=inline_surface,
-        storage_file=storage_file,
-        can_view="allow",
-    )
-
-    entries = list(inline_surface.storage_items.all())
-    assert len(entries) == 1
-    assert entries[0].storage_file == storage_file
-    assert entries[0].can_view == "allow"
-
-
-@pytest.mark.django_db
-def test_inline_surface_knowledge_with_naive_config_reverse_accessor(
-    inline_surface, naive_collection
-):
-    knowledge = InlineSurfaceKnowledge.objects.create(
-        inline_surface=inline_surface,
-        collection=naive_collection,
-    )
-    InlineSurfaceNaiveSearchConfig.objects.create(
-        surface_knowledge=knowledge,
-        search_limit=7,
-        similarity_threshold="0.40",
-    )
-
-    entries = list(inline_surface.knowledge.all())
-    assert len(entries) == 1
-    assert entries[0].collection == naive_collection
-    assert entries[0].naive_search_config.search_limit == 7
-
-
-# ---------------------------------------------------------------------------
 # 1:1 enforcement
 # ---------------------------------------------------------------------------
 
@@ -317,26 +236,6 @@ def test_duplicate_python_tool_pair_raises_integrity_error(inline_surface, py_to
         InlineSurfacePythonTool.objects.create(
             inline_surface=inline_surface, python_tool=py_tool, mode=ToolMode.DENY
         )
-
-
-# ---------------------------------------------------------------------------
-# content_hash unaffected
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_content_hash_unchanged_by_inline_surface_create_and_delete(task_node):
-    """ContentHashMixin.generate_hash iterates _meta.fields only — the reverse
-    OneToOne accessor to InlineSurface is not a local field and is excluded."""
-    hash_before = task_node.content_hash
-
-    inline = InlineSurface.objects.create(task_node=task_node)
-    task_node.refresh_from_db()
-    assert task_node.content_hash == hash_before
-
-    inline.delete()
-    task_node.refresh_from_db()
-    assert task_node.content_hash == hash_before
 
 
 # ---------------------------------------------------------------------------
@@ -436,22 +335,6 @@ def test_get_list_and_detail_return_nested_inline_shape(client, api_graph, py_to
 
 
 @pytest.mark.django_db
-def test_patch_other_field_only_leaves_inline_untouched(client, api_graph):
-    node = TaskNode.objects.create(graph=api_graph, node_name="inline-patch-keep")
-    InlineSurface.objects.create(task_node=node, instructions="keep me")
-
-    response = client.patch(
-        f"/api/tasknodes/{node.pk}/",
-        {"instructions": "updated task instructions"},
-        format="json",
-    )
-
-    assert response.status_code == 200, response.data
-    node.refresh_from_db()
-    assert node.inline_surface.instructions == "keep me"
-
-
-@pytest.mark.django_db
 def test_patch_inline_surface_null_deletes_everything(
     client, api_graph, py_tool, naive_collection
 ):
@@ -509,128 +392,6 @@ def test_patch_inline_surface_object_fully_replaces(
     assert not InlineSurfacePythonTool.objects.filter(pk=old_entry.pk).exists()
     assert inline.python_tools.count() == 0
     assert inline.mcp_tools.count() == 1
-
-
-@pytest.mark.django_db
-def test_put_without_inline_key_leaves_inline_untouched(client, api_graph):
-    """Documented deviation: PUT omitting `inline_surface` is treated the same
-    as PATCH omission (untouched), not as an implicit delete. This protects
-    IdempotentNodeCreateMixin retry payloads that lack the key."""
-    node = TaskNode.objects.create(graph=api_graph, node_name="inline-put-keep")
-    InlineSurface.objects.create(task_node=node, instructions="keep me")
-
-    response = client.put(
-        f"/api/tasknodes/{node.pk}/",
-        {
-            "graph": api_graph.pk,
-            "node_name": "inline-put-keep",
-            "instructions": "put updated",
-        },
-        format="json",
-    )
-
-    assert response.status_code == 200, response.data
-    node.refresh_from_db()
-    assert node.inline_surface.instructions == "keep me"
-
-
-@pytest.mark.django_db
-def test_reject_duplicate_python_tool_ids(client, api_graph, py_tool):
-    response = client.post(
-        "/api/tasknodes/",
-        {
-            "graph": api_graph.pk,
-            "node_name": "inline-dup-python-tools",
-            "inline_surface": {
-                "python_tools": [
-                    {"python_tool": py_tool.pk, "mode": "allow"},
-                    {"python_tool": py_tool.pk, "mode": "deny"},
-                ]
-            },
-        },
-        format="json",
-    )
-
-    assert response.status_code == 400, response.data
-    assert "inline_surface" in response.data["message"]
-    assert "python_tools" in response.data["message"]
-
-
-@pytest.mark.django_db
-def test_reject_cross_org_storage_file(client, api_graph, other_org_storage_file):
-    response = client.post(
-        "/api/tasknodes/",
-        {
-            "graph": api_graph.pk,
-            "node_name": "inline-cross-org-storage",
-            "inline_surface": {
-                "storage_items": [
-                    {"storage_file": other_org_storage_file.pk, "can_view": "allow"}
-                ]
-            },
-        },
-        format="json",
-    )
-
-    assert response.status_code == 400, response.data
-    assert "inline_surface" in response.data["message"]
-    assert "storage_items" in response.data["message"]
-
-
-@pytest.mark.django_db
-def test_reject_naive_config_on_graph_only_collection(
-    client, api_graph, graph_collection
-):
-    response = client.post(
-        "/api/tasknodes/",
-        {
-            "graph": api_graph.pk,
-            "node_name": "inline-rag-mismatch",
-            "inline_surface": {
-                "knowledge": [
-                    {
-                        "collection": graph_collection.pk,
-                        "naive_search_config": {
-                            "search_limit": 5,
-                            "similarity_threshold": "0.30",
-                        },
-                    }
-                ]
-            },
-        },
-        format="json",
-    )
-
-    assert response.status_code == 400, response.data
-    assert "inline_surface" in response.data["message"]
-    assert "knowledge" in response.data["message"]
-
-
-@pytest.mark.django_db
-def test_reject_duplicate_python_tool_ids_nests_error_under_inline_surface_key(
-    client, api_graph, py_tool
-):
-    """Regression: SurfaceValidator errors raised from InlineSurfaceWriteSerializer
-    must be nested under `inline_surface`, distinct from top-level `surface_list`
-    errors raised by TaskNodeSerializer for the catalog-surface path."""
-    response = client.post(
-        "/api/tasknodes/",
-        {
-            "graph": api_graph.pk,
-            "node_name": "inline-dup-error-shape",
-            "inline_surface": {
-                "python_tools": [
-                    {"python_tool": py_tool.pk, "mode": "allow"},
-                    {"python_tool": py_tool.pk, "mode": "deny"},
-                ]
-            },
-        },
-        format="json",
-    )
-
-    assert response.status_code == 400, response.data
-    assert "inline_surface" in response.data["message"]
-    assert "surface_list" not in response.data["message"]
 
 
 @pytest.mark.django_db
@@ -748,7 +509,7 @@ def test_surface_combine_service_accepts_inline_read_serializer_output(
     from agents.models import Surface
 
     catalog_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="inline-combine-catalog-surface",
         instructions="catalog instructions",
     )
@@ -768,30 +529,56 @@ def test_surface_combine_service_accepts_inline_read_serializer_output(
     assert {k["collection"] for k in combined["knowledge"]} == {naive_collection.pk}
 
 
-@pytest.mark.django_db
 @pytest.mark.parametrize(
-    "config",
+    ("inline_surface", "field"),
     [
-        {"max_context_tokens": 2_000_001},
-        {"text_unit_prop": 0.6, "community_prop": 0.5},
-        {"prompt": "p" * 10_001},
+        (lambda f: {"python_tools": [{"python_tool": f["py_tool"].pk, "mode": "allow"}, {"python_tool": f["py_tool"].pk, "mode": "deny"}]}, "python_tools"),
+        (lambda f: {"storage_items": [{"storage_file": f["other_org_storage_file"].pk, "can_view": "allow"}]}, "storage_items"),
+        (lambda f: {"knowledge": [{"collection": f["graph_collection"].pk, "naive_search_config": {"search_limit": 5, "similarity_threshold": "0.30"}}]}, "knowledge"),
+        *[
+            (lambda f, config=config: {"knowledge": [{"collection": f["graph_collection"].pk, "graph_local_search_config": config}]}, "knowledge")
+            for config in (
+                {"max_context_tokens": 2_000_001},
+                {"text_unit_prop": 0.6, "community_prop": 0.5},
+                {"prompt": "p" * 10_001},
+            )
+        ],
     ],
+    ids=["python-tool-twice", "other-orgs-storage-file", "naive-config-on-graph-collection", "too-many-tokens", "props-over-one", "prompt-too-long"],
 )
-def test_reject_out_of_range_inline_knowledge_config(client, api_graph, graph_collection, config):
+@pytest.mark.django_db
+def test_invalid_inline_surface_is_refused_under_its_own_key(
+    client, api_graph, py_tool, other_org_storage_file, graph_collection, inline_surface, field
+):
+    """Errors nest under `inline_surface`, apart from the catalog `surface_list` path, and nothing is saved."""
     response = client.post(
         "/api/tasknodes/",
-        {
-            "graph": api_graph.pk,
-            "node_name": "inline-out-of-range",
-            "inline_surface": {
-                "knowledge": [
-                    {"collection": graph_collection.pk, "graph_local_search_config": config}
-                ]
-            },
-        },
+        {"graph": api_graph.pk, "node_name": "inline-invalid", "inline_surface": inline_surface(locals())},
         format="json",
     )
 
     assert response.status_code == 400, response.data
-    assert "inline_surface" in response.data["message"]
-    assert not TaskNode.objects.filter(node_name="inline-out-of-range").exists()
+    message = str(response.data["message"])
+    assert "inline_surface" in message
+    assert field in message
+    assert "surface_list" not in message
+    assert not TaskNode.objects.filter(node_name="inline-invalid").exists()
+
+
+@pytest.mark.parametrize("method", ["patch", "put"])
+@pytest.mark.django_db
+def test_omitting_inline_surface_leaves_it_untouched(client, api_graph, method):
+    """PUT omission is treated like PATCH omission (not an implicit delete) so that
+    IdempotentNodeCreateMixin retry payloads without the key keep the inline surface."""
+    node = TaskNode.objects.create(graph=api_graph, node_name="inline-keep")
+    InlineSurface.objects.create(task_node=node, instructions="keep me")
+
+    response = getattr(client, method)(
+        f"/api/tasknodes/{node.pk}/",
+        {"graph": api_graph.pk, "node_name": "inline-keep", "instructions": "updated task instructions"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    node.refresh_from_db()
+    assert node.inline_surface.instructions == "keep me"

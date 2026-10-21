@@ -7,9 +7,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
-from app.enums import EmitterMode
+from app.exceptions import UnknownRunTypeError
 from app.factory import RunnerFactory
 from app.runners.list_of_tasks import ListOfTasksRunner
 from app.runners.single_task import SingleTaskRunner
@@ -46,62 +45,29 @@ def _factory() -> RunnerFactory:
     return factory
 
 
-def test_build_single_task_returns_runner_and_tool_event_emitter():
-    factory = _factory()
-    runner, emitter = factory.build(
-        _request(),
-        redis_client=MagicMock(),
-        result_stream_prefix="agent.results",
-        result_stream_ttl_s=3600,
+@pytest.mark.parametrize(
+    ("run_type", "payload", "runner_class"),
+    [
+        (RunType.SINGLE_TASK, {"task_instructions": "do it"}, SingleTaskRunner),
+        (RunType.LIST_OF_TASKS, {"tasks": [{"name": "t1", "instructions": "do it"}]}, ListOfTasksRunner),
+    ],
+)
+def test_each_run_type_gets_its_runner_and_a_live_tool_event_emitter(run_type, payload, runner_class):
+    request = AgentRequest(correlation_id="test-corr", run_type=run_type, agents=[_agent_spec()], payload=payload)
+
+    runner, emitter = _factory().build(
+        request, redis_client=MagicMock(), result_stream_prefix="agent.results", result_stream_ttl_s=3600
     )
 
-    assert isinstance(runner, SingleTaskRunner)
+    assert isinstance(runner, runner_class)
     assert isinstance(emitter, RedisStreamToolEventEmitter)
 
 
-def test_build_list_of_tasks_returns_list_of_tasks_runner():
-    factory = _factory()
-    request = AgentRequest(
-        correlation_id="test-corr",
-        run_type=RunType.LIST_OF_TASKS,
-        agents=[_agent_spec()],
-        payload={"tasks": [{"name": "t1", "instructions": "do it"}]},
-    )
-    runner, emitter = factory.build(
-        request,
-        redis_client=MagicMock(),
-        result_stream_prefix="agent.results",
-        result_stream_ttl_s=3600,
-    )
-
-    assert isinstance(runner, ListOfTasksRunner)
-    assert isinstance(emitter, RedisStreamToolEventEmitter)
-
-
-def test_build_stream_mode_raises_not_implemented():
-    factory = RunnerFactory(deps=MagicMock())
-
-    with pytest.raises(NotImplementedError):
-        factory._build_emitter(
-            EmitterMode.STREAM,
-            redis_client=MagicMock(),
-            result_stream_prefix="agent.results",
-            correlation_id="test-corr",
-            result_stream_ttl_s=3600,
+def test_unregistered_run_type_is_refused():
+    with pytest.raises(UnknownRunTypeError):
+        RunnerFactory(deps=MagicMock()).build(
+            _request(), redis_client=MagicMock(), result_stream_prefix="agent.results", result_stream_ttl_s=3600
         )
-
-
-def test_build_batch_mode_returns_batch_emitter():
-    factory = RunnerFactory(deps=MagicMock())
-    emitter = factory._build_emitter(
-        EmitterMode.BATCH,
-        redis_client=MagicMock(),
-        result_stream_prefix="agent.results",
-        correlation_id="test-corr",
-        result_stream_ttl_s=3600,
-    )
-
-    assert isinstance(emitter, RedisStreamBatchEmitter)
 
 
 async def test_built_emitter_publishes_to_stream_derived_from_request_correlation_id():
