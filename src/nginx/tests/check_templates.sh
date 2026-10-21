@@ -3,11 +3,15 @@
 # docker-entrypoint.d scripts, then envsubst), with the nginx image pinned in
 # src/docker-compose.yaml, and runs `nginx -T` (test the configuration and print it) on the result:
 #
-#   - every combination of PLUGINS_ENABLED and NGINX_SSL_MODE, with throwaway self-signed
-#     certificates; with the flag off nothing plugin-related may be rendered;
+#   - every combination of CHAT_ENABLED, PLUGINS_ENABLED and NGINX_SSL_MODE, with throwaway
+#     self-signed certificates; with the plugins flag off nothing plugin-related may be rendered;
+#   - in each, that every location of EpicStaff's own server that proxies anywhere but Django
+#     drops the Cookie header and the upstream's Set-Cookie and Clear-Site-Data, and that nginx's
+#     X-Frame-Options is the only one (read from the rendered configuration, includes expanded);
 #   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse;
-#   - live, inside the container: the package upload route, and which listener answers a caller
-#     on the plugins subnet (127.0.0.0/8 stands in for it) and which refuses it.
+#   - live, inside the container: which upstreams receive the browser's cookies and may set
+#     one, the package upload route, and which listener answers a caller on the plugins subnet
+#     (127.0.0.0/8 stands in for it) and which refuses it.
 #
 # Needs Docker and openssl. The containers have no network and publish no ports; nothing is left
 # behind. Usage, from anywhere: bash src/nginx/tests/check_templates.sh
@@ -133,15 +137,169 @@ expect_directives() {
   pass "$description"
 }
 
+# Reads `nginx -T` output and prints every directive of the configuration nginx loads from
+# default.conf, includes expanded, one per line: "<server>\t<location>\t<directive>". <server> is
+# the server block's ordinal (1 is EpicStaff's own; 0 outside any server), <location> the
+# enclosing location ("" at server level; a directive in an `if` or `limit_except` block counts
+# for its location). Block openings are not printed. Quotes and comments are honoured, so a `;`
+# or a brace inside a header value or a JSON body is no edge.
+read -r -d '' flatten_program << 'AWK' || :
+/^# configuration file .*:$/ {
+  file = substr($0, 22, length($0) - 22)
+  line_count[file] = 0
+  next
+}
+file != "" { line_count[file]++; lines[file, line_count[file]] = $0 }
+END { scan("/etc/nginx/conf.d/default.conf") }
+
+function scan(name,    i, k, line, c, quote, word) {
+  for (i = 1; i <= line_count[name]; i++) {
+    line = lines[name, i]
+    for (k = 1; k <= length(line); k++) {
+      c = substr(line, k, 1)
+      if (quote != "") {
+        word = word c
+        if (c == "\\") { k++; word = word substr(line, k, 1) }
+        else if (c == quote) quote = ""
+        continue
+      }
+      if (c == "#") break
+      if (c == " " || c == "\t" || c == ";" || c == "{" || c == "}") {
+        if (word != "") { words[++word_count] = word; word = "" }
+        if (c == ";" || c == "{" || c == "}") statement(c)
+        continue
+      }
+      if (word == "" && (c == "\"" || c == "'")) quote = c
+      word = word c
+    }
+    if (quote != "") word = word "\n"
+    else if (word != "") { words[++word_count] = word; word = "" }
+  }
+}
+
+function statement(terminator,    d, text, target) {
+  if (terminator == "}") {
+    depth--
+  } else if (word_count == 0) {
+    return
+  } else if (terminator == "{") {
+    depth++
+    kind[depth] = words[1]
+    if (depth == 1 && words[1] == "server") server_count++
+    location_name[depth] = ""
+    if (words[1] == "location") {
+      location_name[depth] = words[2]
+      for (d = 3; d <= word_count; d++) location_name[depth] = location_name[depth] " " words[d]
+    }
+  } else if (words[1] == "include" && (words[2] in line_count)) {
+    target = words[2]
+    word_count = 0
+    scan(target)
+  } else {
+    text = words[1]
+    for (d = 2; d <= word_count; d++) text = text " " words[d]
+    print (depth >= 1 && kind[1] == "server" ? server_count : 0) "\t" enclosing_location() "\t" text
+  }
+  word_count = 0
+}
+
+function enclosing_location(    d) {
+  for (d = depth; d >= 2; d--) if (kind[d] == "location") return location_name[d]
+  return ""
+}
+AWK
+
+# Reads the flattened configuration and checks every location of EpicStaff's own server (server 1)
+# that proxies: one line "<location> -> <proxy_pass target>: <problem>" per broken rule, then
+# "checked <n> <m>" (how many proxy anywhere but Django, how many to Django). The rules:
+#   - only Django gets the browser's cookies and may set or clear one: elsewhere Cookie is cleared
+#     and Set-Cookie and Clear-Site-Data hidden;
+#   - nginx's own X-Frame-Options is the only one: every proxying location hides the upstream's.
+# A location's proxy_set_header and proxy_hide_header lines replace the server's when it has any,
+# and only then; the check applies nginx's inheritance the same way.
+read -r -d '' main_server_check_program << 'AWK' || :
+BEGIN { FS = "\t" }
+$1 != 1 { next }
+{
+  location = $2
+  split($3, word, " ")
+  if (!(location in seen)) { seen[location] = 1; order[++count] = location }
+  if (word[1] == "proxy_pass") target[location] = word[2]
+  if (word[1] == "proxy_set_header") {
+    sets_headers[location] = 1
+    if (tolower(word[2]) == "cookie" && (word[3] == "\"\"" || word[3] == "''")) clears[location] = 1
+  }
+  if (word[1] == "proxy_hide_header") {
+    hides_headers[location] = 1
+    hidden[location, tolower(word[2])] = 1
+  }
+}
+
+function hides(location, name) {
+  if (!(location in hides_headers)) location = ""
+  return ((location, name) in hidden)
+}
+
+function clears_cookie(location) {
+  if (!(location in sets_headers)) location = ""
+  return (location in clears)
+}
+
+END {
+  for (i = 1; i <= count; i++) {
+    location = order[i]
+    if (location == "" || !(location in target)) continue
+    label = location " -> " target[location]
+    if (!hides(location, "x-frame-options")) print label ": passes X-Frame-Options through"
+    if (target[location] ~ /^http:\/\/backend_server(\/|$)/) { django++; continue }
+    elsewhere++
+    if (!clears_cookie(location)) print label ": passes the browser's Cookie on"
+    if (!hides(location, "set-cookie")) print label ": passes Set-Cookie through"
+    if (!hides(location, "clear-site-data")) print label ": passes Clear-Site-Data through"
+  }
+  print "checked " elsewhere + 0 " " django + 0
+}
+AWK
+
+flatten_configuration() { # $1 = a file of `nginx -T` output
+  awk "$flatten_program" "$1"
+}
+
+main_server_violations() { # $1 = a file of `nginx -T` output
+  flatten_configuration "$1" | awk "$main_server_check_program"
+}
+
+# $1 = description. Checks the last rendered configuration: the refresh cookie (Path=/ on HTTPS)
+# reaches Django only, never the frontend, realtime, webhooks, the auditor or a chat service that
+# may run outside the stack; none of them can set a cookie on EpicStaff's host; and nginx's
+# X-Frame-Options is the only one.
+expect_only_django_cookies() {
+  local result violations counts elsewhere django
+  result=$(main_server_violations "$work_dir/out")
+  violations=$(printf '%s\n' "$result" | grep -v '^checked ' || true)
+  counts=$(printf '%s\n' "$result" | sed -n 's/^checked //p')
+  elsewhere=${counts% *}
+  django=${counts#* }
+  if [ -n "$violations" ]; then
+    fail "$1: $(printf '%s\n' "$violations" | paste -sd ';' -)"
+  elif [ "$elsewhere" -eq 0 ] || [ "$django" -eq 0 ]; then
+    fail "$1: found no proxied location in EpicStaff's server ($elsewhere elsewhere, $django to Django)"
+  else
+    pass "$1 ($elsewhere locations proxy elsewhere without cookies either way, $django proxy to Django)"
+  fi
+}
+
 if [ -x "$plugins_envsh" ]; then
   pass "16-normalize-plugins-enabled.envsh is executable (the image ignores it otherwise)"
 else
   fail "16-normalize-plugins-enabled.envsh is not executable: the image's entrypoint skips it"
 fi
 
-for ssl_mode in off on; do
-  if expect_valid "nginx -t: PLUGINS_ENABLED=false NGINX_SSL_MODE=$ssl_mode" \
-    PLUGINS_ENABLED=false NGINX_SSL_MODE=$ssl_mode; then
+for chat_enabled in false true; do for ssl_mode in off on; do
+  flags="CHAT_ENABLED=$chat_enabled NGINX_SSL_MODE=$ssl_mode"
+  if expect_valid "nginx -t: PLUGINS_ENABLED=false $flags" \
+    PLUGINS_ENABLED=false NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled; then
+    expect_only_django_cookies "PLUGINS_ENABLED=false $flags: only Django gets and sets cookies"
     leaked=""
     for text in plugin_identifier /srv/plugin-spa /api/admin/plugins/packages/ \
       /_epicstaff/plugin-upload-permission auth_request \
@@ -153,19 +311,20 @@ for ssl_mode in off on; do
       fi
     done
     if [ -z "$leaked" ] && directives | grep -qE "frame-src 'self' *;"; then
-      pass "PLUGINS_ENABLED=false NGINX_SSL_MODE=$ssl_mode renders nothing plugin-related"
+      pass "PLUGINS_ENABLED=false $flags renders nothing plugin-related"
     else
-      fail "PLUGINS_ENABLED=false NGINX_SSL_MODE=$ssl_mode renders plugin directives:$leaked"
+      fail "PLUGINS_ENABLED=false $flags renders plugin directives:$leaked"
     fi
   fi
 
-  if expect_valid "nginx -t: PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode" \
-    PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode; then
+  if expect_valid "nginx -t: PLUGINS_ENABLED=true $flags" \
+    PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled; then
+    expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
     expected_tls="include /etc/nginx/conf.d/plugins-ssl-off.snippet;"
     if [ "$ssl_mode" = on ]; then
       expected_tls="ssl_certificate /etc/nginx/certs/plugins-fullchain.pem;"
     fi
-    expect_directives "PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode renders the plugin routes" \
+    expect_directives "PLUGINS_ENABLED=true $flags renders the plugin routes" \
       'server_name "~^(?<plugin_identifier>[a-z][a-z0-9-]{0,30}[a-z0-9])\.plugins\.epicstaff\.test$";' \
       "frame-src 'self' https://*.plugins.epicstaff.test;" \
       "add_header Content-Security-Policy \"frame-ancestors 'self' https://epicstaff.test\" always;" \
@@ -178,7 +337,7 @@ for ssl_mode in off on; do
       "location ^~ /api/plugin-gateway/ {" \
       "location ^~ /api/plugin-nodes/ {" \
       "$expected_tls"
-    expect_directives "PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode refuses the plugins subnet on 80/443" \
+    expect_directives "PLUGINS_ENABLED=true $flags refuses the plugins subnet on 80/443" \
       'geo $plugin_network_caller {' \
       '10.235.0.0/24  1;' \
       'if ($plugin_network_caller) {'
@@ -187,7 +346,7 @@ for ssl_mode in off on; do
     else
       fail "the plugins subnet is refused by $(directives | grep -cF 'if ($plugin_network_caller) {') server(s), not 2"
     fi
-    expect_directives "PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode renders the plugin gateway" \
+    expect_directives "PLUGINS_ENABLED=true $flags renders the plugin gateway" \
       'client_max_body_size 20m;' \
       'set $plugin_normalized_path $uri;' \
       'auth_request /_plugin_gateway_check;' \
@@ -216,14 +375,63 @@ for ssl_mode in off on; do
       'proxy_set_header X-Original-Transfer-Encoding $http_transfer_encoding;' \
       'location @plugin_denied {' \
       "return 401 '{\"status_code\":401,\"code\":\"login_required\""
-    expect_directives "PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode renders the internal API listener" \
+    expect_directives "PLUGINS_ENABLED=true $flags renders the internal API listener" \
       'listen 8081;' \
       'location ^~ /api/auth/ {' \
       'location ^~ /api/admin/ {' \
       'proxy_set_header X-Organization-Id $http_x_organization_id;' \
       'if ($plugin_network_caller = 0) {'
   fi
-done
+done; done
+
+# The check itself, on a configuration with chat and plugins on, from which rules are deleted:
+#   - every Cookie, Set-Cookie and Clear-Site-Data rule: it must name exactly EpicStaff's own
+#     non-Django locations, the chat snippet's included, and not the plugin host's /api/
+#     (another server, which hides Set-Cookie and clears Cookie too);
+#   - only the X-Frame-Options line of cookie-free-upstream.snippet: exactly the same locations
+#     lose it, and Django's still inherit the server's (nginx's inheritance, modelled right).
+# Update the list when a location that proxies anywhere but Django is added or removed.
+non_django_locations=$(LC_ALL=C sort << 'LOCATIONS'
+/ -> http://frontend_server
+= /chat -> http://frontend_server
+^~ /webhooks/ -> http://webhook_server
+^~ /voice/ -> http://realtime_server
+/voice/stream -> http://realtime_server
+/realtime/ -> http://realtime_server
+/chat/ -> $chat_upstream
+/auditor/ -> $auditor_upstream
+LOCATIONS
+)
+# $1 = a file of `nginx -T` output; prints the main server's violations, sorted.
+sorted_violations() { main_server_violations "$1" | { grep -v '^checked ' || true; } | LC_ALL=C sort; }
+# $@ = problems; prints them for every non-Django location, sorted like sorted_violations.
+expected_violations() {
+  local problem
+  for problem in "$@"; do
+    printf '%s\n' "$non_django_locations" | sed "s/\$/: $problem/"
+  done | LC_ALL=C sort
+}
+if expect_valid "nginx -t: CHAT_ENABLED=true PLUGINS_ENABLED=true, for the cookie check's self-test" \
+  CHAT_ENABLED=true PLUGINS_ENABLED=true; then
+  grep -vF -e 'proxy_set_header Cookie "";' -e 'proxy_hide_header Set-Cookie;' \
+    -e 'proxy_hide_header Clear-Site-Data;' "$work_dir/out" > "$work_dir/out-without-cookie-rules"
+  found=$(sorted_violations "$work_dir/out-without-cookie-rules")
+  if [ "$found" = "$(expected_violations "passes Set-Cookie through" "passes the browser's Cookie on" \
+    "passes Clear-Site-Data through")" ]; then
+    pass "the cookie check finds every location of EpicStaff's server that proxies elsewhere"
+  else
+    fail "the cookie check, with every cookie rule deleted, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+  awk '/^# configuration file / { in_snippet = ($0 ~ /cookie-free-upstream\.snippet:$/) }
+       !(in_snippet && /proxy_hide_header X-Frame-Options;/)' "$work_dir/out" \
+    > "$work_dir/out-without-snippet-frame-rule"
+  found=$(sorted_violations "$work_dir/out-without-snippet-frame-rule")
+  if [ "$found" = "$(expected_violations "passes X-Frame-Options through")" ]; then
+    pass "the cookie check applies nginx's proxy_hide_header inheritance"
+  else
+    fail "the cookie check, without the snippet's X-Frame-Options rule, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+fi
 
 # The flag is read like every other boolean in the stack (env_bool).
 if expect_valid "PLUGINS_ENABLED=Yes is accepted" PLUGINS_ENABLED=Yes; then
@@ -447,6 +655,72 @@ for target in "epicstaff.test /" "epicstaff.test /api/other/" "epicstaff.test /a
   else
     fail "a plugins-subnet caller on ${target% *}${target#* }: expected 403, got $status"
   fi
+done
+
+docker rm -f "$live_container" > /dev/null
+live_container=""
+
+# Cookies both ways, live, with plugins off and on: every upstream of EpicStaff's server is a stub
+# on 127.0.0.1 that answers with its port and the Cookie header it received, tries to set a cookie
+# and to clear every cookie, and sends X-Frame-Options: DENY (as Django does). A browser sends one Cookie header; a client may
+# send several, and none may get through.
+cat > "$work_dir/stub-upstreams.conf" << 'STUB'
+server {
+    listen 127.0.0.1:8000;
+    listen 127.0.0.1:8001;
+    listen 127.0.0.1:8009;
+    listen 127.0.0.1:8010;
+    listen 127.0.0.1:8050;
+    listen 127.0.0.1:8200;
+    default_type text/plain;
+    add_header Set-Cookie "__Host-auth.refresh=planted-by-$server_port; Path=/; Secure; HttpOnly" always;
+    add_header Clear-Site-Data '"cookies"' always;
+    add_header X-Frame-Options DENY always;
+    return 200 "$server_port cookie=[$http_cookie]";
+}
+STUB
+for plugins_enabled in false true; do
+  set_docker_arguments PLUGINS_ENABLED=$plugins_enabled CHAT_ENABLED=true \
+    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000 \
+    FRONTEND_HOST=127.0.0.1 FRONTEND_PORT=8001 WEBHOOK_HOST=127.0.0.1 WEBHOOK_PORT=8009 \
+    AUDITOR_HOST=127.0.0.1 AUDITOR_PORT=8010 REALTIME_HOST=127.0.0.1 REALTIME_PORT=8050
+  live_container=$(docker run -d "${docker_arguments[@]}" \
+    -v "$work_dir/stub-upstreams.conf:/etc/nginx/conf.d/zz-stub-upstreams.conf:ro" "$image")
+  for _ in $(seq 50); do
+    if live curl -s -o /dev/null http://127.0.0.1:8001/ 2> /dev/null; then break; fi
+    sleep 0.1
+  done
+  wrong=""
+  # "<path> <port of the upstream it must reach> <django: cookies both ways, or - for none>"
+  for target in "/ 8001 -" "/plugins/weather 8001 -" "/chat 8001 -" "/chat/api/x 8200 -" \
+    "/webhooks/x 8009 -" "/voice/x 8050 -" "/voice/stream 8050 -" "/realtime/x 8050 -" \
+    "/auditor/api/x 8010 -" "/api/x/ 8000 django" "/admin/ 8000 django" "/ws/x 8000 django" \
+    "/api/storage/upload/stream 8000 django" "/api/run-session/subscribe/1/ 8000 django" \
+    "/static/x 8000 django" "/media/x 8000 django"; do
+    read -r path port upstream <<< "$target"
+    live sh -c 'curl -s -D /tmp/headers -o /tmp/body -H "Host: epicstaff.test" \
+      -H "Cookie: __Host-auth.refresh=live-refresh" -H "Cookie: auth.refresh=live-legacy; csrftoken=x" \
+      "http://127.0.0.1$1"' request "$path" || true
+    answer=$(live cat /tmp/body)
+    set_cookies=$(live sh -c 'grep -ci "^set-cookie:" /tmp/headers' || true)
+    clear_site_data=$(live sh -c 'grep -ci "^clear-site-data:" /tmp/headers' || true)
+    frame_options=$(live sh -c 'grep -i "^x-frame-options:" /tmp/headers | tr -d "\r" | paste -sd "|" -' || true)
+    expected="$port cookie=[] set-cookie=0 clear-site-data=0"
+    if [ "$upstream" = django ]; then
+      expected="$port cookie=[__Host-auth.refresh=live-refresh; auth.refresh=live-legacy; csrftoken=x] set-cookie=1 clear-site-data=1"
+    fi
+    got="$answer set-cookie=$set_cookies clear-site-data=$clear_site_data"
+    if [ "$got" != "$expected" ] || [ "$frame_options" != "X-Frame-Options: SAMEORIGIN" ]; then
+      wrong="$wrong [$path: $got $frame_options]"
+    fi
+  done
+  if [ -z "$wrong" ]; then
+    pass "PLUGINS_ENABLED=$plugins_enabled, live: only Django's routes get cookies and may set or clear one; X-Frame-Options is nginx's alone"
+  else
+    fail "PLUGINS_ENABLED=$plugins_enabled, live: wrong cookies or framing rule:$wrong"
+  fi
+  docker rm -f "$live_container" > /dev/null
+  live_container=""
 done
 
 if [ "$failures" -ne 0 ]; then

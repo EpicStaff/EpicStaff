@@ -1,0 +1,13 @@
+# Included in every location of EpicStaff's server that proxies anywhere but Django: the frontend,
+# webhooks, realtime, the auditor and the chat service, which may run outside this stack.
+#
+# Only Django reads and sets cookies. On HTTPS the refresh cookie has Path=/, so the browser sends
+# it with every request to this host: it stops here. Nothing these services answer may set,
+# overwrite or clear a cookie on EpicStaff's host either, such as a planted __Host-auth.refresh,
+# or Clear-Site-Data: "cookies", which would sign everyone out of EpicStaff.
+proxy_set_header Cookie "";
+proxy_hide_header Set-Cookie;
+proxy_hide_header Clear-Site-Data;
+# A location that hides any header itself inherits none of the server's proxy_hide_header lines,
+# so the server's is repeated: nginx's own X-Frame-Options stays the only one.
+proxy_hide_header X-Frame-Options;

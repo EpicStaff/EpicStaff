@@ -24,6 +24,7 @@ jobs:
       sandbox: ${{ steps.filter.outputs.be_sandbox }}
       chat: ${{ steps.filter.outputs.be_chat }}
       plugins_js: ${{ steps.filter.outputs.plugins_js }}
+      nginx: ${{ steps.filter.outputs.nginx }}
       py_services: ${{ steps.filter.outputs.py_services }}
     steps:
       - name: Checkout
@@ -72,6 +73,10 @@ jobs:
           # The plugin author tooling: the JS SDK, the sample plugins, and the Python
           # package whose CLI validates the samples.
           filter plugins_js '^(plugin-sdk/|plugin-samples/|src/plugin_sdk/|\.github/workflows/pr\.yml$)'
+
+          # nginx's templates and the start-up scripts that fill them in, checked by
+          # rendering them in the pinned nginx image (check_templates.sh).
+          filter nginx '^(src/nginx/(templates|docker-entrypoint\.d)/|src/nginx/tests/check_templates\.sh$|src/docker-compose\.yaml$|\.github/workflows/pr\.yml$)'
 
           # Backend suites are gated per service, so a pull request touching one
           # service does not pay for the other three. Three inputs force every
@@ -626,6 +631,22 @@ jobs:
           uv run --frozen --project src/plugin_sdk
           epicstaff-plugin validate "$RUNNER_TEMP/weather.esplugin"
 
+  # nginx's configuration as the epicstaff-nginx container renders it, in the
+  # image pinned in src/docker-compose.yaml: `nginx -t` on every combination of
+  # settings, the values the start-up scripts must refuse, and live checks
+  # inside the container, among them that only Django gets or sets EpicStaff's
+  # cookies. Needs Docker and openssl, both on the runner.
+  nginx-templates:
+    needs: changes
+    if: needs.changes.outputs.nginx == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Render and check the nginx templates
+        run: bash src/nginx/tests/check_templates.sh
+
   # There is deliberately no django-tests job here. The suite takes about twenty
   # minutes -- measured on 2026-09-18, and that is already with tests/api_tests
   # left out as too slow to run here -- and that is a wait every django_app pull
@@ -671,6 +692,7 @@ jobs:
       - sandbox-tests
       - chat-tests
       - plugin-sdk-checks
+      - nginx-templates
       - build
     if: always()
     runs-on: ubuntu-latest

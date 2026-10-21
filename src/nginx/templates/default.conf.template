@@ -61,9 +61,17 @@ server {
     # hosts' wildcard when plugins are on and empty when they are off.
     add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-src 'self' ${PLUGINS_FRAME_SRC}; frame-ancestors 'self'; base-uri 'self'" always;
 
+    # ---- Cookies ----------------------------------------------------------
+    # Only Django reads and sets cookies. Every location that proxies anywhere but backend_server
+    # includes cookie-free-upstream.snippet (no Cookie to the upstream, no Set-Cookie from it),
+    # and a new one must too: tests/check_templates.sh fails otherwise. It has to be included in
+    # each location: a location that sets any proxy_set_header or proxy_hide_header of its own
+    # inherits none of the server's.
+
     location / {
         proxy_pass http://frontend_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -141,6 +149,7 @@ server {
     location ^~ /webhooks/ {
         proxy_pass http://webhook_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -152,6 +161,7 @@ server {
     location ^~ /voice/ {
         proxy_pass http://realtime_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -167,6 +177,7 @@ server {
     location /voice/stream {
         proxy_pass http://realtime_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -182,6 +193,7 @@ server {
     location /realtime/ {
         proxy_pass http://realtime_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -209,6 +221,7 @@ server {
         rewrite ^/auditor/(.*)$ /$1 break;
         proxy_pass $auditor_upstream;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_http_version 1.1;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header Host $host;
