@@ -7,6 +7,8 @@ import {
     PackageReview,
     PluginDetail,
     PluginGrant,
+    PluginOrgRemovedJob,
+    PluginOrgRemovedJobQuery,
     PluginSummary,
     PluginUploadEvent,
 } from '../models/plugin-admin.model';
@@ -17,12 +19,14 @@ import {
     PluginSettingsResponse,
     PluginSettingsUpdate,
 } from '../models/plugin-backend.model';
+import { PluginGrantPurgePreview, PluginPurgePreview } from '../models/plugin-purge-preview.model';
 import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 import { PluginsAdminApiService } from './plugins-admin-api.service';
 
 /**
- * The SuperAdmin plugin list, kept in step with what is done to it here (upload, approve, reject, grant). Registered
- * in `APP_STORAGE`, so logout clears it; a response that lands after `clear()` is dropped.
+ * The SuperAdmin plugin list, kept in step with what is done to it here (upload, approve, reject, grant, uninstall,
+ * reinstall, delete). Registered in `APP_STORAGE`, so logout clears it; a response that lands after `clear()` is
+ * dropped.
  */
 @Injectable({ providedIn: 'root' })
 export class PluginsAdminStorageService implements StorageService {
@@ -57,6 +61,32 @@ export class PluginsAdminStorageService implements StorageService {
 
     getPlugin(identifier: string): Observable<PluginDetail> {
         return this.whenCurrent(this.api.getPlugin(identifier), (plugin) => this.upsert(plugin));
+    }
+
+    /** Uninstalling suspends every grant, so the plugin's count of active grants changes with it. */
+    uninstallPlugin(identifier: string): Observable<PluginDetail> {
+        return this.whenCurrent(this.api.uninstallPlugin(identifier), (plugin) => this.upsert(plugin));
+    }
+
+    reinstallPlugin(identifier: string): Observable<PluginDetail> {
+        return this.whenCurrent(this.api.reinstallPlugin(identifier), (plugin) => this.upsert(plugin));
+    }
+
+    getPluginPurgePreview(identifier: string): Observable<PluginPurgePreview> {
+        return this.api.getPluginPurgePreview(identifier);
+    }
+
+    purgePlugin(identifier: string, verificationPhrase: string): Observable<PluginDetail> {
+        return this.whenCurrent(this.api.purgePlugin(identifier, verificationPhrase), (plugin) => this.upsert(plugin));
+    }
+
+    retryRemoval(identifier: string): Observable<PluginDetail> {
+        return this.whenCurrent(this.api.retryRemoval(identifier), (plugin) => this.upsert(plugin));
+    }
+
+    /** Drops a plugin the server no longer knows, such as one whose deletion has finished. */
+    forgetPlugin(identifier: string): void {
+        this.pluginsSignal.update((plugins) => plugins.filter((plugin) => plugin.identifier !== identifier));
     }
 
     /** The upload creates or replaces a pending package, so the list is reloaded once it is stored. */
@@ -120,6 +150,30 @@ export class PluginsAdminStorageService implements StorageService {
     /** As `suspendGrant`: reload the plugin with `getPlugin` afterwards. */
     resumeGrant(identifier: string, grantId: number): Observable<PluginGrant> {
         return this.api.resumeGrant(identifier, grantId);
+    }
+
+    getGrantPurgePreview(identifier: string, grantId: number): Observable<PluginGrantPurgePreview> {
+        return this.api.getGrantPurgePreview(identifier, grantId);
+    }
+
+    /** As `suspendGrant`: reload the plugin with `getPlugin` afterwards. */
+    purgeGrant(identifier: string, grantId: number, verificationPhrase: string): Observable<PluginGrant> {
+        return this.api.purgeGrant(identifier, grantId, verificationPhrase);
+    }
+
+    listOrgRemovedJobs(
+        identifier: string,
+        query: PluginOrgRemovedJobQuery
+    ): Observable<ApiGetRequest<PluginOrgRemovedJob>> {
+        return this.api.listOrgRemovedJobs(identifier, query);
+    }
+
+    retryOrgRemovedJob(identifier: string, jobId: number): Observable<PluginOrgRemovedJob> {
+        return this.api.retryOrgRemovedJob(identifier, jobId);
+    }
+
+    skipOrgRemovedJob(identifier: string, jobId: number): Observable<PluginOrgRemovedJob> {
+        return this.api.skipOrgRemovedJob(identifier, jobId);
     }
 
     getSettings(identifier: string): Observable<PluginSettingsResponse> {
@@ -190,6 +244,8 @@ function toSummary(plugin: PluginDetail): PluginSummary {
         grant_count: plugin.grant_count,
         pending_package: plugin.pending_package,
         created_at: plugin.created_at,
+        purge_after: plugin.purge_after,
+        needs_attention: plugin.needs_attention,
     };
 }
 

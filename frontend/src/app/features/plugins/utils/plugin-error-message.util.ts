@@ -41,6 +41,18 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
     grant_not_suspended: 'This grant is not suspended. Reload the list.',
     // Shown only when the server sends no message of its own (see SERVER_MESSAGE_CODES).
     plugin_suspended: 'This run uses resources of a plugin that is not active in this organization.',
+    invalid_purge_phrase: 'The confirmation text does not match. The name may have changed; reload and try again.',
+    grant_not_purgeable:
+        "This organization's data is already being deleted, or the whole plugin is being deleted. Reload the list.",
+    plugin_not_uninstallable: 'This plugin cannot be uninstalled in its current state. Reload the page.',
+    plugin_not_uninstalling: 'This plugin is not uninstalled, so there is nothing to reinstall. Reload the page.',
+    plugin_not_purgeable: 'This plugin cannot be deleted in its current state. Reload the page.',
+    plugin_uninstalling: 'This plugin is uninstalled or being deleted, so this cannot be done now.',
+    removal_not_retryable: 'The plugin node has not reported a failed removal, so there is nothing to retry.',
+    hook_job_not_found: 'This data removal no longer exists. Reload the list.',
+    org_removed_hook_not_retryable: 'This data removal cannot be retried now. Reload the list.',
+    org_removed_hook_not_skippable:
+        'This data removal is running or has finished, so it cannot be skipped. Reload the list.',
     throttled: 'Too many requests. Wait a moment and try again.',
 };
 

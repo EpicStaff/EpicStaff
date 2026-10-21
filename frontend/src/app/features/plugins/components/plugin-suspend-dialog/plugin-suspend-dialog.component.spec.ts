@@ -151,14 +151,14 @@ describe('PluginSuspendDialogComponent', () => {
         );
         render();
 
-        expect(text(element.querySelector('.suspend__load-error'))).toContain(PLUGIN_ERROR_MESSAGES.grant_not_found);
+        expect(text(element.querySelector('.dialog__load-error'))).toContain(PLUGIN_ERROR_MESSAGES.grant_not_found);
         expect(sectionHeadings()).toEqual([]);
 
         button('Retry').click();
         fixture.detectChanges();
 
         expect(storage.getSuspendPreview).toHaveBeenCalledTimes(2);
-        expect(element.querySelector('.suspend__load-error')).toBeNull();
+        expect(element.querySelector('.dialog__load-error')).toBeNull();
         expect(items(ORGANIZATION_FLOWS)).toEqual(['Daily digest']);
     });
 

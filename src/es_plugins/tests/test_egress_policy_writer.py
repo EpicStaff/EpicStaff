@@ -11,6 +11,7 @@ import bcrypt
 import pytest
 from loguru import logger
 
+from es_plugins.egress import policy_writer
 from es_plugins.egress.policy_writer import (
     HOSTS_FILE_NAME,
     PASSWORDS_FILE_NAME,
@@ -65,7 +66,8 @@ async def test_each_plugin_gets_a_url_safe_password_whose_bcrypt_hash_the_proxy_
     lines = password_lines(tmp_path)
     assert list(lines) == ["probe-a", "weather"]
     for identifier, password in (("weather", weather), ("probe-a", probe)):
-        assert lines[identifier].startswith("$2b$10$")
+        # bcrypt's lowest cost: the passwords are random tokens, and the proxy hashes per request.
+        assert lines[identifier].startswith("$2b$04$")
         assert bcrypt.checkpw(password.encode(), lines[identifier].encode())
 
 
@@ -153,3 +155,91 @@ async def test_no_password_hash_or_host_reaches_a_log_line(writer):
     assert any(line.startswith("plugins.egress.policy_written users=1 hosts=1") for line in lines)
     for secret in (password, "$2b$", "geocoding-api"):
         assert not [line for line in lines if secret in line]
+
+
+class WholeSecondReader:
+    """Reads the password file the way Squid's basic_ncsa_auth does: again only when the whole
+    seconds of its modification time change."""
+
+    def __init__(self, path):
+        self._path = path
+        self._seconds = None
+        self.content = ""
+
+    def check(self) -> str:
+        seconds = int(os.stat(self._path).st_mtime)
+        if seconds != self._seconds:
+            self._seconds = seconds
+            self.content = self._path.read_text()
+        return self.content
+
+
+async def test_a_password_written_within_the_same_second_still_reaches_squids_helper(writer, tmp_path):
+    reader = WholeSecondReader(tmp_path / PASSWORDS_FILE_NAME)
+    reader.check()
+
+    for index in range(5):
+        await writer.issue_password(f"plugin-{index}")
+        assert f"plugin-{index}:" in reader.check()
+
+    await writer.remove_password("plugin-2")
+    assert "plugin-2:" not in reader.check()
+
+
+async def test_a_password_whose_file_write_failed_is_not_kept(writer, tmp_path, monkeypatch):
+    real_replace = policy_writer.replace_atomically
+
+    def failing(directory, name, content, **options):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(policy_writer, "replace_atomically", failing)
+    with pytest.raises(EgressPolicyError, match="No space left on device"):
+        await writer.issue_password("weather")
+    monkeypatch.setattr(policy_writer, "replace_atomically", real_replace)
+
+    assert not writer.forget_password("weather")
+    password = await writer.issue_password("weather")
+    assert bcrypt.checkpw(password.encode(), password_lines(tmp_path)["weather"].encode())
+
+
+async def test_a_failed_rename_leaves_no_temporary_file(writer, tmp_path, monkeypatch):
+    def refusing_rename(*arguments, **options):
+        raise OSError("Read-only file system")
+
+    monkeypatch.setattr(policy_writer.os, "replace", refusing_rename)
+    with pytest.raises(EgressPolicyError):
+        await writer.write_hosts({"weather": ["example.com"]})
+    monkeypatch.undo()
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == [HOSTS_FILE_NAME, PASSWORDS_FILE_NAME]
+    assert json.loads((tmp_path / HOSTS_FILE_NAME).read_text()) == {}
+
+
+async def test_removing_a_plugin_drops_its_password_and_hosts_and_again_changes_nothing(writer, tmp_path):
+    await writer.write_hosts({"weather": ["example.com"], "notes": ["api.example.org"]})
+    await writer.issue_password("weather")
+    notes_password = await writer.issue_password("notes")
+
+    await writer.remove_plugin("weather")
+    hosts_inode = os.stat(tmp_path / HOSTS_FILE_NAME).st_ino
+    passwords_inode = os.stat(tmp_path / PASSWORDS_FILE_NAME).st_ino
+    await writer.remove_plugin("weather")
+
+    assert json.loads((tmp_path / HOSTS_FILE_NAME).read_text()) == {"notes": ["api.example.org"]}
+    assert list(password_lines(tmp_path)) == ["notes"]
+    assert bcrypt.checkpw(notes_password.encode(), password_lines(tmp_path)["notes"].encode())
+    assert os.stat(tmp_path / HOSTS_FILE_NAME).st_ino == hosts_inode
+    assert os.stat(tmp_path / PASSWORDS_FILE_NAME).st_ino == passwords_inode
+
+
+async def test_a_removal_never_writes_back_an_older_host_list(writer, tmp_path):
+    await writer.write_hosts({"weather": ["example.com"], "notes": []})
+
+    # The newer list is being written while the removal starts: the removal must not take the
+    # list it replaces from before that write.
+    await asyncio.gather(
+        writer.write_hosts({"notes": [], "alpha": ["api.example.org"]}),
+        writer.remove_plugin("weather"),
+    )
+
+    assert json.loads((tmp_path / HOSTS_FILE_NAME).read_text()) == {"alpha": ["api.example.org"], "notes": []}

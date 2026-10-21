@@ -15,7 +15,22 @@ export type PluginActivityAction =
     | 'grant_resumed'
     | 'database_ready'
     | 'database_failed'
-    | 'database_limit_restored';
+    | 'database_limit_restored'
+    | 'plugin_uninstalled'
+    | 'plugin_reinstalled'
+    | 'plugin_purge_started'
+    | 'plugin_removal_failed'
+    | 'plugin_removal_retried'
+    | 'plugin_purged'
+    | 'grant_purge_started'
+    | 'grant_purged'
+    | 'org_removed_hook_succeeded'
+    | 'org_removed_hook_failed'
+    | 'org_removed_hook_retried'
+    | 'org_removed_hook_skipped';
+
+/** Why a deletion began (`detail.reason` of `grant_purge_started` and `plugin_purge_started`). */
+export type PluginPurgeReason = 'requested' | 'grace_period_over' | 'plugin_deleted';
 
 /** `plugin`: its service account; `superadmin`: a SuperAdmin on the admin pages; `platform`: EpicStaff itself. */
 export type PluginActivityActorKind = 'plugin' | 'superadmin' | 'platform';
@@ -39,7 +54,8 @@ export interface PluginActivityEvent {
     target: { resource_type: string | null; id: string | null; label: string | null } | null;
     /**
      * Never holds a secret. `limits_changed`: the overrides in force after the change, one per limit (`{}` when none
-     * is left); `install_hook_failed` and `database_failed`: `error`.
+     * is left); `install_hook_failed`, `database_failed`, `plugin_removal_failed` and `org_removed_hook_failed`:
+     * `error`; `grant_purge_started` and `plugin_purge_started`: `reason`.
      */
     detail: Record<string, PluginActivityDetailValue>;
 }

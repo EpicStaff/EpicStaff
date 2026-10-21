@@ -50,6 +50,10 @@ HOOK_FINISHED_ACTIONS = {
         ActivityAction.INSTALL_HOOK_SUCCEEDED,
         ActivityAction.INSTALL_HOOK_FAILED,
     ),
+    HookJobKind.ORG_REMOVED: (
+        ActivityAction.ORG_REMOVED_HOOK_SUCCEEDED,
+        ActivityAction.ORG_REMOVED_HOOK_FAILED,
+    ),
 }
 
 
@@ -116,7 +120,8 @@ class ActivityRecorder:
             actor, grant.plugin.identifier, grant.org_id, ActivityAction.GRANT_CREATED, {}
         )
 
-    def grant_suspended(self, actor, grant: PluginGrant, previous_state: str) -> None:
+    def grant_suspended(self, actor, grant: PluginGrant, previous_state: str, cause: str) -> None:
+        """Record a suspension; `cause` is `grant`, or `uninstall` when the plugin was uninstalled."""
         _superadmin_event(
             actor,
             grant.plugin.identifier,
@@ -124,17 +129,103 @@ class ActivityRecorder:
             ActivityAction.GRANT_SUSPENDED,
             {
                 "previous_state": previous_state,
-                "purge_after": serializers.DateTimeField().to_representation(grant.purge_after),
+                "purge_after": _datetime_text(grant.purge_after),
+                "cause": cause,
             },
         )
 
-    def grant_resumed(self, actor, grant: PluginGrant) -> None:
+    def grant_resumed(self, actor, grant: PluginGrant, cause: str | None) -> None:
+        """Record a resume; `cause` is the one the suspension had."""
         _superadmin_event(
             actor,
             grant.plugin.identifier,
             grant.org_id,
             ActivityAction.GRANT_RESUMED,
-            {"state": grant.state},
+            {"state": grant.state, "cause": cause},
+        )
+
+    def grant_purge_started(
+        self,
+        actor,
+        grant: PluginGrant,
+        *,
+        reason: str,
+        previous_state: str,
+        owned_resources: int,
+    ) -> None:
+        """Record that deleting a grant's data began; `actor` None is the platform."""
+        _actor_event(
+            actor,
+            grant.plugin.identifier,
+            grant.org_id,
+            ActivityAction.GRANT_PURGE_STARTED,
+            {
+                "reason": reason,
+                "previous_state": previous_state,
+                "owned_resources": owned_resources,
+            },
+        )
+
+    def grant_purged(self, identifier: str, organization_id: int) -> None:
+        _actor_event(None, identifier, organization_id, ActivityAction.GRANT_PURGED, {})
+
+    def plugin_uninstalled(self, actor, identifier: str, purge_after, organizations: int) -> None:
+        """Record an uninstall; `organizations` is how many grants it suspended."""
+        _superadmin_event(
+            actor,
+            identifier,
+            None,
+            ActivityAction.PLUGIN_UNINSTALLED,
+            {"purge_after": _datetime_text(purge_after), "organizations": organizations},
+        )
+
+    def plugin_reinstalled(self, actor, identifier: str, organizations_resumed: int) -> None:
+        _superadmin_event(
+            actor,
+            identifier,
+            None,
+            ActivityAction.PLUGIN_REINSTALLED,
+            {"organizations_resumed": organizations_resumed},
+        )
+
+    def plugin_purge_started(self, actor, identifier: str, reason: str) -> None:
+        """Record that deleting a plugin began; `actor` None is the platform."""
+        _actor_event(
+            actor, identifier, None, ActivityAction.PLUGIN_PURGE_STARTED, {"reason": reason}
+        )
+
+    def plugin_removal_failed(self, identifier: str, error: str | None) -> None:
+        _platform_event(identifier, ActivityAction.PLUGIN_REMOVAL_FAILED, {"error": error})
+
+    def plugin_removal_retried(self, actor, identifier: str) -> None:
+        _superadmin_event(actor, identifier, None, ActivityAction.PLUGIN_REMOVAL_RETRIED, {})
+
+    def plugin_purged(self, identifier: str, version: str | None, had_database: bool) -> None:
+        _platform_event(
+            identifier,
+            ActivityAction.PLUGIN_PURGED,
+            {"version": version, "had_database": had_database},
+        )
+
+    def org_removed_hook_retried(self, actor, job: PluginHookJob, identifier: str) -> None:
+        _superadmin_event(
+            actor,
+            identifier,
+            job.organization_id,
+            ActivityAction.ORG_REMOVED_HOOK_RETRIED,
+            {"job_id": job.pk},
+        )
+
+    def org_removed_hook_skipped(
+        self, actor, job: PluginHookJob, identifier: str, state_before: str
+    ) -> None:
+        """Record a skipped data removal; `actor` None is the platform."""
+        _actor_event(
+            actor,
+            identifier,
+            job.organization_id,
+            ActivityAction.ORG_REMOVED_HOOK_SKIPPED,
+            {"job_id": job.pk, "state_before": state_before},
         )
 
     def install_hook_retried(self, actor, job: PluginHookJob, identifier: str) -> None:
@@ -326,6 +417,27 @@ def _superadmin_event(
         action=action,
         detail=detail,
     )
+
+
+def _actor_event(
+    actor, identifier: str, organization_id: int | None, action: str, detail: dict
+) -> None:
+    """An event a SuperAdmin caused, or the platform itself when `actor` is None."""
+    if actor is not None:
+        _superadmin_event(actor, identifier, organization_id, action, detail)
+        return
+    PluginActivityEvent.objects.create(
+        plugin_identifier=identifier,
+        organization_id=organization_id,
+        actor_kind=ActorKind.PLATFORM,
+        actor_label=PLATFORM_ACTOR_LABEL,
+        action=action,
+        detail=detail,
+    )
+
+
+def _datetime_text(value) -> str | None:
+    return serializers.DateTimeField().to_representation(value) if value is not None else None
 
 
 def _platform_event(identifier: str, action: str, detail: dict) -> None:

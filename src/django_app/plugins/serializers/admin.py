@@ -5,9 +5,20 @@ from epicstaff_plugin.contracts.manifest import PluginManifest
 from rest_framework import serializers
 
 from plugins.lifecycle.grant_actions import GrantAction, allowed_grant_actions
-from plugins.models import Plugin, PluginGrant, PluginPackage, SignatureStatus, Trust
+from plugins.lifecycle.plugin_actions import PluginLifecycleAction, allowed_plugin_actions
+from plugins.lifecycle.plugin_purge_service import purge_progress
+from plugins.models import (
+    Plugin,
+    PluginGrant,
+    PluginPackage,
+    PluginState,
+    SignatureStatus,
+    SuspensionCause,
+    Trust,
+)
 from plugins.origins import PluginOrigins
 from plugins.packages.review import action_label, resource_label, review_warnings
+from plugins.serializers.purge import OrgRemovedJobSerializer, PluginPurgeProgressSerializer
 
 
 def icon_url(plugin: Plugin) -> str | None:
@@ -208,6 +219,13 @@ class PluginSummarySerializer(serializers.ModelSerializer):
     frame_origin = serializers.SerializerMethodField()
     grant_count = serializers.IntegerField()
     pending_package = serializers.SerializerMethodField()
+    state = serializers.ChoiceField(choices=PluginState.choices)
+    needs_attention = serializers.BooleanField(
+        help_text=(
+            "A data removal failed for good, the plugin node failed to remove the plugin, or "
+            "some of a grant's data could not be deleted yet."
+        )
+    )
 
     class Meta:
         model = Plugin
@@ -222,6 +240,8 @@ class PluginSummarySerializer(serializers.ModelSerializer):
             "frame_origin",
             "grant_count",
             "pending_package",
+            "purge_after",
+            "needs_attention",
             "created_at",
         ]
         read_only_fields = fields
@@ -252,10 +272,35 @@ class PluginSummarySerializer(serializers.ModelSerializer):
 
 class PluginDetailSerializer(PluginSummarySerializer):
     current_package = serializers.SerializerMethodField()
+    allowed_actions = serializers.SerializerMethodField()
+    purge_progress = serializers.SerializerMethodField()
 
     class Meta(PluginSummarySerializer.Meta):
-        fields = [*PluginSummarySerializer.Meta.fields, "current_package"]
+        fields = [
+            *PluginSummarySerializer.Meta.fields,
+            "current_package",
+            "allowed_actions",
+            "uninstall_requested_at",
+            "purge_started_at",
+            "purge_progress",
+        ]
         read_only_fields = fields
+
+    @extend_schema_field(
+        serializers.ListField(
+            child=serializers.ChoiceField(
+                choices=[action.value for action in PluginLifecycleAction]
+            )
+        )
+    )
+    def get_allowed_actions(self, plugin: Plugin) -> list[str]:
+        """The lifecycle actions the plugin allows now: the only input of the frontend's buttons."""
+        return [action.value for action in allowed_plugin_actions(plugin)]
+
+    @extend_schema_field(PluginPurgeProgressSerializer(allow_null=True))
+    def get_purge_progress(self, plugin: Plugin) -> dict | None:
+        progress = purge_progress(plugin)
+        return PluginPurgeProgressSerializer(progress).data if progress is not None else None
 
     def get_current_package(self, plugin: Plugin) -> dict | None:
         if plugin.current_package_id is None:
@@ -279,6 +324,8 @@ class PluginGrantSerializer(serializers.ModelSerializer):
     install_hook = serializers.SerializerMethodField()
     owned_resource_count = serializers.IntegerField()
     allowed_actions = serializers.SerializerMethodField()
+    suspension_cause = serializers.ChoiceField(choices=SuspensionCause.choices, allow_null=True)
+    org_removed_hook = serializers.SerializerMethodField()
 
     class Meta:
         model = PluginGrant
@@ -290,10 +337,14 @@ class PluginGrantSerializer(serializers.ModelSerializer):
             "granted_by",
             "granted_at",
             "suspended_at",
+            "suspension_cause",
             "purge_after",
+            "purge_started_at",
+            "last_purge_error",
             "last_hook_error",
             "service_account",
             "install_hook",
+            "org_removed_hook",
             "owned_resource_count",
             "allowed_actions",
         ]
@@ -323,6 +374,13 @@ class PluginGrantSerializer(serializers.ModelSerializer):
             "finished_at": datetime_text(job.finished_at),
             "error": job.error,
         }
+
+    @extend_schema_field(OrgRemovedJobSerializer(allow_null=True))
+    def get_org_removed_hook(self, grant: PluginGrant) -> dict | None:
+        """The grant's latest organization removed job, while its data is deleted."""
+        if not grant.org_removed_jobs:
+            return None
+        return OrgRemovedJobSerializer(grant.org_removed_jobs[0]).data
 
     @extend_schema_field(
         serializers.ListField(

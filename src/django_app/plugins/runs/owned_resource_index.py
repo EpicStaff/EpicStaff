@@ -7,6 +7,7 @@ is a file under a storage folder the run reaches (`RunResources.storage_prefixes
 
 import operator
 from bisect import bisect_left
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from functools import reduce
@@ -58,9 +59,12 @@ class OwnedResourceIndex:
         owned_file_paths: list[tuple[str, BlockingOwner]],
     ):
         self._owners_by_ref = owners_by_ref
-        # Sorted by path, so the files under a prefix are one run found by binary search.
-        self._owned_file_paths = sorted(owned_file_paths, key=lambda entry: entry[0])
-        self._sorted_paths = [path for path, _ in self._owned_file_paths]
+        # Each owner's paths sorted: whether it owns a file under a prefix is one binary
+        # search, however many files the folder holds.
+        paths_by_owner: dict[BlockingOwner, list[str]] = defaultdict(list)
+        for path, owner in owned_file_paths:
+            paths_by_owner[owner].append(path)
+        self._paths_by_owner = {owner: sorted(paths) for owner, paths in paths_by_owner.items()}
 
     @classmethod
     def for_inactive_grants(
@@ -103,7 +107,7 @@ class OwnedResourceIndex:
 
     @property
     def is_empty(self) -> bool:
-        return not self._owners_by_ref and not self._owned_file_paths
+        return not self._owners_by_ref and not self._paths_by_owner
 
     def holds(self, model_label: str, pk: int) -> bool:
         """Whether the index holds the row `model_label` `pk`."""
@@ -113,18 +117,21 @@ class OwnedResourceIndex:
         """The owner of a row `resources` uses, the lowest plugin identifier first; None if none."""
         owners = [self._owners_by_ref[ref] for ref in resources.refs if ref in self._owners_by_ref]
         for prefix in resources.storage_prefixes:
-            owners.extend(self._owners_of_files_under(prefix))
+            owners.extend(
+                owner
+                for owner, paths in self._paths_by_owner.items()
+                if _has_path_under(paths, prefix)
+            )
         return min(
             owners, key=lambda owner: (owner.plugin_identifier, owner.grant_id or 0), default=None
         )
 
-    def _owners_of_files_under(self, prefix: str) -> list[BlockingOwner]:
-        owners = []
-        index = bisect_left(self._sorted_paths, prefix)
-        while index < len(self._sorted_paths) and self._sorted_paths[index].startswith(prefix):
-            owners.append(self._owned_file_paths[index][1])
-            index += 1
-        return owners
+
+def _has_path_under(sorted_paths: list[str], prefix: str) -> bool:
+    # The paths under a prefix sort right after it, so the first path not below the prefix
+    # is under it if any is.
+    index = bisect_left(sorted_paths, prefix)
+    return index < len(sorted_paths) and sorted_paths[index].startswith(prefix)
 
 
 def _ownable_labels() -> frozenset[str]:

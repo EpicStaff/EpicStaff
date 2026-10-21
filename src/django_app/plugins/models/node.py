@@ -1,8 +1,10 @@
 from django.db import models
 from django.db.models import F, Q
 
-from plugins.models.enums import PlacementHealth, PlacementObservedState
+from plugins.models.enums import PlacementHealth, PlacementObservedState, PlacementRemovalState
 from plugins.models.plugin import Plugin
+
+MAX_REMOVAL_ERROR_LENGTH = 2000
 
 
 class PluginNode(models.Model):
@@ -50,6 +52,11 @@ class PluginPlacement(models.Model):
     id never change for the plugin's life. `restart_generation` and `settings_revision` are
     the desired state's restart triggers: raising either makes the node restart the
     process. The `observed_*` fields, `health` and the rest come from the node's reports.
+
+    Deleting the plugin sets `removal_requested_at`: the node then removes everything it
+    keeps for the plugin and reports how it goes (`removal_*`). The row, and with it the port
+    and the user id, goes only once the node reports the removal done, so no other plugin
+    is given them while anything of this one may be left.
     """
 
     plugin = models.OneToOneField(Plugin, on_delete=models.CASCADE, related_name="placement")
@@ -73,6 +80,12 @@ class PluginPlacement(models.Model):
     last_error = models.TextField(null=True, blank=True)
     log_tail = models.JSONField(default=list, blank=True)
     last_report_at = models.DateTimeField(null=True, blank=True)
+    removal_requested_at = models.DateTimeField(null=True, blank=True)
+    removal_state = models.CharField(
+        max_length=16, choices=PlacementRemovalState.choices, null=True, blank=True
+    )
+    removal_error = models.CharField(max_length=MAX_REMOVAL_ERROR_LENGTH, null=True, blank=True)
+    removal_reported_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

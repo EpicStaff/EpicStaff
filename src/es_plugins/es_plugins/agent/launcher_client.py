@@ -7,12 +7,17 @@ import socket
 from dataclasses import dataclass
 from pathlib import Path
 
-from es_plugins.descriptors import write_all
+from es_plugins.descriptors import read_pipe, write_all
 from es_plugins.launcher import protocol
+from es_plugins.launcher.plugin_removal import MAX_RESULT_BYTES
 
 
 class LauncherError(Exception):
     """The launcher refused or failed a request; the message is the launcher's."""
+
+
+class LauncherUnavailableError(LauncherError):
+    """The launcher could not be reached, or did not answer in time: trying again may succeed."""
 
 
 @dataclass(frozen=True)
@@ -46,7 +51,7 @@ class LauncherClient:
             await asyncio.get_running_loop().sock_connect(connection, str(self._socket_path))
         except OSError as error:
             connection.close()
-            raise LauncherError(f"cannot reach the launcher: {error}") from None
+            raise LauncherUnavailableError(f"cannot reach the launcher: {error}") from None
         self._socket = connection
 
     def _drop_connection(self) -> None:
@@ -117,6 +122,36 @@ class LauncherClient:
     async def purge_data(self, plugin: str, uid: int) -> None:
         await self._call(protocol.PurgeData(plugin=plugin, uid=uid))
 
+    async def remove_plugin(self, plugin: str, uid: int, *, timeout_seconds: float) -> None:
+        """Have the launcher kill the UID's processes and delete what the node keeps for the plugin.
+
+        The launcher answers at once with a pipe; its helper writes the outcome there when it has
+        deleted everything, and the launcher serves other requests meanwhile.
+
+        Raises:
+            LauncherUnavailableError: No outcome within `timeout_seconds`, no connection, or a
+                helper that ended without one.
+            LauncherError: The launcher refused (a process survived, a tree is not empty).
+        """
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                _, descriptors = await self._call(
+                    protocol.RemovePlugin(plugin=plugin, uid=uid), expect=1
+                )
+                data = await read_pipe(descriptors[0], MAX_RESULT_BYTES)
+        except TimeoutError:
+            raise LauncherUnavailableError(
+                f"the launcher did not finish removing {plugin} within {timeout_seconds:.0f} s"
+            ) from None
+        try:
+            outcome = json.loads(data)
+        except ValueError:
+            raise LauncherUnavailableError(
+                f"the launcher's removal of {plugin} ended without an outcome"
+            ) from None
+        if not outcome.get("ok"):
+            raise LauncherError(outcome.get("error") or f"the launcher could not remove {plugin}")
+
     async def _call(self, request, descriptors: list[int] = (), *, expect: int = 0):
         async with self._lock:
             if self._socket is None:
@@ -151,7 +186,7 @@ class LauncherClient:
             except BlockingIOError:
                 await self._wait(writable=True)
             except OSError as error:
-                raise LauncherError(f"the launcher connection failed: {error}") from None
+                raise LauncherUnavailableError(f"the launcher connection failed: {error}") from None
 
     async def _receive(self) -> tuple[bytes, list[int]]:
         while True:
@@ -166,9 +201,9 @@ class LauncherClient:
                 await self._wait(writable=False)
                 continue
             except OSError as error:
-                raise LauncherError(f"the launcher connection failed: {error}") from None
+                raise LauncherUnavailableError(f"the launcher connection failed: {error}") from None
             if not packet:
-                raise LauncherError("the launcher closed the connection")
+                raise LauncherUnavailableError("the launcher closed the connection")
             return packet, descriptors
 
     async def _wait(self, *, writable: bool) -> None:

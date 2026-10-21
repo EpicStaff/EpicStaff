@@ -36,7 +36,15 @@ DATABASE_URL_ENVIRONMENT_VARIABLE = "DATABASE_URL"
 DATABASE_CONNECTIONS_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_DB_CONNECTIONS"
 """The app role's connection limit, a positive integer. Only with a database."""
 
-PROXY_ENVIRONMENT_VARIABLES = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
+HTTPS_PROXY_ENVIRONMENT_VARIABLE = "HTTPS_PROXY"
+"""The proxy variable `epicstaff_plugin.egress.proxy_url()` reads; the node sets all four."""
+
+PROXY_ENVIRONMENT_VARIABLES = (
+    HTTPS_PROXY_ENVIRONMENT_VARIABLE,
+    "https_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+)
 """Each holds the egress proxy's URL with the plugin's own credentials. Every backend gets them."""
 
 NO_PROXY_ENVIRONMENT_VARIABLES = ("NO_PROXY", "no_proxy")

@@ -2,24 +2,42 @@
 
 import json
 
+import typing
+
 import pytest
 from epicstaff_plugin.contracts.manifest import MAX_OUTBOUND_HOSTS
-from pydantic import ValidationError
+from epicstaff_plugin.package_layout import MAX_MIGRATION_NAME_LENGTH, MIGRATION_NAME_PATTERN
+from pydantic import StringConstraints, ValidationError
 
 from src.shared.models.plugin_nodes import (
     MAX_APPLIED_MIGRATIONS,
+    MAX_LAST_ERROR_LENGTH,
     DatabaseNames,
+    DatabaseReport,
     DesiredPlacement,
+    DesiredRemoval,
     DesiredState,
+    MigrationName,
     NodeReport,
     RuntimeCredentials,
     RuntimeDatabaseCredentials,
     database_names_for,
+    is_reportable_migration_name,
 )
 
 APP_PASSWORD = "Xk3_-9qZtR7vLm2NpQs8WcYe4HjBfAu6DgKoIn1E5rT"
 INSTALLATION_ID = "0f8c2d4e6a1b3c5d7e9f0a2b4c6d8e0f"
 NAME_FIELDS = ("database_name", "owner_role", "app_role", "job_role")
+NOT_PACKAGE_MIGRATIONS = (
+    "1_places.sql",
+    "0001_places.sql",
+    "001_Places.sql",
+    "001_places.SQL",
+    "001_.sql",
+    "001-places.sql",
+    "../001_places.sql",
+    "001_places.sql.bak",
+)
 
 
 def _database(identifier="weather", **changes):
@@ -65,13 +83,27 @@ def _placement(identifier="weather", **changes):
     }
 
 
-def _desired_state(*placements):
-    return {
+def _desired_state(*placements, removals=None):
+    state = {
         "format": 1,
         "node": {"name": "node-1"},
         "revision": "c" * 64,
         "generated_at": "2026-10-21T10:00:00Z",
         "placements": list(placements),
+    }
+    if removals is not None:
+        state["removals"] = list(removals)
+    return state
+
+
+def _removal(identifier="weather", **changes):
+    return {
+        "placement_id": 2,
+        "plugin_identifier": identifier,
+        "unix_uid": 20001,
+        "port": 20002,
+        "generation": 0,
+        **changes,
     }
 
 
@@ -118,13 +150,16 @@ def _placement_report(**changes):
     }
 
 
-def _node_report(*placements):
-    return {
+def _node_report(*placements, removals=None):
+    report = {
         "format": 1,
         "agent_version": "1.0.0",
         "reported_at": "2026-10-21T10:00:00Z",
         "placements": list(placements),
     }
+    if removals is not None:
+        report["removals"] = list(removals)
+    return report
 
 
 def _database_report(**changes):
@@ -407,10 +442,7 @@ def test_a_report_from_a_newer_node_is_read_leniently():
         NodeReport.model_validate_json(body)
 
 
-@pytest.mark.parametrize(
-    "name",
-    ["1_places.sql", "0001_places.sql", "001_Places.sql", "001_places.SQL", "001_.sql", "001-places.sql", "../001_places.sql", "001_places.sql.bak"],
-)
+@pytest.mark.parametrize("name", NOT_PACKAGE_MIGRATIONS)
 def test_a_report_refuses_a_name_that_is_not_a_package_migration(name):
     with pytest.raises(ValidationError):
         NodeReport.model_validate(_node_report(_placement_report(database=_database_report(applied_migrations=[name]))))
@@ -429,3 +461,156 @@ def test_a_report_lists_at_most_one_migration_per_number():
 def test_a_report_refuses_an_unknown_database_state():
     with pytest.raises(ValidationError):
         NodeReport.model_validate(_node_report(_placement_report(database=_database_report(state="pending"))))
+
+
+
+# ---- which ledger entries a report may carry ----
+
+
+def test_a_reportable_name_follows_the_package_layout_s_rule_and_no_copy_of_it():
+    [constraints] = [item for item in typing.get_args(MigrationName)[1:] if isinstance(item, StringConstraints)]
+
+    assert (constraints.pattern, constraints.max_length) == (MIGRATION_NAME_PATTERN, MAX_MIGRATION_NAME_LENGTH)
+
+
+@pytest.mark.parametrize("name", ["001_places.sql", "999_z.sql", "001_" + "a" * 247 + ".sql"])
+def test_a_package_migration_name_is_reportable(name):
+    assert is_reportable_migration_name(name)
+
+
+def test_a_name_longer_than_255_characters_is_not_reportable():
+    name = "001_" + "a" * 248 + ".sql"
+
+    assert len(name) == 256
+    assert not is_reportable_migration_name(name)
+
+
+@pytest.mark.parametrize("value", [1, None, b"001_places.sql", ["001_places.sql"], {"name": "001_places.sql"}, 1.5])
+def test_a_ledger_entry_that_is_not_text_is_not_reportable(value):
+    assert not is_reportable_migration_name(value)
+
+
+@pytest.mark.parametrize("name", NOT_PACKAGE_MIGRATIONS)
+def test_a_name_that_is_not_a_package_migration_is_not_reportable(name):
+    assert not is_reportable_migration_name(name)
+
+
+@pytest.mark.parametrize("name", ["001_places.sql", "001_" + "a" * 248 + ".sql", *NOT_PACKAGE_MIGRATIONS])
+def test_a_report_carries_exactly_the_names_that_are_reportable(name):
+    report = {"installation_id": INSTALLATION_ID, "state": "ready", "applied_migrations": [name]}
+
+    try:
+        DatabaseReport.model_validate(report)
+    except ValidationError:
+        accepted = False
+    else:
+        accepted = True
+
+    assert accepted == is_reportable_migration_name(name)
+
+
+# ---- removals ----
+
+
+def test_a_removal_with_its_own_database_names_is_accepted():
+    removal = DesiredRemoval.model_validate(_removal(database=_database()))
+
+    assert removal.database.database_name == "plugin_weather"
+    assert removal.database.installation_id == INSTALLATION_ID
+    assert (removal.unix_uid, removal.port, removal.generation) == (20001, 20002, 0)
+
+
+def test_a_removal_of_a_plugin_without_a_database_names_none():
+    assert DesiredRemoval.model_validate(_removal()).database is None
+
+
+@pytest.mark.parametrize("field", NAME_FIELDS)
+def test_a_removal_pointed_at_another_plugins_database_or_role_is_refused(field):
+    other = database_names_for("forecast")
+    other_name = {
+        "database_name": other.database,
+        "owner_role": other.owner_role,
+        "app_role": other.app_role,
+        "job_role": other.job_role,
+    }[field]
+
+    with pytest.raises(ValidationError) as raised:
+        DesiredRemoval.model_validate(_removal(database=_database(**{field: other_name})))
+
+    assert "database names must be the ones derived from plugin_identifier" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("unix_uid", 0), ("port", 0), ("port", 65536), ("generation", -1), ("placement_id", 0), ("plugin_identifier", "Weather")],
+)
+def test_a_removal_with_an_invalid_field_is_refused(field, value):
+    with pytest.raises(ValidationError):
+        DesiredRemoval.model_validate(_removal(**{field: value}))
+
+
+def test_a_desired_state_lists_placements_to_run_and_to_remove():
+    state = DesiredState.model_validate(_desired_state(_placement(), removals=[_removal(database=_database())]))
+
+    assert [placement.placement_id for placement in state.placements] == [1]
+    assert [removal.placement_id for removal in state.removals] == [2]
+
+
+def test_a_placement_cannot_be_run_and_removed_at_once():
+    with pytest.raises(ValidationError) as raised:
+        DesiredState.model_validate(_desired_state(_placement(), removals=[_removal(placement_id=1)]))
+
+    assert "a placement cannot be in both placements and removals" in str(raised.value)
+
+
+def test_a_desired_state_from_an_older_server_has_no_removals():
+    state = DesiredState.model_validate_json(json.dumps(_desired_state(_placement())), extra="ignore")
+
+    assert state.removals == []
+
+
+def test_a_newer_server_adding_fields_to_a_removal_is_read_leniently():
+    body = json.dumps(_desired_state(removals=[_removal(database=_database(), backup=True)]))
+
+    state = DesiredState.model_validate_json(body, extra="ignore")
+
+    assert state.removals[0].database.app_role == "weather_app"
+    with pytest.raises(ValidationError):
+        DesiredState.model_validate_json(body)
+
+
+def test_the_name_rule_still_applies_to_a_removal_read_leniently():
+    body = json.dumps(_desired_state(removals=[_removal(database=_database(owner_role="forecast_owner"))]))
+
+    with pytest.raises(ValidationError):
+        DesiredState.model_validate_json(body, extra="ignore")
+
+
+@pytest.mark.parametrize("state", ["removing", "removed", "failed"])
+def test_a_report_carries_how_each_removal_goes(state):
+    report = NodeReport.model_validate(
+        _node_report(removals=[{"placement_id": 2, "generation": 3, "state": state, "last_error": "conflict"}])
+    )
+
+    [removal] = report.removals
+    assert (removal.placement_id, removal.generation, removal.state, removal.last_error) == (2, 3, state, "conflict")
+
+
+def test_a_report_from_an_older_node_has_no_removals():
+    report = NodeReport.model_validate_json(json.dumps(_node_report(_placement_report())), extra="ignore")
+
+    assert report.removals == []
+
+
+@pytest.mark.parametrize(
+    "removal",
+    [
+        {"placement_id": 2, "generation": 0, "state": "pending"},
+        {"placement_id": 2, "generation": 0, "state": "failed", "last_error": "x" * (MAX_LAST_ERROR_LENGTH + 1)},
+        {"placement_id": 2, "generation": -1, "state": "removed"},
+        {"placement_id": 2, "state": "removed"},
+    ],
+)
+def test_a_report_refuses_an_invalid_removal(removal):
+    with pytest.raises(ValidationError):
+        NodeReport.model_validate(_node_report(removals=[removal]))

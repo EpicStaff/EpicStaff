@@ -10,6 +10,7 @@ from utils.logger import logger
 from plugins.databases.database_reports import DatabaseReportRecorder
 from plugins.exceptions import InvalidNodeReportError
 from plugins.lifecycle.hook_job_service import HookJobService
+from plugins.lifecycle.plugin_purge_service import PluginPurgeService
 from plugins.models import (
     PlacementHealth,
     PlacementObservedState,
@@ -50,9 +51,11 @@ class NodeReportService:
         `provisioning` or `failed` plugin `running`; one reported failed makes a
         `provisioning` or `running` plugin `failed`; anything else leaves the state. A report
         about a process older than the latest restart or settings change is stored for the
-        Runtime tab but moves no state. What it says about a plugin's database goes to the
-        database's record (`DatabaseReportRecorder`), in one more query for all of them. A
-        running hook job of the node whose result is overdue fails.
+        Runtime tab but moves no state; an uninstalled or deleting plugin never moves. What it
+        says about a plugin's database goes to the database's record
+        (`DatabaseReportRecorder`), in one more query for all of them. Each removal it reports
+        is applied on its own (`PluginPurgeService.apply_removal_report`). A running hook job
+        of the node whose result is overdue fails.
         """
         now = timezone.now()
         by_id = {placement.placement_id: placement for placement in report.placements}
@@ -65,6 +68,7 @@ class NodeReportService:
                 .select_related("plugin__current_package")
                 .defer("plugin__current_package__icon_bytes", "plugin__current_package__manifest")
                 .filter(node=node, pk__in=list(by_id))
+                .order_by("pk")
             )
             databases = _locked_reported_databases(placements, by_id)
             for placement in placements:
@@ -76,6 +80,9 @@ class NodeReportService:
                     DatabaseReportRecorder().apply(
                         record, placement.plugin.identifier, observed.database, now
                     )
+        purge = PluginPurgeService()
+        for removal in report.removals:
+            purge.apply_removal_report(node, removal)
         HookJobService().fail_overdue(node)
         if by_id:
             logger.warning(
@@ -97,7 +104,9 @@ def _locked_reported_databases(
         return {}
     return {
         record.plugin_id: record
-        for record in PluginDatabase.objects.select_for_update().filter(plugin_id__in=plugin_ids)
+        for record in PluginDatabase.objects.select_for_update()
+        .filter(plugin_id__in=plugin_ids)
+        .order_by("pk")
     }
 
 
@@ -159,6 +168,10 @@ def _is_stale(placement: PluginPlacement, observed: PlacementReport) -> bool:
 
 
 def _move(plugin: Plugin, from_states: tuple[str, ...], to_state: str) -> None:
+    # The state was read with the placement's lock; a report that changes nothing (most of
+    # them) issues no UPDATE. The UPDATE still checks the state, for a change in between.
+    if plugin.state not in from_states:
+        return
     moved = Plugin.objects.filter(pk=plugin.pk, state__in=from_states).update(
         state=to_state, updated_at=timezone.now()
     )

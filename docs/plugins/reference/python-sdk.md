@@ -140,11 +140,17 @@ depends on no database driver: bring one, such as `psycopg[binary,pool]`, in you
 |---|---|
 | `database_url() -> str` | `DATABASE_URL`: the database's URL, logging in as the app role. Raises `DatabaseUnavailable` when it is not set. It holds the role's password: never log it |
 | `connection_limit() -> int` | `EPICSTAFF_PLUGIN_DB_CONNECTIONS`: how many connections the app role may hold. Raises `DatabaseUnavailable` when it is not set or not a positive integer. Size your pool to it |
-| `org_transaction(connection, org_id)` | An async context manager. It opens `connection.transaction()`, runs `SELECT pg_catalog.set_config('app.org_id', %s, true)` with `(str(org_id),)`, and yields the connection. The setting lasts for the transaction only. The transaction commits when the block ends and rolls back when it raises. Raises `ValueError`, before touching the connection, when `org_id` is not a positive integer. One organization at a time in a task: nested inside an open one for the same organization it is a savepoint; for another organization it raises `NestedOrgTransactionError` before any SQL, on any connection. A task started inside the block inherits its organization |
+| `org_transaction(connection, org_id)` | An async context manager. It opens `connection.transaction()`, runs `SELECT pg_catalog.set_config('app.org_id', %s, true)` with `(str(org_id),)`, and yields the connection. The setting lasts for the transaction only. The transaction commits when the block ends and rolls back when it raises. Raises `ValueError` when `org_id` is not a positive integer. One organization at a time in a task: nested inside an open one for the same organization it is a savepoint on the same connection, or a transaction of its own on a connection with none open; for another organization, or inside a `job_transaction`, it raises `NestedOrgTransactionError`, on any connection. A task started inside the block inherits its organization |
+| `job_transaction(connection)` | An async context manager for maintenance work across organizations. It opens `connection.transaction()`, switches to the plugin's job role for that transaction only (`SELECT pg_catalog.set_config('role', %s, true)` with `<id_>_job`, named after the `<id_>_app` role the connection logs in as), and yields the connection. The transaction has exactly what your migrations grant `${job_role}`, and no organization set. Raises `ValueError` when the connection does not log in as the app role, and `NestedOrgTransactionError` inside an `org_transaction`. Nested in an open one, on the same connection, it is a savepoint |
 | `ORG_ID_SETTING` | `"app.org_id"`, the setting your row-level security policies read with `current_setting('app.org_id', true)` |
+| `APP_ROLE_SUFFIX`, `JOB_ROLE_SUFFIX` | `"_app"` and `"_job"`, the endings of the role names ([Names](database.md#names)) |
 | `DatabaseUnavailable` | The process has no database: its manifest declares none, or it runs off the plugin node |
-| `NestedOrgTransactionError` | An `org_transaction` for another organization was opened while one is open in the task |
-| `AsyncTransactionalConnection` | What `org_transaction` needs of a connection: `transaction()` and `async execute(query, params)`. psycopg 3's `AsyncConnection` has both |
+| `NestedOrgTransactionError` | An `org_transaction` for another organization, or an `org_transaction` and a `job_transaction` inside each other, opened while the other is open in the task |
+| `ConnectionInTransactionError` | The connection already has a transaction open that no open block of the task started on it. psycopg opens one by itself for any query outside a transaction block. The organization or role would outlive the block, since a savepoint does not end it, so the block refuses the connection. Use a fresh connection from the pool |
+| `AsyncTransactionalConnection` | What the two helpers need of a connection: `transaction()`, `async execute(query, params)`, and `info.transaction_status` and `info.user`. psycopg 3's `AsyncConnection` has them all |
+
+Every `ValueError`, `NestedOrgTransactionError` and `ConnectionInTransactionError` is raised
+before anything is sent to the database.
 
 With psycopg's pool, opened in your app's lifespan:
 
@@ -159,8 +165,22 @@ async with pool.connection() as connection, org_transaction(connection, context.
     cursor = await connection.execute("SELECT id, name FROM places.saved ORDER BY name")
 ```
 
-`plugin-samples/weather/backend/src/weather_plugin/database.py` is a complete one.
-[Write database migrations](../how-to/database-migrations.md) shows the policies that go with it.
+A maintenance task deletes expired rows of every organization in a `job_transaction`, under the
+job role's own policies:
+
+```python
+from epicstaff_plugin.database import job_transaction
+
+async with pool.connection() as connection, job_transaction(connection):
+    await connection.execute(
+        "DELETE FROM places.lookups WHERE looked_up_at < now() - interval '1 day'"
+    )
+```
+
+`plugin-samples/weather/backend/src/weather_plugin/database.py` is a complete one, and
+`plugin-samples/weather/backend/src/weather_plugin/retention.py` a maintenance task.
+[Write database migrations](../how-to/database-migrations.md) shows the policies that go with
+both.
 
 ## `epicstaff_plugin.egress`
 
@@ -170,7 +190,7 @@ with no code (httpx, requests, `urllib.request`; aiohttp with `trust_env=True`).
 | Name | What it does |
 |---|---|
 | `proxy_url() -> str` | `HTTPS_PROXY`: the egress proxy's URL, with the plugin's own credentials. Raises `EgressProxyUnavailable` when it is not set. Never log it |
-| `HTTPS_PROXY_ENVIRONMENT_VARIABLE` | `"HTTPS_PROXY"` |
+| `HTTPS_PROXY_ENVIRONMENT_VARIABLE` | `"HTTPS_PROXY"`, from `epicstaff_plugin.contracts.runtime` |
 | `EgressProxyUnavailable` | `HTTPS_PROXY` is not set: the process runs off the plugin node |
 
 ```python
@@ -193,16 +213,23 @@ check; you never need it yourself. nginx does not forward `/_epicstaff/` from ou
 | Name | What it does |
 |---|---|
 | `hook_registry` | The process's `HookRegistry`, which `serve` dispatches to |
-| `hook_registry.on_install(handler)` | Registers the install hook; usable as a decorator. `on_upgrade` and `on_org_removed` register the other kinds, `register(kind, handler)` any kind. A kind takes one handler (`ValueError` for a second one); a handler is an async function (`TypeError` otherwise) |
+| `hook_registry.on_install(handler)` | Registers the install hook; usable as a decorator. `on_upgrade` registers the upgrade hook the same way |
+| `hook_registry.on_org_removed(handler)` | Registers the organization removed hook, whose handler takes the request alone; usable as a decorator |
+| `hook_registry.register(kind, handler)` | Registers any kind. A kind takes one handler (`ValueError` for a second one). A handler is an async function that can be called with its kind's arguments (`TypeError` otherwise, at registration) |
+| `OrgHookHandler`, `OrgRemovedHookHandler` | The two handler types: `async (request, epicstaff) -> None` for `install` and `upgrade`, `async (request) -> None` for `org_removed` |
 | `HookDispatchMiddleware(app, verifier, registry, epicstaff)` | ASGI middleware that answers `POST` on the hook paths: verifies the call, runs the handler, answers as the [Hook API](hook-api.md#the-answer) says. Every other request goes to `app`. `serve` installs it |
 | `verify_hook_assertion(assertion, body, *, kind, jwks, issuer, plugin_identifier)` | The checks of [Verification](hook-api.md#verification), outside the runner. Returns `VerifiedHook(claims, request)` or raises `HookAssertionRejected` |
 | `HookAssertionRejected` | `.reason` names the failed check |
 
-A handler is `async def handler(request: HookRequest, epicstaff: OrgClient) -> None`. `request`
-is the verified body; `epicstaff` is the client for `request.org.id`, acting as the plugin
-alone. Return to succeed; raise to fail, with the exception's first line as the error. Handlers
-for one organization run one at a time. [Write an install hook](../how-to/install-hook.md) walks
-through one.
+An install or upgrade handler is `async def handler(request: HookRequest, epicstaff: OrgClient)
+-> None`: `request` is the verified body, and `epicstaff` the client for `request.org.id`, acting
+as the plugin alone. An organization removed handler is `async def handler(request: HookRequest)
+-> None`: the organization has no service account any more, so it gets no client, and deletes
+only the plugin's own data. Return to succeed; raise to fail, with the exception's first line as
+the error. Handlers for one organization run one at a time, whatever their kind.
+[Write an install hook](../how-to/install-hook.md) and
+[Delete your data when an organization leaves](../how-to/org-removed-hook.md) walk through one
+of each.
 
 ## `epicstaff_plugin.client`
 
@@ -287,8 +314,9 @@ The documents of the platform, defined once and used by EpicStaff and the SDK al
 | `contracts.manifest.PluginManifest` | `manifest.json` ([reference](manifest.md)) |
 | `contracts.gateway_context.GatewayContext`, `Jwks`, `Jwk` | The gateway context and its keys ([reference](gateway-context.md)) |
 | `contracts.runtime.RuntimeFile`, `ServiceAccountEntry` | The runtime file ([reference](runtime.md#runtime-file)) |
-| `contracts.runtime.DATABASE_URL_ENVIRONMENT_VARIABLE`, `DATABASE_CONNECTIONS_ENVIRONMENT_VARIABLE`, `PROXY_ENVIRONMENT_VARIABLES`, `NO_PROXY_ENVIRONMENT_VARIABLES`, `LOOPBACK_NO_PROXY_HOSTS` | The names of the environment variables the node sets for the database and the egress proxy ([reference](runtime.md#environment)) |
+| `contracts.runtime.DATABASE_URL_ENVIRONMENT_VARIABLE`, `DATABASE_CONNECTIONS_ENVIRONMENT_VARIABLE`, `HTTPS_PROXY_ENVIRONMENT_VARIABLE`, `PROXY_ENVIRONMENT_VARIABLES`, `NO_PROXY_ENVIRONMENT_VARIABLES`, `LOOPBACK_NO_PROXY_HOSTS` | The names of the environment variables the node sets for the database and the egress proxy ([reference](runtime.md#environment)) |
 | `contracts.hook_api.HookRequest`, `HookAssertionClaims`, `HookResponse`, `HOOK_PATHS` | Hook calls ([reference](hook-api.md)) |
+| `contracts.hook_api.ORG_REMOVED_RETRY_DELAYS_SECONDS`, `ORG_REMOVED_RETRY_WINDOW_SECONDS`, `org_removed_retry_delay(attempt)` | When EpicStaff tries a failed organization removed hook again: 60, 300 and 1800 seconds after attempts 1–3, then every 3600, for 7 days from the first attempt ([reference](hook-api.md#what-happens-when-an-organizations-data-is-deleted)) |
 | `contracts.service_account_api.ServiceAccountInfo`, `PluginPerson`, `PeopleLookupRequest`, `PeopleLookupResponse` | What EpicStaff's `/api/plugin-runtime/` endpoints answer ([reference](service-account-api.md)) |
 
 Each model refuses unknown fields, so whoever builds a document cannot misspell one. Read a

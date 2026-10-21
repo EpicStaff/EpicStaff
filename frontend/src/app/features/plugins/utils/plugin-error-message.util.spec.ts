@@ -39,6 +39,16 @@ const ENDPOINT_CODES: PluginErrorCode[] = [
     'grant_not_suspendable',
     'grant_not_suspended',
     'plugin_suspended',
+    'invalid_purge_phrase',
+    'grant_not_purgeable',
+    'plugin_not_uninstallable',
+    'plugin_not_uninstalling',
+    'plugin_not_purgeable',
+    'plugin_uninstalling',
+    'removal_not_retryable',
+    'hook_job_not_found',
+    'org_removed_hook_not_retryable',
+    'org_removed_hook_not_skippable',
     'throttled',
 ];
 
@@ -93,6 +103,17 @@ describe('toPluginErrorView', () => {
             "This organization's grant cannot be suspended in its current state. Reload the list."
         );
         expect(resume.message).toBe('This grant is not suspended. Reload the list.');
+    });
+
+    it('says a confirmation text that no longer matches may come from a renamed organization', () => {
+        const view = toPluginErrorView(
+            failure(400, { status_code: 400, code: 'invalid_purge_phrase', message: 'Invalid phrase.' }),
+            'fallback'
+        );
+
+        expect(view.message).toBe(
+            'The confirmation text does not match. The name may have changed; reload and try again.'
+        );
     });
 
     it('tells to reject and upload again when the stored package no longer matches the review', () => {

@@ -110,6 +110,7 @@ def test_the_desired_state_describes_each_backend_on_the_node(backend_plugin, pl
     body = response.json()
     assert body["format"] == 1
     assert body["node"] == {"name": "node-1"}
+    assert body["removals"] == []
     assert response["ETag"] == f'"{body["revision"]}"'
     [placement] = body["placements"]
     assert placement == {
@@ -238,6 +239,62 @@ def test_the_desired_state_costs_the_same_queries_for_one_plugin_and_for_five(da
         database_plugin(id=identifier)
 
     assert queries_of_build() == with_one
+
+
+def _request_removal(plugin):
+    Plugin.objects.filter(pk=plugin.pk).update(state=PluginState.PURGING)
+    PluginPlacement.objects.filter(plugin=plugin).update(removal_requested_at=timezone.now())
+
+
+def test_a_removal_takes_the_placement_out_of_placements_with_its_database(database_plugin, plugin_node, node_client):
+    weather = database_plugin()
+    _request_removal(weather)
+
+    state = DesiredState.model_validate(node_client.get(DESIRED_STATE_URL).json())
+
+    assert state.placements == []
+    [removal] = state.removals
+    record = PluginDatabase.objects.get(plugin=weather)
+    assert (removal.placement_id, removal.plugin_identifier, removal.generation) == (weather.placement.pk, "weather", 0)
+    assert (removal.database.installation_id, removal.database.owner_role) == (record.installation_id, "weather_owner")
+
+
+def test_removals_cost_one_query_whatever_their_number(database_plugin, plugin_node):
+    def queries_of_build():
+        DesiredStateBuilder().build(plugin_node)
+        with CaptureQueriesContext(connection) as captured:
+            DesiredStateBuilder().build(plugin_node)
+        return len(captured.captured_queries)
+
+    _request_removal(database_plugin())
+    with_one = queries_of_build()
+    for identifier in ("forecast", "tides", "winds", "storms"):
+        _request_removal(database_plugin(id=identifier))
+
+    assert queries_of_build() == with_one
+    assert len(DesiredStateBuilder().build(plugin_node).removals) == 5
+
+
+@pytest.mark.parametrize("plugin_state", [PluginState.UNINSTALLING, PluginState.PURGING])
+def test_a_plugin_out_of_service_keeps_its_database_while_a_data_removal_is_open(
+    database_plugin, plugin_node, node_client, superadmin, acme, plugin_state
+):
+    from plugins.lifecycle.org_removed_hooks import OrgRemovedHookService
+
+    weather = mark_running(database_plugin(hooks={"install": False, "org_removed": True}))
+    Plugin.objects.filter(pk=weather.pk).update(state=plugin_state)
+    OrgRemovedHookService().ensure_job(
+        Plugin.objects.select_related("current_package").get(pk=weather.pk),
+        organization_id=acme.pk,
+        organization_name=acme.name,
+        grant=None,
+    )
+
+    [placement] = node_client.get(DESIRED_STATE_URL).json()["placements"]
+
+    assert placement["desired_state"] == "running"
+    assert placement["database"]["database_name"] == "plugin_weather"
+    assert [job["kind"] for job in placement["hook_jobs"]] == ["org_removed"]
 
 
 def test_a_trusted_package_names_its_signer(installation, superadmin, plugin_node, node_client, trusts_release_key, django_capture_on_commit_callbacks):

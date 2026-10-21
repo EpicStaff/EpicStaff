@@ -1,18 +1,25 @@
 """Lifecycle hooks: the jobs EpicStaff wants a plugin's backend to run, and their outcome.
 
-A job is created `pending` by the lifecycle step that needs it (a grant, for `install`). The
-node lists it in its desired state and claims it once the plugin's process is ready; the
-claim signs the call (an assertion bound to the exact body) and the node makes it at once,
-then posts the result. The result moves the grant on. A `running` job whose node never
-reports a result fails two minutes after its deadline. A `pending` job never times out: it
-waits until the plugin's process is ready to claim it.
+A job is created `pending` by the lifecycle step that needs it: a grant, for `install`;
+deleting an organization's plugin data, for `org_removed` (`OrgRemovedHookService`). The node
+lists it in its desired state and claims it once the plugin's process is ready; the claim
+signs the call (an assertion bound to the exact body) and the node makes it at once, then
+posts the result. A `running` job whose node never reports a result fails two minutes after
+its deadline. A `pending` job never times out: it waits until the plugin's process is ready
+to claim it.
+
+What a result does depends on the kind (`HOOK_KIND_RULES`). An install job moves its grant
+on, and a SuperAdmin retries a failed one. An organization removed job never moves a grant:
+a failed attempt is retried on the SDK's schedule (`org_removed_retry_delay`) until the retry
+window from its first attempt has passed, and only then does the job fail.
 
 Lock order: whatever changes a job and may change its grant locks the grant first, then the
 job, as suspension does (it fails the grant's open jobs), so the two never deadlock.
 
 Adding a hook kind: `HookKind` and `HOOK_PATHS` in the SDK's hook API, a `HookJobKind`
-choice and its migration, its `HOOK_KIND_RULES` entry (the grant states it runs in and
-leads to), the lifecycle step that creates the job, and its activity actions.
+choice and its migration, its `HOOK_KIND_RULES` entry (when its jobs are listed and
+claimable, and what a result does), the lifecycle step that creates the job, and its activity
+actions.
 """
 
 import operator
@@ -20,7 +27,7 @@ import secrets
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import reduce
 
 from django.db import transaction
@@ -30,11 +37,13 @@ from django.utils import timezone
 from epicstaff_plugin.contracts.gateway_context import ContextOrganization, PluginIdentity
 from epicstaff_plugin.contracts.hook_api import (
     HOOK_ASSERTION_GRACE_SECONDS,
+    ORG_REMOVED_RETRY_WINDOW_SECONDS,
     HookAssertionClaims,
     HookRequest,
     encode_hook_assertion,
     encode_hook_body,
     hook_body_sha256,
+    org_removed_retry_delay,
 )
 from epicstaff_plugin.contracts.manifest import MAX_HOOK_TIMEOUT_SECONDS, PluginManifest
 from epicstaff_plugin.problems import Problem, format_loc
@@ -47,9 +56,8 @@ from src.shared.models.plugin_nodes import (
 )
 
 from plugins.activity.recorder import ActivityRecorder
-from plugins.audit import log_hook_claimed, log_hook_finished
+from plugins.audit import log_hook_claimed, log_hook_finished, log_hook_gave_up
 from plugins.exceptions import (
-    GrantNotFoundError,
     HookJobNotClaimableError,
     HookJobNotFoundError,
     HookJobNotRunningError,
@@ -58,6 +66,7 @@ from plugins.exceptions import (
 )
 from plugins.identity.signing_keys import cached_signing_key
 from plugins.lifecycle.grant_actions import GrantAction, assert_grant_action
+from plugins.lifecycle.lifecycle_locks import lock_grant
 from plugins.models import (
     GrantState,
     HookJobKind,
@@ -72,22 +81,118 @@ from plugins.origins import PluginOrigins
 
 
 @dataclass(frozen=True)
-class HookKindRules:
-    """The grant states around a job of one kind.
+class GrantStepRules:
+    """A hook that is a step of its grant's lifecycle (install).
 
-    The job is listed and claimable only while its grant is in `runs_in`; its result moves
-    the grant from there to `succeeded` or `failed`.
+    Its jobs are listed and claimable only while the grant is in `runs_in` and the plugin is
+    running; the result moves the grant from there to `succeeded` or `failed`. A failed job
+    waits for a SuperAdmin to retry it.
     """
 
+    kind: str
     runs_in: str
     succeeded: str
     failed: str
 
+    def listed(self, now: datetime) -> Q:
+        return Q(kind=self.kind, grant__state=self.runs_in)
+
+    def claimable(self, job: PluginHookJob, now: datetime) -> bool:
+        return (
+            job.plugin.state == PluginState.RUNNING
+            and job.grant is not None
+            and job.grant.state == self.runs_in
+        )
+
+    def organization_name(self, job: PluginHookJob) -> str:
+        return job.grant.org.name
+
+    def finish(self, job: PluginHookJob, *, succeeded: bool, error: str | None, now) -> None:
+        _close(job, HookJobState.SUCCEEDED if succeeded else HookJobState.FAILED, error, now)
+        PluginGrant.objects.filter(pk=job.grant_id, state=self.runs_in).update(
+            state=self.succeeded if succeeded else self.failed,
+            last_hook_error=None if succeeded else error,
+            updated_at=now,
+        )
+        ActivityRecorder().hook_finished(
+            job, job.plugin.identifier, succeeded=succeeded, error=error
+        )
+
+
+# The plugin states in which an organization removed hook may run: the process is started for
+# it while the plugin is uninstalled or being deleted (`DesiredStateBuilder`).
+ORG_REMOVED_PLUGIN_STATES = (PluginState.RUNNING, PluginState.UNINSTALLING, PluginState.PURGING)
+
+
+@dataclass(frozen=True)
+class OrgRemovedRules:
+    """The hook that deletes a plugin's own data for an organization that is leaving.
+
+    Its job runs once due (`next_attempt_at`), while the plugin is running, uninstalled or
+    being deleted, and while its grant is gone (the organization was deleted) or being
+    purged. Its body names the organization as it was when the job was created. A result
+    never moves the grant. A failed attempt goes back to `pending` for the next attempt of the
+    SDK's retry schedule; once `ORG_REMOVED_RETRY_WINDOW_SECONDS` have passed since the first
+    attempt it fails for good, until a SuperAdmin retries or skips it.
+    """
+
+    kind: str = HookJobKind.ORG_REMOVED
+
+    def listed(self, now: datetime) -> Q:
+        return (
+            Q(kind=self.kind, plugin__state__in=ORG_REMOVED_PLUGIN_STATES)
+            & (Q(grant__isnull=True) | Q(grant__state=GrantState.PURGING))
+            & (Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
+        )
+
+    def claimable(self, job: PluginHookJob, now: datetime) -> bool:
+        return (
+            job.plugin.state in ORG_REMOVED_PLUGIN_STATES
+            and (job.grant is None or job.grant.state == GrantState.PURGING)
+            and (job.next_attempt_at is None or job.next_attempt_at <= now)
+        )
+
+    def organization_name(self, job: PluginHookJob) -> str:
+        return job.organization_name
+
+    def finish(self, job: PluginHookJob, *, succeeded: bool, error: str | None, now) -> None:
+        identifier = job.plugin.identifier
+        if succeeded:
+            _close(job, HookJobState.SUCCEEDED, None, now)
+            ActivityRecorder().hook_finished(job, identifier, succeeded=True, error=None)
+            return
+        if now < retry_until(job):
+            job.state = HookJobState.PENDING
+            job.next_attempt_at = now + timedelta(seconds=org_removed_retry_delay(job.attempt))
+            job.error = error
+            job.save(update_fields=["state", "next_attempt_at", "error", "updated_at"])
+            return
+        _close(job, HookJobState.FAILED, error, now)
+        ActivityRecorder().hook_finished(job, identifier, succeeded=False, error=error)
+        log_hook_gave_up(
+            identifier=identifier,
+            job_id=job.pk,
+            org_id=job.organization_id,
+            attempts=job.attempt,
+        )
+
+
+def retry_until(job: PluginHookJob) -> datetime | None:
+    """When an organization removed job stops being retried by itself: its retry window from
+    the first attempt; None before the first attempt."""
+    if job.first_attempt_at is None:
+        return None
+    return job.first_attempt_at + timedelta(seconds=ORG_REMOVED_RETRY_WINDOW_SECONDS)
+
 
 HOOK_KIND_RULES = {
-    HookJobKind.INSTALL: HookKindRules(
-        runs_in=GrantState.GRANTING, succeeded=GrantState.ACTIVE, failed=GrantState.INSTALL_FAILED
+    HookJobKind.INSTALL: GrantStepRules(
+        kind=HookJobKind.INSTALL,
+        runs_in=GrantState.GRANTING,
+        succeeded=GrantState.ACTIVE,
+        failed=GrantState.INSTALL_FAILED,
     ),
+    HookJobKind.ORG_REMOVED: OrgRemovedRules(),
 }
 # How long after its deadline a running job waits for the node's result before it fails.
 RESULT_GRACE = timedelta(seconds=120)
@@ -125,16 +230,20 @@ class HookJobService:
             plugin_id=grant.plugin_id,
             grant=grant,
             organization_id=grant.org_id,
+            organization_name=grant.org.name,
             kind=HookJobKind.INSTALL,
             package=package,
             timeout_seconds=hook_timeout_seconds(package.parsed_manifest, HookJobKind.INSTALL),
         )
 
-    def pending_jobs_by_plugin(self, plugin_ids: list[int]) -> dict[int, list[DesiredHookJob]]:
+    def pending_jobs_by_plugin(
+        self, plugin_ids: list[int], now: datetime | None = None
+    ) -> dict[int, list[DesiredHookJob]]:
         """The jobs each plugin's node should run, oldest first, in one query.
 
-        A job is listed while it is pending and its grant still exists in the state the
-        job's kind runs in. At most the oldest `MAX_PENDING_HOOK_JOBS` of a plugin are
+        A job is listed while it is pending and its kind's rules list it now
+        (`HOOK_KIND_RULES`): an install job while its grant is being granted, an organization
+        removed job once due. At most the oldest `MAX_PENDING_HOOK_JOBS` of a plugin are
         listed, as many as a desired placement carries; the next ones are listed as these
         finish.
         """
@@ -143,7 +252,9 @@ class HookJobService:
             return jobs
         rows = (
             PluginHookJob.objects.filter(
-                _runnable_q(), plugin_id__in=plugin_ids, state=HookJobState.PENDING
+                _listed_q(now or timezone.now()),
+                plugin_id__in=plugin_ids,
+                state=HookJobState.PENDING,
             )
             .annotate(
                 position=Window(
@@ -170,26 +281,30 @@ class HookJobService:
 
         Raises:
             HookJobNotFoundError: No such job on a placement of this node.
-            HookJobNotClaimableError: The job is not pending, its plugin is not running, or
-                its grant is gone or not in the state the job runs in.
+            HookJobNotClaimableError: The job is not pending, or its kind's rules do not let
+                it run now: an install job's plugin is not running or its grant is gone or
+                has moved on; an organization removed job is not due yet, its plugin is not
+                running, uninstalled or being deleted, or its grant is neither gone nor being
+                purged.
         """
         self.fail_overdue(node)
         now = timezone.now()
         with transaction.atomic():
             job = self._lock_job_of_node(node, job_id)
-            grant = job.grant
             plugin = job.plugin
+            rules = HOOK_KIND_RULES[job.kind]
             if (
                 job.state != HookJobState.PENDING
-                or plugin.state != PluginState.RUNNING
                 or plugin.current_package is None
-                or grant is None
-                or grant.state != HOOK_KIND_RULES[job.kind].runs_in
+                or not rules.claimable(job, now)
             ):
                 raise HookJobNotClaimableError()
             job.state = HookJobState.RUNNING
             job.attempt += 1
             job.claimed_at = now
+            if job.first_attempt_at is None:
+                job.first_attempt_at = now
+            job.next_attempt_at = None
             job.deadline_at = now + timedelta(seconds=job.timeout_seconds)
             job.finished_at = None
             job.error = None
@@ -198,13 +313,17 @@ class HookJobService:
                     "state",
                     "attempt",
                     "claimed_at",
+                    "first_attempt_at",
+                    "next_attempt_at",
                     "deadline_at",
                     "finished_at",
                     "error",
                     "updated_at",
                 ]
             )
-            invocation = _invocation(job, plugin.identifier, plugin.current_package.version, grant)
+            invocation = _invocation(
+                job, plugin.identifier, plugin.current_package.version, rules.organization_name(job)
+            )
         log_hook_claimed(
             identifier=plugin.identifier,
             job_id=job.pk,
@@ -215,7 +334,7 @@ class HookJobService:
         return invocation
 
     def record_result(self, node: PluginNode, job_id: int, result: HookResult) -> None:
-        """Finish a running job with the node's result, and move its grant on.
+        """Finish a running job's attempt with the node's result, by its kind's rules.
 
         Raises:
             HookJobNotFoundError: No such job on a placement of this node.
@@ -244,16 +363,10 @@ class HookJobService:
         Raises:
             GrantNotFoundError: No such grant of this plugin.
             HookNotRetryableError: The grant's install hook has not failed.
+            PluginUninstallingError: The plugin is uninstalled or being deleted.
         """
         with transaction.atomic():
-            grant = (
-                PluginGrant.objects.select_for_update(of=("self",))
-                .select_related("plugin")
-                .filter(pk=grant_id, plugin__identifier=identifier)
-                .first()
-            )
-            if grant is None:
-                raise GrantNotFoundError()
+            grant = lock_grant(identifier, grant_id)
             assert_grant_action(grant, GrantAction.RETRY_INSTALL)
             job = (
                 grant.hook_jobs.select_for_update()
@@ -283,15 +396,19 @@ class HookJobService:
             ActivityRecorder().install_hook_retried(actor, job, grant.plugin.identifier)
         return grant
 
-    def fail_overdue(self, node: PluginNode) -> None:
-        """Fail every running job of `node`'s whose result is overdue, as if it had failed."""
-        overdue_ids = list(
-            PluginHookJob.objects.filter(
-                plugin__placement__node=node,
-                state=HookJobState.RUNNING,
-                deadline_at__lt=timezone.now() - RESULT_GRACE,
-            ).values_list("pk", flat=True)
+    def fail_overdue(self, node: PluginNode | None = None) -> int:
+        """End the attempt of every running job whose result is overdue, as if it had failed.
+
+        Only `node`'s jobs, or every node's when None (the scheduled sweep, so a job of a node
+        that stopped reporting ends too). Each job is then what its kind's rules make of a
+        failed attempt. Returns how many there were.
+        """
+        overdue = PluginHookJob.objects.filter(
+            state=HookJobState.RUNNING, deadline_at__lt=timezone.now() - RESULT_GRACE
         )
+        if node is not None:
+            overdue = overdue.filter(plugin__placement__node=node)
+        overdue_ids = list(overdue.order_by("pk").values_list("pk", flat=True))
         for job_id in overdue_ids:
             with transaction.atomic():
                 running = PluginHookJob.objects.filter(pk=job_id, state=HookJobState.RUNNING)
@@ -313,6 +430,7 @@ class HookJobService:
                 outcome="failed",
                 duration_ms=None,
             )
+        return len(overdue_ids)
 
     @classmethod
     def _lock_job_of_node(cls, node: PluginNode, job_id: int) -> PluginHookJob:
@@ -338,38 +456,23 @@ class HookJobService:
 
     @staticmethod
     def _finish(job: PluginHookJob, *, succeeded: bool, error: str | None) -> None:
-        job.state = HookJobState.SUCCEEDED if succeeded else HookJobState.FAILED
-        job.finished_at = timezone.now()
-        job.error = error
-        job.save(update_fields=["state", "finished_at", "error", "updated_at"])
-        _move_grant(job, succeeded=succeeded, error=error)
-        ActivityRecorder().hook_finished(
-            job, job.plugin.identifier, succeeded=succeeded, error=error
-        )
+        HOOK_KIND_RULES[job.kind].finish(job, succeeded=succeeded, error=error, now=timezone.now())
 
 
-def _move_grant(job: PluginHookJob, *, succeeded: bool, error: str | None) -> None:
-    """Move the job's grant on, if it still exists and still waits for this job."""
-    if job.grant_id is None:
-        return
-    rules = HOOK_KIND_RULES[job.kind]
-    PluginGrant.objects.filter(pk=job.grant_id, state=rules.runs_in).update(
-        state=rules.succeeded if succeeded else rules.failed,
-        last_hook_error=None if succeeded else error,
-        updated_at=timezone.now(),
-    )
+def _close(job: PluginHookJob, state: str, error: str | None, now: datetime) -> None:
+    job.state = state
+    job.finished_at = now
+    job.error = error
+    job.save(update_fields=["state", "finished_at", "error", "updated_at"])
 
 
-def _runnable_q() -> Q:
-    """Jobs whose grant is in the state their kind runs in."""
-    return reduce(
-        operator.or_,
-        (Q(kind=kind, grant__state=rules.runs_in) for kind, rules in HOOK_KIND_RULES.items()),
-    )
+def _listed_q(now: datetime) -> Q:
+    """Jobs their kind's rules list now."""
+    return reduce(operator.or_, (rules.listed(now) for rules in HOOK_KIND_RULES.values()))
 
 
 def _invocation(
-    job: PluginHookJob, identifier: str, version: str, grant: PluginGrant
+    job: PluginHookJob, identifier: str, version: str, organization_name: str
 ) -> HookInvocation:
     body = encode_hook_body(
         HookRequest(
@@ -377,7 +480,7 @@ def _invocation(
             job_id=job.pk,
             attempt=job.attempt,
             kind=job.kind,
-            org=ContextOrganization(id=grant.org_id, name=grant.org.name),
+            org=ContextOrganization(id=job.organization_id, name=organization_name),
             plugin=PluginIdentity(identifier=identifier, version=version),
             previous_version=None,
         )

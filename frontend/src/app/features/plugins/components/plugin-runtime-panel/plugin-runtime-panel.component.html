@@ -2,7 +2,7 @@
     <div class="runtime">
         @if (loadError(); as failure) {
             <div
-                class="runtime__stale text-body-small"
+                class="runtime__callout text-body-small"
                 role="status"
             >
                 Couldn't refresh: {{ failure.message }} Showing the last known state.
@@ -49,7 +49,7 @@
             @if (placement(); as current) {
                 @if (blockedMessage(); as message) {
                     <div
-                        class="runtime__blocked text-body"
+                        class="runtime__callout text-body"
                         role="status"
                     >
                         {{ message }}
@@ -126,7 +126,7 @@
                 <dl class="runtime__facts text-body">
                     <dt>Server</dt>
                     <dd>
-                        <code>{{ pluginDatabase.server }}</code>
+                        <code>{{ pluginDatabase.serverLabel }}</code>
                     </dd>
                     <dt>Database</dt>
                     <dd>
@@ -168,7 +168,7 @@
                     <dd>{{ pluginDatabase.size ?? '—' }}</dd>
                 </dl>
                 @if (pluginDatabase.limits_restored_at; as restoredAt) {
-                    <p class="runtime__note text-body">
+                    <p class="runtime__callout text-body">
                         Timeout restored at {{ restoredAt | date: 'medium' }}: the plugin changed its own default, and
                         EpicStaff set it back.
                     </p>
@@ -200,7 +200,7 @@
     </div>
 } @else if (loadError(); as failure) {
     <div
-        class="runtime__stale text-body"
+        class="runtime__callout text-body"
         role="alert"
     >
         {{ failure.message }} Trying again every few seconds.

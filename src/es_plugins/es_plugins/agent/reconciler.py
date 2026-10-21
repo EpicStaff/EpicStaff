@@ -34,6 +34,10 @@ for up to 5 minutes: each fetch mints new service-account keys, and an outage ma
 A process stopped for good (stopped, failed, its placement gone, the agent stopping) loses its
 egress proxy password.
 
+A placement in the desired state's `removals` has its controller closed first, like any placement
+that left `placements`; `PlacementRemover` then drops its database and deletes everything the node
+keeps for it (see `es_plugins.agent.removal`), and the node's report carries the removal's state.
+
 The agent holds every port of the node's range from start-up (`PortReservation`); the
 controller takes its placement's port before anything else and each process serves on that
 socket (see `ProcessSupervisor`). A placement whose plugin, UID or port changes is a new
@@ -53,16 +57,20 @@ from src.shared.models.plugin_nodes import (
     DesiredDatabase,
     DesiredPackage,
     DesiredPlacement,
+    DesiredRemoval,
     DesiredRuntime,
     DesiredState,
     PlacementReport,
+    RemovalReport,
     RuntimeCredentials,
 )
 
 from es_plugins.agent.django_client import DjangoNodeClient, FetchedCredentials, NodeApiError
 from es_plugins.agent.launcher_client import LauncherClient, LauncherError
 from es_plugins.agent.port_reservation import PortReservation, PortUnavailableError
+from es_plugins.agent.removal import PlacementRemover, RemovalServices
 from es_plugins.database.connections import DatabaseProvisioningError, DatabaseUnreachableError
+from es_plugins.database.drop_sequence import DatabaseDropper
 from es_plugins.database.migration_runner import Migration
 from es_plugins.database.placement_database import PlacementDatabase
 from es_plugins.database.provisioner import DatabaseProvisioner
@@ -123,6 +131,7 @@ class AgentServices:
     disk: NodeDisk
     hook_caller: PluginHookCaller
     provisioner: DatabaseProvisioner
+    dropper: DatabaseDropper
     egress: EgressPolicyWriter
     on_change: Callable[[], None]
     """Called whenever something a report shows changed."""
@@ -192,6 +201,7 @@ class PlacementController:
         self._retry_credentials: _FetchedFor | None = None
         self._running_settings_revision: int | None = None
         self._failed_for: tuple[int, DesiredPackage] | None = None
+        self._failure: str | None = None
         self._task: asyncio.Task | None = None
 
     @property
@@ -346,9 +356,18 @@ class PlacementController:
         egress_password = await self._services.egress.issue_password(desired.plugin_identifier)
         await self._write_runtime_file(desired, fetched)
         if self._failed_for is not None:
-            # The limits watchdog failed the placement while this start was under way.
+            # The limits watchdog failed the placement while this start was under way; the
+            # password just issued must not outlive the start.
+            await self._withdraw_egress()
             return
         await supervisor.start(self._process_spec(desired, fetched.credentials, egress_password))
+        if self._failed_for is not None:
+            # The watchdog failed it while `start` waited for the supervisor: a failed placement
+            # never runs.
+            await supervisor.stop()
+            supervisor.fail(self._failure or "the plugin's database failed")
+            await self._withdraw_egress()
+            return
         self._started_with = _StartedWith.of(desired)
         self._running_settings_revision = fetched.credentials.settings_revision
         self._services.on_change()
@@ -517,6 +536,7 @@ class PlacementController:
         logger.error("Plugin {} failed: {}", desired.plugin_identifier, error)
         await self.supervisor.stop()
         self._failed_for = (desired.restart_generation, desired.package)
+        self._failure = error
         self.supervisor.fail(error)
         await self._withdraw_egress()
 
@@ -549,6 +569,20 @@ class Reconciler:
     def __init__(self, services: AgentServices):
         self._services = services
         self._controllers: dict[int, PlacementController] = {}
+        self._placements: list[DesiredPlacement] = []
+        # Placement ids whose report failed to build, so the failure is logged once.
+        self._unreportable: set[int] = set()
+        self._remover = PlacementRemover(
+            RemovalServices(
+                layout=services.layout,
+                dropper=services.dropper,
+                egress=services.egress,
+                launcher=services.launcher,
+                prune_downloads=self._prune_downloads,
+                blocking_placement=self._blocking_placement,
+                on_change=services.on_change,
+            )
+        )
 
     async def apply(self, desired_state: DesiredState) -> None:
         """Run what `desired_state` names, beginning with the egress proxy's host lists.
@@ -564,8 +598,15 @@ class Reconciler:
             }
         )
         wanted = {placement.placement_id: placement for placement in desired_state.placements}
+        removed = {removal.placement_id for removal in desired_state.removals}
+        closed_databases = {}
         for placement_id in [known for known in self._controllers if known not in wanted]:
-            await self._controllers.pop(placement_id).close()
+            controller = self._controllers.pop(placement_id)
+            if placement_id in removed and controller.database is not None:
+                # From here on neither provisioning nor the limits watchdog touches it.
+                controller.database.retire()
+                closed_databases[placement_id] = controller.database
+            await controller.close()
         for placement in desired_state.placements:
             controller = self._controllers.get(placement.placement_id)
             if controller is not None and _identity(controller.desired) != _identity(placement):
@@ -579,7 +620,9 @@ class Reconciler:
                 controller.start()
             else:
                 controller.update(placement)
-        self._services.fetcher.prune(placement.package for placement in desired_state.placements)
+        self._placements = list(desired_state.placements)
+        self._prune_downloads()
+        self._remover.apply(desired_state.removals, closed_databases)
         self._services.on_change()
 
     def supervisors(self) -> list[ProcessSupervisor]:
@@ -594,12 +637,52 @@ class Reconciler:
         ]
 
     def reports(self) -> list[PlacementReport]:
-        return [controller.report() for controller in self._controllers.values()]
+        """One report per placement. One that cannot be built is replaced by a minimal one, so
+        no placement can stop the node's report."""
+        reports = []
+        for placement_id, controller in self._controllers.items():
+            try:
+                reports.append(controller.report())
+                self._unreportable.discard(placement_id)
+            except Exception:
+                if placement_id not in self._unreportable:
+                    self._unreportable.add(placement_id)
+                    logger.exception("The report of placement {} could not be built", placement_id)
+                reports.append(
+                    PlacementReport(
+                        placement_id=placement_id,
+                        observed_state="unknown",
+                        health="unknown",
+                        restarts=0,
+                        last_error="the node could not report this placement; see the node's log",
+                    )
+                )
+        return reports
+
+    def removal_reports(self) -> list[RemovalReport]:
+        return self._remover.reports()
 
     async def close(self) -> None:
         """Stop every plugin, all at once: each gets the same few seconds to finish."""
+        await self._remover.close()
         await asyncio.gather(*(controller.close() for controller in self._controllers.values()))
         self._controllers.clear()
+
+    def _prune_downloads(self) -> None:
+        self._services.fetcher.prune(placement.package for placement in self._placements)
+
+    def _blocking_placement(self, removal: DesiredRemoval) -> int | None:
+        """A controller that still has the placement, or any of its plugin, UID and port."""
+        for placement_id, controller in self._controllers.items():
+            runs = controller.desired
+            if (
+                placement_id == removal.placement_id
+                or runs.plugin_identifier == removal.plugin_identifier
+                or runs.runtime.unix_uid == removal.unix_uid
+                or runs.runtime.port == removal.port
+            ):
+                return placement_id
+        return None
 
 
 def _identity(placement: DesiredPlacement) -> tuple[str, int, int]:

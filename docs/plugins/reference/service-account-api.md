@@ -33,6 +33,10 @@ organization id as text ([Runtime](runtime.md)):
   organization's service account stops at once (`401`), the one inside its 10 minutes included,
   and the organization leaves the runtime file at the node's next fetch. Resuming mints new keys at
   the next fetch; the old ones never work again. See [the plugin lifecycle](../explanation/lifecycle.md).
+- **Uninstall, deleting data, deleting an organization.** Uninstalling the plugin suspends it
+  everywhere, with the same effect on keys. An organization whose plugin data is being deleted,
+  and an organization that was deleted, have no service account key at all: the organization
+  removed hook runs without one ([Delete your data when an organization leaves](../how-to/org-removed-hook.md)).
 
 ## Calling EpicStaff
 
@@ -60,9 +64,10 @@ X-EpicStaff-On-Behalf-Of: 17            (optional: see below)
   references any other secret of the organization is refused (`400 invalid`) on create and on
   every update. A secret's value is never returned. There is no `update`: create a new secret and
   delete the old one.
-- **Models.** A service account cannot set where a model sends requests (`base_url`,
-  `deployment_id`), on its own models or the organization's; for its own endpoint, put it on its
-  own configuration with its own secret. Its other fields stay editable with `llm_configs: update`.
+- **Models.** A service account cannot set or change where a model sends requests (`base_url`,
+  `deployment_id`), on its own models or the organization's, and agent nodes always send to the
+  model's endpoint. An import that carries a model endpoint is refused with `400`. A model's other
+  fields stay editable with `llm_configs: update`.
 - **Rate.** Each organization's service account may make `requests_per_minute` calls a minute,
   every endpoint counted; over it, `429 throttled` with `Retry-After` ([Limits](limits.md)).
 - **What it creates is the plugin's.** EpicStaff records every flow, secret, LLM, embedding or
@@ -161,8 +166,19 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 | `grant_created` | A SuperAdmin granted the plugin to an organization | SuperAdmin | the grant's |
 | `install_hook_succeeded`, `install_hook_failed` | The install hook reported (`job_id`, `attempt`, and `error` when it failed) | Platform | the grant's |
 | `install_hook_retried` | A SuperAdmin retried a failed install hook (`job_id`) | SuperAdmin | the grant's |
-| `grant_suspended` | A SuperAdmin suspended the plugin in the organization (`previous_state`, `purge_after`) | SuperAdmin | the grant's |
-| `grant_resumed` | A SuperAdmin resumed it (`state`: `active`, or `install_failed` when its install hook never succeeded) | SuperAdmin | the grant's |
+| `grant_suspended` | A SuperAdmin suspended the plugin in the organization, or uninstalled it (`previous_state`, `purge_after`, `cause`: `grant` or `uninstall`) | SuperAdmin | the grant's |
+| `grant_resumed` | A SuperAdmin resumed it, or reinstalled the plugin (`state`: `active`, or `install_failed` when its install hook never succeeded; `cause`: the suspension's) | SuperAdmin | the grant's |
+| `grant_purge_started` | Deleting the plugin's data in the organization began (`reason`: `requested`, `grace_period_over` or `plugin_deleted`; `previous_state`; `owned_resources`, how many resources it owned) | SuperAdmin or Platform | the grant's |
+| `grant_purged` | The plugin's data in the organization is deleted, and the grant with it | Platform | the grant's |
+| `org_removed_hook_succeeded`, `org_removed_hook_failed` | The organization removed hook reported success, or failed for good after its retries (`job_id`, `attempt`, and `error` when it failed); a failed attempt that is retried records nothing | Platform | the job's |
+| `org_removed_hook_retried` | A SuperAdmin retried a data removal (`job_id`) | SuperAdmin | the job's |
+| `org_removed_hook_skipped` | A SuperAdmin skipped a data removal, or the platform did while deleting the plugin (`job_id`, `state_before`) | SuperAdmin or Platform | the job's |
+| `plugin_uninstalled` | A SuperAdmin uninstalled the plugin (`purge_after`; `organizations`, how many grants it suspended) | SuperAdmin | none |
+| `plugin_reinstalled` | A SuperAdmin reinstalled it (`organizations_resumed`) | SuperAdmin | none |
+| `plugin_purge_started` | Deleting the plugin began (`reason`: `requested` or `grace_period_over`) | SuperAdmin or Platform | none |
+| `plugin_removal_failed` | The plugin node reported that removing the plugin failed (`error`) | Platform | none |
+| `plugin_removal_retried` | A SuperAdmin asked the node to try the removal again | SuperAdmin | none |
+| `plugin_purged` | The plugin is deleted (`version`, `had_database`) | Platform | none |
 | `settings_changed` | A SuperAdmin changed settings (the keys only, never values) | SuperAdmin | none |
 | `limits_changed` | A SuperAdmin changed limit overrides (the overrides in force afterwards, one key per limit, such as `memory_mb` and `cpu_priority`) | SuperAdmin | none |
 | `restarted` | A SuperAdmin restarted the backend (`restart_generation`) | SuperAdmin | none |
@@ -170,8 +186,9 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 | `database_failed` | Setting up the plugin's database failed (`error`); recorded when it starts failing, not again while it keeps failing | Platform | none |
 | `database_limit_restored` | The plugin node put back a database limit the plugin's role had changed (`setting`: `statement_timeout`); at most once an hour | Platform | none |
 
-Events name the plugin by its identifier, so they outlive the plugin. Logins to the plugin are
-not activity, and neither are runs refused while the plugin is suspended. An event's `detail` holds
+Events name the plugin by its identifier and the organization by its id, so they outlive the
+plugin, its grants and the organization. Once an organization is deleted, only SuperAdmins see its
+events, on the plugin's **Activity** tab. Logins to the plugin are not activity, and neither are runs refused while the plugin is suspended. An event's `detail` holds
 only numbers, text, booleans and lists of text. `request.route` is the URL path pattern of the
 endpoint, the same form for every endpoint: `api/graphs/<pk>/`, `api/sessions/<session_id>/stop/`.
 

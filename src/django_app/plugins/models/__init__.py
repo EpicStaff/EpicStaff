@@ -4,10 +4,12 @@ from plugins.models.enums import (
     GrantState,
     PlacementHealth,
     PlacementObservedState,
+    PlacementRemovalState,
     PluginDatabaseState,
     PluginState,
     ReviewState,
     SignatureStatus,
+    SuspensionCause,
     Trust,
 )
 from plugins.models.grant import PluginGrant
@@ -33,6 +35,7 @@ __all__ = [
     "HookJobState",
     "PlacementHealth",
     "PlacementObservedState",
+    "PlacementRemovalState",
     "Plugin",
     "PluginActivityEvent",
     "PluginDatabase",
@@ -52,5 +55,6 @@ __all__ = [
     "PluginState",
     "ReviewState",
     "SignatureStatus",
+    "SuspensionCause",
     "Trust",
 ]

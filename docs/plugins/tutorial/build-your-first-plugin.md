@@ -1,7 +1,7 @@
 # Build your first plugin: Weather
 
 This tutorial builds the Weather sample plugin, `plugin-samples/weather/` in the EpicStaff
-repository, and installs it on a local EpicStaff. It comes in three parts:
+repository, and installs it on a local EpicStaff. It comes in four parts:
 
 1. [A backend that works in EpicStaff](#part-1-a-backend-that-works-in-epicstaff). A
    SuperAdmin grants Weather to an organization, and Weather's **install hook** creates a
@@ -15,6 +15,10 @@ repository, and installs it on a local EpicStaff. It comes in three parts:
 3. [Search through an outbound host](#part-3-search-through-an-outbound-host). Weather finds
    places by name at Open-Meteo, through the **egress proxy**, which lets the backend reach the
    one host its manifest declares and nothing else.
+4. [Clean up when an organization leaves](#part-4-clean-up-when-an-organization-leaves). When an
+   organization's Weather data is deleted, or the organization itself is, Weather's
+   **organization removed hook** deletes the organization's rows from its database. EpicStaff
+   deletes what Weather created in EpicStaff.
 
 Read the sample's files alongside: each part explains them in the order they matter.
 
@@ -33,7 +37,7 @@ Read the sample's files alongside: each part explains them in the order they mat
 | `plugin-samples/weather/manifest.json` | What the plugin is, what it may do in EpicStaff, who may use it, its database and its outbound host |
 | `plugin-samples/weather/icon.svg` | The icon in EpicStaff's left bar |
 | `plugin-samples/weather/backend/requirements.in` | The backend's dependencies; `requirements.lock` pins them with hashes |
-| `plugin-samples/weather/backend/src/weather_plugin/app.py` | The FastAPI app: the routes the page calls, and the lifespan that opens the database |
+| `plugin-samples/weather/backend/src/weather_plugin/app.py` | The FastAPI app: the routes the page calls, the lifespan that opens the database, and the organization removed hook (part 4) |
 | `plugin-samples/weather/backend/src/weather_plugin/install_hook.py` | The install hook |
 | `plugin-samples/weather/backend/src/weather_plugin/forecast_flow.py` | The forecast flow, and finding or creating it |
 | `plugin-samples/weather/backend/src/weather_plugin/forecast_runs.py` | Which person started which run |
@@ -41,7 +45,10 @@ Read the sample's files alongside: each part explains them in the order they mat
 | `plugin-samples/weather/backend/src/weather_plugin/popup_relay.py` | The popup relay of [External callbacks](../how-to/external-callbacks.md) |
 | `plugin-samples/weather/database/migrations/001_weather.sql` | Weather's tables, with row-level security per organization (part 2) |
 | `plugin-samples/weather/backend/src/weather_plugin/database.py` | The connection pool, and a transaction per organization (part 2) |
+| `plugin-samples/weather/database/migrations/002_retention.sql` | How long old rows are kept, and what the job role may delete (part 2) |
 | `plugin-samples/weather/backend/src/weather_plugin/places.py` | The saved places (part 2) |
+| `plugin-samples/weather/backend/src/weather_plugin/retention.py` | The hourly purge of old rows, across organizations (part 2) |
+| `plugin-samples/weather/backend/src/weather_plugin/organization_data.py` | Deleting everything Weather keeps for an organization (part 4) |
 | `plugin-samples/weather/backend/src/weather_plugin/place_search.py` | Finding places by name through the egress proxy (part 3) |
 | `plugin-samples/weather/spa/src/main.ts` | The page: frame, login, navigation |
 | `plugin-samples/weather/spa/src/forecast.ts` | The Forecast page; `/forecast?city=<name>` fills the city field, and the parameter is then removed from the address |
@@ -54,7 +61,7 @@ Read the sample's files alongside: each part explains them in the order they mat
 {
     "manifest_version": 1,
     "id": "weather",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "name": "Weather",
     "description": "Forecasts for the places your organization cares about.",
     "publisher": { "name": "EpicStaff" },
@@ -112,7 +119,7 @@ Read the sample's files alongside: each part explains them in the order they mat
         }
     ],
     "limits": { "memory_mb": 256, "db_connections": 3, "statement_timeout_seconds": 10 },
-    "hooks": { "install": true }
+    "hooks": { "install": true, "org_removed": true }
 }
 ```
 
@@ -129,7 +136,7 @@ The parts this tutorial uses:
   (part 2): Org Admins and Members get it. `delete` is Weather's own "change the organization's
   settings"; only Org Admins get it. Custom roles get them in the Roles matrix
   ([Give people permissions](../how-to/user-permissions.md)).
-- **`hooks`**: Weather has an install hook.
+- **`hooks`**: Weather has an install hook, and an organization removed hook (part 4).
 - **`public_paths`**: `/api/ping` and the demo OAuth provider answer without a login.
 - **`database`** and the `db_connections` and `statement_timeout_seconds` limits: part 2.
 - **`outbound_hosts`**: part 3.
@@ -268,13 +275,13 @@ it from a wheel you build):
 
 ```
 uv build --project src/plugin_sdk --wheel -o dist
-uv run --project src/plugin_sdk epicstaff-plugin pack plugin-samples/weather --spa-dir plugin-samples/weather/spa/dist --download-wheels --local-wheel dist/epicstaff_plugin-0.1.0-py3-none-any.whl --out weather-0.5.0.esplugin
-uv run --project src/plugin_sdk epicstaff-plugin validate weather-0.5.0.esplugin
+uv run --project src/plugin_sdk epicstaff-plugin pack plugin-samples/weather --spa-dir plugin-samples/weather/spa/dist --download-wheels --local-wheel dist/epicstaff_plugin-0.1.0-py3-none-any.whl --out weather-0.6.0.esplugin
+uv run --project src/plugin_sdk epicstaff-plugin validate weather-0.6.0.esplugin
 ```
 
 [Sign and package a plugin](../how-to/sign-and-package.md) adds a signature. Then, as the
-SuperAdmin, in EpicStaff's Plugins page: upload `weather-0.5.0.esplugin`, read the review (the
-declared access with its reasons, the database and the outbound host), approve it, and grant it
+SuperAdmin, in EpicStaff's Plugins page: upload `weather-0.6.0.esplugin`, read the review (the
+declared access with its reasons, the hooks, the database and the outbound host), approve it, and grant it
 to your organization. The grant shows "Installing…", then "Active", with the service account and
 "Owned resources: 2".
 
@@ -307,7 +314,7 @@ starts the backend with two more variables in its environment: `DATABASE_URL`, w
 as `weather_app`, and `EPICSTAFF_PLUGIN_DB_CONNECTIONS`, that role's connection limit.
 [Plugin database](../reference/database.md) describes the roles and what each may do.
 
-### 2. The migration
+### 2. The migrations
 
 `plugin-samples/weather/database/migrations/001_weather.sql` creates the schema `weather` with
 three tables: `saved_places`, and the two stores part 1 kept, `forecast_runs` and
@@ -335,6 +342,7 @@ GRANT USAGE ON SEQUENCE weather.saved_places_id_seq TO ${app_role};
 
 `${app_role}` is a placeholder the node replaces with the quoted name of the app role. The node
 runs each file once, in one transaction, so the file has no `BEGIN` or `COMMIT` of its own.
+`002_retention.sql` comes next: step 6 explains it.
 [Write database migrations](../how-to/database-migrations.md) covers the rules.
 
 ### 3. One transaction per organization
@@ -377,21 +385,57 @@ Adding and removing need Weather's `update` (Edit), which the backend checks fro
 The forecast runs of part 1 and the popup relay's results are in the same database, with the
 same policy.
 
-### 6. What administrators see
+### 6. Old rows, deleted across organizations
 
-- The SuperAdmin's review shows a **Database** section: Weather gets its own database, and one
-  migration runs before the backend first starts.
+A forecast run is kept for 7 days, and a popup result until it expires after five minutes.
+Requests never delete old rows: deleting them as each organization adds new ones would scan
+that organization's history on every insert, and never purge an organization that stopped
+using Weather. Once an hour, `retention.py` deletes them for every organization at once,
+working as the plugin's **job role**, `weather_job`.
+
+`002_retention.sql` gives that role exactly this and nothing more. The rule for what is old is
+in its policies, so no code can widen it:
+
+```sql
+CREATE POLICY expired_rows_delete ON weather.forecast_runs
+    FOR DELETE TO ${job_role}
+    USING (created_at < now() - interval '7 days');
+```
+
+The role may read only the timestamp column, and only of expired rows, and may delete only
+expired rows. The same file narrows the organization policies of `001_weather.sql` to
+`${app_role}`, so a job transaction never reaches a live row through them, and adds an index on
+each timestamp.
+
+The purge runs each batch in the SDK's `job_transaction`, which switches the transaction to the
+job role:
+
+```python
+async with self._pool.connection() as connection, job_transaction(connection):
+    yield connection
+```
+
+It deletes about 5,000 rows a batch, oldest first, each batch in a short transaction of its
+own, so no statement comes near the 10-second statement timeout however much has piled up.
+The popup relay never hands out an expired result, so nothing depends on when the purge last
+ran.
+
+### 7. What administrators see
+
+- The SuperAdmin's review shows a **Database** section: Weather gets its own database, and two
+  migrations run before the backend first starts.
 - About a minute after approval, the plugin's Runtime tab shows **Database: Ready**, with the
-  database, its roles, "Migrations: 1 of 1", the connection limit, the statement timeout and the
+  database, its roles, "Migrations: 2 of 2", the connection limit, the statement timeout and the
   size. The Activity tab shows "Database ready", by the platform.
 - Org Admins see "Keeps its data in its own database" on Weather's card in Settings → Plugin
   activity.
 
-### 7. Test it
+### 8. Test it
 
 The backend tests of part 1 also run the Places routes, with in-memory stand-ins for the
 stores. The stores themselves run against a real PostgreSQL in `src/plugin_sdk/tests/test_weather_sample_database.py`,
-which sets the database up as the node does and applies the sample's migration. Point
+which sets the database up as the node does and applies the sample's migrations. They also
+check what the job role may and may not do, and that the purge deletes only expired rows. Point
 `ES_PLUGINS_TEST_PG_HOST`, `ES_PLUGINS_TEST_PG_PORT` and `ES_PLUGINS_TEST_PG_ADMIN_PASSWORD` at a
 plugin database server, then:
 
@@ -399,7 +443,7 @@ plugin database server, then:
 make plugin_sdk-tests ARGS="-m postgres tests/test_weather_sample_database.py"
 ```
 
-### 8. Use it
+### 9. Use it
 
 - As the Member, open Weather, go to Places, search for "Lisbon" (part 3) and add "Lisbon,
   Portugal". The page leaves out the region when it repeats the place's name. The Org Admin sees
@@ -473,3 +517,61 @@ direct, never through the proxy.
 - As the Member, open Weather, go to Places and search for "Lisbon": the matches come from
   Open-Meteo, through the egress proxy.
 - The plugin's Runtime tab lists `geocoding-api.open-meteo.com` under **Outbound access**.
+
+## Part 4: clean up when an organization leaves
+
+An organization's Weather data is deleted when its grace period ends after a suspension, when a
+SuperAdmin chooses "Delete data…" for it, when the organization is deleted, and when Weather
+itself is deleted. EpicStaff then deletes everything Weather created in the organization: the
+"Weather forecast" flow, the readme, the Secret and the LLM config. Weather's own rows are in
+its own database, and only Weather can delete them.
+[Delete your data when an organization leaves](../how-to/org-removed-hook.md) covers the hook in
+full.
+
+### 1. Ask for the hook
+
+`plugin-samples/weather/manifest.json` declares it next to the install hook:
+
+```json
+"hooks": { "install": true, "org_removed": true }
+```
+
+### 2. The handler
+
+`plugin-samples/weather/backend/src/weather_plugin/app.py` registers it. It takes the request
+alone: the organization's service account is gone by now, so there is no client to call EpicStaff
+with, and nothing to call it for.
+
+```python
+@hook_registry.on_org_removed
+async def org_removed(request: HookRequest) -> None:
+    deleted = await app.state.organization_data.delete(request.org.id)
+```
+
+It lives in `app.py` rather than in a module of its own, like the install hook, because it needs
+the database that the lifespan opens.
+
+### 3. Every table, one organization, one transaction
+
+`plugin-samples/weather/backend/src/weather_plugin/organization_data.py` deletes the
+organization's rows from all three tables in one `org_transaction` for it. Row-level security
+already limits each statement to that organization, and each also says `WHERE org_id = %s`.
+Running it again deletes nothing more, so a retry is harmless. A test compares its statements
+with the tables the migrations create, so a table added later cannot be forgotten.
+
+### 4. Test it
+
+The backend tests call the hook with `HookSigner`, for an organization the runtime file has no
+service account for, and check the statements it sends, in one transaction, and that it never
+calls EpicStaff. Against a real PostgreSQL, `test_weather_sample_database.py` checks that the
+organization's rows are gone from every table, and another organization's are all still there.
+
+### 5. Use it
+
+- As the SuperAdmin, open Weather → Organizations, and choose "Delete data…" for your
+  organization. The dialog lists what Weather owns there and the flows that use it, and asks you
+  to type the confirmation it shows.
+- The organization's row shows "Deleting data…", then goes. The Activity tab shows the hook's
+  success.
+- In the plugin database, `select org_id, name from weather.saved_places` no longer lists your
+  organization's places. Another organization's places are still there.

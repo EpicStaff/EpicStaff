@@ -26,6 +26,18 @@ const EVERY_ACTION: PluginActivityAction[] = [
     'database_ready',
     'database_failed',
     'database_limit_restored',
+    'plugin_uninstalled',
+    'plugin_reinstalled',
+    'plugin_purge_started',
+    'plugin_removal_failed',
+    'plugin_removal_retried',
+    'plugin_purged',
+    'grant_purge_started',
+    'grant_purged',
+    'org_removed_hook_succeeded',
+    'org_removed_hook_failed',
+    'org_removed_hook_retried',
+    'org_removed_hook_skipped',
 ];
 
 /** A deployment-wide event of the platform, without a request or a target. */
@@ -195,6 +207,70 @@ describe('PluginActivityListComponent', () => {
         expect(details(2)).toEqual([]);
     });
 
+    it('labels every action it knows, and no other', () => {
+        expect(Object.keys(PLUGIN_ACTIVITY_ACTION_LABELS).sort()).toEqual([...EVERY_ACTION].sort());
+    });
+
+    it('shows why a deletion began, by a SuperAdmin or the platform', () => {
+        render([
+            platformEvent({
+                id: 1,
+                actor: { kind: 'superadmin', label: 'sam@example.com' },
+                organization: { id: 3, name: 'Acme' },
+                action: 'grant_purge_started',
+                detail: { reason: 'requested', previous_state: 'active', owned_resources: 4 },
+            }),
+            platformEvent({
+                id: 2,
+                organization: { id: 4, name: 'Bravo' },
+                action: 'grant_purge_started',
+                detail: { reason: 'grace_period_over', previous_state: 'suspended', owned_resources: 1 },
+            }),
+            platformEvent({ id: 3, action: 'plugin_purge_started', detail: { reason: 'plugin_deleted' } }),
+            platformEvent({ id: 4, action: 'plugin_purge_started', detail: { reason: 'operator_cleanup' } }),
+            platformEvent({ id: 5, action: 'grant_purged', detail: {} }),
+        ]);
+
+        expect(row(0)['Action']).toBe('Data deletion started');
+        expect(row(0)['Actor']).toBe('sam@example.com (SuperAdmin)');
+        expect(details(0)).toEqual(['Reason: Requested']);
+        expect(row(1)['Actor']).toBe('Platform');
+        expect(details(1)).toEqual(['Reason: Grace period over']);
+        expect(row(2)['Action']).toBe('Deletion started');
+        expect(details(2)).toEqual(['Reason: Plugin deleted']);
+        expect(details(3)).toEqual(['Reason: operator_cleanup']);
+        expect(row(4)['Action']).toBe('Data deleted');
+        expect(details(4)).toEqual([]);
+    });
+
+    it("shows why a data removal or the node's removal failed", () => {
+        render([
+            platformEvent({
+                id: 1,
+                organization: { id: 9, name: null },
+                action: 'org_removed_hook_failed',
+                detail: { job_id: 31, attempt: 9, error: 'Weather answered 500: database is locked' },
+            }),
+            platformEvent({ id: 2, action: 'plugin_removal_failed', detail: { error: 'conflict: marker mismatch' } }),
+            platformEvent({ id: 3, action: 'org_removed_hook_succeeded', detail: { job_id: 32, attempt: 1 } }),
+        ]);
+
+        expect(row(0)['Action']).toBe('Data removal failed');
+        expect(details(0)).toEqual(['Weather answered 500: database is locked']);
+        expect(row(1)['Action']).toBe('Removal from the node failed');
+        expect(details(1)).toEqual(['conflict: marker mismatch']);
+        expect(row(2)['Action']).toBe('Data removal done');
+        expect(details(2)).toEqual([]);
+    });
+
+    it('names a deleted organization by its id', () => {
+        render([platformEvent({ organization: { id: 9, name: null }, action: 'org_removed_hook_succeeded' })], {
+            showOrganization: true,
+        });
+
+        expect(row(0)['Organization']).toBe('Organization #9 (deleted)');
+    });
+
     it('shows the overrides a limits change left in force, as the limits form names them', () => {
         const bySam = { kind: 'superadmin' as const, label: 'sam@example.com' };
         render([
@@ -237,7 +313,7 @@ describe('PluginActivityListComponent', () => {
         expect(headers()).toEqual(['When', 'Plugin', 'Organization', 'Actor', 'Action', 'Details']);
         expect(row(0)['Organization']).toBe('Acme');
         expect(row(1)['Organization']).toBe('Whole deployment');
-        expect(row(2)['Organization']).toBe('Organization 9');
+        expect(row(2)['Organization']).toBe('Organization #9 (deleted)');
         expect(row(0)['Plugin']).toBe('Weather');
         expect(row(2)['Plugin']).toBe('gone');
     });

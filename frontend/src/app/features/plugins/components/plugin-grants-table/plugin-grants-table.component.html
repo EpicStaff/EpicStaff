@@ -89,6 +89,58 @@
                             }
                         </div>
                     }
+                    @case ('purging') {
+                        <div class="grants__stacked">
+                            <span class="grants__deleting text-body">
+                                <app-spinner2 [size]="16" />
+                                Deleting data…
+                            </span>
+                            @if (dataRemovalOf(grant); as removal) {
+                                <span
+                                    class="grants__data-removal text-body-small"
+                                    [class.grants__hook-error]="removal.failed"
+                                    [class.grants__muted]="!removal.failed"
+                                    [matTooltip]="removal.message"
+                                    [matTooltipDisabled]="!removal.failed"
+                                    matTooltipPosition="above"
+                                >
+                                    {{ removal.message }}
+                                </span>
+                                @if (removal.progress) {
+                                    <span class="grants__data-removal-progress grants__muted text-body-small">
+                                        {{ removal.progress }}
+                                    </span>
+                                }
+                                @if (removal.lastError) {
+                                    <span
+                                        class="grants__data-removal-last-error grants__muted text-body-small"
+                                        tabindex="0"
+                                        [matTooltip]="removal.lastError"
+                                        matTooltipPosition="above"
+                                    >
+                                        Last attempt failed: {{ removal.lastError }}
+                                    </span>
+                                }
+                                <app-plugin-data-removal-actions
+                                    [identifier]="identifier()"
+                                    [pluginName]="pluginName()"
+                                    [job]="removal.job"
+                                    (changed)="reload()"
+                                />
+                            }
+                            @if (grant.last_purge_error; as purgeError) {
+                                <span
+                                    class="grants__purge-error grants__hook-error text-body-small"
+                                    tabindex="0"
+                                    [matTooltip]="purgeError"
+                                    matTooltipPosition="above"
+                                >
+                                    Some resources could not be deleted yet: {{ purgeError }}; EpicStaff retries every
+                                    hour
+                                </span>
+                            }
+                        </div>
+                    }
                     @default {
                         <app-plugin-badge
                             [label]="stateLabel(grant)"

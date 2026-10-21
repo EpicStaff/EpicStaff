@@ -31,12 +31,15 @@ from epicstaff_plugin.contracts.manifest import (
     OUTBOUND_HOST_PATTERN,
 )
 from epicstaff_plugin.contracts.runtime import RuntimeFile
+from epicstaff_plugin.package_layout import MAX_MIGRATION_NAME_LENGTH, MIGRATION_NAME_PATTERN
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
     StringConstraints,
+    TypeAdapter,
+    ValidationError,
     model_validator,
 )
 
@@ -58,6 +61,7 @@ __all__ = [
     "DesiredHookJob",
     "DesiredPackage",
     "DesiredPlacement",
+    "DesiredRemoval",
     "DesiredRuntime",
     "DesiredState",
     "DesiredStateNode",
@@ -65,9 +69,11 @@ __all__ = [
     "HookResult",
     "NodeReport",
     "PlacementReport",
+    "RemovalReport",
     "RuntimeCredentials",
     "RuntimeDatabaseCredentials",
     "database_names_for",
+    "is_reportable_migration_name",
 ]
 
 CONTRACT_FORMAT = 1
@@ -106,9 +112,27 @@ ServerHost = Annotated[str, StringConstraints(pattern=r"^[a-z0-9](?:[a-z0-9._-]{
 OutboundHostText = Annotated[str, StringConstraints(pattern=OUTBOUND_HOST_PATTERN)]
 MigrationName = Annotated[
     str,
-    StringConstraints(pattern=r"^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$", max_length=255),
+    StringConstraints(pattern=MIGRATION_NAME_PATTERN, max_length=MAX_MIGRATION_NAME_LENGTH),
 ]
-"""A migration's file name under `database/migrations/`, e.g. `001_places.sql`."""
+"""A migration's file name under `database/migrations/`, e.g. `001_places.sql`: the package
+layout's rule, so a ledger entry is reportable exactly when a package may hold the file."""
+
+_MIGRATION_NAME = TypeAdapter(MigrationName)
+
+
+def is_reportable_migration_name(value: object) -> bool:
+    """Whether `value` may go in a `DatabaseReport` ledger: a `str` that names a package migration.
+
+    The ledger is a table in the plugin's own database, and the plugin's migrations can write
+    any row into it. The node keeps only the entries this accepts, so no row a plugin wrote can
+    make its report invalid. Nothing else repeats this rule.
+    """
+    try:
+        _MIGRATION_NAME.validate_python(value, strict=True)
+    except ValidationError:
+        return False
+    return True
+
 
 DesiredProcessState = Literal["running", "stopped"]
 ObservedProcessState = Literal[
@@ -200,7 +224,10 @@ class DesiredHookJob(_NodeContractModel):
     """A lifecycle hook call the node should make to the plugin's process.
 
     The node claims the job (`POST .../hook-jobs/{job_id}/claim/`) only once the process is
-    healthy and its runtime file holds a service-account key for `organization_id`.
+    healthy and runs with the desired `credentials_revision`. An `install` job also waits
+    until the runtime file holds a service-account key for `organization_id`. An
+    `org_removed` job does not: the organization's plugin data is being deleted, and it has
+    no key any more.
     """
 
     job_id: PositiveInt
@@ -258,7 +285,9 @@ class DesiredPlacement(_NodeContractModel):
     placement_id: PositiveInt
     plugin_identifier: PluginIdentifier
     desired_state: DesiredProcessState
-    """`stopped` while the plugin cannot start, e.g. a required setting is missing."""
+    """`stopped` while the plugin cannot start, e.g. a required setting is missing, and while
+    it is uninstalled or being deleted, except when an `org_removed` hook job is due or
+    running: the process then runs only to make that call."""
 
     restart_generation: NonNegativeInt
     package: DesiredPackage
@@ -269,26 +298,68 @@ class DesiredPlacement(_NodeContractModel):
         default_factory=list
     )
     """Pending hook jobs, oldest first. An install job is listed only while its grant exists
-    and is still being granted."""
+    and is still being granted; an `org_removed` job once its next attempt is due."""
 
     database: DesiredDatabase | None = None
-    """Set exactly when the package's manifest has a `database` section."""
+    """Set exactly when the package's manifest has a `database` section, also while the
+    plugin is uninstalled or being deleted, so a process started for an `org_removed` hook
+    still reaches its data. It moves to the plugin's `DesiredRemoval` once the node is asked
+    to remove the plugin."""
 
     egress: DesiredEgress = Field(default_factory=lambda: DesiredEgress(hosts=[]))
 
     @model_validator(mode="after")
     def _database_names_belong_to_the_plugin(self) -> Self:
-        if self.database is None:
-            return self
-        names = DatabaseNames(
-            database=self.database.database_name,
-            owner_role=self.database.owner_role,
-            app_role=self.database.app_role,
-            job_role=self.database.job_role,
-        )
-        if names != database_names_for(self.plugin_identifier):
-            raise ValueError("database names must be the ones derived from plugin_identifier")
+        _assert_database_names_are_the_plugins(self.database, self.plugin_identifier)
         return self
+
+
+class DesiredRemoval(_NodeContractModel):
+    """A plugin the node should remove for good, and everything the node keeps for it.
+
+    The node stops its process, drops its database and roles when `database` is set, deletes
+    its code, environment, logs and data, and reports the outcome in `RemovalReport` until
+    the removal leaves the desired state. EpicStaff frees the port and the Unix user id only
+    after the node has reported the removal done.
+
+    When `database` is set, its four names must be `database_names_for(plugin_identifier)`,
+    so a removal can never name another plugin's database or roles.
+    """
+
+    placement_id: PositiveInt
+    plugin_identifier: PluginIdentifier
+    unix_uid: UnixUid
+    """Every process of this user id is ended, and its files are deleted."""
+
+    port: NetworkPort
+    generation: NonNegativeInt
+    """The placement's `restart_generation`: a change asks the node to try a failed removal
+    again."""
+
+    database: DesiredDatabase | None = None
+    """The database and roles to drop; None when the plugin never had a database. The node
+    drops them only when their marker is this record's `installation_id`. The limit fields
+    mean nothing for a drop."""
+
+    @model_validator(mode="after")
+    def _database_names_belong_to_the_plugin(self) -> Self:
+        _assert_database_names_are_the_plugins(self.database, self.plugin_identifier)
+        return self
+
+
+def _assert_database_names_are_the_plugins(
+    database: DesiredDatabase | None, identifier: str
+) -> None:
+    if database is None:
+        return
+    names = DatabaseNames(
+        database=database.database_name,
+        owner_role=database.owner_role,
+        app_role=database.app_role,
+        job_role=database.job_role,
+    )
+    if names != database_names_for(identifier):
+        raise ValueError("database names must be the ones derived from plugin_identifier")
 
 
 class DesiredState(_NodeContractModel):
@@ -296,6 +367,7 @@ class DesiredState(_NodeContractModel):
 
     `revision` is the sha256 of the canonical JSON of every field except `revision` and
     `generated_at`; it is also the response's ETag, so an unchanged document answers 304.
+    A placement is either run (`placements`) or removed (`removals`), never both.
     """
 
     format: Literal[1]
@@ -303,6 +375,17 @@ class DesiredState(_NodeContractModel):
     revision: Sha256Hex
     generated_at: AwareDatetime
     placements: Annotated[list[DesiredPlacement], Field(max_length=MAX_PLACEMENTS_PER_NODE)]
+    removals: Annotated[list[DesiredRemoval], Field(max_length=MAX_PLACEMENTS_PER_NODE)] = Field(
+        default_factory=list
+    )
+    """Plugins the node should remove, with what to drop and delete."""
+
+    @model_validator(mode="after")
+    def _no_placement_is_run_and_removed(self) -> Self:
+        run = {placement.placement_id for placement in self.placements}
+        if any(removal.placement_id in run for removal in self.removals):
+            raise ValueError("a placement cannot be in both placements and removals")
+        return self
 
 
 class RuntimeDatabaseCredentials(_NodeContractModel):
@@ -377,6 +460,22 @@ class PlacementReport(_NodeContractModel):
     """Null until the node has tried to provision the database in this agent's life."""
 
 
+class RemovalReport(_NodeContractModel):
+    """How the node's removal of one placement goes.
+
+    `removing` while the steps run, `removed` once nothing of the plugin is left on the node
+    (kept while the removal stays in the desired state), `failed` with `last_error` on an
+    error the node does not retry by itself. EpicStaff ignores a report whose `generation`
+    is not the removal's current one.
+    """
+
+    placement_id: PositiveInt
+    generation: NonNegativeInt
+    state: Literal["removing", "removed", "failed"]
+    last_error: Annotated[str, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)] | None = None
+    """Why the removal failed, or the error a retried step last hit."""
+
+
 class NodeReport(_NodeContractModel):
     """The node's report, sent to `POST /api/plugin-nodes/self/reports/` every 10 s and on change."""
 
@@ -384,6 +483,9 @@ class NodeReport(_NodeContractModel):
     agent_version: Annotated[str, StringConstraints(min_length=1, max_length=64)]
     reported_at: AwareDatetime
     placements: Annotated[list[PlacementReport], Field(max_length=MAX_PLACEMENTS_PER_NODE)]
+    removals: Annotated[list[RemovalReport], Field(max_length=MAX_PLACEMENTS_PER_NODE)] = Field(
+        default_factory=list
+    )
 
 
 class HookInvocation(_NodeContractModel):

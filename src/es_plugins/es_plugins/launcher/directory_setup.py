@@ -1,4 +1,4 @@
-"""Create and repair the node's directories, install plugin code, and purge plugin data.
+"""Create and repair the node's directories, install plugin code, purge and remove plugin data.
 
 The launcher runs as root with `CHOWN`, `SETUID` and `SETGID` only. Two rules follow:
 
@@ -15,6 +15,7 @@ are never followed when they are symbolic links: a link a plugin or the agent pl
 refused or replaced, not followed by root.
 """
 
+import errno
 import os
 import shutil
 import stat
@@ -172,6 +173,37 @@ class DirectorySetup:
             if not run_as_user(uid, lambda: _remove_contents(home)):
                 raise DirectorySetupError(f"{home} could not be emptied as UID {uid}")
             os.rmdir(home.name, dir_fd=data_root)
+
+    def remove_plugin_trees(self, plugin: str) -> None:
+        """Delete the plugin's code (`plugins/<id>/`) and run directory, and its empty venvs root.
+
+        Each is taken by name in its root-owned parent; a link in its place is deleted, never
+        followed, and a missing one is fine. HOME goes first (`purge_plugin_data`); the agent
+        empties `venvs/<id>/`, which it owns.
+
+        Raises:
+            DirectorySetupError: `venvs/<id>/` still holds something.
+        """
+        layout = self._layout
+        for tree in (layout.plugin_code_root(plugin), layout.plugin_run_directory(plugin)):
+            with self._open_trusted(tree.parent) as parent:
+                _remove_tree_if_present(parent, tree.name)
+        venvs = layout.plugin_venvs(plugin)
+        with self._open_trusted(venvs.parent) as parent:
+            entry = _lstat(parent, venvs.name)
+            if entry is None:
+                return
+            if not stat.S_ISDIR(entry.st_mode):
+                os.unlink(venvs.name, dir_fd=parent)
+                return
+            try:
+                os.rmdir(venvs.name, dir_fd=parent)
+            except OSError as error:
+                if error.errno == errno.ENOTEMPTY:
+                    raise DirectorySetupError(
+                        f"{venvs} is not empty; the agent empties it before the launcher removes it"
+                    ) from None
+                raise
 
     def _ensure_directory(self, path: Path, mode: int, owner: Ownership) -> None:
         """Make `path` a directory owned by `owner` with `mode`, repairing it only if needed."""
@@ -380,8 +412,15 @@ def _exists(parent: int, name: str) -> bool:
 
 
 def _remove_tree_if_present(parent: int, name: str) -> None:
-    if _exists(parent, name):
+    """Delete `parent/name` whatever it is; a link is deleted, never followed."""
+    entry = _lstat(parent, name)
+    if entry is None:
+        return
+    if stat.S_ISDIR(entry.st_mode):
+        # The descriptor-based walk: links inside are deleted, not followed.
         shutil.rmtree(name, dir_fd=parent)
+    else:
+        os.unlink(name, dir_fd=parent)
 
 
 def _remove_contents(directory: Path) -> None:

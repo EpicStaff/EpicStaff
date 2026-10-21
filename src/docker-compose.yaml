@@ -42,6 +42,15 @@ x-communication-env: &communication-env
   REALTIME_CHANNELS_INVALIDATE_CHANNEL: ${REALTIME_CHANNELS_INVALIDATE_CHANNEL:?}
   KNOWLEDGE_SOURCES_CHANNEL: ${KNOWLEDGE_SOURCES_CHANNEL:?}
 
+# Bounded container logs (50 MB at most), for services a plugin can make log at will: a plugin's
+# flood of requests writes a line per request to plugins_egress's log, and its failing queries
+# to plugins_db's.
+x-bounded-logs: &bounded-logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 #x-communication-env: &communication_env
 #  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
 #  COMMUNICATION_BROKER_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
@@ -849,12 +858,20 @@ services:
       - /dev/shm:mode=0755
     cap_drop:
       - ALL
+    # NET_ADMIN and SETPCAP are the entrypoint's only: it installs the per-plugin connection caps,
+    # then starts the launcher with SETUID, SETGID and CHOWN alone in every capability set.
     cap_add:
       - SETUID  # switch to a plugin's UID (spawn, kill helper, purge helper)
       - SETGID  # drop groups and switch to a plugin's GID
       - CHOWN  # hand per-plugin directories and runtime files to their UID
+      - NET_ADMIN  # the connection caps to plugins_db and the egress proxy (es_plugins.network_limits)
+      - SETPCAP  # take NET_ADMIN and SETPCAP out of the launcher's bounding set
     security_opt:
       - no-new-privileges:true
+    # Plugins and the agent share this namespace's ephemeral ports: a port in TIME_WAIT may be
+    # reused for a new outbound connection (each plugin's rate of new ones is also capped).
+    sysctls:
+      net.ipv4.tcp_tw_reuse: "1"
     pids_limit: 4096
     # The agent holds a socket for every port of the node's range (999) for its whole life, so
     # no plugin can bind one; the launcher gives each plugin its own lower limit.
@@ -872,6 +889,8 @@ services:
       PLUGINS_INTERNAL_API_URL: ${PLUGINS_INTERNAL_API_URL:?}
       ES_PLUGINS_DISK_MB_PER_PLUGIN: ${ES_PLUGINS_DISK_MB_PER_PLUGIN:?}
       ES_PLUGINS_FILES_PER_PLUGIN: ${ES_PLUGINS_FILES_PER_PLUGIN:?}
+      # Each plugin's cap on open connections to plugins_db, set by the entrypoint.
+      PLUGINS_MAX_DB_CONNECTIONS: ${PLUGINS_MAX_DB_CONNECTIONS:?}
       # Provisions plugin databases on plugins_db; no process the agent starts gets it.
       PLUGINS_DB_ADMIN_PASSWORD: ${PLUGINS_DB_ADMIN_PASSWORD:?}
     volumes:
@@ -897,6 +916,8 @@ services:
       start_period: 30s
     # No depends_on: the agent retries until nginx's internal listener answers, and the node
     # lab (src/es_plugins/lab) extends this service without the rest of the stack.
+    # Every plugin's output passes through this log; the node keeps each plugin's own as well.
+    logging: *bounded-logs
     restart: unless-stopped
 
   # The plugin databases: one PostgreSQL cluster, a database and three roles per plugin that
@@ -909,9 +930,14 @@ services:
     container_name: plugins_db
     hostname: plugins_db
     profiles: ["plugins"]
-    # reserved_connections: slots only plugins_admin (pg_use_reserved_connections) may take, so
-    # plugins using up the others cannot lock the plugin node out.
-    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf", "-c", "max_connections=${PLUGINS_DB_MAX_CONNECTIONS:?}", "-c", "reserved_connections=5", "-c", "password_encryption=scram-sha-256", "-c", "authentication_timeout=10s"]
+    # reserved_connections: slots only plugins_admin (pg_use_reserved_connections) may take once
+    # it has logged in. A connection takes a slot before it logs in, so these alone cannot keep
+    # plugins from locking the plugin node out: es_plugins caps each plugin's open connections
+    # (PLUGINS_MAX_DB_CONNECTIONS), and max_connections must leave room for every plugin's cap
+    # (see docs/plugins/operator/enable-plugins.md). temp_file_limit: the temporary
+    # files one server process may write, so one plugin's sorts cannot fill the volume; it counts
+    # per process (each connection and each parallel worker), and only a superuser can raise it.
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf", "-c", "max_connections=${PLUGINS_DB_MAX_CONNECTIONS:?}", "-c", "reserved_connections=5", "-c", "password_encryption=scram-sha-256", "-c", "authentication_timeout=10s", "-c", "temp_file_limit=1GB"]
     environment:
       POSTGRES_PASSWORD: ${PLUGINS_DB_SUPERUSER_PASSWORD:?}
       PLUGINS_DB_ADMIN_PASSWORD: ${PLUGINS_DB_ADMIN_PASSWORD:?}
@@ -930,6 +956,7 @@ services:
       timeout: 5s
       retries: 30
       start_period: 30s
+    logging: *bounded-logs
     restart: unless-stopped
 
   # The egress proxy, plugin backends' only way to the internet: CONNECT to port 443 of the hosts
@@ -980,6 +1007,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    logging: *bounded-logs
     restart: unless-stopped
 
 volumes:

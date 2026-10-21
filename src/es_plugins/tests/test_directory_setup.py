@@ -1,3 +1,4 @@
+import json
 import os
 import stat
 import threading
@@ -273,3 +274,118 @@ def test_purging_empties_the_home_as_the_plugin_and_removes_it(layout):
 
 def test_a_test_setup_owns_everything_itself(own_ownership):
     assert own_ownership == Ownership(os.getuid(), os.getgid())
+
+
+def _plugin_trees(layout, plugin: str) -> None:
+    """What the node keeps for a plugin outside its HOME, as a test without root can make it."""
+    code = layout.plugin_code(plugin, "0.2.0") / "backend" / "src"
+    code.mkdir(parents=True)
+    (code / "app.py").write_text("app = None\n")
+    staging = layout.plugin_code_root(plugin) / ".install-0.3.0"
+    staging.mkdir()
+    layout.plugin_run_directory(plugin).mkdir(parents=True, exist_ok=True)
+    (layout.plugin_run_directory(plugin) / "runtime.json").write_text("{}")
+    layout.plugin_venvs(plugin).mkdir(parents=True, exist_ok=True)
+
+
+def test_removing_a_plugin_deletes_its_code_run_directory_and_empty_venvs_root_and_again_does_nothing(
+    layout, unprivileged_setup
+):
+    for plugin in (PLUGIN, "notes"):
+        unprivileged_setup.prepare_plugin(plugin, os.getuid())
+        _plugin_trees(layout, plugin)
+
+    unprivileged_setup.remove_plugin_trees(PLUGIN)
+    unprivileged_setup.remove_plugin_trees(PLUGIN)
+
+    for path in (layout.plugin_code_root(PLUGIN), layout.plugin_run_directory(PLUGIN), layout.plugin_venvs(PLUGIN)):
+        assert not os.path.lexists(path)
+    assert (layout.plugin_code("notes", "0.2.0") / "backend" / "src" / "app.py").exists()
+    assert (layout.plugin_run_directory("notes") / "runtime.json").exists()
+    assert layout.plugin_venvs("notes").is_dir()
+
+
+def test_a_link_in_or_in_place_of_a_plugins_trees_is_deleted_never_followed(layout, unprivileged_setup, tmp_path):
+    unprivileged_setup.prepare_plugin(PLUGIN, os.getuid())
+    _plugin_trees(layout, PLUGIN)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("not the plugin's")
+    (layout.plugin_code_root(PLUGIN) / "0.2.0" / "link").symlink_to(outside)
+    (layout.plugin_run_directory(PLUGIN) / "link").symlink_to(outside / "keep.txt")
+    os.rmdir(layout.plugin_venvs(PLUGIN))
+    layout.plugin_venvs(PLUGIN).symlink_to(outside)
+
+    unprivileged_setup.remove_plugin_trees(PLUGIN)
+
+    assert not os.path.lexists(layout.plugin_code_root(PLUGIN))
+    assert not os.path.lexists(layout.plugin_venvs(PLUGIN))
+    assert sorted(os.listdir(outside)) == ["keep.txt"]
+    assert (outside / "keep.txt").read_text() == "not the plugin's"
+
+
+def test_a_venvs_directory_that_still_holds_something_is_refused_by_name(layout, unprivileged_setup):
+    unprivileged_setup.prepare_plugin(PLUGIN, os.getuid())
+    _plugin_trees(layout, PLUGIN)
+    (layout.plugin_venv(PLUGIN, "0.2.0") / "bin").mkdir(parents=True)
+
+    with pytest.raises(DirectorySetupError, match=f"{layout.plugin_venvs(PLUGIN)} is not empty"):
+        unprivileged_setup.remove_plugin_trees(PLUGIN)
+
+    assert (layout.plugin_venv(PLUGIN, "0.2.0") / "bin").is_dir()
+
+
+@pytest.mark.root
+def test_root_removes_everything_of_a_plugin_with_its_processes_and_ipc_objects(layout):
+    import ctypes
+    import subprocess
+
+    from es_plugins.launcher import protocol
+    from es_plugins.launcher.ipc_cleanup import ipc_objects_of
+    from es_plugins.launcher.kill_by_uid import run_as_user
+    from es_plugins.launcher.privileged_launcher import LauncherOperations
+    from es_plugins.process_table import ProcessTable
+    from es_plugins.uid_range import UidRange
+
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    setup.prepare_plugin(PLUGIN, PLUGIN_UID)
+    private = layout.plugin_home(PLUGIN) / "private"
+    private.mkdir()
+    (private / "secret.txt").write_text("the plugin's")
+    for path in (private, private / "secret.txt"):
+        os.chown(path, PLUGIN_UID, PLUGIN_UID)
+    os.chmod(private, 0o700)
+    code = layout.plugin_code(PLUGIN, "0.2.0") / "backend" / "src"
+    code.mkdir(parents=True)
+    (code / "app.py").write_text("app = None\n")
+    (layout.plugin_run_directory(PLUGIN) / "runtime.json").write_text("{}")
+    def create_a_shared_memory_segment():
+        if ctypes.CDLL(None).shmget(0, 4096, 0o1000 | 0o600) < 0:
+            raise OSError("shmget failed")
+
+    assert run_as_user(PLUGIN_UID, create_a_shared_memory_segment)
+    sleeper = subprocess.Popen(
+        ["/bin/sleep", "300"], user=PLUGIN_UID, group=PLUGIN_UID, extra_groups=[], start_new_session=True
+    )
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+
+    def remove() -> dict:
+        _, [result_pipe] = operations.handle(protocol.RemovePlugin(plugin=PLUGIN, uid=PLUGIN_UID), [])
+        with os.fdopen(result_pipe, "rb") as result:
+            outcome = json.loads(result.read())
+        operations.reap()
+        return outcome
+
+    assert remove() == {"ok": True, "ipc_objects": 1}
+
+    assert sleeper.wait(timeout=5) is not None
+    assert ipc_objects_of(PLUGIN_UID) == []
+    for path in (
+        layout.plugin_home(PLUGIN),
+        layout.plugin_code_root(PLUGIN),
+        layout.plugin_run_directory(PLUGIN),
+        layout.plugin_venvs(PLUGIN),
+    ):
+        assert not os.path.lexists(path)
+    assert remove() == {"ok": True, "ipc_objects": 0}

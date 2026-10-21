@@ -2,15 +2,22 @@
 
 The node runs `database/migrations/` and passes the database's address in `DATABASE_URL`, and
 how many connections the backend may hold in `EPICSTAFF_PLUGIN_DB_CONNECTIONS`. Every table
-has row-level security on `org_id`, and every query runs in `WeatherDatabase.transaction`, so
-a query reads and writes only the rows of the organization it is given, whatever its SQL says.
+has row-level security on `org_id`, and every request's query runs in
+`WeatherDatabase.transaction`, so it reads and writes only the rows of the organization it is
+given, whatever its SQL says. The hourly retention purge alone works across organizations, in
+`WeatherDatabase.job_transaction`, where the job role's policies let it reach expired rows only.
 """
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from epicstaff_plugin.database import connection_limit, database_url, org_transaction
+from epicstaff_plugin.database import (
+    connection_limit,
+    database_url,
+    job_transaction,
+    org_transaction,
+)
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -50,6 +57,15 @@ class WeatherDatabase:
         The transaction commits when the block ends and rolls back when it raises.
         """
         async with self._pool.connection() as connection, org_transaction(connection, org_id):
+            yield connection
+
+    @asynccontextmanager
+    async def job_transaction(self) -> AsyncIterator[Connection]:
+        """Yield a connection in a transaction as the plugin's job role, across organizations.
+
+        The transaction commits when the block ends and rolls back when it raises.
+        """
+        async with self._pool.connection() as connection, job_transaction(connection):
             yield connection
 
     async def close(self) -> None:

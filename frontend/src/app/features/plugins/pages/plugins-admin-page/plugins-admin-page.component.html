@@ -58,10 +58,19 @@
         let-row
     >
         @if (pluginOf(row); as plugin) {
-            <app-plugin-badge
-                [label]="stateLabel(plugin)"
-                [tone]="stateTone(plugin)"
-            />
+            <div class="state-badges">
+                <app-plugin-badge
+                    [label]="stateLabel(plugin)"
+                    [tone]="stateTone(plugin)"
+                />
+                @if (plugin.needs_attention) {
+                    <app-plugin-badge
+                        class="needs-attention"
+                        label="Needs attention"
+                        tone="danger"
+                    />
+                }
+            </div>
         }
     </ng-template>
     <ng-template

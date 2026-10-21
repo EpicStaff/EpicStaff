@@ -30,6 +30,16 @@ export type PluginErrorCode =
     | 'grant_not_suspendable'
     | 'grant_not_suspended'
     | 'plugin_suspended'
+    | 'invalid_purge_phrase'
+    | 'grant_not_purgeable'
+    | 'plugin_not_uninstallable'
+    | 'plugin_not_uninstalling'
+    | 'plugin_not_purgeable'
+    | 'plugin_uninstalling'
+    | 'removal_not_retryable'
+    | 'hook_job_not_found'
+    | 'org_removed_hook_not_retryable'
+    | 'org_removed_hook_not_skippable'
     | 'throttled';
 
 /** One problem in a refused package: `loc` is a dotted path such as `manifest.user_permissions[1].action`. */

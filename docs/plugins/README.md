@@ -61,7 +61,9 @@ These pages are for people who build plugins and for operators who run them.
 | [Call EpicStaff from your backend](how-to/call-epicstaff-from-the-backend.md) | The SDK's EpicStaff client: per-organization keys, calling on behalf of a person, people lookups, running flows |
 | [Service account API](reference/service-account-api.md) | The service account and its keys, what it may do, on behalf of a person, `/api/plugin-runtime/`, activity |
 | [Run code when an organization gets your plugin](how-to/install-hook.md) | The install hook: registering a handler, idempotency, failures and retries |
-| [The plugin lifecycle](explanation/lifecycle.md) | A plugin's states in an organization, what suspending it stops and what it does not, resuming, how long its data is kept |
+| [Delete your data when an organization leaves](how-to/org-removed-hook.md) | The organization removed hook: when it runs, deleting only your own data, idempotency, retries and skip |
+| [The plugin lifecycle](explanation/lifecycle.md) | A plugin's states in an organization, suspending and resuming, the grace period, deleting a grant's data, uninstalling, reinstalling and deleting a plugin, deleting an organization |
+| [Accepted risks](explanation/accepted-risks.md) | What installing a plugin means trusting, what isolation there is and is not, and what data deletion can leave behind |
 | [Hook API](reference/hook-api.md) | How EpicStaff calls a lifecycle hook: the signed assertion, the body, the answer |
 | [Limits](reference/limits.md) | Memory, CPU, the request rate and the other limits, the platform maximums, what is enforced |
 | [Error codes](reference/error-codes.md) | Every code the plugin API, the login and the gateway answer with |
@@ -86,7 +88,7 @@ EpicStaff supports:
 | Frame protocol (`platform.frame_protocol`) | 1 | Supported |
 | Gateway context (`platform.gateway_context`) | 1 | Supported: `public` mode on public paths, `user` mode for logged-in people |
 | Login protocol (`plugin-sdk/contracts/login-protocol.json`, `protocol`) | 1 | Supported, for plugins with a backend |
-| Hook API (`platform.hook_api`) | 1 | Supported for `install`; `upgrade` and `org_removed` are reserved |
+| Hook API (`platform.hook_api`) | 1 | Supported for `install` and `org_removed`; `upgrade` is reserved |
 | Service account API (`/api/plugin-runtime/`) | 1 | Supported |
 | Runtime file (`format`) | 1 | Supported |
 | Backend Python (`backend.python`) | 3.12, 3.13 | Supported |

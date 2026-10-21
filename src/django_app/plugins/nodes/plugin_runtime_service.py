@@ -13,7 +13,9 @@ from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import log_restart
 from plugins.configuration.limits import plugin_limits
 from plugins.configuration.setting_values import blocked_reason
-from plugins.exceptions import PlacementNotFoundError
+from plugins.exceptions import PlacementNotFoundError, PluginNotFoundError
+from plugins.lifecycle.lifecycle_locks import lock_plugin
+from plugins.lifecycle.plugin_actions import assert_plugin_in_service
 from plugins.models import Plugin, PluginDatabase, PluginNode, PluginPlacement, PluginState
 
 # A node reports every 10 s; three missed reports make it offline.
@@ -76,9 +78,16 @@ class PluginRuntimeService:
         """Ask the node to restart the plugin's process; a `failed` plugin starts provisioning again.
 
         Raises:
+            PluginUninstallingError: The plugin is uninstalled or being deleted.
             PlacementNotFoundError: The plugin's backend has no placement.
         """
         with transaction.atomic():
+            # The plugin first, as every lifecycle action locks it, so a restart never races
+            # an uninstall.
+            locked = lock_plugin(plugin.identifier)
+            if locked is None:
+                raise PluginNotFoundError()
+            assert_plugin_in_service(locked)
             placement = PluginPlacement.objects.select_for_update().filter(plugin=plugin).first()
             if placement is None:
                 raise PlacementNotFoundError()

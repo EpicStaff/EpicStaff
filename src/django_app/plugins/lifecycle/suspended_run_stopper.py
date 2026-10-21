@@ -6,7 +6,7 @@ from tables.services.run_resources import RunResourceCollector, RunResources
 from tables.services.session_manager_service import SessionManagerService
 from utils.logger import logger
 
-from plugins.audit import log_suspended_sessions_stopped
+from plugins.audit import log_refused_sessions_stopped, log_suspended_sessions_stopped
 from plugins.runs.owned_resource_index import OwnedResourceIndex
 
 OPEN_SESSION_STATES = (
@@ -27,11 +27,37 @@ class SuspendedRunStopper:
         sessions. A stop that fails is logged and the others go on; nothing is raised. Open
         voice conversations are not sessions and keep running.
         """
+        stopped, failed = self._stop_refused_sessions(organization_id)
+        log_suspended_sessions_stopped(
+            identifier=plugin_identifier,
+            grant_id=grant_id,
+            org_id=organization_id,
+            count=stopped,
+            failed=failed,
+        )
+
+    def stop_in_organization(self, organization_id: int) -> int:
+        """Stop the organization's open sessions the run guard would refuse now; returns how
+        many were stopped.
+
+        For the periodic enforcement: a session that started while a suspension committed
+        got past both the run guard and the stopper that ran on commit. Logs only when it
+        stopped a session or failed to; nothing is raised.
+        """
+        stopped, failed = self._stop_refused_sessions(organization_id)
+        if stopped or failed:
+            log_refused_sessions_stopped(org_id=organization_id, count=stopped, failed=failed)
+        return stopped
+
+    @staticmethod
+    def _stop_refused_sessions(organization_id: int) -> tuple[int, int]:
         sessions = list(
             Session.objects.filter(graph__org_id=organization_id, status__in=OPEN_SESSION_STATES)
             .only("pk", "graph_id")
             .order_by("pk")
         )
+        if not sessions:
+            return 0, 0
         resources_by_graph = RunResourceCollector().collect_many(
             RunKind.FLOW, {session.graph_id for session in sessions}
         )
@@ -52,13 +78,7 @@ class SuspendedRunStopper:
                 failed += 1
             else:
                 stopped += 1
-        log_suspended_sessions_stopped(
-            identifier=plugin_identifier,
-            grant_id=grant_id,
-            org_id=organization_id,
-            count=stopped,
-            failed=failed,
-        )
+        return stopped, failed
 
 
 def _union(resources: Collection[RunResources]) -> RunResources:

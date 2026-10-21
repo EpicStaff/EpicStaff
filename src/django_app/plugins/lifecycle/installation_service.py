@@ -26,6 +26,7 @@ from plugins.exceptions import (
     PluginUpgradeUnavailableError,
     UntrustedNotAcknowledgedError,
 )
+from plugins.lifecycle.plugin_actions import assert_plugin_in_service
 from plugins.models import Plugin, PluginPackage, PluginState, ReviewState, Trust
 from plugins.nodes.placement_service import PlacementService
 from plugins.packages.package_reader import read_uploaded_package
@@ -80,6 +81,7 @@ class PluginInstallationService:
                 this EpicStaff's catalog does not have, asks for more than the platform
                 maximums, or holds nothing to install.
             InvalidSignatureError: The package's signature does not belong to it.
+            PluginUninstallingError: The plugin is uninstalled or being deleted.
             PluginUpgradeUnavailableError: The plugin already has an approved package.
         """
         if size > max_package_bytes():
@@ -91,8 +93,11 @@ class PluginInstallationService:
         verdict = verify_package_signature(package)
         _assert_installable(manifest)
         _assert_within_platform_maximums(manifest)
-        if Plugin.objects.filter(identifier=manifest.id, current_package__isnull=False).exists():
-            raise PluginUpgradeUnavailableError()
+        existing = Plugin.objects.filter(identifier=manifest.id).first()
+        if existing is not None:
+            assert_plugin_in_service(existing)
+            if existing.current_package_id is not None:
+                raise PluginUpgradeUnavailableError()
 
         sha256 = _sha256(file)
         storage_key = package_storage_key(manifest.id, manifest.version, sha256)
@@ -131,6 +136,7 @@ class PluginInstallationService:
             identifier=manifest.id,
             defaults={"name": manifest.name, "description": manifest.description},
         )
+        assert_plugin_in_service(plugin)
         if plugin.current_package_id is not None:
             raise PluginUpgradeUnavailableError()
         replaced = list(
@@ -195,9 +201,12 @@ class PluginInstallationService:
             PluginNodeFullError: The plugin node has no free port or user id left.
             NoPluginDatabaseServerError: The package has a database and no plugin database
                 server is registered.
+            PluginUninstallingError: The plugin is uninstalled or being deleted.
         """
         with tempfile.TemporaryFile() as local_copy:
-            archive = self._reviewed_archive(self._pending_package(package_id), local_copy)
+            pending = self._pending_package(package_id)
+            assert_plugin_in_service(pending.plugin)
+            archive = self._reviewed_archive(pending, local_copy)
             _assert_within_platform_maximums(archive.manifest)
             package = self._record_verdict(package_id, verify_package_signature(archive))
             if package.trust == Trust.UNTRUSTED and not untrusted_acknowledged:
@@ -229,6 +238,7 @@ class PluginInstallationService:
         try:
             with transaction.atomic():
                 package = self._pending_package(package_id, lock=True)
+                assert_plugin_in_service(package.plugin)
                 if manifest.spa is not None:
                     local_copy.seek(0)
                     with zipfile.ZipFile(local_copy) as zip_file:

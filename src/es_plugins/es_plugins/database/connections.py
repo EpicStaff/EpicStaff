@@ -1,11 +1,14 @@
 """The node's sessions on plugins_db, and how their failures are classified.
 
 Two kinds of session, both with `require_auth=scram-sha-256` (a server that asks for any other
-kind of authentication is refused before the password is sent) and a connect timeout:
+kind of authentication is refused before the password is sent), a connect timeout, and TCP
+keepalives plus a user timeout, so a server that stops answering ends the session instead of
+holding it open:
 
 - **admin**: `plugins_admin` on the `postgres` database, never on a plugin's own database, so
   no trigger, operator or `search_path` entry a plugin plants can run with its privileges. Its
-  `search_path` is `pg_catalog` from the start-up packet on.
+  `search_path` is `pg_catalog` from the start-up packet on, and `createrole_self_grant` is
+  empty, so a role it creates never makes it a member of that role.
 - **owner**: a plugin's owner role on that plugin's own database, logged in with the one-time
   password the migration runner gives it for one run. SQL a plugin wrote runs only here: with
   the owner as the session user, no `RESET ROLE` can lead back to `plugins_admin`.
@@ -16,8 +19,11 @@ psycopg leaves as `DatabaseUnreachableError` when the connection was lost, and a
 string is ever part of an error message.
 """
 
+import asyncio
 import contextlib
-from collections.abc import AsyncIterator, Awaitable, Callable
+import time
+import unicodedata
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from typing import Literal
 
 import psycopg
@@ -29,8 +35,20 @@ ADMIN_DATABASE = "postgres"
 REQUIRED_AUTHENTICATION = "scram-sha-256"
 CONNECT_TIMEOUT_SECONDS = 10
 APPLICATION_NAME = "epicstaff-node"
-ADMIN_SESSION_OPTIONS = "-c search_path=pg_catalog -c statement_timeout=30000"
+ADMIN_SESSION_OPTIONS = (
+    "-c search_path=pg_catalog -c statement_timeout=30000 -c createrole_self_grant="
+)
 OWNER_SESSION_OPTIONS = "-c statement_timeout=900000 -c lock_timeout=60000"
+# A dead peer is noticed within about a minute: keepalives after 30 s idle, every 10 s, three
+# missed; unacknowledged data gives up after 60 s.
+_TCP_SETTINGS = {
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+    "tcp_user_timeout": 60_000,
+}
+_SESSION_POLL_SECONDS = 0.1
 # SQLSTATEs meaning the server, not the statement, ended the session: connection exceptions
 # (class 08), and the server shutting down or not accepting connections yet.
 _CONNECTION_LOST_STATES = ("08", "57P01", "57P02", "57P03")
@@ -53,12 +71,19 @@ class DatabaseProvisioningError(Exception):
 
 
 def describe_error(error: psycopg.Error) -> str:
-    """`[SQLSTATE] message` of an error the server sent, or psycopg's own message, on one line."""
+    """`[SQLSTATE] message` of an error the server sent, or psycopg's own message, on one line.
+
+    A plugin's SQL chooses the message (`RAISE EXCEPTION`), so control characters become spaces
+    and runs of spaces one: it can never start a log line of its own.
+    """
     if error.sqlstate:
         text = f"[{error.sqlstate}] {error.diag.message_primary or ''}"
     else:
-        text = " ".join(str(error).split())
-    return text[:_MAX_ERROR_TEXT]
+        text = str(error)
+    spaced = "".join(
+        " " if unicodedata.category(character) in ("Cc", "Cs") else character for character in text
+    )
+    return " ".join(spaced.split())[:_MAX_ERROR_TEXT]
 
 
 def scram_verifier(connection: psycopg.AsyncConnection, role: str, password: str) -> str:
@@ -129,6 +154,7 @@ class DatabaseConnector:
                 connect_timeout=CONNECT_TIMEOUT_SECONDS,
                 application_name=APPLICATION_NAME,
                 autocommit=True,
+                **_TCP_SETTINGS,
                 **parameters,
             )
         except psycopg.Error as error:
@@ -153,3 +179,24 @@ def session_error(
             f"the session on plugins_db was lost: {describe_error(error)}"
         )
     return DatabaseProvisioningError("sql", describe_error(error))
+
+
+async def end_sessions(
+    admin: psycopg.AsyncConnection, roles: Sequence[str], *, within_seconds: float
+) -> list[int]:
+    """End every session that logged in as one of `roles`; return the pids still there after.
+
+    `plugins_admin` may end them through `pg_signal_backend`. A session that switched to another
+    role with `SET ROLE` still counts under the role it logged in as.
+    """
+    deadline = time.monotonic() + within_seconds
+    while True:
+        cursor = await admin.execute(
+            "SELECT pid, pg_catalog.pg_terminate_backend(pid) FROM pg_catalog.pg_stat_activity "
+            "WHERE usename = ANY(%s) AND pid <> pg_catalog.pg_backend_pid()",
+            (list(roles),),
+        )
+        remaining = [row[0] for row in await cursor.fetchall()]
+        if not remaining or time.monotonic() >= deadline:
+            return remaining
+        await asyncio.sleep(_SESSION_POLL_SECONDS)

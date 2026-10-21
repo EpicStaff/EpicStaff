@@ -35,7 +35,23 @@
                     [tone]="trustTone()"
                 />
             </div>
+            @if (actionButtons().length > 0) {
+                <div class="detail__actions">
+                    @for (button of actionButtons(); track button.action) {
+                        <app-button
+                            [type]="button.type"
+                            mod="small"
+                            [disabled]="isActing()"
+                            (click)="runAction(button.action)"
+                        >
+                            {{ button.label }}
+                        </app-button>
+                    }
+                </div>
+            }
         </header>
+
+        <app-plugin-lifecycle-banner [plugin]="current" />
 
         <div
             class="detail__tabs"
@@ -118,8 +134,15 @@
                     [identifier]="current.identifier"
                     [pluginName]="current.name"
                     [canGrant]="canGrant()"
+                    [pluginState]="current.state"
                     (grantsChanged)="refreshPlugin()"
                 />
+                @if (hasBackend()) {
+                    <app-plugin-data-removals
+                        [identifier]="current.identifier"
+                        [pluginName]="current.name"
+                    />
+                }
             }
             @case ('settings') {
                 <app-plugin-settings-form

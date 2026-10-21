@@ -1,4 +1,9 @@
-import { PluginActivityAction, PluginActivityDetailValue, PluginActivityEvent } from '../models/plugin-activity.model';
+import {
+    PluginActivityAction,
+    PluginActivityDetailValue,
+    PluginActivityEvent,
+    PluginPurgeReason,
+} from '../models/plugin-activity.model';
 import {
     formatPluginLimit,
     isPluginNumericLimitKey,
@@ -22,12 +27,39 @@ export const PLUGIN_ACTIVITY_ACTION_LABELS: Readonly<Record<PluginActivityAction
     database_ready: 'Database ready',
     database_failed: 'Database setup failed',
     database_limit_restored: 'Database timeout restored',
+    plugin_uninstalled: 'Uninstalled',
+    plugin_reinstalled: 'Reinstalled',
+    plugin_purge_started: 'Deletion started',
+    plugin_removal_failed: 'Removal from the node failed',
+    plugin_removal_retried: 'Removal retried',
+    plugin_purged: 'Deleted',
+    grant_purge_started: 'Data deletion started',
+    grant_purged: 'Data deleted',
+    org_removed_hook_succeeded: 'Data removal done',
+    org_removed_hook_failed: 'Data removal failed',
+    org_removed_hook_retried: 'Data removal retried',
+    org_removed_hook_skipped: 'Data removal skipped',
+};
+
+/** Why a deletion began, as `detail.reason` says. */
+export const PLUGIN_PURGE_REASON_LABELS: Readonly<Record<PluginPurgeReason, string>> = {
+    requested: 'Requested',
+    grace_period_over: 'Grace period over',
+    plugin_deleted: 'Plugin deleted',
 };
 
 /** The actions whose `detail.error` says what went wrong. */
 const ACTIONS_WITH_ERROR: ReadonlySet<PluginActivityAction> = new Set<PluginActivityAction>([
     'install_hook_failed',
     'database_failed',
+    'plugin_removal_failed',
+    'org_removed_hook_failed',
+]);
+
+/** The actions whose `detail.reason` says why a deletion began. */
+const ACTIONS_WITH_REASON: ReadonlySet<PluginActivityAction> = new Set<PluginActivityAction>([
+    'grant_purge_started',
+    'plugin_purge_started',
 ]);
 
 /**
@@ -54,29 +86,49 @@ export function pluginActivityTargetText(event: PluginActivityEvent): string | n
     return target.resource_type ? `${target.resource_type} ${target.id}` : target.id;
 }
 
-/** The organization's name, or that the event concerns the whole deployment. */
+/** The organization's name, its id once it is deleted, or that the event concerns the whole deployment. */
 export function pluginActivityOrganizationText(event: PluginActivityEvent): string {
     const organization = event.organization;
     if (!organization) return 'Whole deployment';
-    return organization.name ?? `Organization ${organization.id}`;
+    return organization.name ?? `Organization #${organization.id} (deleted)`;
 }
 
 export function pluginActivityPluginText(event: PluginActivityEvent): string {
     return event.plugin.name ?? event.plugin.identifier;
 }
 
-/** The error of a failed install or database setup, as the hook or the node reported it; else `null`. */
+/**
+ * The error of a failed install, database setup, removal from the node or data removal, as the hook or the node
+ * reported it; else `null`.
+ */
 export function pluginActivityErrorText(event: PluginActivityEvent): string | null {
     if (!ACTIONS_WITH_ERROR.has(event.action)) return null;
     const error = event.detail['error'];
     return typeof error === 'string' && error ? error : null;
 }
 
-/** The overrides in force after a limits change: `Overrides: Memory 128 MB, CPU priority Low`; else `null`. */
+/**
+ * The overrides in force after a limits change (`Overrides: Memory 128 MB, CPU priority Low`), or why a deletion began
+ * (`Reason: Grace period over`); else `null`.
+ */
 export function pluginActivityDetailText(event: PluginActivityEvent): string | null {
-    if (event.action !== 'limits_changed') return null;
-    const overrides = Object.entries(event.detail).map(([key, value]) => limitOverrideText(key, value));
-    return `Overrides: ${overrides.length > 0 ? overrides.join(', ') : 'none'}`;
+    if (event.action === 'limits_changed') {
+        const overrides = Object.entries(event.detail).map(([key, value]) => limitOverrideText(key, value));
+        return `Overrides: ${overrides.length > 0 ? overrides.join(', ') : 'none'}`;
+    }
+    if (ACTIONS_WITH_REASON.has(event.action)) return reasonText(event.detail['reason']);
+    return null;
+}
+
+/** A reason this page does not know shows as the server sent it; a missing one shows nothing. */
+function reasonText(reason: PluginActivityDetailValue | undefined): string | null {
+    if (typeof reason !== 'string' || !reason) return null;
+    const label = isPurgeReason(reason) ? PLUGIN_PURGE_REASON_LABELS[reason] : reason;
+    return `Reason: ${label}`;
+}
+
+function isPurgeReason(reason: string): reason is PluginPurgeReason {
+    return Object.hasOwn(PLUGIN_PURGE_REASON_LABELS, reason);
 }
 
 /** A limit as the limits form names it; a key this page does not know as the server sent it. */

@@ -5,9 +5,13 @@ passes the wrong organization is caught. The real stores run against PostgreSQL 
 `test_weather_sample_database.py`.
 """
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 SAVED_AT = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+# psycopg's pq.TransactionStatus values.
+IDLE, IN_TRANSACTION = 0, 2
 
 
 class FakeSavedPlaces:
@@ -78,3 +82,58 @@ class FakePopupRelay:
     async def take(self, org_id, user_id, state):
         self.lookups += 1
         return self.results.pop((org_id, user_id, state), None)
+
+
+class _RecordingConnectionInfo:
+    def __init__(self, connection):
+        self._connection = connection
+        self.user = "weather_app"
+
+    @property
+    def transaction_status(self):
+        return IN_TRANSACTION if self._connection.depth else IDLE
+
+
+class RecordingConnection:
+    """A psycopg-shaped connection that records each statement with the transaction it ran in.
+
+    `rowcounts(query)` gives the row count of each statement; `error` makes every statement
+    after the first (the transaction's own setting) raise it.
+    """
+
+    def __init__(self, rowcounts=None, error=None):
+        self.statements = []
+        self.depth = 0
+        self.transactions = 0
+        self.committed = []
+        self.info = _RecordingConnectionInfo(self)
+        self._rowcounts = rowcounts or (lambda query: 1)
+        self._error = error
+
+    @asynccontextmanager
+    async def transaction(self):
+        self.transactions += 1
+        number = self.transactions
+        self.depth += 1
+        try:
+            yield SimpleNamespace()
+        finally:
+            self.depth -= 1
+        self.committed.append(number)
+
+    async def execute(self, query, params=()):
+        if self._error is not None and not query.startswith("SELECT pg_catalog.set_config"):
+            raise self._error
+        self.statements.append((self.transactions, query, tuple(params)))
+        return SimpleNamespace(rowcount=self._rowcounts(query))
+
+
+class RecordingPool:
+    """A connection pool that always lends out one `RecordingConnection`."""
+
+    def __init__(self, connection):
+        self.connection_lent = connection
+
+    @asynccontextmanager
+    async def connection(self):
+        yield self.connection_lent

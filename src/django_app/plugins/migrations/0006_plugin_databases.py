@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
             name='PluginDatabase',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('installation_id', models.CharField(max_length=32, unique=True)),
+                ('installation_id', models.CharField(max_length=32)),
                 ('database_name', models.CharField(max_length=63)),
                 ('owner_role', models.CharField(max_length=63)),
                 ('app_role', models.CharField(max_length=63)),
@@ -47,10 +47,10 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('plugin', models.OneToOneField(on_delete=django.db.models.deletion.PROTECT, related_name='database', to='plugins.plugin')),
-                ('server', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='databases', to='plugins.plugindatabaseserver')),
+                ('server', models.ForeignKey(db_index=False, on_delete=django.db.models.deletion.PROTECT, related_name='databases', to='plugins.plugindatabaseserver')),
             ],
             options={
-                'constraints': [models.UniqueConstraint(fields=('server', 'database_name'), name='plugins_database_server_database_name_uniq'), models.UniqueConstraint(fields=('server', 'owner_role'), name='plugins_database_server_owner_role_uniq'), models.UniqueConstraint(fields=('server', 'app_role'), name='plugins_database_server_app_role_uniq'), models.UniqueConstraint(fields=('server', 'job_role'), name='plugins_database_server_job_role_uniq')],
+                'constraints': [models.UniqueConstraint(fields=('installation_id',), name='plugins_database_installation_id_uniq'), models.UniqueConstraint(fields=('server', 'database_name'), name='plugins_database_server_database_name_uniq'), models.UniqueConstraint(fields=('server', 'owner_role'), name='plugins_database_server_owner_role_uniq'), models.UniqueConstraint(fields=('server', 'app_role'), name='plugins_database_server_app_role_uniq'), models.UniqueConstraint(fields=('server', 'job_role'), name='plugins_database_server_job_role_uniq')],
             },
         ),
     ]

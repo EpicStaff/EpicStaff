@@ -1,10 +1,12 @@
 # Hook API
 
-Lifecycle hooks let a plugin backend set itself up in an organization. EpicStaff decides that a
-hook runs, the deployment's plugin node calls the plugin process, and the plugin's answer
-decides what happens next. This page is the contract, version 1 (`platform.hook_api: 1` in the
-manifest). [Write an install hook](../how-to/install-hook.md) shows how to build one with the
-[Python SDK](python-sdk.md#epicstaff_pluginhooks).
+Lifecycle hooks let a plugin backend set itself up in an organization, and delete its own data
+when the organization leaves. EpicStaff decides that a hook runs, the deployment's plugin node
+calls the plugin process, and the plugin's answer decides what happens next. This page is the
+contract, version 1 (`platform.hook_api: 1` in the manifest).
+[Write an install hook](../how-to/install-hook.md) and
+[Delete your data when an organization leaves](../how-to/org-removed-hook.md) show how to build
+them with the [Python SDK](python-sdk.md#epicstaff_pluginhooks).
 
 ## Kinds
 
@@ -12,12 +14,12 @@ manifest). [Write an install hook](../how-to/install-hook.md) shows how to build
 |---|---|---|---|
 | `install` | `/_epicstaff/hooks/install` | A SuperAdmin granted the plugin to an organization | Supported |
 | `upgrade` | `/_epicstaff/hooks/upgrade` | An organization moves to a new version of the plugin | Reserved: not called yet |
-| `org_removed` | `/_epicstaff/hooks/org-removed` | An organization's grant is being purged | Reserved: not called yet |
+| `org_removed` | `/_epicstaff/hooks/org-removed` | The plugin's data for an organization is to be deleted: after the grace period, when a SuperAdmin deletes it, when the organization is deleted, or when the plugin is deleted | Supported |
 
 A plugin asks for a hook in its manifest, and may shorten its timeout:
 
 ```json
-"hooks": { "install": true, "timeouts_seconds": { "install": 300 } }
+"hooks": { "install": true, "org_removed": true, "timeouts_seconds": { "install": 300 } }
 ```
 
 The platform maximums are 900 seconds for `install` and `org_removed` and 1800 for `upgrade`;
@@ -36,6 +38,38 @@ While the grant is `granting` nobody in the organization can open the plugin, an
 service account already works, so the hook can create what the plugin needs. A retry runs the
 same job again with the next attempt number.
 
+## What happens when an organization's data is deleted
+
+EpicStaff deletes a plugin's data for an organization when the organization's grace period
+ends, when a SuperAdmin chooses "Delete data…" for it, when the organization is deleted, and for
+every organization when the plugin is deleted. Two things then happen side by side:
+
+- EpicStaff deletes everything the plugin created in the organization: its flows, files,
+  Secrets, configurations and the rest.
+- If the plugin's package has a backend and declares `"org_removed": true`, EpicStaff asks the
+  plugin to delete its own data for the organization, through this hook.
+
+The organization's service account and its keys are revoked before the hook is called, so the
+hook has no way to call EpicStaff. The organization itself may already be gone: `org.name` is
+the name it had when its deletion started.
+
+| The hook | Then |
+|---|---|
+| Succeeds | Done. Once EpicStaff's side is done too, the grant is gone |
+| Fails, times out, or the plugin has no handler (501) | Tried again: 1 minute after the first attempt, 5 minutes after the second, 30 minutes after the third, then every hour, for 7 days from the first attempt |
+| Still fails after 7 days | Failed. The plugin shows "Needs attention", and the organization's grant stays until a SuperAdmin chooses **Retry** (7 more days of attempts) or **Skip** |
+
+The schedule is `ORG_REMOVED_RETRY_DELAYS_SECONDS` and `ORG_REMOVED_RETRY_WINDOW_SECONDS` in
+`epicstaff_plugin.contracts.hook_api`, and `org_removed_retry_delay(attempt)` gives the wait
+after a failed attempt. A SuperAdmin can also skip a waiting job at any time. A skipped hook's
+data stays where the plugin keeps it until the plugin itself is deleted. When the plugin is
+deleted, a failed hook no longer holds anything up: the plugin's database and files are deleted
+with it.
+
+An uninstalled plugin's process is stopped. EpicStaff starts it only to run this hook, while a
+job is due or running, and stops it again in between. The process then has its database, and
+no service account for any organization.
+
 ## The call
 
 The node calls the plugin process over the loopback interface, never from outside: nginx does
@@ -49,9 +83,11 @@ Content-Type: application/json
 {"format":1,"job_id":41,"attempt":1,"kind":"install","org":{"id":3,"name":"Acme"},"plugin":{"identifier":"weather","version":"0.4.0"},"previous_version":null}
 ```
 
-The node makes the call only when the process is running and healthy and its
-[runtime file](runtime.md#runtime-file) already holds the organization's service-account key.
-It runs one hook at a time per plugin.
+The node makes the call only when the process is running and healthy and runs with the latest
+credentials. For `install` and `upgrade`, its [runtime file](runtime.md#runtime-file) must also
+hold the organization's service-account key already; an `org_removed` call never waits for one,
+since the organization has none any more. A job waiting for the process never times out. The
+node runs one hook at a time per plugin.
 
 ### The body
 
@@ -63,7 +99,7 @@ The model is `epicstaff_plugin.contracts.hook_api.HookRequest`; at most 16 KiB.
 | `job_id` | The job. A retry keeps it |
 | `attempt` | 1 on the first call, one more on each retry |
 | `kind` | `install`, `upgrade` or `org_removed`; always the kind of the path |
-| `org` | `{id, name}` of the organization |
+| `org` | `{id, name}` of the organization. For `org_removed`, the name it had when its deletion started; the organization may no longer exist |
 | `plugin` | `{identifier, version}`: the plugin and the version the hook runs for |
 | `previous_version` | The version the organization ran before an upgrade; `null` for the other kinds |
 
@@ -109,7 +145,7 @@ outside the runner.
 | Answer | Outcome |
 |---|---|
 | `200 {"status":"done"}` | The hook succeeded |
-| Anything else | The hook failed. With a JSON body `{"status":"failed","error":{"message":"…"}}`, the message is what the SuperAdmin sees (at most 2000 characters); otherwise they see `HTTP <status>`, `timed out after <n> s` or `could not connect: <reason>` |
+| Anything else | The hook failed. With a JSON body `{"status":"failed","error":{"message":"…"}}`, the message is what the SuperAdmin sees (at most 2000 characters); otherwise they see `HTTP <status>`, `timed out after <n> s` or `could not connect: <reason>`. A failed `org_removed` hook is tried again on its own; the others wait for a SuperAdmin |
 
 The SDK's runner answers:
 
@@ -128,11 +164,17 @@ The rejection reasons are `missing`, `ambiguous`, `malformed`, `wrong_type`, `un
 
 ## What a hook may do
 
-A hook calls EpicStaff with the organization's [service account](../how-to/call-epicstaff-from-the-backend.md),
-alone: never on behalf of a person, since nobody can use the plugin in the organization yet.
-EpicStaff lets it do exactly what the manifest's `access` declares, and records everything it
-creates as owned by the plugin. Flows that hold a schedule, webhook or Telegram trigger need
-`flows: use`; without it EpicStaff refuses the trigger with 403.
+An `install` or `upgrade` hook calls EpicStaff with the organization's
+[service account](../how-to/call-epicstaff-from-the-backend.md), alone: never on behalf of a
+person, since nobody can use the plugin in the organization yet. EpicStaff lets it do exactly
+what the manifest's `access` declares, and records everything it creates as owned by the
+plugin. Flows that hold a schedule, webhook or Telegram trigger need `flows: use`; without it
+EpicStaff refuses the trigger with 403.
+
+An `org_removed` hook cannot call EpicStaff: the organization has no key any more, and the SDK
+gives its handler no client. It deletes only the plugin's own data: rows in the plugin's
+database, files on the node, and anything the plugin keeps for the organization in other
+systems. What the plugin created in EpicStaff, EpicStaff deletes itself.
 
 ## Your duties
 
@@ -140,7 +182,8 @@ creates as owned by the plugin. Flows that hold a schedule, webhook or Telegram 
   the plugin during the call fails it, and a timed-out attempt may still be running when the
   next one starts. Do the work at most once per `job_id`: look up what an earlier attempt made
   (by a mark you put on it, or in your own records) before making it again. Never adopt
-  something by its name alone: a person may have made one of that name.
+  something by its name alone: a person may have made one of that name. An `org_removed` hook
+  must also succeed for an organization it holds nothing for, or already deleted.
 - **One organization at a time.** The SDK's runner runs at most one handler per organization at
   a time in the process, so a retry waits for a slow earlier attempt to end.
 - **A clear error.** The first line of the exception is what the SuperAdmin reads next to the

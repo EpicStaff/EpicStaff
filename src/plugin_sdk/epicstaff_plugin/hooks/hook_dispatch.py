@@ -34,7 +34,9 @@ class HookDispatchMiddleware:
     a call to a hook path never reaches it or the plugin's app. Instead every call must
     carry a hook assertion that verifies (401 otherwise); then the handler for the kind runs
     (501 when there is none) and its outcome is the answer: 200 `done`, or 500 `failed` with
-    the first line of the exception. Any other method on a hook path gets 405.
+    the first line of the exception. Any other method on a hook path gets 405. An install or
+    upgrade handler gets a client from `epicstaff.for_org`; an organization removed handler
+    gets none, since its organization has no key any more.
 
     Handlers for one organization run one at a time, so a retried job never overlaps a slow
     earlier attempt still running in this process.
@@ -79,14 +81,13 @@ class HookDispatchMiddleware:
             )
             await _failed(send, 401, f"hook assertion rejected: {rejection.reason}")
             return
-        handler = self._registry.handler(kind)
-        if handler is None:
+        if self._registry.handler(kind) is None:
             await _failed(send, 501, f"this plugin has no {kind} hook")
             return
         request = hook.request
         async with self._org_locks[request.org.id]:
             try:
-                await handler(request, self._epicstaff.for_org(request.org.id))
+                await self._registry.run(request, self._epicstaff)
             # Whatever the handler raises fails the hook, and its message is what the
             # SuperAdmin sees next to the grant.
             except Exception as error:

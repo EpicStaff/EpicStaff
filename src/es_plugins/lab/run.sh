@@ -21,7 +21,7 @@ python3 "$repository/scripts/envtool.py" --dev --env-file "$work/lab.env" > /dev
 # A small disk cap, so the lab can write past it quickly.
 export IMAGE_TAG=lab ES_PLUGINS_CPUS=2 ES_PLUGINS_MEMORY=2g PLUGINS_NODE_NAME=lab-node \
   PLUGINS_NODE_UID_RANGE=20000-20999 PLUGINS_INTERNAL_API_URL=http://control:8000/api/ \
-  ES_PLUGINS_DISK_MB_PER_PLUGIN=64 ES_PLUGINS_FILES_PER_PLUGIN=5000
+  ES_PLUGINS_DISK_MB_PER_PLUGIN=64 ES_PLUGINS_FILES_PER_PLUGIN=5000 PLUGINS_MAX_DB_CONNECTIONS=20
 PLUGINS_NODE_KEY="lab-$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
 # The lab runs no plugins_db and no plugin with a database; the agent still requires the password.
 PLUGINS_DB_ADMIN_PASSWORD=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
@@ -109,11 +109,11 @@ echo "# the container and the two privileged processes"
 
 inspected=$(docker inspect "$node" --format \
   '{{.HostConfig.Privileged}} {{.HostConfig.CapAdd}} {{.HostConfig.CapDrop}} {{.HostConfig.ReadonlyRootfs}} {{.HostConfig.SecurityOpt}} {{.HostConfig.UsernsMode}}|')
-check "the container has only SETUID SETGID CHOWN, a read-only root and no-new-privileges ($inspected)" \
-  test "$inspected" = "false [CAP_CHOWN CAP_SETGID CAP_SETUID] [ALL] true [no-new-privileges:true] |"
-launcher_status=$(as_root grep -E '^(Uid|CapEff|CapBnd):' /proc/1/status | tr -s '\t' ' ' | tr '\n' ' ')
-check "the launcher (PID 1) is root with exactly those three capabilities" \
-  test "$launcher_status" = "Uid: 0 0 0 0 CapEff: 00000000000000c1 CapBnd: 00000000000000c1 "
+check "the container has SETUID SETGID CHOWN, and NET_ADMIN SETPCAP for its entrypoint only, a read-only root and no-new-privileges ($inspected)" \
+  test "$inspected" = "false [CAP_CHOWN CAP_NET_ADMIN CAP_SETGID CAP_SETPCAP CAP_SETUID] [ALL] true [no-new-privileges:true] |"
+launcher_status=$(as_root grep -E '^(Uid|CapInh|CapPrm|CapEff|CapBnd|CapAmb):' /proc/1/status | tr -s '\t' ' ' | tr '\n' ' ')
+check "the launcher (PID 1) is root with exactly SETUID SETGID CHOWN in every set: the entrypoint dropped the rest" \
+  test "$launcher_status" = "Uid: 0 0 0 0 CapInh: 0000000000000000 CapPrm: 00000000000000c1 CapEff: 00000000000000c1 CapBnd: 00000000000000c1 CapAmb: 0000000000000000 "
 agent_status=$(as_root python -c "
 import os
 for pid in filter(str.isdigit, os.listdir('/proc')):
@@ -174,7 +174,7 @@ check "hosts.json lists every placement of the desired state with its hosts, in 
   = '{"probe-a":["geocoding-api.open-meteo.com","*.wikipedia.org"],"probe-b":[],"probe-evil":[]}'
 check "the password file holds a bcrypt hash for each running probe and none for the refused package" \
   test "$(as_root sh -c "cut -d: -f1 $policy/passwords | tr '\n' ' '; cut -d: -f2 $policy/passwords | cut -c1-7 | sort -u")" \
-  = 'probe-a probe-b $2b$10$'
+  = 'probe-a probe-b $2b$04$'
 proxy_matches() { # the probe's info file: its proxy URL names it, and its password verifies
   jq -r .environment.HTTPS_PROXY "$1" | docker exec -i "$node" python -c "
 import sys, bcrypt
@@ -279,6 +279,54 @@ done
 check "probe-a can take no port of the range, its own, another plugin's or a free one, listening or only bound, on 0.0.0.0 or 127.0.0.1, with or without SO_REUSEADDR/SO_REUSEPORT" \
   sh -c "for port in 20002 20001 20003 20500 20999; do jq -e 'length == 8 and all(.[]; startswith(\"DENIED\") and contains(\"Address already in use\"))' \"$work/bind-\$port.json\" > /dev/null || exit 1; done"
 check "probe-a still serves: on the socket the agent holds and hands it as fd 3" running 1
+
+echo "# connection limits: each plugin UID's open connections and new ones a second"
+
+check "the entrypoint set the limits before the launcher started" \
+  sh -c "docker logs $node 2>&1 | grep -q 'plugins.node.connection_limits uids=20000-20999 database=20 proxy=64 new_per_second=200'"
+# The agent's UID, from the node's own interpreter: opens `count` connections and holds them.
+as_agent_connect() { # host, port, count, then hold or churn
+  docker exec --user 10000:10000 "$node" python -c "
+import socket, sys, time
+host, port, count, mode = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+held, opened = [], 0
+for _ in range(count):
+    connection = socket.socket()
+    connection.settimeout(3)
+    try:
+        connection.connect((host, port))
+        opened += 1
+        held.append(connection) if mode == 'hold' else connection.close()
+    except OSError:
+        connection.close()
+print(opened)
+" "$@"
+}
+compose exec -d -T tools python -u /lab/holder.py
+holder_listens() { in_tools python -c "import socket; socket.create_connection(('127.0.0.1', 5432), 2).close()"; }
+if wait_for 30 holder_listens; then
+  # Connections to "plugins_db" (5432) that never authenticate, held for 30 s.
+  call probe-a 20001 /api/connect "host=tools&port=5432&count=30&hold=30" > "$work/flood-db.json"
+  call probe-b 20002 /api/connect "host=tools&port=5432&count=5&hold=5" > "$work/other-db.json"
+  agent_opened=$(as_agent_connect tools 5432 30 hold)
+  check "probe-a holding 30 connections to port 5432 gets exactly PLUGINS_MAX_DB_CONNECTIONS (20): $(jq -c . "$work/flood-db.json")" \
+    jq -e '.opened == 20 and .refused == 10' "$work/flood-db.json"
+  check "... while probe-b still gets its own 5" jq -e '.opened == 5' "$work/other-db.json"
+  check "... and the agent's UID all 30 ($agent_opened)" test "$agent_opened" = 30
+  call probe-a 20001 /api/connect "host=tools&port=3128&count=70&hold=5" > "$work/flood-proxy.json"
+  check "probe-a gets at most 64 connections to the egress proxy's port: $(jq -c . "$work/flood-proxy.json")" \
+    jq -e '.opened == 64 and .refused == 6' "$work/flood-proxy.json"
+  call probe-a 20001 /api/churn "host=tools&port=8080&count=3000" > "$work/churn.json"
+  call probe-b 20002 /api/churn "host=tools&port=8080&count=50" > "$work/churn-other.json"
+  agent_churned=$(as_agent_connect tools 8080 1000 churn)
+  check "probe-a opening 3000 short connections at once is cut to about 200 a second: $(jq -c . "$work/churn.json")" \
+    jq -e '.refused > 0 and .opened < 1500' "$work/churn.json"
+  check "... while probe-b still opens all of its 50" jq -e '.opened == 50' "$work/churn-other.json"
+  check "... and the agent's UID all 1000 ($agent_churned)" test "$agent_churned" = 1000
+  echo "# $(as_root nft list table inet es_plugins_limits | grep -o 'counter packets [0-9]*' | tr '\n' ' ')"
+else
+  fail "the lab's connection holder did not start"
+fi
 
 echo "# disk: a 64 MB cap per plugin, measured every 30 s"
 
@@ -389,12 +437,68 @@ reported=$(report | jq -r '[.agent_version, (.placements | length)] | map(tostri
 check "the node reports its agent version and all three placements ($reported)" test "$reported" = "0.1.0 3"
 check "plugin output reaches the node's log, prefixed with the plugin" \
   sh -c "docker logs $node 2>&1 | grep -q '^\[probe-a\] '"
+# Searched for with -F -f, so no secret is on a command line of its own.
+printf '%s\n' "$PLUGINS_NODE_KEY" "$PLUGINS_DB_ADMIN_PASSWORD" > "$work/node-secrets"
+{ cat "$work/node-secrets"; echo secret-token; } > "$work/all-secrets"
+chmod 600 "$work/node-secrets" "$work/all-secrets"
 check "no secret is in any process's command line" \
-  sh -c "! docker exec $node sh -c 'cat /proc/[0-9]*/cmdline' | tr '\0' ' ' | grep -q -e secret-token -e \"$PLUGINS_NODE_KEY\" -e \"$PLUGINS_DB_ADMIN_PASSWORD\""
+  sh -c "! docker exec $node sh -c 'cat /proc/[0-9]*/cmdline' | tr '\0' ' ' | grep -q -F -f '$work/all-secrets'"
 check "no plugin process gets the node key or the database admin password" \
-  sh -c "! grep -q -e \"$PLUGINS_NODE_KEY\" -e \"$PLUGINS_DB_ADMIN_PASSWORD\" '$work/a.json' '$work/b.json'"
+  sh -c "! grep -q -F -f '$work/node-secrets' '$work/a.json' '$work/b.json'"
 check "no proxy password and no policy path reaches the node's log" \
   sh -c "! docker logs $node 2>&1 | grep -q -e 'plugins_egress:3128' -e '\$2b\$'"
+
+echo "# removal: nothing of probe-b is left, and its UID and port are free"
+
+processes_of() { as_root sh -c "stat -c %u /proc/[0-9]* 2> /dev/null | grep -c '^$1\$'" || true; }
+ipc_objects_of() { as_root python -c "from es_plugins.launcher.ipc_cleanup import ipc_objects_of; print(len(ipc_objects_of($1)))"; }
+removal_state() { report | jq -r ".removals[] | select(.placement_id == $1) | .state"; }
+removed() { [ "$(removal_state 2)" = removed ]; }
+change 2 '{"desired_state": "running"}'
+if wait_for 90 running 2; then
+  call probe-b 20002 /api/traces > "$work/traces.json"
+  check "a plugin cannot create a POSIX message queue (RLIMIT_MSGQUEUE 0, EMFILE): $(jq -c .mq_open "$work/traces.json")" \
+    jq -e '.mq_open == [-1, 24]' "$work/traces.json"
+  check "it can create System V IPC objects, which outlive its process: $(jq -c .sysv "$work/traces.json")" \
+    jq -e '.sysv.shm >= 0 and .sysv.msg >= 0 and .sysv.sem >= 0' "$work/traces.json"
+  call probe-b 20002 /api/daemons "count=2" > /dev/null
+  change 2 '{"desired_state": "stopped"}'
+  wait_for 60 field_is 2 .observed_state stopped || true
+  # As many files as ES_PLUGINS_FILES_PER_PLUGIN's default allows, made as probe-b's UID while it
+  # is stopped (the disk watchdog measures running plugins only), to time the launcher's delete.
+  docker exec --user 20002:20002 "$node" python -c "
+import os
+root = '/var/lib/es_plugins/data/probe-b/many'
+for directory in range(100):
+    os.makedirs(f'{root}/{directory}')
+    for name in range(1000):
+        open(f'{root}/{directory}/{name}', 'w').close()
+"
+  ipc_before=$(ipc_objects_of 20002)
+  in_tools curl -s -o /dev/null -X POST http://control:8000/lab/placements/2/remove
+  if wait_for 180 removed; then
+    pass "probe-b's removal is reported removed"
+    check "its 3 System V IPC objects were there before ($ipc_before) and none is left" \
+      sh -c "[ '$ipc_before' -ge 3 ] && [ \"\$(docker exec $node python -c 'from es_plugins.launcher.ipc_cleanup import ipc_objects_of; print(len(ipc_objects_of(20002)))')\" = 0 ]"
+    check "no process of probe-b's UID is left" test "$(processes_of 20002)" = 0
+    left_as_root=$(as_root ls -A /var/lib/es_plugins/data /var/lib/es_plugins/plugins /var/lib/es_plugins/venvs /run/es_plugins)
+    left_as_agent=$(docker exec --user 10000:10000 "$node" ls -A /var/lib/es_plugins/logs /var/lib/es_plugins/agent/unpack)
+    check "nothing named probe-b is left under data, plugins, venvs, logs, agent/unpack or /run/es_plugins (its HOME, with a directory only its UID could enter, included)" \
+      sh -c "! printf '%s\n%s\n' '$left_as_root' '$left_as_agent' | grep -qx probe-b"
+    check "probe-a's trees are untouched" sh -c "printf '%s\n' '$left_as_root' | grep -qx probe-a"
+    check "probe-b is in neither egress policy file" \
+      sh -c "! docker exec $node grep -q probe-b $policy/passwords && ! docker exec $node grep -q '\"probe-b\"' $policy/hosts.json"
+    check "the agent logged the removal's start and end" \
+      sh -c "docker logs $node 2>&1 | grep -q 'plugins.removal.started plugin=probe-b placement=2' && docker logs $node 2>&1 | grep -q 'plugins.removal.done plugin=probe-b placement=2'"
+    removal_line=$(docker logs "$node" 2>&1 | grep -o 'plugins.launcher.plugin_removed plugin=probe-b uid=20002 ipc_objects=[0-9]* seconds=[0-9.]*' | tail -n 1)
+    echo "# $removal_line (a HOME of 100000 files)"
+    check "the launcher removed probe-b's IPC objects itself ($removal_line)" sh -c "printf '%s' '$removal_line' | grep -q 'ipc_objects=3'"
+  else
+    fail "the removal of probe-b: $(report | jq -c .removals)"
+  fi
+else
+  fail "probe-b did not run again for the removal: $(placement 2 '[.observed_state, .last_error] | tostring')"
+fi
 
 if [ "$failures" -ne 0 ]; then
   echo "FAILED: $failures check(s)"

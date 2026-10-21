@@ -61,15 +61,10 @@
         color: var(--color-text-secondary);
     }
 
-    &__stale {
+    // A short warning: a refresh that failed, why the process is held stopped, a limit the platform set back.
+    &__callout {
+        margin: 0;
         padding: 8px 12px;
-        border-radius: 8px;
-        background: var(--transparent-orange-8);
-        color: var(--color-warning);
-    }
-
-    &__blocked {
-        padding: 12px 16px;
         border-radius: 8px;
         background: var(--transparent-orange-8);
         color: var(--color-warning);
@@ -91,14 +86,6 @@
 
     &__error {
         color: var(--color-status-error);
-    }
-
-    &__note {
-        margin: 0;
-        padding: 8px 12px;
-        border-radius: 8px;
-        background: var(--transparent-orange-8);
-        color: var(--color-warning);
     }
 
     &__disclosure {

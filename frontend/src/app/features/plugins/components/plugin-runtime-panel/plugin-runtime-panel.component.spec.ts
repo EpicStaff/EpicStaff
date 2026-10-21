@@ -140,7 +140,9 @@ describe('PluginRuntimePanelComponent', () => {
         expect(fact('Last seen')).toBe('Never');
         expect(fact('Observed state')).toBe('Failed');
         expect(fact('Memory')).toBe('—');
-        expect(element.querySelector('.runtime__blocked')?.textContent).toContain('required settings are not set');
+        expect(section('Process')?.querySelector('.runtime__callout')?.textContent).toContain(
+            'required settings are not set'
+        );
         expect(element.querySelector('.runtime__error')?.textContent).toBe(
             'ModuleNotFoundError: No module named weather_plugin'
         );
@@ -177,7 +179,7 @@ describe('PluginRuntimePanelComponent', () => {
         expect(fact('Connection limit')).toBe('3');
         expect(fact('Statement timeout')).toBe('10 s');
         expect(fact('Size')).toBe('7.3 MB');
-        expect(database.querySelector('.runtime__note')).toBeNull();
+        expect(database.querySelector('.runtime__callout')).toBeNull();
         expect(database.querySelector('.runtime__error')).toBeNull();
     });
 
@@ -228,7 +230,7 @@ describe('PluginRuntimePanelComponent', () => {
         render();
 
         const database = section('Database')!;
-        expect(text(database.querySelector('.runtime__note'))).toMatch(
+        expect(text(database.querySelector('.runtime__callout'))).toMatch(
             /^Timeout restored at Oct 21, 2026, .+: the plugin changed its own default, and EpicStaff set it back\.$/
         );
         expect(text(database.querySelector('.runtime__error'))).toBe(

@@ -1,6 +1,13 @@
 import { AvailablePlugin } from '../models/available-plugin.model';
 import { OrganizationServiceAccount, PluginActivityEvent } from '../models/plugin-activity.model';
-import { PackageReview, PluginDetail, PluginGrant } from '../models/plugin-admin.model';
+import {
+    PackageReview,
+    PluginDetail,
+    PluginGrant,
+    PluginOrgRemovedJob,
+    PluginPurgeProgress,
+    PluginSummary,
+} from '../models/plugin-admin.model';
 import {
     PluginLimitsResponse,
     PluginPlacement,
@@ -9,6 +16,7 @@ import {
     PluginSettingsResponse,
     PluginSettingState,
 } from '../models/plugin-backend.model';
+import { PluginGrantPurgePreview, PluginPurgePreview } from '../models/plugin-purge-preview.model';
 import { PluginRolePermissionsResponse, PluginRoleRow } from '../models/plugin-role-permissions.model';
 import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 
@@ -63,7 +71,8 @@ export function buildPackageReview(overrides: Partial<PackageReview> = {}): Pack
     };
 }
 
-export function buildPluginDetail(overrides: Partial<PluginDetail> = {}): PluginDetail {
+/** Weather running, as the plugin list shows it. */
+export function buildPluginSummary(overrides: Partial<PluginSummary> = {}): PluginSummary {
     return {
         identifier: 'weather',
         name: 'Weather',
@@ -76,7 +85,32 @@ export function buildPluginDetail(overrides: Partial<PluginDetail> = {}): Plugin
         grant_count: 0,
         pending_package: null,
         created_at: '2026-10-20T10:00:00Z',
+        purge_after: null,
+        needs_attention: false,
+        ...overrides,
+    };
+}
+
+export function buildPluginDetail(overrides: Partial<PluginDetail> = {}): PluginDetail {
+    return {
+        ...buildPluginSummary(),
         current_package: buildPackageReview({ review_state: 'approved' }),
+        allowed_actions: ['uninstall', 'purge'],
+        uninstall_requested_at: null,
+        purge_started_at: null,
+        purge_progress: null,
+        ...overrides,
+    };
+}
+
+/** Weather being deleted: one organization left, its data removal waiting, the node waiting for it. */
+export function buildPluginPurgeProgress(overrides: Partial<PluginPurgeProgress> = {}): PluginPurgeProgress {
+    return {
+        grants_left: 1,
+        data_removals_waiting: 1,
+        data_removals_failed: 0,
+        node: 'waiting',
+        node_error: null,
         ...overrides,
     };
 }
@@ -243,7 +277,7 @@ export function buildPluginGrant(overrides: Partial<PluginGrant> = {}): PluginGr
         plugin_identifier: 'weather',
         organization: { id: 3, name: 'Acme' },
         state: 'active',
-        allowed_actions: ['suspend'],
+        allowed_actions: ['suspend', 'purge'],
         granted_by: { id: 1, email: 'sam@example.com' },
         granted_at: '2026-10-21T08:00:00Z',
         suspended_at: null,
@@ -258,6 +292,94 @@ export function buildPluginGrant(overrides: Partial<PluginGrant> = {}): PluginGr
             error: null,
         },
         owned_resource_count: 2,
+        suspension_cause: null,
+        purge_started_at: null,
+        last_purge_error: null,
+        org_removed_hook: null,
+        ...overrides,
+    };
+}
+
+/** Weather deleting its own data for Acme: the first attempt failed, the next one is due in a minute. */
+export function buildOrgRemovedJob(overrides: Partial<PluginOrgRemovedJob> = {}): PluginOrgRemovedJob {
+    return {
+        id: 31,
+        organization: { id: 3, name: 'Acme', exists: true },
+        grant_id: 5,
+        state: 'pending',
+        attempt: 1,
+        first_attempt_at: '2026-10-21T09:00:00Z',
+        next_attempt_at: '2026-10-21T09:01:00Z',
+        retry_until: '2026-10-28T09:00:00Z',
+        finished_at: null,
+        error: null,
+        created_at: '2026-10-21T08:59:50Z',
+        allowed_actions: ['retry', 'skip'],
+        ...overrides,
+    };
+}
+
+/**
+ * What deleting Weather's data in Acme removes: Weather owns a flow, a file, a secret and an LLM config there, "Daily
+ * digest" uses the LLM config, "Weather forecast" is Weather's own flow, the agent default model points at Weather's
+ * config, and Weather deletes its own data for Acme through its hook.
+ */
+export function buildGrantPurgePreview(overrides: Partial<PluginGrantPurgePreview> = {}): PluginGrantPurgePreview {
+    return {
+        grant: { id: 5, state: 'active' },
+        plugin: { identifier: 'weather', name: 'Weather' },
+        organization: { id: 3, name: 'Acme' },
+        verification_phrase: 'purge-weather-Acme',
+        owned_resources: [
+            { model: 'tables.StorageFile', label: 'Files', count: 1 },
+            { model: 'tables.Graph', label: 'Flows', count: 1 },
+            { model: 'tables.LLMConfig', label: 'LLM configs', count: 1 },
+            { model: 'tables.Secret', label: 'Secrets', count: 1 },
+        ],
+        flows: {
+            organization: { total: 1, items: [{ id: 21, name: 'Daily digest' }] },
+            plugin: { total: 1, items: [{ id: 18, name: 'Weather forecast' }] },
+        },
+        running_sessions: {
+            total: 1,
+            items: [
+                {
+                    id: 301,
+                    flow: { id: 21, name: 'Daily digest' },
+                    status: 'run',
+                    created_at: '2026-10-21T08:00:00Z',
+                },
+            ],
+        },
+        default_models: [{ setting: 'agent_llm_config', config: { id: 9, name: 'Weather summaries' } }],
+        plugin_data: 'deleted_by_plugin',
+        ...overrides,
+    };
+}
+
+/**
+ * What uninstalling or deleting Weather affects: it is granted to Acme only, owns a flow and a file there, has an
+ * organization removed hook, a database of 7.3 MB, a backend and a frontend.
+ */
+export function buildPluginPurgePreview(overrides: Partial<PluginPurgePreview> = {}): PluginPurgePreview {
+    return {
+        plugin: { identifier: 'weather', name: 'Weather', state: 'running' },
+        verification_phrase: 'purge-weather',
+        data_kept_until: '2026-11-20T09:00:00Z',
+        organizations: {
+            total: 1,
+            items: [{ grant_id: 5, organization: { id: 3, name: 'Acme' }, state: 'active', owned_resource_count: 2 }],
+        },
+        owned_resources: [
+            { model: 'tables.StorageFile', label: 'Files', count: 1 },
+            { model: 'tables.Graph', label: 'Flows', count: 1 },
+        ],
+        data_removals_open: 0,
+        has_org_removed_hook: true,
+        database: { name: 'plugin_weather', size_bytes: 7_654_321 },
+        has_backend: true,
+        has_spa: true,
+        package_count: 1,
         ...overrides,
     };
 }

@@ -384,3 +384,25 @@ def test_the_app_password_is_in_no_log_line(database_plugin, node_client, log_me
 
     assert any("plugins.database.record_created" in message for message in log_messages)
     assert all(password not in message for message in log_messages)
+
+
+# ---- a plugin out of service ----
+
+
+@pytest.mark.parametrize("plugin_state", ["uninstalling", "purging"])
+def test_a_plugin_out_of_service_gets_its_app_password_until_removal_is_requested(
+    database_plugin, plugin_node, node_client, plugin_state
+):
+    from plugins.models import Plugin, PluginPlacement
+
+    weather = mark_running(database_plugin(hooks={"install": False, "org_removed": True}))
+    Plugin.objects.filter(pk=weather.pk).update(state=plugin_state)
+    url = _credentials_url(weather.placement.pk)
+
+    kept = node_client.post(url)
+    PluginPlacement.objects.filter(plugin=weather).update(removal_requested_at=timezone.now())
+    refused = node_client.post(url)
+
+    assert kept.status_code == 200, kept.content
+    assert kept.json()["database"] == {"app_password": app_password_of(PluginDatabase.objects.get(plugin=weather))}
+    assert (refused.status_code, refused.json()["code"]) == (404, "placement_not_found")

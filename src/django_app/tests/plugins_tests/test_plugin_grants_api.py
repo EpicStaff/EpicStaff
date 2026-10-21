@@ -49,10 +49,10 @@ def test_every_grant_response_carries_the_actions_it_allows(superadmin_client, r
 
     listed = {grant["organization"]["id"]: grant for grant in superadmin_client.get(_grants_url()).json()["results"]}
 
-    assert created["allowed_actions"] == ["suspend"]
-    assert listed[acme.id]["allowed_actions"] == ["suspend"]
+    assert created["allowed_actions"] == ["suspend", "purge"]
+    assert listed[acme.id]["allowed_actions"] == ["suspend", "purge"]
     suspended = listed[beta.id]
-    assert (suspended["state"], suspended["allowed_actions"]) == ("suspended", ["resume"])
+    assert (suspended["state"], suspended["allowed_actions"]) == ("suspended", ["resume", "purge"])
     assert datetime.fromisoformat(suspended["suspended_at"]) == suspended_at
     assert datetime.fromisoformat(suspended["purge_after"]) == suspended_at + timedelta(days=30)
 

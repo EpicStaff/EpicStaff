@@ -31,7 +31,7 @@ const COLUMNS: AppTableColumnDef[] = [
     { key: 'name', label: 'Name', width: 'minmax(160px, 2fr)' },
     { key: 'identifier', label: 'Identifier', width: 'minmax(120px, 1.5fr)' },
     { key: 'version', label: 'Version', width: 'minmax(80px, 1fr)' },
-    { key: 'state', label: 'State', width: 'minmax(130px, 1fr)' },
+    { key: 'state', label: 'State', width: 'minmax(180px, 1.5fr)' },
     { key: 'trust', label: 'Trust', width: 'minmax(100px, 1fr)' },
     { key: 'grants', label: 'Active grants', width: 'minmax(110px, 1fr)' },
     { key: 'pending', label: 'Pending', width: 'minmax(150px, 1.5fr)' },

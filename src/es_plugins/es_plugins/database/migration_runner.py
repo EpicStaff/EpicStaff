@@ -11,33 +11,46 @@ package (`read_migrations`: every file checked against `CONTENTS.json`), applied
    stops ("changed after it was applied"). Any other file runs whole, without parameters (so
    multi-statement files and `DO` blocks work), with `MIGRATION_PLACEHOLDERS` replaced by the
    quoted role names, in one transaction together with its ledger row. An error rolls that file
-   back and stops the run.
-4. Always, whether the run succeeded or not: the owner session is closed and the owner goes back
-   to NOLOGIN without a password. An agent that dies in between leaves the owner LOGIN only with
-   a password nobody knows, until `VALID UNTIL` passes, the next provisioning, or the limits
-   watchdog, whichever comes first.
+   back and stops the run, and so does a file that ends the transaction itself (`COMMIT` or
+   `ROLLBACK`): it is refused before its ledger row is written, though what it committed stays.
+4. Always, whether the run succeeded or not: the owner session is closed, the owner goes back to
+   NOLOGIN without a password, and every session the owner still has is ended. A migration runs
+   as the owner, and any role may change its own password, so a migration can give the owner a
+   password of its own and open more sessions with it while the run lasts. An agent that dies
+   in between leaves the owner able to log in, with this run's password or one a migration set,
+   until `VALID UNTIL` passes, the next provisioning, or the limits watchdog, whichever comes
+   first.
 
 The ledger guards against mistakes, not attacks: the owner owns it, so a migration can rewrite
-it. A `COMMIT` inside a migration ends its one-transaction guarantee.
+it. It is read bounded (at most `MAX_APPLIED_MIGRATIONS + 1` rows, names cut at
+`MAX_MIGRATION_NAME_LENGTH`) and only entries `is_reportable_migration_name` accepts are kept,
+so no row a migration writes can exhaust the agent's memory or make its report invalid.
 """
 
+import asyncio
 import contextlib
-import re
 import secrets
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import psycopg
+from epicstaff_plugin.package_layout import MAX_MIGRATION_NAME_LENGTH
 from loguru import logger
 from psycopg import sql
-from src.shared.models.plugin_nodes import DesiredDatabase
+from psycopg.pq import TransactionStatus
+from src.shared.models.plugin_nodes import (
+    MAX_APPLIED_MIGRATIONS,
+    DesiredDatabase,
+    is_reportable_migration_name,
+)
 
 from es_plugins.database.connections import (
     DatabaseConnector,
     DatabaseProvisioningError,
     DatabaseUnreachableError,
     describe_error,
+    end_sessions,
     scram_verifier,
     session_error,
 )
@@ -46,9 +59,11 @@ from es_plugins.database.connections import (
 MIGRATION_PLACEHOLDERS = ("owner_role", "app_role", "job_role")
 MIGRATIONS_LEDGER_SCHEMA = "_epicstaff"
 MIGRATIONS_LEDGER_TABLE = "migrations"
-MIGRATION_NAME_PATTERN = re.compile(r"^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$")
 OWNER_LOGIN_WINDOW = timedelta(minutes=10)
-_BYTE_ORDER_MARK = "﻿"
+# Long enough for a session ended with pg_terminate_backend to go.
+OWNER_SESSIONS_END_SECONDS = 10.0
+OWNER_CANCEL_SECONDS = 5.0
+_BYTE_ORDER_MARK = "\ufeff"
 
 _LEDGER = sql.SQL("{}.{}").format(
     sql.Identifier(MIGRATIONS_LEDGER_SCHEMA), sql.Identifier(MIGRATIONS_LEDGER_TABLE)
@@ -96,12 +111,26 @@ async def open_owner_login(
 
 
 async def close_owner_login(admin: psycopg.AsyncConnection, owner_role: str) -> None:
-    """Put the owner back to NOLOGIN, without a password and without a connection limit."""
+    """Put the owner back to NOLOGIN, without a password and without a connection limit, and end
+    every session it still has.
+
+    NOLOGIN stops new sessions only; a session opened before it, with this run's password or one a
+    migration set, is ended here.
+
+    Raises:
+        DatabaseProvisioningError: Reason `assertion`: a session of the owner did not end.
+    """
     await admin.execute(
         sql.SQL(
             "ALTER ROLE {} NOLOGIN PASSWORD NULL CONNECTION LIMIT -1 VALID UNTIL 'infinity'"
         ).format(sql.Identifier(owner_role))
     )
+    remaining = await end_sessions(admin, [owner_role], within_seconds=OWNER_SESSIONS_END_SECONDS)
+    if remaining:
+        raise DatabaseProvisioningError(
+            "assertion",
+            f"a session of {owner_role} did not end within {OWNER_SESSIONS_END_SECONDS:.0f} s",
+        )
 
 
 class MigrationRunner:
@@ -136,16 +165,23 @@ class MigrationRunner:
             async with self._connector.owner_session(
                 desired.server, desired.database_name, owner_role, password
             ) as owner:
-                run = await self._apply(owner, desired, migrations)
+                try:
+                    run = await self._apply(owner, desired, migrations)
+                except asyncio.CancelledError:
+                    # Provisioning ran out of time, or the agent stops: stop the statement on the
+                    # server too, not only the wait for it here.
+                    with contextlib.suppress(psycopg.Error, OSError):
+                        await owner.cancel_safe(timeout=OWNER_CANCEL_SECONDS)
+                    raise
         except BaseException:
             # The run's own failure is the one to report; the owner is closed all the same.
             try:
                 await close_owner_login(admin, owner_role)
-            except psycopg.Error as error:
+            except (psycopg.Error, DatabaseProvisioningError) as error:
                 logger.warning(
-                    "Could not set {} back to NOLOGIN after a failed migration run: {}",
+                    "Could not close the owner {} after a failed migration run: {}",
                     owner_role,
-                    describe_error(error),
+                    describe_error(error) if isinstance(error, psycopg.Error) else error,
                 )
             raise
         await close_owner_login(admin, owner_role)
@@ -158,8 +194,7 @@ class MigrationRunner:
         migrations: Sequence[Migration],
     ) -> MigrationRun:
         await _in_transaction(owner, _CREATE_LEDGER)
-        cursor = await owner.execute(sql.SQL("SELECT name, sha256 FROM {}").format(_LEDGER))
-        recorded = dict(await cursor.fetchall())
+        recorded = dict(await _read_ledger(owner, ["name", "sha256"]))
         replacements = {
             "${" + name + "}": sql.Identifier(getattr(desired, name)).as_string(owner)
             for name in MIGRATION_PLACEHOLDERS
@@ -174,19 +209,28 @@ class MigrationRunner:
                 continue
             await self._apply_one(owner, migration, _migration_text(migration, replacements))
             applied += 1
-        cursor = await owner.execute(
-            sql.SQL("SELECT name FROM {} ORDER BY applied_at, name").format(_LEDGER)
-        )
-        return MigrationRun(
-            ledger=tuple(row[0] for row in await cursor.fetchall()), applied=applied
-        )
+        return MigrationRun(ledger=await _reportable_ledger(owner), applied=applied)
 
     @staticmethod
     async def _apply_one(owner: psycopg.AsyncConnection, migration: Migration, text: str) -> None:
         try:
             await owner.execute("BEGIN")
+            transaction = await _transaction_id(owner)
             # No parameters: psycopg sends the text as one simple query, every statement in it.
             await owner.execute(text)
+            # A file that ended the transaction itself is caught here, before its ledger row:
+            # either none is open any more, or a BEGIN after its COMMIT opened another one.
+            if (
+                owner.info.transaction_status != TransactionStatus.INTRANS
+                or await _transaction_id(owner) != transaction
+            ):
+                with contextlib.suppress(psycopg.Error):
+                    await owner.execute("ROLLBACK")
+                raise DatabaseProvisioningError(
+                    "migration",
+                    f"{migration.name} ends its own transaction (COMMIT or ROLLBACK); a migration "
+                    "runs in the one transaction the node opens for it",
+                )
             await owner.execute(
                 sql.SQL("INSERT INTO {} (name, sha256) VALUES (%s, %s)").format(_LEDGER),
                 (migration.name, migration.sha256),
@@ -201,6 +245,45 @@ class MigrationRunner:
             raise DatabaseProvisioningError(
                 "migration", f"{migration.name}{_line_of(text, error)}: {describe_error(error)}"
             ) from None
+
+
+async def _transaction_id(owner: psycopg.AsyncConnection) -> int:
+    cursor = await owner.execute("SELECT pg_catalog.pg_current_xact_id()::text::bigint")
+    return (await cursor.fetchone())[0]
+
+
+async def _read_ledger(owner: psycopg.AsyncConnection, columns: list[str]) -> list[tuple]:
+    """The ledger's rows, oldest first, read so that no row a migration wrote can be large.
+
+    Every column is read as text cut to `MAX_MIGRATION_NAME_LENGTH + 1` characters, whatever a
+    migration changed its type to, and at most `MAX_APPLIED_MIGRATIONS + 1` rows.
+    """
+    cut = sql.SQL(", ").join(
+        sql.SQL("pg_catalog.left({}::text, {})").format(
+            sql.Identifier(column), sql.Literal(MAX_MIGRATION_NAME_LENGTH + 1)
+        )
+        for column in columns
+    )
+    cursor = await owner.execute(
+        sql.SQL("SELECT {} FROM {} ORDER BY applied_at, name LIMIT {}").format(
+            cut, _LEDGER, sql.Literal(MAX_APPLIED_MIGRATIONS + 1)
+        )
+    )
+    return await cursor.fetchall()
+
+
+async def _reportable_ledger(owner: psycopg.AsyncConnection) -> tuple[str, ...]:
+    rows = await _read_ledger(owner, ["name"])
+    ledger = tuple(row[0] for row in rows if is_reportable_migration_name(row[0]))
+    dropped = len(rows) - len(ledger)
+    if dropped or len(rows) > MAX_APPLIED_MIGRATIONS:
+        # Counts only: a row's content is the plugin's.
+        logger.warning(
+            "plugins.database.ledger_entries_dropped count={} more_than_read={}",
+            dropped,
+            "true" if len(rows) > MAX_APPLIED_MIGRATIONS else "false",
+        )
+    return ledger[:MAX_APPLIED_MIGRATIONS]
 
 
 def _migration_text(migration: Migration, replacements: dict[str, str]) -> str:

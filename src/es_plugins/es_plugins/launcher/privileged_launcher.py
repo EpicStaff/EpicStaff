@@ -27,7 +27,9 @@ from pydantic import ValidationError
 from es_plugins.launcher import protocol
 from es_plugins.launcher.directory_setup import DirectorySetup, DirectorySetupError
 from es_plugins.launcher.disk_measurement import start_measurement
+from es_plugins.launcher.ipc_cleanup import IpcCleanupError
 from es_plugins.launcher.kill_by_uid import kill_uid, signal_uid
+from es_plugins.launcher.plugin_removal import start_removal
 from es_plugins.launcher.process_spawn import LISTEN_FD, SpawnError, SpawnSpec, spawn_process
 from es_plugins.layout import NodeLayout
 from es_plugins.process_table import ProcessTable
@@ -38,10 +40,15 @@ from es_plugins.runtime.runtime_file_writer import (
 )
 from es_plugins.uid_range import UidRange
 
+# Linux's number for it: the launcher runs only on Linux, but its tests import it everywhere.
+_RLIMIT_MSGQUEUE = getattr(resource, "RLIMIT_MSGQUEUE", 12)
 PLUGIN_RESOURCE_LIMITS = (
     (resource.RLIMIT_NPROC, 64),
     (resource.RLIMIT_NOFILE, 1024),
     (resource.RLIMIT_CORE, 0),
+    # No POSIX message queues: they outlive the process like System V IPC objects, and no
+    # listing shows them, so a removed plugin's could not be found to delete.
+    (_RLIMIT_MSGQUEUE, 0),
 )
 PLUGIN_OOM_SCORE_ADJ = 800
 MAX_REMEMBERED_EXIT_STATUSES = 4096
@@ -85,7 +92,7 @@ class LauncherOperations:
             raise LauncherRefusalError(f"UID {request.uid} is outside PLUGINS_NODE_UID_RANGE")
         try:
             return self._dispatch(request, descriptors)
-        except (DirectorySetupError, RuntimeFileError, SpawnError) as error:
+        except (DirectorySetupError, RuntimeFileError, SpawnError, IpcCleanupError) as error:
             raise LauncherRefusalError(str(error)) from None
         except OSError as error:
             raise LauncherRefusalError(f"{request.operation} failed: {error}") from None
@@ -128,7 +135,20 @@ class LauncherOperations:
                 kill_uid(uid, self._process_table, reap=self.reap)
                 self._directory_setup.purge_plugin_data(plugin, uid)
                 return None, []
+            case protocol.RemovePlugin(plugin=plugin, uid=uid):
+                return None, [self._start_removal(plugin, uid)]
         raise LauncherRefusalError(f"unknown operation {request.operation}")
+
+    def _start_removal(self, plugin: str, uid: int) -> int:
+        """Kill the UID's processes, then start the helper that deletes the rest (see
+        `plugin_removal`); return the pipe its result arrives on. Nothing is deleted while a
+        process lives."""
+        outcome = kill_uid(uid, self._process_table, reap=self.reap)
+        if outcome.remaining:
+            raise LauncherRefusalError(
+                f"{len(outcome.remaining)} process(es) of UID {uid} are still alive after SIGKILL"
+            )
+        return start_removal(self._directory_setup, plugin, uid)
 
     def _spawn(self, request: protocol.Spawn, output_descriptor: int, listen_descriptor: int):
         if not stat.S_ISFIFO(os.fstat(output_descriptor).st_mode):

@@ -69,6 +69,10 @@ backend connects as.
 - **`db_connections` is a hard limit.** It is the role's connection limit: the database server
   refuses a connection beyond it. Your backend reads the value from
   `EPICSTAFF_PLUGIN_DB_CONNECTIONS`; size your connection pool to it.
+- **Open connections, logged in or not.** The plugin node also lets the backend have at most
+  `PLUGINS_MAX_DB_CONNECTIONS` connections open to the database server at once, counted before
+  they log in, so a plugin cannot fill the server's slots with connections that never
+  authenticate. One over it is refused at once.
 - **`statement_timeout_seconds` is a default.** It is the role's `statement_timeout`, so a
   statement that runs longer is cancelled. Your backend may change it for its own sessions (`SET
   statement_timeout`), and a migration may set a default on its database with `ALTER DATABASE …
@@ -105,6 +109,21 @@ HOME, its TMPDIR included, and the deleted files its processes still hold open. 
 either cap is stopped and marked failed at once, without restarts, and stays stopped until a
 SuperAdmin restarts it from the Runtime tab after space was freed. Keep caches small and
 delete temporary files when done.
+
+## Connections
+
+Every plugin backend on a node shares the node's network, and with it its local ports. The plugin
+node limits each backend, by its Unix user:
+
+| Limit | Value | Over it |
+|---|---|---|
+| New TCP connections, to anywhere | 200 a second, after a burst of 200 | Refused at once (a TCP reset) |
+| Connections open to the database server | `PLUGINS_MAX_DB_CONNECTIONS` (20) | Refused at once |
+| Connections open to the egress proxy | 64 | Refused at once |
+
+Closed connections stop counting at once. Reuse connections (an HTTP client with a connection
+pool, a database pool) rather than opening one per request. The node's own connections are not
+limited.
 
 ## The whole node
 

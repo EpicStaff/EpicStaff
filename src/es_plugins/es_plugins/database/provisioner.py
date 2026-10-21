@@ -2,12 +2,8 @@
 
 `DatabaseProvisioner.ensure` runs these steps, every one on an admin session to `postgres`:
 
-1. **Conflict check.** The three roles, the owner's comment and the database's owner are read.
-   The comment is the installation marker, `epicstaff-plugin-installation:<installation id>`.
-   Nothing found: create. An owner carrying this installation's marker (and a database, if
-   there is one, owned by it): adopt. Anything else is a `conflict`, and nothing is changed:
-   adopting a database left from another EpicStaff database would show one organization's
-   plugin data to another that got the same ids.
+1. **Conflict check** (`installation_lookup`). Nothing found: create. This installation's
+   roles and database: adopt. Anything else is a `conflict`, and nothing is changed.
 2. **Roles**, in one transaction. Created NOLOGIN (the app role LOGIN, with its password's
    SCRAM verifier and its connection limit) with every privilege attribute off, the marker on
    the owner; adopted ones are set back to the same LOGIN, CREATEDB and CREATEROLE attributes,
@@ -20,14 +16,19 @@
 5. **Limits** (`apply_app_limits`).
 6. **Assertions** (`ProvisioningAssertions.check`).
 7. **Migrations** (`MigrationRunner`), with the owner as the session user.
-8. The database's size, and the log line `plugins.database.provisioned`.
+8. **Permissions again**: a migration runs as the owner, which may grant on its own database.
+9. The database's size, and the log line `plugins.database.provisioned`.
 
 Every step is idempotent: provisioning a ready database again changes nothing but the app role's
-stored verifier (a new salt for the same password).
+stored verifier (a new salt for the same password). The whole run is bounded by
+`PROVISIONING_TIMEOUT`; one that takes longer fails as a `migration` failure, and a statement still
+running on the server is cancelled there too. plugins_db not answering is logged once per outage.
 """
 
+import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Literal
 
 import psycopg
@@ -43,10 +44,16 @@ from es_plugins.database.connections import (
     DatabaseUnreachableError,
     scram_verifier,
 )
-from es_plugins.database.migration_runner import Migration, MigrationRunner
+from es_plugins.database.installation_lookup import (
+    InstallationFootprint,
+    find_installation,
+    installation_marker,
+)
+from es_plugins.database.migration_runner import OWNER_LOGIN_WINDOW, Migration, MigrationRunner
 from es_plugins.database.provisioning_assertions import ProvisioningAssertions, connect_holders
 
-INSTALLATION_MARKER_PREFIX = "epicstaff-plugin-installation:"
+# The owner may log in for OWNER_LOGIN_WINDOW; the minute after it covers the steps around the run.
+PROVISIONING_TIMEOUT = OWNER_LOGIN_WINDOW + timedelta(minutes=1)
 CONFLICT_MESSAGE = (
     "plugins_db already has {objects} that this plugin installation did not create, probably "
     "left from another EpicStaff database. Remove them (see the operator guide) or restore the "
@@ -55,15 +62,6 @@ CONFLICT_MESSAGE = (
 _NO_PRIVILEGES = sql.SQL("NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS")
 # What `plugins_admin` may set on a role it administers; the other attributes need a superuser.
 _RESETTABLE_PRIVILEGES = sql.SQL("NOCREATEDB NOCREATEROLE")
-_OWNER_MARKER = (
-    "SELECT d.description FROM pg_catalog.pg_shdescription d "
-    "JOIN pg_catalog.pg_roles r ON r.oid = d.objoid "
-    "WHERE d.classoid = 'pg_catalog.pg_authid'::pg_catalog.regclass AND r.rolname = %s"
-)
-
-
-def installation_marker(installation_id: str) -> str:
-    return INSTALLATION_MARKER_PREFIX + installation_id
 
 
 @dataclass(frozen=True)
@@ -80,14 +78,6 @@ class ProvisionedDatabase:
     size_bytes: int
 
 
-@dataclass(frozen=True)
-class _Found:
-    roles: frozenset[str]
-    owner_marker: str | None
-    database_owner: str | None
-    """Who owns the database of the desired name; None when there is none."""
-
-
 class DatabaseProvisioner:
     def __init__(
         self,
@@ -99,6 +89,8 @@ class DatabaseProvisioner:
         self._connector = connector
         self._assertions = assertions or ProvisioningAssertions()
         self._runner = runner or MigrationRunner(connector)
+        # The plugins whose last attempt found plugins_db unreachable: logged once per outage.
+        self._unreachable: set[str] = set()
 
     async def ensure(
         self,
@@ -115,34 +107,33 @@ class DatabaseProvisioner:
         Raises:
             DatabaseUnreachableError: plugins_db cannot be reached now (transient).
             DatabaseProvisioningError: A conflict, an assertion, a migration or another
-                statement failed (permanent); nothing more was attempted.
+                statement failed (permanent), or it took longer than `PROVISIONING_TIMEOUT`
+                (reason `migration`); nothing more was attempted.
         """
         try:
-            async with self._connector.admin_session(desired.server) as admin:
-                found = await _find(admin, desired)
-                create = _choose_path(found, desired) == "create"
-                await _ensure_roles(admin, desired, app_password, found, create=create)
-                created_database = found.database_owner is None
-                if created_database:
-                    await admin.execute(
-                        sql.SQL(
-                            "CREATE DATABASE {} OWNER {} TEMPLATE template0 ENCODING 'UTF8'"
-                        ).format(
-                            sql.Identifier(desired.database_name),
-                            sql.Identifier(desired.owner_role),
-                        )
-                    )
-                await _grant_connect(admin, desired)
-                await apply_app_limits(admin, desired)
-                await self._assertions.check(admin, desired)
-                run = await self._runner.run(admin, desired, migrations)
-                size_bytes = await database_size(admin, desired.database_name)
+            async with asyncio.timeout(PROVISIONING_TIMEOUT.total_seconds()):
+                created_database, run, size_bytes = await self._provision(
+                    desired, app_password, migrations
+                )
+        except TimeoutError:
+            error = DatabaseProvisioningError(
+                "migration",
+                f"provisioning the database did not finish within "
+                f"{PROVISIONING_TIMEOUT.total_seconds() / 60:.0f} minutes",
+            )
+            self._unreachable.discard(plugin)
+            log_database_failure(plugin, error.reason, str(error))
+            raise error from None
         except DatabaseUnreachableError as error:
-            log_database_failure(plugin, "unreachable", str(error))
+            if plugin not in self._unreachable:
+                self._unreachable.add(plugin)
+                log_database_failure(plugin, "unreachable", str(error))
             raise
         except DatabaseProvisioningError as error:
+            self._unreachable.discard(plugin)
             log_database_failure(plugin, error.reason, str(error))
             raise
+        self._unreachable.discard(plugin)
         logger.info(
             "plugins.database.provisioned plugin={} database={} created={} migrations_applied={}",
             plugin,
@@ -154,6 +145,38 @@ class DatabaseProvisioner:
             created=created_database, ledger=run.ledger, applied=run.applied, size_bytes=size_bytes
         )
 
+    async def _provision(
+        self, desired: DesiredDatabase, app_password: str, migrations: Sequence[Migration]
+    ):
+        async with self._connector.admin_session(desired.server) as admin:
+            found = await find_installation(admin, desired)
+            create = _choose_path(found, desired) == "create"
+            await _ensure_roles(admin, desired, app_password, found, create=create)
+            created_database = found.database_owner is None
+            if created_database:
+                await admin.execute(
+                    sql.SQL(
+                        "CREATE DATABASE {} OWNER {} TEMPLATE template0 ENCODING 'UTF8'"
+                    ).format(
+                        sql.Identifier(desired.database_name),
+                        sql.Identifier(desired.owner_role),
+                    )
+                )
+            await _grant_connect(admin, desired)
+            await apply_app_limits(admin, desired)
+            await self._assertions.check(admin, desired)
+            run = await self._runner.run(admin, desired, migrations)
+            # The migrations ran as the owner, which may grant on its own database.
+            problems = await self._assertions.permission_problems(admin, desired)
+            if problems:
+                raise DatabaseProvisioningError(
+                    "assertion",
+                    "the plugin database's permissions changed during its migrations: "
+                    + "; ".join(problems),
+                )
+            size_bytes = await database_size(admin, desired.database_name)
+        return created_database, run, size_bytes
+
 
 def log_database_failure(plugin: str, reason: str, detail: str) -> None:
     logger.error("plugins.database.failed plugin={} reason={} detail={}", plugin, reason, detail)
@@ -164,50 +187,24 @@ async def database_size(admin: psycopg.AsyncConnection, database_name: str) -> i
     return (await cursor.fetchone())[0]
 
 
-async def _find(admin: psycopg.AsyncConnection, desired: DesiredDatabase) -> _Found:
-    names = [desired.owner_role, desired.app_role, desired.job_role]
-    cursor = await admin.execute(
-        "SELECT rolname FROM pg_catalog.pg_roles WHERE rolname = ANY(%s)", (names,)
-    )
-    roles = frozenset(row[0] for row in await cursor.fetchall())
-    cursor = await admin.execute(_OWNER_MARKER, (desired.owner_role,))
-    marker = await cursor.fetchone()
-    cursor = await admin.execute(
-        "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_catalog.pg_database WHERE datname = %s",
-        (desired.database_name,),
-    )
-    database = await cursor.fetchone()
-    return _Found(
-        roles=roles,
-        owner_marker=marker[0] if marker else None,
-        database_owner=database[0] if database else None,
-    )
-
-
-def _choose_path(found: _Found, desired: DesiredDatabase) -> Literal["create", "adopt"]:
+def _choose_path(
+    found: InstallationFootprint, desired: DesiredDatabase
+) -> Literal["create", "adopt"]:
     """Raises: DatabaseProvisioningError: reason `conflict`."""
-    if not found.roles and found.database_owner is None:
+    if found.absent:
         return "create"
-    owner_is_ours = desired.owner_role in found.roles and found.owner_marker == installation_marker(
-        desired.installation_id
-    )
-    if owner_is_ours and found.database_owner in (None, desired.owner_role):
+    if found.is_ours(desired):
         return "adopt"
-    objects = [
-        f'role "{name}"'
-        for name in (desired.owner_role, desired.app_role, desired.job_role)
-        if name in found.roles
-    ]
-    if found.database_owner is not None:
-        objects.append(f'database "{desired.database_name}"')
-    raise DatabaseProvisioningError("conflict", CONFLICT_MESSAGE.format(objects=", ".join(objects)))
+    raise DatabaseProvisioningError(
+        "conflict", CONFLICT_MESSAGE.format(objects=found.found_objects(desired))
+    )
 
 
 async def _ensure_roles(
     admin: psycopg.AsyncConnection,
     desired: DesiredDatabase,
     app_password: str,
-    found: _Found,
+    found: InstallationFootprint,
     *,
     create: bool,
 ) -> None:

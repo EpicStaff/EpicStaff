@@ -1,7 +1,8 @@
 """The forecast runs Weather started, and what a person sees of one.
 
 Which person started which run is kept in Weather's database, so a run started before a
-restart is still found after it, by the same person in the same organization only.
+restart is still found after it, by the same person in the same organization only. A run is
+kept for 7 days: the hourly purge (`weather_plugin.retention`) deletes older ones.
 """
 
 from typing import Annotated, Any, Literal
@@ -10,9 +11,6 @@ from epicstaff_plugin.client import FlowSession
 from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 
 from weather_plugin.database import WeatherDatabase
-
-# A run's result is read within minutes; older records are deleted when a new run is added.
-RUN_RETENTION_DAYS = 7
 
 ForecastStatus = Literal["pending", "running", "finished", "failed"]
 
@@ -41,13 +39,8 @@ class ForecastRuns:
         self._database = database
 
     async def add(self, org_id: int, user_id: int, session_id: int, city: str) -> None:
-        """Record that the person started this run, and forget runs older than the retention."""
+        """Record that the person started this run."""
         async with self._database.transaction(org_id) as connection:
-            await connection.execute(
-                "DELETE FROM weather.forecast_runs"
-                " WHERE created_at < now() - make_interval(days => %s)",
-                (RUN_RETENTION_DAYS,),
-            )
             await connection.execute(
                 "INSERT INTO weather.forecast_runs (org_id, user_id, session_id, city)"
                 " VALUES (%s, %s, %s, %s)",

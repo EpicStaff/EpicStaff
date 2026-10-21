@@ -4,7 +4,8 @@ The node runs it with `python -m epicstaff_plugin.serve`, which checks the gatew
 of every request before it reaches a route here; `context_from_scope` returns that context.
 Public paths (see the manifest) get a public context; every other route is reached only by a
 person logged in to EpicStaff, with a user context. Importing this module also registers the
-install hook (`weather_plugin.install_hook`), which the same runner answers.
+install hook (`weather_plugin.install_hook`) and the organization removed hook (defined here,
+because it needs the database the lifespan opens), which the same runner answers.
 
 Routes that read or change EpicStaff call it on behalf of the person asking
 (`EpicStaffClient.client_for_context`), so EpicStaff records that person on what Weather
@@ -12,8 +13,9 @@ does for them.
 
 Weather keeps its saved places, its forecast runs and its popup results in its own database
 (`weather_plugin.database`), which the lifespan opens before the first request: a backend
-whose database cannot be reached does not start. The place search calls Open-Meteo through
-the egress proxy (`weather_plugin.place_search`).
+whose database cannot be reached does not start. The lifespan also runs the hourly purge of
+expired rows (`weather_plugin.retention`). The place search calls Open-Meteo through the
+egress proxy (`weather_plugin.place_search`).
 
 Refusals are `{"code": ...}` with a 4xx status: `invalid_request` (400) for input that breaks
 a route's rules, `forbidden` (403) without the Weather permission a route needs,
@@ -25,13 +27,18 @@ the admin). When EpicStaff refuses a call, the answer is 502
 `{"code": "lookup_failed"}`.
 """
 
+import asyncio
+import contextlib
+import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 from epicstaff_plugin.client import EpicStaffApiError, EpicStaffClient, ServiceAccountUnavailable
 from epicstaff_plugin.contracts.gateway_context import GatewayContext
+from epicstaff_plugin.contracts.hook_api import HookRequest
 from epicstaff_plugin.gateway import context_from_scope
+from epicstaff_plugin.hooks import hook_registry
 from epicstaff_plugin.runtime import runtime_config
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -51,14 +58,16 @@ from weather_plugin.org_settings import (
     find_llm_config,
     list_llm_models,
 )
+from weather_plugin.organization_data import OrganizationData
 from weather_plugin.place_search import MAX_QUERY_LENGTH, LookupFailed, PlaceSearch
-from weather_plugin.places import AlreadySaved, PlaceCandidate, SavedPlaces
+from weather_plugin.places import MAX_PLACE_NAME_LENGTH, AlreadySaved, PlaceCandidate, SavedPlaces
 from weather_plugin.popup_relay import (
     PopupRelayStore,
     RelayedResult,
     is_popup_state,
     organization_id_of,
 )
+from weather_plugin.retention import RetentionPurge
 
 WHOAMI_FIELDS = {"mode", "user", "org", "permissions", "request"}
 NO_STORE = {"Cache-Control": "no-store"}
@@ -71,6 +80,8 @@ LLM_SETUP_RIGHTS = (("secrets", "create"), ("llm_configs", "create"))
 # The largest id a bigint column holds; a larger one in a path names no row.
 MAX_ROW_ID = 2**63 - 1
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -79,10 +90,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.places = SavedPlaces(database)
     app.state.forecast_runs = ForecastRuns(database)
     app.state.popup_relay = PopupRelayStore(database)
+    app.state.organization_data = OrganizationData(database)
     app.state.place_search = place_search
+    purge = asyncio.create_task(RetentionPurge(database).run_every())
     try:
         yield
     finally:
+        purge.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await purge
         await place_search.aclose()
         await database.close()
 
@@ -91,6 +107,20 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Weather", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 # Created on first use: it reads the runtime file, which exists only once the node runs us.
 app.state.epicstaff = None
+
+
+@hook_registry.on_org_removed
+async def org_removed(request: HookRequest) -> None:
+    """Delete everything Weather keeps for an organization that no longer has Weather.
+
+    EpicStaff deletes what Weather created in the organization itself; this deletes Weather's
+    own rows. It never calls EpicStaff: the organization has no key any more. Running it again
+    deletes nothing more, so a retry is harmless.
+    """
+    deleted = await app.state.organization_data.delete(request.org.id)
+    logger.info(
+        "Deleted %s rows of organization %s (job %s)", deleted, request.org.id, request.job_id
+    )
 
 
 class ApiError(Exception):
@@ -165,7 +195,10 @@ class ForecastRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    city: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    city: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_PLACE_NAME_LENGTH),
+    ]
 
 
 class LlmSettingsRequest(BaseModel):

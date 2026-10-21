@@ -83,11 +83,23 @@ verify_chain() { # iptables or ip6tables, then the ranges it must refuse
   done
 }
 
-ipv4_ranges=$(grep -v ':' "$RANGES")
-ipv6_ranges=$(grep ':' "$RANGES")
+if [ ! -r "$RANGES" ]; then
+  log "cannot read $RANGES; refusing to start without a firewall"
+  exit 1
+fi
+# grep fails when a family has no line, which set -e would turn into a silent exit; blank lines
+# are no range.
+ipv4_ranges=$(grep -v -e ':' -e '^[[:space:]]*$' "$RANGES" || true)
+ipv6_ranges=$(grep ':' "$RANGES" || true)
+if [ -z "$ipv4_ranges" ]; then
+  log "$RANGES lists no IPv4 range; refusing to start without a firewall"
+  exit 1
+fi
 install_chain iptables $ipv4_ranges
 verify_chain iptables $ipv4_ranges || exit 1
-if ip6tables -S > /dev/null 2>&1; then
+if [ -z "$ipv6_ranges" ]; then
+  log "$RANGES lists no IPv6 range: no IPv6 rules installed"
+elif ip6tables -S > /dev/null 2>&1; then
   install_chain ip6tables $ipv6_ranges
   verify_chain ip6tables $ipv6_ranges || exit 1
 else

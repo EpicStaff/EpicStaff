@@ -11,6 +11,12 @@ it, and shows how to pack it.
 - **Install hook** (`backend/src/weather_plugin/install_hook.py`). In every organization Weather
   is granted to, it creates the flow "Weather forecast" with an inactive daily schedule, and
   `weather/README.md` in the organization's storage. Running it again only adds what is missing.
+- **Organization removed hook** (`org_removed` in `backend/src/weather_plugin/app.py`, deleting
+  through `backend/src/weather_plugin/organization_data.py`). When an organization's Weather data
+  is deleted, when the organization is deleted, or when Weather is deleted, it deletes the
+  organization's saved places, forecast runs and popup results from Weather's database, in one
+  transaction. It never calls EpicStaff, which deletes the flow, the readme, the Secret and the
+  LLM config itself. Running it again deletes nothing more.
 - **Forecast** (`/api/forecast`). Runs that flow for a city, on behalf of the person asking.
 - **Organization settings** (`/api/org-settings`). For people with Weather's Delete permission:
   stores an LLM key as the Secret "Weather · LLM key" and creates the LLM config
@@ -38,6 +44,11 @@ it, and shows how to pack it.
   (`popup_relay.py`). Every table has row-level security on `org_id`, and every query runs in
   one organization's transaction (`database.py`), so an organization never sees another's rows.
   A restart loses nothing.
+- **Old rows are purged hourly** (`retention.py`). A forecast run is kept for 7 days and a popup
+  result until it expires, after five minutes. Once an hour the backend deletes older rows of
+  every organization, in batches, as the plugin's job role. Its policies, in
+  `database/migrations/002_retention.sql`, let it read only the timestamps of expired rows and
+  delete only those rows.
 - **The demo OAuth provider** (`/api/demo-provider`, a public path) stands in for an external
   service, to show the popup hand-off; see
   [Receive an external provider's callback](../../docs/plugins/how-to/external-callbacks.md).

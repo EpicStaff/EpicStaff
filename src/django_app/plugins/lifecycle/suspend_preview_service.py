@@ -117,13 +117,8 @@ class SuspendPreviewService:
             raise GrantNotFoundError()
         index = OwnedResourceIndex.for_grant(grant)
         organization_id = grant.org_id
-        stopping_flows = _matching(
-            index, RunKind.FLOW, Graph.objects.filter(org_id=organization_id)
-        )
-        # The plugin's own flows are the ones whose row it owns; the rest are the
-        # organization's, and stop only because they use something the plugin owns.
-        plugin_flows = [flow for flow in stopping_flows if index.holds(GRAPH, flow.id)]
-        organization_flows = [flow for flow in stopping_flows if not index.holds(GRAPH, flow.id)]
+        stopping_flows = affected_flows(index, organization_id)
+        organization_flows, plugin_flows = split_flows(index, stopping_flows)
         realtime_agents = _matching(
             index,
             RunKind.REALTIME,
@@ -138,14 +133,36 @@ class SuspendPreviewService:
             grant=grant,
             data_kept_until=grant.purge_after or timezone.now() + grace_period(),
             owned_resources=owned_resource_summary(grant),
-            organization_flows=_limited(organization_flows),
-            plugin_flows=_limited(plugin_flows),
-            running_sessions=_running_sessions(stopping_flows),
+            organization_flows=limited(organization_flows),
+            plugin_flows=limited(plugin_flows),
+            running_sessions=running_sessions(stopping_flows),
             triggers=_triggers(stopping_flows),
-            realtime_agents=_limited(realtime_agents),
-            voice_channels=_limited(voice_channels),
-            default_models=_default_models(index, organization_id),
+            realtime_agents=limited(realtime_agents),
+            voice_channels=limited(voice_channels),
+            default_models=affected_default_models(index, organization_id),
         )
+
+
+def affected_flows(index: OwnedResourceIndex, organization_id: int) -> list[NamedRow]:
+    """The organization's live flows that use a row the index holds, sorted by name then id.
+
+    The same walk and match as the run guard, so a flow listed here is a flow it refuses
+    while the index's grant is not active.
+    """
+    return _matching(index, RunKind.FLOW, Graph.objects.filter(org_id=organization_id))
+
+
+def split_flows(
+    index: OwnedResourceIndex, flows: list[NamedRow]
+) -> tuple[list[NamedRow], list[NamedRow]]:
+    """`flows` split into the organization's and the plugin's own.
+
+    The plugin's own flows are the ones whose row it owns; the rest are the organization's,
+    and are affected only because they use something the plugin owns.
+    """
+    plugin_flows = [flow for flow in flows if index.holds(GRAPH, flow.id)]
+    organization_flows = [flow for flow in flows if not index.holds(GRAPH, flow.id)]
+    return organization_flows, plugin_flows
 
 
 def _matching(index: OwnedResourceIndex, kind: RunKind, rows) -> list[NamedRow]:
@@ -161,11 +178,13 @@ def _sorted(rows) -> list[NamedRow]:
     return sorted(rows, key=lambda row: (row.name.casefold(), row.id))
 
 
-def _limited(items: list) -> PreviewList:
+def limited(items: list) -> PreviewList:
+    """At most `PREVIEW_LIST_LIMIT` of `items`, with their total."""
     return PreviewList(total=len(items), items=items[:PREVIEW_LIST_LIMIT])
 
 
-def _running_sessions(flows: list[NamedRow]) -> PreviewList:
+def running_sessions(flows: list[NamedRow]) -> PreviewList:
+    """The open sessions of `flows`, at most `PREVIEW_LIST_LIMIT`, with their total."""
     if not flows:
         return PreviewList(total=0, items=[])
     flows_by_id = {flow.id: flow for flow in flows}
@@ -194,10 +213,12 @@ def _triggers(flows: list[NamedRow]) -> PreviewList:
         ).values_list("pk", "node_name", "graph_id")
     ]
     triggers.sort(key=lambda trigger: (trigger.node_name.casefold(), trigger.node_id, trigger.kind))
-    return _limited(triggers)
+    return limited(triggers)
 
 
-def _default_models(index: OwnedResourceIndex, organization_id: int) -> list[PreviewDefaultModel]:
+def affected_default_models(
+    index: OwnedResourceIndex, organization_id: int
+) -> list[PreviewDefaultModel]:
     """The organization's default-model settings that point at a config the index holds.
 
     Read with `filter().first()`, never `load_for_org`, so a preview never creates the row.

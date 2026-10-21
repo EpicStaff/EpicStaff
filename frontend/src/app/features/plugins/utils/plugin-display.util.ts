@@ -1,7 +1,15 @@
+import { daysUntil } from '@shared/utils';
+
 import {
     PluginAction,
+    PluginGrant,
     PluginGrantAction,
     PluginGrantState,
+    PluginHookJobState,
+    PluginLifecycleAction,
+    PluginOrgRemovedJob,
+    PluginOrgRemovedJobAction,
+    PluginPurgeNodeState,
     PluginSignatureStatus,
     PluginState,
     PluginTrust,
@@ -39,9 +47,16 @@ export const PLUGIN_STATE_LABELS: Readonly<Record<PluginState, string>> = {
     running: 'Running',
     failed: 'Failed',
     maintenance: 'Maintenance',
-    uninstalling: 'Uninstalling',
-    purging: 'Purging',
-    removed: 'Removed',
+    uninstalling: 'Uninstalled',
+    purging: 'Deleting',
+};
+
+/** The header button of each plugin action; those ending in "…" open a dialog first. */
+export const PLUGIN_LIFECYCLE_ACTION_LABELS: Readonly<Record<PluginLifecycleAction, string>> = {
+    uninstall: 'Uninstall…',
+    reinstall: 'Reinstall',
+    purge: 'Delete permanently…',
+    retry_removal: 'Retry removal',
 };
 
 export const PLUGIN_GRANT_STATE_LABELS: Readonly<Record<PluginGrantState, string>> = {
@@ -51,14 +66,60 @@ export const PLUGIN_GRANT_STATE_LABELS: Readonly<Record<PluginGrantState, string
     upgrading: 'Upgrading',
     upgrade_failed: 'Upgrade failed',
     suspended: 'Suspended',
-    purging: 'Purging',
+    purging: 'Deleting data',
 };
 
-/** The button of each grant action; "Suspend…" opens a dialog first. */
+/** The grant's state as the grants table names it; a grant suspended by an uninstall says so. */
+export function pluginGrantStateLabel(grant: Pick<PluginGrant, 'state' | 'suspension_cause'>): string {
+    if (grant.state === 'suspended' && grant.suspension_cause === 'uninstall') return 'Suspended (plugin uninstalled)';
+    return PLUGIN_GRANT_STATE_LABELS[grant.state];
+}
+
+/** The button of each grant action; those ending in "…" open a dialog first. */
 export const PLUGIN_GRANT_ACTION_LABELS: Readonly<Record<PluginGrantAction, string>> = {
     suspend: 'Suspend…',
     resume: 'Resume',
     retry_install: 'Retry install',
+    purge: 'Delete data…',
+};
+
+/** A data removal's state, as the grants table and the deleted organizations list name it. */
+export const PLUGIN_DATA_REMOVAL_STATE_LABELS: Readonly<Record<PluginHookJobState, string>> = {
+    pending: 'Waiting',
+    running: 'Running',
+    succeeded: 'Done',
+    failed: 'Failed',
+    skipped: 'Skipped',
+};
+
+const PLUGIN_DATA_REMOVAL_STATE_TONES: Readonly<Record<PluginHookJobState, PluginBadgeTone>> = {
+    pending: 'neutral',
+    running: 'neutral',
+    succeeded: 'success',
+    failed: 'danger',
+    skipped: 'warning',
+};
+
+export function pluginDataRemovalStateTone(state: PluginHookJobState): PluginBadgeTone {
+    return PLUGIN_DATA_REMOVAL_STATE_TONES[state];
+}
+
+export const PLUGIN_DATA_REMOVAL_ACTION_LABELS: Readonly<Record<PluginOrgRemovedJobAction, string>> = {
+    retry: 'Retry',
+    skip: 'Skip',
+};
+
+/** The organization of a data removal: its name when the job was made, marked once the organization is deleted. */
+export function pluginDataRemovalOrganizationText(job: PluginOrgRemovedJob): string {
+    return job.organization.exists ? job.organization.name : `${job.organization.name} (deleted)`;
+}
+
+/** Where the plugin node is with a plugin being deleted; `null` when the plugin has no backend. */
+export const PLUGIN_PURGE_NODE_LABELS: Readonly<Record<PluginPurgeNodeState, string | null>> = {
+    waiting: 'Waiting',
+    removing: 'Removing',
+    failed: 'Failed',
+    not_needed: null,
 };
 
 /** As the Default LLMs settings page names them; the page shows only the agent ones. */
@@ -106,9 +167,8 @@ const PLUGIN_STATE_TONES: Readonly<Record<PluginState, PluginBadgeTone>> = {
     running: 'success',
     failed: 'danger',
     maintenance: 'warning',
-    uninstalling: 'neutral',
-    purging: 'neutral',
-    removed: 'neutral',
+    uninstalling: 'warning',
+    purging: 'danger',
 };
 
 const PLUGIN_GRANT_STATE_TONES: Readonly<Record<PluginGrantState, PluginBadgeTone>> = {
@@ -118,7 +178,7 @@ const PLUGIN_GRANT_STATE_TONES: Readonly<Record<PluginGrantState, PluginBadgeTon
     upgrading: 'neutral',
     upgrade_failed: 'danger',
     suspended: 'warning',
-    purging: 'neutral',
+    purging: 'danger',
 };
 
 export function pluginStateTone(state: PluginState): PluginBadgeTone {
@@ -235,4 +295,11 @@ export function pluginObservedStateTone(state: PluginObservedState): PluginBadge
 
 export function pluginHealthTone(health: PluginHealth): PluginBadgeTone {
     return PLUGIN_HEALTH_TONES[health];
+}
+
+/** How long until a date, in whole calendar days: `in 30 days`, `in 1 day`; `today` once the day has come. */
+export function pluginDaysLeftText(date: string): string {
+    const days = daysUntil(date);
+    if (days <= 0) return 'today';
+    return days === 1 ? 'in 1 day' : `in ${days} days`;
 }

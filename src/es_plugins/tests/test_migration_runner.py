@@ -2,13 +2,18 @@
 
 import hashlib
 import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import psycopg
 import pytest
+from loguru import logger
+from psycopg import sql
+from src.shared.models.plugin_nodes import MAX_APPLIED_MIGRATIONS, is_reportable_migration_name
 
-from es_plugins.database.connections import DatabaseConnector, DatabaseProvisioningError
-from es_plugins.database.migration_runner import Migration
+from es_plugins.database import migration_runner
+from es_plugins.database.connections import DatabaseConnector, DatabaseProvisioningError, scram_verifier
+from es_plugins.database.migration_runner import Migration, close_owner_login, open_owner_login
 from es_plugins.database.provisioner import DatabaseProvisioner
 from es_plugins.packages import package_unpacker
 from es_plugins.packages.package_unpacker import read_migrations
@@ -327,3 +332,96 @@ def test_migrations_up_to_the_formats_cap_are_read_and_one_byte_more_is_refused(
     assert len(read_migrations(at_the_cap, verify_package(at_the_cap, desired))) == 2
     with pytest.raises(PackageVerificationError, match="hold 22 bytes, more than 21"):
         read_migrations(over_the_cap, verify_package(over_the_cap, over))
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize(
+    "text",
+    [
+        "CREATE TABLE early (id int);\nCOMMIT;",
+        "CREATE TABLE early (id int);\nROLLBACK;",
+        "CREATE TABLE early (id int);\nCOMMIT;\nBEGIN;\nCREATE TABLE late (id int);",
+    ],
+)
+async def test_a_migration_that_ends_its_own_transaction_is_refused_before_its_ledger_row(plugin_databases, text):
+    desired = plugin_databases()
+
+    with pytest.raises(DatabaseProvisioningError) as raised:
+        await provision(desired, [migration("001_early.sql", text)])
+
+    assert raised.value.reason == "migration"
+    assert "001_early.sql ends its own transaction" in str(raised.value)
+    assert await ledger(desired) == []
+    assert "late" not in await tables(desired)
+    assert await owner_is_closed(desired)
+
+
+@pytest.mark.postgres
+async def test_an_owner_session_opened_with_a_password_a_migration_set_is_ended_at_close(plugin_databases):
+    desired = plugin_databases()
+    await provision(desired, [])
+    connector = DatabaseConnector(admin_password())
+    first, second = new_app_password(), new_app_password()
+    async with connector.admin_session(desired.server) as admin:
+        await open_owner_login(admin, desired.owner_role, first, datetime.now(UTC) + timedelta(minutes=5))
+        # What a migration can do while its run lasts: give the owner a password of its own.
+        owner = await connect_as(desired.owner_role, first, desired.database_name)
+        verifier = scram_verifier(owner, desired.owner_role, second)
+        await owner.execute(sql.SQL("ALTER ROLE CURRENT_USER PASSWORD {}").format(sql.Literal(verifier)))
+        await owner.close()
+        left_open = await connect_as(desired.owner_role, second, desired.database_name)
+
+        await close_owner_login(admin, desired.owner_role)
+
+    with pytest.raises(psycopg.OperationalError):
+        await left_open.execute("SELECT 1")
+    await left_open.close()
+    assert await owner_is_closed(desired)
+    with pytest.raises(psycopg.OperationalError):
+        await connect_as(desired.owner_role, second, desired.database_name)
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize(
+    "rows",
+    [
+        "INSERT INTO _epicstaff.migrations (name, sha256) VALUES ('001_' || repeat('a', 300) || '.sql', 'x')",
+        "INSERT INTO _epicstaff.migrations (name, sha256) VALUES ('../../etc/passwd', 'x'), ('', 'y')",
+        "INSERT INTO _epicstaff.migrations (name, sha256) SELECT '9' || lpad(n::text, 4, '0') || '_x.sql', 'x' "
+        "FROM generate_series(1, 1500) AS n",
+    ],
+)
+async def test_ledger_rows_a_migration_wrote_are_read_bounded_and_never_reported(plugin_databases, rows):
+    desired = plugin_databases()
+    lines = []
+    sink = logger.add(lines.append, format="{message}", level="WARNING")
+    try:
+        outcome = await provision(desired, [migration("001_places.sql", f"CREATE TABLE places (id int);\n{rows};")])
+    finally:
+        logger.remove(sink)
+
+    assert "001_places.sql" in outcome.ledger
+    assert all(is_reportable_migration_name(name) for name in outcome.ledger)
+    assert len(outcome.ledger) <= MAX_APPLIED_MIGRATIONS
+    assert [line for line in lines if line.startswith("plugins.database.ledger_entries_dropped count=")]
+    assert not [line for line in lines if "passwd" in line or "aaaa" in line]
+
+
+@pytest.mark.postgres
+async def test_a_ledger_whose_name_column_a_migration_made_an_integer_is_read_without_failing(plugin_databases):
+    desired = plugin_databases()
+    await provision(desired, [migration("001_places.sql", "CREATE TABLE places (id int);")])
+    async with owner_session(desired) as owner:
+        await owner.execute("DELETE FROM _epicstaff.migrations")
+        await owner.execute("ALTER TABLE _epicstaff.migrations ALTER COLUMN name TYPE int USING 7")
+        await owner.execute("INSERT INTO _epicstaff.migrations (name, sha256) VALUES (8, 'x')")
+
+    outcome = await provision(desired, [])
+
+    assert outcome.ledger == ()
+
+
+def test_a_byte_order_mark_at_the_start_of_a_migration_is_dropped():
+    text = migration_runner._migration_text(migration("001_a.sql", "﻿CREATE TABLE a (x int);"), {})
+
+    assert text == "CREATE TABLE a (x int);"

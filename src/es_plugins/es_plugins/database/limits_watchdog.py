@@ -9,8 +9,10 @@ provisioned), holding that lock:
 2. **The app role's limits** drifted (a plugin can rewrite its own role's settings): they are put
    back (`apply_app_limits`), `limits_restored_at` is set and `plugins.database.limits_restored`
    logged with the setting names, never their values.
-3. **The owner can log in** (an agent died during a migration run, or someone changed it): it
-   is set back to NOLOGIN and `plugins.database.owner_login_closed` logged.
+3. **The owner can log in, or has a session open** (an agent died during a migration run, a
+   migration gave the owner a password of its own, or someone changed it): it is set back to
+   NOLOGIN, its sessions are ended, and `plugins.database.owner_login_closed` is logged. A
+   session that does not end fails the placement, like a permission change.
 4. **Size**: `pg_database_size` becomes `size_bytes`.
 
 plugins_db not answering is logged once, until it answers again, and changes nothing. An SQL
@@ -29,6 +31,7 @@ from loguru import logger
 from es_plugins.database.app_role_limits import apply_app_limits
 from es_plugins.database.connections import (
     DatabaseConnector,
+    DatabaseProvisioningError,
     DatabaseUnreachableError,
     describe_error,
 )
@@ -141,10 +144,17 @@ class DatabaseLimitsWatchdog:
                 ",".join(drift.app_limits),
             )
             self._on_change()
-        if drift.owner_can_login:
-            await close_owner_login(admin, desired.owner_role)
+        if drift.owner_can_login or drift.owner_sessions:
+            try:
+                await close_owner_login(admin, desired.owner_role)
+            except DatabaseProvisioningError as error:
+                return str(error)
             # Something left the owner able to log in: an audit line, not an activity entry.
-            logger.warning("plugins.database.owner_login_closed plugin={}", database.plugin)
+            logger.warning(
+                "plugins.database.owner_login_closed plugin={} sessions_ended={}",
+                database.plugin,
+                drift.owner_sessions,
+            )
         database.size_bytes = await database_size(admin, desired.database_name)
         return None
 

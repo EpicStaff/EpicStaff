@@ -1,7 +1,10 @@
 """SuperAdmin management of a plugin's backend: settings, limits, runtime and restart.
 
 Deployment-wide, JWT only, like the rest of /api/admin/plugins/. Only for a plugin whose
-current package has a backend; any other plugin answers 409 `plugin_has_no_backend`.
+current package has a backend; any other plugin answers 409 `plugin_has_no_backend`. While
+the plugin is uninstalled its settings and limits stay editable, for a reinstall; once it is
+being deleted, they answer 409 `plugin_uninstalling`, and so does a restart while it is
+uninstalled.
 """
 
 from epicstaff_plugin.contracts.manifest import PluginManifest
@@ -13,6 +16,7 @@ from rest_framework.views import APIView
 from plugins.configuration.limits import PluginLimitsService, plugin_limits
 from plugins.configuration.setting_values import PluginSettingsService
 from plugins.exceptions import PluginHasNoBackendError, PluginNotFoundError
+from plugins.lifecycle.plugin_actions import assert_plugin_not_purging
 from plugins.models import Plugin
 from plugins.nodes.plugin_runtime_service import PluginRuntimeService
 from plugins.serializers.backend import (
@@ -60,6 +64,7 @@ class PluginSettingsView(PluginBackendAdminView):
 
     def patch(self, request, identifier: str):
         plugin, manifest = _backend_plugin(identifier)
+        assert_plugin_not_purging(plugin)
         body = PluginSettingsUpdateSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         updated = self._service.update(
@@ -75,6 +80,7 @@ class PluginLimitsView(PluginBackendAdminView):
 
     def patch(self, request, identifier: str):
         plugin, manifest = _backend_plugin(identifier)
+        assert_plugin_not_purging(plugin)
         body = PluginLimitsUpdateSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         limits = PluginLimitsService().update_overrides(

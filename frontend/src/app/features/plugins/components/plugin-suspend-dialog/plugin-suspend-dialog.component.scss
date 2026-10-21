@@ -24,14 +24,3 @@
         color: var(--color-text-primary);
     }
 }
-
-.suspend__load-error {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    background: var(--color-status-error-subtle);
-    color: var(--color-status-error);
-}

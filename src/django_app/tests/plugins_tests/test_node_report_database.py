@@ -155,16 +155,40 @@ def test_a_failure_is_recorded_once_on_the_change_into_failed(weather, node_clie
 
 def test_ready_after_a_failure_clears_the_error_and_is_recorded(weather, node_client, clock):
     _ready(node_client, weather)
+    failed_at = clock(minutes=1)
     _send(node_client, weather, _database("failed", last_error="001_places.sql line 1: [42601] syntax error"))
+    assert _record().failed_at == failed_at
+    # The node provisions again before it reports the database ready.
+    _send(node_client, weather, _database("provisioning"))
+    assert _record().failed_at == failed_at
 
     _ready(node_client, weather)
 
-    assert (_record().state, _record().last_error) == (PluginDatabaseState.READY, None)
+    assert (_record().state, _record().last_error, _record().failed_at) == (PluginDatabaseState.READY, None, None)
     assert [action for action, _ in _events()] == [
         ActivityAction.DATABASE_READY,
         ActivityAction.DATABASE_FAILED,
         ActivityAction.DATABASE_READY,
     ]
+
+
+def test_a_failure_reported_again_after_provisioning_is_recorded_once(weather, node_client, clock):
+    error = "001_places.sql line 1: [42601] syntax error"
+    _send(node_client, weather, _database("failed", last_error=error))
+    _send(node_client, weather, _database("provisioning"))
+    _send(node_client, weather, _database("failed", last_error=error))
+
+    assert [action for action, _ in _events()] == [ActivityAction.DATABASE_FAILED]
+    assert _record().failed_at == START
+
+
+def test_ready_again_without_a_failure_in_between_is_not_recorded_again(weather, node_client, clock):
+    _ready(node_client, weather)
+    _send(node_client, weather, _database("provisioning"))
+
+    _ready(node_client, weather)
+
+    assert [action for action, _ in _events()] == [ActivityAction.DATABASE_READY]
 
 
 def test_events_are_deployment_wide_and_the_platform_s(weather, node_client, clock):

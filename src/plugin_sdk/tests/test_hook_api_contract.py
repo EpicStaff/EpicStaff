@@ -15,6 +15,8 @@ from epicstaff_plugin.contracts.hook_api import (
     HOOK_KINDS,
     HOOK_PATHS,
     MAX_HOOK_BODY_BYTES,
+    ORG_REMOVED_RETRY_DELAYS_SECONDS,
+    ORG_REMOVED_RETRY_WINDOW_SECONDS,
     HookAssertionClaims,
     HookKind,
     HookRequest,
@@ -22,6 +24,7 @@ from epicstaff_plugin.contracts.hook_api import (
     encode_hook_assertion,
     encode_hook_body,
     hook_body_sha256,
+    org_removed_retry_delay,
 )
 from epicstaff_plugin.contracts.manifest import MAX_HOOK_TIMEOUT_SECONDS, Hooks, HookTimeouts
 from epicstaff_plugin.hooks import HookAssertionRejected, verify_hook_assertion
@@ -96,6 +99,25 @@ def test_every_hook_kind_has_a_manifest_switch_a_timeout_and_a_platform_maximum(
 def test_the_hook_paths_cannot_be_changed():
     with pytest.raises(TypeError):
         HOOK_PATHS["install"] = "/elsewhere"
+
+
+# --- Retries of the organization removed hook ---
+
+
+def test_the_org_removed_retry_schedule_is_one_five_and_thirty_minutes_then_hourly_for_seven_days():
+    assert ORG_REMOVED_RETRY_DELAYS_SECONDS == (60, 300, 1800, 3600)
+    assert ORG_REMOVED_RETRY_WINDOW_SECONDS == 604800
+
+
+def test_the_delay_after_each_failed_attempt():
+    assert [org_removed_retry_delay(attempt) for attempt in range(1, 7)] == [60, 300, 1800, 3600, 3600, 3600]
+    assert org_removed_retry_delay(10_000) == 3600
+
+
+@pytest.mark.parametrize("attempt", [0, -1, True, 1.0, "1", None])
+def test_an_attempt_number_is_a_positive_integer(attempt):
+    with pytest.raises(ValueError, match="positive integer"):
+        org_removed_retry_delay(attempt)
 
 
 # --- The body ---

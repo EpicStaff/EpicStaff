@@ -2,7 +2,9 @@
 
 The placement's controller provisions it, and the limits watchdog checks it, each while holding
 `lock`: the watchdog skips a database whose lock is taken, so it never works on one that is
-being provisioned. The report says what the last attempt came to.
+being provisioned. A removal holds the same lock while it drops the database, and retires it
+first, so a watchdog pass that began before the placement went never checks it again. The
+report says what the last attempt came to.
 """
 
 import asyncio
@@ -14,9 +16,9 @@ from src.shared.models.plugin_nodes import (
     MAX_LAST_ERROR_LENGTH,
     DatabaseReport,
     DesiredDatabase,
+    is_reportable_migration_name,
 )
 
-from es_plugins.database.migration_runner import MIGRATION_NAME_PATTERN
 from es_plugins.database.provisioner import ProvisionedDatabase
 
 
@@ -32,10 +34,16 @@ class PlacementDatabase:
         self._state: Literal["provisioning", "ready", "failed"] = "provisioning"
         self._ledger: tuple[str, ...] = ()
         self._last_error: str | None = None
+        self._retired = False
 
     @property
     def ready(self) -> bool:
-        return self._state == "ready"
+        """Provisioned, and not being removed: what the limits watchdog checks."""
+        return self._state == "ready" and not self._retired
+
+    def retire(self) -> None:
+        """The placement is being removed: nothing checks or provisions this database again."""
+        self._retired = True
 
     def provisioning(self, desired: DesiredDatabase, error: str | None = None) -> None:
         """An attempt for `desired` starts, or (with `error`) has to be tried again later."""
@@ -56,7 +64,7 @@ class PlacementDatabase:
     def report(self) -> DatabaseReport:
         # The owner owns the ledger, so a migration may have written rows the report cannot
         # carry; only names a migration file can have are reported.
-        ledger = [name for name in self._ledger if MIGRATION_NAME_PATTERN.fullmatch(name)]
+        ledger = [name for name in self._ledger if is_reportable_migration_name(name)]
         return DatabaseReport(
             installation_id=self.desired.installation_id,
             state=self._state,

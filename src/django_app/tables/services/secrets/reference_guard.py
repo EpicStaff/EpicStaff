@@ -1,3 +1,4 @@
+from django.db.models import ForeignKey
 from rbac.access.principals import is_pinned_org_principal, is_plugin_credential
 from rbac.access.resolver import PermissionResolver
 from rbac.models.enums import Permission, ResourceType
@@ -90,8 +91,8 @@ class SecretReferenceGuard:
                 if parent_instance is not None
                 else None
             )
-            return getattr(current, source, None) if current is not None else None
-        return getattr(serializer.instance, source, None)
+            return _stored_value(current, source)
+        return _stored_value(serializer.instance, source)
 
     @staticmethod
     def _normalize(*, value) -> frozenset:
@@ -219,6 +220,25 @@ def _refuse_incomplete_principal(user) -> None:
         type(user).__name__,
     )
     raise exceptions.PermissionDenied(_INCOMPLETE_PRINCIPAL)
+
+
+def _stored_value(row, source):
+    """`row`'s persisted value for `source`; for a foreign key, its id column.
+
+    Reading the id never loads the related row, so a write that leaves the field out
+    costs no query for it.
+    """
+    if row is None:
+        return None
+    meta = getattr(row, "_meta", None)
+    field = (
+        next((field for field in meta.concrete_fields if field.name == source), None)
+        if meta is not None
+        else None
+    )
+    if isinstance(field, ForeignKey):
+        return getattr(row, field.attname)
+    return getattr(row, source, None)
 
 
 def _endpoint_value(value):

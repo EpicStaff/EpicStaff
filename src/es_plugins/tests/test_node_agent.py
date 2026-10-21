@@ -1,8 +1,10 @@
+import asyncio
 import tomllib
 from pathlib import Path
 
 import pytest
 from src.shared.envtools import Env
+from src.shared.models.plugin_nodes import RemovalReport
 
 from es_plugins import AGENT_VERSION
 from es_plugins.agent.django_client import DjangoNodeClient
@@ -12,6 +14,7 @@ from es_plugins.agent.settings import AgentSettings, AgentSettingsError
 from es_plugins.egress.policy_writer import EgressPolicyError
 from es_plugins.uid_range import UidRange
 from tests.helpers import API_URL, NODE_KEY, FakeDjango, desired_state, placement
+from tests.test_supervisor_backoff import wait_until
 
 DATABASE_ADMIN_PASSWORD = "d" * 64
 
@@ -115,12 +118,17 @@ def test_a_node_without_a_usable_key_or_range_refuses_to_start(environment, over
 class RecordingReconciler:
     def __init__(self):
         self.applied = []
+        self.placement_reports = []
+        self.removals = []
 
     async def apply(self, desired):
         self.applied.append(desired)
 
     def reports(self):
-        return []
+        return list(self.placement_reports)
+
+    def removal_reports(self):
+        return list(self.removals)
 
 
 @pytest.fixture
@@ -129,7 +137,7 @@ async def agent(layout, environment):
     fake.desired = desired_state([placement(b"package")])
     client = DjangoNodeClient(API_URL, NODE_KEY, transport=fake.transport)
     reconciler = RecordingReconciler()
-    reporter = Reporter(client, reconciler.reports)
+    reporter = Reporter(client, reconciler.reports, reconciler.removal_reports)
     settings = AgentSettings.from_environment(environment())
     node_agent = NodeAgent(settings, layout, client, reconciler, reporter, watchdogs=[])
     yield node_agent, reporter, fake, reconciler
@@ -174,3 +182,71 @@ async def test_a_report_that_cannot_be_sent_is_dropped_without_stopping_the_agen
 
     assert fake.reports == []
 
+
+
+async def test_the_report_carries_the_removals(agent):
+    _, reporter, fake, reconciler = agent
+    reconciler.removals = [
+        RemovalReport(placement_id=7, generation=2, state="failed", last_error="conflict")
+    ]
+
+    await reporter.send_once()
+
+    assert fake.reports[0]["removals"] == [
+        {"placement_id": 7, "generation": 2, "state": "failed", "last_error": "conflict"}
+    ]
+
+
+@pytest.fixture
+async def fake_django():
+    fake = FakeDjango()
+    client = DjangoNodeClient(API_URL, NODE_KEY, transport=fake.transport)
+    yield fake, client
+    await client.aclose()
+
+
+async def test_a_report_that_cannot_be_built_is_skipped_and_the_next_round_goes_out(fake_django):
+    fake, client = fake_django
+    rounds = [RuntimeError("a placement broke its report"), []]
+
+    def placement_reports():
+        outcome = rounds.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    reporter = Reporter(client, placement_reports, lambda: [])
+
+    await reporter.send_once()
+    assert fake.reports == []
+    await reporter.send_once()
+    assert len(fake.reports) == 1
+
+
+class FlakyClient:
+    """django_app's client, failing the first report with an error that is not a network one."""
+
+    def __init__(self, client):
+        self._client = client
+        self.calls = 0
+
+    async def send_report(self, report):
+        self.calls += 1
+        if self.calls == 1:
+            raise ValueError("not a network error")
+        await self._client.send_report(report)
+
+
+async def test_an_unexpected_error_while_sending_ends_only_that_round(fake_django):
+    fake, client = fake_django
+    flaky = FlakyClient(client)
+    reporter = Reporter(flaky, lambda: [], lambda: [], interval=0.05)
+
+    running = asyncio.create_task(reporter.run())
+    try:
+        await wait_until(lambda: fake.reports)
+    finally:
+        running.cancel()
+        await asyncio.gather(running, return_exceptions=True)
+
+    assert flaky.calls >= 2

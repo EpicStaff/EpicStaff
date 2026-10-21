@@ -23,10 +23,11 @@ A backend runs as its own process on the deployment's plugin node ([Runtime](run
 this version it serves its `public_paths` and the requests of people logged in to the plugin
 through EpicStaff's gateway, reads its `settings` and `limits`, calls EpicStaff's API within its
 `access` ([Service account API](service-account-api.md)), runs its `install` hook when an
-organization is granted the plugin ([Hook API](hook-api.md)), keeps its data in its
-[database](database.md), and calls the hosts in its `outbound_hosts` through the egress proxy
-([Call the internet from your backend](../how-to/outbound-hosts.md)). The `upgrade` and
-`org_removed` hooks are accepted and shown at review, but nothing calls them yet.
+organization is granted the plugin and its `org_removed` hook when an organization's data is
+deleted ([Hook API](hook-api.md)), keeps its data in its [database](database.md), and calls the
+hosts in its `outbound_hosts` through the egress proxy
+([Call the internet from your backend](../how-to/outbound-hosts.md)). The `upgrade` hook is
+accepted and shown at review, but nothing calls it yet.
 
 ## Example
 
@@ -128,7 +129,7 @@ A manifest with every section filled in:
 | `outbound_hosts` | array | no (default `[]`) | Hosts the backend may call, over HTTPS on port 443 only, through the egress proxy; at most 100. Each: `host` is a lower-case DNS name, or `*.` and a name for every name below it (no IP address, no port, distinct), and `reason` (1–200 characters). See [Call the internet from your backend](../how-to/outbound-hosts.md). *Cross-field:* needs `backend`. |
 | `settings` | array | no (default `[]`) | Deployment-wide settings a SuperAdmin fills in; see [settings](#settings). *Cross-field:* needs `backend`. |
 | `limits` | object | no | `memory_mb` 64–8192, `db_connections` 1–100 and `statement_timeout_seconds` 1–600 (both used only with a `database` section), `requests_per_minute` 1–6000, `cpu_priority` `normal` or `low`. Each is optional: one left out (or `null`) gets the platform default, and each is at most the deployment's maximum ([Platform maximums](#platform-maximums)). A SuperAdmin may lower them per plugin. *Cross-field:* needs `backend`. |
-| `hooks` | object | no (default all off) | `install`, `upgrade`, `org_removed` (booleans) and optional `timeouts_seconds` with `install` ≤ 900, `upgrade` ≤ 1800, `org_removed` ≤ 900. A hook without a timeout gets that maximum. This version runs the `install` hook ([Run code when an organization gets your plugin](../how-to/install-hook.md)); the other two are reserved. *Cross-field:* any hook turned on needs `backend`. |
+| `hooks` | object | no (default all off) | `install`, `upgrade`, `org_removed` (booleans) and optional `timeouts_seconds` with `install` ≤ 900, `upgrade` ≤ 1800, `org_removed` ≤ 900. A hook without a timeout gets that maximum. This version runs the `install` hook ([Run code when an organization gets your plugin](../how-to/install-hook.md)) and the `org_removed` hook ([Delete your data when an organization leaves](../how-to/org-removed-hook.md)); `upgrade` is reserved. *Cross-field:* any hook turned on needs `backend`. |
 
 ### access
 
@@ -222,7 +223,8 @@ spa/<entry>, spa/**                   with "spa"
 backend/src/**                        with "backend"
 backend/requirements.lock             with "backend" (required)
 backend/wheels/*.whl                  with "backend"
-database/migrations/NNN_<name>.sql    with "database"; NNN = three digits, distinct
+database/migrations/NNN_<name>.sql    with "database"; NNN = three digits, distinct; the file
+                                      name at most 255 characters
 ```
 
 Any other file is refused, as are `spa/`, `backend/` or `database/` files without their manifest

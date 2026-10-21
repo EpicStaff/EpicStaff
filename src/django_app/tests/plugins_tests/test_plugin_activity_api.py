@@ -407,7 +407,8 @@ def test_suspension_and_resume_are_events_of_the_organization(
         "grant_created",
     ]
     assert suspended["actor"]["kind"] == "superadmin"
-    assert set(suspended["detail"]) == {"previous_state", "purge_after"}
+    assert set(suspended["detail"]) == {"previous_state", "purge_after", "cause"}
+    assert suspended["detail"]["cause"] == "grant"
     assert beta_admin.get(ACTIVITY_URL).json()["results"] == []
     assert beta_admin.get(f"{ACTIVITY_URL}{suspended['id']}/").status_code == 404
     admin_actions = {event["action"] for event in superadmin_client.get(ADMIN_ACTIVITY_URL).json()["results"]}

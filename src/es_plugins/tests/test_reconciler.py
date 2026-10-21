@@ -29,6 +29,7 @@ from es_plugins.hooks.hook_caller import PluginHookCaller
 from es_plugins.hooks.hook_runner import RESTARTED_DURING_HOOK, STOPPED_DURING_HOOK
 from es_plugins.node_disk import INSTALL_RESERVE_BYTES, NodeDisk
 from es_plugins.packages.package_fetcher import PackageFetcher
+from es_plugins.supervisor.process_supervisor import ProcessSupervisor
 from tests.helpers import (
     API_URL,
     HOOK_ASSERTION,
@@ -36,6 +37,7 @@ from tests.helpers import (
     SERVICE_ACCOUNT_KEY,
     FakeDjango,
     FakeLauncher,
+    RecordingDropper,
     RecordingProvisioner,
     backend_wheels,
     database_section,
@@ -48,6 +50,7 @@ from tests.helpers import (
     manifest,
     package_files,
     placement,
+    removal,
     runtime_file_document,
     service_account,
     write_package,
@@ -129,6 +132,7 @@ async def node(tmp_path, layout, package_bytes):
     launcher = FakeLauncher()
     launcher.hook_record = tmp_path / "hooks.jsonl"
     provisioner = RecordingProvisioner(launcher.operations)
+    dropper = RecordingDropper(launcher.operations)
     egress = RecordingEgress(layout.egress_policy_directory, launcher.operations)
     await egress.start()
     venv_builder = RecordingVenvBuilder()
@@ -149,6 +153,7 @@ async def node(tmp_path, layout, package_bytes):
         disk=NodeDisk(layout.data_root, statvfs=volume),
         hook_caller=hook_caller,
         provisioner=provisioner,
+        dropper=dropper,
         egress=egress,
         on_change=lambda: changes.append(reconciler.reports()),
         interpreter_for=lambda python: Path(sys.executable),
@@ -167,6 +172,7 @@ async def node(tmp_path, layout, package_bytes):
     desired.changes = changes
     desired.services = services
     desired.provisioner = provisioner
+    desired.dropper = dropper
     yield reconciler, django, launcher, venv_builder, desired
     await reconciler.close()
     ports.close()
@@ -850,3 +856,111 @@ async def test_a_placement_that_changes_during_an_outage_gets_fresh_credentials(
 
     assert credential_fetches(django) == 2
     assert reconciler.reports()[0].applied_credentials_revision == "d" * 64
+
+
+def hosts_of(layout) -> dict:
+    return json.loads((layout.egress_policy_directory / HOSTS_FILE_NAME).read_text())
+
+
+async def test_a_removal_runs_once_the_controller_has_stopped_the_process(database_node):
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+    [process] = launcher.processes_of(UID)
+
+    await reconciler.apply(
+        desired_state(
+            [], removals=[removal(uid=UID, port=desired.port, database=database_section())]
+        )
+    )
+    await wait_until(lambda: [report.state for report in reconciler.removal_reports()] == ["removed"])
+
+    steps = [operation[0] for operation in launcher.operations]
+    assert process.poll() is not None
+    assert steps.index("drop") < steps.index("remove_plugin")
+    assert ("remove_plugin", "weather", UID) in launcher.operations
+    assert reconciler.reports() == []
+    assert listed_passwords(layout_of(desired)) == []
+    assert hosts_of(layout_of(desired)) == {}
+    assert not layout_of(desired).plugin_logs("weather").exists()
+
+
+async def test_a_placement_the_watchdog_fails_while_it_starts_never_runs(database_node, monkeypatch):
+    reconciler, django, launcher, desired, with_database = database_node
+    real_start = ProcessSupervisor.start
+    error = "database permissions changed outside EpicStaff: unexpected membership"
+
+    async def start_while_the_watchdog_fails_it(supervisor, spec):
+        [controller] = reconciler.watched_databases()
+        # The watchdog's failure takes the supervisor first; this start then waits for it.
+        failing = asyncio.create_task(controller.fail_database(error))
+        await asyncio.sleep(0)
+        await real_start(supervisor, spec)
+        await failing
+
+    monkeypatch.setattr(ProcessSupervisor, "start", start_while_the_watchdog_fails_it)
+    await reconciler.apply(with_database())
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "failed")
+    await asyncio.sleep(0.5)
+
+    report = reconciler.reports()[0]
+    assert (report.observed_state, report.last_error) == ("failed", error)
+    assert all(process.poll() is not None for process in launcher.processes_of(UID))
+    assert listed_passwords(layout_of(desired)) == []
+
+
+async def test_a_start_the_watchdog_fails_before_the_password_leaves_no_password(database_node, monkeypatch):
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+    real_fetch = DjangoNodeClient.fetch_runtime_credentials
+    error = "database permissions changed outside EpicStaff: unexpected membership"
+
+    async def fetch_while_the_watchdog_fails_it(client, placement_id):
+        [controller] = reconciler.watched_databases()
+        await controller.fail_database(error)
+        return await real_fetch(client, placement_id)
+
+    monkeypatch.setattr(DjangoNodeClient, "fetch_runtime_credentials", fetch_while_the_watchdog_fails_it)
+    await reconciler.apply(with_database(restart_generation=1))
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "failed")
+    await asyncio.sleep(0.5)
+
+    assert reconciler.reports()[0].last_error == error
+    assert listed_passwords(layout_of(desired)) == []
+    assert all(process.poll() is not None for process in launcher.processes_of(UID))
+
+
+@pytest.mark.parametrize("bad_entry", ["001_" + "a" * 300 + ".sql", 7, None, "../etc/passwd"])
+async def test_a_ledger_row_a_plugin_wrote_never_breaks_its_report(database_node, bad_entry):
+    reconciler, django, launcher, desired, with_database = database_node
+    desired.provisioner.ledger = ("001_places.sql", bad_entry, "002_more.sql")
+
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+
+    assert reconciler.reports()[0].database.applied_migrations == ["001_places.sql", "002_more.sql"]
+
+
+async def test_a_placement_whose_report_cannot_be_built_is_reported_as_unknown(database_node, monkeypatch):
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+
+    def broken(database):
+        raise ValueError("not a report")
+
+    monkeypatch.setattr(reconciler_module.PlacementDatabase, "report", broken)
+    lines = []
+    sink = logger.add(lines.append, format="{message}", level="ERROR")
+    try:
+        first = reconciler.reports()
+        second = reconciler.reports()
+    finally:
+        logger.remove(sink)
+
+    for reports in (first, second):
+        [report] = reports
+        assert (report.placement_id, report.observed_state, report.health) == (7, "unknown", "unknown")
+        assert "see the node's log" in report.last_error
+    assert len([line for line in lines if "could not be built" in line]) == 1

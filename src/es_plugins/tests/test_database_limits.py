@@ -2,15 +2,17 @@
 
 import asyncio
 import socket
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
+import psycopg
 import pytest
 from loguru import logger
 from psycopg import sql
 from src.shared.models.plugin_nodes import DesiredDatabase, DesiredDatabaseServer, database_names_for
 
-from es_plugins.database.connections import DatabaseConnector
+from es_plugins.database.connections import DatabaseConnector, scram_verifier
 from es_plugins.database.limits_watchdog import PERMISSIONS_CHANGED, DatabaseLimitsWatchdog
+from es_plugins.database.migration_runner import open_owner_login
 from es_plugins.database.placement_database import PlacementDatabase
 from es_plugins.database.provisioner import DatabaseProvisioner, ProvisionedDatabase
 from tests.plugin_databases import admin_password, catalog_snapshot, connect_as, new_app_password
@@ -98,7 +100,7 @@ async def test_an_owner_left_able_to_log_in_is_closed_again(plugin_databases, lo
 
     owner = next(role for role in (await catalog_snapshot(desired))["roles"] if role[0] == desired.owner_role)
     assert owner[6] is False
-    assert "plugins.database.owner_login_closed plugin=weather" in log_lines
+    assert "plugins.database.owner_login_closed plugin=weather sessions_ended=0" in log_lines
     assert placement.failures == []
     assert placement.database.limits_restored_at is None
 
@@ -192,3 +194,68 @@ async def test_an_unreachable_server_is_logged_once_and_changes_nothing(log_line
     assert len([line for line in log_lines if line.startswith("The limits watchdog cannot reach plugins_db")]) == 1
     assert placement.failures == []
     assert database.ready
+
+
+async def owner_session_with_its_own_password(desired) -> psycopg.AsyncConnection:
+    """An owner session opened with a password the owner gave itself, as a migration can."""
+    connector = DatabaseConnector(admin_password())
+    first, second = new_app_password(), new_app_password()
+    async with connector.admin_session(desired.server) as admin:
+        await open_owner_login(admin, desired.owner_role, first, datetime.now(UTC) + timedelta(minutes=5))
+    owner = await connect_as(desired.owner_role, first, desired.database_name)
+    verifier = scram_verifier(owner, desired.owner_role, second)
+    await owner.execute(sql.SQL("ALTER ROLE CURRENT_USER PASSWORD {}").format(sql.Literal(verifier)))
+    await owner.close()
+    return await connect_as(desired.owner_role, second, desired.database_name)
+
+
+@pytest.mark.postgres
+async def test_an_owner_able_to_log_in_loses_the_session_a_migration_opened_for_it(plugin_databases, log_lines):
+    desired = plugin_databases()
+    placement = await provisioned(desired, new_app_password())
+    left_open = await owner_session_with_its_own_password(desired)
+
+    await watchdog([placement]).check_once()
+
+    with pytest.raises(psycopg.OperationalError):
+        await left_open.execute("SELECT 1")
+    await left_open.close()
+    owner = next(role for role in (await catalog_snapshot(desired))["roles"] if role[0] == desired.owner_role)
+    assert owner[6] is False
+    assert "plugins.database.owner_login_closed plugin=weather sessions_ended=1" in log_lines
+    assert placement.failures == []
+
+
+@pytest.mark.postgres
+async def test_an_owner_session_left_after_the_owner_was_closed_is_ended(plugin_databases):
+    desired = plugin_databases()
+    placement = await provisioned(desired, new_app_password())
+    left_open = await owner_session_with_its_own_password(desired)
+    # An agent that died between NOLOGIN and ending the owner's sessions leaves this.
+    await as_admin(desired, sql.SQL("ALTER ROLE {} NOLOGIN").format(sql.Identifier(desired.owner_role)))
+
+    await watchdog([placement]).check_once()
+
+    with pytest.raises(psycopg.OperationalError):
+        await left_open.execute("SELECT 1")
+    await left_open.close()
+    assert placement.failures == []
+
+
+def test_a_report_carries_only_ledger_entries_a_package_migration_can_name():
+    names = database_names_for("weather")
+    desired = DesiredDatabase(
+        server=DesiredDatabaseServer(name="plugins_db", host="plugins_db", port=5432),
+        installation_id="a" * 32,
+        database_name=names.database,
+        owner_role=names.owner_role,
+        app_role=names.app_role,
+        job_role=names.job_role,
+        connection_limit=3,
+        statement_timeout_seconds=10,
+    )
+    database = PlacementDatabase("weather", desired)
+    ledger = ("001_places.sql", "001_" + "a" * 300 + ".sql", 7, None, "../x.sql", "002_more.sql")
+    database.provisioned(ProvisionedDatabase(created=False, ledger=ledger, applied=0, size_bytes=1))
+
+    assert database.report().applied_migrations == ["001_places.sql", "002_more.sql"]

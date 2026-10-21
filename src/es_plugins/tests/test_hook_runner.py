@@ -365,6 +365,32 @@ async def test_a_job_waits_until_the_plugin_is_ready_for_it(hooks, not_ready):
     assert hooks.django.hook_results[0][1]["outcome"] == "succeeded"
 
 
+async def test_an_organization_removed_hook_runs_without_a_key_for_its_organization(hooks):
+    hooks.django.hook_invocations[41] = hook_invocation(kind="org_removed")
+    hooks.runner(jobs=(hook_job(kind="org_removed"),), organizations=())
+
+    await wait_until(lambda: hooks.django.hook_results)
+
+    assert hooks.django.requests_to("claim") == [41]
+    assert hooks.django.hook_results[0][1]["outcome"] == "succeeded"
+    assert hooks.plugin.requests[0].target == "/_epicstaff/hooks/org-removed"
+
+
+@pytest.mark.parametrize("not_ready", ["runtime file of another credentials revision", "failing health"])
+async def test_an_organization_removed_hook_still_waits_for_the_desired_revision_and_health(hooks, not_ready):
+    hooks.django.hook_invocations[41] = hook_invocation(kind="org_removed")
+    arguments = {"organizations": ()}
+    if not_ready == "failing health":
+        hooks.supervisor.health = "failing"
+    else:
+        arguments["revision"] = "d" * 64
+    hooks.runner(jobs=(hook_job(kind="org_removed"),), **arguments)
+
+    await asyncio.sleep(0.3)
+
+    assert hooks.django.requests_to("claim") == []
+
+
 async def test_the_oldest_job_goes_first_and_one_at_a_time(hooks):
     hooks.django.hook_invocations[41] = hook_invocation(41, 3)
     hooks.django.hook_invocations[42] = hook_invocation(42, 4)

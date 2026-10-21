@@ -19,6 +19,18 @@ class ActivityAction(models.TextChoices):
     DATABASE_READY = "database_ready"
     DATABASE_FAILED = "database_failed"
     DATABASE_LIMIT_RESTORED = "database_limit_restored"
+    PLUGIN_UNINSTALLED = "plugin_uninstalled"
+    PLUGIN_REINSTALLED = "plugin_reinstalled"
+    PLUGIN_PURGE_STARTED = "plugin_purge_started"
+    PLUGIN_REMOVAL_FAILED = "plugin_removal_failed"
+    PLUGIN_REMOVAL_RETRIED = "plugin_removal_retried"
+    PLUGIN_PURGED = "plugin_purged"
+    GRANT_PURGE_STARTED = "grant_purge_started"
+    GRANT_PURGED = "grant_purged"
+    ORG_REMOVED_HOOK_SUCCEEDED = "org_removed_hook_succeeded"
+    ORG_REMOVED_HOOK_FAILED = "org_removed_hook_failed"
+    ORG_REMOVED_HOOK_RETRIED = "org_removed_hook_retried"
+    ORG_REMOVED_HOOK_SKIPPED = "org_removed_hook_skipped"
 
 
 class ActorKind(models.TextChoices):

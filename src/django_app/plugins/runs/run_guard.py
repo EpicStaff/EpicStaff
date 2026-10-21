@@ -5,10 +5,10 @@ It runs whatever `PLUGINS_ENABLED` says, so switching the platform off never res
 suspended plugin's resources. It never logs: the caller decides what a refusal means.
 """
 
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Q, QuerySet
 from rbac.models import Organization
 from tables.services.run_admission import RunSubject
-from tables.services.run_resources import RunResourceCollector
+from tables.services.run_resources import RunResourceCollector, RunResources
 
 from plugins.exceptions import PluginSuspendedError
 from plugins.models import GrantState, PluginGrant, PluginOwnedResource
@@ -21,32 +21,68 @@ class PluginRunGuard:
     Not cached: the fast path is one query, so no grant writer has a cache to invalidate.
     """
 
-    def check(self, subject: RunSubject) -> None:
+    def check(self, subject: RunSubject) -> RunResources | None:
         """Admit the run, or refuse it naming the plugin.
+
+        Returns:
+            What the run uses, for the re-check; None when the organization has nothing
+            that could refuse a run, so nothing was walked.
 
         Raises:
             PluginSuspendedError: The run reaches a row owned under a grant that is not active,
                 or whose grant is gone.
         """
         if not _may_refuse_in(subject.organization_id):
-            return
+            return None
         resources = RunResourceCollector().collect(subject)
-        owner = OwnedResourceIndex.for_inactive_grants(
-            subject.organization_id, resources
-        ).first_owner(resources)
-        if owner is not None:
-            raise PluginSuspendedError(owner, subject.organization_id)
+        _refuse_if_owned(subject, resources)
+        return resources
+
+    def recheck(self, subject: RunSubject, first_look: RunResources | None) -> None:
+        """Refuse the run if a grant owning what it uses stopped being active since `check`.
+
+        A run walked the first time is matched again without a second walk: one or two
+        queries. One that was not walked is checked from the start.
+
+        Raises:
+            PluginSuspendedError: As `check`.
+        """
+        if first_look is None:
+            self.check(subject)
+            return
+        _refuse_if_owned(subject, first_look)
+
+
+def organizations_with_refusable_runs() -> QuerySet:
+    """The ids of the organizations where the guard could refuse a run: one query.
+
+    The same rule as the guard's own first step: a grant of the organization that is not
+    active owns a row there, or an owned row lost its grant.
+    """
+    return Organization.objects.filter(_has_refusable_runs()).values_list("pk", flat=True)
+
+
+def _refuse_if_owned(subject: RunSubject, resources: RunResources) -> None:
+    owner = OwnedResourceIndex.for_inactive_grants(subject.organization_id, resources).first_owner(
+        resources
+    )
+    if owner is not None:
+        raise PluginSuspendedError(owner, subject.organization_id)
 
 
 def _may_refuse_in(organization_id: int) -> bool:
-    """Whether a grant of the organization that is not active owns a row there, or an owned row
-    lost its grant.
+    """Whether the guard could refuse a run of the organization: one query.
 
-    One query. Without either, no run of the organization can be refused, so its resources
-    are never walked; a grant that is still `granting` but owns nothing yet keeps it that way.
-    A tombstone (an owned row whose resource is gone) still counts until the sweep removes it,
-    which only costs a walk.
+    Without a non-active grant that owns a row there, or an owned row that lost its grant, no
+    run of the organization can be refused, so its resources are never walked. A grant that
+    is still `granting` but owns nothing yet keeps it that way. A tombstone (an owned row
+    whose resource is gone) still counts until the sweep removes it, which only costs a walk.
     """
+    return Organization.objects.filter(pk=organization_id).filter(_has_refusable_runs()).exists()
+
+
+def _has_refusable_runs() -> Q:
+    """The rule, as a filter on `Organization`, shared by the per-run and the per-org question."""
     rows_of_grant = PluginOwnedResource.objects.filter(
         grant_id=OuterRef("pk"), org_id=OuterRef("org_id")
     )
@@ -56,8 +92,4 @@ def _may_refuse_in(organization_id: int) -> bool:
         .filter(Exists(rows_of_grant))
     )
     orphaned_rows = PluginOwnedResource.objects.filter(org_id=OuterRef("pk"), grant__isnull=True)
-    return (
-        Organization.objects.filter(pk=organization_id)
-        .filter(Exists(inactive_owning_grants) | Exists(orphaned_rows))
-        .exists()
-    )
+    return Exists(inactive_owning_grants) | Exists(orphaned_rows)

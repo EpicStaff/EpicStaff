@@ -20,7 +20,11 @@ walks through the Weather sample's.
   the roles' attributes, the app role's password and limits, and the CONNECT grants back as this
   page describes. Roles whose memberships were changed outside EpicStaff are not put back: the
   backend is not started (see [Errors](#errors-on-the-runtime-tab)).
-- **Suspending** the plugin in an organization leaves the database as it is.
+- **Suspending** the plugin in an organization leaves the database as it is, and so does
+  uninstalling it.
+- **Deleting** the plugin drops the database and its three roles, after the plugin's
+  organization removed hook has run for each organization. The node ends your roles' sessions
+  first, and drops nothing another installation created. No backup is taken.
 
 This version runs the migrations of the version a SuperAdmin approved; installing a later
 version of a plugin, with its new migrations, comes later.
@@ -46,9 +50,9 @@ row-level security (`NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSR
 
 | Role | Logs in | What it may do |
 |---|---|---|
-| Owner (`<id_>_owner`) | Only to run your migrations: the node gives it a one-time password valid for 10 minutes and one connection, and sets it back to `NOLOGIN` afterwards, whether the migrations succeeded or not | Owns the database, so it owns everything your migrations create. Your migrations run with it as the session user |
+| Owner (`<id_>_owner`) | Only to run your migrations: the node gives it a one-time password valid for 10 minutes and one connection, and afterwards, whether the migrations succeeded or not, sets it back to `NOLOGIN` and ends every session it still has | Owns the database, so it owns everything your migrations create. Your migrations run with it as the session user |
 | App (`<id_>_app`) | Yes, through `DATABASE_URL`, with at most the plugin's connection limit | Only what your migrations grant it. It is a member of the job role with `SET` but without `INHERIT`: it may `SET ROLE` to the job role, and has none of the job role's privileges otherwise |
-| Job (`<id_>_job`) | Never | Only what your migrations grant it. For work your backend does under `SET LOCAL ROLE <id_>_job`, with other privileges than a request has. In migrations, `${job_role}` names it |
+| Job (`<id_>_job`) | Never | Only what your migrations grant it. For work your backend does across organizations, with other privileges than a request has: the Python SDK's `job_transaction(connection)` switches to it for one transaction ([Python SDK](python-sdk.md#epicstaff_plugindatabase)), and [Write database migrations](../how-to/database-migrations.md#10-work-across-organizations-with-the-job-role) shows its use. In migrations, `${job_role}` names it |
 
 The plugin node holds the owner role with `SET` but without `INHERIT`. It uses it to set up the
 database and to give the owner its one-time password; it never connects to your database.
@@ -91,7 +95,10 @@ role's statement timeout still takes precedence.
 ## Migrations
 
 - Files `database/migrations/NNN_<name>.sql` in the package: `NNN` three digits, `<name>`
-  lower-case letters, digits and `_`, each number once. They run in name order.
+  lower-case letters, digits and `_`, each number once, and the file name at most 255
+  characters (`epicstaff_plugin.package_layout.MAX_MIGRATION_NAME_LENGTH`). They run in name
+  order. `epicstaff-plugin validate` and `pack`, and EpicStaff's upload, refuse a longer name
+  with `package.database/migrations/<file>: has a file name longer than 255 characters`.
 - At most 64 MiB of migrations in total (`epicstaff_plugin.package_layout.MAX_MIGRATIONS_TOTAL_BYTES`):
   the node holds them in memory while it runs them. `epicstaff-plugin validate` and `pack`, and
   EpicStaff's upload, refuse more at `package.database`.
@@ -101,6 +108,14 @@ role's statement timeout still takes precedence.
   PostgreSQL's error code and message: `<name> line <n>: [<SQLSTATE>] <message>` when PostgreSQL
   gives the error a position in the file (a syntax error, for example), and
   `<name>: [<SQLSTATE>] <message>` for an error raised while a statement ran, which has none.
+- A file that ends its transaction itself, with `COMMIT` or `ROLLBACK`, is refused before the
+  ledger records it: "`<name>` ends its own transaction (COMMIT or ROLLBACK); …". What it
+  committed before that stays, so the next run would run it again.
+- After the migrations the node checks the database's permissions again: a migration runs as the
+  owner, which may grant on its own database, and one that opened the database to more roles
+  than this page lists stops the set-up.
+- The whole set-up, migrations included, must finish within 11 minutes; one that takes longer is
+  stopped, on the server too.
 - Placeholders, replaced by the quoted role names before a file runs: `${owner_role}`,
   `${app_role}`, `${job_role}`.
 - Trusted extensions can be created (for example `pgcrypto`); untrusted ones, such as `dblink`
@@ -111,25 +126,32 @@ role's statement timeout still takes precedence.
 The node records each file it ran in `_epicstaff.migrations`, with its name, its SHA-256 and
 when it ran, and skips it the next time. A file whose content changed after it ran is refused:
 "`<name>` changed after it was applied". The ledger is owned by your owner role, so a
-migration could rewrite it: it guards against mistakes, not against your own code. Leave the
-`_epicstaff` schema alone.
+migration could rewrite it: it guards against mistakes, not against your own code. The node
+reads at most 1,001 of its rows and reports only entries a migration file could be named; it
+ignores anything else written there. Leave the `_epicstaff` schema alone.
 
 ## What other plugins can see
 
 Several plugins share the database server. Another plugin's roles cannot connect to your
-database, so they can never read your data. But PostgreSQL's catalogs of databases and roles are
-shared by the whole server, so other plugins can see your database's name and your roles' names.
-Keep nothing secret in names.
+database, so they can never read your data. But PostgreSQL's catalogs of databases and roles, and
+its list of sessions, are shared by the whole server, and PostgreSQL cannot hide them from one
+plugin on a shared server: every plugin can see the names of your database and your roles, and a
+row for each session your roles have open, though not what it runs. Never put data in a role or
+database name.
 
 ## Shared server
 
-- **Connection slots.** The server's connections are shared by every plugin on it. Your
-  connection limit caps what you can hold, but plugins together can hold all of the server's
-  free slots, and a new connection then fails until one is closed. Hold connections in a pool,
-  sized to your limit, and return them promptly. The node keeps slots of its own, so it can always
-  reach the server.
-- **No disk quota.** PostgreSQL cannot cap one database's size. The Runtime tab shows your
-  database's size; operators watch the server's volume.
+- **Connection slots.** The server's connections are shared by every plugin on it, and a
+  connection takes a slot as soon as it is opened, before it logs in. The plugin node lets your
+  backend have at most the deployment's maximum (`PLUGINS_MAX_DB_CONNECTIONS`) connections open
+  to the server at once, logged in or not, and open at most 200 new connections a second
+  altogether; one over either is refused at once. Your connection limit caps what you can hold
+  logged in. Plugins together can still hold all of the server's free slots, unless the operator
+  sized it for every plugin's maximum, and a new connection then fails until one is closed. Hold
+  connections in a pool, sized to your limit, and return them promptly.
+- **No disk quota.** PostgreSQL cannot cap one database's size, and every plugin database shares
+  the server's disk. Temporary files are capped at 1 GB per server process. The Runtime tab shows
+  your database's size; operators watch the server's volume.
 
 ## Errors on the Runtime tab
 
@@ -140,3 +162,7 @@ Keep nothing secret in names.
 | "`<name>`: [`<SQLSTATE>`] `<message>`" | That migration failed while a statement ran (a constraint, a timeout, a missing object, for example), and was rolled back |
 | "`<name>` changed after it was applied" | A migration's content differs from the one that ran |
 | "database permissions changed outside EpicStaff: …" | The roles' memberships or the database's CONNECT grants were changed; the node stopped the backend |
+| "the plugin database's permissions changed during its migrations: …" | A migration granted more than this page lists, for example CONNECT to `PUBLIC`; the backend is not started |
+| "`<name>` ends its own transaction (COMMIT or ROLLBACK); …" | That migration ran `COMMIT` or `ROLLBACK` itself |
+| "provisioning the database did not finish within 11 minutes" | The set-up, migrations included, took too long and was stopped |
+| "plugins_db has … that this plugin installation did not create, … and the node will not delete them. …" | Deleting the plugin found a database or roles of its names from somewhere else, and stopped. An operator resolves it ([Enable the plugin platform](../operator/enable-plugins.md#leftovers-from-another-epicstaff-database)), then a SuperAdmin presses Retry removal |

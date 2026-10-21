@@ -9,6 +9,7 @@ not expect. A request may carry file descriptors (`SCM_RIGHTS`):
 | `spawn`              | the output pipe, then the agent's listening socket | a pidfd of the new process |
 | `write_runtime_file` | a memfd holding the file's content     | -                           |
 | `measure_disk`       | -                                      | a pipe the result arrives on |
+| `remove_plugin`      | -                                      | a pipe the result arrives on |
 
 The content of a runtime file travels in a memfd rather than in the packet: a packet must
 fit the socket's buffer, and a runtime file with long text settings may not.
@@ -149,6 +150,20 @@ class PurgeData(_Message):
     uid: Uid
 
 
+class RemovePlugin(_Message):
+    """Kill the UID's processes, then delete everything the node keeps for the plugin.
+
+    In order, each step fine to repeat: every process of the UID is killed; then, in a helper
+    whose result arrives on the pipe in the answer (see `plugin_removal`), its System V IPC
+    objects are removed, its HOME is deleted as the UID, `plugins/<id>/` and `/run/es_plugins/<id>/`
+    are deleted, and the empty `venvs/<id>/` is removed (the agent empties it first).
+    """
+
+    operation: Literal["remove_plugin"] = "remove_plugin"
+    plugin: PluginIdentifier
+    uid: Uid
+
+
 LauncherRequest = Annotated[
     PreparePlugin
     | InstallCode
@@ -158,7 +173,8 @@ LauncherRequest = Annotated[
     | KillUid
     | ExitStatus
     | MeasureDisk
-    | PurgeData,
+    | PurgeData
+    | RemovePlugin,
     Field(discriminator="operation"),
 ]
 REQUEST_ADAPTER: TypeAdapter[LauncherRequest] = TypeAdapter(LauncherRequest)

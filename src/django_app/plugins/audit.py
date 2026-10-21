@@ -70,13 +70,14 @@ def log_grant(actor, grant: PluginGrant) -> None:
 def log_grant_suspended(actor, grant: PluginGrant, previous_state: str) -> None:
     logger.info(
         "plugins.grant.suspended actor={actor} plugin={identifier} grant={grant_id} org={org_id} "
-        "previous_state={previous_state} purge_after={purge_after}",
+        "previous_state={previous_state} purge_after={purge_after} cause={cause}",
         actor=actor_label(actor),
         identifier=grant.plugin.identifier,
         grant_id=grant.pk,
         org_id=grant.org_id,
         previous_state=previous_state,
         purge_after=grant.purge_after.isoformat(),
+        cause=grant.suspension_cause,
     )
 
 
@@ -101,6 +102,17 @@ def log_suspended_sessions_stopped(
         "count={count} failed={failed}",
         identifier=identifier,
         grant_id=grant_id,
+        org_id=org_id,
+        count=count,
+        failed=failed,
+    )
+
+
+def log_refused_sessions_stopped(*, org_id: int, count: int, failed: int) -> None:
+    """Log the sessions the periodic enforcement stopped: ones that started while a
+    suspension committed."""
+    logger.info(
+        "plugins.retention.sessions_stopped org={org_id} count={count} failed={failed}",
         org_id=org_id,
         count=count,
         failed=failed,
@@ -273,3 +285,132 @@ def log_hook_finished(
         outcome=outcome,
         duration_ms="-" if duration_ms is None else duration_ms,
     )
+
+
+def log_hook_gave_up(*, identifier: str, job_id: int, org_id: int, attempts: int) -> None:
+    """Log an organization removed hook that failed on every attempt of its retry window."""
+    logger.warning(
+        "plugins.hook.gave_up plugin={identifier} job={job_id} org={org_id} attempts={attempts}",
+        identifier=identifier,
+        job_id=job_id,
+        org_id=org_id,
+        attempts=attempts,
+    )
+
+
+def log_org_removed_hook_action(
+    action: str, actor, *, identifier: str, job_id: int, org_id: int
+) -> None:
+    """Log a retry or skip of an organization removed hook; `actor` None is the platform."""
+    logger.info(
+        "plugins.hook.{action} actor={actor} plugin={identifier} job={job_id} org={org_id}",
+        action=action,
+        actor=_actor_or_platform(actor),
+        identifier=identifier,
+        job_id=job_id,
+        org_id=org_id,
+    )
+
+
+def log_grant_purge_started(
+    actor, *, identifier: str, grant_id: int, org_id: int, reason: str, previous_state: str
+) -> None:
+    """Log that deleting a grant's data began; `actor` None is the platform."""
+    logger.info(
+        "plugins.grant.purge_started actor={actor} plugin={identifier} grant={grant_id} "
+        "org={org_id} reason={reason} previous_state={previous_state}",
+        actor=_actor_or_platform(actor),
+        identifier=identifier,
+        grant_id=grant_id,
+        org_id=org_id,
+        reason=reason,
+        previous_state=previous_state,
+    )
+
+
+def log_grant_purged(*, identifier: str, grant_id: int, org_id: int) -> None:
+    logger.info(
+        "plugins.grant.purged plugin={identifier} grant={grant_id} org={org_id}",
+        identifier=identifier,
+        grant_id=grant_id,
+        org_id=org_id,
+    )
+
+
+def log_plugin_uninstalled(actor, *, identifier: str, purge_after, grants: int) -> None:
+    logger.info(
+        "plugins.plugin.uninstalled actor={actor} plugin={identifier} purge_after={purge_after} "
+        "grants={grants}",
+        actor=actor_label(actor),
+        identifier=identifier,
+        purge_after=purge_after.isoformat(),
+        grants=grants,
+    )
+
+
+def log_plugin_reinstalled(actor, *, identifier: str, grants_resumed: int) -> None:
+    logger.info(
+        "plugins.plugin.reinstalled actor={actor} plugin={identifier} grants_resumed={grants_resumed}",
+        actor=actor_label(actor),
+        identifier=identifier,
+        grants_resumed=grants_resumed,
+    )
+
+
+def log_plugin_purge_started(actor, *, identifier: str, reason: str) -> None:
+    """Log that deleting a plugin began; `actor` None is the platform."""
+    logger.info(
+        "plugins.plugin.purge_started actor={actor} plugin={identifier} reason={reason}",
+        actor=_actor_or_platform(actor),
+        identifier=identifier,
+        reason=reason,
+    )
+
+
+def log_plugin_removal_requested(*, identifier: str, placement_id: int, node: str) -> None:
+    logger.info(
+        "plugins.plugin.removal_requested plugin={identifier} placement={placement_id} node={node}",
+        identifier=identifier,
+        placement_id=placement_id,
+        node=node,
+    )
+
+
+def log_plugin_removal_failed(*, identifier: str, placement_id: int, error: str | None) -> None:
+    logger.warning(
+        "plugins.plugin.removal_failed plugin={identifier} placement={placement_id} error={error}",
+        identifier=identifier,
+        placement_id=placement_id,
+        error=error,
+    )
+
+
+def log_plugin_purged(*, identifier: str, had_database: bool) -> None:
+    logger.info(
+        "plugins.plugin.purged plugin={identifier} had_database={had_database}",
+        identifier=identifier,
+        had_database=had_database,
+    )
+
+
+def log_organization_deleted(*, org_id: int, grants: int, data_removals: int) -> None:
+    logger.info(
+        "plugins.organization_deleted org={org_id} grants={grants} data_removals={data_removals}",
+        org_id=org_id,
+        grants=grants,
+        data_removals=data_removals,
+    )
+
+
+def log_retention_tick(counts: dict[str, int]) -> None:
+    """Log what one scheduled maintenance run did, naming only the counts above zero."""
+    done = {name: count for name, count in counts.items() if count}
+    if done:
+        logger.info(
+            "plugins.retention.tick {counts}",
+            counts=" ".join(f"{name}={count}" for name, count in done.items()),
+        )
+
+
+def _actor_or_platform(actor) -> str:
+    return actor_label(actor) if actor is not None else "platform"

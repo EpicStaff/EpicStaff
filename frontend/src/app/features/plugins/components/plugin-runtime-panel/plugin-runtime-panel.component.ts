@@ -89,7 +89,7 @@ export class PluginRuntimePanelComponent {
             ...database,
             stateLabel: PLUGIN_DATABASE_STATE_LABELS[database.state],
             stateTone: pluginDatabaseStateTone(database.state),
-            server: `${database.server.name} (${database.server.host}:${database.server.port})`,
+            serverLabel: `${database.server.name} (${database.server.host}:${database.server.port})`,
             migrationsCount: `${database.migrations.applied.length} of ${database.migrations.in_package}`,
             size: database.size_bytes === null ? null : formatFileSize(database.size_bytes, 'auto'),
         };

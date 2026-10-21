@@ -7,30 +7,58 @@ from epicstaff_plugin import database
 from epicstaff_plugin.contracts import runtime
 from epicstaff_plugin.database import (
     ORG_ID_SETTING,
+    ConnectionInTransactionError,
     DatabaseUnavailable,
     NestedOrgTransactionError,
     connection_limit,
     database_url,
+    job_transaction,
     org_transaction,
 )
 
 URL = "postgresql://weather_app:secret@plugins_db:5432/plugin_weather?application_name=weather"
 
 
-class FakeConnection:
-    """Records what `org_transaction` does with a psycopg-shaped async connection."""
+# psycopg's pq.TransactionStatus values.
+IDLE, IN_TRANSACTION, IN_ERROR = 0, 2, 3
 
-    def __init__(self):
+
+class FakeConnectionInfo:
+    def __init__(self, connection, user):
+        self._connection = connection
+        self.user = user
+
+    @property
+    def transaction_status(self):
+        if self._connection.depth:
+            return IN_TRANSACTION
+        return self._connection.status_outside_blocks
+
+
+class FakeConnection:
+    """Records what the transaction helpers do with a psycopg-shaped async connection.
+
+    `status` is its transaction status outside any `transaction()` block: IN_TRANSACTION, for
+    example, for a connection that ran a query outside one.
+    """
+
+    def __init__(self, *, user="weather_app", status=IDLE):
         self.calls = []
+        self.depth = 0
+        self.status_outside_blocks = status
+        self.info = FakeConnectionInfo(self, user)
 
     @asynccontextmanager
     async def transaction(self):
         self.calls.append(("begin",))
+        self.depth += 1
         try:
             yield object()
         except BaseException as error:
             self.calls.append(("rollback", type(error).__name__))
             raise
+        finally:
+            self.depth -= 1
         self.calls.append(("commit",))
 
     async def execute(self, query, params):
@@ -188,6 +216,191 @@ def test_a_task_started_inside_an_org_transaction_inherits_its_organization():
                 await asyncio.create_task(child())
         # A task started outside one is free to use any organization.
         await asyncio.create_task(child())
+
+    asyncio.run(parent())
+
+
+# --- A connection with a transaction already open ---
+
+
+@pytest.mark.parametrize("status", [IN_TRANSACTION, IN_ERROR], ids=["in_transaction", "in_error"])
+def test_org_transaction_refuses_a_connection_already_in_a_transaction_before_any_sql(status):
+    # A savepoint would not end the organization's setting: it would outlive the block.
+    connection = FakeConnection(status=status)
+
+    with pytest.raises(ConnectionInTransactionError, match="already has a transaction open"):
+        asyncio.run(_run_in_org(connection, 3))
+
+    assert connection.calls == []
+
+
+def test_the_same_organization_on_another_busy_connection_is_refused():
+    connection, busy = FakeConnection(), FakeConnection(status=IN_TRANSACTION)
+
+    async def nested():
+        async with org_transaction(connection, 3):
+            with pytest.raises(ConnectionInTransactionError):
+                async with org_transaction(busy, 3):
+                    pass
+
+    asyncio.run(nested())
+
+    assert busy.calls == []
+
+
+def test_the_same_organization_on_another_idle_connection_gets_a_transaction_of_its_own():
+    connection, other = FakeConnection(), FakeConnection()
+
+    async def nested():
+        async with org_transaction(connection, 3), org_transaction(other, 3):
+            # Nesting again on either connection is a savepoint of that connection's block.
+            async with org_transaction(other, 3):
+                pass
+
+    asyncio.run(nested())
+
+    assert other.calls == [
+        ("begin",),
+        ("execute", SET_ORG_ID, ("3",)),
+        ("begin",),
+        ("execute", SET_ORG_ID, ("3",)),
+        ("commit",),
+        ("commit",),
+    ]
+
+
+def test_a_connection_is_free_again_once_its_block_ended():
+    connection = FakeConnection()
+
+    async def one_after_the_other():
+        await _run_in_org(connection, 3)
+        async with job_transaction(connection):
+            pass
+
+    asyncio.run(one_after_the_other())
+
+    assert connection.calls[-3:] == [("begin",), ("execute", SET_ROLE, ("weather_job",)), ("commit",)]
+
+
+# --- job_transaction ---
+
+SET_ROLE = "SELECT pg_catalog.set_config('role', %s, true)"
+
+
+def test_job_transaction_switches_to_the_job_role_for_the_transaction_only():
+    connection = FakeConnection(user="my_plugin_app")
+
+    async def run():
+        async with job_transaction(connection) as yielded:
+            connection.calls.append(("block", yielded is connection))
+
+    asyncio.run(run())
+
+    assert connection.calls == [
+        ("begin",),
+        ("execute", SET_ROLE, ("my_plugin_job",)),
+        ("block", True),
+        ("commit",),
+    ]
+
+
+def test_job_transaction_rolls_back_when_the_block_raises():
+    connection = FakeConnection()
+
+    async def run():
+        async with job_transaction(connection):
+            raise RuntimeError("the batch failed")
+
+    with pytest.raises(RuntimeError, match="the batch failed"):
+        asyncio.run(run())
+
+    assert connection.calls[-1] == ("rollback", "RuntimeError")
+
+
+@pytest.mark.parametrize("user", ["postgres", "weather_owner", "weather_job", "_app", "weather_app_reader"])
+def test_job_transaction_needs_a_connection_as_the_app_role(user):
+    connection = FakeConnection(user=user)
+
+    async def run():
+        async with job_transaction(connection):
+            pass
+
+    with pytest.raises(ValueError, match="app role"):
+        asyncio.run(run())
+
+    assert connection.calls == []
+
+
+@pytest.mark.parametrize("status", [IN_TRANSACTION, IN_ERROR], ids=["in_transaction", "in_error"])
+def test_job_transaction_refuses_a_connection_already_in_a_transaction_before_any_sql(status):
+    connection = FakeConnection(status=status)
+
+    async def run():
+        async with job_transaction(connection):
+            pass
+
+    with pytest.raises(ConnectionInTransactionError):
+        asyncio.run(run())
+
+    assert connection.calls == []
+
+
+def test_a_nested_job_transaction_on_the_same_connection_is_a_savepoint():
+    connection = FakeConnection()
+
+    async def nested():
+        async with job_transaction(connection), job_transaction(connection):
+            pass
+
+    asyncio.run(nested())
+
+    assert connection.calls == [
+        ("begin",),
+        ("execute", SET_ROLE, ("weather_job",)),
+        ("begin",),
+        ("execute", SET_ROLE, ("weather_job",)),
+        ("commit",),
+        ("commit",),
+    ]
+
+
+def test_an_org_transaction_inside_a_job_transaction_is_refused_before_any_sql():
+    connection, other = FakeConnection(), FakeConnection()
+
+    async def nested():
+        async with job_transaction(connection):
+            with pytest.raises(NestedOrgTransactionError, match="a job_transaction is open"):
+                async with org_transaction(other, 3):
+                    pass
+
+    asyncio.run(nested())
+
+    assert other.calls == []
+
+
+def test_a_job_transaction_inside_an_org_transaction_is_refused_before_any_sql():
+    connection, other = FakeConnection(), FakeConnection()
+
+    async def nested():
+        async with org_transaction(connection, 3):
+            with pytest.raises(NestedOrgTransactionError, match="organization 3 is open"):
+                async with job_transaction(other):
+                    pass
+
+    asyncio.run(nested())
+
+    assert other.calls == []
+
+
+def test_a_task_started_inside_a_job_transaction_inherits_it():
+    async def child():
+        async with org_transaction(FakeConnection(), 5):
+            pass
+
+    async def parent():
+        async with job_transaction(FakeConnection()):
+            with pytest.raises(NestedOrgTransactionError):
+                await asyncio.create_task(child())
 
     asyncio.run(parent())
 

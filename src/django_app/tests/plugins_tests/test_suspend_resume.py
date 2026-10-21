@@ -118,7 +118,7 @@ def test_suspending_keeps_the_data_for_the_grace_period(grant, superadmin_client
 
     assert response.status_code == 200, response.content
     body = response.json()
-    assert (body["state"], body["allowed_actions"]) == ("suspended", ["resume"])
+    assert (body["state"], body["allowed_actions"], body["suspension_cause"]) == ("suspended", ["resume", "purge"], "grant")
     grant.refresh_from_db()
     assert grant.state == GrantState.SUSPENDED
     assert grant.suspended_at == frozen_clock
@@ -172,10 +172,10 @@ def test_suspending_is_recorded_and_logged(
     event = PluginActivityEvent.objects.get(action="grant_suspended")
     assert (event.plugin_identifier, event.organization_id, event.actor_kind) == ("weather", acme.pk, "superadmin")
     assert (event.actor_user_id, event.actor_label) == (superadmin_user.pk, superadmin_user.email)
-    assert event.detail == {"previous_state": "active", "purge_after": "2026-11-20T12:00:00Z"}
+    assert event.detail == {"previous_state": "active", "purge_after": "2026-11-20T12:00:00Z", "cause": "grant"}
     assert (
         f"plugins.grant.suspended actor={superadmin_user.email} (id {superadmin_user.pk}) plugin=weather "
-        f"grant={grant.pk} org={acme.pk} previous_state=active purge_after=2026-11-20T12:00:00+00:00"
+        f"grant={grant.pk} org={acme.pk} previous_state=active purge_after=2026-11-20T12:00:00+00:00 cause=grant"
     ) in log_messages
 
 
@@ -448,9 +448,9 @@ def test_resuming_makes_the_grant_active_again(grant, superadmin_client, superad
     assert response.status_code == 200, response.content
     body = response.json()
     assert (body["state"], body["suspended_at"], body["purge_after"]) == ("active", None, None)
-    assert body["allowed_actions"] == ["suspend"]
+    assert (body["allowed_actions"], body["suspension_cause"]) == (["suspend", "purge"], None)
     event = PluginActivityEvent.objects.get(action="grant_resumed")
-    assert (event.organization_id, event.actor_user_id, event.detail) == (acme.pk, superadmin_user.pk, {"state": "active"})
+    assert (event.organization_id, event.actor_user_id, event.detail) == (acme.pk, superadmin_user.pk, {"state": "active", "cause": "grant"})
     assert (
         f"plugins.grant.resumed actor={superadmin_user.email} (id {superadmin_user.pk}) plugin=weather "
         f"grant={grant.pk} org={acme.pk} state=active"
@@ -498,7 +498,7 @@ def test_a_pending_install_is_given_up_by_suspending_and_resuming_then_retried(
     resumed = _resume(superadmin_client, installing_grant).json()
 
     assert resumed["state"] == "install_failed"
-    assert resumed["allowed_actions"] == ["retry_install", "suspend"]
+    assert resumed["allowed_actions"] == ["retry_install", "suspend", "purge"]
     assert resumed["last_hook_error"] == SUSPENDED_BEFORE_HOOK_FINISHED
     retried = superadmin_client.post(_url(installing_grant.pk, "retry-hook"))
     assert retried.status_code == 202, retried.content

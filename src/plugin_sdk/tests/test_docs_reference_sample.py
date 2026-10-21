@@ -12,6 +12,7 @@ TUTORIAL = DOCS / "tutorial" / "build-your-first-plugin.md"
 PAGES_NAMING_THE_SAMPLE = [
     TUTORIAL,
     DOCS / "how-to" / "install-hook.md",
+    DOCS / "how-to" / "org-removed-hook.md",
     DOCS / "how-to" / "call-epicstaff-from-the-backend.md",
     DOCS / "how-to" / "database-migrations.md",
     DOCS / "how-to" / "external-callbacks.md",
@@ -53,12 +54,43 @@ def test_parts_two_and_three_name_the_files_they_explain():
     } <= named
 
 
-def test_the_sql_the_tutorial_quotes_is_in_the_samples_migration():
-    migration = (REPO_ROOT / "plugin-samples" / "weather" / "database" / "migrations" / "001_weather.sql").read_text()
+def test_part_two_names_the_retention_files():
+    named = set(SAMPLE_PATH.findall(TUTORIAL.read_text()))
+
+    assert {
+        "plugin-samples/weather/database/migrations/002_retention.sql",
+        "plugin-samples/weather/backend/src/weather_plugin/retention.py",
+    } <= named
+
+
+def test_part_four_and_the_hook_guide_name_the_files_of_the_organization_removed_hook():
+    files = {
+        "plugin-samples/weather/manifest.json",
+        "plugin-samples/weather/backend/src/weather_plugin/app.py",
+        "plugin-samples/weather/backend/src/weather_plugin/organization_data.py",
+    }
+    part_four = TUTORIAL.read_text().split("## Part 4:", 1)[1]
+
+    assert files <= set(SAMPLE_PATH.findall(part_four))
+    assert files - {"plugin-samples/weather/manifest.json"} <= set(
+        SAMPLE_PATH.findall((DOCS / "how-to" / "org-removed-hook.md").read_text())
+    )
+
+
+def test_the_sql_the_tutorial_quotes_is_in_the_samples_migrations():
+    migrations = [path.read_text() for path in sorted((REPO_ROOT / "plugin-samples" / "weather" / "database" / "migrations").glob("*.sql"))]
     quoted = re.findall(r"```sql\n(.*?)\n```", TUTORIAL.read_text(), re.DOTALL)
 
-    assert quoted
-    assert [block for block in quoted if block not in migration] == []
+    assert len(quoted) >= 3
+    assert [block for block in quoted if not any(block in migration for migration in migrations)] == []
+
+
+def test_the_organization_removed_code_the_hook_guide_quotes_is_the_samples():
+    sample = (REPO_ROOT / "plugin-samples" / "weather" / "backend" / "src" / "weather_plugin" / "organization_data.py").read_text()
+    guide = (DOCS / "how-to" / "org-removed-hook.md").read_text()
+    (statements,) = re.findall(r"(DELETE_ORGANIZATION_ROWS = \(.*?\n\))", guide, re.DOTALL)
+
+    assert statements in sample
 
 
 def test_the_manifest_the_tutorial_shows_is_the_samples():

@@ -7,13 +7,17 @@
 #     ES_PLUGINS_TEST_PG_HOST, _PORT and _ADMIN_PASSWORD. ES_PLUGINS_TEST_ASG_MIGRATIONS_DIR is
 #     passed on when it is set; ASG's migrations are skipped without it;
 #   - checks the server itself: the superuser is refused over TCP, nobody else gets in over the
-#     socket, the attributes and memberships of plugins_admin and plugins_backup, CONNECT on
-#     postgres and template1 closed to PUBLIC, the server settings, no secret in its log, and
-#     that the init script changes nothing when run by hand on the live server;
+#     socket, plugins_backup is refused until backups use it, the attributes and memberships of
+#     plugins_admin and plugins_backup, that plugins_admin ends a plugin's session but not the
+#     superuser's, CONNECT on postgres and template1 closed to PUBLIC, the server settings, that
+#     a failing statement of plugins_admin reaches the log without its text (a superuser control
+#     shows the check sees a leak), no secret in the log, and that the init script changes
+#     nothing when run by hand on the live server;
 #   - starts it again on a fresh volume with weak passwords: every start refuses, naming the
 #     variables but not their values, and the same volume initializes once they are fixed.
 #
-# One `ok -` / `not ok -` line per check; removes every container, volume and network it made.
+# One `ok -` / `not ok -` line per check. Every run has a Compose project and container name of its
+# own, so runs never collide; it removes every container, volume and network it made.
 # Needs Docker, the es_plugins and plugin_sdk venvs (`make uv-sync svc=<service>`), and python3
 # with PyYAML (scripts/envtool.py writes the env file the extended service needs).
 # Usage, from anywhere: bash src/plugins_db/lab/run.sh
@@ -22,7 +26,9 @@ set -euo pipefail
 lab_dir=$(cd "$(dirname "$0")" && pwd)
 repository=$(cd "$lab_dir/../../.." && pwd)
 work=$(mktemp -d)
-server=plugins-db-lab
+run_name="plugins-db-lab-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+server=$run_name
+export PLUGINS_DB_LAB_CONTAINER=$run_name
 
 python3 "$repository/scripts/envtool.py" --dev --env-file "$work/lab.env" > /dev/null
 random_password() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
@@ -34,7 +40,7 @@ export PLUGINS_DB_SUPERUSER_PASSWORD PLUGINS_DB_ADMIN_PASSWORD PLUGINS_DB_BACKUP
 export PLUGINS_DB_MAX_CONNECTIONS=100
 
 compose() {
-  docker compose -p plugins-db-lab -f "$lab_dir/compose.yaml" --env-file "$work/lab.env" \
+  docker compose -p "$run_name" -f "$lab_dir/compose.yaml" --env-file "$work/lab.env" \
     --profile plugins "$@"
 }
 cleanup() {
@@ -42,7 +48,6 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
-compose down -v --remove-orphans > /dev/null 2>&1 || true
 
 failures=0
 pass() { echo "ok - $1"; }
@@ -78,6 +83,12 @@ wait_for() { # seconds, then a command; returns once the command succeeds
 }
 # The superuser on the container's socket, the one way in that pg_hba.conf leaves it.
 superuser_query() { docker exec -u postgres "$server" psql -X -At -v ON_ERROR_STOP=1 -c "$1"; }
+# plugins_admin over TCP, as the plugin node logs in; prints errors instead of failing.
+admin_query() {
+  PGPASSWORD=$PLUGINS_DB_ADMIN_PASSWORD docker exec -e PGPASSWORD "$server" \
+    psql -X -At -v ON_ERROR_STOP=1 "host=127.0.0.1 user=plugins_admin dbname=postgres" -c "$1" 2>&1 || true
+}
+random_name() { echo "$1_$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"; }
 start_server() {
   if ! compose up -d --wait --wait-timeout 180 plugins_db > "$work/up.log" 2>&1; then
     cat "$work/up.log"
@@ -135,6 +146,20 @@ admin_over_tcp=$(PGPASSWORD=$PLUGINS_DB_ADMIN_PASSWORD docker exec -e PGPASSWORD
 check "plugins_admin logs in over TCP with its password" equals "$admin_over_tcp" plugins_admin
 check "plugins_admin's password is stored as a SCRAM verifier" \
   equals "$(superuser_query "SELECT rolpassword LIKE 'SCRAM-SHA-256\$%' FROM pg_authid WHERE rolname = 'plugins_admin'")" t
+backup_refused=$(PGPASSWORD=$PLUGINS_DB_BACKUP_PASSWORD docker exec -e PGPASSWORD "$server" \
+  psql -X "host=127.0.0.1 user=plugins_backup dbname=postgres connect_timeout=5" -c 'SELECT 1' 2>&1 || true)
+check "plugins_backup is refused over TCP with its own password, until backups use it" \
+  contains "$backup_refused" 'pg_hba.conf rejects connection for host "127.0.0.1", user "plugins_backup"'
+published_refused=$(PGPASSWORD=$PLUGINS_DB_BACKUP_PASSWORD "$repository/src/es_plugins/.venv/bin/python" -I -c '
+import sys
+import psycopg
+try:
+    psycopg.connect(host="127.0.0.1", port=int(sys.argv[1]), user="plugins_backup", dbname="postgres", connect_timeout=5).close()
+    print("connected")
+except psycopg.OperationalError as error:
+    print(error)
+' "$port" 2>&1 || true)
+check "... and through the published port" contains "$published_refused" 'pg_hba.conf rejects connection'
 
 echo "# the roles the init script made"
 roles="SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls FROM pg_roles WHERE rolname ="
@@ -142,13 +167,41 @@ check "plugins_admin: LOGIN CREATEDB CREATEROLE, no SUPERUSER, REPLICATION or BY
   equals "$(superuser_query "$roles 'plugins_admin'")" 'f|t|t|t|f|f'
 check "plugins_backup: LOGIN BYPASSRLS, no SUPERUSER, CREATEDB, CREATEROLE or REPLICATION" \
   equals "$(superuser_query "$roles 'plugins_backup'")" 'f|f|f|t|f|t'
-memberships="SELECT coalesce(string_agg(r.rolname || ' admin=' || m.admin_option || ' inherit=' || m.inherit_option
-  || ' set=' || m.set_option, ', ' ORDER BY r.rolname), '-') FROM pg_auth_members m
-  JOIN pg_roles r ON r.oid = m.roleid JOIN pg_roles u ON u.oid = m.member WHERE u.rolname ="
-check "plugins_admin is a member of pg_use_reserved_connections only" \
-  equals "$(superuser_query "$memberships 'plugins_admin'")" 'pg_use_reserved_connections admin=false inherit=true set=true'
+memberships="SELECT coalesce(string_agg(r.rolname || ' grantor=' || g.rolname || ' admin=' || m.admin_option
+  || ' inherit=' || m.inherit_option || ' set=' || m.set_option, ', ' ORDER BY r.rolname), '-') FROM pg_auth_members m
+  JOIN pg_roles r ON r.oid = m.roleid JOIN pg_roles u ON u.oid = m.member JOIN pg_roles g ON g.oid = m.grantor
+  WHERE u.rolname ="
+check "plugins_admin is a member of pg_signal_backend and pg_use_reserved_connections only" \
+  equals "$(superuser_query "$memberships 'plugins_admin'")" \
+  'pg_signal_backend grantor=postgres admin=false inherit=true set=true, pg_use_reserved_connections grantor=postgres admin=false inherit=true set=true'
 check "plugins_backup is a member of pg_read_all_data only" \
-  equals "$(superuser_query "$memberships 'plugins_backup'")" 'pg_read_all_data admin=false inherit=true set=true'
+  equals "$(superuser_query "$memberships 'plugins_backup'")" 'pg_read_all_data grantor=postgres admin=false inherit=true set=true'
+
+echo "# plugins_admin ends a plugin's sessions, never the superuser's"
+session_role=$(random_name signal_probe)
+session_password=$(random_password)
+admin_query "CREATE ROLE $session_role LOGIN PASSWORD '$session_password'" > /dev/null
+admin_query "CREATE DATABASE ${session_role}_db" > /dev/null
+admin_query "GRANT CONNECT ON DATABASE ${session_role}_db TO $session_role" > /dev/null
+PGPASSWORD=$session_password docker exec -d -e PGPASSWORD -e PGAPPNAME=lab-held-plugin "$server" \
+  psql -X "host=127.0.0.1 user=$session_role dbname=${session_role}_db" -c 'SELECT pg_sleep(120)'
+docker exec -d -u postgres -e PGAPPNAME=lab-held-superuser "$server" psql -X -c 'SELECT pg_sleep(120)'
+held() { [ "$(superuser_query "SELECT count(*) FROM pg_stat_activity WHERE application_name LIKE 'lab-held-%'")" = 2 ]; }
+if wait_for 30 held; then
+  check "plugins_admin may end a plugin role's session" \
+    equals "$(admin_query "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'lab-held-plugin'")" t
+  check "... but not the superuser's" \
+    contains "$(admin_query "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'lab-held-superuser'")" \
+    'permission denied to terminate process'
+  superuser_query "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'lab-held-superuser'" > /dev/null
+  plugin_session_gone() { [ "$(superuser_query "SELECT count(*) FROM pg_stat_activity WHERE application_name = 'lab-held-plugin'")" = 0 ]; }
+  wait_for 10 plugin_session_gone || true
+  check "... after which a plain DROP DATABASE succeeds" equals "$(admin_query "DROP DATABASE ${session_role}_db")" 'DROP DATABASE'
+else
+  fail "the held sessions did not appear: $(superuser_query "SELECT application_name, usename FROM pg_stat_activity")"
+fi
+admin_query "DROP DATABASE IF EXISTS ${session_role}_db" > /dev/null
+admin_query "DROP ROLE IF EXISTS $session_role" > /dev/null
 
 echo "# CONNECT on the maintenance databases"
 connect="SELECT has_database_privilege('public', datname, 'CONNECT') || ' ' || has_database_privilege('plugins_admin', datname, 'CONNECT')
@@ -161,11 +214,32 @@ check "template1: closed to PUBLIC, plugins_admin and plugins_backup" \
 echo "# the server"
 settings=$(superuser_query "SELECT current_setting('hba_file') || ' ' || current_setting('password_encryption') || ' '
   || current_setting('max_connections') || ' ' || current_setting('reserved_connections') || ' '
-  || current_setting('authentication_timeout')")
-check "hba_file, password_encryption, max_connections, reserved_connections, authentication_timeout" \
-  equals "$settings" '/etc/postgresql/pg_hba.conf scram-sha-256 100 5 10s'
+  || current_setting('authentication_timeout') || ' ' || current_setting('temp_file_limit')")
+check "hba_file, password_encryption, max_connections, reserved_connections, authentication_timeout, temp_file_limit" \
+  equals "$settings" '/etc/postgresql/pg_hba.conf scram-sha-256 100 5 10s 1GB'
 check "the server runs with no-new-privileges" \
   contains "$(docker inspect -f '{{.HostConfig.SecurityOpt}}' "$server")" 'no-new-privileges:true'
+
+echo "# no statement text of plugins_admin in the server's log"
+check "plugins_admin's sessions run with log_min_error_statement=panic and log_statement=none" \
+  equals "$(superuser_query "SELECT array_to_string(setconfig, ',') FROM pg_db_role_setting WHERE setrole = 'plugins_admin'::regrole AND setdatabase = 0")" \
+  'log_min_error_statement=panic,log_statement=none'
+check "... which plugins_admin cannot lower" \
+  contains "$(admin_query 'SET log_min_error_statement = error')" 'permission denied to set parameter "log_min_error_statement"'
+missing_role=$(random_name no_such_role)
+clear_password=$(random_password)
+admin_query "ALTER ROLE $missing_role PASSWORD '$clear_password'" > /dev/null
+admin_query "ALTER ROLE $missing_role PASSWORD 'SCRAM-SHA-256\$4096:$(random_password)'" > /dev/null
+control_text="lab-control-$(random_password)"
+superuser_query "ALTER ROLE $missing_role PASSWORD '$control_text'" > /dev/null 2>&1 || true
+sleep 1
+statement_log=$(docker logs "$server" 2>&1)
+check "a failing ALTER ROLE ... PASSWORD of plugins_admin reaches the log as an error" \
+  contains "$statement_log" "role \"$missing_role\" does not exist"
+check "... without its text: not the clear password" lacks "$statement_log" "$clear_password"
+check "control: the same failing statement of the superuser is logged with its text, so the check sees a leak" \
+  contains "$statement_log" "$control_text"
+
 server_log=$(docker logs "$server" 2>&1)
 for name in PLUGINS_DB_SUPERUSER_PASSWORD PLUGINS_DB_ADMIN_PASSWORD PLUGINS_DB_BACKUP_PASSWORD; do
   check "$name's value is nowhere in the server's log" lacks "$server_log" "${!name}"

@@ -19,9 +19,6 @@ RESTORED_SETTING = "statement_timeout"
 class DatabaseReportRecorder:
     """Applies a node's report about one plugin's database to its record."""
 
-    def __init__(self, activity: ActivityRecorder | None = None):
-        self._activity = activity or ActivityRecorder()
-
     def apply(
         self, record: PluginDatabase, identifier: str, report: DatabaseReport, now: datetime
     ) -> None:
@@ -30,8 +27,10 @@ class DatabaseReportRecorder:
         A report about another installation is ignored. `provisioning` and `failed` store the
         node's error; `ready` stores the ledger and the size and clears the error. Events,
         all deployment-wide: `database_ready` the first time the database is ready, again
-        after a failure or when the ledger changed (not when an agent restart provisions it
-        again unchanged); `database_failed` on the change into `failed`; and
+        once it is ready after a failure (the node reports `provisioning` in between, so the
+        record keeps `failed_at` until then) or when the ledger changed (not when an agent
+        restart provisions it again unchanged); `database_failed` once per failure, however
+        often the node retries and fails again before the database is ready; and
         `database_limit_restored` when the node restored the app role's settings since the
         last report, at most once an hour.
         """
@@ -42,19 +41,16 @@ class DatabaseReportRecorder:
                 identifier=identifier,
             )
             return
-        previous_state = record.state
         changes = _state_changes(record, report, now)
+        activity = ActivityRecorder()
         if report.state == PluginDatabaseState.READY and (
             record.ready_at is None
-            or previous_state == PluginDatabaseState.FAILED
+            or record.failed_at is not None
             or list(report.applied_migrations) != record.applied_migrations
         ):
-            self._activity.database_ready(identifier, len(report.applied_migrations))
-        if (
-            report.state == PluginDatabaseState.FAILED
-            and previous_state != PluginDatabaseState.FAILED
-        ):
-            self._activity.database_failed(identifier, report.last_error)
+            activity.database_ready(identifier, len(report.applied_migrations))
+        if report.state == PluginDatabaseState.FAILED and record.failed_at is None:
+            activity.database_failed(identifier, report.last_error)
         if report.limits_restored_at is not None and (
             record.limits_restored_at is None
             or report.limits_restored_at > record.limits_restored_at
@@ -64,7 +60,7 @@ class DatabaseReportRecorder:
                 record.limits_restored_event_at is None
                 or now - record.limits_restored_event_at > LIMIT_RESTORED_EVENT_INTERVAL
             ):
-                self._activity.database_limit_restored(identifier, RESTORED_SETTING)
+                activity.database_limit_restored(identifier, RESTORED_SETTING)
                 changes["limits_restored_event_at"] = now
         changed = [name for name, value in changes.items() if getattr(record, name) != value]
         if not changed:
@@ -83,5 +79,12 @@ def _state_changes(record: PluginDatabase, report: DatabaseReport, now: datetime
             "size_bytes": report.size_bytes,
             "last_error": None,
             "ready_at": record.ready_at or now,
+            "failed_at": None,
+        }
+    if report.state == PluginDatabaseState.FAILED:
+        return {
+            "state": report.state,
+            "last_error": report.last_error,
+            "failed_at": record.failed_at or now,
         }
     return {"state": report.state, "last_error": report.last_error}

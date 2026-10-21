@@ -5,6 +5,7 @@ export type PluginTrust = 'trusted' | 'untrusted';
 
 export type PluginReviewState = 'pending' | 'approved' | 'rejected';
 
+/** `uninstalling`: uninstalled, its data kept until `purge_after`; `purging`: being deleted. A deleted plugin is gone. */
 export type PluginState =
     | 'uploaded'
     | 'provisioning'
@@ -12,8 +13,10 @@ export type PluginState =
     | 'failed'
     | 'maintenance'
     | 'uninstalling'
-    | 'purging'
-    | 'removed';
+    | 'purging';
+
+/** What a SuperAdmin can do to a whole plugin. */
+export type PluginLifecycleAction = 'uninstall' | 'reinstall' | 'purge' | 'retry_removal';
 
 export type PluginGrantState =
     | 'granting'
@@ -166,13 +169,37 @@ export interface PluginSummary {
     grant_count: number;
     pending_package: PluginPendingPackage | null;
     created_at: string;
+    /** Set while the plugin is uninstalled: when its data is deleted unless it is reinstalled. */
+    purge_after: string | null;
+    /** A data removal failed for good, the node failed to remove the plugin, or a deleting grant has an error. */
+    needs_attention: boolean;
+}
+
+/** Where the plugin node is with removing a plugin being deleted; `not_needed` for a plugin without a backend. */
+export type PluginPurgeNodeState = 'waiting' | 'removing' | 'failed' | 'not_needed';
+
+/** How far the deletion of a plugin has come. */
+export interface PluginPurgeProgress {
+    grants_left: number;
+    /** Data removals pending or running. */
+    data_removals_waiting: number;
+    data_removals_failed: number;
+    node: PluginPurgeNodeState;
+    node_error: string | null;
 }
 
 export interface PluginDetail extends PluginSummary {
     current_package: PackageReview | null;
+    /** What the plugin allows in its current state. The server decides; the buttons follow this list only. */
+    allowed_actions: PluginLifecycleAction[];
+    uninstall_requested_at: string | null;
+    purge_started_at: string | null;
+    /** Set while the plugin is being deleted. */
+    purge_progress: PluginPurgeProgress | null;
 }
 
-export type PluginHookJobState = 'pending' | 'running' | 'succeeded' | 'failed';
+/** `skipped`: a SuperAdmin or the platform gave up on a data removal. */
+export type PluginHookJobState = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
 
 /** The account a plugin's backend acts with in one organization. */
 export interface PluginGrantServiceAccount {
@@ -191,7 +218,47 @@ export interface PluginInstallHook {
 }
 
 /** What a SuperAdmin can do to a grant. */
-export type PluginGrantAction = 'suspend' | 'resume' | 'retry_install';
+export type PluginGrantAction = 'suspend' | 'resume' | 'retry_install' | 'purge';
+
+/** Why a grant is suspended: on its own, or because the whole plugin was uninstalled. */
+export type PluginGrantSuspensionCause = 'grant' | 'uninstall';
+
+/** What a SuperAdmin can do to a data removal. */
+export type PluginOrgRemovedJobAction = 'retry' | 'skip';
+
+/**
+ * A run of the plugin's organization removed hook, which deletes the plugin's own data for one organization ("data
+ * removal"). It outlives the grant and the organization.
+ */
+export interface PluginOrgRemovedJob {
+    id: number;
+    /** `name` as it was when the job was made; `exists` is `false` once the organization is deleted. */
+    organization: { id: number; name: string; exists: boolean };
+    grant_id: number | null;
+    state: PluginHookJobState;
+    attempt: number;
+    first_attempt_at: string | null;
+    next_attempt_at: string | null;
+    /** Until when failed attempts are retried by themselves. */
+    retry_until: string | null;
+    finished_at: string | null;
+    error: string | null;
+    created_at: string;
+    /** What the job allows now. The server decides; the buttons follow this list only. */
+    allowed_actions: PluginOrgRemovedJobAction[];
+}
+
+/** `open`: pending, running or failed; `finished`: succeeded or skipped. */
+export type PluginOrgRemovedJobFilter = 'open' | 'finished' | 'all';
+
+/** The filters of a plugin's data removal list. */
+export interface PluginOrgRemovedJobQuery {
+    state: PluginOrgRemovedJobFilter;
+    /** Only the jobs of organizations deleted since. */
+    deletedOrganizations: boolean;
+    page: number;
+    pageSize: number;
+}
 
 export interface PluginGrant {
     id: number;
@@ -215,6 +282,14 @@ export interface PluginGrant {
     install_hook: PluginInstallHook | null;
     /** What the plugin's service account created in the organization and still exists. */
     owned_resource_count: number;
+    /** Set while the grant is suspended. */
+    suspension_cause: PluginGrantSuspensionCause | null;
+    /** Set while the grant's data is being deleted. */
+    purge_started_at: string | null;
+    /** Why something the plugin owns in the organization could not be deleted yet. */
+    last_purge_error: string | null;
+    /** The latest data removal for the grant's organization; `null` when there is none. */
+    org_removed_hook: PluginOrgRemovedJob | null;
 }
 
 /** One step of a package upload: progress while the bytes go up, then the review of the stored package. */

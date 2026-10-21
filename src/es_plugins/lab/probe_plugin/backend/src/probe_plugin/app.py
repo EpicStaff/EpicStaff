@@ -15,6 +15,7 @@ import resource
 import signal
 import socket
 import stat
+import threading
 import time
 from urllib.parse import parse_qs
 
@@ -296,6 +297,64 @@ def fork_bomb() -> dict:
     return {"forked": forked, "processes_at_peak": processes, "stopped_by": error}
 
 
+IPC_PRIVATE, IPC_CREAT = 0, 0o1000
+
+
+def open_connections(host: str, port: int, count: int, hold_seconds: float) -> dict:
+    """Open `count` connections to host:port and hold them `hold_seconds`; count what opened."""
+    opened, refused = [], 0
+    for _ in range(count):
+        connection = socket.socket()
+        connection.settimeout(3)
+        try:
+            connection.connect((host, port))
+            opened.append(connection)
+        except OSError:
+            connection.close()
+            refused += 1
+
+    def release() -> None:
+        for connection in opened:
+            connection.close()
+
+    threading.Timer(hold_seconds, release).start()
+    return {"opened": len(opened), "refused": refused}
+
+
+def churn(host: str, port: int, count: int) -> dict:
+    """Open and close `count` connections to host:port as fast as it can."""
+    opened = refused = 0
+    started = time.monotonic()
+    for _ in range(count):
+        connection = socket.socket()
+        connection.settimeout(3)
+        try:
+            connection.connect((host, port))
+            opened += 1
+        except OSError:
+            refused += 1
+        finally:
+            connection.close()
+    return {"opened": opened, "refused": refused, "seconds": round(time.monotonic() - started, 2)}
+
+
+def leave_traces() -> dict:
+    """What a removal must clean up: a private directory, System V IPC objects, and the attempt
+    at a POSIX message queue, which the node's limits refuse."""
+    private = os.path.join(os.environ["HOME"], "private")
+    os.makedirs(private, mode=0o700, exist_ok=True)
+    with open(os.path.join(private, "secret.txt"), "w") as secret:
+        secret.write("only this plugin's")
+    created = {
+        "shm": libc.shmget(IPC_PRIVATE, 4096, IPC_CREAT | 0o600),
+        "msg": libc.msgget(IPC_PRIVATE, IPC_CREAT | 0o600),
+        "sem": libc.semget(IPC_PRIVATE, 1, IPC_CREAT | 0o600),
+    }
+    librt = ctypes.CDLL("librt.so.1", use_errno=True)
+    queue = librt.mq_open(b"/probe-queue", os.O_CREAT | os.O_RDWR, 0o600, None)
+    return {"sysv": created, "mq_open": [queue, ctypes.get_errno()]}
+
+
 def write_mark(name: str, document: dict) -> None:
     with open(os.path.join(os.environ["HOME"], name), "w") as mark_file:
         json.dump(document, mark_file)
@@ -337,6 +396,14 @@ async def app(scope, receive, send):
         body = bind_attempts(int(query["port"]))
     elif path == "/api/fill":
         body = fill_home(int(query["mb"]))
+    elif path == "/api/connect":
+        body = open_connections(
+            query["host"], int(query["port"]), int(query["count"]), float(query.get("hold", "20"))
+        )
+    elif path == "/api/churn":
+        body = churn(query["host"], int(query["port"]), int(query["count"]))
+    elif path == "/api/traces":
+        body = leave_traces()
     else:
         body = {"error": "no such probe"}
     payload = json.dumps(body).encode()

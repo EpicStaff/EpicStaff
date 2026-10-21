@@ -276,6 +276,34 @@ def test_suspension_lines_name_the_actor_and_the_grant_and_never_a_key(
     _assert_no_secret(lines, key, hashlib.sha256(key.encode()).hexdigest())
 
 
+@pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")
+def test_uninstall_purge_and_deletion_lines_carry_no_phrase_key_or_password(
+    database_plugin, service_account_key, acme, superadmin_client, superadmin_user, log_messages, django_capture_on_commit_callbacks
+):
+    from tests.plugins_tests.conftest import mark_running
+
+    plugin = mark_running(database_plugin(access=[], hooks={"install": False, "org_removed": True}))
+    key = service_account_key(plugin, acme)
+    grant = PluginGrant.objects.get(org=acme)
+    grant_phrase = f"purge-weather-{acme.name}"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.post("/api/admin/plugins/weather/uninstall/")
+        superadmin_client.post("/api/admin/plugins/weather/reinstall/")
+        superadmin_client.delete(f"/api/admin/plugins/weather/grants/{grant.pk}/", {"verification_phrase": grant_phrase}, format="json")
+        superadmin_client.delete("/api/admin/plugins/weather/", {"verification_phrase": "purge-weather"}, format="json")
+
+    lines = _lines(log_messages, "plugins.plugin.") + _lines(log_messages, "plugins.grant.purge")
+    assert {line.split(" ")[0] for line in lines} == {
+        "plugins.plugin.uninstalled",
+        "plugins.plugin.reinstalled",
+        "plugins.plugin.purge_started",
+        "plugins.grant.purge_started",
+    }
+    assert all(_actor(superadmin_user) in line for line in lines)
+    _assert_no_secret(lines, key, grant_phrase, "verification_phrase", app_password_of(PluginDatabase.objects.get()))
+
+
 # ---- a plugin's database record: names only, never its password ----
 
 

@@ -27,8 +27,9 @@ database/migrations/001_places.sql
 database/migrations/002_place_notes.sql
 ```
 
-- Names are `NNN_<name>.sql`: three digits, then lower-case letters, digits and `_`. Each
-  number is used once. Files run in name order.
+- Names are `NNN_<name>.sql`: three digits, then lower-case letters, digits and `_`, 255
+  characters at most for the whole file name. Each number is used once. Files run in name
+  order.
 - Each file is UTF-8 SQL. It may hold any number of statements, and `DO` blocks.
 - Each file runs once. The node records it in its ledger and skips it from then on.
 - All of them together hold at most 64 MiB.
@@ -130,6 +131,12 @@ organization it is a savepoint, and for another organization it raises
 would otherwise outlive it, and leave the rest of the outer transaction working for the other
 organization. Finish one organization's transaction before you start the next.
 
+For the same reason, `org_transaction` needs a connection with no transaction open. psycopg
+opens one by itself for a query you run outside a transaction block, and a savepoint inside it
+would leave the organization set for the rest of that transaction. Such a connection raises
+`ConnectionInTransactionError` before any SQL runs. A connection fresh from the pool never has
+one open, so take one per request, as above.
+
 The Weather sample does exactly this:
 `plugin-samples/weather/database/migrations/001_weather.sql` for the tables, and
 `plugin-samples/weather/backend/src/weather_plugin/database.py` for the transaction.
@@ -172,6 +179,59 @@ refused with "`<file>` changed after it was applied". To change your schema, add
 The ledger is owned by your owner role, so a migration could rewrite it. It catches mistakes,
 such as an edited file, not your own code doing so on purpose. Leave the `_epicstaff` schema
 alone.
+
+## 10. Work across organizations with the job role
+
+Some work is about every organization at once: deleting rows that are past their time, for
+example. Do it as the plugin's job role, `${job_role}` in your migrations, never by looping
+over organizations, and never by giving the app role a policy that sees every organization.
+The job role has only what you grant it, and its own policies:
+
+```sql
+-- The organization policy is for requests only.
+ALTER POLICY org_rows ON places.lookups TO ${app_role};
+
+CREATE INDEX lookups_looked_up_at ON places.lookups (looked_up_at);
+
+-- A DELETE whose WHERE reads a column needs SELECT on it, under the SELECT policies.
+CREATE POLICY expired_rows_read ON places.lookups
+    FOR SELECT TO ${job_role}
+    USING (looked_up_at < now() - interval '1 day');
+CREATE POLICY expired_rows_delete ON places.lookups
+    FOR DELETE TO ${job_role}
+    USING (looked_up_at < now() - interval '1 day');
+
+GRANT USAGE ON SCHEMA places TO ${job_role};
+GRANT SELECT (looked_up_at), DELETE ON places.lookups TO ${job_role};
+```
+
+- **Put the rule in the policy.** The job role can then see and delete only expired rows,
+  whatever its statements say, and read nothing but the timestamp.
+- **Narrow the organization policy to the app role.** A policy without `TO` applies to every
+  role, the job role included. A job transaction sets no organization, but nothing should let a
+  live row through if one were set.
+- **Index the column the rule reads.** The work spans every organization, so the index starts
+  with that column, not with `org_id`.
+
+In your backend, run the work in `job_transaction` from the Python SDK. It switches the
+transaction to the job role, and works for no organization:
+
+```python
+from epicstaff_plugin.database import job_transaction
+
+async with pool.connection() as connection, job_transaction(connection):
+    await connection.execute(
+        "DELETE FROM places.lookups WHERE looked_up_at < now() - interval '1 day'"
+    )
+```
+
+It refuses to run inside an `org_transaction`, and the other way round, and needs a connection
+with no transaction open, like `org_transaction`. Keep each transaction short: for a table that
+can pile up rows, delete in batches, each in a `job_transaction` of its own, so no statement
+comes near your statement timeout. The Weather sample's
+`plugin-samples/weather/database/migrations/002_retention.sql` and
+`plugin-samples/weather/backend/src/weather_plugin/retention.py` delete old rows hourly, 5,000
+at a time.
 
 ## Test your migrations before you upload
 

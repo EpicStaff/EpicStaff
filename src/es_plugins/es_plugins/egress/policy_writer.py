@@ -15,7 +15,9 @@ outlives the agent that issued it.
 
 Both files are mode 0644 and replaced atomically (temporary file, fsync, rename, fsync of the
 directory), so the proxy never reads part of one. A new password works within about a second; a
-removed password or host stops working within about 30 s, the proxy's cache times.
+removed password or host stops working within about 30 s, the proxy's cache times. Squid's
+password helper reads its file again only when the file's modification time, in whole seconds,
+changes, so each new password file is dated at least a second after the one it replaces.
 
 No password, hash or host list is ever logged; `plugins.egress.policy_written` gives counts.
 """
@@ -24,6 +26,7 @@ import asyncio
 import json
 import os
 import secrets
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,8 +39,13 @@ from es_plugins.descriptors import write_all
 PASSWORDS_FILE_NAME = "passwords"
 HOSTS_FILE_NAME = "hosts.json"
 # Where plugins reach the proxy, on plugins-network.
-EGRESS_PROXY_ADDRESS = "plugins_egress:3128"
-BCRYPT_ROUNDS = 10
+EGRESS_PROXY_HOST = "plugins_egress"
+EGRESS_PROXY_PORT = 3128
+EGRESS_PROXY_ADDRESS = f"{EGRESS_PROXY_HOST}:{EGRESS_PROXY_PORT}"
+# The passwords are 192-bit random tokens, which no cost factor makes harder to guess. The proxy
+# checks a hash for every request it is sent, so a higher cost would only let one plugin's flood
+# of wrong passwords slow everyone's outbound access. 4 is bcrypt's lowest cost.
+BCRYPT_ROUNDS = 4
 # 32 URL-safe characters: the password sits in the userinfo of the plugin's proxy URL.
 PASSWORD_BYTES = 24
 POLICY_FILE_MODE = 0o644
@@ -57,8 +65,8 @@ class EgressPolicyWriter:
     def __init__(self, directory: Path):
         self._directory = directory
         self._passwords: dict[str, _ProxyPassword] = {}
+        self._hosts: dict[str, list[str]] = {}
         self._hosts_text: str | None = None
-        self._host_count = 0
         # One write at a time; each writes the whole current state, so the last one wins.
         self._write_lock = asyncio.Lock()
 
@@ -78,15 +86,8 @@ class EgressPolicyWriter:
         Raises:
             EgressPolicyError: The file could not be replaced.
         """
-        text = json.dumps(
-            {key: list(value) for key, value in hosts.items()}, sort_keys=True, indent=2
-        )
-        if text == self._hosts_text:
-            return
         async with self._write_lock:
-            await self._replace(HOSTS_FILE_NAME, text + "\n")
-            self._hosts_text = text
-            self._host_count = sum(len(value) for value in hosts.values())
+            await self._write_hosts_locked({key: list(value) for key, value in hosts.items()})
         self._log_written()
 
     async def issue_password(self, identifier: str) -> str:
@@ -104,8 +105,15 @@ class EgressPolicyWriter:
         # Another call for the same plugin may have issued one while this one was hashing.
         if (active := self._passwords.get(identifier)) is not None:
             return active.password
-        self._passwords[identifier] = _ProxyPassword(password, hashed)
-        await self.write_passwords()
+        issued = _ProxyPassword(password, hashed)
+        self._passwords[identifier] = issued
+        try:
+            await self.write_passwords()
+        except EgressPolicyError:
+            # Not in the file, so not usable: a later start issues a new one.
+            if self._passwords.get(identifier) is issued:
+                del self._passwords[identifier]
+            raise
         return password
 
     def forget_password(self, identifier: str) -> bool:
@@ -125,6 +133,24 @@ class EgressPolicyWriter:
         if self.forget_password(identifier):
             await self.write_passwords()
 
+    async def remove_plugin(self, identifier: str) -> None:
+        """The plugin is being removed from the node: drop its password and its host list.
+
+        Doing it again changes nothing. `Reconciler.apply` already leaves a removed plugin out of
+        `hosts.json`; this also covers a removal the agent resumes after a restart.
+
+        Raises:
+            EgressPolicyError: A policy file could not be replaced.
+        """
+        await self.remove_password(identifier)
+        async with self._write_lock:
+            # Taken from the current list under the lock, so a newer list is never overwritten.
+            if identifier in self._hosts:
+                await self._write_hosts_locked(
+                    {key: value for key, value in self._hosts.items() if key != identifier}
+                )
+        self._log_written()
+
     async def write_passwords(self) -> None:
         """Write the password file as the passwords in memory are now.
 
@@ -136,12 +162,26 @@ class EgressPolicyWriter:
                 f"{identifier}:{self._passwords[identifier].bcrypt_hash}\n"
                 for identifier in sorted(self._passwords)
             )
-            await self._replace(PASSWORDS_FILE_NAME, lines)
+            await self._replace(PASSWORDS_FILE_NAME, lines, dated_after_previous=True)
         self._log_written()
 
-    async def _replace(self, name: str, text: str) -> None:
+    async def _write_hosts_locked(self, hosts: dict[str, list[str]]) -> None:
+        text = json.dumps(hosts, sort_keys=True, indent=2)
+        if text == self._hosts_text:
+            return
+        await self._replace(HOSTS_FILE_NAME, text + "\n")
+        self._hosts = hosts
+        self._hosts_text = text
+
+    async def _replace(self, name: str, text: str, *, dated_after_previous: bool = False) -> None:
         try:
-            await asyncio.to_thread(replace_atomically, self._directory, name, text.encode())
+            await asyncio.to_thread(
+                replace_atomically,
+                self._directory,
+                name,
+                text.encode(),
+                dated_after_previous=dated_after_previous,
+            )
         except OSError as error:
             raise EgressPolicyError(
                 f"the egress policy file {self._directory / name} cannot be written: {error}"
@@ -151,12 +191,19 @@ class EgressPolicyWriter:
         logger.debug(
             "plugins.egress.policy_written users={} hosts={}",
             len(self._passwords),
-            self._host_count,
+            sum(len(hosts) for hosts in self._hosts.values()),
         )
 
 
-def replace_atomically(directory: Path, name: str, content: bytes) -> None:
-    """Replace `directory/name` with `content` (mode 0644) so no reader ever sees part of it."""
+def replace_atomically(
+    directory: Path, name: str, content: bytes, *, dated_after_previous: bool = False
+) -> None:
+    """Replace `directory/name` with `content` (mode 0644) so no reader ever sees part of it.
+
+    With `dated_after_previous`, the new file's modification time is a whole second after the
+    file it replaces (or now, if that is later), for a reader that reloads only when the whole
+    seconds change.
+    """
     directory_descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
         temporary_name = f".{name}.{secrets.token_hex(8)}"
@@ -169,18 +216,36 @@ def replace_atomically(directory: Path, name: str, content: bytes) -> None:
         try:
             write_all(descriptor, content)
             os.fchmod(descriptor, POLICY_FILE_MODE)
+            if dated_after_previous:
+                modified = _whole_second_after(directory_descriptor, name)
+                os.utime(descriptor, (modified, modified))
             os.fsync(descriptor)
         except BaseException:
             os.unlink(temporary_name, dir_fd=directory_descriptor)
             raise
         finally:
             os.close(descriptor)
-        os.replace(
-            temporary_name, name, src_dir_fd=directory_descriptor, dst_dir_fd=directory_descriptor
-        )
+        try:
+            os.replace(
+                temporary_name,
+                name,
+                src_dir_fd=directory_descriptor,
+                dst_dir_fd=directory_descriptor,
+            )
+        except BaseException:
+            os.unlink(temporary_name, dir_fd=directory_descriptor)
+            raise
         os.fsync(directory_descriptor)
     finally:
         os.close(directory_descriptor)
+
+
+def _whole_second_after(directory_descriptor: int, name: str) -> int:
+    try:
+        previous = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False).st_mtime
+    except FileNotFoundError:
+        return int(time.time())
+    return max(int(time.time()), int(previous) + 1)
 
 
 def _bcrypt_hash(password: str) -> str:

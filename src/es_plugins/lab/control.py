@@ -9,6 +9,7 @@ plugins require.
 Lab controls (not part of the node API):
 - GET  /lab/reports                    the node's last report
 - POST /lab/placements/<id>            change a placement (JSON: field -> value; "runtime.x")
+- POST /lab/placements/<id>/remove     move a placement to the desired state's removals
 - GET  /lab/context?plugin=&path=      a context for GET <path> on that plugin
 - POST /lab/service-accounts/<id>      the organizations a placement's runtime file holds a key
                                        for (JSON list of ids; takes effect at the next fetch)
@@ -67,6 +68,8 @@ signers = {
     for identifier in PLUGINS
 }
 placements: dict[int, dict] = {}
+# placement id -> the DesiredRemoval the node is sent for it.
+removals: dict[int, dict] = {}
 last_report: dict = {}
 # placement id -> the organizations its runtime file lists in service_accounts.
 service_account_orgs: dict[int, list[int]] = {1: [7]}
@@ -117,7 +120,12 @@ def desired_state() -> dict:
         {**placement, "hook_jobs": pending_hook_jobs(placement_id)}
         for placement_id, placement in placements.items()
     ]
-    body = {"format": 1, "node": {"name": "lab-node"}, "placements": listed}
+    body = {
+        "format": 1,
+        "node": {"name": "lab-node"},
+        "placements": listed,
+        "removals": [removal for _, removal in sorted(removals.items())],
+    }
     revision = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
     return {**body, "revision": revision, "generated_at": datetime.now(UTC).isoformat()}
 
@@ -240,6 +248,20 @@ async def lab_change(request: web.Request) -> web.Response:
     return web.json_response(placement)
 
 
+async def lab_remove(request: web.Request) -> web.Response:
+    placement = placements.pop(int(request.match_info["placement_id"]))
+    removal = {
+        "placement_id": placement["placement_id"],
+        "plugin_identifier": placement["plugin_identifier"],
+        "unix_uid": placement["runtime"]["unix_uid"],
+        "port": placement["runtime"]["port"],
+        "generation": placement["restart_generation"],
+        "database": None,
+    }
+    removals[placement["placement_id"]] = removal
+    return web.json_response(removal)
+
+
 async def lab_service_accounts(request: web.Request) -> web.Response:
     service_account_orgs[int(request.match_info["placement_id"])] = await request.json()
     return web.json_response(service_account_orgs)
@@ -274,6 +296,7 @@ build_placements()
 app = web.Application(client_max_size=1024 * 1024 * 1024)
 app.router.add_get("/lab/reports", lab_reports)
 app.router.add_post("/lab/placements/{placement_id}", lab_change)
+app.router.add_post("/lab/placements/{placement_id}/remove", lab_remove)
 app.router.add_get("/lab/context", lab_context)
 app.router.add_post("/lab/service-accounts/{placement_id}", lab_service_accounts)
 app.router.add_post("/lab/hook-jobs", lab_add_hook_job)

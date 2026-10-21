@@ -1,10 +1,11 @@
-"""SuperAdmin plugin management: upload, review, approve or reject, list, grant.
+"""SuperAdmin plugin management: upload, review, approve or reject, list, grant, delete.
 
 Deployment-wide and JWT-only. The org is data here (a grant's organization comes from the
 body), never the `X-Organization-Id` header, which the frontend does not send on /admin/.
 """
 
 from django.db.models.functions import Lower
+from drf_spectacular.utils import extend_schema
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.views.cross_org_base import CrossOrgAdminPagination
@@ -18,6 +19,7 @@ from plugins.exceptions import PackageTooLargeError, PluginNotFoundError, Plugin
 from plugins.lifecycle.grant_service import PluginGrantService
 from plugins.lifecycle.hook_job_service import HookJobService
 from plugins.lifecycle.installation_service import PluginInstallationService, max_package_bytes
+from plugins.lifecycle.plugin_purge_service import PluginPurgeService
 from plugins.models import Plugin, PluginGrant, PluginPackage
 from plugins.ownership.owned_resource_summary import with_owned_resource_counts
 from plugins.serializers.admin import (
@@ -29,6 +31,7 @@ from plugins.serializers.admin import (
     PluginGrantSerializer,
     PluginSummarySerializer,
 )
+from plugins.serializers.purge import VerificationPhraseSerializer
 
 ADMIN_PERMISSIONS = [IsAuthenticated, IsSuperadmin, DenyApiKeyAuth]
 # Pinned rather than inherited from the defaults, so no plugin credential is ever read here.
@@ -143,8 +146,16 @@ class PluginDetailView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
+    @extend_schema(responses=PluginDetailSerializer)
     def get(self, request, identifier: str):
-        return Response(PluginDetailSerializer(_plugin_or_404(identifier)).data)
+        return Response(plugin_details(identifier))
+
+    @extend_schema(request=VerificationPhraseSerializer, responses={202: PluginDetailSerializer})
+    def delete(self, request, identifier: str):
+        """Delete the plugin for good: every organization's data, its database and its files.
+        Irreversible: the body carries the phrase the purge preview shows."""
+        PluginPurgeService().request(identifier, request.data, request.user)
+        return Response(plugin_details(identifier), status=status.HTTP_202_ACCEPTED)
 
 
 class PluginGrantListView(generics.ListAPIView):
@@ -186,6 +197,11 @@ class PluginGrantRetryHookView(APIView):
     def post(self, request, identifier: str, grant_id: int):
         grant = HookJobService().retry(identifier, grant_id, request.user)
         return Response(grant_details(grant.pk), status=status.HTTP_202_ACCEPTED)
+
+
+def plugin_details(identifier: str) -> dict:
+    """A plugin as its detail page shows it, read again after a change."""
+    return PluginDetailSerializer(_plugin_or_404(identifier)).data
 
 
 def grant_details(grant_id: int) -> dict:

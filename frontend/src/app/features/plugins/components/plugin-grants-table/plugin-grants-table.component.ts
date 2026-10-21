@@ -1,5 +1,5 @@
-import { DatePipe, DOCUMENT } from '@angular/common';
-import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
+import { DatePipe, DOCUMENT, formatDate } from '@angular/common';
+import { Component, computed, DestroyRef, inject, input, LOCALE_ID, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import {
@@ -19,21 +19,22 @@ import { catchError, EMPTY, expand, filter, finalize, Observable, of, switchMap,
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ToastService } from '../../../../services/notifications';
-import { PluginGrant, PluginGrantAction } from '../../models/plugin-admin.model';
+import { PluginGrant, PluginGrantAction, PluginOrgRemovedJob, PluginState } from '../../models/plugin-admin.model';
 import { PluginDialogsService } from '../../services/plugin-dialogs.service';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import {
     PLUGIN_GRANT_ACTION_LABELS,
-    PLUGIN_GRANT_STATE_LABELS,
     PluginBadgeTone,
+    pluginGrantStateLabel,
     pluginGrantStateTone,
 } from '../../utils/plugin-display.util';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
 import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
+import { PluginDataRemovalActionsComponent } from '../plugin-data-removal-actions/plugin-data-removal-actions.component';
 
 export const PLUGIN_GRANTS_PAGE_SIZE = 20;
 
-/** How often the table asks again while an install hook runs in one of its rows. */
+/** How often the table asks again while one of its rows installs or deletes its data. */
 export const PLUGIN_GRANTS_POLL_MS = 5000;
 
 const COLUMNS: AppTableColumnDef[] = [
@@ -57,7 +58,19 @@ const GRANT_ACTION_BUTTON_TYPES: Readonly<Record<PluginGrantAction, GrantActionB
     suspend: 'outline-danger',
     resume: 'outline-primary',
     retry_install: 'outline-primary',
+    purge: 'outline-danger',
 };
+
+/** How a deleting row tells where the plugin is with deleting its own data in the organization. */
+interface DataRemovalLine {
+    job: PluginOrgRemovedJob;
+    message: string;
+    /** "Attempt 2 · next try 10:42"; `null` when there is nothing to add. */
+    progress: string | null;
+    /** The error of the last failed attempt while the job retries by itself. */
+    lastError: string | null;
+    failed: boolean;
+}
 
 /** What the table says once a grant action went through: `warning` when the grant still needs something done. */
 interface GrantActionToast {
@@ -70,7 +83,7 @@ interface ConfirmedGrantAction {
     confirmation: ConfirmationDialogData;
     request: () => Observable<PluginGrant>;
     /** The toast for the grant as the server answered with it. */
-    successToast: (updated: PluginGrant) => GrantActionToast;
+    resultToast: (updated: PluginGrant) => GrantActionToast;
     /** Whether the plugin's count of active grants may have changed (the page reloads the plugin). */
     changesActiveCount: boolean;
     failureFallback: string;
@@ -80,13 +93,15 @@ interface ConfirmedGrantAction {
  * The organizations a plugin is granted to, a page at a time, and the Grant action.
  *
  * A grant whose install hook runs shows "Installing…" ("Waiting for the plugin to start" until the plugin claims the
- * hook), and the table asks for its page again every few seconds (not while the browser tab is hidden) until no row
- * installs any more. Loads and polls are one pipeline: a new page or a reload (after a grant or a lifecycle action)
- * restarts it, so an answer still on its way never overwrites a newer one. A failed install shows the hook's error; a
- * suspended grant shows since when and until when its data is kept.
+ * hook); a grant whose data is being deleted shows "Deleting data…", where the plugin is with deleting its own data
+ * (with Retry and Skip as that job allows), and what EpicStaff could not delete yet. The table asks for its page again
+ * every few seconds (not while the browser tab is hidden) until no row installs or deletes any more. Loads and polls
+ * are one pipeline: a new page, a reload (after a grant or a lifecycle action) or a change of the plugin's state
+ * (which changes what every grant allows) restarts it, so an answer still on its way never overwrites a newer one. A
+ * failed install shows the hook's error; a suspended grant shows since when and until when its data is kept.
  *
  * A row's buttons are exactly the grant's `allowed_actions`, in the server's order: the server owns the state machine.
- * "Suspend…" opens the suspend preview; "Resume" and "Retry install" ask for confirmation first.
+ * "Suspend…" and "Delete data…" open their previews; "Resume" and "Retry install" ask for confirmation first.
  */
 @Component({
     selector: 'app-plugin-grants-table',
@@ -99,6 +114,7 @@ interface ConfirmedGrantAction {
         MatTooltip,
         PaginationControlsComponent,
         PluginBadgeComponent,
+        PluginDataRemovalActionsComponent,
         Spinner2Component,
     ],
     templateUrl: './plugin-grants-table.component.html',
@@ -109,6 +125,8 @@ export class PluginGrantsTableComponent {
     readonly pluginName = input.required<string>();
     /** Only a running plugin can be granted. */
     readonly canGrant = input(false);
+    /** What each grant allows depends on the plugin's state too, so the grants are loaded again when it changes. */
+    readonly pluginState = input<PluginState | null>(null);
     /** A grant was made or changed state here, so the plugin's count of active grants may have changed. */
     readonly grantsChanged = output<void>();
 
@@ -124,10 +142,20 @@ export class PluginGrantsTableComponent {
     private readonly actionButtonsById = computed(
         () => new Map(this.grants().map((grant) => [grant.id, toActionButtons(grant)] as const))
     );
+    private readonly dataRemovalsById = computed(() => {
+        const pluginName = this.pluginName();
+        const lines = new Map<number, DataRemovalLine>();
+        for (const grant of this.grants()) {
+            const line = grant.state === 'purging' ? this.toDataRemovalLine(grant, pluginName) : null;
+            if (line) lines.set(grant.id, line);
+        }
+        return lines;
+    });
     private readonly reloads = signal(0);
     private readonly request = computed(() => ({
         identifier: this.identifier(),
         page: this.page(),
+        pluginState: this.pluginState(),
         reload: this.reloads(),
     }));
 
@@ -139,12 +167,14 @@ export class PluginGrantsTableComponent {
     private readonly confirmation = inject(ConfirmationDialogService);
     private readonly toast = inject(ToastService);
     private readonly document = inject(DOCUMENT);
+    private readonly locale = inject(LOCALE_ID);
     private readonly destroyRef = inject(DestroyRef);
     /** One handler per action, so a new action does not build until it has one. */
     private readonly actionHandlers: Readonly<Record<PluginGrantAction, (grant: PluginGrant) => void>> = {
         suspend: (grant) => this.openSuspend(grant),
         resume: (grant) => this.resume(grant),
         retry_install: (grant) => this.retryInstall(grant),
+        purge: (grant) => this.openPurge(grant),
     };
 
     constructor() {
@@ -172,7 +202,7 @@ export class PluginGrantsTableComponent {
                     return fetchPage().pipe(
                         tap(() => this.isLoading.set(false)),
                         // After a failed answer the rows shown decide, so one failure does not stop the polling.
-                        expand((response) => (isInstalling(response?.results ?? this.grants()) ? nextPoll() : EMPTY))
+                        expand((response) => (needsPolling(response?.results ?? this.grants()) ? nextPoll() : EMPTY))
                     );
                 }),
                 takeUntilDestroyed()
@@ -189,7 +219,7 @@ export class PluginGrantsTableComponent {
     }
 
     protected stateLabel(grant: PluginGrant): string {
-        return PLUGIN_GRANT_STATE_LABELS[grant.state];
+        return pluginGrantStateLabel(grant);
     }
 
     protected stateTone(grant: PluginGrant): PluginBadgeTone {
@@ -207,6 +237,11 @@ export class PluginGrantsTableComponent {
     /** The install hook's own error; the grant's copy of it when the job has none. */
     protected installError(grant: PluginGrant): string {
         return grant.install_hook?.error ?? grant.last_hook_error ?? 'The install hook failed.';
+    }
+
+    /** Where the plugin is with deleting its own data for a deleting grant; `null` when it has nothing to delete. */
+    protected dataRemovalOf(grant: PluginGrant): DataRemovalLine | null {
+        return this.dataRemovalsById().get(grant.id) ?? null;
     }
 
     protected keyLastUsed(grant: PluginGrant): string {
@@ -267,6 +302,22 @@ export class PluginGrantsTableComponent {
             });
     }
 
+    private openPurge(grant: PluginGrant): void {
+        const pluginName = this.pluginName();
+        this.dialogs
+            .openGrantPurge({ identifier: this.identifier(), pluginName, grant })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((purging) => {
+                if (purging) {
+                    this.replaceGrant(purging);
+                    this.toast.success(`Deleting ${pluginName}'s data in ${grant.organization.name}.`);
+                    this.grantsChanged.emit();
+                }
+                // Also after Cancel: the dialog may have been refused because the grant moved meanwhile.
+                this.reload();
+            });
+    }
+
     private resume(grant: PluginGrant): void {
         const pluginName = this.pluginName();
         const organizationName = grant.organization.name;
@@ -282,7 +333,7 @@ export class PluginGrantsTableComponent {
             },
             request: () => this.storage.resumeGrant(this.identifier(), grant.id),
             // A grant suspended while it was installing comes back with its install failed.
-            successToast: (updated) =>
+            resultToast: (updated) =>
                 updated.state === 'install_failed'
                     ? {
                           tone: 'warning',
@@ -306,7 +357,7 @@ export class PluginGrantsTableComponent {
                 cancelText: 'Cancel',
             },
             request: () => this.storage.retryInstallHook(this.identifier(), grant.id),
-            successToast: () => ({
+            resultToast: () => ({
                 tone: 'success',
                 message: `${pluginName} is installing in ${organizationName} again.`,
             }),
@@ -331,7 +382,7 @@ export class PluginGrantsTableComponent {
             .subscribe({
                 next: (updated) => {
                     this.replaceGrant(updated);
-                    const toast = run.successToast(updated);
+                    const toast = run.resultToast(updated);
                     if (toast.tone === 'warning') this.toast.warning(toast.message);
                     else this.toast.success(toast.message);
                     if (run.changesActiveCount) this.grantsChanged.emit();
@@ -346,16 +397,61 @@ export class PluginGrantsTableComponent {
             });
     }
 
-    /** Shows a page of grants; tells the page when a grant on it changed state since the last time it was shown. */
+    /**
+     * Shows a page of grants; tells the page when a grant on it changed state since the last time it was shown, or a
+     * grant shown deleting its data is gone (its deletion finished).
+     */
     private show(response: ApiGetRequest<PluginGrant>): void {
         const previous = this.grantsById();
+        const answered = new Set(response.results.map((grant) => grant.id));
         const stateChanged = response.results.some((grant) => {
             const shown = previous.get(grant.id);
             return shown !== undefined && shown.state !== grant.state;
         });
+        const purgeFinished = [...previous.values()].some(
+            (grant) => grant.state === 'purging' && !answered.has(grant.id)
+        );
         this.grants.set(response.results);
         this.count.set(response.count);
-        if (stateChanged) this.grantsChanged.emit();
+        if (stateChanged || purgeFinished) this.grantsChanged.emit();
+    }
+
+    /** Nothing for a grant without a data removal, or once the plugin has finished or skipped it. */
+    private toDataRemovalLine(grant: PluginGrant, pluginName: string): DataRemovalLine | null {
+        const job = grant.org_removed_hook;
+        if (!job) return null;
+        switch (job.state) {
+            case 'pending':
+            case 'running':
+                return {
+                    job,
+                    message: `${pluginName} is deleting its data`,
+                    progress: this.dataRemovalProgress(job),
+                    lastError: job.error,
+                    failed: false,
+                };
+            case 'failed':
+                return {
+                    job,
+                    message: `${pluginName} could not delete its data: ${job.error ?? 'no reason was given'}`,
+                    progress: null,
+                    lastError: null,
+                    failed: true,
+                };
+            case 'succeeded':
+            case 'skipped':
+                return null;
+        }
+    }
+
+    /** "Attempt 2 · next try 10:42": the attempt once one was made, the next try while one is planned. */
+    private dataRemovalProgress(job: PluginOrgRemovedJob): string | null {
+        const parts: string[] = [];
+        if (job.attempt > 0) parts.push(`Attempt ${job.attempt}`);
+        if (job.state === 'pending' && job.next_attempt_at) {
+            parts.push(`next try ${formatDate(job.next_attempt_at, 'shortTime', this.locale)}`);
+        }
+        return parts.length > 0 ? parts.join(' · ') : null;
     }
 
     private replaceGrant(updated: PluginGrant): void {
@@ -372,8 +468,9 @@ export class PluginGrantsTableComponent {
     }
 }
 
-function isInstalling(grants: readonly PluginGrant[]): boolean {
-    return grants.some((grant) => grant.state === 'granting');
+/** A row is installing or deleting its data, which the server finishes on its own. */
+function needsPolling(grants: readonly PluginGrant[]): boolean {
+    return grants.some((grant) => grant.state === 'granting' || grant.state === 'purging');
 }
 
 /** The grant's allowed actions as buttons, in the server's order; an action this page does not know is left out. */

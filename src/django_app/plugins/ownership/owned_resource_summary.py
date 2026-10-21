@@ -3,6 +3,7 @@
 from collections import defaultdict
 
 from django.contrib.contenttypes.models import ContentType
+from django.db.models import QuerySet
 
 from plugins.models import PluginGrant, PluginOwnedResource
 from plugins.ownership.existing_owned import existing_owned_counts, owned_resource_counts_by_grant
@@ -42,10 +43,13 @@ def owned_resource_summary(grant: PluginGrant) -> list[dict]:
     a deleted resource leaves behind: one query for the kinds present, then one per kind. A
     kind without a label is left out.
     """
+    return summarize_owned(PluginOwnedResource.objects.filter(grant=grant))
+
+
+def summarize_owned(owned: QuerySet[PluginOwnedResource]) -> list[dict]:
+    """`owned_resource_summary` of any set of ownership rows, for instance all of a plugin's."""
     by_content_type: dict[int, int] = defaultdict(int)
-    for (_, content_type_id), count in existing_owned_counts(
-        PluginOwnedResource.objects.filter(grant=grant)
-    ).items():
+    for (_, content_type_id), count in existing_owned_counts(owned).items():
         by_content_type[content_type_id] += count
     summary = []
     for content_type_id, count in by_content_type.items():

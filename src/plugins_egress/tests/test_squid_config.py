@@ -83,7 +83,7 @@ def test_every_page_in_errors_is_one_of_the_refusals():
 def test_proxy_credentials_are_bcrypt_lines_squid_checks_again_every_30_seconds():
     assert directives("auth_param") == [
         "basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/policy/passwords",
-        "basic children 3 startup=1 idle=1",
+        "basic children 16 startup=4 idle=2 queue-size=32 on-persistent-overload=ERR",
         "basic realm plugins-egress",
         "basic credentialsttl 30 seconds",
         "basic casesensitive on",
@@ -93,9 +93,25 @@ def test_proxy_credentials_are_bcrypt_lines_squid_checks_again_every_30_seconds(
 
 def test_the_host_helper_gets_the_user_and_the_host_and_its_answers_live_30_seconds():
     assert directives("external_acl_type") == [
-        "plugin_hosts ttl=30 negative_ttl=30 children-max=3 children-startup=1 %ul %DST "
-        "/usr/local/bin/plugin_host_acl /etc/squid/policy/hosts.json"
+        "plugin_hosts ttl=30 negative_ttl=30 children-max=4 children-startup=1 children-idle=1 "
+        "queue-size=16 %ul %DST /usr/local/bin/plugin_host_acl /etc/squid/policy/hosts.json"
     ]
+
+
+def test_a_flood_of_wrong_passwords_never_stops_squid():
+    """Squid's default for a password check queue overloaded for 3 minutes is to exit."""
+    (children,) = [value for value in directives("auth_param") if value.startswith("basic children ")]
+
+    assert "on-persistent-overload=ERR" in children.split()
+    assert "queue-size=32" in children.split()
+
+
+def test_both_helpers_have_an_explicit_queue():
+    (helper,) = directives("external_acl_type")
+
+    assert "queue-size=16" in helper.split()
+    # Squid 7.6 refuses on-persistent-overload here; a full queue refuses the request instead.
+    assert "on-persistent-overload" not in helper
 
 
 def test_only_port_443_and_connect_are_allowed():

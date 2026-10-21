@@ -18,7 +18,12 @@ from epicstaff_plugin.contracts.hook_api import HookRequest, encode_hook_body
 from epicstaff_plugin.package_layout import PackageFile, build_contents
 from epicstaff_plugin.signing import SecretKey, sign_package
 from epicstaff_plugin.testing import ContextSigner
-from src.shared.models.plugin_nodes import DesiredPlacement, DesiredState, database_names_for
+from src.shared.models.plugin_nodes import (
+    DesiredPlacement,
+    DesiredRemoval,
+    DesiredState,
+    database_names_for,
+)
 
 from es_plugins.agent.launcher_client import SpawnedProcess
 
@@ -222,11 +227,38 @@ def database_section(identifier: str = "weather", **overrides) -> dict:
     }
 
 
-def desired_state(placements: list[DesiredPlacement], node_name: str = "node-1") -> DesiredState:
+def removal(
+    *,
+    placement_id: int = 7,
+    identifier: str = "weather",
+    uid: int = 20001,
+    port: int = 20001,
+    generation: int = 0,
+    database: dict | None = None,
+) -> DesiredRemoval:
+    """A `DesiredRemoval`, without a database unless `database` (see `database_section`)."""
+    return DesiredRemoval.model_validate(
+        {
+            "placement_id": placement_id,
+            "plugin_identifier": identifier,
+            "unix_uid": uid,
+            "port": port,
+            "generation": generation,
+            "database": database,
+        }
+    )
+
+
+def desired_state(
+    placements: list[DesiredPlacement],
+    node_name: str = "node-1",
+    removals: list[DesiredRemoval] = (),
+) -> DesiredState:
     body = {
         "format": 1,
         "node": {"name": node_name},
         "placements": [item.model_dump(mode="json") for item in placements],
+        "removals": [item.model_dump(mode="json") for item in removals],
     }
     revision = sha256_hex(json.dumps(body, sort_keys=True).encode())
     return DesiredState.model_validate(
@@ -244,14 +276,18 @@ def hook_job(job_id: int = 41, organization_id: int = 3, kind: str = "install") 
 
 
 def hook_body(
-    job_id: int = 41, organization_id: int = 3, attempt: int = 1, identifier: str = "weather"
+    job_id: int = 41,
+    organization_id: int = 3,
+    attempt: int = 1,
+    identifier: str = "weather",
+    kind: str = "install",
 ) -> str:
     """The exact JSON text django_app sends as a hook's body."""
     request = HookRequest(
         format=1,
         job_id=job_id,
         attempt=attempt,
-        kind="install",
+        kind=kind,
         org={"id": organization_id, "name": "Acme"},
         plugin={"identifier": identifier, "version": "0.2.0"},
         previous_version=None,
@@ -266,16 +302,17 @@ def hook_invocation(
     attempt: int = 1,
     timeout_seconds: int = 30,
     identifier: str = "weather",
+    kind: str = "install",
 ) -> dict:
     """A `HookInvocation` as django_app answers a claim."""
     return {
         "job_id": job_id,
-        "kind": "install",
+        "kind": kind,
         "attempt": attempt,
         "organization_id": organization_id,
         "timeout_seconds": timeout_seconds,
         "assertion": HOOK_ASSERTION,
-        "body": hook_body(job_id, organization_id, attempt, identifier),
+        "body": hook_body(job_id, organization_id, attempt, identifier, kind),
     }
 
 
@@ -459,6 +496,9 @@ class FakeLauncher:
         self.hook_record = Path(os.devnull)
         self.hook_delay = 0.0
         self.healthy_after = 0.0
+        # Removals: the next ones that find the launcher unreachable, and a refusal for the rest.
+        self.unavailable_removals = 0
+        self.refuse_removal: str | None = None
 
     async def prepare_plugin(self, plugin, uid):
         self.operations.append(("prepare_plugin", plugin, uid))
@@ -513,6 +553,18 @@ class FakeLauncher:
             process.wait()
         return []
 
+    async def remove_plugin(self, plugin, uid, *, timeout_seconds):
+        """Kill the UID's processes and record the request; refuse or fail when told to."""
+        from es_plugins.agent.launcher_client import LauncherError, LauncherUnavailableError
+
+        self.operations.append(("remove_plugin", plugin, uid))
+        if self.unavailable_removals:
+            self.unavailable_removals -= 1
+            raise LauncherUnavailableError("cannot reach the launcher: Connection refused")
+        if self.refuse_removal:
+            raise LauncherError(self.refuse_removal)
+        await self.kill_uid(uid)
+
     async def exit_status(self, pid):
         for processes in self._processes.values():
             for process in processes:
@@ -563,6 +615,8 @@ class RecordingProvisioner:
         self.calls: list[dict] = []
         self.failures: list[Exception] = []
         """Raised by the next calls, one each, first first."""
+        self.ledger: tuple | None = None
+        """The ledger to answer with instead of the migrations' names (rows a plugin wrote)."""
         self._events = events
 
     async def ensure(self, plugin, desired, app_password, migrations):
@@ -576,6 +630,31 @@ class RecordingProvisioner:
         if self.failures:
             raise self.failures.pop(0)
         names = tuple(sorted(migration.name for migration in migrations))
+        ledger = self.ledger if self.ledger is not None else names
         return ProvisionedDatabase(
-            created=len(self.calls) == 1, ledger=names, applied=len(names), size_bytes=8192
+            created=len(self.calls) == 1, ledger=ledger, applied=len(names), size_bytes=8192
         )
+
+
+class RecordingDropper:
+    """The node's `DatabaseDropper` without a server: records each drop, fails when told to."""
+
+    def __init__(self, events: list | None = None):
+        self.drops: list = []
+        self.failures: list[Exception] = []
+        """Raised by the next drops, one each, first first."""
+        self.nothing_left = False
+        """Answer as a drop finding nothing there does (a drop already done)."""
+        self._events = events
+
+    async def drop(self, desired):
+        from es_plugins.database.drop_sequence import DroppedDatabase
+
+        self.drops.append(desired)
+        if self._events is not None:
+            self._events.append(("drop", desired.database_name))
+        if self.failures:
+            raise self.failures.pop(0)
+        if self.nothing_left:
+            return DroppedDatabase(databases=0, roles=0)
+        return DroppedDatabase(databases=1, roles=3)

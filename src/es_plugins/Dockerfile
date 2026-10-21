@@ -53,6 +53,15 @@ COPY --from=builder /app /app
 RUN mkdir -p /var/lib/es_plugins \
     && install -d -m 0710 -o root -g 10000 /var/lib/es_plugins_egress
 
+# nftables for the per-plugin connection caps the entrypoint installs; setpriv (util-linux, in
+# the base image) starts the launcher without the capabilities that installed them.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nftables \
+    && rm -rf /var/lib/apt/lists/* \
+    && nft --version \
+    && command -v setpriv
+COPY --chmod=0755 ./es_plugins/entrypoint.sh /usr/local/bin/es-plugins-entrypoint
+
 # `src.shared` resolves from /app and the service's own package from /app/src/es_plugins.
 # PYTHONSAFEPATH=1 keeps the working directory off sys.path.
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -64,5 +73,6 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 WORKDIR /app/src/es_plugins
 
-# Exec form: the launcher is PID 1, reaps orphans and starts the agent.
-CMD ["python", "-m", "es_plugins.launcher"]
+# The entrypoint installs the connection caps, then execs the launcher, which stays PID 1, reaps
+# orphans and starts the agent.
+ENTRYPOINT ["/usr/local/bin/es-plugins-entrypoint"]

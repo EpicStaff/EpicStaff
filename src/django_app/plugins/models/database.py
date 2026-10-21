@@ -38,10 +38,13 @@ class PluginDatabase(models.Model):
     """
 
     plugin = models.OneToOneField(Plugin, on_delete=models.PROTECT, related_name="database")
+    # No index of its own: the four `(server, ...)` unique constraints lead with it.
     server = models.ForeignKey(
-        PluginDatabaseServer, on_delete=models.PROTECT, related_name="databases"
+        PluginDatabaseServer, on_delete=models.PROTECT, related_name="databases", db_index=False
     )
-    installation_id = models.CharField(max_length=32, unique=True)
+    # Unique through a constraint rather than `unique=True`, which would also index it for
+    # LIKE queries that nothing makes.
+    installation_id = models.CharField(max_length=32)
     database_name = models.CharField(max_length=DATABASE_OBJECT_NAME_LENGTH)
     owner_role = models.CharField(max_length=DATABASE_OBJECT_NAME_LENGTH)
     app_role = models.CharField(max_length=DATABASE_OBJECT_NAME_LENGTH)
@@ -54,6 +57,9 @@ class PluginDatabase(models.Model):
     size_bytes = models.PositiveBigIntegerField(null=True, blank=True)
     last_error = models.CharField(max_length=MAX_LAST_ERROR_LENGTH, null=True, blank=True)
     ready_at = models.DateTimeField(null=True, blank=True)
+    # When the node last reported it failed, until it reports it ready again: a node goes
+    # through `provisioning` on its way back, so the previous state alone would not tell.
+    failed_at = models.DateTimeField(null=True, blank=True)
     limits_restored_at = models.DateTimeField(null=True, blank=True)
     # When the last `database_limit_restored` activity event was written, to write at most
     # one an hour.
@@ -64,9 +70,14 @@ class PluginDatabase(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["server", name], name=f"plugins_database_server_{name}_uniq"
-            )
-            for name in ("database_name", "owner_role", "app_role", "job_role")
+                fields=["installation_id"], name="plugins_database_installation_id_uniq"
+            ),
+            *(
+                models.UniqueConstraint(
+                    fields=["server", name], name=f"plugins_database_server_{name}_uniq"
+                )
+                for name in ("database_name", "owner_role", "app_role", "job_role")
+            ),
         ]
 
     def __str__(self) -> str:

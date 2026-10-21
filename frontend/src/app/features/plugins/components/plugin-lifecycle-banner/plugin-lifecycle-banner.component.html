@@ -1,0 +1,27 @@
+@switch (plugin().state) {
+    @case ('uninstalling') {
+        <p
+            class="banner banner--uninstalled text-body"
+            role="status"
+        >
+            @if (plugin().uninstall_requested_at; as uninstalledAt) {
+                Uninstalled on {{ uninstalledAt | date: 'mediumDate' }}.
+            } @else {
+                Uninstalled.
+            }
+            @if (plugin().purge_after; as purgeAfter) {
+                Its data is kept until <strong>{{ purgeAfter | date: 'mediumDate' }}</strong> ({{ daysLeft() }}).
+            }
+        </p>
+    }
+    @case ('purging') {
+        <p
+            class="banner banner--deleting text-body"
+            role="status"
+            aria-live="polite"
+        >
+            <app-spinner2 [size]="16" />
+            <span>{{ progressText() }}</span>
+        </p>
+    }
+}

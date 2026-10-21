@@ -281,8 +281,9 @@ def test_the_list_is_sorted_by_name_and_summarises_each_plugin(superadmin_client
     assert zebra_summary["state"] == "running" and zebra_summary["pending_package"] is None
     assert set(zebra_summary) == {
         "identifier", "name", "description", "state", "trust", "current_version", "icon_url",
-        "frame_origin", "grant_count", "pending_package", "created_at",
+        "frame_origin", "grant_count", "pending_package", "purge_after", "needs_attention", "created_at",
     }
+    assert (zebra_summary["purge_after"], zebra_summary["needs_attention"]) == (None, False)
 
 
 def test_the_list_runs_a_fixed_number_of_queries(superadmin_client, django_assert_max_num_queries):

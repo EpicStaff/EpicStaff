@@ -3,9 +3,10 @@
 One `HookRunner` per placement takes the oldest listed job once the plugin is ready for it:
 
 - the desired state wants the process running, it runs, and its last health check passed;
-- the runtime file the node last wrote has the credentials revision the desired state names,
-  and lists the job's organization in `service_accounts`, so the plugin holds the
-  service-account key the hook's work needs.
+- the runtime file the node last wrote has the credentials revision the desired state names;
+- for an install job, that runtime file lists the job's organization in `service_accounts`, so
+  the plugin holds the service-account key the hook's work needs. An `org_removed` job does not
+  wait for one: the organization's data is being deleted, and it has no key any more.
 
 Until then the job waits; the runner looks again whenever the desired placement, the runtime
 file or the process's state changes. When it is ready, the runner claims the job from
@@ -52,6 +53,8 @@ RESULT_LONGEST_RETRY_SECONDS = 15.0
 STOPPED_RESULT_SECONDS = 2.0
 RESTARTED_DURING_HOOK = "the plugin restarted during the hook"
 STOPPED_DURING_HOOK = "the plugin stopped during the hook"
+# The hooks whose organization has no service-account key while they run.
+KINDS_WITHOUT_A_KEY = frozenset({"org_removed"})
 
 
 @dataclass(frozen=True)
@@ -165,10 +168,11 @@ class HookRunner:
         placement, written = self._placement, self._written
         if placement.desired_state != "running":
             return None
+        if written is None or written.credentials_revision != placement.credentials_revision:
+            return None
         if (
-            written is None
-            or written.credentials_revision != placement.credentials_revision
-            or job.organization_id not in written.organization_ids
+            job.kind not in KINDS_WITHOUT_A_KEY
+            and job.organization_id not in written.organization_ids
         ):
             return None
         status = self._supervisor.status()

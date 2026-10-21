@@ -54,7 +54,19 @@ BACKEND_SOURCE_DIRECTORY = "backend/src/"
 BACKEND_WHEELS_DIRECTORY = "backend/wheels/"
 BACKEND_REQUIREMENTS = REQUIREMENTS_LOCK_PATH
 DATABASE_DIRECTORY = "database/"
-MIGRATION_PATTERN = re.compile(r"^database/migrations/([0-9]{3})_[a-z0-9][a-z0-9_]*\.sql$")
+MIGRATIONS_DIRECTORY = "database/migrations/"
+# A migration's file name: three digits, its number, then lower-case letters, digits and `_`.
+_MIGRATION_NAME = r"[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql"
+_MIGRATION_NUMBER_LENGTH = 3
+MIGRATION_NAME_PATTERN = f"^{_MIGRATION_NAME}$"
+"""The rule for a migration's file name alone, as a plain pattern string (for validators that
+take one, such as pydantic's `StringConstraints(pattern=...)`). `MIGRATION_PATTERN` is the same
+rule for the file's path in the package."""
+MAX_MIGRATION_NAME_LENGTH = 255
+"""The longest migration file name, counted without the directory. EpicStaff records and shows
+each name, and a file system holds no longer one."""
+MIGRATION_PATTERN = re.compile(rf"^{re.escape(MIGRATIONS_DIRECTORY)}({_MIGRATION_NAME})$")
+"""A migration's path in the package; group 1 is its file name."""
 
 MAX_ENTRIES = 10_000
 MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
@@ -392,9 +404,11 @@ def _placement_problem(path: str, manifest: PluginManifest) -> str | None:
     if path.startswith(DATABASE_DIRECTORY):
         if manifest.database is None:
             return "is under database/, but the manifest has no database section"
-        if MIGRATION_PATTERN.match(path):
-            return None
-        return "is not a migration named database/migrations/NNN_<name>.sql"
+        if not (match := MIGRATION_PATTERN.match(path)):
+            return "is not a migration named database/migrations/NNN_<name>.sql"
+        if len(match.group(1)) > MAX_MIGRATION_NAME_LENGTH:
+            return f"has a file name longer than {MAX_MIGRATION_NAME_LENGTH} characters"
+        return None
     return "is not a file a plugin package may hold"
 
 
@@ -445,7 +459,7 @@ def _migration_problems(files: Mapping[str, PackageFile]) -> list[Problem]:
         if not (match := MIGRATION_PATTERN.match(path)):
             continue
         total_bytes += files[path].size
-        number = match.group(1)
+        number = match.group(1)[:_MIGRATION_NUMBER_LENGTH]
         if number in numbers:
             problems.append(
                 Problem(archive_file_loc(path), f"has the same number as {numbers[number]}")

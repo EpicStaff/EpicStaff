@@ -1,7 +1,9 @@
 """Provisioning a plugin database on a real plugins_db (marker `postgres`), and the node's sessions."""
 
 import asyncio
+import hashlib
 import socket
+from datetime import timedelta
 
 import psycopg
 import pytest
@@ -13,9 +15,12 @@ from es_plugins.database.connections import (
     DatabaseConnector,
     DatabaseProvisioningError,
     DatabaseUnreachableError,
+    describe_error,
 )
+from es_plugins.database import provisioner as provisioner_module
+from es_plugins.database.installation_lookup import installation_marker
 from es_plugins.database.migration_runner import Migration
-from es_plugins.database.provisioner import DatabaseProvisioner, installation_marker
+from es_plugins.database.provisioner import DatabaseProvisioner
 from tests.plugin_databases import (
     ConnectionSpy,
     admin_password,
@@ -257,8 +262,15 @@ async def test_the_admin_connects_only_to_postgres_and_every_session_requires_sc
         (desired.owner_role, desired.database_name)
     ]
     assert all(parameters["options"].startswith("-c search_path=pg_catalog") for parameters in admin_sessions)
+    assert all("-c createrole_self_grant=" in parameters["options"] for parameters in admin_sessions)
     for parameters in spy.connections:
         assert (parameters["require_auth"], parameters["connect_timeout"]) == ("scram-sha-256", 10)
+        # A server that stops answering ends the session within about a minute.
+        assert (parameters["keepalives"], parameters["keepalives_idle"], parameters["tcp_user_timeout"]) == (
+            1,
+            30,
+            60_000,
+        )
 
 
 @pytest.mark.postgres
@@ -344,3 +356,96 @@ async def test_a_server_that_does_not_answer_is_reported_unreachable_without_the
     assert str(unreachable.value).startswith(f"plugins_db at 127.0.0.1:{port} cannot be reached: ")
     assert [line for line in log_lines if line.startswith("plugins.database.failed plugin=weather reason=unreachable ")]
     assert not [line for line in log_lines if password in line or "a" * 43 in line]
+
+
+async def test_an_outage_is_logged_once_however_often_it_is_retried(log_lines):
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    names = database_names_for("weather")
+    desired = DesiredDatabase(
+        server=DesiredDatabaseServer(name="plugins_db", host="127.0.0.1", port=port),
+        installation_id="a" * 32,
+        database_name=names.database,
+        owner_role=names.owner_role,
+        app_role=names.app_role,
+        job_role=names.job_role,
+        connection_limit=3,
+        statement_timeout_seconds=10,
+    )
+    retried = DatabaseProvisioner(DatabaseConnector("p" * 64))
+
+    for _ in range(3):
+        with pytest.raises(DatabaseUnreachableError):
+            await retried.ensure("weather", desired, "a" * 43, [])
+
+    assert len([line for line in log_lines if "reason=unreachable" in line]) == 1
+
+
+@pytest.mark.postgres
+async def test_a_self_grant_setting_on_plugins_admin_gives_it_no_membership_in_a_role_it_creates(plugin_databases):
+    desired = plugin_databases()
+    await as_admin(desired, "ALTER ROLE plugins_admin SET createrole_self_grant = 'set, inherit'")
+    try:
+        await provisioner().ensure("weather", desired, new_app_password(), [a_migration()])
+    finally:
+        await as_admin(desired, "ALTER ROLE plugins_admin RESET createrole_self_grant")
+
+    memberships = (await catalog_snapshot(desired))["memberships"]
+    assert not [row for row in memberships if row[1] == ADMIN and row[3]]
+
+
+@pytest.mark.postgres
+async def test_a_migration_that_opens_its_database_to_everyone_fails_the_provisioning(plugin_databases, log_lines):
+    desired = plugin_databases()
+    grant = Migration(
+        name="001_open.sql",
+        sha256=hashlib.sha256(OPEN_TO_PUBLIC).hexdigest(),
+        content=OPEN_TO_PUBLIC,
+    )
+
+    with pytest.raises(DatabaseProvisioningError) as raised:
+        await provisioner().ensure("weather", desired, new_app_password(), [grant])
+
+    assert raised.value.reason == "assertion"
+    assert "permissions changed during its migrations" in str(raised.value)
+    assert f"PUBLIC can connect to database {desired.database_name}" in str(raised.value)
+
+
+OPEN_TO_PUBLIC = (
+    b"DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO PUBLIC', current_database()); END $$;"
+)
+
+
+@pytest.mark.postgres
+async def test_provisioning_that_runs_too_long_fails_and_its_statement_stops_on_the_server(
+    plugin_databases, monkeypatch
+):
+    desired = plugin_databases()
+    monkeypatch.setattr(provisioner_module, "PROVISIONING_TIMEOUT", timedelta(seconds=3))
+    sleep = Migration(name="001_slow.sql", sha256=hashlib.sha256(b"SELECT pg_sleep(60);").hexdigest(), content=b"SELECT pg_sleep(60);")
+
+    with pytest.raises(DatabaseProvisioningError) as raised:
+        await provisioner().ensure("weather", desired, new_app_password(), [sleep])
+
+    assert raised.value.reason == "migration"
+    assert "did not finish within" in str(raised.value)
+    async with DatabaseConnector(admin_password()).admin_session(desired.server) as admin:
+        for _ in range(50):
+            cursor = await admin.execute(
+                "SELECT count(*) FROM pg_stat_activity WHERE usename = %s", (desired.owner_role,)
+            )
+            if (await cursor.fetchone())[0] == 0:
+                break
+            await asyncio.sleep(0.1)
+        cursor = await admin.execute(
+            "SELECT count(*) FROM pg_stat_activity WHERE usename = %s", (desired.owner_role,)
+        )
+        assert (await cursor.fetchone())[0] == 0
+
+
+def test_an_error_text_a_plugin_chose_stays_on_one_line():
+    error = psycopg.Error("line one\nplugins.database.provisioned plugin=forged\r\x07 end ")
+
+    # A Unicode line separator counts as a line break too.
+    assert describe_error(error) == "line one plugins.database.provisioned plugin=forged end"

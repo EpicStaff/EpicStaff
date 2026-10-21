@@ -139,8 +139,8 @@ class RuntimeCredentialsService:
         superseded or revoked, so the process keeps running on the keys it has.
 
         Raises:
-            PlacementNotFoundError: No such placement on this node, or its plugin has no
-                backend package to run.
+            PlacementNotFoundError: No such placement on this node, its plugin has no
+                backend package to run, or the plugin is being removed from the node.
         """
         with transaction.atomic():
             placement = (
@@ -148,7 +148,12 @@ class RuntimeCredentialsService:
                     "plugin__current_package", "plugin__database"
                 )
                 .defer("plugin__current_package__icon_bytes")
-                .filter(pk=placement_id, node=node, plugin__current_package__isnull=False)
+                .filter(
+                    pk=placement_id,
+                    node=node,
+                    plugin__current_package__isnull=False,
+                    removal_requested_at__isnull=True,
+                )
                 .first()
             )
             if placement is None:

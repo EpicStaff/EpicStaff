@@ -12,7 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from weather_plugin.database import WeatherDatabase
 
-PlaceName = Annotated[str, StringConstraints(min_length=1, max_length=200)]
+# The longest place name Weather keeps. A forecast takes any saved place's name, so its city
+# field has the same limit.
+MAX_PLACE_NAME_LENGTH = 200
+
+PlaceName = Annotated[str, StringConstraints(min_length=1, max_length=MAX_PLACE_NAME_LENGTH)]
 CountryName = Annotated[str, StringConstraints(min_length=1, max_length=100)]
 RegionName = Annotated[str, StringConstraints(max_length=200)]
 Latitude = Annotated[float, Field(ge=-90, le=90)]

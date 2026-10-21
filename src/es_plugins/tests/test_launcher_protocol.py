@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import json
 import os
 import resource
@@ -18,9 +19,10 @@ from es_plugins.disk_usage import DiskUsage
 from es_plugins.launcher import protocol
 from es_plugins.launcher.directory_setup import DirectorySetup
 from es_plugins.launcher.__main__ import agent_environment
-from es_plugins.launcher.kill_by_uid import kill_uid
+from es_plugins.launcher.kill_by_uid import kill_uid, run_as_user
 from es_plugins.launcher.privileged_launcher import (
     PLUGIN_OOM_SCORE_ADJ,
+    PLUGIN_RESOURCE_LIMITS,
     LauncherOperations,
     LauncherRefusalError,
     LauncherServer,
@@ -797,3 +799,117 @@ def test_root_measures_a_plugins_home_as_the_plugin(layout):
 
     assert (usage.files, usage.problem) == (3, None)
     assert usage.bytes >= 3 * 1024 * 1024
+
+
+def test_a_removal_request_is_decoded():
+    request = protocol.decode_request(json.dumps({"operation": "remove_plugin", "plugin": "weather", "uid": PLUGIN_UID}).encode())
+
+    assert request == protocol.RemovePlugin(plugin="weather", uid=PLUGIN_UID)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"plugin": "../weather"}, {"plugin": "Weather"}, {"plugin": ""}, {"uid": 0}, {"uid": -3}, {"unexpected": True}],
+)
+def test_a_removal_of_something_that_is_not_a_plugin_is_refused(overrides):
+    document = {"operation": "remove_plugin", "plugin": "weather", "uid": PLUGIN_UID, **overrides}
+
+    with pytest.raises(ValidationError):
+        protocol.decode_request(json.dumps(document).encode())
+
+
+def test_a_removal_for_a_uid_outside_the_range_is_refused(operations):
+    with pytest.raises(LauncherRefusalError, match="outside PLUGINS_NODE_UID_RANGE"):
+        operations.handle(protocol.RemovePlugin(plugin="weather", uid=PLUGIN_UID + 10), [])
+
+
+MQ_OPEN_AS_PLUGIN = """
+import ctypes, os, sys
+libc = ctypes.CDLL("librt.so.1", use_errno=True)
+libc.mq_open.restype = ctypes.c_int
+descriptor = libc.mq_open(b"/plugin-queue", os.O_CREAT | os.O_RDWR, 0o600, None)
+print(descriptor, ctypes.get_errno())
+"""
+
+
+@pytest.mark.root
+def test_a_plugin_process_cannot_create_a_posix_message_queue(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    setup.prepare_plugin("weather", PLUGIN_UID)
+    read_end, write_end = os.pipe()
+    pid = spawn_process(
+        SpawnSpec(
+            uid=PLUGIN_UID,
+            gid=PLUGIN_UID,
+            argv=[sys.executable, "-I", "-c", MQ_OPEN_AS_PLUGIN],
+            environment={},
+            working_directory=layout.plugin_home("weather"),
+            nice=0,
+            resource_limits=PLUGIN_RESOURCE_LIMITS,
+            oom_score_adj=PLUGIN_OOM_SCORE_ADJ,
+            output_descriptor=write_end,
+        )
+    )
+    os.close(write_end)
+    os.waitpid(pid, 0)
+    with os.fdopen(read_end) as output:
+        descriptor, error = output.read().split()
+
+    # EMFILE: the queue would take more than RLIMIT_MSGQUEUE (0) of the UID's queue memory.
+    assert (int(descriptor), int(error)) == (-1, errno.EMFILE)
+
+
+def _fill_home(home: Path, files: int) -> None:
+    """Runs as the plugin: `files` empty files in HOME, a thousand to a directory."""
+    for index in range(files):
+        directory = home / "many" / str(index // 1000)
+        if index % 1000 == 0:
+            directory.mkdir(parents=True)
+        (directory / str(index)).touch()
+
+
+@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
+@pytest.mark.root
+async def test_the_launcher_answers_other_requests_while_a_removal_deletes_a_large_home(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    running = RunningServer(layout.launcher_socket, operations, agent_uid=os.getuid())
+    removing_client, other_client = LauncherClient(layout.launcher_socket), LauncherClient(layout.launcher_socket)
+    try:
+        await removing_client.prepare_plugin("weather", PLUGIN_UID)
+        assert run_as_user(PLUGIN_UID, lambda: _fill_home(layout.plugin_home("weather"), 50_000))
+        removal = asyncio.create_task(removing_client.remove_plugin("weather", PLUGIN_UID, timeout_seconds=120))
+        await asyncio.sleep(0.05)
+
+        await other_client.exit_status(4_000_000)
+        answered_while_removing = not removal.done()
+        await removal
+    finally:
+        removing_client.close()
+        other_client.close()
+        running.stop()
+
+    assert answered_while_removing
+    assert not os.path.lexists(layout.plugin_home("weather"))
+    assert not os.path.lexists(layout.plugin_code_root("weather"))
+
+
+@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
+@pytest.mark.root
+async def test_a_removal_the_launcher_cannot_finish_comes_back_as_its_reason(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    running = RunningServer(layout.launcher_socket, operations, agent_uid=os.getuid())
+    client = LauncherClient(layout.launcher_socket)
+    try:
+        await client.prepare_plugin("weather", PLUGIN_UID)
+        (layout.plugin_venv("weather", "0.2.0") / "bin").mkdir(parents=True)
+
+        with pytest.raises(LauncherError, match="is not empty"):
+            await client.remove_plugin("weather", PLUGIN_UID, timeout_seconds=60)
+    finally:
+        client.close()
+        running.stop()

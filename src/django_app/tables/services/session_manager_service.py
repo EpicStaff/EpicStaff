@@ -57,6 +57,7 @@ from tables.services.run_admission import (
     RunKind,
     RunSubject,
     assert_run_admitted,
+    assert_still_admitted,
 )
 from tables.services.secrets import (
     UndeclaredSecretError,
@@ -306,8 +307,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         graph = Graph.objects.defer("metadata").select_related("org").get(pk=graph_id)
         # Before anything is written: building the run variables can create
         # persistent-variable rows.
-        run_subject = RunSubject(RunKind.FLOW, graph.pk, graph.org_id)
-        assert_run_admitted(run_subject)
+        admission = assert_run_admitted(RunSubject(RunKind.FLOW, graph.pk, graph.org_id))
         # The server does not require a start node (the editor only hides its delete
         # button); without one, the run needs an entrypoint from its trigger.
         start_node = StartNode.objects.filter(graph_id=graph_id).first()
@@ -366,7 +366,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             # Again just before crew hears of the session: a suspension that committed
             # while it was being built must not reach crew.
-            assert_run_admitted(run_subject)
+            assert_still_admitted(admission)
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,

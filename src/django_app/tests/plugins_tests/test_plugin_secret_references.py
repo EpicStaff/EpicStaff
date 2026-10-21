@@ -5,7 +5,10 @@ an MCP tool's URL, a Python tool's code). If a plugin could reference any of the
 organization's secrets, it could aim one at a server of its own and read the value.
 """
 
+from contextlib import contextmanager
+
 import pytest
+from django.db import connection
 from django.contrib.contenttypes.models import ContentType
 from plugins.identity.service_account_authentication import PluginServiceAccountAuthentication
 from plugins.models import PluginGrant, PluginOwnedResource
@@ -25,6 +28,7 @@ from tables.models.graph_models import PythonNode, StartNode, TelegramTriggerNod
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.webhook_models import WebhookTrigger, WebhookTriggerAuth, WebhookTriggerAuthKind
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.model_serializers.llm_serializers import LLMConfigSerializer
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.services.secrets import secret_service
@@ -368,6 +372,65 @@ def test_a_bulk_save_of_many_nodes_resolves_secrets_use_once(client, own_secret,
 
     assert response.status_code == 200, response.content
     assert use_resolutions.call_count == 1
+
+
+@contextmanager
+def _statements_inside_the_guard_s_lookup():
+    """The SQL run inside `current_ids`, the guard's read of a stored reference, however it is reached."""
+    statements, depth = [], [0]
+    lookup = secret_reference_guard.current_ids
+
+    def counted_lookup(**kwargs):
+        depth[0] += 1
+        try:
+            return lookup(**kwargs)
+        finally:
+            depth[0] -= 1
+
+    def record(execute, sql, params, many, context):
+        if depth[0]:
+            statements.append(sql)
+        return execute(sql, params, many, context)
+
+    secret_reference_guard.current_ids = counted_lookup
+    try:
+        with connection.execute_wrapper(record):
+            yield statements
+    finally:
+        del secret_reference_guard.current_ids
+
+
+def test_the_guard_s_lookups_cost_the_same_for_10_or_30_nodes_a_plugin_saves(client, own_secret):
+    def guard_statements(count):
+        graph = Graph.objects.get(pk=client.post("/api/graphs/", {"name": f"Flow of {count}"}, format="json").json()["id"])
+        nodes = [_python_node(graph, own_secret, f"node_{index}") for index in range(count)]
+        with _statements_inside_the_guard_s_lookup() as statements:
+            response = _bulk_save(client, graph, nodes)
+        assert response.status_code == 200, response.content
+        return len(statements)
+
+    assert guard_statements(10) == guard_statements(30) == 0
+
+
+def test_a_stored_foreign_key_is_compared_by_its_id_without_loading_the_secret(acme, own_secret, django_assert_num_queries):
+    config_id = LLMConfig.objects.create(custom_name="By id", org=acme, api_key_secret=own_secret).pk
+    serializer = LLMConfigSerializer(LLMConfig.objects.get(pk=config_id))
+
+    with django_assert_num_queries(0):
+        stored = secret_reference_guard.current_ids(serializer=serializer, source="api_key_secret")
+
+    assert stored == frozenset({own_secret.pk})
+
+
+def test_a_webhook_trigger_s_stored_secret_costs_only_its_auth_row(acme, own_secret, django_assert_num_queries):
+    trigger = WebhookTrigger.objects.create(path="by-id", org=acme)
+    WebhookTriggerAuth.objects.create(trigger=trigger, kind=WebhookTriggerAuthKind.WEBHOOK, secret=own_secret)
+    serializer = WebhookTriggerNestedSerializer(WebhookTrigger.objects.get(pk=trigger.pk))
+
+    with django_assert_num_queries(1):
+        stored = secret_reference_guard.current_ids(serializer=serializer, source="auth_secret_id")
+
+    assert stored == frozenset({own_secret.pk})
 
 
 # ---- a replace-import never re-links an organization's bot key ----

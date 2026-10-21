@@ -11,7 +11,8 @@ Two groups, because the limits watchdog treats them differently:
   - the database is owned by the owner, PUBLIC cannot connect to it, and exactly the five
     roles of `CONNECT_HOLDERS` can.
 - **Drift** (`drift`), which the platform restores itself: the app role's limits
-  (`app_role_limits`), and the owner being able to log in.
+  (`app_role_limits`), and the owner being able to log in or having a session open outside a
+  migration run.
 
 `check` refuses either; the provisioner runs it once everything is set up.
 """
@@ -77,9 +78,12 @@ class Drift:
     """Names of the app role's limits that differ from the platform's (`app_role_limits`)."""
 
     owner_can_login: bool
+    owner_sessions: int
+    """Sessions logged in as the owner. Outside a migration run (the limits watchdog never checks
+    a database while it is being provisioned) there should be none."""
 
     def __bool__(self) -> bool:
-        return bool(self.app_limits) or self.owner_can_login
+        return bool(self.app_limits) or self.owner_can_login or self.owner_sessions > 0
 
 
 def expected_memberships(desired: DesiredDatabase) -> Counter[Membership]:
@@ -143,9 +147,14 @@ class ProvisioningAssertions:
             (desired.owner_role,),
         )
         owner = await cursor.fetchone()
+        cursor = await admin.execute(
+            "SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE usename = %s",
+            (desired.owner_role,),
+        )
         return Drift(
             app_limits=await drifted_limits(admin, desired),
             owner_can_login=owner is not None and owner[0],
+            owner_sessions=(await cursor.fetchone())[0],
         )
 
 

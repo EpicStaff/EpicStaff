@@ -73,8 +73,8 @@ export interface SavedPlace extends PlaceCandidate {
     created_at: string;
 }
 
-/** The longest city name the backend takes. */
-export const MAX_CITY_LENGTH = 100;
+/** The longest city name the backend takes: a saved place's name, so every place can be forecast. */
+export const MAX_CITY_LENGTH = 200;
 /** The longest API key the backend takes. */
 export const MAX_API_KEY_LENGTH = 4096;
 /** The longest place name the search takes. */

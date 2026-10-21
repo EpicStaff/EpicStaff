@@ -12,21 +12,22 @@ import pytest
 import uvicorn
 
 from asgi_client import request
+import epicstaff_plugin.hooks
 from epicstaff_plugin import serve
 from epicstaff_plugin.contracts.gateway_context import CONTEXT_HEADER
+from epicstaff_plugin.hooks import HookRegistry
 from epicstaff_plugin.testing import HookSigner
 
 SDK_ROOT = Path(__file__).resolve().parents[1]
 
-# Registers its hook on the process-wide registry, as a real plugin does at import. It takes
-# the org_removed kind: the Weather sample's tests register the install hook in this process.
+# Registers its hook on the process-wide registry, as a real plugin does at import.
 APP_MODULE = '''
 from epicstaff_plugin.gateway import context_from_scope
 from epicstaff_plugin.hooks import hook_registry
 
 
 @hook_registry.on_org_removed
-async def org_removed(request, epicstaff):
+async def org_removed(request):
     if request.org.id == 13:
         raise RuntimeError("cannot remove organization 13")
 
@@ -45,12 +46,21 @@ async def app(scope, receive, send):
 
 @pytest.fixture
 def plugin_module(tmp_path, monkeypatch):
-    """A plugin backend module, `sample_backend.app:app`, importable from `tmp_path / "src"`."""
+    """A plugin backend module, `sample_backend.app:app`, importable from `tmp_path / "src"`.
+
+    Each test imports it afresh into an empty process-wide hook registry, as a plugin process
+    starts with one: the Weather sample's tests register their own hooks in this process.
+    """
     source = tmp_path / "src" / "sample_backend"
     source.mkdir(parents=True)
     (source / "__init__.py").write_text("")
     (source / "app.py").write_text(APP_MODULE)
     monkeypatch.syspath_prepend(str(tmp_path / "src"))
+    registry = HookRegistry()
+    monkeypatch.setattr(epicstaff_plugin.hooks, "hook_registry", registry)
+    monkeypatch.setattr(serve, "hook_registry", registry)
+    for module in ("sample_backend.app", "sample_backend"):
+        monkeypatch.delitem(sys.modules, module, raising=False)
     return tmp_path / "src"
 
 

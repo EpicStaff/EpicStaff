@@ -350,3 +350,61 @@ class InvalidHookResultError(_ProblemListError):
     status_code = 400
     default_detail = "The hook result is invalid."
     default_code = "invalid_hook_result"
+
+
+class InvalidPurgePhraseError(CustomAPIExeption):
+    """The confirmation phrase of a permanent delete is missing or not the expected one."""
+
+    status_code = 400
+    default_detail = "The confirmation text does not match."
+    default_code = "invalid_purge_phrase"
+
+
+class GrantNotPurgeableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "The grant's data is already being deleted."
+    default_code = "grant_not_purgeable"
+
+
+class PluginNotUninstallableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "Only a provisioning, running or failed plugin can be uninstalled."
+    default_code = "plugin_not_uninstallable"
+
+
+class PluginNotUninstallingError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "Only an uninstalled plugin can be reinstalled."
+    default_code = "plugin_not_uninstalling"
+
+
+class PluginNotPurgeableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "The plugin cannot be deleted in its current state."
+    default_code = "plugin_not_purgeable"
+
+
+class PluginUninstallingError(CustomAPIExeption):
+    """A change refused because the plugin is uninstalled or being deleted."""
+
+    status_code = 409
+    default_detail = "The plugin is uninstalled or being deleted."
+    default_code = "plugin_uninstalling"
+
+
+class RemovalNotRetryableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "Only a removal the plugin node reported as failed can be retried."
+    default_code = "removal_not_retryable"
+
+
+class OrgRemovedHookNotRetryableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "The data removal cannot be retried in its current state."
+    default_code = "org_removed_hook_not_retryable"
+
+
+class OrgRemovedHookNotSkippableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "Only a waiting or failed data removal can be skipped."
+    default_code = "org_removed_hook_not_skippable"

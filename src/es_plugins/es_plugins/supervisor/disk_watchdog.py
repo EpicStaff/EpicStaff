@@ -16,13 +16,12 @@ ends after `MEASUREMENT_SECONDS`.
 """
 
 import asyncio
-import contextlib
-import os
 from collections.abc import Callable, Iterable
 
 from loguru import logger
 
 from es_plugins.agent.launcher_client import LauncherClient, LauncherError
+from es_plugins.descriptors import read_pipe
 from es_plugins.disk_usage import DiskUsage
 from es_plugins.launcher.disk_measurement import MEASUREMENT_SECONDS
 from es_plugins.node_disk import FloorBreach, NodeDisk
@@ -141,7 +140,9 @@ class DiskWatchdog:
             )
             return None
         try:
-            data = await asyncio.wait_for(_read_all(result_pipe), RESULT_TIMEOUT_SECONDS)
+            data = await asyncio.wait_for(
+                read_pipe(result_pipe, _MAX_RESULT_BYTES), RESULT_TIMEOUT_SECONDS
+            )
         except TimeoutError:
             data = b""
         try:
@@ -153,24 +154,3 @@ class DiskWatchdog:
                 MEASUREMENT_SECONDS,
             )
             return None
-
-
-async def _read_all(descriptor: int) -> bytes:
-    """Read the pipe to its end without blocking the event loop; the descriptor is closed after.
-
-    Returns b"" for a result larger than any `DiskUsage`.
-    """
-    loop = asyncio.get_running_loop()
-    reader = asyncio.StreamReader(limit=_MAX_RESULT_BYTES)
-    pipe = os.fdopen(descriptor, "rb", buffering=0)
-    transport, _ = await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), pipe)
-    try:
-        data = b""
-        while chunk := await reader.read(_MAX_RESULT_BYTES):
-            data += chunk
-            if len(data) > _MAX_RESULT_BYTES:
-                return b""
-        return data
-    finally:
-        with contextlib.suppress(Exception):
-            transport.close()

@@ -46,14 +46,24 @@ if [ "${#weak_variables[@]}" -ne 0 ]; then
 fi
 
 # \getenv reads the passwords inside psql, so they never appear on a command line, which every
-# user of the Docker host can read.
-"${superuser_psql[@]}" --single-transaction <<'SQL'
+# user of the Docker host can read. A failing statement may carry a password, so its text is never
+# logged: not in this session, and not in any session of plugins_admin, which only a superuser
+# could change back. psql applies --single-transaction to -f, not to plain standard input.
+"${superuser_psql[@]}" --single-transaction -f - <<'SQL'
+SET log_min_error_statement = panic;
 \getenv admin_password PLUGINS_DB_ADMIN_PASSWORD
 \getenv backup_password PLUGINS_DB_BACKUP_PASSWORD
 CREATE ROLE plugins_admin LOGIN CREATEDB CREATEROLE NOSUPERUSER NOREPLICATION NOBYPASSRLS PASSWORD :'admin_password';
+ALTER ROLE plugins_admin SET log_min_error_statement = panic;
+ALTER ROLE plugins_admin SET log_statement = 'none';
+-- pg_hba.conf refuses its logins until backups use it.
 CREATE ROLE plugins_backup LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD :'backup_password';
 GRANT pg_read_all_data TO plugins_backup;
+-- Connection slots no plugin can take, so plugins cannot lock the node out.
 GRANT pg_use_reserved_connections TO plugins_admin;
+-- Ending a plugin's sessions (never a superuser's), before its owner is closed or its database
+-- dropped.
+GRANT pg_signal_backend TO plugins_admin;
 REVOKE CONNECT ON DATABASE postgres, template1 FROM PUBLIC;
 GRANT CONNECT ON DATABASE postgres TO plugins_admin;
 SQL

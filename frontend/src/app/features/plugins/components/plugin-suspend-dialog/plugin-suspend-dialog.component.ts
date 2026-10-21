@@ -3,27 +3,28 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
-import { getRelativeTime } from '@shared/utils';
 import { filter, finalize } from 'rxjs';
 
 import { PluginGrant } from '../../models/plugin-admin.model';
 import {
     PluginDefaultModelReference,
-    PluginPreviewFlow,
-    PluginPreviewList,
     PluginPreviewNamedItem,
-    PluginPreviewSession,
     PluginPreviewTrigger,
     PluginSuspendPreview,
 } from '../../models/plugin-suspend-preview.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import {
-    PLUGIN_DEFAULT_MODEL_SETTING_LABELS,
     PLUGIN_DEFAULT_MODEL_SETTINGS_ON_SETTINGS_PAGE,
-    PLUGIN_PREVIEW_SESSION_STATUS_LABELS,
     PLUGIN_PREVIEW_TRIGGER_KIND_LABELS,
 } from '../../utils/plugin-display.util';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
+import {
+    defaultModelsListView,
+    ownedResourcesListView,
+    previewFlowItem,
+    previewSessionItem,
+    toPreviewListView,
+} from '../../utils/plugin-preview-view.util';
 import {
     PluginPreviewItemView,
     PluginPreviewListView,
@@ -152,21 +153,14 @@ export class PluginSuspendDialogComponent implements OnInit {
 
 function toPreviewView(preview: PluginSuspendPreview): SuspendPreviewView {
     return {
-        owned: {
-            items: preview.owned_resources.map((owned) => ({
-                key: owned.model,
-                name: owned.label,
-                detail: String(owned.count),
-            })),
-            moreCount: 0,
-        },
-        organizationFlows: toListView(preview.flows.organization, flowItem),
-        pluginFlows: toListView(preview.flows.plugin, flowItem),
-        sessions: toListView(preview.running_sessions, sessionItem),
-        triggers: toListView(preview.triggers, triggerItem),
-        realtimeAgents: toListView(preview.realtime_agents, namedItem),
-        voiceChannels: toListView(preview.voice_channels, namedItem),
-        defaultModels: { items: preview.default_models.map(defaultModelItem), moreCount: 0 },
+        owned: ownedResourcesListView(preview.owned_resources),
+        organizationFlows: toPreviewListView(preview.flows.organization, previewFlowItem),
+        pluginFlows: toPreviewListView(preview.flows.plugin, previewFlowItem),
+        sessions: toPreviewListView(preview.running_sessions, previewSessionItem),
+        triggers: toPreviewListView(preview.triggers, triggerItem),
+        realtimeAgents: toPreviewListView(preview.realtime_agents, namedItem),
+        voiceChannels: toPreviewListView(preview.voice_channels, namedItem),
+        defaultModels: defaultModelsListView(preview.default_models),
         defaultModelsHint: defaultModelsHint(preview.default_models),
         dataKeptUntil: preview.data_kept_until,
     };
@@ -182,26 +176,6 @@ function defaultModelsHint(references: readonly PluginDefaultModelReference[]): 
         : PLUGIN_DEFAULT_MODELS_HINT;
 }
 
-function toListView<Item>(
-    list: PluginPreviewList<Item>,
-    toItem: (item: Item) => PluginPreviewItemView
-): PluginPreviewListView {
-    return { items: list.items.map(toItem), moreCount: Math.max(0, list.total - list.items.length) };
-}
-
-function flowItem(flow: PluginPreviewFlow): PluginPreviewItemView {
-    return { key: String(flow.id), name: flow.name, detail: null };
-}
-
-function sessionItem(session: PluginPreviewSession): PluginPreviewItemView {
-    const status = PLUGIN_PREVIEW_SESSION_STATUS_LABELS[session.status];
-    return {
-        key: String(session.id),
-        name: session.flow.name,
-        detail: `${status} · started ${getRelativeTime(session.created_at)}`,
-    };
-}
-
 function triggerItem(trigger: PluginPreviewTrigger): PluginPreviewItemView {
     const kind = PLUGIN_PREVIEW_TRIGGER_KIND_LABELS[trigger.kind];
     return {
@@ -213,12 +187,4 @@ function triggerItem(trigger: PluginPreviewTrigger): PluginPreviewItemView {
 
 function namedItem(item: PluginPreviewNamedItem): PluginPreviewItemView {
     return { key: String(item.id), name: item.name, detail: null };
-}
-
-function defaultModelItem(reference: PluginDefaultModelReference): PluginPreviewItemView {
-    return {
-        key: reference.setting,
-        name: `${PLUGIN_DEFAULT_MODEL_SETTING_LABELS[reference.setting]} → ${reference.config.name}`,
-        detail: null,
-    };
 }

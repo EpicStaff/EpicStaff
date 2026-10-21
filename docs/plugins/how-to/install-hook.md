@@ -52,8 +52,9 @@ the SuperAdmin sees next to the grant. An `EpicStaffApiError` already reads well
 example `EpicStaff refused POST graphs/: 403 permission_denied: You do not have permission to
 perform this action.`
 
-`hook_registry.on_upgrade` and `hook_registry.on_org_removed` register the other kinds the same
-way; EpicStaff does not call them yet.
+`hook_registry.on_upgrade` registers the upgrade hook the same way; EpicStaff does not call it
+yet. The organization removed hook takes the request alone, with no client:
+[Delete your data when an organization leaves](org-removed-hook.md).
 
 ## 3. Make it safe to run again
 

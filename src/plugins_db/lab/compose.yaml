@@ -1,7 +1,7 @@
 # The plugin database lab: the plugins_db service exactly as src/docker-compose.yaml defines it
 # (extends: image, command, init script, pg_hba.conf, environment, healthcheck), published on a
-# free loopback port for the tests. Run with run.sh (project plugins-db-lab), which sets random
-# passwords and removes everything afterwards.
+# free loopback port for the tests. Run with run.sh, which gives every run a project and container
+# name of its own (so runs never collide), sets random passwords and removes everything afterwards.
 name: plugins-db-lab
 
 services:
@@ -9,7 +9,7 @@ services:
     extends:
       file: ../../docker-compose.yaml
       service: plugins_db
-    container_name: plugins-db-lab
+    container_name: ${PLUGINS_DB_LAB_CONTAINER:?}
     ports:
       - "127.0.0.1::5432"
 

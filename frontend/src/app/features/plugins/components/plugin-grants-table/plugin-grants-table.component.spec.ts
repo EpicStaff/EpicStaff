@@ -6,11 +6,12 @@ import type { Mock } from 'vitest';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ToastService } from '../../../../services/notifications';
-import { PluginGrant } from '../../models/plugin-admin.model';
+import { PluginGrant, PluginOrgRemovedJob, PluginState } from '../../models/plugin-admin.model';
 import { PluginDialogsService } from '../../services/plugin-dialogs.service';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
-import { buildPluginGrant } from '../../testing/plugin-fixtures';
+import { buildOrgRemovedJob, buildPluginGrant } from '../../testing/plugin-fixtures';
 import { PLUGIN_ERROR_MESSAGES } from '../../utils/plugin-error-message.util';
+import { PluginGrantPurgeTarget } from '../plugin-purge-dialog/plugin-purge-dialog.component';
 import { PluginSuspendDialogData } from '../plugin-suspend-dialog/plugin-suspend-dialog.component';
 import { PLUGIN_GRANTS_POLL_MS, PluginGrantsTableComponent } from './plugin-grants-table.component';
 
@@ -64,6 +65,14 @@ const SUSPENDED = buildPluginGrant({
     purge_after: '2026-11-20T09:00:00Z',
 });
 
+/** Acme's data being deleted: Weather's hook waits for its next try after a failed first attempt. */
+const DELETING = buildPluginGrant({
+    state: 'purging',
+    allowed_actions: [],
+    purge_started_at: '2026-10-21T09:00:00Z',
+    org_removed_hook: buildOrgRemovedJob({ error: 'Weather answered 500: database is locked' }),
+});
+
 /** The grant as the server answers once its install runs again. */
 function installing(grant: PluginGrant): PluginGrant {
     return {
@@ -87,8 +96,11 @@ describe('PluginGrantsTableComponent', () => {
         >;
         retryInstallHook: Mock<(identifier: string, grantId: number) => Observable<PluginGrant>>;
         resumeGrant: Mock<(identifier: string, grantId: number) => Observable<PluginGrant>>;
+        retryOrgRemovedJob: Mock<(identifier: string, jobId: number) => Observable<PluginOrgRemovedJob>>;
+        skipOrgRemovedJob: Mock<(identifier: string, jobId: number) => Observable<PluginOrgRemovedJob>>;
     };
     let openSuspend: Mock<(data: PluginSuspendDialogData) => Observable<PluginGrant | undefined>>;
+    let openGrantPurge: Mock<(data: PluginGrantPurgeTarget) => Observable<PluginGrant | undefined>>;
     let confirm: Mock<(options: ConfirmationDialogData) => Observable<boolean | 'close'>>;
     let toast: { success: Mock; warning: Mock; error: Mock };
     let changes: number;
@@ -126,6 +138,12 @@ describe('PluginGrantsTableComponent', () => {
         );
     }
 
+    function dataRemovalButton(organization: string, label: string): HTMLButtonElement | undefined {
+        return Array.from(
+            rowOf(organization).querySelectorAll<HTMLButtonElement>('app-plugin-data-removal-actions button')
+        ).find((button) => button.textContent?.trim() === label);
+    }
+
     function retryButton(organization: string): HTMLButtonElement | undefined {
         return actionButton(organization, 'Retry install');
     }
@@ -145,15 +163,20 @@ describe('PluginGrantsTableComponent', () => {
             listGrants: vi.fn(() => of(page([ACTIVE]))),
             retryInstallHook: vi.fn(() => of(installing(FAILED))),
             resumeGrant: vi.fn(() => of({ ...SUSPENDED, state: 'active' as const, allowed_actions: ['suspend'] })),
+            retryOrgRemovedJob: vi.fn(() =>
+                of(buildOrgRemovedJob({ next_attempt_at: null, allowed_actions: ['skip'] }))
+            ),
+            skipOrgRemovedJob: vi.fn(() => of(buildOrgRemovedJob({ state: 'skipped', allowed_actions: [] }))),
         };
         openSuspend = vi.fn(() => of<PluginGrant | undefined>(undefined));
+        openGrantPurge = vi.fn(() => of<PluginGrant | undefined>(undefined));
         confirm = vi.fn(() => of<boolean | 'close'>(true));
         toast = { success: vi.fn(), warning: vi.fn(), error: vi.fn() };
         TestBed.configureTestingModule({
             imports: [PluginGrantsTableComponent],
             providers: [
                 { provide: PluginsAdminStorageService, useValue: storage },
-                { provide: PluginDialogsService, useValue: { openSuspend } },
+                { provide: PluginDialogsService, useValue: { openSuspend, openGrantPurge } },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
                 { provide: ToastService, useValue: toast },
             ],
@@ -412,7 +435,7 @@ describe('PluginGrantsTableComponent', () => {
         );
         render();
 
-        expect(actionLabels('Acme')).toEqual(['Suspend…']);
+        expect(actionLabels('Acme')).toEqual(['Suspend…', 'Delete data…']);
         expect(actionLabels('Charlie')).toEqual(['Retry install', 'Suspend…']);
         expect(actionLabels('Echo')).toEqual(['Resume']);
         expect(actionLabels('Delta')).toEqual([]);
@@ -421,7 +444,7 @@ describe('PluginGrantsTableComponent', () => {
     });
 
     it('leaves out an action this page does not know', () => {
-        const unknownAction = { ...ACTIVE, allowed_actions: ['purge', 'suspend'] } as unknown as PluginGrant;
+        const unknownAction = { ...ACTIVE, allowed_actions: ['transfer', 'suspend'] } as unknown as PluginGrant;
         storage.listGrants.mockReturnValue(of(page([unknownAction])));
         render();
 
@@ -583,5 +606,189 @@ describe('PluginGrantsTableComponent', () => {
 
         poll();
         expect(storage.listGrants).toHaveBeenCalledTimes(3);
+    });
+    it('says a grant was suspended by the uninstall of the plugin', () => {
+        storage.listGrants.mockReturnValue(of(page([{ ...SUSPENDED, suspension_cause: 'uninstall' }])));
+        render();
+
+        expect(rowOf('Echo').querySelector('app-plugin-badge')?.textContent?.trim()).toBe(
+            'Suspended (plugin uninstalled)'
+        );
+    });
+
+    it('opens the data deletion preview, and once deleting shows the row, tells the page and reloads', () => {
+        openGrantPurge.mockReturnValue(of(DELETING));
+        storage.listGrants.mockReturnValue(of(page([ACTIVE])));
+        render();
+        storage.listGrants.mockReturnValue(of(page([DELETING])));
+
+        actionButton('Acme', 'Delete data…')!.click();
+        refresh();
+
+        expect(openGrantPurge).toHaveBeenCalledWith({ identifier: 'weather', pluginName: 'Weather', grant: ACTIVE });
+        expect(confirm).not.toHaveBeenCalled();
+        expect(toast.success).toHaveBeenCalledWith("Deleting Weather's data in Acme.");
+        expect(changes).toBe(1);
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+        expect(rowOf('Acme').textContent).toContain('Deleting data…');
+        expect(actionLabels('Acme')).toEqual([]);
+    });
+
+    it('reloads after the data deletion preview is cancelled, and says nothing', () => {
+        storage.listGrants.mockReturnValue(of(page([ACTIVE])));
+        render();
+
+        actionButton('Acme', 'Delete data…')!.click();
+        refresh();
+
+        expect(toast.success).not.toHaveBeenCalled();
+        expect(changes).toBe(0);
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+    });
+
+    it("shows a deleting row with where the plugin is with its own data, its attempt and next try, and the job's buttons", () => {
+        storage.listGrants.mockReturnValue(of(page([DELETING])));
+        render();
+
+        const row = rowOf('Acme');
+        expect(row.querySelector('.grants__deleting')?.textContent?.trim()).toBe('Deleting data…');
+        expect(row.querySelector('.grants__data-removal')?.textContent?.trim()).toBe('Weather is deleting its data');
+        expect(row.querySelector('.grants__data-removal-progress')?.textContent?.trim()).toMatch(
+            /^Attempt 1 · next try \d{1,2}:\d{2}\s?[AP]M$/
+        );
+        expect(row.querySelector('.grants__data-removal-last-error')?.textContent?.trim()).toBe(
+            'Last attempt failed: Weather answered 500: database is locked'
+        );
+        expect(
+            Array.from(row.querySelectorAll('app-plugin-data-removal-actions button')).map((button) =>
+                button.textContent?.trim()
+            )
+        ).toEqual(['Retry', 'Skip']);
+        expect(row.querySelector('.grants__purge-error')).toBeNull();
+    });
+
+    it('says the plugin could not delete its data, and what EpicStaff could not delete yet', () => {
+        const failed: PluginGrant = {
+            ...DELETING,
+            last_purge_error: 'Flow "Daily digest" is linked to another organization',
+            org_removed_hook: buildOrgRemovedJob({
+                state: 'failed',
+                attempt: 9,
+                next_attempt_at: null,
+                finished_at: '2026-10-28T09:00:00Z',
+                error: 'Weather answered 500: database is locked',
+            }),
+        };
+        storage.listGrants.mockReturnValue(of(page([failed])));
+        render();
+
+        const row = rowOf('Acme');
+        expect(row.querySelector('.grants__data-removal')?.textContent?.trim()).toBe(
+            'Weather could not delete its data: Weather answered 500: database is locked'
+        );
+        expect(row.querySelector('.grants__data-removal')?.classList).toContain('grants__hook-error');
+        expect(row.querySelector('.grants__data-removal-progress')).toBeNull();
+        expect(row.querySelector('.grants__purge-error')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+            'Some resources could not be deleted yet: Flow "Daily digest" is linked to another organization; ' +
+                'EpicStaff retries every hour'
+        );
+    });
+
+    it('shows no data removal line once the plugin has deleted its data, or for a plugin without a hook', () => {
+        storage.listGrants.mockReturnValue(
+            of(
+                page([
+                    { ...DELETING, org_removed_hook: buildOrgRemovedJob({ state: 'succeeded', allowed_actions: [] }) },
+                    { ...DELETING, id: 6, organization: { id: 4, name: 'Bravo' }, org_removed_hook: null },
+                ])
+            )
+        );
+        render();
+
+        expect(rowOf('Acme').querySelector('.grants__data-removal')).toBeNull();
+        expect(rowOf('Bravo').querySelector('.grants__data-removal')).toBeNull();
+        expect(rowOf('Acme').textContent).toContain('Deleting data…');
+    });
+
+    it('retries a data removal at once, and reloads', () => {
+        storage.listGrants.mockReturnValue(of(page([DELETING])));
+        render();
+
+        dataRemovalButton('Acme', 'Retry')!.click();
+        refresh();
+
+        expect(confirm).not.toHaveBeenCalled();
+        expect(storage.retryOrgRemovedJob).toHaveBeenCalledWith('weather', DELETING.org_removed_hook!.id);
+        expect(toast.success).toHaveBeenCalledWith('Weather tries again to delete its data for Acme.');
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+    });
+
+    it('skips a data removal only after confirmation, and reloads', () => {
+        storage.listGrants.mockReturnValue(of(page([DELETING])));
+        render();
+
+        confirm.mockReturnValueOnce(of(false));
+        dataRemovalButton('Acme', 'Skip')!.click();
+        refresh();
+        expect(storage.skipOrgRemovedJob).not.toHaveBeenCalled();
+        expect(storage.listGrants).toHaveBeenCalledTimes(1);
+
+        dataRemovalButton('Acme', 'Skip')!.click();
+        refresh();
+
+        expect(confirm).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                message: "Skip? Weather's data for Acme then stays where Weather keeps it until Weather is deleted.",
+                confirmText: 'Skip',
+            })
+        );
+        expect(storage.skipOrgRemovedJob).toHaveBeenCalledWith('weather', DELETING.org_removed_hook!.id);
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+    });
+
+    it('says why a data removal action was refused, and shows the row as it is now', () => {
+        storage.retryOrgRemovedJob.mockReturnValue(throwError(() => conflict('org_removed_hook_not_retryable')));
+        storage.listGrants.mockReturnValue(of(page([DELETING])));
+        render();
+
+        dataRemovalButton('Acme', 'Retry')!.click();
+        refresh();
+
+        expect(toast.error).toHaveBeenCalledWith(PLUGIN_ERROR_MESSAGES.org_removed_hook_not_retryable);
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+    });
+
+    it('polls while a row deletes its data, and tells the page once the row is gone', () => {
+        storage.listGrants.mockReturnValue(
+            of(page([ACTIVE, { ...DELETING, id: 6, organization: { id: 4, name: 'Bravo' } }]))
+        );
+        render();
+
+        poll();
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+        expect(changes).toBe(0);
+
+        storage.listGrants.mockReturnValue(of(page([ACTIVE])));
+        poll();
+        expect(storage.listGrants).toHaveBeenCalledTimes(3);
+        expect(changes).toBe(1);
+
+        poll();
+        expect(storage.listGrants).toHaveBeenCalledTimes(3);
+    });
+
+    it("loads the grants again when the plugin's state changes, since what each grant allows depends on it", () => {
+        storage.listGrants.mockReturnValue(of(page([ACTIVE])));
+        render();
+        fixture.componentRef.setInput('pluginState', 'running' satisfies PluginState);
+        refresh();
+        const loads = storage.listGrants.mock.calls.length;
+
+        storage.listGrants.mockReturnValue(of(page([{ ...ACTIVE, allowed_actions: ['purge'] }])));
+        fixture.componentRef.setInput('pluginState', 'uninstalling' satisfies PluginState);
+        refresh();
+
+        expect(storage.listGrants).toHaveBeenCalledTimes(loads + 1);
+        expect(actionLabels('Acme')).toEqual(['Delete data…']);
     });
 });

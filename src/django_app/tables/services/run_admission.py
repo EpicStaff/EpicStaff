@@ -10,6 +10,10 @@ Other apps add reasons to refuse a run without `tables` importing them: implemen
 `RunAdmissionCheck`, raise a subclass of `RunAdmissionRefusedError`, and register the check
 in the app's `ready()`.
 
+A run that is built before it is handed over (a flow session) is asked again just before the
+handover with `assert_still_admitted`, so a cause that appeared while it was built still
+refuses it. Each check gets back what it found the first time, so the re-check is cheap.
+
 Adding a run entry point: call `assert_run_admitted` before anything is written. Add a
 `RunKind` only when the run starts from a new kind of row, together with its start model in
 `run_resources.RUN_START_MODELS`.
@@ -72,9 +76,24 @@ class RunAdmissionRefusedError(CustomAPIExeption):
 class RunAdmissionCheck(Protocol):
     """One reason to refuse a run."""
 
-    def check(self, subject: RunSubject) -> None:
-        """Return when the run may start; raise a `RunAdmissionRefusedError` subclass otherwise."""
+    def check(self, subject: RunSubject) -> object:
+        """Refuse the run by raising a `RunAdmissionRefusedError` subclass.
+
+        Returns what a re-check of the same run may reuse, or None.
+        """
         ...
+
+    def recheck(self, subject: RunSubject, first_look: object) -> None:
+        """Refuse the run if it must be refused now; `first_look` is what `check` returned."""
+        ...
+
+
+@dataclass(frozen=True)
+class RunAdmission:
+    """A run admitted once, with what each check found, for `assert_still_admitted`."""
+
+    subject: RunSubject
+    first_looks: tuple[tuple[RunAdmissionCheck, object], ...]
 
 
 _registered_checks: list[RunAdmissionCheck] = []
@@ -96,17 +115,35 @@ def registered_run_admission_checks() -> tuple[RunAdmissionCheck, ...]:
     return tuple(_registered_checks)
 
 
-def assert_run_admitted(subject: RunSubject) -> None:
+def assert_run_admitted(subject: RunSubject) -> RunAdmission:
     """Run every registered check against `subject`.
 
     Call it before the run writes or publishes anything.
+
+    Returns:
+        What the checks found, for `assert_still_admitted` just before the run is handed over.
 
     Raises:
         RunAdmissionRefusedError: The first check that refuses the run; the checks after it
             do not run.
     """
+    first_looks = []
     for check in _registered_checks:
-        check.check(subject)
+        first_looks.append((check, check.check(subject)))
+    return RunAdmission(subject=subject, first_looks=tuple(first_looks))
+
+
+def assert_still_admitted(admission: RunAdmission) -> None:
+    """Ask the checks of `admission` again, each with what it found the first time.
+
+    Call it just before the run is handed over, to refuse a run whose cause appeared while
+    the run was being built.
+
+    Raises:
+        RunAdmissionRefusedError: The first check that now refuses the run.
+    """
+    for check, first_look in admission.first_looks:
+        check.recheck(admission.subject, first_look)
 
 
 def log_trigger_refusal_once(

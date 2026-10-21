@@ -83,7 +83,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_BASE_DOMAIN` | `plugins.invalid` (production), `plugins.epicstaff.localhost` (development) | The parent of every plugin host, in lower case: `plugins.example.com`. The production default is a placeholder that EpicStaff refuses with plugins on. |
 | `PLUGINS_TRUSTED_SIGNING_KEYS` | `none` | The publishers you trust, comma-separated `<name>:<minisign public key>`. Packages signed by one of these keys are shown as Trusted; see [trust and signing](../explanation/trust-and-signing.md). |
 | `PLUGINS_MAX_PACKAGE_MB` | `300` | The largest package an upload may carry, in MiB (1 MiB = 1,048,576 bytes). Django applies it to the package; nginx accepts a request body one MiB larger, for the multipart framing. Before nginx reads any of an upload, it asks Django (without the body) whether the caller is a logged-in SuperAdmin, and refuses everyone else with 401 or 403, so nobody else can make EpicStaff store a large body. A proxy in front of EpicStaff must allow that size too. |
-| `PLUGINS_GRACE_PERIOD_DAYS` | `30` | Days a suspended plugin keeps its data in an organization before the data is deleted. Resuming within this time restores everything. A whole number from 1 to 3650; EpicStaff refuses to start with plugins on otherwise (`plugins.E011`). Each suspension records its deadline when it happens, so a changed value applies only to later suspensions: set it before the first suspension. A suspended plugin's process keeps running, for the other organizations it is granted to; suspending stops it only in the one organization (see [Suspending a plugin in an organization](#suspending-a-plugin-in-an-organization)). |
+| `PLUGINS_GRACE_PERIOD_DAYS` | `30` | Days a suspended or uninstalled plugin keeps its data before it is deleted. Resuming or reinstalling within this time restores everything. A whole number from 1 to 3650; EpicStaff refuses to start with plugins on otherwise (`plugins.E011`). Each suspension records its deadline when it happens, so a changed value applies only to later suspensions: set it before the first suspension. A suspended plugin's process keeps running, for the other organizations it is granted to; suspending stops it only in the one organization (see [Suspending a plugin in an organization](#suspending-a-plugin-in-an-organization)). |
 | `PLUGINS_STORAGE_BUCKET` | `epicstaff-plugins` | The bucket in EpicStaff's storage that keeps uploaded packages. Created on the first upload. |
 | `PLUGINS_GATEWAY_SECRET` | `none` | A random value of at least 32 characters, made of letters, digits and `. _ ~ + / = -`: `openssl rand -hex 32`. nginx sends it with every gateway check and with every request that comes through its internal API listener. Django answers a check without it with 404, and accepts a plugin's service-account key or the node's key only on a request that carries it. Required with plugins on. |
 | `DJANGO_FRONTEND_BASE_URL` | already set | The exact origin people open EpicStaff at, such as `https://epicstaff.example.com`: scheme, host and port only, no path (a trailing `/` is allowed). Only this origin may frame a plugin page, so any other value (the development default `http://localhost:4200`, a different port) leaves every plugin page blank. It is also the issuer of the signed context plugin backends verify. |
@@ -113,7 +113,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_DB_SUPERUSER_PASSWORD` | `none` | `openssl rand -hex 32`. The `postgres` superuser's password, used once, when `plugins_db` first initializes its volume. The superuser works only over the container's own socket, never over the network. |
 | `PLUGINS_DB_ADMIN_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_admin`, the plugin node's login on `plugins_db`, which creates every plugin's database and roles. `plugins_db` sets it at its first start and es_plugins logs in with it, so both must have the same value. It can read every plugin's data: keep it like a root password. |
 | `PLUGINS_DB_BACKUP_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_backup`, which may read every plugin's data for backups before upgrades. `plugins_db` creates it at its first start; nothing logs in with it in this version. |
-| `PLUGINS_DB_MAX_CONNECTIONS` | `200` | `plugins_db`'s connection limit. At least the sum of the plugins' database connection limits plus 10; 5 of these are kept for the plugin node. |
+| `PLUGINS_DB_MAX_CONNECTIONS` | `200` | `plugins_db`'s connection limit: at least the number of plugin backends times `PLUGINS_MAX_DB_CONNECTIONS`, plus 10. 5 of these are kept for the plugin node (see [Plugin databases](#plugin-databases)). |
 
 The three passwords must each be at least 32 characters, and `none` is refused, whenever the
 `plugins` profile runs. `plugins_db` reads them only when it initializes an empty volume: changing
@@ -128,7 +128,7 @@ a value in `src/.env` later changes nothing in the database (see
 | `PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE` | `120` | Highest rate a public path may declare, counted per client address. |
 | `PLUGINS_MAX_REQUEST_BODY_MB` | `20` | Largest request body nginx accepts on a plugin host (a whole number of MiB above 0); a public path's own cap may not be larger. |
 | `PLUGINS_MAX_REQUESTS_PER_MINUTE` | `600` | Highest rate of calls to EpicStaff's API a plugin may ask for. It is counted per service account, so per organization the plugin is granted to; a call over the rate gets `429` with `Retry-After`. |
-| `PLUGINS_MAX_DB_CONNECTIONS`, `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS` | `20`, `60` | Highest connection limit and statement timeout a plugin's database may ask for. The node sets both on the plugin's database role and restores them within a minute if the plugin changes them. |
+| `PLUGINS_MAX_DB_CONNECTIONS`, `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS` | `20`, `60` | Highest connection limit and statement timeout a plugin's database may ask for. The node sets both on the plugin's database role and restores them within a minute if the plugin changes them. The node also lets no plugin backend have more than `PLUGINS_MAX_DB_CONNECTIONS` connections open to `plugins_db` at once, logged in or not. |
 
 [Limits](../reference/limits.md) says which limits this version enforces and how.
 
@@ -289,7 +289,7 @@ one stays refused, and the run starts. It starts one session of the flow and sto
 arguments go to curl as above.
 
 Then check outbound access, on the machine that runs the stack, with a plugin that declares an
-outbound host (Weather 0.5.0 declares `geocoding-api.open-meteo.com`). Pass the plugin's user id,
+outbound host (the Weather sample declares `geocoding-api.open-meteo.com`). Pass the plugin's user id,
 which its Runtime tab shows:
 
 ```bash
@@ -303,6 +303,22 @@ ports and plain http are refused, each with its reason; that wrong or missing cr
 `407`; that there is no way out around the proxy; that the plugin cannot read the proxy's policy;
 the proxy container's IPv6, firewall and capabilities; and that its log names the plugin and holds
 no credential. `DECLARED_URL` changes the URL it fetches.
+
+Last, and only on a stack you can lose the plugin on, check deleting. **It deletes the plugin for
+good**, so it refuses to run without `--yes`:
+
+```bash
+SMOKE_BASE_URL=https://epicstaff.example.com SMOKE_PLUGINS_BASE_DOMAIN=plugins.example.com \
+SMOKE_PLUGIN=weather SMOKE_ORG_ID=3 SMOKE_ORG_NAME=Acme \
+SMOKE_SUPERADMIN_EMAIL=root@example.com SMOKE_SUPERADMIN_PASSWORD='…' \
+bash src/nginx/tests/purge_smoke.sh --yes
+```
+
+It deletes the plugin's data in the organization (after a refused wrong phrase) and waits for the
+organization removed hook, grants the plugin again, uninstalls and reinstalls it, then deletes it
+for good. It checks that nothing of the plugin is left on the node, in `plugins_db` or in the
+egress policy, that its host answers 404, and that its activity is kept. Extra arguments after
+`--yes` go to curl as above.
 
 The repository has four labs that need nothing but Docker: `bash src/nginx/tests/gateway/run.sh`
 checks the gateway's header and path rules and its overhead under load;
@@ -348,10 +364,15 @@ Nothing needs configuring for it, but EpicStaff's login cookie changed with it, 
 
 ## How plugin backends are kept apart
 
-The node container runs with a read-only root file system, `no-new-privileges`, and only the
-`SETUID`, `SETGID` and `CHOWN` capabilities, for its launcher process. Each plugin backend runs
-as its own user id from `PLUGINS_NODE_UID_RANGE`, without any capability, with at most 64
-processes and 1024 open files, in its own session. Its secret settings reach it only in a file
+The node container runs with a read-only root file system and `no-new-privileges`. Its launcher
+process has the `SETUID`, `SETGID` and `CHOWN` capabilities and no other. The container also has
+`NET_ADMIN` and `SETPCAP` for its entrypoint only: before the launcher starts, the entrypoint
+installs the per-plugin connection limits below in the container's network namespace, then starts
+the launcher with nothing but those three capabilities left in any capability set, so nothing on
+the node can change the limits afterwards. A shell you open in the container with `docker exec`
+gets the container's capabilities, `NET_ADMIN` included; no plugin process does. Each plugin
+backend runs as its own user id from `PLUGINS_NODE_UID_RANGE`, without any capability, with at
+most 64 processes and 1024 open files and no POSIX message queues, in its own session. Its secret settings reach it only in a file
 that only its own user id can read; its database URL and its proxy URL, credentials included, are
 in its environment, which only its own user id can read too.
 
@@ -366,6 +387,13 @@ A plugin cannot take another plugin's port either, nor one a plugin installed la
 When it starts, the node binds every port of its range (20001–20999) and keeps them all; it hands
 each plugin's process the listening socket of that plugin's port, and `epicstaff-plugin` serves
 on it. No plugin can bind a port of the range at all.
+
+Plugin backends and the node share the container's network namespace, and with it its local
+ports. So that one plugin cannot use them up, or the connection slots of `plugins_db` and the
+egress proxy, each plugin backend may open at most 200 new TCP connections a second (after a burst
+of 200), and have at most `PLUGINS_MAX_DB_CONNECTIONS` connections open to `plugins_db` and 64 to
+the egress proxy at once. A connection over a limit is refused at once. The node's own connections
+are never limited.
 
 The node is on two internal Docker networks only: `plugins-network`, which it shares with nothing
 but nginx and the egress proxy, and `plugins-db-network`, which it shares with nothing but
@@ -415,13 +443,21 @@ own `postgres` and `template1`. What a plugin sees of its database is in
   timeout (the Limits tab). The node checks them every minute: a changed timeout is restored
   ("Timeout restored at …" on the Runtime tab), and a membership or database privilege changed
   outside EpicStaff stops the plugin ("database permissions changed outside EpicStaff").
-- **Sizing.** Set `PLUGINS_DB_MAX_CONNECTIONS` to at least the sum of the plugins' connection
-  limits plus 10. Five connections are kept for the plugin node, so plugins can never lock it out,
-  but plugins can take each other's slots: together they may use every free one, and a new
-  connection then fails until one closes.
-- **Disk.** PostgreSQL cannot cap one database's size. The Runtime tab shows each plugin's
-  database size; watch the `plugins_pgdata` volume, and put it on a file system of its own for a
-  hard limit.
+- **Sizing.** A connection takes one of `plugins_db`'s slots as soon as it is opened, before it
+  logs in, so a role's connection limit alone cannot keep a plugin from filling them. The node
+  therefore lets each plugin backend have at most `PLUGINS_MAX_DB_CONNECTIONS` connections open to
+  `plugins_db` at once, logged in or not. Set `PLUGINS_DB_MAX_CONNECTIONS` to at least the number
+  of plugin backends times `PLUGINS_MAX_DB_CONNECTIONS`, plus 10: then however plugins behave, the
+  five slots kept for the plugin node stay free. With less, the plugins together can oversubscribe
+  the server: each keeps to its own limit, but their sum can exceed the free slots, and a new
+  connection then fails until one closes, the plugin node's included.
+- **Disk.** Every plugin database shares the server's disk, and PostgreSQL cannot cap one
+  database's size: one plugin's data can fill the volume for all of them. The temporary files of
+  each server process are capped at 1 GB (`temp_file_limit`), so one plugin's large sorts cannot
+  fill it alone. The Runtime tab shows each plugin's database size; watch the `plugins_pgdata`
+  volume, and put it on a file system of its own for a hard limit.
+- **No statement text in the log.** Failing statements are never logged with their text:
+  `plugins_admin` runs with `log_min_error_statement=panic`.
 
 ### Backing up plugin databases
 
@@ -492,6 +528,11 @@ for it is in [Call the internet from your backend](../how-to/outbound-hosts.md).
 - **Your own public address.** An approved host that resolves to this deployment's own public
   address reaches services on that address that the internet cannot reach. Review such hosts, or
   block that address with the Docker host's firewall.
+- **Under a flood.** Each plugin backend may have at most 64 connections open to the proxy at
+  once (see [How plugin backends are kept apart](#how-plugin-backends-are-kept-apart)). Under a
+  flood, other requests wait behind it. Once the password-check queue has been overloaded for 3
+  minutes, new checks get `407` at once instead of the proxy stopping, and when the host-check
+  queue is full, the request is refused with `407`, not `403`.
 - **What a host list does not stop.** The proxy does not decrypt tunnels, so a host on a content
   delivery network can be asked, inside TLS, for another site it serves; a `*.` entry allows every
   name below it. Read such hosts in a review as access to more than their name.
@@ -568,9 +609,50 @@ the operator:
   organization from the plugin's runtime file, within seconds, and the plugin's backend keeps serving
   its other organizations. Nothing restarts, and no hook is called. To take the plugin out of every organization, suspend each grant.
 - **The data is kept for `PLUGINS_GRACE_PERIOD_DAYS`.** Set the variable before the first
-  suspension (see [Settings](#3-settings)); a suspension keeps the deadline it was given.
+  suspension (see [Settings](#3-settings)); a suspension keeps the deadline it was given. When the
+  grace period ends, EpicStaff deletes everything the plugin created in that organization, and
+  the plugin's organization removed hook deletes the plugin's own data there (see
+  [the lifecycle](../explanation/lifecycle.md)). A SuperAdmin can also delete it at once, with
+  "Delete data…" in the Grants table.
 - **Resume mints new keys.** The organization's keys are revoked at suspension; the next credentials
   refresh of the node, within seconds of the resume, writes a new one.
+
+## Uninstalling and deleting plugins
+
+A SuperAdmin uninstalls a plugin, reinstalls it, or deletes it permanently on the plugin's page
+(see [the lifecycle](../explanation/lifecycle.md) for what each means for the organizations). For
+the operator:
+
+- **Uninstall** stops the plugin's process and suspends the plugin in every organization it is
+  granted to. Its data is kept for `PLUGINS_GRACE_PERIOD_DAYS`, and reinstalling within that time
+  brings everything back. Until then the process runs only to call the plugin's organization
+  removed hook, when an organization's data is being deleted, and it stops between attempts.
+- **Deleting permanently**, by a SuperAdmin or when an uninstalled plugin's grace period ends:
+  1. the plugin's organization removed hook runs for each organization, so the plugin deletes
+     what it keeps there;
+  2. then the plugin node stops the plugin, deletes its database and its three roles with every
+     one of their connections closed, and removes its code, Python environment, logs, files and
+     the System V IPC objects of its user id;
+  3. then EpicStaff deletes its frontend and package files.
+
+  The plugin's activity stays, for SuperAdmins.
+- **No backup is taken.** Back up the `plugins_pgdata` volume first if you may need the data (see
+  [Backing up plugin databases](#backing-up-plugin-databases)).
+- **The plugin node must be running** for a deletion to finish. Until the node reports the plugin
+  removed, its page shows "Deleting"; an error the node cannot get past shows there too, with
+  Retry removal.
+- **A database that a different installation created is never deleted.** The deletion stops with
+  "plugins_db has … that this plugin installation did not create … and the node will not delete
+  them". Resolve it as in
+  [Leftovers from another EpicStaff database](#leftovers-from-another-epicstaff-database), then
+  press Retry removal.
+- **A backup session holds a deletion.** The node ends only the plugin's own sessions; while
+  another session, a backup's, is connected to the plugin's database, it tries again every 30
+  seconds.
+- **The plugin's user id and port are reused only after the node has removed everything**, so a
+  plugin approved later never finds anything of a deleted one.
+- **With plugins switched off**, EpicStaff still deletes the plugins' EpicStaff resources when a
+  grace period ends. The plugins' own data waits until plugins run again.
 
 ## Disk
 
@@ -711,8 +793,12 @@ Set `PLUGINS_ENABLED=false`, recreate django_app, epicstaff-nginx and frontend, 
 the plugin databases and the egress proxy (`docker compose stop es_plugins plugins_db
 plugins_egress`, and remove `plugins` from `COMPOSE_PROFILES`). Plugin host
 names then reach EpicStaff's own pages, the plugin API answers 404, the plugins leave the left
-bar and no plugin key is accepted any more (401); people and API keys work as before. Nothing is deleted: packages, approvals, grants, settings, published files, the node's
-volume and the plugin databases stay, and come back when you turn the platform on again.
+bar and no plugin key is accepted any more (401); people and API keys work as before. Turning
+plugins off deletes nothing by itself: packages, approvals, grants, settings, published files, the
+node's volume and the plugin databases stay, and come back when you turn the platform on again.
+Grace periods keep running, though: when one ends while plugins are off, EpicStaff still deletes
+the plugin's EpicStaff resources in that organization, and the plugin's own data waits until
+plugins run again.
 
 ## Behind another proxy or load balancer
 
@@ -760,6 +846,25 @@ This version adds required variables: `PLUGINS_GATEWAY_SECRET`, `PLUGINS_NODE_NA
 env-update` adds them with their defaults, which keep plugins off. Set the two secrets and the
 three database passwords before turning plugins on, and check that the default
 `PLUGINS_NETWORK_SUBNET` overlaps none of your networks: it applies with plugins off too.
+
+A `plugins_pgdata` volume initialized by a pre-release build of this version lacks three settings
+`plugins_db`'s first start now makes: `plugins_admin` may end plugin roles' sessions
+(`pg_signal_backend`), which deleting a plugin and closing its migration runs need, and its failing
+statements are never logged with their text. Recreate the volume (this deletes every plugin
+database), or run this once:
+
+```bash
+docker compose exec -u postgres plugins_db psql \
+  -c 'GRANT pg_signal_backend TO plugins_admin' \
+  -c 'ALTER ROLE plugins_admin SET log_min_error_statement = panic' \
+  -c "ALTER ROLE plugins_admin SET log_statement = 'none'"
+```
+
+Either way, then run `docker compose up -d plugins_db`. It recreates the container, so the new
+server command (a cap on each session's temporary files) and the new `pg_hba.conf` (which refuses
+`plugins_backup` until backups use it) apply. `docker compose restart` keeps the old command, and a
+reload alone may not see a replaced `pg_hba.conf` on a Linux host, where a mounted file stays the
+one the container started with.
 
 On HTTPS deployments everyone is signed out once after this upgrade, plugins on or off: EpicStaff's
 login cookie is now `__Host-auth.refresh` (see

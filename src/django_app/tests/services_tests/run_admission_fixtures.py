@@ -26,13 +26,16 @@ class RefusedForTestError(RunAdmissionRefusedError):
 
 
 class RecordingCheck:
-    """Admits every run and remembers each subject it was asked about."""
+    """Admits every run and remembers each subject it was asked about, first or again."""
 
     def __init__(self):
         self.subjects: list[RunSubject] = []
 
     def check(self, subject: RunSubject) -> None:
         self.subjects.append(subject)
+
+    def recheck(self, subject: RunSubject, first_look: object) -> None:
+        self.check(subject)
 
 
 class RefusingCheck(RecordingCheck):

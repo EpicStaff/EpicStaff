@@ -3,6 +3,7 @@ import base64
 import importlib
 import io
 import json
+import logging
 import re
 import tomllib
 from datetime import UTC, datetime
@@ -21,10 +22,12 @@ from epicstaff_plugin.runtime import RuntimeConfig
 from epicstaff_plugin.serve import build_app
 from epicstaff_plugin.testing import HookSigner, service_account_key, write_runtime_file
 from fake_epicstaff import FakeEpicStaff
-from fake_weather_stores import FakeForecastRuns, FakePopupRelay, FakeSavedPlaces
+from fake_weather_stores import FakeForecastRuns, FakePopupRelay, FakeSavedPlaces, RecordingConnection, RecordingPool
 from local_servers import EmptyApi, RefusingProxy, serving
 
 SAMPLE = REPO_ROOT / "plugin-samples" / "weather"
+SPA_API = SAMPLE / "spa" / "src" / "api.ts"
+MIGRATIONS = SAMPLE / "database" / "migrations"
 SDK_PYPROJECT = REPO_ROOT / "src" / "plugin_sdk" / "pyproject.toml"
 LOGIN_PROTOCOL = REPO_ROOT / "plugin-sdk" / "contracts" / "login-protocol.json"
 
@@ -59,6 +62,9 @@ def sample_modules(monkeypatch):
         places=importlib.import_module("weather_plugin.places"),
         place_search=importlib.import_module("weather_plugin.place_search"),
         popup_relay=importlib.import_module("weather_plugin.popup_relay"),
+        database=importlib.import_module("weather_plugin.database"),
+        organization_data=importlib.import_module("weather_plugin.organization_data"),
+        retention=importlib.import_module("weather_plugin.retention"),
     )
 
 
@@ -207,10 +213,14 @@ def test_the_sample_source_is_a_valid_backend_plugin():
     contents = source.describe()
 
     assert source.problems(contents, require_sdk_pin=False) == []
-    assert source.manifest.version == "0.5.0"
-    assert source.manifest.hooks.install
+    assert source.manifest.version == "0.6.0"
+    assert (source.manifest.hooks.install, source.manifest.hooks.org_removed) == (True, True)
+    assert source.manifest.hooks.timeouts_seconds is None
     assert source.manifest.database is not None
-    assert [path for path in contents if path.startswith("database/")] == ["database/migrations/001_weather.sql"]
+    assert [path for path in contents if path.startswith("database/")] == [
+        "database/migrations/001_weather.sql",
+        "database/migrations/002_retention.sql",
+    ]
     assert [(host.host, host.reason) for host in source.manifest.outbound_hosts] == [
         ("geocoding-api.open-meteo.com", "Looks up places by name when someone adds a saved place.")
     ]
@@ -719,7 +729,7 @@ def test_an_organization_without_a_service_account_is_not_installed(weather, sig
 
 @pytest.mark.parametrize(
     "body",
-    [b"", b"not json", {}, {"city": ""}, {"city": "   "}, {"city": "x" * 101}, {"city": 7}, {"city": "Paris", "days": 3}],
+    [b"", b"not json", {}, {"city": ""}, {"city": "   "}, {"city": "x" * 201}, {"city": 7}, {"city": "Paris", "days": 3}],
     ids=["empty", "not json", "no city", "empty city", "blank city", "city too long", "city a number", "extra key"],
 )
 def test_a_malformed_forecast_request_is_refused(weather, signer, epicstaff_api, body):
@@ -1204,3 +1214,176 @@ def test_the_search_goes_through_the_egress_proxy_and_epicstaff_calls_do_not(mon
     assert f"Proxy-Authorization: Basic {credentials}" in headers
     assert (status.status, status.json()) == (200, {"flow": None})
     assert epicstaff_api.paths == ["/api/graph-light/"]
+
+
+# --- Limits the page and the backend share ---
+
+
+def _spa_constant(name):
+    (value,) = re.findall(rf"^export const {name} = (\d+);$", SPA_API.read_text(), re.MULTILINE)
+    return int(value)
+
+
+def test_the_pages_city_limit_is_the_saved_place_name_limit(sample_modules):
+    assert _spa_constant("MAX_CITY_LENGTH") == sample_modules.places.MAX_PLACE_NAME_LENGTH == 200
+
+
+def test_the_pages_search_limit_is_the_backends(sample_modules):
+    assert _spa_constant("MAX_PLACE_QUERY_LENGTH") == sample_modules.place_search.MAX_QUERY_LENGTH == 100
+
+
+def test_a_saved_place_with_the_longest_name_can_be_forecast(weather, signer, epicstaff_api, stores):
+    _install(weather, signer)
+    name = "Llan" + "g" * 196
+    place = stores.places.seed(ACME["id"], ADA["id"], name, "United Kingdom")
+    assert len(place.name) == 200
+
+    response = _start_forecast(weather, signer, {"city": place.name})
+
+    assert response.status == 202
+    run = next(sent for sent in epicstaff_api.requests if sent.path == "run-session/")
+    assert run.body["variables"] == {"city": name}
+
+
+# --- The organization removed hook ---
+
+COBALT = {"id": 9, "name": "Cobalt"}
+SET_ORG_ID = "SELECT pg_catalog.set_config('app.org_id', %s, true)"
+
+
+@pytest.fixture
+def recorded_database(monkeypatch, sample_modules):
+    """Weather's organization data over a connection that records every statement."""
+    connection = RecordingConnection()
+    database = sample_modules.database.WeatherDatabase(RecordingPool(connection))
+    monkeypatch.setattr(
+        sample_modules.app.app.state, "organization_data", sample_modules.organization_data.OrganizationData(database), raising=False
+    )
+    return connection
+
+
+def _org_removed(weather, signer, *, org=COBALT, job_id=61, attempt=1):
+    call = HookSigner(signer).call("org_removed", org=org, job_id=job_id, attempt=attempt)
+    return request(weather, "POST", call.path, call.headers, call.body)
+
+
+def test_the_org_removed_hook_deletes_the_organizations_rows_in_one_transaction(weather, signer, recorded_database, epicstaff_api):
+    # Cobalt (9) has no service account in the runtime file: it was deleted.
+    response = _org_removed(weather, signer)
+
+    assert (response.status, response.json()) == (200, {"status": "done"})
+    assert recorded_database.statements == [
+        (1, SET_ORG_ID, ("9",)),
+        (1, "DELETE FROM weather.saved_places WHERE org_id = %s", (9,)),
+        (1, "DELETE FROM weather.forecast_runs WHERE org_id = %s", (9,)),
+        (1, "DELETE FROM weather.popup_results WHERE org_id = %s", (9,)),
+    ]
+    assert recorded_database.committed == [1]
+
+
+def test_the_org_removed_hook_never_calls_epicstaff(weather, signer, recorded_database, epicstaff_api):
+    assert _org_removed(weather, signer, org=ACME).status == 200
+
+    assert epicstaff_api.requests == []
+
+
+def test_running_the_org_removed_hook_twice_is_harmless(weather, signer, recorded_database):
+    assert _org_removed(weather, signer).status == 200
+    assert _org_removed(weather, signer, attempt=2).status == 200
+
+    first, second = (
+        [statement for number, statement, _ in recorded_database.statements if number == transaction]
+        for transaction in (1, 2)
+    )
+    assert first == second
+    assert recorded_database.committed == [1, 2]
+
+
+def test_a_failed_delete_fails_the_org_removed_hook_with_its_message(monkeypatch, weather, signer, sample_modules):
+    connection = RecordingConnection(error=RuntimeError("canceling statement due to statement timeout"))
+    database = sample_modules.database.WeatherDatabase(RecordingPool(connection))
+    monkeypatch.setattr(sample_modules.app.app.state, "organization_data", sample_modules.organization_data.OrganizationData(database), raising=False)
+
+    response = _org_removed(weather, signer)
+
+    assert (response.status, response.json()) == (
+        500,
+        {"status": "failed", "error": {"message": "canceling statement due to statement timeout"}},
+    )
+    assert connection.committed == []
+
+
+def test_the_org_removed_hook_deletes_from_every_table_the_migrations_create(sample_modules):
+    created = {
+        table
+        for migration in sorted(MIGRATIONS.glob("*.sql"))
+        for table in re.findall(r"^CREATE TABLE (weather\.\w+)", migration.read_text(), re.MULTILINE)
+    }
+    deleted = [
+        re.fullmatch(r"DELETE FROM (weather\.\w+) WHERE org_id = %s", statement).group(1)
+        for statement in sample_modules.organization_data.DELETE_ORGANIZATION_ROWS
+    ]
+
+    assert sorted(deleted) == sorted(created)
+    assert len(deleted) == len(set(deleted))
+
+
+# --- The hourly purge of expired rows ---
+
+SET_ROLE = "SELECT pg_catalog.set_config('role', %s, true)"
+
+
+def test_the_purge_goes_in_batches_each_in_a_job_transaction_of_its_own(sample_modules):
+    retention = sample_modules.retention
+    batches = {"weather.forecast_runs": [5000, 5003, 12], "weather.popup_results": [0]}
+
+    def rowcounts(query):
+        tables = [table for table in batches if query.startswith(f"DELETE FROM {table} ")]
+        return batches[tables[0]].pop(0) if tables else 1
+
+    connection = RecordingConnection(rowcounts=rowcounts)
+    purge = retention.RetentionPurge(sample_modules.database.WeatherDatabase(RecordingPool(connection)))
+
+    deleted = asyncio.run(purge.run_once())
+
+    assert deleted == {"weather.forecast_runs": 10015, "weather.popup_results": 0}
+    forecast, popups = retention.PURGE_STATEMENTS["weather.forecast_runs"], retention.PURGE_STATEMENTS["weather.popup_results"]
+    assert connection.statements == [
+        (1, SET_ROLE, ("weather_job",)),
+        (1, forecast, (4999,)),
+        (2, SET_ROLE, ("weather_job",)),
+        (2, forecast, (4999,)),
+        (3, SET_ROLE, ("weather_job",)),
+        (3, forecast, (4999,)),
+        (4, SET_ROLE, ("weather_job",)),
+        (4, popups, (4999,)),
+    ]
+    assert connection.committed == [1, 2, 3, 4]
+
+
+def test_the_purge_runs_at_once_then_every_interval_and_survives_a_failure(monkeypatch, sample_modules, caplog):
+    retention = sample_modules.retention
+    outcomes = [RuntimeError("the database is restarting"), {"weather.forecast_runs": 3, "weather.popup_results": 0}]
+    sleeps = []
+
+    class Purge(retention.RetentionPurge):
+        async def run_once(self):
+            outcome = outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+    async def sleep(seconds):
+        sleeps.append(seconds)
+        if not outcomes:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(retention.asyncio, "sleep", sleep)
+    caplog.set_level(logging.INFO, logger="weather_plugin.retention")
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(Purge(None).run_every())
+
+    assert sleeps == [3600, 3600]
+    assert "Deleting expired rows failed; trying again in 3600s" in caplog.text
+    assert "Deleted expired rows: {'weather.forecast_runs': 3, 'weather.popup_results': 0}" in caplog.text

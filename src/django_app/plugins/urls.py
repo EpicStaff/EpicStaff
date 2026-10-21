@@ -17,6 +17,19 @@ from plugins.views.admin_grant_lifecycle import (
     PluginGrantSuspendPreviewView,
     PluginGrantSuspendView,
 )
+from plugins.views.admin_org_removed_jobs import (
+    OrgRemovedJobRetryView,
+    OrgRemovedJobSkipView,
+    PluginOrgRemovedJobListView,
+)
+from plugins.views.admin_plugin_lifecycle import (
+    PluginGrantDetailView,
+    PluginGrantPurgePreviewView,
+    PluginPurgePreviewView,
+    PluginReinstallView,
+    PluginRetryRemovalView,
+    PluginUninstallView,
+)
 from plugins.views.admin_plugins import (
     PluginDetailView,
     PluginGrantListView,
@@ -85,6 +98,51 @@ urlpatterns = [
         "api/admin/plugins/<str:identifier>/grants/",
         PluginGrantListView.as_view(),
         name="admin-plugin-grants",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/uninstall/",
+        PluginUninstallView.as_view(),
+        name="admin-plugin-uninstall",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/reinstall/",
+        PluginReinstallView.as_view(),
+        name="admin-plugin-reinstall",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/purge-preview/",
+        PluginPurgePreviewView.as_view(),
+        name="admin-plugin-purge-preview",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/retry-removal/",
+        PluginRetryRemovalView.as_view(),
+        name="admin-plugin-retry-removal",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/grants/<int:grant_id>/",
+        PluginGrantDetailView.as_view(),
+        name="admin-plugin-grant-detail",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/grants/<int:grant_id>/purge-preview/",
+        PluginGrantPurgePreviewView.as_view(),
+        name="admin-plugin-grant-purge-preview",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/org-removed-jobs/",
+        PluginOrgRemovedJobListView.as_view(),
+        name="admin-plugin-org-removed-jobs",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/org-removed-jobs/<int:job_id>/retry/",
+        OrgRemovedJobRetryView.as_view(),
+        name="admin-plugin-org-removed-job-retry",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/org-removed-jobs/<int:job_id>/skip/",
+        OrgRemovedJobSkipView.as_view(),
+        name="admin-plugin-org-removed-job-skip",
     ),
     path(
         "api/admin/plugins/<str:identifier>/grants/<int:grant_id>/retry-hook/",

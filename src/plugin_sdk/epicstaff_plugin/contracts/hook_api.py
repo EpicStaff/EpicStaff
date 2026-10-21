@@ -25,9 +25,15 @@ break a plugin built against an older SDK:
 
     HookRequest.model_validate_json(body, extra="ignore")
 
+A failed organization removed hook is retried by EpicStaff on its own, on the schedule
+`org_removed_retry_delay` gives, until `ORG_REMOVED_RETRY_WINDOW_SECONDS` after its first
+attempt; the other kinds wait for a SuperAdmin to retry them.
+
 Adding a hook kind: `HookKind` and `HOOK_PATHS` here, then EpicStaff's job kind and the
 lifecycle step that creates the job, then the registration method of
-`epicstaff_plugin.hooks.HookRegistry`.
+`epicstaff_plugin.hooks.HookRegistry`. A kind that EpicStaff retries on its own also gets its
+retry constants here, then their use where EpicStaff records a hook's result, then its row in
+the hook API reference.
 """
 
 import hashlib
@@ -76,6 +82,24 @@ MAX_HOOK_BODY_BYTES = 16384
 MAX_HOOK_ERROR_MESSAGE_LENGTH = 2000
 
 BODY_SHA256_PATTERN = r"^[0-9a-f]{64}$"
+
+ORG_REMOVED_RETRY_DELAYS_SECONDS = (60, 300, 1800, 3600)
+"""Seconds EpicStaff waits before the next attempt of a failed organization removed hook: after
+attempt 1, 2 and 3, then the last value after every later attempt."""
+ORG_REMOVED_RETRY_WINDOW_SECONDS = 7 * 24 * 60 * 60
+"""How long after its first attempt a failing organization removed hook is still retried; after
+that it stays failed until a SuperAdmin retries or skips it."""
+
+
+def org_removed_retry_delay(attempt: int) -> int:
+    """Return the seconds before the next attempt, after attempt number `attempt` failed.
+
+    Raises:
+        ValueError: `attempt` is not a positive integer.
+    """
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
+        raise ValueError(f"an attempt number is a positive integer, not {attempt!r}")
+    return ORG_REMOVED_RETRY_DELAYS_SECONDS[min(attempt, len(ORG_REMOVED_RETRY_DELAYS_SECONDS)) - 1]
 
 
 class _HookContractModel(BaseModel):

@@ -284,7 +284,7 @@ def test_a_retry_puts_the_same_job_back_and_the_next_claim_is_the_next_attempt(j
     assert response.status_code == 202
     body = response.json()
     assert body["state"] == "granting"
-    assert body["allowed_actions"] == ["suspend"]
+    assert body["allowed_actions"] == ["suspend", "purge"]
     assert body["install_hook"]["state"] == "pending"
     assert body["install_hook"]["error"] is None
     assert PluginHookJob.objects.get().pk == job.pk
@@ -406,7 +406,9 @@ def _locked_tables(captured):
         if "FOR UPDATE" not in sql:
             continue
         from_clause = sql.split(" FROM ", 1)[1]
-        if from_clause.startswith('"plugins_plugingrant"'):
+        if from_clause.startswith('"plugins_plugin" '):
+            tables.append("plugin")
+        elif from_clause.startswith('"plugins_plugingrant"'):
             tables.append("grant")
         elif from_clause.startswith('"plugins_pluginhookjob"'):
             tables.append("job")
@@ -446,23 +448,27 @@ def test_failing_an_overdue_job_locks_the_grant_before_the_job(job, plugin_node)
     assert _locks_of(lambda: HookJobService().fail_overdue(plugin_node)) == ["grant", "job"]
 
 
-def test_a_retry_locks_the_grant_before_the_job(job, plugin_node, superadmin):
+def test_a_retry_locks_the_plugin_then_the_grant_then_the_job(job, plugin_node, superadmin):
     HookJobService().claim(plugin_node, job.pk)
     HookJobService().record_result(plugin_node, job.pk, HookResult(attempt=1, outcome="failed", duration_ms=5))
 
-    assert _locks_of(lambda: HookJobService().retry("weather", job.grant_id, superadmin)) == ["grant", "job"]
+    assert _locks_of(lambda: HookJobService().retry("weather", job.grant_id, superadmin)) == ["plugin", "grant", "job"]
 
 
-def test_a_suspension_locks_the_grant_then_its_jobs_then_its_service_account(job, superadmin):
+def test_a_suspension_locks_the_plugin_the_grant_its_jobs_then_its_service_account(job, superadmin):
     locks = _locks_of(lambda: PluginSuspensionService().suspend("weather", job.grant_id, superadmin))
 
-    assert locks == ["grant", "job", "account"]
+    assert locks == ["plugin", "grant", "job", "account"]
 
 
-def test_a_resume_locks_the_grant_before_its_service_account(job, superadmin):
+def test_a_resume_locks_the_plugin_and_the_grant_before_its_service_account(job, superadmin):
     PluginSuspensionService().suspend("weather", job.grant_id, superadmin)
 
-    assert _locks_of(lambda: PluginSuspensionService().resume("weather", job.grant_id, superadmin)) == ["grant", "account"]
+    assert _locks_of(lambda: PluginSuspensionService().resume("weather", job.grant_id, superadmin)) == [
+        "plugin",
+        "grant",
+        "account",
+    ]
 
 
 def test_minting_keys_locks_the_service_accounts_before_their_keys(job, hooked_weather):

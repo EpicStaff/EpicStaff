@@ -11,7 +11,8 @@ from plugins.exceptions import (
     PluginNotRunningError,
 )
 from plugins.lifecycle.hook_job_service import HookJobService
-from plugins.models import GrantState, Plugin, PluginGrant, PluginServiceAccount, PluginState
+from plugins.lifecycle.lifecycle_locks import lock_plugin
+from plugins.models import GrantState, PluginGrant, PluginServiceAccount, PluginState
 from plugins.models.grant import GRANT_PER_ORGANIZATION_CONSTRAINT
 
 
@@ -33,27 +34,23 @@ class PluginGrantService:
             OrganizationInactiveError: The organization is deactivated.
             PluginAlreadyGrantedError: The organization already has a grant for the plugin.
         """
-        plugin = (
-            Plugin.objects.select_related("current_package")
-            .defer("current_package__icon_bytes")
-            .filter(identifier=identifier)
-            .first()
-        )
-        if plugin is None:
-            raise PluginNotFoundError()
-        organization = Organization.objects.filter(pk=organization_id).first()
-        if organization is None:
-            raise OrganizationNotFoundError()
-        if plugin.state != PluginState.RUNNING:
-            raise PluginNotRunningError()
-        if not organization.is_active:
-            raise OrganizationInactiveError()
-        package = plugin.current_package
-        manifest = package.parsed_manifest
-        has_backend = manifest.backend is not None
-        runs_install_hook = has_backend and manifest.hooks.install
         try:
             with transaction.atomic():
+                # Locked, so no grant is made while the plugin is being uninstalled or deleted.
+                plugin = lock_plugin(identifier)
+                if plugin is None:
+                    raise PluginNotFoundError()
+                organization = Organization.objects.filter(pk=organization_id).first()
+                if organization is None:
+                    raise OrganizationNotFoundError()
+                if plugin.state != PluginState.RUNNING:
+                    raise PluginNotRunningError()
+                if not organization.is_active:
+                    raise OrganizationInactiveError()
+                package = plugin.current_package
+                manifest = package.parsed_manifest
+                has_backend = manifest.backend is not None
+                runs_install_hook = has_backend and manifest.hooks.install
                 grant = PluginGrant.objects.create(
                     plugin=plugin,
                     org=organization,

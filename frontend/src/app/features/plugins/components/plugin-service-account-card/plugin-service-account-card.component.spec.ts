@@ -38,6 +38,12 @@ describe('PluginServiceAccountCardComponent', () => {
         expect(badge()).toBe('Suspended');
     });
 
+    it("says the plugin's data in the organization is being deleted", () => {
+        render(buildOrganizationServiceAccount({ grant_state: 'purging' }));
+
+        expect(badge()).toBe('Deleting data');
+    });
+
     it('says the plugin is active, with its name and when its key was last used', () => {
         render(buildOrganizationServiceAccount());
 
@@ -67,11 +73,14 @@ describe('PluginServiceAccountCardComponent', () => {
         expect(element.textContent).toContain('Outbound hosts');
     });
 
-    it('says when its backend cannot reach the internet', () => {
+    it('says None when it declares no outbound host', () => {
         render(buildOrganizationServiceAccount());
 
         expect(element.querySelector('.account__hosts')).toBeNull();
-        expect(element.textContent).toContain('None. Its backend cannot reach the internet.');
+        const hosts = Array.from(element.querySelectorAll('.account__access')).find((block) =>
+            block.querySelector('.account__access-title')?.textContent?.includes('Outbound hosts')
+        );
+        expect(hosts?.querySelector('.account__muted')?.textContent?.trim()).toBe('None.');
     });
 
     it('says it keeps its data in its own database only when it has one', () => {

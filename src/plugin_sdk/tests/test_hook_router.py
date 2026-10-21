@@ -58,6 +58,36 @@ class RecordingHandler:
             raise self.error
 
 
+class RecordingOrgRemovedHandler:
+    """An organization removed handler: takes the request alone."""
+
+    def __init__(self, error=None, delay=0.0, events=None):
+        self.calls = []
+        self.events = [] if events is None else events
+        self.error = error
+        self.delay = delay
+
+    async def __call__(self, hook_request):
+        self.calls.append(hook_request)
+        self.events.append(("start", hook_request.kind))
+        await asyncio.sleep(self.delay)
+        self.events.append(("end", hook_request.kind))
+        if self.error is not None:
+            raise self.error
+
+
+class ClientSpy(EpicStaffClient):
+    """An EpicStaff client that records every organization a hook asked a client for."""
+
+    def __init__(self, runtime):
+        super().__init__(runtime, transport=httpx.MockTransport(lambda request: httpx.Response(500)))
+        self.organizations = []
+
+    def for_org(self, org_id):
+        self.organizations.append(org_id)
+        return super().for_org(org_id)
+
+
 @pytest.fixture
 def hooks(signer):
     return HookSigner(signer)
@@ -428,7 +458,7 @@ def test_each_kind_has_its_registration_method():
     async def upgrade(request, epicstaff):
         return None
 
-    async def org_removed(request, epicstaff):
+    async def org_removed(request):
         return None
 
     registry = HookRegistry()
@@ -436,3 +466,134 @@ def test_each_kind_has_its_registration_method():
     assert registry.on_upgrade(upgrade) is upgrade
     assert registry.on_org_removed(org_removed) is org_removed
     assert [registry.handler(kind) for kind in ("install", "upgrade", "org_removed")] == [install, upgrade, org_removed]
+
+
+def test_a_handler_that_cannot_take_its_kinds_arguments_is_refused_at_registration():
+    async def with_client(request, epicstaff):
+        return None
+
+    async def request_only(request):
+        return None
+
+    async def too_many(request, epicstaff, extra):
+        return None
+
+    with pytest.raises(TypeError, match=r"org_removed hook's handler is called with \(request\)"):
+        HookRegistry().on_org_removed(with_client)
+    with pytest.raises(TypeError, match=r"org_removed hook's handler is called with \(request\)"):
+        HookRegistry().register("org_removed", with_client)
+    with pytest.raises(TypeError, match=r"install hook's handler is called with \(request, epicstaff\)"):
+        HookRegistry().on_install(request_only)
+    with pytest.raises(TypeError, match=r"upgrade hook's handler is called with \(request, epicstaff\)"):
+        HookRegistry().on_upgrade(too_many)
+    with pytest.raises(TypeError, match=r"\(request\)"):
+        HookRegistry().on_org_removed(RecordingHandler())
+
+
+def test_a_handler_whose_signature_takes_its_arguments_is_accepted():
+    async def flexible(request, *rest, **options):
+        return None
+
+    async def optional_client(request, epicstaff=None):
+        return None
+
+    registry = HookRegistry()
+    registry.on_install(flexible)
+    registry.on_org_removed(optional_client)
+    registry.on_upgrade(RecordingHandler())
+
+    assert registry.handler("org_removed") is optional_client
+
+
+# --- The organization removed hook ---
+
+COBALT = {"id": 9, "name": "Cobalt"}
+
+
+def test_an_org_removed_handler_gets_the_request_alone_and_no_client_is_made(plugin_app, runtime, hooks):
+    # Cobalt (9) is not in the runtime file: a deleted organization has no service account.
+    handler = RecordingOrgRemovedHandler()
+    registry = HookRegistry()
+    registry.on_org_removed(handler)
+    epicstaff = ClientSpy(runtime)
+    call = hooks.call("org_removed", org=COBALT, job_id=77, attempt=3)
+
+    response = _post(build_app(plugin_app, runtime, hooks=registry, epicstaff=epicstaff), call)
+
+    assert (response.status, response.json()) == (200, {"status": "done"})
+    assert handler.calls == [call.request]
+    assert (handler.calls[0].kind, handler.calls[0].org.name, handler.calls[0].attempt) == ("org_removed", "Cobalt", 3)
+    assert epicstaff.organizations == []
+    assert plugin_app.paths == []
+
+
+def test_install_handlers_still_get_a_client_for_their_organization(plugin_app, runtime, hooks):
+    handler = RecordingHandler()
+    registry = HookRegistry()
+    registry.on_install(handler)
+    epicstaff = ClientSpy(runtime)
+
+    response = _post(build_app(plugin_app, runtime, hooks=registry, epicstaff=epicstaff), hooks.call("install", org=ACME))
+
+    assert response.status == 200
+    ((_, client),) = handler.calls
+    assert (client.org_id, client.on_behalf_of_user_id) == (3, None)
+    assert epicstaff.organizations == [3]
+
+
+def test_an_org_removed_handler_that_raises_answers_failed_with_the_first_line(plugin_app, runtime, hooks):
+    registry = HookRegistry()
+    registry.on_org_removed(RecordingOrgRemovedHandler(error=RuntimeError("the places could not be deleted\ndetail")))
+
+    response = _post(build_app(plugin_app, runtime, hooks=registry), hooks.call("org_removed", org=COBALT))
+
+    assert (response.status, response.json()) == (
+        500,
+        {"status": "failed", "error": {"message": "the places could not be deleted"}},
+    )
+
+
+def test_a_plugin_without_an_org_removed_handler_answers_501(served, hooks):
+    response = _post(served, hooks.call("org_removed", org=COBALT))
+
+    assert (response.status, response.json()) == (
+        501,
+        {"status": "failed", "error": {"message": "this plugin has no org_removed hook"}},
+    )
+
+
+def test_the_per_organization_lock_covers_the_org_removed_hook(plugin_app, runtime, hooks):
+    events = []
+    install = RecordingHandler(delay=0.05)
+    install.events = events
+    removal = RecordingOrgRemovedHandler(delay=0.05, events=events)
+    registry = HookRegistry()
+    registry.on_install(install)
+    registry.on_org_removed(removal)
+    app = build_app(plugin_app, runtime, hooks=registry)
+
+    statuses = _run_together(
+        app,
+        hooks.call("install", org=ACME, job_id=41),
+        hooks.call("org_removed", org=ACME, job_id=42),
+        hooks.call("org_removed", org=ACME, job_id=42, attempt=2),
+    )
+
+    assert statuses == [200, 200, 200]
+    assert [event for event, _ in events] == ["start", "end", "start", "end", "start", "end"]
+
+
+def test_org_removed_hooks_for_two_organizations_run_side_by_side(plugin_app, runtime, hooks):
+    removal = RecordingOrgRemovedHandler(delay=0.05)
+    registry = HookRegistry()
+    registry.on_org_removed(removal)
+    app = build_app(plugin_app, runtime, hooks=registry)
+
+    _run_together(app, hooks.call("org_removed", org=ACME, job_id=41), hooks.call("org_removed", org=COBALT, job_id=42))
+
+    assert [event for event, _ in removal.events] == ["start", "start", "end", "end"]
+
+
+def test_running_a_kind_without_a_handler_is_a_lookup_error(hooks):
+    with pytest.raises(LookupError, match="org_removed hook has no handler"):
+        asyncio.run(HookRegistry().run(hooks.call("org_removed").request, None))

@@ -26,6 +26,7 @@ from src.shared.models.plugin_nodes import (
     NODE_PORT_RANGE,
     NodeReport,
     PlacementReport,
+    RemovalReport,
 )
 
 from es_plugins import AGENT_VERSION
@@ -35,6 +36,7 @@ from es_plugins.agent.port_reservation import PortReservation
 from es_plugins.agent.reconciler import AgentServices, Reconciler
 from es_plugins.agent.settings import AgentSettings
 from es_plugins.database.connections import DatabaseConnector
+from es_plugins.database.drop_sequence import DatabaseDropper
 from es_plugins.database.limits_watchdog import DatabaseLimitsWatchdog
 from es_plugins.database.provisioner import DatabaseProvisioner
 from es_plugins.egress.policy_writer import EgressPolicyWriter
@@ -56,31 +58,46 @@ REPORT_DEBOUNCE_SECONDS = 0.2
 
 
 class Reporter:
-    """Sends the node's report every 10 s, and soon after `request()`."""
+    """Sends the node's report every 10 s, and soon after `request()`.
+
+    Nothing a placement or a removal holds can stop it: a report that cannot be built or sent is
+    logged, once until one goes through again, and the next round tries again.
+    """
 
     def __init__(
         self,
         django: DjangoNodeClient,
         placement_reports: Callable[[], list[PlacementReport]],
+        removal_reports: Callable[[], list[RemovalReport]],
         *,
         interval: float = REPORT_INTERVAL_SECONDS,
     ):
         self._django = django
         self._placement_reports = placement_reports
+        self._removal_reports = removal_reports
         self._interval = interval
         self._requested = asyncio.Event()
         self._failing = False
+        self._unbuildable = False
 
     def request(self) -> None:
         self._requested.set()
 
     async def send_once(self) -> None:
-        report = NodeReport(
-            format=CONTRACT_FORMAT,
-            agent_version=AGENT_VERSION,
-            reported_at=datetime.now(UTC),
-            placements=self._placement_reports(),
-        )
+        try:
+            report = NodeReport(
+                format=CONTRACT_FORMAT,
+                agent_version=AGENT_VERSION,
+                reported_at=datetime.now(UTC),
+                placements=self._placement_reports(),
+                removals=self._removal_reports(),
+            )
+        except Exception:
+            if not self._unbuildable:
+                logger.exception("The node report could not be built")
+            self._unbuildable = True
+            return
+        self._unbuildable = False
         try:
             await self._django.send_report(report)
         except NodeApiError as error:
@@ -100,7 +117,11 @@ class Reporter:
             except TimeoutError:
                 pass
             self._requested.clear()
-            await self.send_once()
+            try:
+                await self.send_once()
+            except Exception:
+                # The report goes on: one round's unexpected error ends only that round.
+                logger.exception("Sending the node report failed")
 
 
 class NodeAgent:
@@ -212,7 +233,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
     node_disk = NodeDisk(layout.data_root)
     database_connector = DatabaseConnector(settings.database_admin_password)
     reconciler: Reconciler
-    reporter = Reporter(django, lambda: reconciler.reports())
+    reporter = Reporter(django, lambda: reconciler.reports(), lambda: reconciler.removal_reports())
     services = AgentServices(
         layout=layout,
         django=django,
@@ -223,6 +244,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
         disk=node_disk,
         hook_caller=hook_caller,
         provisioner=DatabaseProvisioner(database_connector),
+        dropper=DatabaseDropper(database_connector),
         egress=egress,
         on_change=reporter.request,
     )

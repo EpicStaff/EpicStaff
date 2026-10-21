@@ -7,12 +7,16 @@ the running sessions of such flows are stopped once the suspension commits. Its 
 until `purge_after`. Resume undoes all of it except the keys: the node's next credentials
 fetch mints new ones.
 
-Lock order: a service that changes a grant and its hook jobs locks the grant first, then the
-jobs (as `HookJobService` does), so a suspension and a hook result never deadlock. Keys are
+A grant is suspended on its own (`suspension_cause` grant) or because its plugin was
+uninstalled (`uninstall`); a reinstall resumes only the second kind. Deleting a grant's data
+takes the same steps first when the grant is not suspended yet (`withdraw_access`).
+
+Lock order (`lifecycle_locks`): the plugin, then the grant, then its hook jobs. Keys are
 locked through their service account: grant, then account, then keys, the order
 `ServiceAccountKeyService.mint_for_plugin` takes the account and its keys in.
 """
 
+from datetime import datetime
 from functools import partial
 
 from django.db import transaction
@@ -21,8 +25,8 @@ from django.utils import timezone
 from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import log_grant_resumed, log_grant_suspended
 from plugins.configuration.grace_period import grace_period
-from plugins.exceptions import GrantNotFoundError
 from plugins.lifecycle.grant_actions import GrantAction, assert_grant_action
+from plugins.lifecycle.lifecycle_locks import lock_grant
 from plugins.lifecycle.suspended_run_stopper import SuspendedRunStopper
 from plugins.models import (
     GrantState,
@@ -32,6 +36,7 @@ from plugins.models import (
     PluginHookJob,
     PluginServiceAccount,
     PluginServiceAccountKey,
+    SuspensionCause,
 )
 from plugins.models.hook_job import OPEN_HOOK_JOB_STATES
 
@@ -51,39 +56,19 @@ class PluginSuspensionService:
         Raises:
             GrantNotFoundError: No such grant of this plugin.
             GrantNotSuspendableError: The grant's state cannot be suspended.
+            PluginUninstallingError: The plugin is uninstalled or being deleted.
         """
         now = timezone.now()
         with transaction.atomic():
-            grant = _locked_grant(identifier, grant_id)
+            grant = lock_grant(identifier, grant_id)
             assert_grant_action(grant, GrantAction.SUSPEND)
-            previous_state = grant.state
-            _fail_open_hook_jobs(grant, now)
-            grant.state = GrantState.SUSPENDED
-            grant.suspended_at = now
-            grant.purge_after = now + grace_period()
-            grant.save(
-                update_fields=[
-                    "state",
-                    "suspended_at",
-                    "purge_after",
-                    "last_hook_error",
-                    "updated_at",
-                ]
+            self.suspend_locked(
+                grant,
+                actor=actor,
+                cause=SuspensionCause.GRANT,
+                purge_after=now + grace_period(),
+                now=now,
             )
-            _revoke_keys(grant, now)
-            ActivityRecorder().grant_suspended(actor, grant, previous_state)
-            transaction.on_commit(partial(log_grant_suspended, actor, grant, previous_state))
-
-            # A named function, not a `partial`: Django logs a failed robust callback by its
-            # `__qualname__`, which a `partial` lacks, and would raise from the handler.
-            def stop_affected_sessions() -> None:
-                SuspendedRunStopper().stop_for(
-                    organization_id=grant.org_id,
-                    grant_id=grant.pk,
-                    plugin_identifier=identifier,
-                )
-
-            transaction.on_commit(stop_affected_sessions, robust=True)
         return grant
 
     def resume(self, identifier: str, grant_id: int, actor) -> PluginGrant:
@@ -97,19 +82,88 @@ class PluginSuspensionService:
         Raises:
             GrantNotFoundError: No such grant of this plugin.
             GrantNotSuspendedError: The grant is not suspended.
+            PluginUninstallingError: The plugin is uninstalled or being deleted.
         """
-        now = timezone.now()
         with transaction.atomic():
-            grant = _locked_grant(identifier, grant_id)
+            grant = lock_grant(identifier, grant_id)
             assert_grant_action(grant, GrantAction.RESUME)
-            _revoke_keys(grant, now)
-            grant.state = resume_target_state(grant)
-            grant.suspended_at = None
-            grant.purge_after = None
-            grant.save(update_fields=["state", "suspended_at", "purge_after", "updated_at"])
-            ActivityRecorder().grant_resumed(actor, grant)
+            self.resume_locked(grant, actor=actor, now=timezone.now())
         log_grant_resumed(actor, grant)
         return grant
+
+    def suspend_locked(
+        self, grant: PluginGrant, *, actor, cause: str, purge_after: datetime, now: datetime
+    ) -> None:
+        """Suspend `grant`, which the caller has locked after its plugin, until `purge_after`.
+
+        Records `grant_suspended` with the cause; after commit, logs it and stops the
+        organization's sessions that use what the plugin owns.
+        """
+        previous_state = grant.state
+        withdraw_access(grant, now, hook_error=SUSPENDED_BEFORE_HOOK_FINISHED)
+        grant.state = GrantState.SUSPENDED
+        grant.suspension_cause = cause
+        grant.purge_after = purge_after
+        grant.save(
+            update_fields=[
+                "state",
+                "suspended_at",
+                "suspension_cause",
+                "purge_after",
+                "last_hook_error",
+                "updated_at",
+            ]
+        )
+        ActivityRecorder().grant_suspended(actor, grant, previous_state, cause)
+        transaction.on_commit(partial(log_grant_suspended, actor, grant, previous_state))
+        stop_sessions_on_commit(grant)
+
+    def resume_locked(self, grant: PluginGrant, *, actor, now: datetime) -> None:
+        """Resume `grant`, suspended and locked after its plugin by the caller.
+
+        Records `grant_resumed` with the cause the suspension had; the caller logs it
+        (`log_grant_resumed`) once it has committed.
+        """
+        cause = grant.suspension_cause
+        _revoke_keys(grant, now)
+        grant.state = resume_target_state(grant)
+        grant.suspended_at = None
+        grant.suspension_cause = None
+        grant.purge_after = None
+        grant.save(
+            update_fields=["state", "suspended_at", "suspension_cause", "purge_after", "updated_at"]
+        )
+        ActivityRecorder().grant_resumed(actor, grant, cause)
+
+
+def withdraw_access(grant: PluginGrant, now: datetime, *, hook_error: str) -> None:
+    """Take away what a grant gives its plugin: the steps every suspension starts with.
+
+    Fails the grant's pending and running hook jobs with `hook_error` (an install job's error
+    also becomes the grant's `last_hook_error`), revokes every key of its service account and
+    sets `suspended_at`. The caller holds the grant's lock and saves `suspended_at` and
+    `last_hook_error` with its own changes.
+    """
+    _fail_open_hook_jobs(grant, now, hook_error)
+    _revoke_keys(grant, now)
+    grant.suspended_at = now
+
+
+def stop_sessions_on_commit(grant: PluginGrant) -> None:
+    """Once the transaction commits, stop the organization's open sessions that use what
+    `grant`'s plugin owns; a failure is logged and never undoes what committed."""
+    organization_id = grant.org_id
+    grant_id = grant.pk
+    identifier = grant.plugin.identifier
+
+    # A named function, not a `partial`: Django logs a failed robust callback by its
+    # `__qualname__`, which a `partial` lacks, and would raise from the handler.
+    def stop_affected_sessions() -> None:
+        SuspendedRunStopper().stop_for(
+            organization_id=organization_id, grant_id=grant_id, plugin_identifier=identifier
+        )
+
+    transaction.on_commit(stop_affected_sessions, robust=True)
 
 
 def resume_target_state(grant: PluginGrant) -> str:
@@ -126,38 +180,24 @@ def resume_target_state(grant: PluginGrant) -> str:
     return GrantState.ACTIVE
 
 
-def _locked_grant(identifier: str, grant_id: int) -> PluginGrant:
-    grant = (
-        PluginGrant.objects.select_for_update(of=("self",))
-        .select_related("plugin")
-        .filter(pk=grant_id, plugin__identifier=identifier)
-        .first()
-    )
-    if grant is None:
-        raise GrantNotFoundError()
-    return grant
-
-
-def _fail_open_hook_jobs(grant: PluginGrant, now) -> None:
+def _fail_open_hook_jobs(grant: PluginGrant, now: datetime, error: str) -> None:
     """Fail the grant's pending and running hook jobs; locked after the grant."""
     open_jobs = list(
         PluginHookJob.objects.select_for_update()
         .filter(grant=grant, state__in=OPEN_HOOK_JOB_STATES)
+        .order_by("pk")
         .only("pk", "kind")
     )
     if not open_jobs:
         return
     PluginHookJob.objects.filter(pk__in=[job.pk for job in open_jobs]).update(
-        state=HookJobState.FAILED,
-        finished_at=now,
-        error=SUSPENDED_BEFORE_HOOK_FINISHED,
-        updated_at=now,
+        state=HookJobState.FAILED, finished_at=now, error=error, updated_at=now
     )
     if any(job.kind == HookJobKind.INSTALL for job in open_jobs):
-        grant.last_hook_error = SUSPENDED_BEFORE_HOOK_FINISHED
+        grant.last_hook_error = error
 
 
-def _revoke_keys(grant: PluginGrant, now) -> None:
+def _revoke_keys(grant: PluginGrant, now: datetime) -> None:
     """Revoke every key of the grant's service account that is not revoked yet, superseded
     keys still inside their overlap included; the account is locked first (see the module's
     lock order)."""

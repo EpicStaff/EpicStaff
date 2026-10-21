@@ -21,10 +21,11 @@ back.
 | `invalid_signature` | 400 | The package is signed, but the signature names another package or does not verify with the trusted key it claims |
 | `package_too_large` | 413 | The upload is larger than `PLUGINS_MAX_PACKAGE_MB` |
 | `plugin_upgrade_unavailable` | 409 | The plugin already has an approved package; installing a new version is not available yet |
+| `plugin_uninstalling` | 409 | Uploading a package for, approving a package of, or restarting a plugin that is uninstalled or being deleted; or changing the settings or limits of a plugin being deleted (they stay editable while it is uninstalled) |
 | `plugin_package_not_found` | 404 | No such package; for a plugin node, a package that is not the current package of one of its placements |
 | `package_not_pending` | 409 | Approve or reject of a package that was already decided |
 | `untrusted_not_acknowledged` | 400 | Approve of an untrusted package without `untrusted_acknowledged: true` |
-| `plugin_not_found` | 404 | No plugin with this identifier; on the public endpoints, a plugin that is not running; on the login endpoints (`plugin-authorize`, `login-organizations`), also a plugin without a backend, which nobody can log in to |
+| `plugin_not_found` | 404 | No plugin with this identifier, a deleted plugin included (its activity is still served); on the public endpoints, a plugin that is not running; on the login endpoints (`plugin-authorize`, `login-organizations`), also a plugin without a backend, which nobody can log in to |
 | `plugin_not_running` | 409 | A grant for a plugin that is not running (a plugin with a backend runs once its node reports it healthy) |
 | `plugin_already_granted` | 409 | The organization already has a grant for the plugin |
 | `organization_inactive` | 409 | A grant to a deactivated organization |
@@ -35,7 +36,7 @@ back.
 | `invalid_plugin_limits` | 400 | A limits write with an unknown limit, a value that is not a positive integer or would raise the limit, or a `cpu_priority` other than `low`. `loc` is `overrides.<key>` |
 | `no_plugin_node` | 409 | Approving a package with a backend while no node named `PLUGINS_NODE_NAME` is registered: EpicStaff registers it at start-up (`manage.py seed_plugin_node`), so it has not started with plugins on since the node was configured, or `PLUGINS_NODE_NAME` changed |
 | `plugin_node_full` | 409 | Approving a package with a backend while every port or Unix user id of the plugin node is taken |
-| `no_plugin_database_server` | 409 | Approving a package with a `database` while no plugin database server is registered: EpicStaff registers it at start-up while plugins are on (`manage.py seed_plugin_node`), so it has not started with `PLUGINS_ENABLED=true` since |
+| `no_plugin_database_server` | 409 | Approving a package with a `database` while no plugin database server is registered: EpicStaff registers it at start-up while plugins are on (`manage.py seed_plugin_node`), so EpicStaff has not been started with `PLUGINS_ENABLED=true` since the plugin database server was added |
 | `node_not_authenticated` | 401 | A plugin node request without the node key, or with a wrong one |
 | `placement_not_found` | 404 | A plugin node asks for the runtime credentials of a placement that is not its own |
 | `invalid_node_report` | 400 | A plugin node report that does not follow the report format (fields this EpicStaff does not know are ignored). `loc` is under `report` |
@@ -49,13 +50,21 @@ back.
 | `invalid_on_behalf_of` | 400 | `X-EpicStaff-On-Behalf-Of` is not a user id: a decimal positive whole number below 2^63 |
 | `on_behalf_of_not_allowed` | 403 | The person `X-EpicStaff-On-Behalf-Of` names may not use the plugin in the service account's organization: unknown, deactivated, no member, no `read` on the plugin, or the grant is not active (always while the install hook runs). One answer for every reason |
 | `person_not_found` | 404 | The people endpoint: the user may not use the plugin in the service account's organization, members without `read` included |
-| `grant_not_found` | 404 | Suspending, resuming or previewing a suspension of a grant, or retrying its install hook, when the grant does not exist or is another plugin's |
+| `grant_not_found` | 404 | Suspending, resuming, deleting the data of, or previewing a suspension or deletion of a grant, or retrying its install hook, when the grant does not exist or is another plugin's |
 | `hook_not_retryable` | 409 | Retrying the install hook of a grant whose install hook has not failed |
 | `grant_not_suspendable` | 409 | Suspending a grant that is already suspended, or in a state that cannot be suspended. Reload the grant: its `allowed_actions` lists what it allows |
 | `grant_not_suspended` | 409 | Resuming a grant that is not suspended |
+| `grant_not_purgeable` | 409 | Deleting the data of a grant whose data, or whose plugin, is already being deleted |
+| `invalid_purge_phrase` | 400 | Deleting a grant's data or a plugin with a `verification_phrase` that is missing or not exactly the one the preview shows (`purge-<plugin id>-<organization name>`, `purge-<plugin id>`). A name changed since the preview changes the phrase: reload it. Checked after `…_not_found` and the conflicts, before anything changes |
+| `plugin_not_uninstallable` | 409 | Uninstalling a plugin that is not provisioning, running or failed |
+| `plugin_not_uninstalling` | 409 | Reinstalling a plugin that is not uninstalled |
+| `plugin_not_purgeable` | 409 | Deleting a plugin that is uploaded (reject it instead), in maintenance, or already being deleted |
+| `removal_not_retryable` | 409 | Retrying the removal of a plugin whose plugin node has not reported the removal failed |
+| `org_removed_hook_not_retryable` | 409 | Retrying a data removal (an organization removed hook) that is running, finished, or due already |
+| `org_removed_hook_not_skippable` | 409 | Skipping a data removal that is running or finished |
 | `plugin_suspended` | 409 | A flow run, test run, realtime conversation, voice call or code test-run would use something a plugin owns in the organization, and the plugin is not active there: suspended, still installing, its install failed, or its grant is gone. Every run of the organization's own flows that uses one of the plugin's resources is refused too. The body also has `plugin` (`identifier`, `name`) and `organization` (`id`); it never names the resource. See [the plugin lifecycle](../explanation/lifecycle.md) |
-| `hook_job_not_found` | 404 | A plugin node claims or reports a hook job that does not exist or belongs to another node |
-| `hook_job_not_claimable` | 409 | A plugin node claims a hook job that is not waiting, whose plugin is not running, or whose grant is gone or no longer in the state the hook runs in |
+| `hook_job_not_found` | 404 | A plugin node claims or reports a hook job that does not exist or belongs to another node; a SuperAdmin retries or skips a data removal that does not exist, is another plugin's, or is not a data removal |
+| `hook_job_not_claimable` | 409 | A plugin node claims a hook job that is not waiting or not due yet, or that its kind's rules do not let run now: an install hook whose plugin is not running or whose grant is gone or has moved on; an organization removed hook whose plugin is not running, uninstalled or being deleted, or whose grant is neither gone nor being deleted |
 | `hook_job_not_running` | 409 | A plugin node reports the result of a hook job that is not running, or of another attempt than the running one |
 | `invalid_hook_result` | 400 | A plugin node's hook result that does not follow the result format. `loc` is under `result` |
 

@@ -12,8 +12,7 @@ code: httpx (`trust_env=True`, its default) and requests do, aiohttp does with
 
 import os
 
-# One of `contracts.runtime.PROXY_ENVIRONMENT_VARIABLES`; the node sets all four to one URL.
-HTTPS_PROXY_ENVIRONMENT_VARIABLE = "HTTPS_PROXY"
+from epicstaff_plugin.contracts.runtime import HTTPS_PROXY_ENVIRONMENT_VARIABLE
 
 
 class EgressProxyUnavailable(Exception):  # noqa: N818 (named like DatabaseUnavailable)

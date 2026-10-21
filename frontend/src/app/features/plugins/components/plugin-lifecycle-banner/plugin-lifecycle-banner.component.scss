@@ -1,0 +1,32 @@
+:host {
+    display: block;
+}
+
+:host:empty {
+    display: none;
+}
+
+.banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 12px 16px;
+    border-radius: 8px;
+    overflow-wrap: anywhere;
+
+    &--uninstalled {
+        display: block;
+        background: var(--transparent-orange-8);
+        color: var(--color-warning);
+
+        strong {
+            color: var(--color-text-primary);
+        }
+    }
+
+    &--deleting {
+        background: var(--color-status-error-subtle);
+        color: var(--color-status-error);
+    }
+}

@@ -2,7 +2,7 @@ from functools import cached_property
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Count, Prefetch, Q
+from django.db.models import BooleanField, Count, Exists, ExpressionWrapper, OuterRef, Prefetch, Q
 from epicstaff_plugin.contracts.manifest import PluginManifest
 
 from plugins.models.enums import GrantState, PluginState, ReviewState, SignatureStatus, Trust
@@ -15,16 +15,47 @@ class PluginQuerySet(models.QuerySet):
     def with_summary(self) -> "PluginQuerySet":
         """Load what a plugin summary shows in a fixed number of queries.
 
-        Adds `grant_count` (active grants) and `pending_packages` (a list holding the pending
-        package, if any); the current package comes without its icon and manifest.
+        Adds `grant_count` (active grants), `needs_attention` (an organization removed job
+        failed for good, the node failed to remove the plugin, or a grant's data could not
+        all be deleted yet) and `pending_packages` (a list holding the pending package, if
+        any). The current package comes without its icon and manifest, the placement with it.
         """
+        # Imported here: these modules import this one.
+        from plugins.models.enums import PlacementRemovalState
+        from plugins.models.grant import PluginGrant
+        from plugins.models.hook_job import HookJobKind, HookJobState, PluginHookJob
+        from plugins.models.node import PluginPlacement
+
+        needs_attention = ExpressionWrapper(
+            Exists(
+                PluginHookJob.objects.filter(
+                    plugin=OuterRef("pk"),
+                    kind=HookJobKind.ORG_REMOVED,
+                    state=HookJobState.FAILED,
+                )
+            )
+            | Exists(
+                PluginPlacement.objects.filter(
+                    plugin=OuterRef("pk"), removal_state=PlacementRemovalState.FAILED
+                )
+            )
+            | Exists(
+                PluginGrant.objects.filter(
+                    plugin=OuterRef("pk"),
+                    state=GrantState.PURGING,
+                    last_purge_error__isnull=False,
+                )
+            ),
+            output_field=BooleanField(),
+        )
         return (
-            self.select_related("current_package")
+            self.select_related("current_package", "placement")
             .defer(*(f"current_package__{field}" for field in PACKAGE_DETAIL_FIELDS))
             .annotate(
                 grant_count=Count(
                     "grants", filter=Q(grants__state=GrantState.ACTIVE), distinct=True
-                )
+                ),
+                needs_attention=needs_attention,
             )
             .prefetch_related(
                 Prefetch(
@@ -63,10 +94,21 @@ class Plugin(models.Model):
     # The SuperAdmin's lowered limits, by limit name; they can only lower what the manifest
     # asks for (plugins.configuration.limits).
     limit_overrides = models.JSONField(default=dict, blank=True)
+    # Set by an uninstall: its data is kept until `purge_after`, then the plugin is deleted.
+    uninstall_requested_at = models.DateTimeField(null=True, blank=True)
+    purge_after = models.DateTimeField(null=True, blank=True)
+    # When its deletion began; the row itself is deleted once the deletion is done.
+    purge_started_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     objects = PluginQuerySet.as_manager()
+
+    class Meta:
+        indexes = [
+            # The grace-period sweep asks for uninstalled plugins whose time is up.
+            models.Index(fields=["state", "purge_after"], name="plugins_plugin_state_purge"),
+        ]
 
     def __str__(self) -> str:
         return self.identifier

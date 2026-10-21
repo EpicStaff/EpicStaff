@@ -13,8 +13,10 @@ longer use the plugin: the SDK stops. A login token never reaches the plugin pro
 Every request to a plugin's `/api/` waits for this check, so the view is asynchronous and the
 decision runs in one worker thread: it never queues behind Django's one thread for
 synchronous views. A plugin's static data (version, upstream, public paths) is kept in
-the process for 10 s; whether its process is up is read fresh on every check, in one query
-by primary key, so a stopped plugin is refused at once and a started one served at once.
+the process for 10 s; whether it is in service and its process up is read fresh on every
+check, in one query by primary key, so a plugin uninstalled, being deleted or deleted answers
+`not_found` on every path at once, a stopped one is refused at once and a started one served
+at once.
 """
 
 import threading
@@ -168,14 +170,24 @@ def _load_snapshot(identifier: str) -> PluginSnapshot | None:
     )
 
 
-def is_available(plugin_id: int) -> bool:
-    """Whether the plugin is running and its process reported running and healthy, read now."""
+def availability_refusal(plugin_id: int) -> str | None:
+    """Why the plugin's backend cannot be reached now, read fresh in one query; None when it
+    is running and its process reported running and healthy.
+
+    `not_found` once the plugin is out of service (uninstalled, being deleted, or deleted),
+    so every path of it, public ones included, answers as an unknown plugin's would, from
+    the moment the change commits; `unavailable` while it is in service but not up.
+    """
     row = (
         Plugin.objects.filter(pk=plugin_id)
         .values_list("state", "placement__observed_state", "placement__health")
         .first()
     )
-    return row == (PluginState.RUNNING, PlacementObservedState.RUNNING, PlacementHealth.OK)
+    if row is None or row[0] not in PLACED_PLUGIN_STATES:
+        return DENY_NOT_FOUND
+    if row != (PluginState.RUNNING, PlacementObservedState.RUNNING, PlacementHealth.OK):
+        return DENY_UNAVAILABLE
+    return None
 
 
 def _deny(status: int, reason: str) -> GatewayDecision:
@@ -212,8 +224,9 @@ class GatewayDecisionService:
         path = canonical_path(check.raw_uri, check.normalized_path)
         if path is None:
             return _deny(403, DENY_NOT_FOUND)
-        if not is_available(snapshot.plugin_id):
-            return _deny(403, DENY_UNAVAILABLE)
+        refusal = availability_refusal(snapshot.plugin_id)
+        if refusal is not None:
+            return _deny(403, refusal)
         matched = match_public_path(list(snapshot.public_paths), check.method, path)
         if matched is None:
             return _logged_in_decision(check, snapshot, path)

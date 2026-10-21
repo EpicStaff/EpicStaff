@@ -53,6 +53,13 @@
         gap: 8px;
     }
 
+    &__actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+
     &__tabs {
         display: flex;
         gap: 8px;

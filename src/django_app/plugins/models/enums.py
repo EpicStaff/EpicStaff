@@ -9,7 +9,6 @@ class PluginState(models.TextChoices):
     MAINTENANCE = "maintenance"
     UNINSTALLING = "uninstalling"
     PURGING = "purging"
-    REMOVED = "removed"
 
 
 class Trust(models.TextChoices):
@@ -39,6 +38,16 @@ class GrantState(models.TextChoices):
     PURGING = "purging"
 
 
+class SuspensionCause(models.TextChoices):
+    """Why a grant is suspended: on its own, or because its plugin was uninstalled.
+
+    A reinstall resumes only the grants the uninstall suspended.
+    """
+
+    GRANT = "grant"
+    UNINSTALL = "uninstall"
+
+
 class PlacementObservedState(models.TextChoices):
     UNKNOWN = "unknown"
     DOWNLOADING = "downloading"
@@ -53,6 +62,13 @@ class PlacementHealth(models.TextChoices):
     OK = "ok"
     FAILING = "failing"
     UNKNOWN = "unknown"
+
+
+class PlacementRemovalState(models.TextChoices):
+    """How the node's removal of a placement goes, as it last reported it."""
+
+    REMOVING = "removing"
+    FAILED = "failed"
 
 
 class PluginDatabaseState(models.TextChoices):

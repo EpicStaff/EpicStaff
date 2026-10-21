@@ -1,12 +1,13 @@
 from django.db import models
-from django.db.models import F, Prefetch
+from django.db.models import Exists, F, OuterRef, Prefetch
 from django.db.models.functions import Lower
-from rbac.models import OrgScopedModel
+from rbac.models import Organization, OrgScopedModel
 
-from plugins.models.enums import GrantState, PluginState
+from plugins.models.enums import GrantState, PluginState, SuspensionCause
 from plugins.models.plugin import Plugin
 
 GRANT_PER_ORGANIZATION_CONSTRAINT = "plugins_grant_plugin_org_uniq"
+MAX_PURGE_ERROR_LENGTH = 2000
 
 
 class PluginGrantQuerySet(models.QuerySet):
@@ -22,10 +23,11 @@ class PluginGrantQuerySet(models.QuerySet):
         """Load what the SuperAdmin's grant list shows, in two queries for any number of grants.
 
         Adds `key_last_used_at` (when the grant's service account last called EpicStaff,
-        `PluginServiceAccount.last_used_at`) and `install_jobs` (its install hook jobs,
-        newest first), and comes with the plugin, organization, granting SuperAdmin and
-        service account. The owned-resource count is set on the page afterwards
-        (`ownership.owned_resource_summary.with_owned_resource_counts`).
+        `PluginServiceAccount.last_used_at`), and `install_jobs` and `org_removed_jobs` (its
+        install and organization removed hook jobs, newest first, the latter annotated
+        with `organization_exists`), and comes with the plugin, organization, granting
+        SuperAdmin and service account. The owned-resource count is set on the page
+        afterwards (`ownership.owned_resource_summary.with_owned_resource_counts`).
         """
         # Imported here: the hook job module imports this one.
         from plugins.models.hook_job import HookJobKind, PluginHookJob
@@ -40,7 +42,18 @@ class PluginGrantQuerySet(models.QuerySet):
                         "-created_at", "-pk"
                     ),
                     to_attr="install_jobs",
-                )
+                ),
+                Prefetch(
+                    "hook_jobs",
+                    queryset=PluginHookJob.objects.filter(kind=HookJobKind.ORG_REMOVED)
+                    .annotate(
+                        organization_exists=Exists(
+                            Organization.objects.filter(pk=OuterRef("organization_id"))
+                        )
+                    )
+                    .order_by("-created_at", "-pk"),
+                    to_attr="org_removed_jobs",
+                ),
             )
         )
 
@@ -69,8 +82,16 @@ class PluginGrant(OrgScopedModel):
     plugin = models.ForeignKey(Plugin, on_delete=models.CASCADE, related_name="grants")
     state = models.CharField(max_length=32, choices=GrantState.choices)
     suspended_at = models.DateTimeField(null=True, blank=True)
+    suspension_cause = models.CharField(
+        max_length=16, choices=SuspensionCause.choices, null=True, blank=True
+    )
     purge_after = models.DateTimeField(null=True, blank=True)
     last_hook_error = models.TextField(null=True, blank=True)
+    # When deleting the grant's data began; the row is deleted once it is done.
+    purge_started_at = models.DateTimeField(null=True, blank=True)
+    # The first resource the last purge pass could not delete, and why; cleared by a pass
+    # with no failure.
+    last_purge_error = models.CharField(max_length=MAX_PURGE_ERROR_LENGTH, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -81,6 +102,11 @@ class PluginGrant(OrgScopedModel):
             models.UniqueConstraint(
                 fields=["plugin", "org"], name=GRANT_PER_ORGANIZATION_CONSTRAINT
             ),
+        ]
+        indexes = [
+            *OrgScopedModel.Meta.indexes,
+            # The grace-period sweep asks for suspended grants whose time is up.
+            models.Index(fields=["state", "purge_after"], name="plugins_grant_state_purge"),
         ]
 
     @property

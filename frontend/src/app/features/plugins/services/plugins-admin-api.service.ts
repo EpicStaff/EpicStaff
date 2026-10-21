@@ -8,6 +8,8 @@ import {
     PackageReview,
     PluginDetail,
     PluginGrant,
+    PluginOrgRemovedJob,
+    PluginOrgRemovedJobQuery,
     PluginSummary,
     PluginUploadEvent,
 } from '../models/plugin-admin.model';
@@ -18,6 +20,7 @@ import {
     PluginSettingsResponse,
     PluginSettingsUpdate,
 } from '../models/plugin-backend.model';
+import { PluginGrantPurgePreview, PluginPurgePreview } from '../models/plugin-purge-preview.model';
 import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 
 /** SuperAdmin plugin endpoints (`/api/admin/plugins/**`). Cross-org: the org interceptor sends no org header here. */
@@ -36,6 +39,33 @@ export class PluginsAdminApiService {
 
     getPlugin(identifier: string): Observable<PluginDetail> {
         return this.http.get<PluginDetail>(this.pluginUrl(identifier));
+    }
+
+    /** Answers with the plugin `uninstalling` (409 `plugin_not_uninstallable` when its state does not allow it). */
+    uninstallPlugin(identifier: string): Observable<PluginDetail> {
+        return this.http.post<PluginDetail>(`${this.pluginUrl(identifier)}uninstall/`, null);
+    }
+
+    /** Answers with the plugin `provisioning`, or `running` without a backend (409 `plugin_not_uninstalling`). */
+    reinstallPlugin(identifier: string): Observable<PluginDetail> {
+        return this.http.post<PluginDetail>(`${this.pluginUrl(identifier)}reinstall/`, null);
+    }
+
+    /** What uninstalling or deleting the plugin affects. Read-only; answers in any state of the plugin. */
+    getPluginPurgePreview(identifier: string): Observable<PluginPurgePreview> {
+        return this.http.get<PluginPurgePreview>(`${this.pluginUrl(identifier)}purge-preview/`);
+    }
+
+    /** Starts deleting the plugin; answers 202 with it `purging`. The phrase is sent exactly as typed. */
+    purgePlugin(identifier: string, verificationPhrase: string): Observable<PluginDetail> {
+        return this.http.delete<PluginDetail>(this.pluginUrl(identifier), {
+            body: { verification_phrase: verificationPhrase },
+        });
+    }
+
+    /** Asks the node again to remove a plugin whose removal failed; answers 202. */
+    retryRemoval(identifier: string): Observable<PluginDetail> {
+        return this.http.post<PluginDetail>(`${this.pluginUrl(identifier)}retry-removal/`, null);
     }
 
     /** Uploads a `.esplugin` package: progress while the bytes go up, then the review of the stored package. */
@@ -94,6 +124,43 @@ export class PluginsAdminApiService {
         return this.http.post<PluginGrant>(`${this.grantUrl(identifier, grantId)}resume/`, null);
     }
 
+    /** What deleting the grant's data removes in its organization. Read-only; answers in any state of the grant. */
+    getGrantPurgePreview(identifier: string, grantId: number): Observable<PluginGrantPurgePreview> {
+        return this.http.get<PluginGrantPurgePreview>(`${this.grantUrl(identifier, grantId)}purge-preview/`);
+    }
+
+    /** Starts deleting the grant's data; answers 202 with the grant `purging`. The phrase is sent exactly as typed. */
+    purgeGrant(identifier: string, grantId: number, verificationPhrase: string): Observable<PluginGrant> {
+        return this.http.delete<PluginGrant>(this.grantUrl(identifier, grantId), {
+            body: { verification_phrase: verificationPhrase },
+        });
+    }
+
+    /** One page of the plugin's data removals, newest first. */
+    listOrgRemovedJobs(
+        identifier: string,
+        query: PluginOrgRemovedJobQuery
+    ): Observable<ApiGetRequest<PluginOrgRemovedJob>> {
+        const params = new HttpParams()
+            .set('state', query.state)
+            .set('deleted_organizations', String(query.deletedOrganizations))
+            .set('page', String(query.page))
+            .set('page_size', String(query.pageSize));
+        return this.http.get<ApiGetRequest<PluginOrgRemovedJob>>(`${this.pluginUrl(identifier)}org-removed-jobs/`, {
+            params,
+        });
+    }
+
+    /** Runs a data removal again now, with a new retry window; answers 202. */
+    retryOrgRemovedJob(identifier: string, jobId: number): Observable<PluginOrgRemovedJob> {
+        return this.http.post<PluginOrgRemovedJob>(`${this.orgRemovedJobUrl(identifier, jobId)}retry/`, null);
+    }
+
+    /** Gives up on a data removal: the plugin keeps that organization's data until the plugin is deleted. */
+    skipOrgRemovedJob(identifier: string, jobId: number): Observable<PluginOrgRemovedJob> {
+        return this.http.post<PluginOrgRemovedJob>(`${this.orgRemovedJobUrl(identifier, jobId)}skip/`, null);
+    }
+
     /** The settings of a plugin with a backend (409 `plugin_has_no_backend` otherwise; so are the calls below). */
     getSettings(identifier: string): Observable<PluginSettingsResponse> {
         return this.http.get<PluginSettingsResponse>(`${this.pluginUrl(identifier)}settings/`);
@@ -128,6 +195,10 @@ export class PluginsAdminApiService {
 
     private grantUrl(identifier: string, grantId: number): string {
         return `${this.pluginUrl(identifier)}grants/${grantId}/`;
+    }
+
+    private orgRemovedJobUrl(identifier: string, jobId: number): string {
+        return `${this.pluginUrl(identifier)}org-removed-jobs/${jobId}/`;
     }
 }
 

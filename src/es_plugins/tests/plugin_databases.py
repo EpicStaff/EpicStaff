@@ -84,18 +84,19 @@ async def connect_as(
 
 
 async def drop_plugin_database(desired: DesiredDatabase) -> None:
-    """Remove what provisioning (or a test) made for `desired`; its sessions must be closed."""
+    """Remove what provisioning (or a test) made for `desired`: the database of that name and
+    every other database the owner owns, then the roles. Its sessions must be closed."""
     connector = DatabaseConnector(admin_password())
     async with connector.admin_session(desired.server) as admin:
         cursor = await admin.execute(
-            "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_catalog.pg_database WHERE datname = %s",
-            (desired.database_name,),
+            "SELECT datname, pg_catalog.pg_get_userbyid(datdba) FROM pg_catalog.pg_database "
+            "WHERE datname = %s OR datdba = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = %s)",
+            (desired.database_name, desired.owner_role),
         )
-        owner = await cursor.fetchone()
-        if owner is not None:
-            if owner[0] != "plugins_admin":
-                await admin.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(owner[0])))
-            await admin.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(desired.database_name)))
+        for name, owner in await cursor.fetchall():
+            if owner != "plugins_admin":
+                await admin.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(owner)))
+            await admin.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(name)))
             await admin.execute("RESET ROLE")
         for role in (desired.app_role, desired.job_role, desired.owner_role):
             await admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))

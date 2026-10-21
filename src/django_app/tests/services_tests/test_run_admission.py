@@ -34,9 +34,11 @@ from tables.models.session_models import SessionPrincipal, SessionTrigger
 from tables.models.webhook_models import WebhookTrigger
 from tables.services.run_admission import (
     REFUSAL_LOG_SECONDS,
+    RunAdmission,
     RunKind,
     RunSubject,
     assert_run_admitted,
+    assert_still_admitted,
     log_trigger_refusal_once,
     register_run_admission_check,
     registered_run_admission_checks,
@@ -97,7 +99,12 @@ def flow(default_org):
 
 
 def test_with_no_checks_every_run_is_admitted(run_admission_checks):
-    assert assert_run_admitted(RunSubject(RunKind.FLOW, 1, 1)) is None
+    subject = RunSubject(RunKind.FLOW, 1, 1)
+
+    admission = assert_run_admitted(subject)
+
+    assert admission == RunAdmission(subject=subject, first_looks=())
+    assert assert_still_admitted(admission) is None
 
 
 def test_registering_a_check_class_again_keeps_the_first_check(run_admission_checks):
@@ -145,6 +152,49 @@ def test_a_subject_reads_its_kind_and_ids_from_text():
 def test_a_subject_that_names_no_kind_or_id_cannot_be_created(kind, subject_id, organization_id):
     with pytest.raises((TypeError, ValueError)):
         RunSubject(kind, subject_id, organization_id)
+
+
+class RemembersWhatItFound(RecordingCheck):
+    def __init__(self, found):
+        super().__init__()
+        self.found = found
+        self.handed_back = []
+
+    def check(self, subject: RunSubject) -> object:
+        super().check(subject)
+        return self.found
+
+    def recheck(self, subject: RunSubject, first_look: object) -> None:
+        self.handed_back.append((subject, first_look))
+
+
+def test_a_recheck_hands_each_check_what_it_found_the_first_time(run_admission_checks):
+    first, second = RemembersWhatItFound("first walk"), RemembersWhatItFound(None)
+    run_admission_checks.extend([first, second])
+    subject = RunSubject(RunKind.FLOW, 5, 7)
+
+    admission = assert_run_admitted(subject)
+    assert_still_admitted(admission)
+
+    assert admission.first_looks == ((first, "first walk"), (second, None))
+    assert first.handed_back == [(subject, "first walk")]
+    assert second.handed_back == [(subject, None)]
+    assert first.subjects == second.subjects == [subject]
+
+
+def test_a_recheck_refuses_with_the_first_check_that_now_refuses(run_admission_checks):
+    class CheckAfterTheRefusal(RecordingCheck):
+        pass
+
+    refusing_now = RefusingFromTheSecondCheck()
+    after = CheckAfterTheRefusal()
+    run_admission_checks.extend([refusing_now, after])
+    admission = assert_run_admitted(RunSubject(RunKind.CODE, 5, 7))
+
+    with pytest.raises(RefusedForTestError):
+        assert_still_admitted(admission)
+
+    assert len(after.subjects) == 1
 
 
 @pytest.mark.django_db
@@ -348,6 +398,9 @@ class RefusesRunsUsing:
     def check(self, subject: RunSubject) -> None:
         if self.refused in RunResourceCollector().collect(subject).refs:
             raise RefusedForTestError("uses-a-refused-row")
+
+    def recheck(self, subject: RunSubject, first_look: object) -> None:
+        self.check(subject)
 
 
 # --- Realtime and voice channels --------------------------------------------------------

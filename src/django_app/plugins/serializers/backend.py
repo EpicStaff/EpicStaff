@@ -65,14 +65,64 @@ class PluginLimitsUpdateSerializer(serializers.Serializer):
     overrides = serializers.DictField(child=serializers.JSONField(allow_null=True))
 
 
+class RuntimeDatabaseServerSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    host = serializers.CharField()
+    port = serializers.IntegerField()
+
+
+class RuntimeDatabaseRolesSerializer(serializers.Serializer):
+    owner = serializers.CharField(source="owner_role")
+    app = serializers.CharField(source="app_role")
+    job = serializers.CharField(source="job_role")
+
+
+class RuntimeDatabaseMigrationsSerializer(serializers.Serializer):
+    applied = serializers.ListField(
+        child=serializers.CharField(), source="record.applied_migrations"
+    )
+    in_package = serializers.IntegerField(source="migrations_in_package")
+
+
+class PluginRuntimeDatabaseSerializer(serializers.Serializer):
+    """A plugin's database as the Runtime tab shows it: names, ledger and limits, never its
+    password."""
+
+    state = serializers.CharField(source="record.state")
+    server = RuntimeDatabaseServerSerializer(source="record.server")
+    database_name = serializers.CharField(source="record.database_name")
+    roles = RuntimeDatabaseRolesSerializer(source="record")
+    migrations = RuntimeDatabaseMigrationsSerializer(source="*")
+    connection_limit = serializers.IntegerField()
+    statement_timeout_seconds = serializers.IntegerField()
+    size_bytes = serializers.IntegerField(source="record.size_bytes", allow_null=True)
+    last_error = serializers.CharField(source="record.last_error", allow_null=True)
+    ready_at = serializers.DateTimeField(source="record.ready_at", allow_null=True)
+    limits_restored_at = serializers.DateTimeField(
+        source="record.limits_restored_at", allow_null=True
+    )
+
+
+class RuntimeOutboundHostSerializer(serializers.Serializer):
+    host = serializers.CharField()
+    reason = serializers.CharField()
+
+
+class PluginRuntimeEgressSerializer(serializers.Serializer):
+    """The hosts the backend may reach; an empty list means no outbound access. The Runtime
+    tab exists only for a backend, and every backend has this section."""
+
+    hosts = RuntimeOutboundHostSerializer(source="outbound_hosts", many=True)
+
+
 class PluginRuntimeResponseSerializer(serializers.Serializer):
     """Where a plugin's backend runs, what its node last reported, its database and its
     outbound hosts. No password of any kind is ever part of it."""
 
     node = serializers.SerializerMethodField()
     placement = serializers.SerializerMethodField()
-    database = serializers.SerializerMethodField()
-    egress = serializers.SerializerMethodField()
+    database = PluginRuntimeDatabaseSerializer(allow_null=True)
+    egress = PluginRuntimeEgressSerializer(source="*")
 
     def get_node(self, runtime: PluginRuntime) -> dict | None:
         node = runtime.node
@@ -103,39 +153,6 @@ class PluginRuntimeResponseSerializer(serializers.Serializer):
             "last_error": placement.last_error,
             "log_tail": list(placement.log_tail or []),
             "last_report_at": _datetime(placement.last_report_at),
-        }
-
-    def get_database(self, runtime: PluginRuntime) -> dict | None:
-        database = runtime.database
-        if database is None:
-            return None
-        record = database.record
-        server = record.server
-        return {
-            "state": record.state,
-            "server": {"name": server.name, "host": server.host, "port": server.port},
-            "database_name": record.database_name,
-            "roles": {"owner": record.owner_role, "app": record.app_role, "job": record.job_role},
-            "migrations": {
-                "applied": list(record.applied_migrations),
-                "in_package": database.migrations_in_package,
-            },
-            "connection_limit": database.connection_limit,
-            "statement_timeout_seconds": database.statement_timeout_seconds,
-            "size_bytes": record.size_bytes,
-            "last_error": record.last_error,
-            "ready_at": _datetime(record.ready_at),
-            "limits_restored_at": _datetime(record.limits_restored_at),
-        }
-
-    def get_egress(self, runtime: PluginRuntime) -> dict:
-        # The Runtime tab exists only for a backend, and every backend has an egress section:
-        # an empty list of hosts means no outbound access.
-        return {
-            "hosts": [
-                {"host": outbound.host, "reason": outbound.reason}
-                for outbound in runtime.outbound_hosts
-            ]
         }
 
 
