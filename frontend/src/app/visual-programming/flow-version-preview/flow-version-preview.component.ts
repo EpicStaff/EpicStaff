@@ -14,7 +14,7 @@ import { GetGraphLightRequest, GraphVersionDto, RestoreWarning } from '../../fea
 import { SnapshotNodeAuthorship } from '../../features/flows/models/graph-version-preview.model';
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { ToastService } from '../../services/notifications';
-import { isEditableTarget } from '../core/directives/shortcut-listener.directive';
+import { isEditableTarget } from '../core/keymap/key-chord.util';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { FLOW_EDITOR_STATE_PROVIDERS } from '../core/providers/flow-editor-state.providers';
 import { FlowGraphComponent } from '../flow-graph/flow-graph.component';
@@ -149,7 +149,8 @@ export class FlowVersionPreviewComponent {
             this.dialog.openDialogs.length === 0 &&
             this.sidePanelService.selectedNodeId() === null &&
             !this.flowGraph()?.selectionManager.multiSelectActive() &&
-            !(event.target instanceof HTMLElement && isEditableTarget(event.target))
+            !(event.target instanceof HTMLElement && isEditableTarget(event.target)) &&
+            !(event.target instanceof Element && event.target.closest('app-shortcuts-modal'))
         );
     }
 }

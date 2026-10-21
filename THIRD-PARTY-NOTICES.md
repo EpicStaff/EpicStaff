@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Tue, 20 Oct 2026 10:29:13 GMT -->
-<!-- commit: 7a3ee0def1516a05c9d41a078a74c5ceda75791a -->
-<!-- package-lock.json sha256: 48b5ebb7b9ec96f4 -->
+<!-- generated: Wed, 21 Oct 2026 10:07:49 GMT -->
+<!-- commit: ad37f908cf4a9a881d8d70c1d3f06e484237c4d3 -->
+<!-- package-lock.json sha256: 40d7041f9bcef6ee -->
 
 ## Frontend license summary
 
@@ -94,7 +94,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `unzipper-esm` | 0.13.3 | MIT |
 | `util-deprecate` | 1.0.2 | MIT |
 | `wavtools` | 0.1.5 | MIT |
-| `zod` | 4.6.5 | MIT |
+| `zod` | 4.6.6 | MIT |
 | `zone.js` | 0.16.2 | MIT |
 
 ---
@@ -3657,7 +3657,7 @@ SOFTWARE.
 
 </details>
 
-### zod@4.6.5
+### zod@4.6.6
 
 - **License:** MIT
 - **Publisher:** Colin McDonnell <zod@colinhacks.com>

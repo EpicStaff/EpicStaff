@@ -1,6 +1,6 @@
 <ng-template #headerActionsTpl>
-    <!-- Hidden for a viewer and in a version preview: a test run needs Flows:Update and runs the live graph. -->
-    @if (!isReadOnly()) {
+    <!-- Hidden without Flows:Update or Flows:Use, and in a version preview: a test run needs both and runs the live graph. -->
+    @if (canStartTestRun()) {
         <app-run-test-payload-button
             [labelled]="isExpanded()"
             [disabledReason]="testPayload.runBlocker()"
@@ -139,13 +139,14 @@
                                     <span>No fields selected</span>
                                 }
                             </div>
-                            <app-button
-                                *appIfFlowEditable
-                                type="primary"
-                                (click)="onEditing()"
-                            >
-                                Editing
-                            </app-button>
+                            @if (!isReadOnly()) {
+                                <app-button
+                                    type="primary"
+                                    (click)="onEditing()"
+                                >
+                                    Editing
+                                </app-button>
+                            }
                         </div>
                         <p class="output-fields__info">
                             <app-help-tooltip

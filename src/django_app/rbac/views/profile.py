@@ -73,9 +73,7 @@ class ProfileView(APIView):
     def patch(self, request):
         _require_user_context(request)
         cleaned = self._validator.validate_profile_patch(request.data)
-        user = request.user
-        if "display_name" in cleaned:
-            user = self._service.update_display_name(user, cleaned["display_name"])
+        user = self._service.update_profile(request.user, cleaned)
         user = self._service.get_profile(user)
         if "display_name" in cleaned:
             profile_updated.send(sender=type(user), user=user)

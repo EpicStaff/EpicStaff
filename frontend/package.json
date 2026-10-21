@@ -68,8 +68,8 @@
     },
     "devDependencies": {
         "@angular-eslint/eslint-plugin": "^22.1.0",
-        "@angular/build": "22.2.1",
-        "@angular/cli": "22.2.1",
+        "@angular/build": "^22.2.3",
+        "@angular/cli": "^22.2.3",
         "@angular/compiler-cli": "22.2.1",
         "@tabler/icons-webfont": "3.36.1",
         "@types/canvas-confetti": "1.9.0",
@@ -89,6 +89,7 @@
         "dompurify": "$dompurify",
         "@xmldom/xmldom": "^0.9.12",
         "fast-uri": "^4.1.4",
-        "qs": "^6.16.0"
+        "qs": "^6.16.0",
+        "vite": "8.3.5"
     }
 }

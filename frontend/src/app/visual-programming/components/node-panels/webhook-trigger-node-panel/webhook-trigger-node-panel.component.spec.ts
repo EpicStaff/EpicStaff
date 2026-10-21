@@ -4,6 +4,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 
@@ -16,10 +17,16 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
 import { FlowService } from '../../../services/flow.service';
+import { TRIGGER_NODES_NEED_USE_MESSAGE } from '../../../services/flow-readonly.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
+import {
+    FLOW_ACTIONS_WITH_USE,
+    FLOW_ACTIONS_WITHOUT_USE,
+    grantPermissions,
+} from '../../../utils/testing/permissions.fixture';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
@@ -995,4 +1002,70 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             expect(terminals()).toBe(1);
         });
     });
+});
+
+describe('WebhookTriggerNodePanelComponent and the Use permission on flows', () => {
+    let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
+    let toast: { info: ReturnType<typeof vi.fn>; warning: ReturnType<typeof vi.fn> };
+
+    function open(flowActions: ActionCode[]): WebhookTriggerNodePanelComponent {
+        toast = { info: vi.fn(), warning: vi.fn() };
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                { provide: ToastService, useValue: toast },
+                {
+                    provide: SecretsStorageService,
+                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                },
+            ],
+        });
+        // Real panel template; the code editor is a real (empty, Monaco-free) component so its inputs can be read.
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: { imports: [NgTemplateOutlet, CodeEditorComponent], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
+        grantPermissions({ [ResourceCode.Flows]: flowActions, [ResourceCode.Secrets]: [ActionCode.Use] });
+        fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(DTO));
+        fixture.componentRef.setInput('isExpanded', true);
+        fixture.detectChanges();
+        return fixture.componentInstance;
+    }
+
+    /** What the panel shell would render in its header from the panel's template. */
+    function headerActionTags(panel: WebhookTriggerNodePanelComponent): string[] {
+        const view = panel.headerActionsTemplate()!.createEmbeddedView({});
+        view.detectChanges();
+        return view.rootNodes
+            .filter((rootNode): rootNode is Element => rootNode instanceof Element)
+            .map((element) => element.tagName.toLowerCase());
+    }
+
+    function codeEditor(): CodeEditorComponent {
+        return fixture.debugElement.query(By.directive(CodeEditorComponent)).componentInstance as CodeEditorComponent;
+    }
+
+    it('is read-only without Flows:Use: closing and Ctrl+S save nothing, saying why', () => {
+        const panel = open(FLOW_ACTIONS_WITHOUT_USE);
+
+        expect(panel.onSave()).toBeNull();
+        expect(panel.onSaveSilently()).toBeNull();
+        expect(panel.needsSave()).toBe(false);
+        expect(toast.info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_USE_MESSAGE);
+    });
+
+    it.each([
+        { user: 'may update and run flows', flowActions: FLOW_ACTIONS_WITH_USE, offered: true },
+        { user: 'may update but not run flows', flowActions: FLOW_ACTIONS_WITHOUT_USE, offered: false },
+    ])(
+        'for a user who $user, the code is editable and "Run with test payload" and "Run python code" offered: $offered',
+        ({ flowActions, offered }) => {
+            const panel = open(flowActions);
+
+            expect(codeEditor().readOnly).toBe(!offered);
+            expect(headerActionTags(panel).includes('app-run-test-payload-button')).toBe(offered);
+            expect(codeEditor().actionIcon()).toBe(offered ? 'play-outline' : null);
+        }
+    );
 });

@@ -12,7 +12,9 @@ RUN_PYTHON_CODE_POST = {
         "the way a real flow run would, including storage access when the node uses "
         "storage: the graph's attached files plus a writable folder "
         "`test-runs/<type>-<id>/`, reused across test runs of that node.\n\n"
-        "`python_code_id` runs the bare code without any node settings such as storage."
+        "`python_code_id` runs the bare code without any node settings such as storage.\n\n"
+        "Requires UPDATE on flows; a trigger node's slot (`webhook_trigger_node`) also "
+        "requires USE on flows."
     ),
     "request": RunPythonCodeSerializer,
     "examples": [
@@ -70,7 +72,10 @@ RUN_PYTHON_CODE_POST = {
         ),
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="The caller lacks Flows update permission in the active organization.",
+            description=(
+                "The caller lacks Flows update permission in the active organization, or "
+                "lacks Flows use permission for a trigger node's target."
+            ),
         ),
     },
 }

@@ -1,7 +1,9 @@
 """/api/profile/: the signed-in user's own profile, avatar, password change and quick start tour."""
 
 import io
+import json
 from datetime import timedelta
+from unittest.mock import ANY
 
 import pytest
 from django.core.cache import cache
@@ -17,6 +19,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rbac.identity.refresh_cookie import REFRESH_COOKIE_NAME
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from rbac.signals import profile_updated
 
 PROFILE_URL = "/api/profile/"
 AVATAR_URL = "/api/profile/avatar/"
@@ -259,6 +262,371 @@ def test_patch_rejects_an_invalid_display_name(member_acme, display_name):
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()["code"] == "invalid"
     assert any(error["field"] == "display_name" for error in response.json()["errors"])
+
+
+EMPTY_SHORTCUTS = {"custom": [], "overrides": {}}
+SAVED_SHORTCUTS = {
+    "custom": [{"action": "node.task", "keys": "Shift+KeyT"}, {"action": "node.agent", "keys": None}],
+    "overrides": {"node.python": "Shift+KeyY", "node.llm": None},
+}
+
+
+def shortcuts(custom, overrides=None):
+    return {"custom": custom, "overrides": {} if overrides is None else overrides}
+
+
+def overrides(mapping):
+    return shortcuts([], mapping)
+
+
+def custom_entry(action="node.task", keys="Shift+KeyT"):
+    return {"action": action, "keys": keys}
+
+
+def subgraph_entry(params, keys="Shift+KeyG"):
+    return custom_entry(action="node.subgraph", keys=keys) | {"params": params}
+
+
+def save_shortcuts(user, value):
+    user.custom_shortcuts = value
+    user.save(update_fields=["custom_shortcuts"])
+
+
+@pytest.mark.django_db
+def test_custom_shortcuts_default_to_empty_custom_and_overrides(member_acme):
+    response = client_for(member_acme).get(PROFILE_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["custom_shortcuts"] == {"custom": [], "overrides": {}}
+
+
+@pytest.mark.django_db
+def test_patch_replaces_the_whole_shortcut_value(member_acme):
+    save_shortcuts(
+        member_acme,
+        {
+            "custom": [{"action": "editor.save", "keys": "Alt+KeyS"}, {"action": "node.task", "keys": "Shift+KeyT"}],
+            "overrides": {"node.python": "Shift+KeyY"},
+        },
+    )
+    replacement = {"custom": [{"action": "node.agent", "keys": None}], "overrides": {"node.llm": None}}
+
+    response = client_for(member_acme).patch(PROFILE_URL, {"custom_shortcuts": replacement}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["custom_shortcuts"] == {
+        "custom": [{"action": "node.agent", "keys": None}], "overrides": {"node.llm": None},
+    }
+    member_acme.refresh_from_db()
+    assert member_acme.custom_shortcuts == {
+        "custom": [{"action": "node.agent", "keys": None}], "overrides": {"node.llm": None},
+    }
+
+
+@pytest.mark.django_db
+def test_patch_without_custom_shortcuts_keeps_them(member_acme):
+    save_shortcuts(member_acme, SAVED_SHORTCUTS)
+
+    response = client_for(member_acme).patch(PROFILE_URL, {"display_name": "Renamed"}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["custom_shortcuts"] == SAVED_SHORTCUTS
+    member_acme.refresh_from_db()
+    assert (member_acme.display_name, member_acme.custom_shortcuts) == ("Renamed", SAVED_SHORTCUTS)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "payload",
+    [
+        shortcuts([]),
+        shortcuts([custom_entry(action="anything.the.frontend.wants")]),
+        shortcuts([custom_entry(keys="Shift+KeyA"), custom_entry(keys="Shift+KeyB")]),
+        shortcuts([custom_entry(action="node.agent"), custom_entry(action="node.agent", keys="Alt+KeyA")]),
+        shortcuts([custom_entry(keys=None)]),
+        shortcuts([custom_entry(action="node.agent", keys=None), custom_entry(keys=None)]),
+        shortcuts([custom_entry(keys=None), custom_entry(keys="Shift+KeyT"), custom_entry(keys=None)]),
+        shortcuts([custom_entry(action="x" * 64)]),
+        shortcuts([custom_entry(keys="x" * 64)]),
+        shortcuts([custom_entry(action=" !~", keys=" !~")]),
+        shortcuts([custom_entry(keys=f"Shift+Key{index}") for index in range(100)]),
+        shortcuts([custom_entry(keys=None) for _ in range(100)]),
+        shortcuts([subgraph_entry({"flowId": 12})]),
+        shortcuts([subgraph_entry({"flowName": "Main flow"})]),
+        shortcuts([subgraph_entry({f"param{index}": index for index in range(5)})]),
+        shortcuts([subgraph_entry({"x" * 64: "y" * 64})]),
+        shortcuts([subgraph_entry({" !~": " !~"})]),
+        shortcuts([subgraph_entry({"flowId": 0})]),
+        shortcuts([subgraph_entry({"flowId": 2**53 - 1})]),
+        shortcuts([
+            custom_entry(),
+            subgraph_entry({"flowId": 12}, keys="Shift+KeyA"),
+            subgraph_entry({"flowId": 13}, keys=None),
+        ]),
+        overrides({"node.python": "Shift+KeyY"}),
+        overrides({"node.python": None}),
+        overrides({"node.python": None, "node.llm": None}),
+        overrides({f"node.action{index}": f"Shift+Key{index}" for index in range(100)}),
+        overrides({f"node.action{index}": None for index in range(100)}),
+        overrides({"x" * 64: "y" * 64}),
+        overrides({" !~": " !~"}),
+        shortcuts([custom_entry(keys=None)], {"node.python": "Shift+KeyT"}),
+        shortcuts([custom_entry(keys="Shift+KeyA")], {"node.python": "Shift+KeyB", "node.llm": None}),
+    ],
+    ids=[
+        "empty", "unknown-action", "two-keys", "same-action-twice", "null-keys", "repeated-null-keys",
+        "null-keys-beside-a-chord", "action-at-limit", "keys-at-limit", "printable-ascii-edges",
+        "entries-at-limit", "entries-at-limit-all-null", "params-int", "params-string", "params-at-limit",
+        "param-name-and-value-at-limit", "param-printable-ascii-edges", "param-int-zero", "param-int-at-limit",
+        "entries-with-and-without-params", "override-chord", "override-null", "overrides-all-null",
+        "overrides-at-limit", "overrides-at-limit-all-null", "override-action-and-chord-at-limit",
+        "override-printable-ascii-edges", "override-chord-beside-a-null-custom-keys",
+        "overrides-and-custom-with-different-chords",
+    ],
+)
+def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):
+    response = client_for(member_acme).patch(PROFILE_URL, {"custom_shortcuts": payload}, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["custom_shortcuts"] == payload
+    member_acme.refresh_from_db()
+    assert member_acme.custom_shortcuts == payload
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        "Shift+KeyA",
+        {},
+        {"node.agent": "Shift+KeyA"},
+        {"custom": []},
+        {"overrides": {}},
+        {"custom": [], "overrides": {}, "extra": {}},
+        shortcuts(None),
+        shortcuts({}),
+        shortcuts("Shift+KeyA"),
+        shortcuts([None]),
+        shortcuts(["Shift+KeyA"]),
+        shortcuts([["node.task", "Shift+KeyT"]]),
+        shortcuts([{"action": "node.task"}]),
+        shortcuts([{"keys": "Shift+KeyT"}]),
+        shortcuts([custom_entry() | {"extra": "x"}]),
+        shortcuts([custom_entry(action=1)]),
+        shortcuts([custom_entry(action=None)]),
+        shortcuts([custom_entry(keys=1)]),
+        shortcuts([custom_entry(keys=["Shift+KeyA"])]),
+        shortcuts([custom_entry(action="")]),
+        shortcuts([custom_entry(keys="")]),
+        shortcuts([custom_entry(action="x" * 65)]),
+        shortcuts([custom_entry(keys="x" * 65)]),
+        shortcuts([custom_entry(keys=None) for _ in range(101)]),
+        shortcuts([custom_entry(keys="\u0000")]),
+        shortcuts([custom_entry(action="node.\u0000")]),
+        shortcuts([custom_entry(keys="\ud800")]),
+        shortcuts([custom_entry(action="node.\ud800")]),
+        shortcuts([custom_entry(keys="Shift+КейА")]),
+        shortcuts([custom_entry(keys="Shift+\tKeyA")]),
+        shortcuts([custom_entry(keys="Shift+KeyA\u007f")]),
+        shortcuts([custom_entry(action="node.agent"), custom_entry(action="node.task")]),
+        shortcuts([custom_entry(keys=None), custom_entry(action="node.agent"), custom_entry(keys=None), custom_entry()]),
+        shortcuts([custom_entry(keys=["Shift+KeyA"]), custom_entry(keys=["Shift+KeyA"])]),
+        shortcuts([subgraph_entry([12])]),
+        shortcuts([subgraph_entry("flowId=12")]),
+        shortcuts([subgraph_entry(None)]),
+        shortcuts([subgraph_entry(12)]),
+        shortcuts([subgraph_entry({})]),
+        shortcuts([subgraph_entry({f"param{index}": index for index in range(6)})]),
+        shortcuts([subgraph_entry({"flowId": 12}) | {"extra": "x"}]),
+        shortcuts([subgraph_entry({"": 12})]),
+        shortcuts([subgraph_entry({"x" * 65: 12})]),
+        shortcuts([subgraph_entry({"flowName": ""})]),
+        shortcuts([subgraph_entry({"flowName": "x" * 65})]),
+        shortcuts([subgraph_entry({"flowId": True})]),
+        shortcuts([subgraph_entry({"flowId": False})]),
+        shortcuts([subgraph_entry({"flowId": 12.0})]),
+        shortcuts([subgraph_entry({"flowId": 12.5})]),
+        shortcuts([subgraph_entry({"flowId": {"id": 12}})]),
+        shortcuts([subgraph_entry({"flowId": [12]})]),
+        shortcuts([subgraph_entry({"flowId": None})]),
+        shortcuts([subgraph_entry({"flowId": -1})]),
+        shortcuts([subgraph_entry({"flowId": 2**53})]),
+        shortcuts([subgraph_entry({"flow\u0000Id": 12})]),
+        shortcuts([subgraph_entry({"flowName": "Main\u0000"})]),
+        shortcuts([subgraph_entry({"flowІd": 12})]),
+        shortcuts([subgraph_entry({"flowName": "Головний"})]),
+        shortcuts([subgraph_entry({"flowName": "Main\tflow"})]),
+        shortcuts([custom_entry(), subgraph_entry({"flowId": 12}, keys="Shift+KeyT")]),
+        {"custom": [], "overrides": None},
+        overrides([]),
+        overrides(["node.python", "Shift+KeyY"]),
+        overrides("node.python=Shift+KeyY"),
+        overrides({f"node.action{index}": None for index in range(101)}),
+        overrides({"": "Shift+KeyY"}),
+        overrides({"x" * 65: "Shift+KeyY"}),
+        overrides({"node.python": ""}),
+        overrides({"node.python": "x" * 65}),
+        overrides({"node.python": 1}),
+        overrides({"node.python": True}),
+        overrides({"node.python": ["Shift+KeyY"]}),
+        overrides({"node.python": {"keys": "Shift+KeyY"}}),
+        overrides({"node.\u0000": "Shift+KeyY"}),
+        overrides({"node.python": "Shift+KeyY\u0000"}),
+        overrides({"node.пітон": "Shift+KeyY"}),
+        overrides({"node.python": "Shift+КейY"}),
+        overrides({"node.python": "Shift+KeyY", "node.llm": "Shift+KeyY"}),
+        shortcuts([custom_entry(keys="Shift+KeyY")], {"node.python": "Shift+KeyY"}),
+        shortcuts([custom_entry(action="node.python", keys="Shift+KeyY")], {"node.python": "Shift+KeyY"}),
+    ],
+    ids=[
+        "null", "list", "string", "empty-object", "old-flat-map", "missing-overrides", "missing-custom",
+        "extra-top-level-key", "custom-null", "custom-object", "custom-string", "item-null", "item-string",
+        "item-list", "item-missing-keys", "item-missing-action", "item-extra-key", "non-string-action",
+        "null-action", "non-string-keys", "list-keys", "empty-action", "empty-keys", "action-over-limit",
+        "keys-over-limit", "entries-over-limit", "nul-keys", "nul-action", "lone-surrogate-keys",
+        "lone-surrogate-action", "non-ascii-keys", "tab-in-keys", "delete-char-in-keys", "duplicate-keys",
+        "duplicate-keys-between-nulls", "duplicate-non-hashable-keys", "params-list", "params-string",
+        "params-null", "params-int", "params-empty", "params-over-limit", "item-with-params-and-extra-key",
+        "empty-param-name", "param-name-over-limit", "empty-param-string", "param-string-over-limit",
+        "param-true", "param-false", "param-whole-float", "param-float", "param-object", "param-list",
+        "param-null", "param-negative-int", "param-int-over-limit", "nul-param-name", "nul-param-string",
+        "non-ascii-param-name", "non-ascii-param-string", "tab-in-param-string", "duplicate-keys-with-params",
+        "overrides-null", "overrides-list", "overrides-pair-list", "overrides-string", "overrides-over-limit",
+        "empty-override-action", "override-action-over-limit", "empty-override-chord", "override-chord-over-limit",
+        "int-override-chord", "bool-override-chord", "list-override-chord", "object-override-chord",
+        "nul-override-action", "nul-override-chord", "non-ascii-override-action", "non-ascii-override-chord",
+        "duplicate-chord-between-overrides", "duplicate-chord-between-override-and-custom",
+        "duplicate-chord-between-override-and-custom-of-the-same-action",
+    ],
+)
+def test_patch_rejects_a_malformed_shortcut_value(member_acme, payload):
+    save_shortcuts(member_acme, SAVED_SHORTCUTS)
+
+    response = client_for(member_acme).patch(
+        PROFILE_URL, json.dumps({"custom_shortcuts": payload}), content_type="application/json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["code"] == "invalid"
+    assert response.json()["errors"] == [
+        {"field": "custom_shortcuts", "value": None, "reason": ANY}
+    ]
+    member_acme.refresh_from_db()
+    assert member_acme.custom_shortcuts == SAVED_SHORTCUTS
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "custom_shortcuts",
+    [
+        [],
+        {"node.agent": "Alt+KeyG"},
+        {"custom": []},
+        shortcuts([custom_entry(keys="\u0000")]),
+        shortcuts([custom_entry(), custom_entry(action="node.agent")]),
+        shortcuts([subgraph_entry({"flowId": True})]),
+        shortcuts([subgraph_entry({"flowId": {"id": 12}})]),
+        overrides({"node.python": 1}),
+        shortcuts([custom_entry()], {"node.python": "Shift+KeyT"}),
+    ],
+    ids=[
+        "not-an-object", "old-flat-map", "missing-overrides", "nul-keys", "duplicate-keys", "param-true",
+        "param-object", "non-string-override-chord", "duplicate-chord-between-override-and-custom",
+    ],
+)
+def test_a_rejected_shortcut_patch_does_not_change_the_display_name(member_acme, custom_shortcuts):
+    member_acme.display_name = "Keep"
+    member_acme.custom_shortcuts = SAVED_SHORTCUTS
+    member_acme.save(update_fields=["display_name", "custom_shortcuts"])
+
+    response = client_for(member_acme).patch(
+        PROFILE_URL, {"display_name": "New", "custom_shortcuts": custom_shortcuts}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    member_acme.refresh_from_db()
+    assert (member_acme.display_name, member_acme.custom_shortcuts) == ("Keep", SAVED_SHORTCUTS)
+
+
+@pytest.mark.django_db
+def test_patch_ignores_unknown_fields_next_to_saved_shortcuts(member_acme):
+    save_shortcuts(member_acme, SAVED_SHORTCUTS)
+
+    response = client_for(member_acme).patch(
+        PROFILE_URL, {"not_a_profile_field": shortcuts([custom_entry(keys="Alt+KeyZ")])}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["custom_shortcuts"] == SAVED_SHORTCUTS
+    assert "not_a_profile_field" not in response.json()
+    member_acme.refresh_from_db()
+    assert member_acme.custom_shortcuts == SAVED_SHORTCUTS
+
+
+@pytest.mark.django_db
+def test_patch_sets_the_display_name_and_custom_shortcuts_together(member_acme):
+    response = client_for(member_acme).patch(
+        PROFILE_URL,
+        {"display_name": "Renamed", "custom_shortcuts": SAVED_SHORTCUTS},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert (response.json()["display_name"], response.json()["custom_shortcuts"]) == (
+        "Renamed", SAVED_SHORTCUTS,
+    )
+    member_acme.refresh_from_db()
+    assert (member_acme.display_name, member_acme.custom_shortcuts) == ("Renamed", SAVED_SHORTCUTS)
+
+
+@pytest.fixture
+def profile_updated_receipts():
+    receipts = []
+
+    def record(sender, user, **kwargs):
+        receipts.append(user.pk)
+
+    profile_updated.connect(record, weak=False)
+    yield receipts
+    profile_updated.disconnect(record)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("body", "expected_signals"),
+    [
+        ({"custom_shortcuts": SAVED_SHORTCUTS}, 0),
+        ({"display_name": "Renamed"}, 1),
+        ({"display_name": "Renamed", "custom_shortcuts": SAVED_SHORTCUTS}, 1),
+    ],
+    ids=["shortcut-only", "display-name-only", "both"],
+)
+def test_only_a_display_name_change_announces_the_profile_not_a_shortcut_change(
+    member_acme, profile_updated_receipts, body, expected_signals
+):
+    response = client_for(member_acme).patch(PROFILE_URL, body, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert profile_updated_receipts == [member_acme.pk] * expected_signals
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "raw_body", ['"custom_shortcuts"', '["display_name"]', "42"], ids=["string", "list", "number"]
+)
+def test_patch_rejects_a_body_that_is_not_an_object_before_reading_custom_shortcuts(member_acme, raw_body):
+    member_acme.display_name = "Keep"
+    member_acme.save(update_fields=["display_name"])
+
+    response = client_for(member_acme).patch(PROFILE_URL, raw_body, content_type="application/json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["code"] == "invalid"
+    assert [error["field"] for error in response.json()["errors"]] == ["body"]
+    member_acme.refresh_from_db()
+    assert (member_acme.display_name, member_acme.custom_shortcuts) == ("Keep", EMPTY_SHORTCUTS)
 
 
 @pytest.mark.django_db
