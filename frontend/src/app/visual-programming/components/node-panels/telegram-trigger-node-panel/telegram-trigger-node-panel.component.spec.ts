@@ -407,6 +407,7 @@ function telegramNode(testPayload: Record<string, unknown> = {}): TelegramTrigge
     const dto: GetTelegramTriggerNodeRequest = {
         id: 31,
         graph: 1,
+        node_number: 1,
         node_name: 'Telegram Trigger #1',
         telegram_bot_api_key_secret_id: 7,
         fields: [MESSAGE_ID],

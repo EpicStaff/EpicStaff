@@ -13,8 +13,9 @@ This document provides detailed technical documentation for the Import/Export sy
 3. [How It Works](#how-it-works)
 4. [Adding New Entities](#adding-new-entities)
 5. [Adding New Nodes](#adding-new-nodes)
-6. [IDMapper Functionality](#idmapper-functionality)
-7. [Version Conversion](#version-conversion)
+6. [Node numbers](#node-numbers)
+7. [IDMapper Functionality](#idmapper-functionality)
+8. [Version Conversion](#version-conversion)
 
 ---
 
@@ -142,6 +143,19 @@ To add a new node to the import/export system, follow these steps:
    - Import the new strategy module and register it with `entity_registry.register(MyNodeStrategy())`.
 
 **Note:** Most nodes do not require a custom `create_entity()` override. Add one only if the node depends on other entities tracked by the `IDMapper` (e.g., `subgraph_node`).
+
+**Note — numbered nodes:** if the new node shows a `#N` badge (its model inherits `NumberedNode`), its strategy's `create_entity()` must pass `node_number=kwargs.get("node_number")` to `serializer.save(...)`. `node_number` is read-only on the serializer, so without this a version restore silently renumbers the node instead of keeping its stored number. See [Node numbers](#node-numbers).
+
+---
+
+## Node numbers
+
+Every numbered node carries `node_number`, its `#N` badge within the graph. The graph's high-water mark is `Graph.node_number_seq`; only `NodeNumberService` (`tables/services/node_number_service.py`) changes it.
+
+- **Export and version snapshots** include each node's `node_number`.
+- **Version restore** keeps the stored numbers. A stored number that is missing, invalid, duplicated in the snapshot or still held by a node that survived the wipe is replaced by a fresh number. The counter is never lowered by a restore.
+- **Every other import path renumbers.** Full import, import with `replace_existing`, create-from-version and graph copy number the nodes `1..K` in ascending order of their stored numbers. Partial import continues from the target graph's counter, in the same order.
+- `GraphStrategy._create_nodes(..., preserve_node_numbers=...)` makes the choice: it always strips `node_number` from the file data and passes it to the node strategy only when preserving, so an import file can never set a node's number.
 
 ---
 

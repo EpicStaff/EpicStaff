@@ -16,6 +16,7 @@ const dto: GetKnowledgeRetrieverNodeRequest = {
     updated_at: '2026-01-01T00:00:00Z',
     metadata: {},
     node_name: 'Knowledge Retriever #1',
+    node_number: null,
     input_map: {},
     output_variable_path: 'variables.context',
     query: 'what is {variables.topic}',

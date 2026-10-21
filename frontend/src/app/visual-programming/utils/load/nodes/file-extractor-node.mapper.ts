@@ -12,7 +12,7 @@ export function mapFileExtractorNodeToModel(n: GetFileExtractorNodeRequest): Fil
         backendId: n.id,
         type: NodeType.FILE_EXTRACTOR,
         node_name: n.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: n.node_number ?? undefined,
         data: undefined,
         position: ui.position,
         ports: null,

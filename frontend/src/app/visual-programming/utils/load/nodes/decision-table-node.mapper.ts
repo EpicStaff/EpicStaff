@@ -12,7 +12,7 @@ export function mapDecisionTableNodeToModel(dn: GetDecisionTableNodeRequest): De
         backendId: dn.id,
         type: NodeType.TABLE,
         node_name: dn.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: dn.node_number ?? undefined,
         data: {
             name: dn.node_name,
             table: {

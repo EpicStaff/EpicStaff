@@ -22,7 +22,7 @@
                     <div class="field-isolated">
                         <app-custom-input
                             label="Node Name"
-                            tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
+                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
@@ -40,6 +40,7 @@
                             [pythonNodeId]="node().backendId"
                             [graphId]="graphId()"
                             [nodeName]="node().node_name"
+                            [nodeNumber]="node().nodeNumber"
                             [testRunning]="codeTestRun.isRunning()"
                             [testInputDirty]="testInputDirty()"
                             [runTestBlocker]="runTestBlocker()"

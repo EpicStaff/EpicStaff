@@ -9,6 +9,7 @@ export class FlowSettingsService {
     readonly arrowColorsEnabled = signal<boolean>(true);
     readonly showInputsOutputs = signal<boolean>(false);
     readonly edgeStyle = signal<EdgeStyle>('orthogonal');
+    readonly alwaysShowNodeNumbers = signal<boolean>(false);
     readonly timezone = signal<string>(FlowSettingsService.defaultTimezone());
 
     constructor() {
@@ -31,6 +32,8 @@ export class FlowSettingsService {
                 this.showInputsOutputs.set(parsed['showInputsOutputs']);
             if (parsed['edgeStyle'] === 'orthogonal' || parsed['edgeStyle'] === 'adaptive-curve')
                 this.edgeStyle.set(parsed['edgeStyle']);
+            if (typeof parsed['alwaysShowNodeNumbers'] === 'boolean')
+                this.alwaysShowNodeNumbers.set(parsed['alwaysShowNodeNumbers']);
             if (typeof parsed['timezone'] === 'string' && parsed['timezone']) this.timezone.set(parsed['timezone']);
         } catch {
             // fallback to defaults
@@ -44,6 +47,7 @@ export class FlowSettingsService {
                 arrowColors: this.arrowColorsEnabled(),
                 showInputsOutputs: this.showInputsOutputs(),
                 edgeStyle: this.edgeStyle(),
+                alwaysShowNodeNumbers: this.alwaysShowNodeNumbers(),
                 timezone: this.timezone(),
             })
         );

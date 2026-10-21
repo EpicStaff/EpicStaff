@@ -20,6 +20,7 @@ import { NodeType } from '@shared/models';
 import { ToastService } from '../../../../services/notifications';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { hasNodeDetails } from '../../../core/helpers/node-details.util';
+import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
@@ -58,7 +59,12 @@ interface PanelInstanceView {
                             [class]="node()!.icon"
                             [style.color]="node()!.color || '#685fff'"
                         ></i>
-                        <span class="title">{{ nodeNameToDisplay() }}</span>
+                        <span class="title-with-number">
+                            <span class="title">{{ nodeNameToDisplay() }}</span>
+                            @if (nodeNumberToDisplay(); as nodeNumber) {
+                                <span class="node-number">#{{ nodeNumber }}</span>
+                            }
+                        </span>
                     </div>
                     <div class="header-actions">
                         @if (panelInstanceSig()?.headerActionsTemplate?.()) {
@@ -159,7 +165,14 @@ export class NodePanelShellComponent {
         if (!n) return '';
         if (n.node_name === '__start__') return 'Start';
         if (n.type === 'end' || n.node_name === '__end_node__') return 'End';
-        return n.node_name;
+        return n.node_name ?? '';
+    });
+
+    /** The #N shown next to the name, styled like the number under a canvas node's name; none while the node has no name. */
+    protected readonly nodeNumberToDisplay = computed(() => {
+        const n = this.node();
+        if (!n || !this.nodeNameToDisplay() || !showsNodeNumber(n)) return null;
+        return n.nodeNumber;
     });
 
     public readonly shouldShowExpandButton = computed(() => {

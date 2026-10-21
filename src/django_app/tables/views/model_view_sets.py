@@ -1309,37 +1309,9 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         )
 
 
-class IdempotentNodeCreateMixin:
-    # TODO: change fields from (graph, node_name) to id (all nodes id's are consistent)
-    # """
-    # COMMIT_COMMENTS: Makes node POST idempotent — if a node with the same
-    # (graph, node_name) already exists, update it instead of failing with a
-    # unique constraint violation. This prevents orphan accumulation when
-    # forkJoin-based saves partially fail and retry.
-    # """
-
-    def create(self, request, *args, **kwargs):
-        graph_id = request.data.get("graph")
-        node_name = request.data.get("node_name")
-        if graph_id and node_name:
-            # Org-scoped queryset: an idempotent match only updates a node whose
-            # graph is in the active org; a node in another org is never touched.
-            queryset = self.get_queryset()
-            try:
-                existing = queryset.get(graph_id=graph_id, node_name=node_name)
-                serializer = self.get_serializer(existing, data=request.data)
-                serializer.is_valid(raise_exception=True)
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            except queryset.model.DoesNotExist:
-                pass
-        return super().create(request, *args, **kwargs)
-
-
 class PythonNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1353,7 +1325,6 @@ class PythonNodeViewSet(
 class FileExtractorNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1367,7 +1338,6 @@ class FileExtractorNodeViewSet(
 class KnowledgeNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1400,7 +1370,6 @@ class KnowledgeNodeViewSet(
 class AudioTranscriptionNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1414,7 +1383,6 @@ class AudioTranscriptionNodeViewSet(
 class TaskNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1456,7 +1424,6 @@ class TaskNodeViewSet(
 class AgentNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -2053,19 +2020,7 @@ class DecisionTableNodeModelViewSet(
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """
-        Create a DecisionTableNode along with nested ConditionGroups and Conditions.
-        If a node with the same (graph, node_name) already exists, update it instead.
-        """
-        graph_id = request.data.get("graph")
-        node_name = request.data.get("node_name")
-        if graph_id and node_name:
-            try:
-                existing = DecisionTableNode.objects.get(graph_id=graph_id, node_name=node_name)
-                node, _ = self._create_or_update_node(data=request.data, instance=existing)
-                return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
-            except DecisionTableNode.DoesNotExist:
-                pass
+        """Create a DecisionTableNode along with nested ConditionGroups and Conditions."""
         node, _ = self._create_or_update_node(data=request.data)
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
@@ -2480,7 +2435,6 @@ class WebhookTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -2590,7 +2544,6 @@ class TelegramTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2639,7 +2592,6 @@ class ScheduleTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2655,7 +2607,6 @@ class ScheduleTriggerNodeViewSet(
 class GraphNoteViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):

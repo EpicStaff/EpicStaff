@@ -38,6 +38,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { ActionCode, KEY_VALUE_MODE_COLORS, ResourceCode } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -355,7 +356,8 @@ export class KeyValueNodePanelComponent extends BaseSidePanel<KeyValueNodeModel>
         this.form.markAllAsTouched();
         if (this.form.invalid) {
             const nodeName: string = this.form.value.node_name?.trim() || this.node().node_name;
-            this.toastService.error(`Fix the highlighted fields in "${nodeName}" to save the flow.`);
+            const nodeLabel = formatNodeLabel({ node_name: nodeName, nodeNumber: this.node().nodeNumber });
+            this.toastService.error(`Fix the highlighted fields in "${nodeLabel}" to save the flow.`);
             return null;
         }
         return super.captureForValidation();

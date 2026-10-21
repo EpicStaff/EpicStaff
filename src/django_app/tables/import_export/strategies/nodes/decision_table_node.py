@@ -33,7 +33,10 @@ class DecisionTableNodeStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)
-        node = serializer.save(created_by=resolve_author(kwargs.get("user")))
+        node = serializer.save(
+            created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
+        )
 
         for group_data in condition_groups_data:
             conditions_data = group_data.pop("conditions", [])

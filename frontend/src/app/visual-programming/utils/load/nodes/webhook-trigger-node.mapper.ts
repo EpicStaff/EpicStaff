@@ -12,7 +12,7 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
         backendId: wn.id,
         type: NodeType.WEBHOOK_TRIGGER,
         node_name: wn.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: wn.node_number ?? undefined,
         data: {
             webhook_trigger: wn.webhook_trigger,
             python_code: {

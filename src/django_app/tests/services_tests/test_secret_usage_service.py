@@ -340,7 +340,7 @@ class TestSummary:
         pre_code.secrets.set([secret])
         post_code = PythonCode.objects.create(code=DECLARING_CODE)
         post_code.secrets.set([secret])
-        ClassificationDecisionTableNode.objects.create(
+        node = ClassificationDecisionTableNode.objects.create(
             graph=graph,
             node_name="classify",
             pre_python_code=pre_code,
@@ -352,13 +352,19 @@ class TestSummary:
 
         assert flows["key"] == "flows"
         assert len(flows["items"]) == 1
+        # Both entries carry the same node id: one node, two blocks. The client
+        # groups by id, so the pair must not be told apart by identity.
         assert flows["items"][0]["nodes"] == [
             {
+                "id": node.pk,
+                "node_number": node.node_number,
                 "name": "classify",
                 "node_type": "classification-decision-table",
                 "code_field": "post_python_code",
             },
             {
+                "id": node.pk,
+                "node_number": node.node_number,
                 "name": "classify",
                 "node_type": "classification-decision-table",
                 "code_field": "pre_python_code",
@@ -374,7 +380,7 @@ class TestSummary:
         graph = Graph.objects.create(name="CDT pre only", org=org)
         pre_code = PythonCode.objects.create(code=DECLARING_CODE)
         pre_code.secrets.set([secret])
-        ClassificationDecisionTableNode.objects.create(
+        node = ClassificationDecisionTableNode.objects.create(
             graph=graph,
             node_name="classify",
             pre_python_code=pre_code,
@@ -385,6 +391,8 @@ class TestSummary:
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
             {
+                "id": node.pk,
+                "node_number": node.node_number,
                 "name": "classify",
                 "node_type": "classification-decision-table",
                 "code_field": "pre_python_code",
@@ -398,28 +406,40 @@ class TestSummary:
         graph = Graph.objects.create(name="Plain python flow", org=org)
         python_code = PythonCode.objects.create(code=DECLARING_CODE)
         python_code.secrets.set([secret])
-        PythonNode.objects.create(
+        node = PythonNode.objects.create(
             graph=graph, node_name="charge", python_code=python_code
         )
 
         summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
-            {"name": "charge", "node_type": "python", "code_field": "python_code"}
+            {
+                "id": node.pk,
+                "node_number": node.node_number,
+                "name": "charge",
+                "node_type": "python",
+                "code_field": "python_code",
+            }
         ]
 
     def test_an_fk_site_reports_a_null_code_field(self, org, secret):
         """A Telegram trigger node references the secret by FK, declaring nothing in
         code, so there is no block to name."""
         graph = Graph.objects.create(name="TG flow", org=org)
-        TelegramTriggerNode.objects.create(
+        node = TelegramTriggerNode.objects.create(
             graph=graph, node_name="tg", telegram_bot_api_key_secret=secret
         )
 
         summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
-            {"name": "tg", "node_type": "telegram-trigger", "code_field": None}
+            {
+                "id": node.pk,
+                "node_number": node.node_number,
+                "name": "tg",
+                "node_type": "telegram-trigger",
+                "code_field": None,
+            }
         ]
 
     def test_one_flow_with_several_nodes_is_one_item_with_several_nodes(
@@ -440,6 +460,34 @@ class TestSummary:
         assert items[0]["id"] == graph.pk
         assert items[0]["name"] == "Grouped flow"
         assert sorted(node["name"] for node in items[0]["nodes"]) == ["alpha", "beta"]
+        assert summary["readable_total"] == 1
+
+    def test_two_same_named_nodes_in_one_flow_are_reported_separately(
+        self, org, secret
+    ):
+        """Node names are not unique within a graph, so two nodes that share a
+        name, a type and the secret are still two places to fix before deleting
+        it. The flow itself still counts once."""
+        graph = Graph.objects.create(name="Twin nodes flow", org=org)
+        twins = []
+        for _ in range(2):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            twins.append(
+                PythonNode.objects.create(
+                    graph=graph, node_name="charge", python_code=python_code
+                )
+            )
+
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
+        items = summary["categories"][0]["items"]
+
+        assert len(items) == 1
+        assert [(node["id"], node["node_number"]) for node in items[0]["nodes"]] == [
+            (twins[0].pk, 1),
+            (twins[1].pk, 2),
+        ]
+        assert {node["name"] for node in items[0]["nodes"]} == {"charge"}
         assert summary["readable_total"] == 1
 
     def test_two_configs_of_one_type_sharing_a_name_dedupe(self, org, secret):
@@ -667,6 +715,74 @@ class TestSummaryIsDeterministic:
         nodes = summary["categories"][0]["items"][0]["nodes"]
 
         assert [node["name"] for node in nodes] == ["alpha", "mid", "zeta"]
+
+    def test_same_named_nodes_come_back_sorted_by_node_number(self, org, secret):
+        """Creation order and id order deliberately disagree with the numbers here,
+        so only a sort on node_number yields this order."""
+        graph = Graph.objects.create(name="Numbered twins flow", org=org)
+        for node_number in (7, 3):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            PythonNode.objects.create(
+                graph=graph,
+                node_name="twin",
+                python_code=python_code,
+                node_number=node_number,
+            )
+
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
+        nodes = summary["categories"][0]["items"][0]["nodes"]
+
+        assert [node["node_number"] for node in nodes] == [3, 7]
+
+    def test_a_node_without_a_number_sorts_after_numbered_namesakes(
+        self, org, secret
+    ):
+        """node_number is nullable; a missing one must not break the sort."""
+        graph = Graph.objects.create(name="Unnumbered twin flow", org=org)
+        created = []
+        for _ in range(2):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            created.append(
+                PythonNode.objects.create(
+                    graph=graph, node_name="twin", python_code=python_code
+                )
+            )
+        # The model always assigns a number on insert; only a raw update can clear it.
+        PythonNode.objects.filter(pk=created[0].pk).update(node_number=None)
+
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
+        nodes = summary["categories"][0]["items"][0]["nodes"]
+
+        assert [(node["id"], node["node_number"]) for node in nodes] == [
+            (created[1].pk, 2),
+            (created[0].pk, None),
+        ]
+
+    def test_unnumbered_namesakes_come_back_in_id_order(self, org, secret):
+        """With name, number, type and block all equal, only the id is left to
+        order by. Ids are assigned in descending order of creation so neither
+        creation nor insertion order can be what decides."""
+        graph = Graph.objects.create(name="Unnumbered namesakes flow", org=org)
+        created = []
+        for node_id in (900_000_003, 900_000_002, 900_000_001):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            created.append(
+                PythonNode.objects.create(
+                    id=node_id, graph=graph, node_name="twin", python_code=python_code
+                )
+            )
+        PythonNode.objects.filter(pk__in=[node.pk for node in created]).update(
+            node_number=None
+        )
+
+        summary = secret_usage_service.summary(secret=secret, effective=_all_readable())
+        nodes = summary["categories"][0]["items"][0]["nodes"]
+
+        assert [node["id"] for node in nodes] == [900_000_001, 900_000_002, 900_000_003]
+        assert {node["node_number"] for node in nodes} == {None}
 
 
 @pytest.mark.django_db
