@@ -1,3 +1,4 @@
+import { Dialog } from '@angular/cdk/dialog';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -5,6 +6,7 @@ import {
     computed,
     effect,
     inject,
+    Injector,
     input,
     signal,
     TemplateRef,
@@ -14,15 +16,19 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { readonly } from '@angular/forms/signals';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import {
     ActionDropdownButtonComponent,
     ActionDropdownItem,
     AppSvgIconComponent,
+    ButtonComponent,
     ColumnResizeDividerComponent,
     ConfirmationDialogService,
     createColumnWidthState,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
     HelpTooltipComponent,
     JsonEditorComponent,
     LlmModelSelectorComponent,
@@ -31,7 +37,8 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
-import { FullLLMConfigService, SecretsStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, FullLLMConfigService, SecretsStorageService } from '@shared/services';
+import { downloadBlob, getProviderIconPath } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -51,8 +58,10 @@ import {
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { UndoRedoService } from '../../../services/undo-redo.service';
 import {
     isValidOutputSchema,
     OUTPUT_SCHEMA_JSON_ERROR,
@@ -61,9 +70,22 @@ import {
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
-import { CDT_HEADER_COLLAPSE_AT, CDT_HEADER_COLLAPSE_MIN_SCROLLABLE, CDT_HEADER_EXPAND_AT } from './cdt.constants';
+import {
+    CDT_HEADER_COLLAPSE_AT,
+    CDT_HEADER_COLLAPSE_MIN_SCROLLABLE,
+    CDT_HEADER_EXPAND_AT,
+    CDT_ROUTE_CONTINUE_COPY,
+} from './cdt.constants';
+import { routePortIdsWithTarget } from './cdt-decision-tree-dialog/cdt-decision-tree.builder';
+import { CdtDecisionTreeInput, CdtTreeLlmOption } from './cdt-decision-tree-dialog/cdt-decision-tree.model';
+import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
+import { explainKeyMovesForRuleEdit } from './cdt-decision-tree-dialog/cdt-explain.identity';
 import { CdtExportImportService } from './cdt-export-import.service';
-import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
+import {
+    CdtEnableContinueRequest,
+    CdtRuleIdentityEdit,
+    ClassificationDecisionTableGridComponent,
+} from './classification-decision-table-grid/classification-decision-table-grid.component';
 
 type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
 
@@ -79,6 +101,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         CodeEditorComponent,
         HelpTooltipComponent,
         AppSvgIconComponent,
+        ButtonComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
         NodeStorageSectionComponent,
@@ -87,6 +110,8 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         JsonEditorComponent,
         HasPermissionDirective,
         IfFlowEditableDirective,
+        ExecutionTimeoutFieldComponent,
+        MatTooltipModule,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -98,6 +123,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
 
     private flowService = inject(FlowService);
+    private undoRedoService = inject(UndoRedoService);
 
     // Extract graph ID once at construction — URL is /flows/:id and doesn't change while panel is open
     private readonly graphIdFromUrl = (() => {
@@ -124,6 +150,33 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public conditionGroups = signal<ConditionGroup[]>([]);
     public sections = signal<CdtSection[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
+    /**
+     * Route-code output ports wired to a canvas node, resolved like the decision
+     * tree does: unsaved grid rows plus the canvas node's `next_node` and
+     * connections. Equal sets compare equal so the grid refreshes only when the
+     * answer changes.
+     */
+    protected readonly routePortIdsWithTarget = computed<ReadonlySet<string>>(
+        () =>
+            routePortIdsWithTarget(this.conditionGroups(), {
+                nodeId: this.node().id,
+                canvasRows: this.node().data.table?.condition_groups ?? [],
+                connections: this.flowService.connections(),
+            }),
+        { equal: (previous, next) => previous.size === next.size && [...next].every((portId) => previous.has(portId)) }
+    );
+    /**
+     * This node as the canvas holds it right now. `node()` is the same node, but it
+     * reaches the panel through the shell's bindings one change detection after the
+     * canvas changes — and the shell runs its autosave earlier in that same pass. So
+     * what another writer has just put on the canvas node is read here, not off
+     * `node()`; see `createUpdatedNode`.
+     */
+    private readonly canvasNode = computed(() => {
+        const nodeId = this.node().id;
+        const node = this.flowService.nodes().find((candidate) => candidate.id === nodeId);
+        return node?.type === NodeType.CLASSIFICATION_TABLE ? node : null;
+    });
     public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
     public sideEditorPromptId = signal<string | null>(null);
@@ -136,6 +189,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    protected preExecutionTimeout!: ExecutionTimeoutFormField;
+    protected postExecutionTimeout!: ExecutionTimeoutFormField;
     public preUseStorage = signal(false);
     public postUseStorage = signal(false);
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
@@ -176,8 +231,12 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly importExportService = inject(ImportExportService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
+    private readonly dialog = inject(Dialog);
+    private readonly injector = inject(Injector);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly permissionsService = inject(PermissionsService);
+    private readonly explanationStore = inject(CdtExplanationStoreService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -241,10 +300,15 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return [];
     });
 
-    public readonly llmConfigOptions = computed<{ id: number; label: string }[]>(() =>
+    public readonly llmConfigOptions = computed<CdtTreeLlmOption[]>(() =>
         this.llmConfigs().map((c) => ({
             id: c.id,
             label: c.custom_name || `LLM #${c.id}`,
+            modelName: c.modelDetails?.name ?? null,
+            providerIcon: getProviderIconPath(c.providerDetails?.name),
+            // Read straight off the list endpoint, so the decision-tree picker can
+            // grey out a config that has no credential instead of failing on it.
+            hasApiKey: c.api_key_secret_id != null,
         }))
     );
 
@@ -345,6 +409,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
         this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
+        const executionTimeoutLimits = this.executionTimeoutLimits.limits();
+        this.preExecutionTimeout = new ExecutionTimeoutFormField(preComp.execution_timeout, executionTimeoutLimits);
+        this.postExecutionTimeout = new ExecutionTimeoutFormField(postComp.execution_timeout, executionTimeoutLimits);
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
             pre_computation_code: [this.preCode],
@@ -358,6 +425,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             default_next_node: [defaultNext],
             next_error_node: [errorNext],
             default_llm_config: [tableData.default_llm_config || null],
+            pre_execution_timeout: this.preExecutionTimeout.control,
+            post_execution_timeout: this.postExecutionTimeout.control,
         });
 
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
@@ -440,6 +509,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 libraries: this.parseLibraries(this.form.value.pre_libraries),
                 secret_ids: this.preSelectedSecretIds(),
                 secret_names: this.preSecretNames(),
+                execution_timeout: this.preExecutionTimeout.value,
             },
             post_computation: {
                 code: this.postCode,
@@ -448,6 +518,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 libraries: this.parseLibraries(this.form.value.post_libraries),
                 secret_ids: this.postSelectedSecretIds(),
                 secret_names: this.postSecretNames(),
+                execution_timeout: this.postExecutionTimeout.value,
             },
             condition_groups: conditionGroups,
             sections: this.cloneSections(this.sections() || []),
@@ -470,6 +541,12 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         return {
             ...currentNode,
+            // The canvas node's, never a copy off `node()`: this panel does not edit
+            // explanations — the decision tree writes them, and a route code or name edit
+            // moves them (`onRuleIdentityEdit`) — and the autosave carrying that edit runs
+            // before `node()` has caught up with the move, so its copy would put the
+            // explanations back under the keys they were just moved from.
+            explanations: this.canvasNode()?.explanations ?? currentNode.explanations,
             node_name: this.form.value.node_name,
             size: updatedSize,
             ports: updatedPorts,
@@ -517,6 +594,69 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.conditionGroups.set(this.cloneConditionGroups(groups));
         this.cdr.markForCheck();
         this.sidePanelService.triggerAutosave();
+    }
+
+    /**
+     * A rule's route code or name was edited, which can change the key its
+     * explanations are filed under. Moves them to the new key on the canvas node
+     * now, so the decision tree shows them — outdated — rather than nothing. The
+     * edited rows follow in the grid's next `conditionGroupsChange`, and the autosave
+     * that pushes them carries the moved explanations along (`createUpdatedNode`).
+     *
+     * An accepted trade-off: the move lands before the rows do. While the form is
+     * invalid the autosave pushes nothing, and fixing the form — the common path —
+     * pushes the edit to match. Leaving the panel instead discards the edit but not
+     * the move — closing it says the changes were not saved, selecting another node
+     * discards them silently. The text then sits under the new key while the row keeps
+     * its old code, and the next explanation written drops it. The cache softens that only for
+     * text generated in this browser — it holds what `set` and `move` wrote here, and
+     * a move writes only the new key — and not at all for text loaded from the server.
+     */
+    public onRuleIdentityEdit(edit: CdtRuleIdentityEdit): void {
+        if (this.isReadOnly()) return;
+
+        const node = this.node();
+        this.explanationStore.move(
+            { nodeId: node.id, backendId: node.backendId },
+            explainKeyMovesForRuleEdit(edit.rowsBefore, edit.rowsAfter, edit.rowIndex)
+        );
+    }
+
+    /**
+     * The user confirmed Continue on a wired route code. Removes the connection on
+     * its port and adopts the grid's rows only once the port is free, so Continue
+     * is never ticked while a connection that would override it survives.
+     */
+    public onEnableContinueRequest(request: CdtEnableContinueRequest): void {
+        // Viewers cannot edit the flow, so they must not remove its connections either.
+        if (this.isReadOnly()) return;
+        if (!this.removeRouteConnections(request.portId)) {
+            this.toastService.error(CDT_ROUTE_CONTINUE_COPY.enableContinueFailed, undefined, 'bottom-right');
+            return;
+        }
+        this.onConditionGroupsChange(request.rows);
+    }
+
+    /**
+     * Removes every connection on `portId` the way deleting it on the canvas does:
+     * an undo snapshot, then `deleteSelections`, which also clears the canvas rows'
+     * `next_node`. True when the port has no connection afterwards, including when
+     * it had none to begin with.
+     */
+    private removeRouteConnections(portId: string): boolean {
+        const nodeId = this.node().id;
+        const connectionsOnPort = (): string[] =>
+            this.flowService
+                .connections()
+                .filter((connection) => connection.sourceNodeId === nodeId && connection.sourcePortId === portId)
+                .map((connection) => connection.id);
+
+        const connectionIds = connectionsOnPort();
+        if (connectionIds.length === 0) return true;
+
+        this.undoRedoService.stateChanged();
+        this.flowService.deleteSelections({ fNodeIds: [], fConnectionIds: connectionIds });
+        return connectionsOnPort().length === 0;
     }
 
     public onSectionsChange(sections: CdtSection[]): void {
@@ -764,7 +904,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .cdtExport(backendId, 'json')
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (blob) => this.downloadBlob(blob, this.buildFileName('json')),
+                next: (blob) => downloadBlob(blob, this.buildFileName('json')),
                 error: () => this.toastService.error('Export failed.'),
             });
     }
@@ -778,11 +918,13 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodeName: this.form.value.node_name ?? '',
             preCode: this.preCode,
             preLibraries: this.parseLibraries(this.form.value.pre_libraries),
+            preExecutionTimeout: this.preExecutionTimeout.value,
             preInputMap: this.serializeInputMap('pre_input_map'),
             preOutputVariablePath: this.form.value.pre_output_variable_path || null,
             preUseStorage: this.preUseStorage(),
             postCode: this.postCode,
             postLibraries: this.parseLibraries(this.form.value.post_libraries),
+            postExecutionTimeout: this.postExecutionTimeout.value,
             postInputMap: this.serializeInputMap('post_input_map'),
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
             postUseStorage: this.postUseStorage(),
@@ -795,15 +937,69 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
     }
 
-    private downloadBlob(blob: Blob, filename: string): void {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+    // ── Decision tree ──
+
+    /**
+     * Opens the read-only flowchart of this table.
+     *
+     * Opening it touches no node state: no `createUpdatedNode`, no
+     * `notifyExternalChange`, no `triggerAutosave` — the dialog is handed a snapshot
+     * and nothing else, so looking at the diagram never marks the canvas dirty.
+     *
+     * Generating an explanation inside it does, by design: the dialog writes to the
+     * node's metadata through `CdtExplanationStoreService`, bypassing this panel's
+     * form, and the next save carries it. A read-only editor gets the tree and its
+     * stored explanations, but no way to generate one.
+     */
+    public openDecisionTree(): void {
+        this.dialog.open(CdtDecisionTreeDialogComponent, {
+            data: this.buildDecisionTreeInput(),
+            // The panel's injector, not the root one: inside a version preview the
+            // dialog has to reach that editor's FlowService and explanation store.
+            injector: this.injector,
+            // The tree is the point of this dialog, so it takes the screen: a wide
+            // table needs the width, and the vertical chain of rules needs the
+            // height. `maxWidth` has to be set explicitly — the CDK's own default
+            // is 80vw and would otherwise clamp the width back down.
+            width: '96vw',
+            height: '95vh',
+            maxWidth: '96vw',
+            maxHeight: '95vh',
+            // ESC and the backdrop are handled by the dialog itself so the search
+            // panel, the detail window and the dialog close in the right order.
+            disableClose: true,
+            ariaLabel: 'Decision tree',
+        });
+    }
+
+    private buildDecisionTreeInput(): CdtDecisionTreeInput {
+        const canvasTable = (this.node().data as { table?: ClassificationDecisionTableData }).table;
+
+        return {
+            nodeId: this.node().id,
+            backendId: this.node().backendId,
+            nodeName: this.form.value.node_name ?? this.node().node_name ?? '',
+            preCode: this.preCode,
+            postCode: this.postCode,
+            preInputMap: this.serializeInputMap('pre_input_map'),
+            postInputMap: this.serializeInputMap('post_input_map'),
+            preLibraries: this.parseLibraries(this.form.value.pre_libraries),
+            postLibraries: this.parseLibraries(this.form.value.post_libraries),
+            preOutputVariablePath: this.form.value.pre_output_variable_path || null,
+            postOutputVariablePath: this.form.value.post_output_variable_path || null,
+            prompts: { ...this.prompts() },
+            // The clone carries unsaved grid edits; the canvas node carries the
+            // `next_node` values FlowService writes. The builder needs both.
+            rows: this.conditionGroups(),
+            canvasRows: canvasTable?.condition_groups ?? [],
+            defaultNextNode: this.form.value.default_next_node || null,
+            errorNextNode: this.form.value.next_error_node || null,
+            connections: [...this.flowService.connections()],
+            nodes: [...this.flowService.nodes()],
+            defaultLlmConfig: this.form.value.default_llm_config || null,
+            llmConfigOptions: this.llmConfigOptions(),
+            readOnly: this.isReadOnly(),
+        };
     }
 
     private buildFileName(extension: string): string {

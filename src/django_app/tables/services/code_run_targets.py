@@ -49,6 +49,14 @@ class CodeRunTarget:
     def python_code_of(self, owner: Model) -> PythonCode:
         return getattr(owner, self.code_field)
 
+    @property
+    def owner_is_trigger_node(self) -> bool:
+        """Whether the slot's owner is a trigger node; running its code also needs FLOWS.USE."""
+        # Deferred: the trigger node registry imports serializers, which import this module.
+        from tables.services.trigger_nodes import is_trigger_node_model
+
+        return is_trigger_node_model(self.model)
+
 
 def storage_path_for_test_run(target_type: str, target_id: int) -> str:
     """Return the folder a test run of one target may write to, reused across runs."""
@@ -68,12 +76,15 @@ def _build_python_node_payload(python_node: PythonNode, storage_path: str) -> Py
 
 
 def _build_webhook_trigger_node_payload(
-    webhook_trigger_node: WebhookTriggerNode, _storage_path: str
+    webhook_trigger_node: WebhookTriggerNode, storage_path: str
 ) -> PythonCodeData:
-    # Real runs give webhook trigger code no storage, so test mode has none either.
     return (
         ConverterService()
-        .convert_webhook_trigger_node_to_pydantic(webhook_trigger_node=webhook_trigger_node)
+        .convert_webhook_trigger_node_to_pydantic(
+            webhook_trigger_node=webhook_trigger_node,
+            graph_id=webhook_trigger_node.graph_id,
+            extra_storage_paths=[storage_path],
+        )
         .python_code
     )
 

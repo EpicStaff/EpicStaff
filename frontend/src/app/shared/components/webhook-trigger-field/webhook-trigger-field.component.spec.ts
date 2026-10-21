@@ -10,6 +10,8 @@ import { WebhookTriggerFieldComponent } from './webhook-trigger-field.component'
 
 const BOT_SECRET = { id: 7, name: 'Bot secret', tail: 'eqwe' } as Secret;
 const OTHER_SECRET = { id: 8, name: 'Other secret', tail: 'zzzz' } as Secret;
+/** TELEGRAM_TRIGGER's ngrok token (id 5), in the recycle bin. */
+const BINNED_TOKEN = { id: 5, name: 'Old tunnel token' };
 
 const TELEGRAM_TRIGGER: WebhookTriggerModel = {
     id: 3,
@@ -27,17 +29,20 @@ const NEW_TRIGGER: WebhookTriggerModel = { ...TELEGRAM_TRIGGER, id: undefined, a
         [formControl]="control"
         [allowPickExisting]="false"
         [showAuth]="showAuth"
+        [readonly]="readonly"
     />`,
     imports: [ReactiveFormsModule, WebhookTriggerFieldComponent],
 })
 class HostComponent {
     readonly control = new FormControl<WebhookTriggerWrite | null>(null);
     showAuth = true;
+    readonly = false;
 }
 
 interface RenderOptions {
     secrets?: Secret[];
     showAuth?: boolean;
+    readonly?: boolean;
 }
 
 function withAuth(auth: WebhookTriggerAuth | null): WebhookTriggerModel {
@@ -55,12 +60,25 @@ function render(trigger: WebhookTriggerModel, options: RenderOptions = {}) {
                     secrets,
                     getSecrets: () => of(secrets()),
                     maskTail: (tail: string) => `••••${tail}`,
+                    // Like the real storage: live secrets, plus the selected binned one.
+                    selectItems: (selected: number | null) => [
+                        ...secrets().map((secret) => ({
+                            name: secret.name,
+                            value: secret.id,
+                            tip: `••••${secret.tail}`,
+                        })),
+                        ...(selected === BINNED_TOKEN.id
+                            ? [{ name: `${BINNED_TOKEN.name} (in the recycle bin)`, value: BINNED_TOKEN.id }]
+                            : []),
+                    ],
+                    isBinned: (id: number) => id === BINNED_TOKEN.id,
                 },
             },
         ],
     });
     const fixture = TestBed.createComponent(HostComponent);
     fixture.componentInstance.showAuth = options.showAuth ?? true;
+    fixture.componentInstance.readonly = options.readonly ?? false;
     fixture.componentInstance.control.setValue(trigger);
     fixture.detectChanges();
     const field = fixture.debugElement.query(By.directive(WebhookTriggerFieldComponent))
@@ -86,11 +104,42 @@ function text(fixture: ComponentFixture<HostComponent>, selector: string): strin
         .join(' | ');
 }
 
+/** The plain-text value a read-only input or select shows for a form control. */
+function readonlyText(fixture: ComponentFixture<HostComponent>, controlName: string): string | null {
+    fixture.detectChanges();
+    const value = (fixture.nativeElement as HTMLElement).querySelector(
+        `[formcontrolname="${controlName}"] .readonly-value, [formcontrolname="${controlName}"] .selector__readonly-value`
+    );
+    return value?.textContent?.trim() ?? null;
+}
+
 function emittedTrigger(control: FormControl<WebhookTriggerWrite | null>): WebhookTriggerModel {
     return control.value as WebhookTriggerModel;
 }
 
 describe('WebhookTriggerFieldComponent', () => {
+    it('names a binned tunnel token, with the note, though the trigger was loaded without events', () => {
+        const { fixture } = render(TELEGRAM_TRIGGER);
+
+        expect(selectButtonText(fixture, 'ngrok_auth_token_secret_id')).toBe('Old tunnel token (in the recycle bin)');
+        expect(text(fixture, '.binned-secret-note')).toContain('This secret is in the recycle bin');
+    });
+
+    it('still names the tunnel token as the current secret when it is missing from the secrets list', () => {
+        const { fixture } = render({
+            ...TELEGRAM_TRIGGER,
+            ngrok_config: { name: 'bot-tunnel', auth_token_secret_id: 42, domain: null, region: 'eu' },
+        });
+
+        expect(selectButtonText(fixture, 'ngrok_auth_token_secret_id')).toBe('Current secret');
+    });
+
+    it('never offers the binned tunnel token as an auth secret', () => {
+        const { field } = render(TELEGRAM_TRIGGER);
+
+        expect(field['authSecretItems']().map((item) => item.value)).not.toContain(BINNED_TOKEN.id);
+    });
+
     describe('existing telegram trigger', () => {
         it('pre-selects both the auth kind and the current secret', () => {
             const { fixture, field, control } = render(TELEGRAM_TRIGGER);
@@ -272,6 +321,75 @@ describe('WebhookTriggerFieldComponent', () => {
             expect(field.form.controls.auth_kind.value).toBeNull();
             expect(field.authKindItems().map((item) => item.value)).toEqual(['webhook']);
             expect(control.errors).toEqual({ authKindRequired: true });
+        });
+    });
+
+    describe('read-only', () => {
+        it.each<[string, string]>([
+            ['path', 'telegram-bot'],
+            ['provider_type', 'Ngrok'],
+            ['ngrok_name', 'bot-tunnel'],
+            ['ngrok_auth_token_secret_id', 'Old tunnel token (in the recycle bin)'],
+            ['ngrok_domain', '—'],
+            ['ngrok_region', 'Europe (eu)'],
+            ['auth_kind', 'Telegram Node'],
+            ['auth_secret_id', 'Bot secret'],
+        ])('shows %s as plain text', (controlName, value) => {
+            const { fixture } = render(TELEGRAM_TRIGGER, { readonly: true });
+
+            expect(readonlyText(fixture, controlName)).toBe(value);
+            expect(selectButton(fixture, controlName)).toBeNull();
+        });
+
+        it('shows the localhost name as plain text', () => {
+            const { fixture } = render(
+                {
+                    ...TELEGRAM_TRIGGER,
+                    provider_type: 'localhost',
+                    ngrok_config: null,
+                    localhost_config: { name: 'local' },
+                    auth: { kind: 'webhook', secret_tail: 'zzzz', secret_id: OTHER_SECRET.id },
+                },
+                { readonly: true }
+            );
+
+            expect(readonlyText(fixture, 'localhost_name')).toBe('local');
+        });
+
+        it('leaves no input to type into', () => {
+            const { fixture } = render(TELEGRAM_TRIGGER, { readonly: true });
+
+            expect((fixture.nativeElement as HTMLElement).querySelectorAll('input, button')).toHaveLength(0);
+        });
+
+        it('states the current secret without inviting a change', () => {
+            const { fixture } = render(TELEGRAM_TRIGGER, { readonly: true });
+
+            expect(text(fixture, '.wt-hint')).toBe('Current secret: ****eqwe (its value is never shown).');
+            expect(text(fixture, '.binned-secret-note')).toBe(
+                "This secret is in the recycle bin, so it can't be used."
+            );
+        });
+
+        it('states that no secret is set without inviting one', () => {
+            const { fixture } = render(withAuth({ kind: 'telegram', secret_tail: null, secret_id: null }), {
+                readonly: true,
+            });
+
+            expect(text(fixture, '.wt-hint')).toBe('No secret is set for this trigger yet.');
+        });
+
+        it('still names both current secrets when the secrets list is unavailable', () => {
+            const { fixture } = render(
+                {
+                    ...TELEGRAM_TRIGGER,
+                    ngrok_config: { name: 'bot-tunnel', auth_token_secret_id: 42, domain: null, region: 'eu' },
+                },
+                { secrets: [], readonly: true }
+            );
+
+            expect(readonlyText(fixture, 'ngrok_auth_token_secret_id')).toBe('Current secret');
+            expect(readonlyText(fixture, 'auth_secret_id')).toBe('Current secret (****eqwe)');
         });
     });
 

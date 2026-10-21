@@ -11,6 +11,7 @@ import {
     TextareaComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { EnterSubmitDirective } from '@shared/directives';
 import { Secret } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
@@ -27,6 +28,7 @@ import { extractHttpErrorMessage } from '@shared/utils';
         ValidationErrorsComponent,
         AppSvgIconComponent,
         MatTooltipModule,
+        EnterSubmitDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

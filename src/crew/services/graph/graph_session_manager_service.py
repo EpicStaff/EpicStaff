@@ -2,7 +2,7 @@ import asyncio
 import json
 import uuid
 from collections.abc import Callable, Coroutine
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from types import CoroutineType
 from typing import Any
 
@@ -30,6 +30,7 @@ from src.crew.services.graph.session_audit_provider import (
     register_session_org,
     track_audit_task,
 )
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import SessionData, StopSessionMessage
 from utils.singleton_meta import SingletonMeta
 
@@ -82,6 +83,32 @@ def _dispatch_session_audit(build_audit_coroutine: Callable[[], Coroutine]) -> N
         track_audit_task(build_audit_coroutine())
     except Exception as audit_exc:
         logger.warning("Session audit dispatch failed, dropping: {}", audit_exc)
+
+
+async def _audit_skipped_session(session_data: SessionData, session_status: str) -> None:
+    """Record a session that was stopped or expired before it left the queue.
+
+    The end event is parented to the identity document that add_session_start
+    creates, so the start must be written first even though nothing ran.
+    """
+    audit_writer = get_session_audit_writer()
+    await audit_writer.add_session_start(
+        session_id=session_data.id,
+        org_id=session_data.org_id,
+        flow_name=session_data.graph.name,
+        event_id=str(uuid.uuid4()),
+        run_type=session_data.run_type,
+    )
+    await audit_writer.add_session_end(
+        session_id=session_data.id,
+        org_id=session_data.org_id,
+        name="Session Skipped",
+        flow_name=session_data.graph.name,
+        event_id=str(uuid.uuid4()),
+        status="failed",
+        details={"reason": "stopped while queued", "session_status": session_status},
+        run_type=session_data.run_type,
+    )
 
 
 @dataclass
@@ -178,6 +205,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
 
             graph = session_graph_builder.compile_from_schema(session_data=session_data)
+            logger.log(
+                BENCH_LEVEL, "bench {checkpoint}", checkpoint="compiled", session_id=session_id
+            )
 
             state = {
                 "state_history": [],
@@ -196,28 +226,10 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 if stream_mode == "values":
                     final_state = chunk
                 elif stream_mode == "custom":
+                    data = chunk.to_payload()
+                    encoded_data = GraphMessage.encode_payload(data)
                     try:
-                        data = asdict(chunk)
-                    except Exception as e:
-                        logger.error(
-                            f"Error during chunk cleaning/serialization: {e}",
-                            exc_info=True,
-                        )
-                        data = {
-                            "session_id": chunk.session_id
-                            if hasattr(chunk, "session_id")
-                            else None,
-                            "name": chunk.name if hasattr(chunk, "name") else None,
-                            "execution_order": chunk.execution_order
-                            if hasattr(chunk, "execution_order")
-                            else None,
-                            "message_data": {"message_type": "error", "error": str(e)},
-                        }
-
-                    assert isinstance(data, dict), "custom chunk must be a dict"
-                    data["uuid"] = str(uuid.uuid4())
-                    try:
-                        emit_session_audit_event(data)
+                        emit_session_audit_event(encoded_data)
                     except Exception as audit_exc:
                         # Audit must never break the primary pipeline - this
                         # dispatch call must never propagate, no matter what
@@ -244,14 +256,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                             # etc.) with no new status.
                             stop_event.set()
 
-                    await self.redis_service.aadd_graph_message(data)
+                    await self.redis_service.aadd_graph_message(data["uuid"], encoded_data)
                 elif stream_mode == "values":
                     final_state = chunk
 
-                logger.debug("Mode: {}. Chunk: {}", stream_mode, chunk)
+                # Never log the chunk itself: it is the session's full state (variables, LLM
+                # replies), and crew's log mixes every organization's sessions.
+                logger.debug("Session {} streamed a {} chunk", session_id, stream_mode)
                 stop_event.check_stop()
-
-            await asyncio.sleep(0.01)
 
             end_node_result = session_graph_builder.end_node_result
 
@@ -264,11 +276,10 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     "end_node_result": end_node_result,
                 },
             )
-            graph_end_message_data = asdict(graph_end_data)
-            graph_end_message_data["uuid"] = str(uuid.uuid4())
-
-            await self.redis_service.aadd_graph_message(graph_end_message_data)
-            await asyncio.sleep(0.05)
+            graph_end_payload = graph_end_data.to_payload()
+            await self.redis_service.aadd_graph_message(
+                graph_end_payload["uuid"], GraphMessage.encode_payload(graph_end_payload)
+            )
 
             org_id = get_session_org(session_id)
             if org_id is not None:
@@ -277,7 +288,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         session_id=session_id,
                         org_id=org_id,
                         flow_name=get_session_flow_name(session_id) or "",
-                        event_id=graph_end_message_data["uuid"],
+                        event_id=graph_end_payload["uuid"],
                         status="completed",
                         output=end_node_result,
                         run_type=session_data.run_type,
@@ -292,8 +303,24 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             clear_session_org(session_id)
             clear_session_flow_name(session_id)
             await session_graph_builder.remembered_outputs_store.clear(session_id)
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="session_end",
+                session_id=session_id,
+                status="end",
+                reason=None,
+            )
 
         except asyncio.CancelledError:
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="session_end",
+                session_id=session_id,
+                status="cancelled",
+                reason=None,
+            )
             # Status updated in _handle_session_timeout
             logger.warning(f"Session {session_id} was cancelled")
             org_id = get_session_org(session_id)
@@ -313,6 +340,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             clear_session_org(session_id)
             clear_session_flow_name(session_id)
         except StopSession as e:
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="session_end",
+                session_id=session_id,
+                status=stop_event.status,
+                reason=e.reason,
+            )
             status_kwargs = {"reason": e.reason} if e.reason else {}
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status=stop_event.status, **status_kwargs
@@ -337,6 +372,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
         except Exception as e:
             logger.exception(f"Failed to start session: {e}")
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="session_end",
+                session_id=session_data.id,
+                status="error",
+                reason=type(e).__name__,
+            )
 
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
@@ -410,6 +453,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             coro = self.session_runner(session_data, stop_event)
             coro_item = SessionCoroItem(coro, stop_event)
             self.session_graph_pool[session_data.id] = coro_item
+            logger.log(
+                BENCH_LEVEL, "bench {checkpoint}", checkpoint="received", session_id=session_data.id
+            )
             await self.session_queue.put(session_data.id)
 
         except Exception as e:
@@ -474,8 +520,21 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
     async def session_runner(self, data: SessionData, stop_event: StopEvent):
         async with self._semaphore:
-            logger.info(f"Acquired semaphore for session {data.id}")
-            await self.run_session(data, stop_event)
+            with logger.contextualize(session_id=data.id):
+                logger.log(
+                    BENCH_LEVEL,
+                    "bench {checkpoint}",
+                    checkpoint="slot_acquired",
+                    session_id=data.id,
+                )
+                logger.info(f"Acquired semaphore for session {data.id}")
+                # Stopped or expired while waiting for a slot: the stop/timeout
+                # handler already published the final status, so running would overwrite it.
+                if stop_event.is_set():
+                    logger.info("Session {} was stopped while queued, skipping", data.id)
+                    _dispatch_session_audit(lambda: _audit_skipped_session(data, stop_event.status))
+                    return
+                await self.run_session(data, stop_event)
             self.counter += 1
             logger.debug(f"Tasks executed: {self.counter}")
 
@@ -497,6 +556,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             session_coro_item: SessionCoroItem = self.session_graph_pool.get(session_id)
             if session_coro_item is None:
                 logger.warning(f"Session {session_id} was removed before it started")
+                logger.log(
+                    BENCH_LEVEL,
+                    "bench {checkpoint}",
+                    checkpoint="session_end",
+                    session_id=session_id,
+                    status="stop",
+                    reason="removed before start",
+                )
                 continue
 
             logger.info(f"Dequeued session {session_id}")

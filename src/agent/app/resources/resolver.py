@@ -25,7 +25,7 @@ from app.exceptions import (
     UnknownToolRefError,
 )
 from app.knowledge.events import KnowledgeEventSink
-from app.loop.context import AgentContext
+from app.loop.context import AgentContext, CancellationCheck
 from app.resources.s3_manifest import build_s3_manifest
 from app.sandbox.client import SandboxClient
 from app.tools.mcp.gateway import McpToolGateway
@@ -39,6 +39,7 @@ from shared.models.agent_service import (
     ContextAttachment,
     S3FileSpec,
 )
+from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import BaseToolData, McpToolData, PythonCodeToolData
 
 
@@ -93,6 +94,8 @@ class AgentResolver:
         agent: AgentSpec,
         request: AgentRequest,
         knowledge_sink: KnowledgeEventSink | None = None,
+        *,
+        is_cancelled: CancellationCheck,
     ) -> ResolvedAgent:
         """Resolve all refs for ``agent`` against the pools in ``request``.
 
@@ -107,7 +110,11 @@ class AgentResolver:
         s3_pool: dict[int, S3FileSpec] = {spec.id: spec for spec in request.s3_files}
 
         registry = await self._build_tool_registry(
-            agent, tool_pool, collection_pool, knowledge_sink
+            agent,
+            tool_pool,
+            collection_pool,
+            knowledge_sink,
+            storage_credentials=request.storage_credentials,
         )
         names = [s.name for s in registry.tool_specs()]
         logger.debug("agent_id={} resolved {} tool(s): {}", agent.id, len(names), names)
@@ -127,6 +134,7 @@ class AgentResolver:
             agent=agent,
             attachments=attachments,
             correlation_id=request.correlation_id,
+            is_cancelled=is_cancelled,
         )
 
         return ResolvedAgent(
@@ -142,6 +150,7 @@ class AgentResolver:
         tool_pool: dict[str, BaseToolData],
         collection_pool: dict[str, CollectionSpec],
         knowledge_sink: KnowledgeEventSink | None = None,
+        storage_credentials: StorageCredentials | None = None,
     ) -> ToolRegistry:
         # System tools go onto every agent unconditionally, by design — see
         # the contract on _system_registry in app/tools/system_registry.py.
@@ -163,7 +172,7 @@ class AgentResolver:
 
             if prefix == "python-code-tool":
                 assert isinstance(entry.data, PythonCodeToolData)
-                builder.add_python_code_tool(entry.data)
+                builder.add_python_code_tool(entry.data, storage_credentials=storage_credentials)
 
             elif prefix == "mcp-tool":
                 assert isinstance(entry.data, McpToolData)

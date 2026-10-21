@@ -3,37 +3,43 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     DestroyRef,
     effect,
-    ElementRef,
     Inject,
     inject,
+    linkedSignal,
     OnDestroy,
     OnInit,
     signal,
-    ViewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     ActionDropdownButtonComponent,
     ActionDropdownItem,
-    IconButtonComponent,
+    AppSvgIconComponent,
+    InputNumberComponent,
     PaginationControlsComponent,
-    SelectComponent,
-    SelectItem,
+    SearchComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import {
-    ActionCode,
-    DateRangeFilter,
-    GraphSessionStatus,
-    isTerminalSessionStatus,
-    NodeGroup,
-    ResourceCode,
-} from '@shared/models';
+import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
 import { downloadBlob } from '@shared/utils';
-import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, takeUntil } from 'rxjs';
+import {
+    catchError,
+    debounceTime,
+    distinctUntilChanged,
+    EMPTY,
+    finalize,
+    interval,
+    map,
+    merge,
+    Subject,
+    switchMap,
+    takeUntil,
+} from 'rxjs';
 
 import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications';
@@ -44,7 +50,6 @@ import {
     SessionRunType,
     TriggerType,
 } from '../../services/flows-sessions.service';
-import { FlowSessionNodeFilterDropdownComponent } from './flow-session-node-filter-dropdown.component';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
 
 @Component({
@@ -54,10 +59,11 @@ import { FlowSessionsTableComponent } from './flow-sessions-table.component';
     imports: [
         FlowSessionsTableComponent,
         PaginationControlsComponent,
-        FlowSessionNodeFilterDropdownComponent,
-        IconButtonComponent,
+        SearchComponent,
+        AppSvgIconComponent,
+        MatTooltip,
         ActionDropdownButtonComponent,
-        SelectComponent,
+        InputNumberComponent,
         HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -68,21 +74,25 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     public isLoaded = signal<boolean>(false);
     public currentPage = signal(1);
     public pageSize = signal(10);
-    public readonly pageSizeItems: SelectItem[] = [
-        { name: '10', value: 10 },
-        { name: '20', value: 20 },
-        { name: '50', value: 50 },
-    ];
+    // what the input shows; may hold a half-typed value until it is committed on blur or Enter
+    public pageSizeDraft = linkedSignal<number | null>(() => this.pageSize());
+    public readonly pageSizeMin = 10;
+    public readonly pageSizeStep = 10;
     public statusFilter = signal<string[]>(['all']);
-    public nodeFilter = signal<string | null>(null);
+    // the committed (debounced) search term sent to the API; partial match on the session id
+    public idSearch = signal<string>('');
     public triggerFilter = signal<TriggerType[]>([]);
     public runTypeFilter = signal<SessionRunType[]>([]);
     public dateFilter = signal<DateRangeFilter | null>(null);
-    public totalCount = 0;
-    public availableNodes = signal<string[]>([]);
-    public isErrorCauseFilter = signal<boolean>(false);
+    public totalCount = signal(0);
+    // Stops one step past the last session (35 sessions → 40). The current size is
+    // always allowed, so a filter that shrinks the list does not mark it invalid.
+    public readonly pageSizeMax = computed(() => {
+        const sizeShowingAll = Math.ceil(this.totalCount() / this.pageSizeStep) * this.pageSizeStep;
+        const allowed = Math.max(this.pageSizeMin, Math.min(sizeShowingAll, this.pageSizeLimit));
+        return Math.max(allowed, this.pageSize());
+    });
     private reloadTrigger = signal(0);
-    public availableNodeGroups = signal<NodeGroup[]>([]);
     public selectedIds = signal<Set<number>>(new Set());
     public isExporting = signal(false);
     public isDeleting = signal(false);
@@ -90,6 +100,10 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     private readonly destroyRef = inject(DestroyRef);
     private readonly importExportService = inject(ImportExportService);
     private readonly toastService = inject(ToastService);
+    private readonly pageSizeLimit = 100;
+    // valid page sizes typed or stepped to; null cancels a pending one (an invalid value was typed after it)
+    private readonly pageSizeInput$ = new Subject<number | null>();
+    private readonly idSearchInput$ = new Subject<string>();
 
     readonly exportItems: ActionDropdownItem[] = [
         { label: 'Export as JSON', value: 'json' },
@@ -99,9 +113,8 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     private destroy$ = new Subject<void>();
     private pendingIds = new Set<number>();
     private static readonly POLL_INTERVAL_MS = 5000;
-
-    @ViewChild('sessionSearchInput')
-    sessionSearchInput!: ElementRef<HTMLInputElement>;
+    private static readonly PAGE_SIZE_INPUT_DEBOUNCE_MS = 300;
+    private static readonly ID_SEARCH_DEBOUNCE_MS = 300;
 
     constructor(
         private graphSessionService: GraphSessionService,
@@ -111,27 +124,36 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         private cdr: ChangeDetectorRef
     ) {
         this.flow = data.flow;
-        this.loadAvailableNodes();
+        this.idSearchInput$
+            .pipe(
+                debounceTime(FlowSessionsListComponent.ID_SEARCH_DEBOUNCE_MS),
+                distinctUntilChanged(),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((term) => {
+                this.idSearch.set(term);
+                this.currentPage.set(1);
+            });
+        this.pageSizeInput$
+            .pipe(
+                debounceTime(FlowSessionsListComponent.PAGE_SIZE_INPUT_DEBOUNCE_MS),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((size) => {
+                if (size !== null) {
+                    this.applyPageSize(size);
+                }
+            });
         effect(() => {
             const page = this.currentPage();
             const size = this.pageSize();
             const status = this.statusFilter();
-            const nodeName = this.nodeFilter();
-            const isErrorCause = this.isErrorCauseFilter();
+            const idSearch = this.idSearch();
             const triggerType = this.triggerFilter();
             const dateFilter = this.dateFilter();
             const runType = this.runTypeFilter();
             this.reloadTrigger();
-            this.loadSessions(
-                size,
-                (page - 1) * size,
-                status,
-                nodeName,
-                isErrorCause,
-                triggerType,
-                dateFilter,
-                runType
-            );
+            this.loadSessions(size, (page - 1) * size, status, idSearch, triggerType, dateFilter, runType);
         });
     }
 
@@ -139,84 +161,11 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         this.currentPage.set(1);
     }
 
-    private loadAvailableNodes(): void {
-        const groups: NodeGroup[] = [
-            {
-                label: 'Python Node',
-                icon: 'ti ti-brand-python',
-                color: '#ffcf3f',
-                nodes: this.extractNodeNames(this.flow?.python_node_list),
-            },
-            {
-                label: 'LLM Node',
-                icon: 'ti ti-brain',
-                color: '#a78bfa',
-                nodes: this.extractNodeNames(this.flow?.llm_node_list),
-            },
-            {
-                label: 'File Extractor',
-                icon: 'ti ti-file-search',
-                color: '#38bdf8',
-                nodes: this.extractNodeNames(this.flow?.file_extractor_node_list),
-            },
-            {
-                label: 'Audio to Text',
-                icon: 'ti ti-microphone',
-                color: '#f472b6',
-                nodes: this.extractNodeNames(this.flow?.audio_transcription_node_list),
-            },
-            {
-                label: 'Webhook Trigger',
-                icon: 'ti ti-webhook',
-                color: '#34d399',
-                nodes: this.extractNodeNames(this.flow?.webhook_trigger_node_list),
-            },
-            {
-                label: 'Telegram Trigger',
-                icon: 'ti ti-brand-telegram',
-                color: '#38bdf8',
-                nodes: this.extractNodeNames(this.flow?.telegram_trigger_node_list),
-            },
-            {
-                label: 'Subgraph',
-                icon: 'ti ti-hierarchy',
-                color: '#fb923c',
-                nodes: this.extractNodeNames(this.flow?.subgraph_node_list),
-            },
-            {
-                label: 'End',
-                icon: 'ti ti-square-rounded',
-                color: '#d3d3d3',
-                nodes: this.extractNodeNames(this.flow?.end_node_list),
-            },
-        ].filter((g) => g.nodes.length > 0);
-
-        this.availableNodeGroups.set(groups);
-
-        const allNodes = groups.flatMap((g) => g.nodes);
-        this.availableNodes.set(allNodes);
-    }
-
-    private extractNodeNames(list: { node_name?: string; id: number }[] | undefined | null): string[] {
-        if (!list?.length) return [];
-        return list
-            .filter((n) => n?.node_name)
-            .map((n) => `${n.node_name} #${n.id}`)
-            .filter(Boolean)
-            .sort();
-    }
-
-    public onIsErrorCauseChange(): void {
-        this.isErrorCauseFilter.set(!this.isErrorCauseFilter());
-        this.currentPage.set(1);
-    }
-
     private loadSessions(
         limit: number,
         offset: number,
         status: string[],
-        nodeName: string | null = null,
-        isErrorCause: boolean = false,
+        idSearch: string = '',
         triggerType: TriggerType[] = [],
         dateFilter: DateRangeFilter | null = null,
         runType: SessionRunType[] = []
@@ -233,8 +182,8 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
                     limit,
                     offset,
                     status,
-                    nodeName,
-                    isErrorCause,
+                    null,
+                    idSearch,
                     null,
                     triggerType,
                     dateFilter,
@@ -245,12 +194,12 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
                     next: (sessions) => {
                         this.sessions.set(sessions.results);
                         this.isLoaded.set(true);
-                        this.totalCount = sessions.count;
+                        this.totalCount.set(sessions.count);
                         this.cdr.markForCheck();
                         this.startStatusPolling();
                     },
                     error: () => {
-                        this.totalCount = 0;
+                        this.totalCount.set(0);
                         this.sessions.set([]);
                         this.isLoaded.set(true);
                         this.pageSize.set(10);
@@ -394,9 +343,25 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         this.currentPage.set(page);
     }
 
-    onPageSizeChange(size: number) {
-        this.pageSize.set(size);
-        this.currentPage.set(1);
+    onPageSizeChange(size: number | null) {
+        // The input emits on every keystroke and step. Debouncing keeps "100" from fetching
+        // a page of 10 on the way; invalid values wait for onPageSizeCommit.
+        this.pageSizeInput$.next(size !== null && this.isValidPageSize(size) ? size : null);
+    }
+
+    onPageSizeCommit() {
+        this.pageSizeInput$.next(null);
+        const draft = this.pageSizeDraft();
+        if (draft !== null && this.isValidPageSize(draft)) {
+            this.applyPageSize(draft);
+            return;
+        }
+        const corrected = this.nearestValidPageSize(draft);
+        this.toastService.warning(
+            `Sessions to display must be from ${this.pageSizeMin} to ${this.pageSizeMax()}. Set to ${corrected}.`
+        );
+        this.pageSizeDraft.set(corrected);
+        this.applyPageSize(corrected);
     }
 
     onStatusFilterChange(values: string[]) {
@@ -414,12 +379,9 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         this.sessions.set([]);
     }
 
-    onNodeFilterChange(value: string | null) {
-        this.currentPage.set(1);
-        this.nodeFilter.set(value);
-        if (!value) {
-            this.isErrorCauseFilter.set(false);
-        }
+    onIdSearchChange(value: string) {
+        // ids are integers, so surrounding spaces can never be part of a match
+        this.idSearchInput$.next(value.trim());
     }
 
     onTriggerFilterChange(types: TriggerType[]) {
@@ -447,7 +409,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     }
 
     public onExport(format: ExportFormat): void {
-        if (this.selectedIds().size === 0 && this.totalCount === 0) {
+        if (this.selectedIds().size === 0 && this.totalCount() === 0) {
             return;
         }
         this.isExporting.set(true);
@@ -459,8 +421,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
                       {
                           graph: this.flow.id,
                           status: activeStatuses.length > 0 ? activeStatuses : undefined,
-                          node_name: this.nodeFilter() ?? undefined,
-                          is_error_cause: this.isErrorCauseFilter() || undefined,
+                          id_search: this.idSearch() || undefined,
                       },
                       format
                   );
@@ -481,6 +442,26 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
 
     public onExportItemSelected(item: ActionDropdownItem): void {
         this.onExport(item.value as ExportFormat);
+    }
+
+    // any whole number in range is valid; pageSizeStep only drives the +/- buttons
+    private isValidPageSize(size: number): boolean {
+        return Number.isInteger(size) && size >= this.pageSizeMin && size <= this.pageSizeMax();
+    }
+
+    private nearestValidPageSize(size: number | null): number {
+        if (size === null) {
+            return this.pageSize();
+        }
+        return Math.min(Math.max(Math.round(size), this.pageSizeMin), this.pageSizeMax());
+    }
+
+    private applyPageSize(size: number): void {
+        if (size === this.pageSize()) {
+            return;
+        }
+        this.pageSize.set(size);
+        this.currentPage.set(1);
     }
 
     protected readonly ResourceCode = ResourceCode;

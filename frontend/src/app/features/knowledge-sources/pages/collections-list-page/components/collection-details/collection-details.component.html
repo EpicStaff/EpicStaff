@@ -3,7 +3,7 @@
         <div class="details__spinner">
             <app-spinner
                 [text]="'Loading collection data...'"
-                [accentColor]="'#6562f5'"
+                accentColor="var(--accent-color)"
                 [isOverlay]="false"
             ></app-spinner>
         </div>
@@ -17,143 +17,117 @@
             <p class="details__empty-text">Select a collection to view files</p>
         </div>
     } @else {
-        <div class="details__header">
-            <div class="details__header-name">
-                <label
-                    for="collection-name"
-                    class="details__header-label"
-                >
-                    Collection Name
-                </label>
-                @if (canEditKnowledge()) {
-                    <input
-                        [formControl]="collectionName"
-                        type="text"
-                        id="collection-name"
-                        class="details__name-input"
-                        placeholder="Enter collection name"
-                    />
-                    <app-validation-errors [control]="collectionName" />
-                } @else {
-                    <span class="details__name-readonly">{{ collectionName.value }}</span>
-                }
-            </div>
-            <app-svg-icon
-                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
-                icon="trash"
-                class="details__action details__action--large"
-                size="1.5rem"
-                matTooltip="Delete collection"
-                matTooltipPosition="left"
-                (click)="onCollectionDelete()"
-            />
-        </div>
+        <app-collection-basics
+            [collection]="fullCollection()!"
+            (viewDetailsClick)="openDetails($event)"
+            (deleteClick)="onCollectionDelete()"
+        />
 
-        <section class="details__layout">
-            <app-drag-drop-area
-                (filesDropped)="onFilesDropped($event)"
-                [allowedTypes]="FILE_TYPES"
-                [permissionResource]="ResourceCode.KnowledgeSources"
-                class="details__main-wrapper"
-            >
-                <div class="details__main-content">
-                    <!-- RAGS -->
-                    <div class="details__section">
+        <app-drag-drop-area
+            (filesDropped)="onFilesDropped($event)"
+            [allowedTypes]="FILE_TYPES"
+            [permissionResource]="ResourceCode.KnowledgeSources"
+            class="details__main-wrapper"
+        >
+            <div class="details__main-content">
+                <!-- RAGS -->
+                <div class="details__section">
+                    <div class="details__section-header">
+                        <span class="details__section-title">RAG Types</span>
+
+                        <div class="details__section-actions">
+                            <!--Creating RAG requires both Create and Update permissions-->
+                            <ng-container *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]">
+                                <app-svg-icon
+                                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                                    icon="plus"
+                                    class="details__action details__action--medium"
+                                    size="1rem"
+                                    matTooltip="Create or update RAG"
+                                    matTooltipPosition="above"
+                                    (click)="openCreateCollectionModal()"
+                                />
+                            </ng-container>
+                        </div>
+                    </div>
+
+                    @if (fullCollection()) {
+                        <app-collection-details-rags [collection]="fullCollection()!" />
+                    }
+                </div>
+
+                <!-- files -->
+                @if (loadingDocuments()) {
+                    <app-spinner
+                        [text]="'Loading collection documents...'"
+                        accentColor="var(--accent-color)"
+                        [isOverlay]="false"
+                    ></app-spinner>
+                } @else {
+                    <div class="details__section details__section-files">
                         <div class="details__section-header">
-                            <span class="details__section-title">RAG types</span>
+                            <span class="details__section-title">Collection Files</span>
 
                             <div class="details__section-actions">
-                                <!--Creating RAG requires both Create and Update permissions-->
-                                <ng-container *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]">
+                                <app-select
+                                    class="details__file-type-filter"
+                                    mod="small"
+                                    placeholder="Filter by type"
+                                    [items]="fileTypeItems()"
+                                    [selectedValue]="activeFileType()"
+                                    (changed)="onFileTypeChange($event)"
+                                />
+                                <app-svg-icon
+                                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
+                                    icon="download"
+                                    class="details__action details__action--medium"
+                                    size="0.875rem"
+                                    matTooltip="Download all files"
+                                    matTooltipPosition="above"
+                                    (click)="downloadAllFiles()"
+                                />
+                                <app-svg-icon
+                                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
+                                    icon="files-filled"
+                                    class="details__action details__action--medium"
+                                    size="0.75rem"
+                                    matTooltip="Copy files to other collection"
+                                    matTooltipPosition="above"
+                                    (click)="openCopyFilesDialog()"
+                                />
+
+                                <label
+                                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
+                                    matTooltip="Add file"
+                                    matTooltipPosition="above"
+                                    (click)="fileInput.click()"
+                                >
                                     <app-svg-icon
-                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                                         icon="plus"
                                         class="details__action details__action--medium"
                                         size="1rem"
-                                        matTooltip="Create or update RAG"
-                                        matTooltipPosition="above"
-                                        (click)="openCreateCollectionModal()"
                                     />
-                                </ng-container>
-                            </div>
-                        </div>
-
-                        @if (fullCollection()) {
-                            <app-collection-details-rags [collection]="fullCollection()!" />
-                        }
-                    </div>
-
-                    <!-- files -->
-                    @if (loadingDocuments()) {
-                        <app-spinner
-                            [text]="'Loading collection documents...'"
-                            [accentColor]="'#6562f5'"
-                            [isOverlay]="false"
-                        ></app-spinner>
-                    } @else {
-                        <div class="details__section details__section-files">
-                            <div class="details__section-header">
-                                <span class="details__section-title">Collection Files</span>
-
-                                <div class="details__section-actions">
-                                    <app-svg-icon
-                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Export]"
-                                        icon="download"
-                                        class="details__action details__action--medium"
-                                        size="0.875rem"
-                                        matTooltip="Download all files"
-                                        matTooltipPosition="above"
-                                        (click)="downloadAllFiles()"
-                                    />
-                                    <app-svg-icon
-                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
-                                        icon="files-filled"
-                                        class="details__action details__action--medium"
-                                        size="0.75rem"
-                                        matTooltip="Copy files to other collection"
-                                        matTooltipPosition="above"
-                                        (click)="openCopyFilesDialog()"
-                                    />
-
-                                    <label
-                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
-                                        matTooltip="Add file"
-                                        matTooltipPosition="above"
-                                        (click)="fileInput.click()"
-                                    >
-                                        <app-svg-icon
-                                            icon="plus"
-                                            class="details__action details__action--medium"
-                                            size="1rem"
-                                        />
-                                    </label>
-                                    <input
-                                        #fileInput
-                                        type="file"
-                                        multiple
-                                        style="display: none"
-                                        (change)="onFileSelect($event)"
-                                    />
-                                </div>
-                            </div>
-                            <div class="details__files-wrap">
-                                <app-collection-details-files
-                                    [(documents)]="documents"
-                                    (downloadRequested)="onFileDownload($event)"
-                                    (previewRequested)="onFilePreview($event)"
+                                </label>
+                                <input
+                                    #fileInput
+                                    type="file"
+                                    multiple
+                                    style="display: none"
+                                    (change)="onFileSelect($event)"
                                 />
                             </div>
                         </div>
-                    }
-                </div>
-            </app-drag-drop-area>
-
-            <app-collection-details-info
-                [collection]="fullCollection()!"
-                [documents]="documents()"
-                [saveFailedTick]="descriptionSaveFailedTick()"
-                (descriptionSave)="onDescriptionSave($event)"
-            />
-        </section>
+                        <div class="details__files-wrap">
+                            <app-collection-details-files
+                                [(documents)]="documents"
+                                [fileTypeFilter]="activeFileType()"
+                                (downloadRequested)="onFileDownload($event)"
+                                (previewRequested)="onFilePreview($event)"
+                            />
+                        </div>
+                    </div>
+                }
+            </div>
+        </app-drag-drop-area>
     }
 </div>

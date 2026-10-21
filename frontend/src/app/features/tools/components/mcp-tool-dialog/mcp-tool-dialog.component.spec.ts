@@ -34,7 +34,13 @@ function create(canUseSecrets: WritableSignal<boolean>, selectedTool?: GetMcpToo
             { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
             {
                 provide: SecretsStorageService,
-                useValue: { secrets: signal([]), getSecrets: () => of([]), maskTail: (tail: string) => tail },
+                useValue: {
+                    secrets: signal([]),
+                    getSecrets: () => of([]),
+                    selectItems: () => [],
+                    isBinned: () => false,
+                    maskTail: (tail: string) => tail,
+                },
             },
             {
                 provide: PermissionsService,

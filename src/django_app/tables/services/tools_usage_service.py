@@ -164,7 +164,7 @@ def _catalog_surface_entries(org_id: int, tool_ids: list[int], tool_class: type)
 
     rows = catalog_model.objects.filter(
         mode=ToolMode.ALLOW,
-        surface__organization_id=org_id,
+        surface__org_id=org_id,
         **{f"{tool_field}__in": tool_ids},
     ).values_list(tool_field, "surface_id", "surface__name", "surface__owner_agent_id")
 

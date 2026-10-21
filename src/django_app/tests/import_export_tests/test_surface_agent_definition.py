@@ -60,7 +60,7 @@ def surface_agent_seeded_db(rich_seeded_db, default_org, mcp_tool):
     for the "flow" place.
     """
     agent_def = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent_def_1",
         description="description",
         instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
@@ -68,7 +68,7 @@ def surface_agent_seeded_db(rich_seeded_db, default_org, mcp_tool):
     )
 
     owned_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="owned_surface_1",
         instructions="owned surface instructions",
         owner_agent=agent_def,
@@ -85,7 +85,7 @@ def surface_agent_seeded_db(rich_seeded_db, default_org, mcp_tool):
     )
 
     default_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="default_surface_1",
         instructions="default surface instructions",
     )
@@ -145,7 +145,7 @@ class TestSurfaceRoundTrip:
 
         assert new_surface.id != owned_surface.id
         assert new_surface.owner_agent is None
-        assert new_surface.organization_id == owned_surface.organization_id
+        assert new_surface.org_id == owned_surface.org_id
         assert new_surface.instructions == owned_surface.instructions
 
     def test_surface_name_collision_renamed(
@@ -191,9 +191,9 @@ class TestAgentDefinitionRoundTrip:
     """
     Scenario 3: exporting an AgentDefinition pulls in its llm configs and both
     its owned and default surfaces; importing creates a brand-new
-    AgentDefinition but REUSES the existing owned and default Surface rows
-    (equivalent name/instructions/tools), leaving their ownership untouched.
-    LLM configs are reused too.
+    AgentDefinition that owns its own copy of each owned surface, REUSES the
+    existing default (shared) Surface rows, and leaves the original's ownership
+    untouched. LLM configs are reused too.
     """
 
     def test_export_import_roundtrip(
@@ -214,7 +214,8 @@ class TestAgentDefinitionRoundTrip:
         )
 
         assert AgentDefinition.objects.count() == agent_definition_count_before + 1
-        assert Surface.objects.count() == surface_count_before
+        # One owned surface copied for the new agent; the default one is reused.
+        assert Surface.objects.count() == surface_count_before + 1
         assert LLMConfig.objects.count() == llm_config_count_before
 
         new_agent_def_id = id_mapper.get_new_ids(EntityType.AGENT_DEFINITION)[0]
@@ -228,7 +229,7 @@ class TestAgentDefinitionRoundTrip:
             new_agent_def.llm_config_id
         ]
 
-    def test_owned_surface_reused_without_ownership_theft(
+    def test_new_agent_owns_copy_of_owned_surface_without_ownership_theft(
         self, surface_agent_seeded_db, export_service, import_service
     ):
         agent_def = surface_agent_seeded_db["agent_def"]
@@ -244,13 +245,14 @@ class TestAgentDefinitionRoundTrip:
         new_agent_def_id = id_mapper.get_new_ids(EntityType.AGENT_DEFINITION)[0]
         new_agent_def = AgentDefinition.objects.get(id=new_agent_def_id)
 
-        assert id_mapper.has_mapping(EntityType.SURFACE, owned_surface.id)
-        assert id_mapper.was_created(EntityType.SURFACE, owned_surface.id) is False
-        assert id_mapper.get(EntityType.SURFACE, owned_surface.id) == owned_surface.id
+        assert id_mapper.was_created(EntityType.SURFACE, owned_surface.id) is True
+        surface_copy = Surface.objects.get(id=id_mapper.get(EntityType.SURFACE, owned_surface.id))
+        assert surface_copy.id != owned_surface.id
+        assert surface_copy.owner_agent_id == new_agent_def.id
+        assert surface_copy.instructions == owned_surface.instructions
 
         owned_surface.refresh_from_db()
         assert owned_surface.owner_agent_id == agent_def.id
-        assert new_agent_def.owned_surfaces.exists() is False
 
     def test_default_surface_assignment_reused_and_recreated(
         self, surface_agent_seeded_db, export_service, import_service
@@ -342,7 +344,7 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
             surface_data, IDMapper(), org_id=active_org.id
         )
 
-        assert new_surface.organization_id == active_org.id
+        assert new_surface.org_id == active_org.id
 
     def test_surface_create_entity_falls_back_to_is_default_org_without_org_id(
         self, surface_agent_seeded_db, export_service, default_org
@@ -361,7 +363,7 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
         strategy = entity_registry.get_strategy(EntityType.SURFACE)
         new_surface = strategy.create_entity(surface_data, IDMapper())
 
-        assert new_surface.organization_id == default_org.id
+        assert new_surface.org_id == default_org.id
 
     def test_agent_definition_create_entity_uses_active_org_from_kwargs(
         self, surface_agent_seeded_db, export_service, default_org
@@ -379,7 +381,7 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
             agent_definition_data, IDMapper(), org_id=active_org.id
         )
 
-        assert new_agent_definition.organization_id == active_org.id
+        assert new_agent_definition.org_id == active_org.id
 
     def test_agent_definition_create_entity_falls_back_to_is_default_org_without_org_id(
         self, surface_agent_seeded_db, export_service, default_org
@@ -398,4 +400,4 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
         strategy = entity_registry.get_strategy(EntityType.AGENT_DEFINITION)
         new_agent_definition = strategy.create_entity(agent_definition_data, IDMapper())
 
-        assert new_agent_definition.organization_id == default_org.id
+        assert new_agent_definition.org_id == default_org.id

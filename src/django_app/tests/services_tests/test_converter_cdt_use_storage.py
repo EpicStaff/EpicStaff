@@ -3,6 +3,7 @@ import pytest
 from tables.models import ClassificationDecisionTableNode, PythonCode, Graph
 from rbac.models import Organization
 from tables.services.converter_service import ConverterService
+from utils.graph_utils import NodeNameResolver
 
 
 @pytest.fixture
@@ -28,7 +29,7 @@ def test_convert_cdt_node_pre_and_post_use_storage_true_populates_both_blocks(
     )
 
     data = converter.convert_classification_decision_table_node_to_pydantic(
-        node, graph_id=graph.pk, session_id=7
+        node, resolver=NodeNameResolver(graph_id=graph.pk), graph_id=graph.pk, session_id=7
     )
 
     assert data.pre_python_code.use_storage is True
@@ -65,7 +66,7 @@ def test_convert_cdt_node_pre_use_storage_true_post_false_populates_only_pre_blo
     )
 
     data = converter.convert_classification_decision_table_node_to_pydantic(
-        node, graph_id=graph.pk, session_id=7
+        node, resolver=NodeNameResolver(graph_id=graph.pk), graph_id=graph.pk, session_id=7
     )
 
     assert data.pre_python_code.use_storage is True
@@ -97,7 +98,7 @@ def test_convert_cdt_node_pre_use_storage_false_post_true_populates_only_post_bl
     )
 
     data = converter.convert_classification_decision_table_node_to_pydantic(
-        node, graph_id=graph.pk, session_id=7
+        node, resolver=NodeNameResolver(graph_id=graph.pk), graph_id=graph.pk, session_id=7
     )
 
     assert data.pre_python_code.use_storage is False
@@ -129,7 +130,7 @@ def test_convert_cdt_node_pre_and_post_use_storage_false_leaves_both_blocks_with
     )
 
     data = converter.convert_classification_decision_table_node_to_pydantic(
-        node, graph_id=graph.pk, session_id=7
+        node, resolver=NodeNameResolver(graph_id=graph.pk), graph_id=graph.pk, session_id=7
     )
 
     assert data.pre_python_code.use_storage is False
@@ -158,7 +159,7 @@ def test_convert_cdt_node_pre_and_post_use_storage_true_without_graph_id_keeps_f
     # either block even though both flags are True, mirroring the
     # PythonNode converter contract.
     data = converter.convert_classification_decision_table_node_to_pydantic(
-        node, graph_id=None, session_id=None
+        node, resolver=NodeNameResolver(graph_id=graph.pk), graph_id=None, session_id=None
     )
 
     assert data.pre_python_code.use_storage is True

@@ -1,5 +1,3 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 from conftest import load_tool_main
@@ -7,142 +5,63 @@ from conftest import load_tool_main
 sleep_module = load_tool_main("sleep_tool")
 sleep_main = sleep_module.main
 DEFAULT_MAX_SECONDS = sleep_module.DEFAULT_MAX_SECONDS
-
-
-@pytest.fixture(autouse=True)
-def _reset_config_globals():
-    # Ensure no leftover 'max_seconds' global bleeds between tests, mirroring
-    # how the sandbox injects tool config as module-level globals.
-    sleep_module.__dict__.pop("max_seconds", None)
-    yield
-    sleep_module.__dict__.pop("max_seconds", None)
+UNSET = object()
 
 
 @pytest.fixture
-def mock_sleep(monkeypatch):
-    mock = MagicMock()
-    monkeypatch.setattr(sleep_module.time, "sleep", mock)
-    return mock
+def slept(monkeypatch):
+    """The durations the tool actually slept for, in order."""
+    durations: list[float] = []
+    monkeypatch.setattr(sleep_module.time, "sleep", durations.append)
+    # The sandbox injects tool config as module globals; none may leak between tests.
+    monkeypatch.delitem(sleep_module.__dict__, "max_seconds", raising=False)
+    return durations
 
 
-class TestSleepToolHappyPath:
-    def test_sleeps_for_requested_duration_and_reports_reason(self, mock_sleep):
-        result = sleep_main(seconds=30, reason="waiting for rate-limit window to reset")
+@pytest.mark.parametrize(
+    ("configured_max", "kwargs", "expected_sleep", "capped"),
+    [
+        (UNSET, {"seconds": 30}, 30.0, False),
+        (UNSET, {"seconds": 2.5}, 2.5, False),
+        (60, {"seconds": 30}, 30.0, False),
+        (60, {"seconds": 120}, 60.0, True),
+        (UNSET, {"seconds": DEFAULT_MAX_SECONDS + 500}, float(DEFAULT_MAX_SECONDS), True),
+        ("not-a-number", {"seconds": 10}, 10.0, False),
+        # global_kwargs folds the user_input config into func_kwargs too; the global wins.
+        (60, {"seconds": 120, "max_seconds": 999}, 60.0, True),
+    ],
+    ids=["default-max", "float", "within-max", "over-max", "over-default-max", "bad-max-falls-back", "stray-max-kwarg"],
+)
+def test_sleeps_for_the_requested_time_capped_at_the_max(slept, configured_max, kwargs, expected_sleep, capped):
+    if configured_max is not UNSET:
+        sleep_module.max_seconds = configured_max
 
-        mock_sleep.assert_called_once_with(30.0)
-        assert isinstance(result, str)
-        assert "30" in result
-        assert "waiting for rate-limit window to reset" in result
-        assert not result.startswith("Error")
+    result = sleep_main(reason="waiting for rate-limit window to reset", **kwargs)
 
-    def test_default_max_seconds_used_when_not_configured(self, mock_sleep):
-        result = sleep_main(seconds=10, reason="brief pause")
-
-        mock_sleep.assert_called_once_with(10.0)
-        assert "10" in result
-
-    def test_float_seconds_accepted(self, mock_sleep):
-        result = sleep_main(seconds=2.5, reason="short pause")
-
-        mock_sleep.assert_called_once_with(2.5)
-        assert "2.5" in result
-
-
-class TestSleepToolClamping:
-    def test_clamped_when_exceeding_configured_max_seconds(self, mock_sleep):
-        sleep_module.max_seconds = 60
-
-        result = sleep_main(seconds=120, reason="waiting for a long job")
-
-        mock_sleep.assert_called_once_with(60.0)
-        assert "capped" in result.lower()
-        assert "120" in result
-        assert "60" in result
-
-    def test_not_clamped_when_within_configured_max_seconds(self, mock_sleep):
-        sleep_module.max_seconds = 60
-
-        result = sleep_main(seconds=30, reason="short wait")
-
-        mock_sleep.assert_called_once_with(30.0)
-        assert "capped" not in result.lower()
-
-    def test_clamped_against_default_max_seconds_when_unconfigured(self, mock_sleep):
-        result = sleep_main(seconds=DEFAULT_MAX_SECONDS + 500, reason="very long wait")
-
-        mock_sleep.assert_called_once_with(float(DEFAULT_MAX_SECONDS))
-        assert "capped" in result.lower()
-
-    def test_invalid_configured_max_seconds_falls_back_to_default(self, mock_sleep):
-        sleep_module.max_seconds = "not-a-number"
-
-        result = sleep_main(seconds=10, reason="pause")
-
-        mock_sleep.assert_called_once_with(10.0)
-        assert not result.startswith("Error")
-
-    def test_max_seconds_passed_as_stray_kwarg_is_absorbed_and_global_wins(self, mock_sleep):
-        """Regression test (smoke test): python_code.global_kwargs
-        folds user_input config (max_seconds) into func_kwargs, so main()
-        may also receive it as a kwarg. The global remains the source of
-        truth; the stray kwarg must be swallowed by **kwargs without a
-        TypeError."""
-        sleep_module.max_seconds = 60
-
-        result = sleep_main(seconds=120, reason="stray kwarg test", max_seconds=999)
-
-        mock_sleep.assert_called_once_with(60.0)
-        assert "capped" in result.lower()
+    assert slept == [expected_sleep]
+    assert not result.startswith("Error")
+    assert "waiting for rate-limit window to reset" in result
+    assert ("capped" in result.lower()) is capped
+    assert f"{kwargs['seconds']:g}" in result
 
 
-class TestSleepToolErrorPaths:
-    def test_missing_seconds_returns_error_string(self, mock_sleep):
-        result = sleep_main(reason="no duration given")
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"reason": "no duration given"},
+        {"seconds": 0, "reason": "zero"},
+        {"seconds": -5, "reason": "negative"},
+        {"seconds": "not-a-number", "reason": "bad type"},
+        {"seconds": True, "reason": "bool"},
+        {"seconds": object(), "reason": "weird input"},
+        {"seconds": 10},
+        {"seconds": 10, "reason": "   "},
+    ],
+    ids=["no-seconds", "zero", "negative", "non-numeric", "boolean", "object", "no-reason", "blank-reason"],
+)
+def test_invalid_input_is_an_error_message_and_no_sleep(slept, kwargs):
+    result = sleep_main(**kwargs)
 
-        assert isinstance(result, str)
-        assert result.startswith("Error:")
-        mock_sleep.assert_not_called()
-
-    def test_zero_seconds_returns_error_string(self, mock_sleep):
-        result = sleep_main(seconds=0, reason="zero duration")
-
-        assert result.startswith("Error:")
-        mock_sleep.assert_not_called()
-
-    def test_negative_seconds_returns_error_string(self, mock_sleep):
-        result = sleep_main(seconds=-5, reason="negative duration")
-
-        assert result.startswith("Error:")
-        mock_sleep.assert_not_called()
-
-    def test_non_numeric_seconds_returns_error_string(self, mock_sleep):
-        result = sleep_main(seconds="not-a-number", reason="bad type")
-
-        assert result.startswith("Error:")
-        mock_sleep.assert_not_called()
-
-    def test_boolean_seconds_rejected(self, mock_sleep):
-        result = sleep_main(seconds=True, reason="bool passed as seconds")
-
-        assert result.startswith("Error:")
-        mock_sleep.assert_not_called()
-
-    def test_missing_reason_returns_error_string(self, mock_sleep):
-        result = sleep_main(seconds=10)
-
-        assert isinstance(result, str)
-        assert result.startswith("Error:")
-        mock_sleep.assert_not_called()
-
-    def test_blank_reason_returns_error_string(self, mock_sleep):
-        result = sleep_main(seconds=10, reason="   ")
-
-        assert result.startswith("Error:")
-        mock_sleep.assert_not_called()
-
-    def test_never_raises_on_unexpected_input(self, mock_sleep):
-        result = sleep_main(seconds=object(), reason="weird input")
-
-        assert isinstance(result, str)
-        assert result.startswith("Error:")
-        mock_sleep.assert_not_called()
+    assert isinstance(result, str)
+    assert result.startswith("Error:")
+    assert slept == []

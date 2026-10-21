@@ -5,8 +5,7 @@
  *
  * Scope: production npm dependencies of the EpicStaff frontend
  * (declared in frontend/package.json dependencies, resolved via
- * frontend/package-lock.json), plus the embedded-assets notices
- * maintained by hand in frontend/scripts/embedded-assets-notices.md.
+ * frontend/package-lock.json).
  * Backend / Python deps and frontend devDependencies are NOT included
  * - they are not shipped to users.
  *
@@ -36,7 +35,6 @@ const FRONTEND_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(FRONTEND_DIR, '..');
 const OUTPUT_FILE = path.join(REPO_ROOT, 'THIRD-PARTY-NOTICES.md');
 const SKELETON_FILE = path.join(REPO_ROOT, 'scripts', 'notices-skeleton.md');
-const EMBEDDED_ASSETS_FILE = path.join(__dirname, 'embedded-assets-notices.md');
 
 const REGION = 'frontend';
 const BEGIN_MARKER = `<!-- BEGIN GENERATED: ${REGION} -->`;
@@ -116,7 +114,7 @@ lines.push(`<!-- package-lock.json sha256: ${lockHash} -->`);
 lines.push('');
 lines.push('## Frontend license summary');
 lines.push('');
-lines.push('Production npm dependencies of the Angular frontend. Assets embedded in the prebuilt widget bundle are counted separately under "Embedded assets" below, and backend Python packages under "Backend (Python)".');
+lines.push('Production npm dependencies of the Angular frontend. Backend Python packages are counted separately under "Backend (Python)".');
 lines.push('');
 lines.push('| License | Packages |');
 lines.push('|---|---|');
@@ -204,15 +202,7 @@ lines.push('');
 lines.push('The cycle-removal helper in the same component follows [Douglas Crockford\'s cycle.js](https://github.com/douglascrockford/JSON-js/blob/master/cycle.js), which its author released into the public domain. No licence notice is required for it; it is recorded here for completeness.');
 lines.push('');
 
-let body = lines.join('\n');
-
-// Inline the hand-maintained embedded-assets notices, if present.
-if (fs.existsSync(EMBEDDED_ASSETS_FILE)) {
-  const embedded = fs.readFileSync(EMBEDDED_ASSETS_FILE, 'utf8').trim();
-  body = body + '\n' + embedded;
-} else {
-  process.stderr.write(`Warning: ${EMBEDDED_ASSETS_FILE} not found; skipping embedded assets section.\n`);
-}
+const body = lines.join('\n');
 
 // Splice the region body into THIRD-PARTY-NOTICES.md, touching nothing
 // outside the BEGIN/END GENERATED: frontend markers.

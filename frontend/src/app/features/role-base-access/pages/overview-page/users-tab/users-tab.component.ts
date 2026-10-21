@@ -1,7 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     ActivateButtonComponent,
@@ -17,6 +17,7 @@ import {
     SelectItem,
     StopButtonComponent,
     TableRow,
+    UserAvatarComponent,
 } from '@shared/components';
 import {
     HasPermissionInAnyOrgDirective,
@@ -24,10 +25,10 @@ import {
     OverflowItemDirective,
     OverflowItemsDirective,
 } from '@shared/directives';
-import { ActionCode, FullMembership, ResourceCode } from '@shared/models';
-import { getRelativeTime } from '@shared/utils';
-import { concat, Observable, of } from 'rxjs';
-import { catchError, filter, finalize, map, switchMap, toArray } from 'rxjs/operators';
+import { ActionCode, FullMembership, ListMembershipsParams, ResourceCode } from '@shared/models';
+import { escapeHtml, getRelativeTime } from '@shared/utils';
+import { combineLatest, concat, debounceTime, EMPTY, Observable, of } from 'rxjs';
+import { catchError, distinctUntilChanged, filter, finalize, map, switchMap, tap, toArray } from 'rxjs/operators';
 
 import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
@@ -43,9 +44,8 @@ import {
 } from '../../../components/create-user-dialog/create-user-dialog.component';
 import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.component';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
-import { UserAvatarComponent } from '../../../components/user-avatar/user-avatar.component';
 import { AggregatedUser } from '../../../models/aggregated-user.model';
-import { AdminUserService } from '../../../services/admin/admin-user.service';
+import { AdminUserService, ListAdminUsersParams } from '../../../services/admin/admin-user.service';
 import { MembershipsService } from '../../../services/admin/memberships.service';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 import { HardDeleteFlowService } from '../../../services/hard-delete-flow.service';
@@ -87,7 +87,7 @@ const STATUS_ITEMS: SelectItem[] = [
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class UsersTabComponent implements OnInit {
+export class UsersTabComponent {
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private adminUserService = inject(AdminUserService);
@@ -102,10 +102,11 @@ export class UsersTabComponent implements OnInit {
 
     private aggregatedUsers = signal<AggregatedUser[]>([]);
 
-    usersData = signal<TableRow[]>([]);
+    usersData = computed<TableRow[]>(() => this.aggregatedUsers().map((u) => this.mapToRow(u)));
     searchTerm = signal('');
     isLoading = signal(true);
     readonly orgFilterIds = signal<number[]>([]);
+    readonly reloadTrigger = signal(0);
 
     /** All orgs whose memberships the current user can list. Populated once on init. */
     readonly readableOrgs = signal<{ id: number; name: string }[]>([]);
@@ -124,17 +125,6 @@ export class UsersTabComponent implements OnInit {
         if (id === null) return undefined;
         if (this.permissionsService.isSuperadmin) return [id];
         return this.readableOrgs().some((o) => o.id === id) ? [id] : undefined;
-    });
-
-    filteredUsers = computed(() => {
-        const term = this.searchTerm().toLowerCase().trim();
-        if (!term) return this.usersData();
-        return this.usersData().filter((row) => {
-            const name = (row['name'] as string)?.toLowerCase();
-            const email = (row['email'] as string)?.toLowerCase();
-
-            return name?.includes(term) || email?.includes(term);
-        });
     });
 
     columns = computed<AppTableColumnDef[]>(() => [
@@ -193,9 +183,32 @@ export class UsersTabComponent implements OnInit {
         return this.permissionsService.isSuperadmin && this.profileService.currentUserSignal()?.id !== row['id'];
     }
 
-    ngOnInit(): void {
+    private readonly filters$ = combineLatest([
+        toObservable(this.orgFilterIds),
+        toObservable(this.searchTerm).pipe(debounceTime(300), distinctUntilChanged()),
+        toObservable(this.reloadTrigger),
+    ]);
+
+    constructor() {
         this.loadReadableOrgs();
-        if (!this.activeOrgDefault()) this.loadUsers();
+        this.filters$
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                tap(() => this.isLoading.set(true)),
+                switchMap(([orgIds, searchTerm]) => {
+                    const source$ = this.permissionsService.isSuperadmin
+                        ? this.loadFromAdminUsers(orgIds, searchTerm)
+                        : this.loadFromMemberships(orgIds, searchTerm);
+                    return source$.pipe(
+                        catchError(() => EMPTY),
+                        finalize(() => this.isLoading.set(false))
+                    );
+                })
+            )
+            .subscribe((users) => {
+                this.aggregatedUsers.set(users);
+                this.roleFilterItems.set(this.extractRoleFilterItems(users));
+            });
     }
 
     private loadReadableOrgs(): void {
@@ -214,7 +227,6 @@ export class UsersTabComponent implements OnInit {
     onFilterChange(evt: { key: string; values: unknown[] }): void {
         if (evt.key !== 'organization') return;
         this.orgFilterIds.set(evt.values.map((v) => Number(v)).filter((n) => Number.isFinite(n)));
-        this.loadUsers();
     }
 
     formatDate(date: unknown): string {
@@ -238,7 +250,7 @@ export class UsersTabComponent implements OnInit {
         this.confirmation
             .confirm({
                 title: 'Deactivate account?',
-                message: `<strong>${label}</strong> will no longer be able to sign in. You can reactivate them later.`,
+                message: `<strong>${escapeHtml(label)}</strong> will no longer be able to sign in. You can reactivate them later.`,
                 confirmText: 'Deactivate',
                 cancelText: 'Cancel',
                 type: 'danger',
@@ -258,7 +270,7 @@ export class UsersTabComponent implements OnInit {
             .subscribe((result) => {
                 if (result === null) return;
                 this.toast.success('Account deactivated.');
-                this.loadUsers();
+                this.reloadTrigger.update((v) => v + 1);
             });
     }
 
@@ -269,7 +281,7 @@ export class UsersTabComponent implements OnInit {
         this.confirmation
             .confirm({
                 title: 'Reactivate account?',
-                message: `<strong>${label}</strong> will regain the ability to sign in.`,
+                message: `<strong>${escapeHtml(label)}</strong> will regain the ability to sign in.`,
                 confirmText: 'Reactivate',
                 cancelText: 'Cancel',
             })
@@ -288,7 +300,7 @@ export class UsersTabComponent implements OnInit {
             .subscribe((result) => {
                 if (result === null) return;
                 this.toast.success('Account reactivated.');
-                this.loadUsers();
+                this.reloadTrigger.update((v) => v + 1);
             });
     }
 
@@ -312,7 +324,7 @@ export class UsersTabComponent implements OnInit {
                 filter((deleted) => deleted === true),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe(() => this.loadUsers());
+            .subscribe(() => this.reloadTrigger.update((v) => v + 1));
     }
 
     /** Delegated admin: confirm + DELETE every membership in orgs where I hold `users:delete`. */
@@ -326,7 +338,7 @@ export class UsersTabComponent implements OnInit {
         this.confirmation
             .confirm({
                 title: 'Remove from your organizations?',
-                message: `<strong>${label}</strong> will lose access to: ${orgNames}.`,
+                message: `<strong>${escapeHtml(label)}</strong> will lose access to: ${escapeHtml(orgNames)}.`,
                 confirmText: 'Remove',
                 cancelText: 'Cancel',
                 type: 'danger',
@@ -356,7 +368,7 @@ export class UsersTabComponent implements OnInit {
                     const failedOrgs = failures.map((f) => f.org).join(', ');
                     this.toast.error(`Removed from some orgs; failed on: ${failedOrgs}.`);
                 }
-                this.loadUsers();
+                this.reloadTrigger.update((v) => v + 1);
             });
     }
 
@@ -396,46 +408,25 @@ export class UsersTabComponent implements OnInit {
 
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) {
-                this.loadUsers();
+                this.reloadTrigger.update((v) => v + 1);
             }
         });
     }
 
-    /** Superadmin → `/api/admin/users/` (full account list w/ memberships).
-     *  Delegated admin → `/api/admin/memberships/` aggregated client-side.
-     *  Same shape either way so the table stays permission-agnostic. Server-side org filter
-     *  is applied via `orgFilterIds` — memberships returned for other orgs are stripped. */
-    private loadUsers(): void {
-        this.isLoading.set(true);
-        const orgIds = this.orgFilterIds();
-        const source$ = this.permissionsService.isSuperadmin
-            ? this.loadFromAdminUsers(orgIds)
-            : this.loadFromMemberships(orgIds);
-
-        source$
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                finalize(() => this.isLoading.set(false))
-            )
-            .subscribe({
-                next: (users) => {
-                    this.aggregatedUsers.set(users);
-                    this.usersData.set(users.map((u) => this.mapToRow(u)));
-                    this.roleFilterItems.set(this.extractRoleFilterItems(users));
-                },
-            });
+    private loadFromAdminUsers(orgIds: number[], searchTerm: string): Observable<AggregatedUser[]> {
+        const params: ListAdminUsersParams = {};
+        if (orgIds.length) params.orgIds = orgIds;
+        const search = searchTerm.trim();
+        if (search) params.search = search;
+        return this.adminUserService.getUsers(params).pipe(map((page) => adminUsersToAggregated(page.results)));
     }
 
-    private loadFromAdminUsers(orgIds: number[]): Observable<AggregatedUser[]> {
-        return this.adminUserService
-            .getUsers(orgIds.length ? { orgIds } : {})
-            .pipe(map((page) => adminUsersToAggregated(page.results)));
-    }
-
-    private loadFromMemberships(orgIds: number[]): Observable<AggregatedUser[]> {
-        return this.membershipsService
-            .list(orgIds.length ? { org_ids: orgIds } : {})
-            .pipe(map((page) => aggregateMembershipsByUser(page.results)));
+    private loadFromMemberships(orgIds: number[], searchTerm: string): Observable<AggregatedUser[]> {
+        const params: ListMembershipsParams = {};
+        if (orgIds.length) params.org_ids = orgIds;
+        const search = searchTerm.trim();
+        if (search) params.search = search;
+        return this.membershipsService.list(params).pipe(map((page) => aggregateMembershipsByUser(page.results)));
     }
 
     private extractRoleFilterItems(users: AggregatedUser[]): SelectItem[] {

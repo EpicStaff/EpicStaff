@@ -1,13 +1,15 @@
 """
-Tests for PythonCodeToolExecutor.
+PythonCodeToolExecutor: turns an LLM tool call into a sandbox CodeTask and the
+sandbox result into a ToolResult. The sandbox service is replaced by a fake that
+records the task it receives.
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+import pytest
 
 from app.tools.executors.python_code import PythonCodeToolExecutor
-from shared.models.agent_service import ToolResult
+from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import (
     ArgsSchema,
     CodeResultData,
@@ -62,210 +64,114 @@ def _make_error_result(
     )
 
 
-async def test_builds_code_task_data_with_correct_fields():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result())
+class FakeSandbox:
+    def __init__(self, result: CodeResultData | Exception):
+        self.result = result
+        self.tasks = []
 
-    data = _make_tool_data()
-    executor = PythonCodeToolExecutor(sandbox, data)
-    await executor({"x": "hello"})
-
-    sandbox.submit.assert_called_once()
-    task = sandbox.submit.call_args[0][0]
-
-    assert task.venv_name == "venv_pyt_42"
-    assert task.libraries == ["requests"]
-    assert task.code == "def run(x): return x"
-    assert task.entrypoint == "run"
-    assert task.global_kwargs is None
-    assert task.use_storage is False
+    async def submit(self, task):
+        self.tasks.append(task)
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
 
 
-async def test_func_kwargs_is_llm_args_only():
-    """func_kwargs contains only the LLM-supplied args — no configuration merge."""
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result())
-
-    data = _make_tool_data()
-    executor = PythonCodeToolExecutor(sandbox, data)
-    await executor({"mode": "override", "extra": "value"})
-
-    task = sandbox.submit.call_args[0][0]
-    assert task.func_kwargs == {"mode": "override", "extra": "value"}
+CREDENTIALS = StorageCredentials(access_key="test-access", secret_key="test-secret")
 
 
-async def test_success_returns_tool_result_with_content():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result(result_data="the answer"))
+@pytest.mark.parametrize(
+    ("python_code_overrides", "credentials", "expected_task"),
+    [
+        pytest.param(
+            {}, None,
+            {"venv_name": "venv_pyt_42", "libraries": ["requests"], "code": "def run(x): return x",
+             "entrypoint": "run", "func_kwargs": {"x": "hello"}, "global_kwargs": None, "use_storage": False,
+             "storage_allowed_paths": None, "storage_org_prefix": None, "session_id": None, "org_id": None},
+            id="defaults-and-llm-args-only",
+        ),
+        pytest.param(
+            {"use_storage": True, "storage_allowed_paths": ["reports/"], "storage_org_prefix": "org1",
+             "session_id": 42, "org_id": 77},
+            CREDENTIALS,
+            {"use_storage": True, "storage_allowed_paths": ["reports/"], "storage_org_prefix": "org1",
+             "session_id": 42, "storage_credentials": CREDENTIALS},
+            id="storage-scope",
+        ),
+        # get_secret() in the sandbox sees only what the tool declared.
+        pytest.param({"secrets": {"MY_SECRET": "sk-live-12345"}}, None, {"secrets": {"MY_SECRET": "sk-live-12345"}}, id="secrets"),
+        pytest.param({"global_kwargs": {"mode": "production"}}, None, {"global_kwargs": {"mode": "production"}, "org_id": None}, id="global-kwargs-no-org"),
+        # The graph's org_id is authoritative over an author-editable global of the same name.
+        pytest.param(
+            {"org_id": 77, "global_kwargs": {"org_id": 999, "mode": "production"}}, None,
+            {"global_kwargs": {"org_id": 77, "mode": "production"}, "org_id": 77},
+            id="org-id-wins-over-global",
+        ),
+        pytest.param({"org_id": 77}, None, {"global_kwargs": {"org_id": 77}, "org_id": 77}, id="org-id-injected"),
+        # The sandbox enforces the tool's own timeout instead of its default.
+        pytest.param({"execution_timeout": 42}, None, {"execution_timeout": 42}, id="execution-timeout"),
+    ],
+)
+async def test_sandbox_task_carries_the_tool_configuration(python_code_overrides, credentials, expected_task):
+    sandbox = FakeSandbox(_make_success_result())
+    data = _make_tool_data(python_code_overrides=python_code_overrides)
+    configured_globals = data.python_code.global_kwargs
 
-    executor = PythonCodeToolExecutor(sandbox, _make_tool_data())
-    result = await executor({})
+    await PythonCodeToolExecutor(sandbox, data, storage_credentials=credentials)({"x": "hello"})
 
-    assert isinstance(result, ToolResult)
-    assert result.content == "the answer"
-    assert result.is_error is False
-
-
-async def test_nonzero_returncode_returns_error_with_stderr():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_error_result(stderr="NameError: undefined"))
-
-    executor = PythonCodeToolExecutor(sandbox, _make_tool_data())
-    result = await executor({})
-
-    assert result.is_error is True
-    assert "NameError" in result.content
-
-
-async def test_nonzero_returncode_with_empty_stderr_uses_stdout():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(
-        return_value=CodeResultData(
-            execution_id="exec-1",
-            result_data=None,
-            stderr="",
-            stdout="partial output",
-            returncode=1,
-        )
-    )
-
-    executor = PythonCodeToolExecutor(sandbox, _make_tool_data())
-    result = await executor({})
-
-    assert result.is_error is True
-    assert "partial output" in result.content
-
-
-async def test_sandbox_raises_returns_transport_error():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(side_effect=ConnectionError("Redis gone"))
-
-    executor = PythonCodeToolExecutor(sandbox, _make_tool_data())
-    result = await executor({})
-
-    assert result.is_error is True
-    assert "Sandbox transport error" in result.content
-    assert "Redis gone" in result.content
+    (task,) = sandbox.tasks
+    assert {field: getattr(task, field) for field in expected_task} == expected_task
+    # The tool's own configuration is never mutated by the org_id override.
+    assert data.python_code.global_kwargs == configured_globals
 
 
-async def test_execution_id_is_unique_per_call():
-    captured_ids: list[str] = []
+@pytest.mark.parametrize(
+    ("sandbox_result", "expected_content", "expected_error"),
+    [
+        (_make_success_result(result_data="the answer"), "the answer", False),
+        (_make_error_result(stderr="NameError: undefined"), "NameError: undefined", True),
+        (
+            CodeResultData(execution_id="exec-1", result_data=None, stderr="", stdout="partial output", returncode=1),
+            "partial output", True,
+        ),
+        (ConnectionError("Redis gone"), "Sandbox transport error: Redis gone", True),
+    ],
+    ids=["success", "stderr", "nonzero-uses-stdout", "transport-error"],
+)
+async def test_sandbox_result_becomes_the_tool_result(sandbox_result, expected_content, expected_error):
+    result = await PythonCodeToolExecutor(FakeSandbox(sandbox_result), _make_tool_data())({})
 
-    async def capturing_submit(task):
-        captured_ids.append(task.execution_id)
-        return _make_success_result(execution_id=task.execution_id)
-
-    sandbox = MagicMock()
-    sandbox.submit = capturing_submit
-
-    executor = PythonCodeToolExecutor(sandbox, _make_tool_data())
-    await executor({})
-    await executor({})
-
-    assert len(captured_ids) == 2
-    assert captured_ids[0] != captured_ids[1]
-
-
-async def test_storage_defaults_to_disabled():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result())
-
-    executor = PythonCodeToolExecutor(sandbox, _make_tool_data())
-    await executor({})
-
-    task = sandbox.submit.call_args[0][0]
-    assert task.use_storage is False
-    assert task.storage_allowed_paths is None
-    assert task.storage_org_prefix is None
-    assert task.session_id is None
+    assert (result.content, result.is_error) == (expected_content, expected_error)
 
 
-async def test_storage_config_read_from_tool_data():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result())
+async def test_invalid_storage_scope_returns_fixed_error_without_secrets():
+    """pydantic's ValidationError repr embeds `input_value` -- the whole dict
+    handed to CodeTaskData, carrying `secrets` plaintext and
+    `storage_credentials.secret_key`. ToolResult.content goes straight into the
+    LLM transcript, so it must carry none of it."""
+    secret_value = "sk-live-SUPERSECRET-0123456789"
+    storage_secret_key = "SK-MINIO-SUPERSECRET-9876543210"
+
+    sandbox = FakeSandbox(_make_success_result())
 
     data = _make_tool_data(
         python_code_overrides={
             "use_storage": True,
-            "storage_allowed_paths": ["reports/"],
-            "storage_org_prefix": "org1",
-            "session_id": 42,
+            "storage_org_prefix": None,
+            "org_id": None,
+            "secrets": {"MY_SECRET": secret_value},
         }
     )
-    executor = PythonCodeToolExecutor(sandbox, data)
-    await executor({})
-
-    task = sandbox.submit.call_args[0][0]
-    assert task.use_storage is True
-    assert task.storage_allowed_paths == ["reports/"]
-    assert task.storage_org_prefix == "org1"
-    assert task.session_id == 42
-
-
-async def test_secrets_are_forwarded_to_sandbox_task():
-    """A tool's resolved secrets must reach the sandbox:
-    the executor was silently dropping them, so get_secret() in the sandbox
-    always saw an empty declaration regardless of what the tool declared."""
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result())
-
-    data = _make_tool_data(python_code_overrides={"secrets": {"MY_SECRET": "sk-live-12345"}})
-    executor = PythonCodeToolExecutor(sandbox, data)
-    await executor({"x": "hello"})
-
-    task = sandbox.submit.call_args[0][0]
-    assert task.secrets == {"MY_SECRET": "sk-live-12345"}
-
-
-async def test_global_kwargs_are_forwarded_to_sandbox_task():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result())
-
-    data = _make_tool_data(python_code_overrides={"global_kwargs": {"mode": "production"}})
-    executor = PythonCodeToolExecutor(sandbox, data)
-    await executor({})
-
-    task = sandbox.submit.call_args[0][0]
-    assert task.global_kwargs == {"mode": "production"}
-
-
-async def test_authoritative_org_id_wins_over_global_kwargs_org_id():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result())
-
-    data = _make_tool_data(
-        python_code_overrides={"org_id": 77, "global_kwargs": {"org_id": 999, "mode": "production"}}
+    executor = PythonCodeToolExecutor(
+        sandbox,
+        data,
+        storage_credentials=StorageCredentials(
+            access_key="AK-PUBLIC", secret_key=storage_secret_key
+        ),
     )
-    executor = PythonCodeToolExecutor(sandbox, data)
-    await executor({})
+    result = await executor({})
 
-    task = sandbox.submit.call_args[0][0]
-    assert task.global_kwargs == {"org_id": 77, "mode": "production"}
-    assert task.org_id == 77
-    # The tool's own configuration must not be mutated by the override.
-    assert data.python_code.global_kwargs == {"org_id": 999, "mode": "production"}
-
-
-async def test_org_id_is_injected_into_global_kwargs_when_none_declared():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result())
-
-    data = _make_tool_data(python_code_overrides={"org_id": 77})
-    executor = PythonCodeToolExecutor(sandbox, data)
-    await executor({})
-
-    task = sandbox.submit.call_args[0][0]
-    assert task.global_kwargs == {"org_id": 77}
-
-
-async def test_org_id_is_not_invented_when_the_payload_has_none():
-    sandbox = MagicMock()
-    sandbox.submit = AsyncMock(return_value=_make_success_result())
-
-    data = _make_tool_data(python_code_overrides={"global_kwargs": {"mode": "production"}})
-    executor = PythonCodeToolExecutor(sandbox, data)
-    await executor({})
-
-    task = sandbox.submit.call_args[0][0]
-    assert task.org_id is None
-    assert task.global_kwargs == {"mode": "production"}
+    assert result.is_error is True
+    assert result.content == "Invalid storage scope for code execution."
+    for forbidden in (secret_value, storage_secret_key, "MY_SECRET", "input_value"):
+        assert forbidden not in result.content
+    assert sandbox.tasks == []

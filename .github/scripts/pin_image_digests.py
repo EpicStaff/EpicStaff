@@ -3,7 +3,7 @@
 
 Reads a `{service: digest}` JSON map (as produced by the build-and-push workflow's
 digest aggregation job) and rewrites each matching service's `image:` field from a
-tag-based reference (e.g. `ghcr.io/epicstaff/<svc>:${IMAGE_TAG:-latest}`) to a
+tag-based reference (e.g. `ghcr.io/epicstaff/<svc>:${IMAGE_TAG:?}`) to a
 digest-pinned reference (`ghcr.io/epicstaff/<svc>@sha256:<digest>`).
 
 Services not present in the digest map (e.g. third-party images such as redis,

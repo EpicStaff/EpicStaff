@@ -1,8 +1,10 @@
 <button
+    #button
     type="button"
     class="edit-btn"
     [disabled]="disabled()"
     [matTooltip]="tooltip()"
+    [attr.aria-label]="ariaLabel()"
     (click)="triggered.emit()"
 >
     <app-svg-icon

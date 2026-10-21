@@ -5,6 +5,8 @@ from tables.models import (
     PythonCodeTool,
     PythonCodeToolConfig,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
+from tables.validators.execution_timeout_validator import normalize_imported_execution_timeout
 from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
@@ -28,6 +30,9 @@ class PythonCodeImportSerializer(serializers.ModelSerializer):
             validate_python_library_spec(entry)
         return value
 
+    def validate_execution_timeout(self, value: int) -> int:
+        return normalize_imported_execution_timeout(value)
+
     def to_internal_value(self, data):
         result = super().to_internal_value(data)
         if not result.get("entrypoint"):
@@ -35,7 +40,9 @@ class PythonCodeImportSerializer(serializers.ModelSerializer):
         return result
 
 
-class PythonCodeToolConfigImportSerializer(serializers.ModelSerializer):
+class PythonCodeToolConfigImportSerializer(
+    ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer
+):
     tool_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCodeTool.objects.all(),
         source="tool",
@@ -45,19 +52,40 @@ class PythonCodeToolConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = PythonCodeToolConfig
         exclude = ["id", "tool", "created_by"]
+        # The source org means nothing to the importer, which stamps its own.
+        # Write-only rather than excluded so the (org, tool, name)
+        # unique-together validator still runs on import.
+        extra_kwargs = {"org": {"write_only": True}}
 
 
-class PythonCodeToolImportSerializer(serializers.ModelSerializer):
+class PythonCodeToolImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     python_code = PythonCodeImportSerializer(required=False, read_only=True)
     python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
         source="python_code",
         write_only=True,
     )
-    python_code_tool_config = PythonCodeToolConfigImportSerializer(
-        source="pythoncodetoolconfig_set", many=True, read_only=True
-    )
+    python_code_tool_config = serializers.SerializerMethodField()
 
     class Meta:
         model = PythonCodeTool
-        exclude = ["labels", "created_by"]
+        exclude = [
+            "labels",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_python_code_tool_config(self, instance: PythonCodeTool) -> list[dict]:
+        """Serialize only the exporting organization's configs of this tool.
+
+        A built-in tool is one row shared by every organization, and each
+        organization stores its own configs (which hold credentials) against it,
+        so the reverse relation spans tenants. The org comes from the
+        ``org_id`` serializer context; without it no config is emitted.
+        """
+        org_id = self.context.get("org_id")
+        if org_id is None:
+            return []
+        configs = PythonCodeToolConfig.objects.filter(tool=instance, org_id=org_id).order_by("id")
+        return PythonCodeToolConfigImportSerializer(configs, many=True).data

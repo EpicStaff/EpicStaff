@@ -1,4 +1,5 @@
 import base64
+import time
 from collections import defaultdict
 from typing import ClassVar
 
@@ -7,6 +8,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -18,6 +20,7 @@ from rbac.access.gates import (
     HasOrgPermission,
 )
 from rbac.access.org_context import OrgContextService
+from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import (
@@ -26,13 +29,18 @@ from rbac.scoping.mixins import (
 )
 from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import CodeRunTargetNotFoundError, SessionNotFoundError
-from tables.filters import SessionFilter
+from tables.exceptions import (
+    CodeRunTargetNotFoundError,
+    DocumentConfigNotFoundException,
+    InvalidChunkParametersException,
+)
+from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
     CsvExportFormatStrategy,
@@ -67,6 +75,7 @@ from tables.serializers.serializers import (
     BulkExportSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
+    ProcessRagIndexingEstimateSerializer,
     ProcessRagIndexingSerializer,
     RunPythonCodeSerializer,
     RunSessionSerializer,
@@ -74,9 +83,11 @@ from tables.serializers.serializers import (
     SessionTestRunSerializer,
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
+from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.converter_service import ConverterService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.knowledge_services.indexing_service import IndexingService
+from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.notification_email_sender import NotificationEmailSender
 from tables.services.quickstart_service import QuickstartService
 from tables.services.realtime_service import RealtimeService
@@ -89,6 +100,7 @@ from tables.services.session_access import (
     get_runnable_graph,
 )
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_nodes import trigger_node_owns_python_code
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
 from tables.services.trigger_test_run.service import SessionTestRunService
@@ -211,7 +223,7 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph", "trigger", "principal").filter(
+        qs = Session.objects.select_related("graph", "trigger", "principal", "callback").filter(
             graph__org_id=self.get_active_org_id()
         )
         detailed = self.request.query_params.get("detailed", "true").lower()
@@ -318,6 +330,8 @@ class SessionViewSet(
             qs = qs.filter(finished_at__gte=data["finished_at_after"])
         if "finished_at_before" in data:
             qs = qs.filter(finished_at__lte=data["finished_at_before"])
+        if "id_search" in data:
+            qs = filter_sessions_by_id_search(qs, data["id_search"])
 
         node_name = data.get("node_name")
         if node_name:
@@ -407,6 +421,7 @@ class SessionViewSet(
 class RunSession(APIView):
     @extend_schema(**RUN_SESSION_POST)
     def post(self, request):
+        request_received_ts = time.time()
         logger.info("Received POST request to start a new session.")
 
         total_size = sum(f.size for f in request.FILES.values())
@@ -423,6 +438,13 @@ class RunSession(APIView):
         if not serializer.is_valid():
             logger.warning(f"Invalid data received in request: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        callback_url = serializer.validated_data.get("callback_url")
+        callback_secret = serializer.validated_data.get("callback_secret")
+        if callback_url is not None and not (
+            isinstance(request.auth, ApiKey) and request.auth.key_type == ApiKey.KeyType.SYSTEM
+        ):
+            raise PermissionDenied("Session callbacks require the system API key.")
 
         files_dict = {}
         graph_id = serializer.validated_data.get("graph_id")
@@ -451,6 +473,16 @@ class RunSession(APIView):
             else TriggerSpec.manual()
         )
         api_key = request.auth if isinstance(request.auth, ApiKey) else None
+        # Running needs only FLOWS READ, but a payload value at a declared org path
+        # is written back to the flow's shared memory: overriding one is managing
+        # the flow's persistent variables, which takes FLOWS UPDATE. A sub-flow
+        # payload is built by the parent's agent from whoever started the chain,
+        # so the tool key's permissions say nothing about who chose the values.
+        allow_persistent_override = parent_session_id is None and (
+            PermissionResolver()
+            .resolve(user=request.user, org_id=graph.org_id)
+            .can(ResourceType.FLOWS, Permission.UPDATE)
+        )
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
@@ -461,8 +493,19 @@ class RunSession(APIView):
                 trigger=trigger,
                 parent_session_id=parent_session_id,
                 token_budget=serializer.validated_data.get("token_budget"),
+                callback_url=callback_url,
+                callback_secret=callback_secret,
+                allow_persistent_override=allow_persistent_override,
             )
             logger.info(f"Session {session_id} successfully started.")
+            # session_id exists only now, so the line is written late with the real arrival time.
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="request_received",
+                session_id=session_id,
+                arrival_ts=request_received_ts,
+            )
         except Exception as e:
             logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
@@ -489,17 +532,21 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
 
     @extend_schema(**RUN_SESSION_TEST_POST)
     def post(self, request):
-        # Running a flow executes its stored code, a contributor-level action
-        # gated on FLOWS.UPDATE like RunPythonCodeAPIView. The gate runs before
-        # body validation and the node lookup, so a caller without it always
-        # gets the same 403 — whatever the body and whether or not the node
-        # exists — and never costs the payload size check.
-        assert_org_permission(
-            user=request.user,
-            org_id=self.get_active_org_id(),
-            resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
-        )
+        # A test run starts a session, so it needs FLOWS.USE; it also executes the
+        # node's stored code with a payload the caller wrote, a contributor-level
+        # action gated on FLOWS.UPDATE like RunPythonCodeAPIView. Each bit is
+        # asserted on its own because a permission check passes on any one bit.
+        # Both gates run before body validation and the node lookup, so a caller
+        # lacking either always gets the same 403 — whatever the body and whether
+        # or not the node exists — and never costs the payload size check.
+        org_id = self.get_active_org_id()
+        for required_action in (Permission.UPDATE, Permission.USE):
+            assert_org_permission(
+                user=request.user,
+                org_id=org_id,
+                resource_type=ResourceType.FLOWS,
+                action=required_action,
+            )
         serializer = SessionTestRunSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
@@ -536,24 +583,8 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session_id = kwargs["session_id"]
-        get_accessible_session(request.user, session_id)
-
-        try:
-            required_listeners = 2  # manager and crew
-            received_n = session_manager_service.stop_session(session_id=session_id)
-            if received_n < required_listeners:
-                logger.error(f"Stop session ({session_id}) was sent but not received.")
-                session = Session.objects.get(pk=session_id)
-                session.status = Session.SessionStatus.ERROR
-                session.status_data = {
-                    "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
-                }
-                session.save()
-
-        except Session.DoesNotExist:
-            raise SessionNotFoundError() from None
-
+        session = get_accessible_session(request.user, kwargs["session_id"], Permission.USE)
+        session_manager_service.stop_running_session(session=session)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -603,18 +634,19 @@ class RunPythonCodeAPIView(APIView):
         variables = serializer.validated_data["variables"]
 
         # Executing stored code is a contributor-level action, gated on
-        # FLOWS.UPDATE. The code must also be visible to the active org, so a
-        # caller cannot run another org's code by passing its id (rejected like
-        # a non-existent pk — existence never leaks).
+        # FLOWS.UPDATE; code a trigger node owns also needs FLOWS.USE, as testing
+        # the trigger itself does, whichever way the request names the code. The
+        # code must also be visible to the active org, so a caller cannot run
+        # another org's code by passing its id (rejected like a non-existent pk —
+        # existence never leaks).
         org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
-        assert_org_permission(
-            user=request.user,
-            org_id=org_id,
-            resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
-        )
-        if "target" in serializer.validated_data:
-            target = serializer.validated_data["target"]
+        self._assert_flows_permission(request.user, org_id, Permission.UPDATE)
+        target = serializer.validated_data.get("target")
+        if target is not None:
+            # The slot type alone says whether a trigger owns the code, so this gate
+            # runs before the lookup and a 403 says nothing about the target.
+            if CODE_RUN_TARGETS[target["type"]].owner_is_trigger_node:
+                self._assert_flows_permission(request.user, org_id, Permission.USE)
             try:
                 execution_id = run_python_code_service.run_target(
                     target_type=target["type"],
@@ -636,6 +668,10 @@ class RunPythonCodeAPIView(APIView):
             raise ValidationError(
                 {"python_code_id": [f'Invalid pk "{python_code.pk}" - object does not exist.']}
             )
+        # After the visibility check, so the USE gate only ever speaks about code the
+        # caller's org can already see.
+        if trigger_node_owns_python_code(python_code.pk, org_id):
+            self._assert_flows_permission(request.user, org_id, Permission.USE)
 
         execution_id = run_python_code_service.run_code(
             python_code_id=python_code.id,
@@ -646,16 +682,21 @@ class RunPythonCodeAPIView(APIView):
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
 
     @staticmethod
+    def _assert_flows_permission(user, org_id: int, action: Permission) -> None:
+        assert_org_permission(
+            user=user, org_id=org_id, resource_type=ResourceType.FLOWS, action=action
+        )
+
+    @staticmethod
     def _python_code_visible_q(org_id: int) -> Q:
         """A PythonCode is visible to an org if it is referenced by an org-owned
-        tool (built-in tools are global) or by a node/edge in one of the org's
+        tool (built-in tools are global) or by a node in one of the org's
         graphs. Used to scope run-python-code so a caller cannot execute another
         org's stored code by id."""
         return (
             Q(pythoncodetool__built_in=True)
             | Q(pythoncodetool__org_id=org_id)
             | Q(pythonnode__graph__org_id=org_id)
-            | Q(conditionaledge__graph__org_id=org_id)
             | Q(webhooktriggernode__graph__org_id=org_id)
             | Q(cdt_pre_nodes__graph__org_id=org_id)
             | Q(cdt_post_nodes__graph__org_id=org_id)
@@ -698,7 +739,7 @@ class InitRealtimeAPIView(APIView):
             # X-Organization-Id to send. It already resolved the agent definition
             # server-side (via RealtimeChannelViewSet.lookup_by_token, itself
             # scoped by the channel's own org), so org is derived here from the
-            # definition's own `organization` FK instead of requiring a header —
+            # definition's own `org` FK instead of requiring a header —
             # same approach as lookup_by_token. This branch never runs for a
             # JWT/user session: request.auth is only an ApiKey instance for
             # API-key-authenticated requests (see ApiKeyAuthentication).
@@ -718,7 +759,7 @@ class InitRealtimeAPIView(APIView):
                         "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
                     }
                 )
-            org_id = agent_definition.organization_id
+            org_id = agent_definition.org_id
             # Twilio's MediaStream bridge has no end-user session (see comment
             # above) — created_by/user_id stays None for these sessions.
             user_id = None
@@ -741,9 +782,7 @@ class InitRealtimeAPIView(APIView):
             # resulting RealtimeSessionItem rows to them via created_by.
             user_id = request.user.id if getattr(request.user, "is_authenticated", False) else None
 
-        if not AgentDefinition.objects.filter(
-            pk=agent_definition_id, organization_id=org_id
-        ).exists():
+        if not AgentDefinition.objects.filter(pk=agent_definition_id, org_id=org_id).exists():
             raise ValidationError(
                 {
                     "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
@@ -768,17 +807,28 @@ class InitRealtimeAPIView(APIView):
 
 class QuickstartView(APIView):
     """
-    API endpoint for managing quickstart configurations
+    API endpoint for managing quickstart configurations.
+
+    Reading the status requires LLM config read permission in the active organization
+    (it renders the last quickstart LLM and embedding configs); running a quickstart
+    requires LLM config create permission. Each handler asserts its own action: a plain
+    APIView has no DRF action for HasOrgPermission to map.
     """
 
     permission_classes = [IsAuthenticated]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_required_action = Permission.CREATE
     _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_GET)
     def get(self, request):
         org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
+        # Outside the try below: its broad except would turn the 403 into a 500.
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=self.rbac_resource_type,
+            action=Permission.READ,
+        )
         try:
             supported_providers = list(quickstart_service.get_supported_providers())
             last_config = quickstart_service.get_last_quickstart(org_id)
@@ -791,7 +841,8 @@ class QuickstartView(APIView):
                     "supported_providers": supported_providers,
                     "last_config": last_config,
                     "is_synced": is_synced,
-                }
+                },
+                context={"request": request},
             ).data
             return Response(data, status=status.HTTP_200_OK)
 
@@ -817,7 +868,7 @@ class QuickstartView(APIView):
             user=request.user,
             org_id=org_id,
             resource_type=self.rbac_resource_type,
-            action=self.rbac_required_action,
+            action=Permission.CREATE,
         )
 
         result = quickstart_service.quickstart(
@@ -825,6 +876,7 @@ class QuickstartView(APIView):
             api_key=api_key,
             secret=secret,
             org_id=org_id,
+            user=request.user,
         )
 
         if not result.get("success", False):
@@ -839,7 +891,8 @@ class QuickstartView(APIView):
                 "config_name": config_name,
                 "llm_config": result["llm_config"],
                 "embedding_config": result["embedding_config"],
-            }
+            },
+            context={"request": request},
         ).data
         return Response(
             data={
@@ -890,14 +943,18 @@ class QuickstartApplyView(APIView):
         )
 
 
-class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
+class RagOrgLookupMixin:
+    """The RAG models by `rag_type` and the path to their owning org, for org-scoped lookups."""
+
+    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
+
+
+class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, APIView):
     """
     View for triggering RAG indexing (chunking + embedding).
     All business logic is handled by IndexingService.
     """
-
-    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
-    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
 
     @extend_schema(**PROCESS_RAG_INDEXING_POST)
     def post(self, request):
@@ -941,6 +998,17 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         else:
             llm_api_key = None
 
+        embedding_extra_headers = secret_resolver.resolve_header_markers(
+            headers=indexing_data["embedder_extra_headers"],
+            org_id=org_id,
+            context="EmbeddingConfig.extra_headers",
+        )
+        llm_extra_headers = secret_resolver.resolve_header_markers(
+            headers=indexing_data["llm_extra_headers"],
+            org_id=org_id,
+            context="LLMConfig.extra_headers",
+        )
+
         try:
             with KnowledgeClient() as client:
                 client.index(
@@ -949,6 +1017,8 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                     document_ids=frozenset(document_config_ids),
                     embedding_api_key=embedding_api_key,
                     llm_api_key=llm_api_key,
+                    embedding_extra_headers=embedding_extra_headers,
+                    llm_extra_headers=llm_extra_headers,
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)
@@ -961,6 +1031,72 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, APIView):
+    """Read-only token and cost estimate for an indexing run, computed by knowledge_new.
+
+    Takes the same body and needs the same permission as `ProcessRagIndexingView`, so
+    the estimate is available to exactly the users who can start the indexing. A naive
+    body may add `document_configs`: chunking settings the user has not saved yet, which
+    are merged into the stored configs and validated, but never persisted.
+    """
+
+    # Chunking whole documents in memory is slower than the indexing hand-off call.
+    _KNOWLEDGE_TIMEOUT_SECONDS = 60.0
+
+    @extend_schema(
+        request=ProcessRagIndexingEstimateSerializer, responses={200: OpenApiTypes.OBJECT}
+    )
+    def post(self, request):
+        serializer = ProcessRagIndexingEstimateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        rag_id = serializer.validated_data["rag_id"]
+        rag_type = serializer.validated_data["rag_type"]
+        document_config_ids = serializer.validated_data["document_config_ids"]
+        document_configs = serializer.validated_data["document_configs"]
+
+        model = self._RAG_MODELS[rag_type]
+        # Enforces org scoping before the GraphRAG 400, so another org's RAG returns 404.
+        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
+
+        if rag_type == "graph":
+            return Response(
+                {"error": "Estimate is not available for GraphRAG."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            chunking_overrides = NaiveRagService.resolve_effective_document_configs(
+                rag_id, document_configs
+            )
+        except DocumentConfigNotFoundException as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except InvalidChunkParametersException as e:
+            return Response(
+                {"error": e.errors[0]["reason"], "errors": e.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
+                estimate = client.index_estimate(
+                    strategy=RAGStrategy(rag_type),
+                    rag_id=rag_id,
+                    document_ids=frozenset(document_config_ids),
+                    chunking_overrides=chunking_overrides,
+                )
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
+
+        return Response(estimate, status=status.HTTP_200_OK)
 
 
 class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):

@@ -104,70 +104,82 @@ def _empty_buckets() -> dict:
     return {"agent_surface": [], "shared_surface": [], "inline_surface": []}
 
 
+def _attach_on_own_agent_surface(org_a, org_b, tool, mode):
+    agent = AgentDefinition.objects.create(name="agent-deny", org=org_a)
+    surface = Surface.objects.create(name="s-deny", org=org_a, owner_agent=agent)
+    SurfacePythonTool.objects.create(surface=surface, python_tool=tool, mode=mode)
+
+
+def _attach_on_own_task_node(org_a, org_b, tool, mode):
+    task_node = TaskNode.objects.create(graph=Graph.objects.create(name="Graph-deny", org=org_a), node_name="task_node_deny")
+    InlineSurfacePythonTool.objects.create(
+        inline_surface=InlineSurface.objects.create(task_node=task_node), python_tool=tool, mode=mode
+    )
+
+
+def _attach_on_other_orgs_surface(org_a, org_b, tool, mode):
+    # Same name as the tool, to rule out name-based false negatives: usage is scoped by Surface.org_id.
+    agent_b = AgentDefinition.objects.create(name="agent-b", org=org_b)
+    surface_b = Surface.objects.create(name="UnusedTool", org=org_b, owner_agent=agent_b)
+    SurfacePythonTool.objects.create(surface=surface_b, python_tool=tool, mode=mode)
+
+
+def _attach_on_other_orgs_task_node(org_a, org_b, tool, mode):
+    task_node_b = TaskNode.objects.create(graph=Graph.objects.create(name="UnusedTool", org=org_b), node_name="task_node_b")
+    InlineSurfacePythonTool.objects.create(
+        inline_surface=InlineSurface.objects.create(task_node=task_node_b), python_tool=tool, mode=mode
+    )
+
+
 @pytest.mark.django_db
-def test_unused_tool_returns_empty_list(client_a, unused_python_tool):
-    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
+@pytest.mark.parametrize(
+    ("built_in", "attach", "mode"),
+    [
+        (False, None, None),
+        # Built-in tools have no org but are visible, so they resolve rather than 404.
+        (True, None, None),
+        (False, _attach_on_own_agent_surface, ToolMode.DENY),
+        (False, _attach_on_own_task_node, ToolMode.DENY),
+        (False, _attach_on_other_orgs_surface, ToolMode.ALLOW),
+        (False, _attach_on_other_orgs_task_node, ToolMode.ALLOW),
+    ],
+    ids=["unused", "built-in", "deny-on-surface", "deny-inline", "other-orgs-surface", "other-orgs-flow-node"],
+)
+def test_tool_without_visible_allow_usage_has_empty_buckets(
+    client_a, org_a, org_b, python_tool_factory, built_in, attach, mode
+):
+    tool = python_tool_factory(None if built_in else org_a, name="UnusedTool", built_in=built_in)
+    if attach is not None:
+        attach(org_a, org_b, tool, mode)
+
+    resp = client_a.get(python_usage_detail_url(tool.id))
+
     assert resp.status_code == 200
     assert resp.data == _empty_buckets()
 
 
 @pytest.mark.django_db
-def test_nonexistent_python_code_tool_is_404(client_a):
-    resp = client_a.get(python_usage_detail_url(999999))
-    assert resp.status_code == 404
+@pytest.mark.parametrize(
+    ("detail_url", "factory"),
+    [(python_usage_detail_url, "python_tool_factory"), (mcp_usage_detail_url, "mcp_tool_factory")],
+    ids=["python", "mcp"],
+)
+@pytest.mark.parametrize("pk", ["missing", "non-numeric", "other-org"])
+def test_tool_outside_the_org_is_404(request, client_a, org_b, detail_url, factory, pk):
+    if pk == "other-org":
+        pk = request.getfixturevalue(factory)(org_b, name="ForeignTool").id
+    elif pk == "missing":
+        pk = 999999
+    else:
+        pk = "abc"
 
-
-@pytest.mark.django_db
-def test_nonexistent_mcp_tool_is_404(client_a):
-    resp = client_a.get(mcp_usage_detail_url(999999))
-    assert resp.status_code == 404
-
-
-@pytest.mark.django_db
-def test_non_numeric_python_code_tool_pk_is_404(client_a):
-    resp = client_a.get(python_usage_detail_url("abc"))
-    assert resp.status_code == 404
-
-
-@pytest.mark.django_db
-def test_cross_org_python_tool_is_404(client_a, org_b, python_tool_factory):
-    foreign_tool = python_tool_factory(org_b, name="ForeignTool")
-
-    resp = client_a.get(python_usage_detail_url(foreign_tool.id))
-    assert resp.status_code == 404
-
-
-@pytest.mark.django_db
-def test_built_in_python_code_tool_is_visible_not_404(client_a, python_tool_factory):
-    # PythonCodeTool visibility is hybrid (built-in rows are global,
-    # org_id=None) — a built-in tool must be resolvable in the usage-detail
-    # lookup the same way it's listed in the usage endpoint, not 404 just
-    # because it has no org.
-    builtin_tool = python_tool_factory(None, name="BuiltInTool", built_in=True)
-
-    resp = client_a.get(python_usage_detail_url(builtin_tool.id))
-    assert resp.status_code == 200
-    assert resp.data == _empty_buckets()
-
-
-@pytest.mark.django_db
-def test_cross_org_mcp_tool_is_404(client_a, org_b, mcp_tool_factory):
-    foreign_tool = mcp_tool_factory(org_b, name="ForeignMcp")
-
-    resp = client_a.get(mcp_usage_detail_url(foreign_tool.id))
-    assert resp.status_code == 404
-
-
-@pytest.mark.django_db
-def test_non_numeric_mcp_tool_pk_is_404(client_a):
-    resp = client_a.get(mcp_usage_detail_url("abc"))
-    assert resp.status_code == 404
+    assert client_a.get(detail_url(pk)).status_code == 404
 
 
 @pytest.mark.django_db
 def test_requires_authentication(db):
     resp = APIClient().get(python_usage_detail_url(1))
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---- agent_surface: catalog Surface with owner_agent set ----
@@ -175,9 +187,9 @@ def test_requires_authentication(db):
 
 @pytest.mark.django_db
 def test_surface_entry_agent_specific(client_a, org_a, unused_python_tool):
-    agent = AgentDefinition.objects.create(name="agent-owned", organization=org_a)
+    agent = AgentDefinition.objects.create(name="agent-owned", org=org_a)
     surface = Surface.objects.create(
-        name="s-owned", organization=org_a, owner_agent=agent
+        name="s-owned", org=org_a, owner_agent=agent
     )
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
@@ -194,9 +206,9 @@ def test_surface_entry_agent_specific(client_a, org_a, unused_python_tool):
 
 @pytest.mark.django_db
 def test_surface_entry_agent_specific_mcp(client_a, org_a, unused_mcp_tool):
-    agent = AgentDefinition.objects.create(name="agent-owned-mcp", organization=org_a)
+    agent = AgentDefinition.objects.create(name="agent-owned-mcp", org=org_a)
     surface = Surface.objects.create(
-        name="s-owned-mcp", organization=org_a, owner_agent=agent
+        name="s-owned-mcp", org=org_a, owner_agent=agent
     )
     SurfaceMcpTool.objects.create(
         surface=surface, mcp_tool=unused_mcp_tool, mode=ToolMode.ALLOW
@@ -221,11 +233,11 @@ def test_surface_entry_shared_regardless_of_agent_default_surface_assignment(
     """A shared surface (`owner_agent` null) lands in `shared_surface`
     whether or not it's assigned to any agent via `AgentDefaultSurface` —
     that assignment no longer affects which bucket it lands in."""
-    surface = Surface.objects.create(name="s-shared", organization=org_a)
+    surface = Surface.objects.create(name="s-shared", org=org_a)
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
     )
-    agent = AgentDefinition.objects.create(name="agent-shared", organization=org_a)
+    agent = AgentDefinition.objects.create(name="agent-shared", org=org_a)
     AgentDefaultSurface.objects.create(
         agent_definition=agent, surface=surface, place=SurfacePlace.ALL
     )
@@ -243,7 +255,7 @@ def test_surface_entry_shared_regardless_of_agent_default_surface_assignment(
 def test_surface_entry_shared_without_any_agent_assignment(
     client_a, org_a, unused_python_tool
 ):
-    surface = Surface.objects.create(name="s-shared-unassigned", organization=org_a)
+    surface = Surface.objects.create(name="s-shared-unassigned", org=org_a)
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=unused_python_tool, mode=ToolMode.ALLOW
     )
@@ -348,77 +360,6 @@ def test_inline_entries_from_two_nodes_in_same_graph_share_id_but_differ_by_node
 # ---- mode="deny" never counts as usage ----
 
 
-@pytest.mark.django_db
-def test_deny_mode_catalog_surface_not_counted(client_a, org_a, unused_python_tool):
-    agent = AgentDefinition.objects.create(name="agent-deny", organization=org_a)
-    surface = Surface.objects.create(
-        name="s-deny", organization=org_a, owner_agent=agent
-    )
-    SurfacePythonTool.objects.create(
-        surface=surface, python_tool=unused_python_tool, mode=ToolMode.DENY
-    )
-
-    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
-    assert resp.status_code == 200
-    assert resp.data == _empty_buckets()
-
-
-@pytest.mark.django_db
-def test_deny_mode_inline_surface_not_counted(client_a, org_a, unused_python_tool):
-    graph = Graph.objects.create(name="Graph-deny", org=org_a)
-    task_node = TaskNode.objects.create(graph=graph, node_name="task_node_deny")
-    inline_surface = InlineSurface.objects.create(task_node=task_node)
-    InlineSurfacePythonTool.objects.create(
-        inline_surface=inline_surface,
-        python_tool=unused_python_tool,
-        mode=ToolMode.DENY,
-    )
-
-    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
-    assert resp.status_code == 200
-    assert resp.data == _empty_buckets()
-
-
 # ---- org-scoping ----
 
 
-@pytest.mark.django_db
-def test_cross_org_surface_attachment_not_leaked(
-    client_a, org_a, org_b, unused_python_tool
-):
-    """A Surface belonging to a DIFFERENT org that attaches
-    `unused_python_tool` (same name as the surface, deliberately, to rule out
-    name-based false negatives) must not surface its entry — usage is scoped
-    by `Surface.organization_id`, not by the tool's own org."""
-    agent_b = AgentDefinition.objects.create(name="agent-b", organization=org_b)
-    surface_b = Surface.objects.create(
-        name="UnusedTool", organization=org_b, owner_agent=agent_b
-    )
-    SurfacePythonTool.objects.create(
-        surface=surface_b, python_tool=unused_python_tool, mode=ToolMode.ALLOW
-    )
-
-    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
-    assert resp.status_code == 200
-    assert resp.data == _empty_buckets()
-
-
-@pytest.mark.django_db
-def test_cross_org_flow_node_attachment_not_leaked(
-    client_a, org_a, org_b, unused_python_tool
-):
-    """An InlineSurface owned by a TaskNode on a Graph belonging to a
-    different org must not surface as an inline entry for a tool visible to
-    the active org."""
-    graph_b = Graph.objects.create(name="UnusedTool", org=org_b)
-    task_node_b = TaskNode.objects.create(graph=graph_b, node_name="task_node_b")
-    inline_surface_b = InlineSurface.objects.create(task_node=task_node_b)
-    InlineSurfacePythonTool.objects.create(
-        inline_surface=inline_surface_b,
-        python_tool=unused_python_tool,
-        mode=ToolMode.ALLOW,
-    )
-
-    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
-    assert resp.status_code == 200
-    assert resp.data == _empty_buckets()

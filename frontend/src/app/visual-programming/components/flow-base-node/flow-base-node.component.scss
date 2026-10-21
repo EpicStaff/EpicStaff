@@ -7,32 +7,13 @@
 
     border-radius: 16px;
 
-    .node-name-wrapper {
-        position: absolute;
-        top: -24px;
-        width: 100%;
-        display: flex;
-        pointer-events: none;
-    }
-
-    .node-name-label {
-        background-color: var(--color-nodes-actionbar-bg);
-        color: var(--gray-204);
-        font-size: 0.75rem;
-        padding: 2px 6px;
-        border-radius: 3px;
-        white-space: nowrap;
-        opacity: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    // Outside-the-box bar, only used by NOTE/EDGE (no header row to embed into).
+    // Outside-the-box bar, only used by NOTE (no header row to embed into).
     // Header-based node types reuse this class inside .node-action-bar (see below).
     .actions {
+        @include mixins.node-actions-hidden;
         display: flex;
-        opacity: 0;
-        pointer-events: none;
+        // Clickability is gated by visibility; auto overrides the none inherited from .node-action-bar.
+        pointer-events: auto;
         position: absolute;
         right: 0;
         top: -45px;
@@ -40,7 +21,6 @@
         z-index: 11;
         padding: 8px;
         border-radius: 8px;
-        transition: opacity 0.2s ease;
 
         // Create a larger hit area before the actions
         &::before {
@@ -270,6 +250,12 @@
             margin-top: 1rem;
         }
 
+        // The corner squares under the #N tab, so it re-rounds only once the tab has faded out.
+        &.has-number-chip {
+            transition: border-top-left-radius 0s linear
+                (mixins.$node-actions-hide-delay + mixins.$node-actions-fade-duration);
+        }
+
         &.is-blocked-llm {
             box-shadow: 0 0 0 1px var(--color-error);
         }
@@ -306,22 +292,17 @@
         //       display: block;
         // }
 
-        .node-name-label {
-            opacity: 1;
-        }
-
         .port-wrapper .port-label {
             opacity: 1;
         }
 
         .actions {
-            opacity: 1;
-            pointer-events: auto;
+            @include mixins.node-actions-shown;
         }
 
         .interactive-node-body .node-action-bar,
         .node-action-bar--table {
-            opacity: 1;
+            @include mixins.node-actions-shown;
         }
 
         // Only while shown, so the hidden tab is no hit zone; the pointer is what lets its title appear.
@@ -331,6 +312,7 @@
 
         .interactive-node-body.has-number-chip {
             border-top-left-radius: 0;
+            transition-delay: 0s;
         }
     }
 
@@ -349,9 +331,6 @@
     &.f-selected {
         z-index: 1000 !important;
 
-        .node-name-label {
-            opacity: 1;
-        }
         .port-wrapper .port-label {
             opacity: 1;
         }
@@ -364,13 +343,12 @@
         }
 
         .actions {
-            opacity: 1;
-            pointer-events: auto;
+            @include mixins.node-actions-shown;
         }
 
         .interactive-node-body .node-action-bar,
         .node-action-bar--table {
-            opacity: 1;
+            @include mixins.node-actions-shown;
 
             .node-number-badge {
                 border-color: var(--vp-selected-node-border-color);
@@ -388,6 +366,7 @@
 
         .interactive-node-body.has-number-chip {
             border-top-left-radius: 0;
+            transition-delay: 0s;
         }
     }
 
@@ -464,37 +443,6 @@
     min-height: fit-content;
 }
 
-:host(.type-edge) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    --edge-node-border-color: var(--color-divider-subtle);
-
-    .port-position-left {
-        left: 8px !important;
-        top: 50%;
-        transform: translateY(-50%);
-    }
-
-    .port-position-right {
-        right: 8px !important;
-        top: 50%;
-        transform: translateY(-50%);
-    }
-
-    background-color: transparent;
-    border: none;
-    border-radius: 0;
-    padding: 0;
-    width: auto;
-    height: auto;
-
-    &.f-selected {
-        --edge-node-border-color: var(--vp-selected-node-border-color);
-    }
-}
-
 :host(.type-note) {
     // Make the node container fit the note component
     display: flex;
@@ -517,16 +465,14 @@
     // Make sure edit button is visible on hover
     &:hover {
         .actions {
-            opacity: 1;
-            pointer-events: auto;
+            @include mixins.node-actions-shown;
         }
     }
 
     // Keep edit button visible when selected
     &.f-selected {
         .actions {
-            opacity: 1;
-            pointer-events: auto;
+            @include mixins.node-actions-shown;
         }
     }
 }

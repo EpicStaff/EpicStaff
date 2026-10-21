@@ -1,3 +1,6 @@
+from urllib.parse import urlsplit
+
+from django.conf import settings
 from rest_framework import serializers
 from tables.import_export.services.partial_export_service import (
     LIST_KEY_TO_ENTITY_TYPE,
@@ -6,6 +9,7 @@ from tables.models import PythonCode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
+from tables.serializers.naive_rag_serializers import DocumentConfigEstimateOverrideSerializer
 from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
 from tables.validators.trigger_payload_validator import validate_trigger_payload
@@ -73,10 +77,39 @@ class RunSessionSerializer(serializers.Serializer):
     # SessionData field. Omitted/None (default) means "no limit" -- inert
     # for every existing caller.
     token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    # Delivered by the session callback sender once the run reaches a terminal
+    # status. Only the system API key may set these (the view enforces it); the
+    # host must be on SESSION_CALLBACK_ALLOWED_HOSTS so the sender cannot be
+    # aimed at an internal service.
+    # CharField, not URLField: URLField rejects single-label hosts such as `chat`,
+    # which is how compose services are addressed; the allowlist below is the guard.
+    callback_url = serializers.CharField(required=False, allow_null=True, max_length=2048)
+    callback_secret = serializers.CharField(
+        required=False, allow_null=True, min_length=32, max_length=256, trim_whitespace=False
+    )
+
+    def validate_callback_url(self, value):
+        if value is None:
+            return None
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https"):
+            raise serializers.ValidationError("Enter a valid http(s) URL.")
+        try:
+            parts.port  # noqa: B018 -- reading it is the validation
+        except ValueError:
+            raise serializers.ValidationError("Invalid port in callback URL.") from None
+        host = (parts.hostname or "").lower()
+        if host not in settings.SESSION_CALLBACK_ALLOWED_HOSTS:
+            raise serializers.ValidationError("Host is not an allowed callback target.")
+        return value
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
             raise serializers.ValidationError("Either 'graph_id' or 'graph_uuid' must be provided.")
+        if (attrs.get("callback_url") is None) != (attrs.get("callback_secret") is None):
+            raise serializers.ValidationError(
+                {"callback_secret": "callback_url and callback_secret must be given together."}
+            )
         return attrs
 
 
@@ -118,13 +151,13 @@ class BaseToolSerializer(serializers.Serializer):
         repr = {}
         if isinstance(instance, PythonCodeTool):
             repr["unique_name"] = f"python-code-tool:{instance.pk}"
-            repr["data"] = PythonCodeToolSerializer(instance).data
+            repr["data"] = PythonCodeToolSerializer(instance, context=self.context).data
         elif isinstance(instance, McpTool):
             repr["unique_name"] = f"mcp-tool:{instance.pk}"
-            repr["data"] = McpToolSerializer(instance).data
+            repr["data"] = McpToolSerializer(instance, context=self.context).data
         elif isinstance(instance, PythonCodeToolConfig):
             repr["unique_name"] = f"python-code-tool-config:{instance.pk}"
-            repr["data"] = PythonCodeToolConfigSerializer(instance).data
+            repr["data"] = PythonCodeToolConfigSerializer(instance, context=self.context).data
         else:
             raise TypeError(f"Unsupported tool type for serialization: {type(instance)}")
 
@@ -148,6 +181,34 @@ class ProcessRagIndexingSerializer(serializers.Serializer):
     rag_id = serializers.IntegerField(required=True, min_value=1)
     rag_type = serializers.ChoiceField(required=True, choices=["naive", "graph"])
     document_config_ids = serializers.ListField(child=serializers.IntegerField(min_value=1))
+
+
+class ProcessRagIndexingEstimateSerializer(ProcessRagIndexingSerializer):
+    """Estimate request: the indexing body plus optional unsaved per-document chunking settings."""
+
+    document_configs = DocumentConfigEstimateOverrideSerializer(
+        many=True, required=False, default=list
+    )
+
+    def validate_document_configs(self, document_configs):
+        config_ids = [item["document_config_id"] for item in document_configs]
+        if len(config_ids) != len(set(config_ids)):
+            raise serializers.ValidationError("document_config_id must be unique.")
+        return document_configs
+
+    def validate(self, attrs):
+        extra_ids = {item["document_config_id"] for item in attrs["document_configs"]} - set(
+            attrs["document_config_ids"]
+        )
+        if extra_ids:
+            raise serializers.ValidationError(
+                {
+                    "document_configs": (
+                        f"document_config_id not in document_config_ids: {sorted(extra_ids)}"
+                    )
+                }
+            )
+        return attrs
 
 
 class BulkExportSerializer(serializers.Serializer):
@@ -225,6 +286,14 @@ class SessionExportAllSerializer(serializers.Serializer):
     )
     node_name = serializers.CharField(required=False)
     is_error_cause = serializers.BooleanField(required=False)
+    id_search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text=(
+            "Keep sessions whose id contains this value (`12` matches 12, 112, 1203). "
+            "Blank means no filtering; a value with non-digits matches nothing."
+        ),
+    )
     created_at_after = serializers.DateTimeField(required=False)
     created_at_before = serializers.DateTimeField(required=False)
     finished_at_after = serializers.DateTimeField(required=False)

@@ -1,8 +1,8 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     ActivateButtonComponent,
     AppTableCellDirective,
@@ -19,7 +19,9 @@ import {
     TableRow,
 } from '@shared/components';
 import { ActionCode, GetOrganizationResponse, ResourceCode } from '@shared/models';
-import { finalize } from 'rxjs';
+import { escapeHtml } from '@shared/utils';
+import { combineLatest, debounceTime, EMPTY, finalize } from 'rxjs';
+import { catchError, distinctUntilChanged, switchMap, tap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../services/notifications';
@@ -32,8 +34,8 @@ import { HardDeleteFlowService } from '../../../services/hard-delete-flow.servic
 import { buildOrganizationDeleteContent, rbacErrorMessage } from '../../../utils';
 
 const STATUS_ITEMS: SelectItem[] = [
-    { name: 'Active', value: 'active' },
-    { name: 'Deactivated', value: 'deactivated' },
+    { name: 'Active', value: true },
+    { name: 'Deactivated', value: false },
 ];
 
 @Component({
@@ -57,7 +59,7 @@ const STATUS_ITEMS: SelectItem[] = [
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class OrganizationsTabComponent implements OnInit {
+export class OrganizationsTabComponent {
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
     private confirmation = inject(ConfirmationDialogService);
@@ -67,7 +69,9 @@ export class OrganizationsTabComponent implements OnInit {
     private hardDeleteFlow = inject(HardDeleteFlowService);
 
     searchTerm = signal('');
+    statusFilter = signal<boolean[]>([]);
     isLoading = signal(true);
+    readonly reloadTrigger = signal(0);
 
     /** Superadmin-only: create/deactivate/reactivate are platform actions per catalog. */
     readonly isSuperadmin = this.permissionsService.isSuperadmin;
@@ -77,9 +81,49 @@ export class OrganizationsTabComponent implements OnInit {
         { key: 'admin', label: 'Admin', width: 'minmax(180px, 2fr)' },
         { key: 'members', label: 'Members', width: 'minmax(90px, 1fr)' },
         { key: 'created', label: 'Created', width: 'minmax(120px, 1.5fr)' },
-        { key: 'status', label: 'Status', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
+        {
+            key: 'status',
+            label: 'Status',
+            width: 'minmax(120px, 1.5fr)',
+            filterItems: STATUS_ITEMS,
+            filterServerSide: true,
+        },
         { key: 'actions', label: 'Actions', width: '130px', align: 'end' },
     ];
+
+    organizations = this.organizationStorage.organizations;
+
+    tableData = computed<TableRow[]>(() => this.organizations().map((org) => this.orgToRow(org)));
+
+    private readonly filters$ = combineLatest([
+        toObservable(this.statusFilter),
+        toObservable(this.searchTerm).pipe(debounceTime(300), distinctUntilChanged()),
+        toObservable(this.reloadTrigger),
+    ]);
+
+    constructor() {
+        this.filters$
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                tap(() => this.isLoading.set(true)),
+                switchMap(([statusFilter, searchTerm]) =>
+                    this.organizationStorage
+                        .getOrganizations(true, {
+                            is_active: statusFilter.length ? statusFilter : undefined,
+                            search: searchTerm || undefined,
+                        })
+                        .pipe(
+                            catchError((err: HttpErrorResponse) => {
+                                this.toast.error(rbacErrorMessage(err, 'Failed to load organizations.'));
+
+                                return EMPTY;
+                            }),
+                            finalize(() => this.isLoading.set(false))
+                        )
+                )
+            )
+            .subscribe();
+    }
 
     showDeactivateOrg(row: TableRow): boolean {
         return this.isSuperadmin && row['status'] === 'active';
@@ -89,28 +133,9 @@ export class OrganizationsTabComponent implements OnInit {
         return this.isSuperadmin && row['status'] !== 'active';
     }
 
-    organizations = this.organizationStorage.organizations;
-
-    tableData = computed<TableRow[]>(() => this.organizations().map((org) => this.orgToRow(org)));
-
-    filteredOrgs = computed<TableRow[]>(() => {
-        const term = this.searchTerm().toLowerCase().trim();
-        const rows = this.tableData();
-        if (!term) return rows;
-        return rows.filter((o) => String(o['name']).toLowerCase().includes(term));
-    });
-
-    ngOnInit(): void {
-        this.organizationStorage
-            .getOrganizations(true)
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                finalize(() => this.isLoading.set(false))
-            )
-            .subscribe({
-                error: (err: HttpErrorResponse) =>
-                    this.toast.error(rbacErrorMessage(err, 'Failed to load organizations.')),
-            });
+    onFilterChange(event: { key: string; values: unknown[] }): void {
+        if (event.key !== 'status') return;
+        this.statusFilter.set(event.values as boolean[]);
     }
 
     onCreateOrganization(): void {
@@ -138,7 +163,7 @@ export class OrganizationsTabComponent implements OnInit {
     private refreshOnClose(ref: DialogRef<unknown, CreateOrganizationDialogComponent>): void {
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) {
-                this.organizationStorage.getOrganizations(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+                this.reloadTrigger.update((v) => v + 1);
             }
         });
     }
@@ -149,7 +174,7 @@ export class OrganizationsTabComponent implements OnInit {
         this.confirmation
             .confirm({
                 title: 'Deactivate the organization?',
-                message: `The ${row['name']} organization will be deactivated, but all data will be preserved.`,
+                message: `The ${escapeHtml(row['name'] as string)} organization will be deactivated, but all data will be preserved.`,
                 caution: 'Access will be revoked for all members of this organization',
                 type: 'danger',
                 confirmText: 'Deactivate',

@@ -15,7 +15,7 @@ def redis_service_with_fake_redis():
     redis_service = RedisService(
         host="127.0.0.1", port=6379, user="default", password="redis_password"
     )
-    # One server behind both clients, as in production: they share one Redis.
+    # The sync client only reads back what the async client wrote.
     redis_service.aioredis_client = fakeredis.FakeAsyncRedis(
         server=server, decode_responses=True
     )
@@ -42,7 +42,7 @@ async def test_graph_message_is_appended_to_the_stream_as_an_envelope(
     redis_service, redis_client = redis_service_with_fake_redis
     message = _message("uuid-1")
 
-    await redis_service.aadd_graph_message(message)
+    await redis_service.aadd_graph_message(message["uuid"], json.dumps(message))
 
     # The literal stream name and field names are the contract django_app reads.
     [(_entry_id, fields)] = redis_client.xrange("graph.messages")
@@ -52,31 +52,16 @@ async def test_graph_message_is_appended_to_the_stream_as_an_envelope(
 
 
 @pytest.mark.asyncio
-async def test_sync_and_async_appends_keep_their_order_in_one_stream(
-    redis_service_with_fake_redis,
-):
-    redis_service, redis_client = redis_service_with_fake_redis
-
-    await redis_service.aadd_graph_message(_message("uuid-1"))
-    redis_service.add_graph_message(_message("uuid-2"))
-    await redis_service.aadd_graph_message(_message("uuid-3"))
-
-    entries = redis_client.xrange("graph.messages")
-    assert [fields["correlation_id"] for _entry_id, fields in entries] == [
-        "uuid-1",
-        "uuid-2",
-        "uuid-3",
-    ]
-
-
-@pytest.mark.asyncio
 async def test_stream_is_capped_so_an_absent_reader_cannot_fill_redis(
     redis_service_with_fake_redis,
 ):
     redis_service, redis_client = redis_service_with_fake_redis
 
     for index in range(GRAPH_MESSAGE_STREAM_MAXLEN + 500):
-        await redis_service.aadd_graph_message(_message(f"uuid-{index}", text=""))
+        message_uuid = f"uuid-{index}"
+        await redis_service.aadd_graph_message(
+            message_uuid, json.dumps(_message(message_uuid, text=""))
+        )
 
     # Approximate trimming removes whole nodes, so a few extra entries may remain.
     assert redis_client.xlen("graph.messages") < GRAPH_MESSAGE_STREAM_MAXLEN + 500

@@ -11,13 +11,11 @@ requires-python = "==3.12.10"
 dependencies = [
     "beautifulsoup4==4.15.0",
     "chonkie==1.7.0",
-    "granian==2.8.2",
     "graphrag==3.1.1",
     "langchain-text-splitters==1.1.2",
-    "litellm==1.92.2",
+    "litellm==1.100.5",
     "litestar==2.24.0",
     "loguru==0.7.3",
-    "minio==7.2.20",
     "miniopy-async>=1.23.5",
     "pandas==3.0.5",
     "pdfplumber==0.11.10",
@@ -109,5 +107,6 @@ transitive-pins = [
 
 [tool.uv]
 package = false
-# graphrag 3.1.1 pins litellm==1.92.0 exactly; force the patch bump until graphrag releases a compatible pin.
-override-dependencies = ["litellm==1.92.2"]
+# graphrag 3.1.1 pins litellm==1.92.0 exactly; override it to the version every other service ships
+# until graphrag releases a compatible pin.
+override-dependencies = ["litellm==1.100.5"]

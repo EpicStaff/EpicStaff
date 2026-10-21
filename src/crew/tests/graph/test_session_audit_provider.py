@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -27,6 +28,7 @@ class RecordingAuditWriter:
 @pytest.fixture
 def recording_writer(monkeypatch):
     writer = RecordingAuditWriter()
+    monkeypatch.setattr(session_audit_provider, "AUDIT_TRAIL_ENABLED", True)
     monkeypatch.setattr(session_audit_provider, "get_session_audit_writer", lambda: writer)
     session_id = 501
     register_session_org(session_id, org_id=7)
@@ -36,15 +38,15 @@ def recording_writer(monkeypatch):
     clear_session_flow_name(session_id)
 
 
-def _chunk(session_id: int, message_data: dict) -> dict:
-    return {
+def _chunk(session_id: int, message_data: dict) -> str:
+    return json.dumps({
         "session_id": session_id,
         "name": "node",
         "node_type": "python",
         "execution_order": 1,
         "uuid": "event-id",
         "message_data": message_data,
-    }
+    })
 
 
 @pytest.mark.asyncio

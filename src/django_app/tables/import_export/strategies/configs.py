@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from django.db.models import Q
+from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -26,6 +27,8 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
+from tables.services.secrets.reference_guard import secret_reference_guard
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 
 
 class BaseConfigStrategy(EntityImportExportStrategy):
@@ -99,7 +102,20 @@ class BaseConfigStrategy(EntityImportExportStrategy):
             data={**data, **resolved_fks, **tag_overrides, "org": org_id}
         )
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        self._assert_markers_permitted(serializer, user=kwargs.get("user"), org_id=org_id)
+        return serializer.save(created_by=resolve_author(kwargs.get("user")))
+
+    def _assert_markers_permitted(self, serializer, *, user, org_id) -> None:
+        """Require secrets:USE to create a config whose headers carry secret markers.
+
+        Import always creates the config, so every marker in it is new to the org's
+        rows; a reused existing config (find_existing) never reaches here.
+        """
+        for field_name in self.serializer_class.secret_marker_fields:
+            if extract_secret_marker_names(serializer.validated_data.get(field_name)):
+                secret_reference_guard.assert_may_use(
+                    user=user, org_id=org_id, field_name=field_name
+                )
 
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
@@ -110,17 +126,57 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         data_copy.pop("tags", None)
 
         fk_filters = self.resolve_fk_filters(data_copy, id_mapper)
-        filters, null_filters = create_filters(data_copy)
+        filters, null_filters = create_filters(self._known_fields_only(data_copy))
 
         return (
             self.config_model.objects.filter(
                 **filters,
                 **null_filters,
                 **fk_filters,
+                **self._defaults_for_missing_fields(data_copy),
             )
             .filter(self.get_org_scope_q(org_id))
             .first()
         )
+
+    def _known_fields_only(self, data: dict) -> dict:
+        # A file from a newer version can carry fields this version does not have;
+        # filtering on them would raise FieldError.
+        concrete_field_names = {
+            name
+            for field in self.config_model._meta.concrete_fields
+            for name in (field.name, field.attname)
+        }
+        return {name: value for name, value in data.items() if name in concrete_field_names}
+
+    def _defaults_for_missing_fields(self, data: dict) -> dict:
+        """Filter missing imported fields on the value create_entity would store for them.
+
+        A file from an older version lacks fields added since. Its config is created
+        with each such field's model default, so only a config holding those defaults
+        is equivalent. Without this an older file would reuse a config whose newer
+        settings (e.g. a reasoning effort) differ from what the file describes.
+        Fields the import serializer does not write (created_at, secrets) are not
+        part of the comparison.
+        """
+        writable_field_names = {
+            name for name, field in self.serializer_class().fields.items() if not field.read_only
+        }
+        filters = {}
+        for field in self.config_model._meta.concrete_fields:
+            if (
+                field.primary_key
+                or field.is_relation
+                or field.name in data
+                or field.name not in writable_field_names
+            ):
+                continue
+            default = field.get_default()
+            if default is None:
+                filters[f"{field.name}__isnull"] = True
+            else:
+                filters[field.name] = default
+        return filters
 
     def remap_foreign_keys(self, data: dict, id_mapper: IDMapper) -> dict:
         old_model_id = data.pop(self.model_fk_field, None)
@@ -199,7 +255,7 @@ class BaseProviderRealtimeConfigStrategy(EntityImportExportStrategy):
         )
         serializer = self.serializer_class(data={**data, "org": org_id})
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        return serializer.save(created_by=resolve_author(kwargs.get("user")))
 
     def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int | None = None):
         custom_name = data.get("custom_name")

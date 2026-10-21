@@ -84,7 +84,6 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.TaskNode",
         "tables.AgentNode",
         "tables.Edge",
-        "tables.ConditionalEdge",
         "tables.GraphOrganization",
         "tables.GraphOrganizationUser",
         "tables.GraphNote",
@@ -95,6 +94,7 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.Condition",
         "tables.ClassificationDecisionTablePrompt",
         "tables.ClassificationConditionGroup",
+        "tables.ClassificationConditionGroupSection",
         "tables.TelegramTriggerNodeField",
         "tables.PythonCodeToolConfig",
         "tables.PythonCodeResult",
@@ -323,7 +323,7 @@ class TablesOrganizationDeletion:
         )
 
         # A bulk QuerySet.delete() bypasses SoftDeleteMixin.delete(), so this
-        # hard-deletes regardless of settings.SOFT_DELETE: a permanently
+        # hard-deletes instead of using the recycle bin: a permanently
         # deleted organization must not leave its knowledge content behind.
         targets["collections"].delete()
 

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, input } from '@angular/core';
 import { MatTooltipModule, TooltipPosition } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -19,6 +19,8 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 <app-svg-icon
                     [icon]="icon"
                     [size]="size"
+                    [width]="width()"
+                    [height]="height()"
                     class="help-icon-wrapper"
                     [matTooltip]="text"
                     [matTooltipPosition]="tooltipPosition"
@@ -66,6 +68,9 @@ export class HelpTooltipComponent {
     @Input() icon = 'help';
     @Input() iconClass = '';
     @Input() size = '16px';
+    /** Override `size` on one axis for a non-square icon; passed through to `app-svg-icon`. */
+    readonly width = input<string>();
+    readonly height = input<string>();
     @Input() tooltipClass = 'custom-tooltip';
 
     get tooltipPosition(): TooltipPosition {

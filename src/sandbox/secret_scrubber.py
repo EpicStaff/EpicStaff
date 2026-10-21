@@ -11,22 +11,32 @@ Scope: accidental disclosure by an author who is already permitted to read the
 secret. A determined author can still exfiltrate by encoding or chunking the value,
 or by sending it out over the network. This is a safety net, not a boundary.
 
-Gated by the SANDBOX_MASK_SECRET environment variable (default on), parsed into
-settings.MASK_SECRET at import time. When it is false ExecuteCodeHandler reads
-settings.MASK_SECRET directly and skips scrubbing, so debugging can see real
-values -- and plaintext credentials then reach every consumer listed above,
-including persisted rows and container logs. It is a development affordance, not
-something to carry into an environment holding real credentials. scrub() itself
-always masks unconditionally.
+Gated by the required SANDBOX_MASK_SECRET environment variable, parsed into
+MASK_SECRET at import time by the strict Env.bool: an unset or unrecognised value
+fails startup, so only an explicit false value turns masking off.
+ExecuteCodeHandler always builds the masking set and scrubs every stream; when
+masking is off it only leaves the user's secrets out of that set, so debugging can
+see their real values while the per-execution storage credentials stay masked.
+Those plaintext user secrets then reach every consumer listed above, including
+persisted rows and container logs. It is a development affordance, not something
+to carry into an environment holding real credentials. masking_enabled() reports
+the setting; scrub() itself always masks.
 """
 
 import json
 import re
 
+import settings
+
 # One fixed marker rather than one naming each secret: the name would then travel
 # into stdout, the SSE stream, and the tool observation handed to the LLM, and none
 # of those need it to understand that something was withheld.
 MASK = "[REDACTED]"
+
+
+def masking_enabled() -> bool:
+    """Whether secret values should be scrubbed from execution output."""
+    return settings.MASK_SECRET
 
 
 def _pattern(*, secrets: dict[str, str]) -> re.Pattern | None:
@@ -64,3 +74,21 @@ def scrub(*, text: str | None, secrets: dict[str, str]) -> str | None:
     if pattern is None:
         return text
     return pattern.sub(MASK, text)
+
+
+def build_masking_values(
+    secrets: dict[str, str] | None, extra: dict[str, str] | None
+) -> dict[str, str]:
+    """A copy of `secrets` extended with values that must be masked but must
+    never travel to the executed code as a "user" secret (e.g. per-execution
+    MinIO credentials).
+
+    Returns a new dict; the caller's `secrets` (which becomes
+    `EPICSTAFF_SECRETS` for the executed code) is never mutated. This
+    masking applies unconditionally, regardless of `masking_enabled()` — a
+    temporary storage credential is never something a developer legitimately
+    wants to see in plaintext output.
+    """
+    values = dict(secrets or {})
+    values.update({k: v for k, v in (extra or {}).items() if v})
+    return values

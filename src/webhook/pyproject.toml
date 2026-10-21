@@ -12,7 +12,6 @@ requires-python = "==3.12.10"
 dependencies = [
     "fastapi==0.141.1",
     "loguru==0.7.3",
-    "pydantic-settings==2.11.0",
     "pydantic==2.13.4",
     "pyngrok==7.4.1",
     "redis==5.3.1",
@@ -21,6 +20,7 @@ dependencies = [
 
 [dependency-groups]
 tests = [
+    "fakeredis==2.32.0",
     "httpx==0.28.1",
     "pytest-asyncio==0.25.3",
     "pytest==8.4.2",

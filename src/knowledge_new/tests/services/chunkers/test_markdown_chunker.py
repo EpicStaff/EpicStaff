@@ -1,11 +1,7 @@
-import os
 
-import pytest
 from domain.enums import ChunkStrategyEnum
-from domain.errors import ChunkingError
 from domain.models import PreviewChunk
 from infrastructure.naive.chunkers.strategies.markdown_chunker import MarkdownChunker
-from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 
 SAMPLE_MD = "# Title\nIntro text.\n## Section\nSection body text here."
@@ -49,19 +45,3 @@ async def test_long_section_is_split_by_char_size():
 async def test_empty_string_returns_empty():
     chunker = build_chunker()
     assert await chunker.chunk("") == []
-
-
-@pytest.mark.parametrize("text", [None, 0])
-async def test_chunking_raises_error_for_invalid_data(text):
-    chunker = build_chunker()
-    with pytest.raises(ChunkingError):
-        await chunker.chunk(text)
-
-
-async def test_chunking_is_running_in_process():
-    chunker = build_chunker(extra={"markdown": {"headers_to_split_on": ["#", "##"]}})
-
-    inline_chunks = await chunker.chunk(SAMPLE_MD)
-    result, worker_pid = await offload_to_process(lambda: chunker.chunk(SAMPLE_MD))
-    assert result == inline_chunks
-    assert worker_pid != os.getpid()

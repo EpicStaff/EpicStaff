@@ -5,6 +5,8 @@ class SecretReferenceGuardMixin:
     """Requires secrets:USE to change which secrets a resource references."""
 
     secret_reference_fields: tuple[str, ...] = ()
+    # Header dicts whose `epicstaff_secret(<name>)` markers reference secrets by name.
+    secret_marker_fields: tuple[str, ...] = ()
     parent_attribute: str | None = None
 
     def get_secret_reference_fields(self) -> tuple[str, ...]:
@@ -20,5 +22,8 @@ class SecretReferenceGuardMixin:
         attrs = super().validate(attrs)
         secret_reference_guard.assert_unchanged_or_permitted(
             serializer=self, attrs=attrs, fields=self.get_secret_reference_fields()
+        )
+        secret_reference_guard.assert_no_new_markers_or_permitted(
+            serializer=self, attrs=attrs, fields=self.secret_marker_fields
         )
         return attrs

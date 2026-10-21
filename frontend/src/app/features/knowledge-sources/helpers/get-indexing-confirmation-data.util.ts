@@ -1,4 +1,11 @@
 import { ConfirmationDialogData } from '@shared/components';
+import { escapeHtml } from '@shared/utils';
+import { catchError, map, Observable, of } from 'rxjs';
+
+import { IndexingEstimate } from '../models/base-rag.model';
+import { getIndexingEstimateHtml } from './format-indexing-estimate.util';
+
+export const ESTIMATING_USAGE_HTML = '<div class="dialog-callout dialog-callout--pending">Estimating usage…</div>';
 
 export interface IndexingDocumentInfo {
     configId: number;
@@ -15,7 +22,7 @@ export function getIndexingConfirmationData(documents: IndexingDocumentInfo[]): 
         const sections: string[] = [];
 
         if (reindexDocs.length) {
-            const reindexListHtml = reindexDocs.map((d) => `<li>• ${d.fileName}</li>`).join('');
+            const reindexListHtml = reindexDocs.map((d) => `<li>• ${escapeHtml(d.fileName)}</li>`).join('');
             sections.push(
                 `<details><summary>Re-indexing <strong>${reindexDocs.length}</strong> file(s)</summary> \n
                       <ul>${reindexListHtml}</ul></details>`
@@ -23,7 +30,7 @@ export function getIndexingConfirmationData(documents: IndexingDocumentInfo[]): 
         }
 
         if (newDocs.length) {
-            const newListHtml = newDocs.map((d) => `<li>• ${d.fileName}</li>`).join('');
+            const newListHtml = newDocs.map((d) => `<li>• ${escapeHtml(d.fileName)}</li>`).join('');
             sections.push(
                 `<details><summary>Indexing <strong>${newDocs.length}</strong> new file(s)</summary> \n
                       <ul>${newListHtml}</ul></details>`
@@ -51,5 +58,23 @@ export function getIndexingConfirmationData(documents: IndexingDocumentInfo[]): 
         type: 'warning',
         cancelText: 'Later',
         confirmText: 'Start Indexing',
+    };
+}
+
+/**
+ * Opens straight away with an "Estimating usage…" line; the line is replaced once the estimate arrives.
+ * A missing or failed estimate removes the line, so indexing is never blocked.
+ */
+export function getIndexingConfirmationDataWithEstimate(
+    documents: IndexingDocumentInfo[],
+    estimate$: Observable<IndexingEstimate | null>
+): ConfirmationDialogData {
+    return {
+        ...getIndexingConfirmationData(documents),
+        footerMessage: ESTIMATING_USAGE_HTML,
+        footerMessageUpdates: estimate$.pipe(
+            catchError(() => of(null)),
+            map((estimate) => getIndexingEstimateHtml(estimate))
+        ),
     };
 }

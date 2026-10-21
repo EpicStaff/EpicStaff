@@ -35,6 +35,16 @@ def _require_user_context(request):
         raise PermissionDenied("This endpoint requires a user context.")
 
 
+def _extract_active_org_id(request):
+    raw = request.headers.get("X-Organization-Id")
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None  # Soft-fail: profile is the boot endpoint.
+
+
 class ProfileView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
@@ -48,19 +58,9 @@ class ProfileView(APIView):
     )
     def get(self, request):
         _require_user_context(request)
-        active_org_id = self._extract_active_org_id(request)
+        active_org_id = _extract_active_org_id(request)
         user = self._service.get_profile(request.user, active_org_id=active_org_id)
         return Response(ProfileResponseSerializer(user, context={"request": request}).data)
-
-    @staticmethod
-    def _extract_active_org_id(request):
-        raw = request.headers.get("X-Organization-Id")
-        if not raw:
-            return None
-        try:
-            return int(raw)
-        except (TypeError, ValueError):
-            return None  # Soft-fail: profile is the boot endpoint.
 
     @extend_schema(
         summary="Update my profile",
@@ -73,9 +73,7 @@ class ProfileView(APIView):
     def patch(self, request):
         _require_user_context(request)
         cleaned = self._validator.validate_profile_patch(request.data)
-        user = request.user
-        if "display_name" in cleaned:
-            user = self._service.update_display_name(user, cleaned["display_name"])
+        user = self._service.update_profile(request.user, cleaned)
         user = self._service.get_profile(user)
         if "display_name" in cleaned:
             profile_updated.send(sender=type(user), user=user)
@@ -125,6 +123,28 @@ class ProfileAvatarView(APIView):
         user = self._service.get_profile(request.user)
         profile_updated.send(sender=type(user), user=user)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ProfileQuickstartTourCompleteView(APIView):
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    _service = UserProfileService()
+
+    @extend_schema(
+        summary="Mark the Quick Start tour as completed or skipped for me",
+        description="Idempotent: repeated calls keep the first completion time.",
+        request=None,
+        responses={200: ProfileResponseSerializer},
+    )
+    def post(self, request):
+        _require_user_context(request)
+        self._service.complete_quickstart_tour(request.user)
+        # Same org context as GET: the frontend replaces its cached profile with this response.
+        user = self._service.get_profile(
+            request.user, active_org_id=_extract_active_org_id(request)
+        )
+        return Response(ProfileResponseSerializer(user, context={"request": request}).data)
 
 
 class PasswordChangeRequestView(APIView):

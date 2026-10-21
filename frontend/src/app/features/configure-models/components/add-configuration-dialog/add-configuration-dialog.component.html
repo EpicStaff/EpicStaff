@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSubmit()"
+    [appEnterSubmitDisabled]="isSubmitting() || isLlmModelResolving()"
+>
     <div class="header">
         <h2 class="title">Add Configuration</h2>
         <app-icon-button
@@ -56,6 +60,10 @@
                     />
                     <app-validation-errors [control]="llmForm.get('model')!" />
                 </div>
+                <app-llm-reasoning-effort-field
+                    [control]="reasoningEffortControl"
+                    [modelId]="selectedLlmModelId()"
+                />
                 <div>
                     <app-select
                         formControlName="api_key_secret_id"
@@ -183,6 +191,38 @@
                     tooltipText="JSON map of token IDs to bias values"
                     [writeValueAsJSON]="false"
                 />
+            </section>
+
+            <section
+                class="section"
+                formGroupName="pricing"
+            >
+                <h3 class="section-title">PRICING</h3>
+                <div>
+                    <app-input-number
+                        formControlName="input_price_per_million"
+                        [min]="0"
+                        [allowDecimal]="true"
+                        placeholder="Provider default"
+                        label="Input price (USD / 1M tokens)"
+                        [tooltipText]="TOKEN_PRICE_HINT"
+                    />
+                    <app-validation-errors [control]="llmForm.get('pricing.input_price_per_million')!" />
+                </div>
+                <div>
+                    <app-input-number
+                        formControlName="output_price_per_million"
+                        [min]="0"
+                        [allowDecimal]="true"
+                        placeholder="Provider default"
+                        label="Output price (USD / 1M tokens)"
+                        [tooltipText]="TOKEN_PRICE_HINT"
+                    />
+                    <app-validation-errors [control]="llmForm.get('pricing.output_price_per_million')!" />
+                </div>
+                @if (hasIncompletePricePair()) {
+                    <app-validation-errors [control]="llmForm.get('pricing')!" />
+                }
             </section>
         </form>
     }
@@ -451,6 +491,17 @@
                     <app-validation-errors [control]="embeddingForm.controls.custom_name" />
                 </div>
             </section>
+
+            <section class="section">
+                <h3 class="section-title">API CONFIGURATION</h3>
+                <app-key-value-list
+                    formControlName="extra_headers"
+                    label="Header Configuration"
+                    tooltipText="Custom HTTP headers sent with every API request"
+                    namePlaceholder="Header name"
+                    valuePlaceholder="Header value"
+                />
+            </section>
         </form>
     }
 
@@ -463,7 +514,7 @@
         <app-button
             type="primary"
             (click)="onSubmit()"
-            [disabled]="isSubmitting()"
+            [disabled]="isSubmitting() || isLlmModelResolving() || hasIncompletePricePair() || hasInvalidHeaders()"
         >
             @if (isSubmitting()) {
                 Creating…

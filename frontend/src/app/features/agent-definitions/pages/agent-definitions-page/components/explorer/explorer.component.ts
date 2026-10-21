@@ -10,7 +10,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, SectionHeaderComponent } from '@shared/components';
 import { DragHoverDirective, ResizableSectionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SectionHeightService, SidebarWidthService } from '@shared/services';
@@ -25,7 +25,6 @@ import { AgentsSectionComponent } from './agents-section/agents-section.componen
 import { BranchesFilterComponent } from './branches-filter/branches-filter.component';
 import { ExplorerContextMenuComponent } from './explorer-context-menu/explorer-context-menu.component';
 import { ExplorerMenuItem, ExplorerMenuPosition } from './explorer-context-menu/explorer-menu.model';
-import { SectionHeaderComponent } from './section-header/section-header.component';
 import { StorageSectionComponent } from './storage-section/storage-section.component';
 import { SurfacesSectionComponent } from './surfaces-section/surfaces-section.component';
 
@@ -141,7 +140,8 @@ export class ExplorerComponent {
     readonly menuOpen = signal<boolean>(false);
     readonly menuPosition = signal<ExplorerMenuPosition>({ x: 0, y: 0 });
     readonly menuItems = signal<ExplorerMenuItem[]>([]);
-    private menuNode: BranchTreeNode | null = null;
+    /** The row whose ⋮ opened the menu, and that ⋮ itself. */
+    private menuTarget: Pick<ExplorerTreeMenuOpenEvent, 'node' | 'trigger'> | null = null;
 
     toggleFilter(): void {
         this.filterOpen.update((v) => !v);
@@ -183,21 +183,21 @@ export class ExplorerComponent {
     }
 
     onTreeMenuOpen(event: ExplorerTreeMenuOpenEvent): void {
-        this.menuNode = event.node;
+        this.menuTarget = { node: event.node, trigger: event.trigger };
         this.menuItems.set(event.items);
         this.menuPosition.set(event.position);
         this.menuOpen.set(true);
     }
 
     onMenuItemAction(action: string): void {
-        const node = this.menuNode;
+        const target = this.menuTarget;
         this.closeMenu();
-        if (node) this.treeMenuAction.emit({ node, action });
+        if (target) this.treeMenuAction.emit({ ...target, action });
     }
 
     closeMenu(): void {
         this.menuOpen.set(false);
-        this.menuNode = null;
+        this.menuTarget = null;
     }
 
     onAdd(section: ExplorerSectionId): void {

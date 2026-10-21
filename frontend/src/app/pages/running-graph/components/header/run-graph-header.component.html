@@ -81,6 +81,7 @@
         <div class="session-meta-row__right">
             @if (canStop) {
                 <app-stop-button
+                    *appHasPermission="[ResourceCode.Flows, ActionCode.Use]"
                     variant="stop"
                     tooltip="Stop session"
                     (triggered)="stopSession.emit()"

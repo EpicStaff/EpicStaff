@@ -4,22 +4,36 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { ExecutionTimeoutFormField } from '@shared/components';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { typeIntoExecutionTimeout } from '../../../../shared/components/execution-timeout-field/execution-timeout-field.testing';
 import { RuffDiagnosticsService } from '../../../../shared/ruff-linter/services/ruff-diagnostics.service';
 import { RuffWasmService } from '../../../../shared/ruff-linter/services/ruff-wasm.service';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
 import { FlowService } from '../../../services/flow.service';
+import { TRIGGER_NODES_NEED_USE_MESSAGE } from '../../../services/flow-readonly.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { mapWebhookTriggerNodeToModel } from '../../../utils/load/nodes/webhook-trigger-node.mapper';
 import { FIX_TEST_PAYLOAD_JSON_MESSAGE, formatTestPayload } from '../../../utils/test-run';
+import {
+    FLOW_ACTIONS_WITH_USE,
+    FLOW_ACTIONS_WITHOUT_USE,
+    grantPermissions,
+} from '../../../utils/testing/permissions.fixture';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     PYTHON_CODE_RUNNING_MESSAGE,
@@ -48,6 +62,11 @@ const DTO: GetWebhookTriggerNodeRequest = {
     metadata: {},
     webhook_trigger: null,
     test_payload: SAVED_PAYLOAD,
+    use_storage: false,
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 /** The template-facing members the panel's test payload editor binds to. */
@@ -65,6 +84,7 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: toast },
@@ -74,7 +94,13 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
             ],
         });
@@ -242,12 +268,118 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
     });
 });
 
+describe('WebhookTriggerNodePanelComponent storage', () => {
+    const STORAGE_HEADER = 'from epicstaff_storage import storage';
+    let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
+    let panel: WebhookTriggerNodePanelComponent;
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ToastService, useValue: { warning: vi.fn() } },
+                {
+                    provide: PermissionsService,
+                    useValue: { can: () => true, canAny: () => true, canEditSecrets: () => true },
+                },
+                {
+                    provide: SecretsStorageService,
+                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                },
+            ],
+        });
+        // Real panel template with the real storage section; the other controls render as unknown elements.
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: { imports: [NgTemplateOutlet, NodeStorageSectionComponent], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        panel = fixture.componentInstance;
+        fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(DTO));
+        fixture.detectChanges();
+    });
+
+    function storageSection(): NodeStorageSectionComponent {
+        return fixture.debugElement.query(By.directive(NodeStorageSectionComponent))
+            .componentInstance as NodeStorageSectionComponent;
+    }
+
+    it('shows the node storage flag in the storage section', () => {
+        expect(panel.useStorage()).toBe(false);
+        expect(storageSection().enabled()).toBe(false);
+    });
+
+    it('saves a toggled storage flag, and saves it again once it is toggled back', () => {
+        storageSection().onToggle(true);
+
+        expect(panel.useStorage()).toBe(true);
+        expect(panel.isDirty()).toBe(true);
+        expect(panel.onSaveSilently()!.data.use_storage).toBe(true);
+        expect(panel.isDirty()).toBe(false);
+
+        storageSection().onToggle(false);
+
+        expect(panel.onSaveSilently()!.data.use_storage).toBe(false);
+    });
+
+    it('puts the storage header on top of the code once, and takes it out again when storage is turned off', () => {
+        storageSection().onToggle(true);
+
+        expect(panel.pythonCode.startsWith(STORAGE_HEADER)).toBe(true);
+        expect(panel.pythonCode.endsWith(DTO.python_code.code)).toBe(true);
+        const codeWithHeader = panel.pythonCode;
+        panel.insertStorageCode(STORAGE_HEADER);
+        expect(panel.pythonCode).toBe(codeWithHeader);
+
+        storageSection().onToggle(false);
+
+        expect(panel.pythonCode).toBe(DTO.python_code.code);
+        expect(panel.isDirty()).toBe(false);
+    });
+
+    it('leaves the header in code that no longer starts with it when storage is turned off', () => {
+        storageSection().onToggle(true);
+        panel.onPythonCodeChange('# edited\n' + panel.pythonCode);
+
+        storageSection().onToggle(false);
+
+        expect(panel.pythonCode.includes(STORAGE_HEADER)).toBe(true);
+        expect(panel.useStorage()).toBe(false);
+    });
+
+    it('does not add the header to code that already uses storage', () => {
+        const code = 'from epicstaff_storage import storage\n\ndef main(trigger_payload): pass';
+        fixture.componentRef.setInput(
+            'node',
+            mapWebhookTriggerNodeToModel({ ...DTO, id: 22, python_code: { ...DTO.python_code, code } })
+        );
+        fixture.detectChanges();
+
+        storageSection().onToggle(true);
+
+        expect(panel.pythonCode).toBe(code);
+    });
+
+    it('shows the flag of another webhook node selected in the same panel', () => {
+        const otherNode = { ...mapWebhookTriggerNodeToModel({ ...DTO, use_storage: true }), id: 'other-node' };
+
+        fixture.componentRef.setInput('node', otherNode);
+        fixture.detectChanges();
+
+        expect(panel.useStorage()).toBe(true);
+        expect(storageSection().enabled()).toBe(true);
+        expect(panel.isDirty()).toBe(false);
+    });
+});
+
 describe('WebhookTriggerNodePanelComponent code editor header', () => {
     let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
 
     beforeEach(() => {
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: {} },
@@ -257,7 +389,13 @@ describe('WebhookTriggerNodePanelComponent code editor header', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: RuffWasmService, useValue: { check: () => Promise.resolve([]) } },
                 { provide: RuffDiagnosticsService, useValue: { setMarkers: () => {}, hasSyntaxErrors: () => false } },
@@ -331,6 +469,7 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
         runService = { runPythonCode: vi.fn(() => start$), pollResultWithEvents: vi.fn(() => poll$) };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: ToastService, useValue: { warning: vi.fn() } },
                 {
                     provide: PermissionsService,
@@ -338,7 +477,13 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                    useValue: {
+                        secrets: signal([]),
+                        namesForIds: () => [],
+                        getSecrets: vi.fn(),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: PythonCodeRunService, useValue: runService },
             ],
@@ -396,8 +541,8 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
         fixture.detectChanges();
     }
 
-    function openExpanded(): RunCodePanel {
-        const runPanel = open();
+    function openExpanded(node: WebhookTriggerNodeModel = mapWebhookTriggerNodeToModel(DTO)): RunCodePanel {
+        const runPanel = open(node);
         fixture.componentRef.setInput('isExpanded', true);
         fixture.detectChanges();
         return runPanel;
@@ -475,6 +620,16 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             panel().form.patchValue({ libraries: '' });
             panel().onSecretsChange([7]);
             expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+        });
+
+        it('asks to save after a storage toggle, and clears once the saved graph has the flag', () => {
+            const runPanel = open();
+
+            panel().onStorageToggle(true);
+            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            bindStoredGraph(asStored({ ...DTO, use_storage: true }));
+            expect(runPanel.runCodeBlocker()).toBeNull();
         });
 
         it('keeps asking after the panel is closed and reopened before the graph is saved', () => {
@@ -589,6 +744,75 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
 
         expect(runService.runPythonCode).not.toHaveBeenCalled();
         expect(terminals()).toBe(0);
+    });
+
+    describe('execution timeout', () => {
+        const TIMED_DTO: GetWebhookTriggerNodeRequest = {
+            ...DTO,
+            python_code: { ...DTO.python_code, execution_timeout: 90 },
+        };
+
+        function timeoutField(): ExecutionTimeoutFormField {
+            return (panel() as unknown as { executionTimeout: ExecutionTimeoutFormField }).executionTimeout;
+        }
+
+        it('shows the stored timeout of the code, and the default for a code without one', () => {
+            open(mapWebhookTriggerNodeToModel(TIMED_DTO));
+            expect(timeoutField().control.value).toBe(90);
+
+            open(mapWebhookTriggerNodeToModel(DTO));
+            expect(timeoutField().control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(panel().onSaveSilently()?.data.python_code.execution_timeout).toBeUndefined();
+        });
+
+        it('puts the edited timeout on the code of the node it saves', () => {
+            open();
+
+            timeoutField().edit(300);
+
+            expect(panel().onSaveSilently()?.data.python_code.execution_timeout).toBe(300);
+        });
+
+        it('saves a timeout still being typed when the panel closes before the input blurs (Esc, switching nodes)', () => {
+            open();
+
+            typeIntoExecutionTimeout(timeoutField(), '00:05:00');
+
+            expect(panel().isDirty()).toBe(true);
+            expect(panel().onSave()?.data.python_code.execution_timeout).toBe(300);
+        });
+
+        it('asks to save after a timeout edit, and clears once it is back to the stored one', () => {
+            const runPanel = open();
+
+            timeoutField().edit(300);
+            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            timeoutField().edit(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(runPanel.runCodeBlocker()).toBeNull();
+        });
+
+        it('waits for the result as long as the stored code may run', () => {
+            bindStoredGraph(asStored(TIMED_DTO));
+            openExpanded(mapWebhookTriggerNodeToModel(TIMED_DTO));
+
+            runFromEditor();
+            start$.next({ execution_id: 'exec-1' });
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 90);
+        });
+
+        it('waits for a stored code without a timeout as long as the default the backend applies to it', () => {
+            openExpanded();
+
+            runFromEditor();
+            start$.next({ execution_id: 'exec-1' });
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith(
+                'exec-1',
+                TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds
+            );
+        });
     });
 
     describe('Save (the panel shell header button)', () => {
@@ -857,4 +1081,71 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
             expect(terminals()).toBe(1);
         });
     });
+});
+
+describe('WebhookTriggerNodePanelComponent and the Use permission on flows', () => {
+    let fixture: ComponentFixture<WebhookTriggerNodePanelComponent>;
+    let toast: { info: ReturnType<typeof vi.fn>; warning: ReturnType<typeof vi.fn> };
+
+    function open(flowActions: ActionCode[]): WebhookTriggerNodePanelComponent {
+        toast = { info: vi.fn(), warning: vi.fn() };
+        TestBed.configureTestingModule({
+            providers: [
+                provideLoadedExecutionTimeoutLimits(),
+                provideHttpClient(),
+                { provide: ToastService, useValue: toast },
+                {
+                    provide: SecretsStorageService,
+                    useValue: { secrets: signal([]), namesForIds: () => [], getSecrets: vi.fn() },
+                },
+            ],
+        });
+        // Real panel template; the code editor is a real (empty, Monaco-free) component so its inputs can be read.
+        TestBed.overrideComponent(WebhookTriggerNodePanelComponent, {
+            set: { imports: [NgTemplateOutlet, CodeEditorComponent], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        TestBed.overrideComponent(CodeEditorComponent, { set: { template: '', imports: [] } });
+        grantPermissions({ [ResourceCode.Flows]: flowActions, [ResourceCode.Secrets]: [ActionCode.Use] });
+        fixture = TestBed.createComponent(WebhookTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', mapWebhookTriggerNodeToModel(DTO));
+        fixture.componentRef.setInput('isExpanded', true);
+        fixture.detectChanges();
+        return fixture.componentInstance;
+    }
+
+    /** What the panel shell would render in its header from the panel's template. */
+    function headerActionTags(panel: WebhookTriggerNodePanelComponent): string[] {
+        const view = panel.headerActionsTemplate()!.createEmbeddedView({});
+        view.detectChanges();
+        return view.rootNodes
+            .filter((rootNode): rootNode is Element => rootNode instanceof Element)
+            .map((element) => element.tagName.toLowerCase());
+    }
+
+    function codeEditor(): CodeEditorComponent {
+        return fixture.debugElement.query(By.directive(CodeEditorComponent)).componentInstance as CodeEditorComponent;
+    }
+
+    it('is read-only without Flows:Use: closing and Ctrl+S save nothing, saying why', () => {
+        const panel = open(FLOW_ACTIONS_WITHOUT_USE);
+
+        expect(panel.onSave()).toBeNull();
+        expect(panel.onSaveSilently()).toBeNull();
+        expect(panel.needsSave()).toBe(false);
+        expect(toast.info).toHaveBeenCalledWith(TRIGGER_NODES_NEED_USE_MESSAGE);
+    });
+
+    it.each([
+        { user: 'may update and run flows', flowActions: FLOW_ACTIONS_WITH_USE, offered: true },
+        { user: 'may update but not run flows', flowActions: FLOW_ACTIONS_WITHOUT_USE, offered: false },
+    ])(
+        'for a user who $user, the code is editable and "Run with test payload" and "Run python code" offered: $offered',
+        ({ flowActions, offered }) => {
+            const panel = open(flowActions);
+
+            expect(codeEditor().readOnly).toBe(!offered);
+            expect(headerActionTags(panel).includes('app-run-test-payload-button')).toBe(offered);
+            expect(codeEditor().actionIcon()).toBe(offered ? 'play-outline' : null);
+        }
+    );
 });

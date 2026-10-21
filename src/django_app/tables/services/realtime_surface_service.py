@@ -11,6 +11,7 @@ from agents.models.agent_models import (
 from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.surface_combine_service import SurfaceCombineService
 from loguru import logger
+from rbac.authorship import OMIT_AUTHORSHIP_CONTEXT_KEY
 from src.shared.models import (
     BaseToolData,
     GraphRagBasicSearchParams,
@@ -21,6 +22,8 @@ from src.shared.models import (
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
+from storage_credentials.exceptions import CredentialScopeValidationError
+from storage_credentials.resource_names import org_storage_prefix
 from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
@@ -39,6 +42,8 @@ class RealtimeAgentSurfaceResolution:
     rag_search_config: RagSearchConfig | None
     rag_embedder_api_key_secret_id: int | None = None
     rag_llm_api_key_secret_id: int | None = None
+    rag_embedder_extra_headers: dict[str, str] | None = None
+    rag_llm_extra_headers: dict[str, str] | None = None
 
 
 @dataclass
@@ -48,6 +53,8 @@ class RealtimeKnowledgeResolution:
     rag_search_config: RagSearchConfig | None = None
     rag_embedder_api_key_secret_id: int | None = None
     rag_llm_api_key_secret_id: int | None = None
+    rag_embedder_extra_headers: dict[str, str] | None = None
+    rag_llm_extra_headers: dict[str, str] | None = None
 
 
 GRAPH_SEARCH_CONFIG_FIELDS: tuple[tuple[str, type], ...] = (
@@ -69,13 +76,13 @@ class RealtimeSurfaceService:
 
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_grants(
             combined_surface["storage_items"],
-            org_id=agent_definition.organization_id,
+            org_id=agent_definition.org_id,
         )
         tools = self._resolve_python_tools(
             combined_surface["python_tools"],
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
-            org_id=agent_definition.organization_id,
+            org_id=agent_definition.org_id,
         )
         self._warn_on_mcp_tools(combined_surface["mcp_tools"])
 
@@ -105,7 +112,11 @@ class RealtimeSurfaceService:
             if surface.id not in explicit_surface_ids:
                 surfaces.append(surface)
 
-        surface_dicts = [SurfaceReadSerializer(surface).data for surface in surfaces]
+        # Combining reads only the surfaces' rules, so authorship is never loaded.
+        surface_dicts = [
+            SurfaceReadSerializer(surface, context={OMIT_AUTHORSHIP_CONTEXT_KEY: True}).data
+            for surface in surfaces
+        ]
         return SurfaceCombineService.combine(surface_dicts)
 
     def _resolve_python_tools(
@@ -118,15 +129,29 @@ class RealtimeSurfaceService:
         allowed_tool_ids = [
             entry["python_tool"] for entry in python_tool_entries if entry["mode"] == "allow"
         ]
-        return [
-            self.converter_service.convert_tool_to_base_tool_pydantic(
-                python_tool,
-                storage_allowed_paths_override=storage_allowed_paths,
-                storage_org_prefix_override=storage_org_prefix,
-                org_id_override=org_id,
+        tools = []
+        for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids):
+            if python_tool.use_storage and storage_org_prefix is None:
+                # Fail closed, like converter_service: silently dropping the tool
+                # would start the realtime agent without a capability its surface
+                # grants, which reads as a broken tool rather than a scope problem.
+                # This is a resolvable configuration issue, not an infra/mint
+                # failure (nothing has attempted to mint yet) -- same exception
+                # CredentialScopeValidator raises, same 400.
+                raise CredentialScopeValidationError(
+                    f"Tool '{python_tool.name}' needs file storage access, but no files are "
+                    "attached to this agent's surface. Attach the required files or folders."
+                )
+
+            tools.append(
+                self.converter_service.convert_tool_to_base_tool_pydantic(
+                    python_tool,
+                    storage_allowed_paths_override=storage_allowed_paths,
+                    storage_org_prefix_override=storage_org_prefix,
+                    org_id_override=org_id,
+                )
             )
-            for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids)
-        ]
+        return tools
 
     def _resolve_storage_grants(
         self, storage_item_entries: list[dict], org_id: int | None
@@ -156,7 +181,7 @@ class RealtimeSurfaceService:
             return [], None
 
         allowed_paths = [storage_file.path for storage_file in storage_files]
-        storage_org_prefix = f"org_{org_id}"
+        storage_org_prefix = org_storage_prefix(org_id)
         return allowed_paths, storage_org_prefix
 
     def _warn_on_mcp_tools(self, mcp_tool_entries: list[dict]) -> None:
@@ -222,7 +247,14 @@ class RealtimeSurfaceService:
         # Naive RAG has no LLM call (no completion-model synthesis step) —
         # only graph RAG carries an `llm` FK. Leave the LLM secret id unset.
         return RealtimeKnowledgeResolution(
-            collection_id, rag_type_id, rag_search_config, embedder_secret_id, None
+            collection_id,
+            rag_type_id,
+            rag_search_config,
+            embedder_secret_id,
+            None,
+            rag_embedder_extra_headers=(
+                naive_rag.embedder.extra_headers if naive_rag.embedder else None
+            ),
         )
 
     def _resolve_graph_rag(
@@ -253,4 +285,8 @@ class RealtimeSurfaceService:
             rag_search_config,
             embedder_secret_id,
             llm_secret_id,
+            rag_embedder_extra_headers=(
+                graph_rag.embedder.extra_headers if graph_rag.embedder else None
+            ),
+            rag_llm_extra_headers=graph_rag.llm.extra_headers if graph_rag.llm else None,
         )

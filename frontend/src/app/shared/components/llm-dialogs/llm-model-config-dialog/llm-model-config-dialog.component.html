@@ -1,4 +1,8 @@
-<div class="dialog">
+<div
+    class="dialog"
+    (appEnterSubmit)="onSave()"
+    [appEnterSubmitDisabled]="isSaveDisabled()"
+>
     <div class="header">
         <h2 class="title">
             {{ title() }}
@@ -36,6 +40,10 @@
                 />
                 <app-validation-errors [control]="form.get('model')!" />
             </div>
+            <app-llm-reasoning-effort-field
+                [control]="reasoningEffortControl"
+                [modelId]="selectedModelId()"
+            />
             <div>
                 <app-select
                     formControlName="api_key_secret_id"
@@ -47,6 +55,7 @@
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
+                <app-binned-secret-note [selected]="form.get('api_key_secret_id')?.value" />
                 @if (!form.get('api_key_secret_id')?.value) {
                     <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
@@ -173,6 +182,38 @@
                 [writeValueAsJSON]="false"
             />
         </section>
+
+        <section
+            class="section"
+            formGroupName="pricing"
+        >
+            <h3 class="title">PRICING</h3>
+            <div>
+                <app-input-number
+                    formControlName="input_price_per_million"
+                    [min]="0"
+                    [allowDecimal]="true"
+                    placeholder="Provider default"
+                    label="Input price (USD / 1M tokens)"
+                    [tooltipText]="TOKEN_PRICE_HINT"
+                />
+                <app-validation-errors [control]="form.get('pricing.input_price_per_million')!" />
+            </div>
+            <div>
+                <app-input-number
+                    formControlName="output_price_per_million"
+                    [min]="0"
+                    [allowDecimal]="true"
+                    placeholder="Provider default"
+                    label="Output price (USD / 1M tokens)"
+                    [tooltipText]="TOKEN_PRICE_HINT"
+                />
+                <app-validation-errors [control]="form.get('pricing.output_price_per_million')!" />
+            </div>
+            @if (form.get('pricing')?.hasError('pricePair') && form.get('pricing')?.touched) {
+                <app-validation-errors [control]="form.get('pricing')!" />
+            }
+        </section>
     </div>
 
     <div class="footer">
@@ -184,7 +225,7 @@
         </app-button>
         <app-button
             type="primary"
-            [disabled]="form.invalid || isSaving() || isLoading()"
+            [disabled]="isSaveDisabled()"
             (click)="onSave()"
         >
             {{ saveLabel() }}

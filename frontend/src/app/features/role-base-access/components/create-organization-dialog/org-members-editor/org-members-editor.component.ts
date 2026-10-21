@@ -10,6 +10,7 @@ import {
     SelectComponent,
     SelectItem,
     TableRow,
+    UserAvatarComponent,
 } from '@shared/components';
 import { ActionCode, FullMembership, ResourceCode, UserRole } from '@shared/models';
 import { catchError, concat, EMPTY, map, Observable, of, toArray } from 'rxjs';
@@ -30,7 +31,6 @@ import {
     roleToSelectItem,
     withRole,
 } from '../../../utils';
-import { UserAvatarComponent } from '../../user-avatar/user-avatar.component';
 
 interface MembershipSnapshot {
     membershipId: number;

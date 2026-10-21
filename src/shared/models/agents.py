@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .ai_providers import EmbedderData, LLMData
 from .knowledge import RagSearchConfig
+from .storage_scope import StorageCredentials
 from .tools import BaseToolData
 
 
@@ -52,6 +53,8 @@ class RealtimeAgentChatData(BaseModel):
     rag_embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
     rag_llm_api_key: str | None = None
     rag_llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    rag_embedder_extra_headers: dict[str, str] | None = None
+    rag_llm_extra_headers: dict[str, str] | None = None
     llm: LLMData | None = None
     rt_model_name: str
     rt_api_key: str | None = None
@@ -64,6 +67,7 @@ class RealtimeAgentChatData(BaseModel):
     memory: bool
     tools: list[BaseToolData] = []
     connection_key: str
+    storage_credentials: StorageCredentials | None = None
     wake_word: str | None
     stop_prompt: str | None
     language: str | None

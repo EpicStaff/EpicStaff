@@ -4,8 +4,7 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 # Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
 # sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
 # never executes arbitrary Python code. A service that gains a dependency with
-# no Linux wheel (psycopg2 is the audited exception elsewhere in this repo, via
-# UV_NO_BINARY_PACKAGE) will fail the build rather than silently regain source
+# no Linux wheel will fail the build rather than silently regain source
 # execution.
 #
 # UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
@@ -18,6 +17,7 @@ ENV UV_NO_BUILD=1 \
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
     UV_CACHE_DIR=/tmp/uv_cache \
+    UV_COMPILE_BYTECODE=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -49,12 +49,16 @@ RUN groupadd --system --gid 1000 app \
  && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
  && chown -R app:app /app
 
-# Add virtualenv to PATH
+# Add virtualenv to PATH.
+# LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
+# raw.githubusercontent.com on every `import litellm` (confirmed by runtime
+# trace, see the litellm finding in docs/backend-runtime-fetch-audit.md).
 ENV PATH="/app/src/agent/.venv/bin:$PATH" \
     PYTHONPATH=/app/src \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    VIRTUAL_ENV=/app/src/agent/.venv
+    VIRTUAL_ENV=/app/src/agent/.venv \
+    LITELLM_LOCAL_MODEL_COST_MAP=True
 
 WORKDIR /app/src/agent
 

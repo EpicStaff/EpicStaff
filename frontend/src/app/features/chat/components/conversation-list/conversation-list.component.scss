@@ -1,0 +1,86 @@
+@use '../../../../../styles/breakpoints' as bp;
+@use '../../../../../styles/touch';
+
+// Fills the column at any width (a phone included): nothing here has a fixed width.
+:host {
+    // Defined once: the section headers are this tall, and the scroller keeps this much clear under them.
+    --conversation-section-header-height: 40px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+
+    // A header is a toggle a finger has to hit.
+    @include bp.phone {
+        --conversation-section-header-height: #{touch.$target-size};
+    }
+}
+
+// The column's only scroller. Its sections are plain blocks one after another, so the column scrolls as one.
+.conversation-list__scroller {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    // Scrolling a focused row or a section into view leaves it below the stuck header.
+    scroll-padding-top: var(--conversation-section-header-height);
+}
+
+// Sticky within its own section: it stays on top while the section scrolls by and leaves with the section's end.
+.conversation-list__section-header {
+    position: sticky;
+    top: 0;
+    // Above the rows' own positioned parts (the Take over button) as they scroll under it.
+    z-index: 1;
+    background-color: var(--color-background-body);
+}
+
+.conversation-list__loading {
+    margin: 24px auto;
+}
+
+.conversation-list__loading-more {
+    display: flex;
+    justify-content: center;
+    padding: 8px;
+}
+
+.conversation-list__sentinel {
+    height: 1px;
+}
+
+// Positioned: a row fading out is taken out of the flow (absolute) so the rows below slide up at once.
+.conversation-list__rows {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+// A section's own empty state: every open section says what it is for, whatever the others hold.
+.conversation-list__section-empty {
+    padding: 16px;
+    text-align: center;
+}
+
+.conversation-list__empty-title,
+.conversation-list__empty-description {
+    margin: 0;
+}
+
+.conversation-list__empty-title {
+    color: var(--color-text-primary);
+}
+
+.conversation-list__empty-description {
+    margin-top: 4px;
+    color: var(--color-text-secondary);
+}
+
+// Why Waiting does not follow the sort order: it is a queue.
+.conversation-list__section-note {
+    margin: 0;
+    padding: 4px 12px;
+    color: var(--color-text-secondary);
+}

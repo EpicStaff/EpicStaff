@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { AppTableComponent, ConfirmationDialogService } from '@shared/components';
 import { GetRoleResponse, UserRole } from '@shared/models';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -52,7 +52,7 @@ const EDITED_USER: AggregatedUser = {
 function render() {
     TestBed.configureTestingModule({
         providers: [
-            { provide: DialogRef, useValue: { close: vi.fn() } },
+            { provide: DialogRef, useValue: { close: vi.fn(), keydownEvents: new Subject<KeyboardEvent>() } },
             { provide: DIALOG_DATA, useValue: { user: EDITED_USER } },
             { provide: AdminUserService, useValue: {} },
             { provide: MembershipsService, useValue: {} },

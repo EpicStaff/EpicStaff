@@ -17,13 +17,16 @@ from tables.services.storage_service.archive_unpacking.extraction_guard import (
 )
 from tables.services.storage_service.archive_unpacking.inspection import inspect_archive
 from tables.services.storage_service.archive_unpacking.names import strip_archive_suffix
+from tables.services.storage_service.dataclasses import BinPurgeGrant
+from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.path_utils import (
     check_new_name,
     check_path_length,
     sanitize_storage_path,
     storage_key,
 )
-from tables.services.storage_service.quota import org_free_bytes, record_files_within_quota
+from tables.services.storage_service.quota import org_writable_bytes, record_files_within_quota
+from tables.services.storage_service.recycle_bin import StorageRecycleBinService
 from tables.services.storage_service.upload.admission import get_upload_admission
 from tables.services.storage_service.upload.archive_members import ArchiveMemberUploader
 from tables.services.storage_service.upload.file_upload import save_stream
@@ -68,8 +71,13 @@ async def upload_archive(
     backend=None,
     validator: FileValidator | None = None,
     authorize_overwrite: Callable[[], None] | None = None,
+    user: object | None = None,
+    bin_purge: BinPurgeGrant | None = None,
 ) -> dict:
-    """Unpack an uploaded archive into a new storage folder, or store it as is if not an archive."""
+    """Unpack an uploaded archive into a new storage folder, or store it as is if not an archive.
+    `user` authors the rows the upload creates and last edits them. Only a `bin_purge`
+    grant lets an upload that doesn't fit purge the org's storage bin; `recycle_bin_purged`
+    in the result lists the entries purged, as PurgedBinEntry."""
     backend = backend or get_storage_backend(organization_prefix="")
     validator = validator or FileValidator()
     target = target_path(org_id, path, filename, validator)  # before the body is read
@@ -100,10 +108,10 @@ async def upload_archive(
 
             try:
                 # Thread-sensitive, so its DB work uses the request's connection.
-                # Validate the archive, unpack it into storage and write its rows;
-                # returns the response {"path", "extracted"} or _NOT_AN_ARCHIVE.
+                # Validate the archive, unpack it into storage and write its rows; returns
+                # the response {"path", "extracted", "recycle_bin_purged"} or _NOT_AN_ARCHIVE.
                 result = await sync_to_async(_unpack_to_storage)(
-                    org_id, path, filename, buffered, backend, validator
+                    org_id, path, filename, buffered, backend, validator, user, bin_purge
                 )
             except (
                 ValueError,
@@ -126,14 +134,18 @@ async def upload_archive(
                     total,
                     backend,
                     authorize_overwrite,
+                    user=user,
+                    bin_purge=bin_purge,
                 )
             return result
 
 
-def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
+def _unpack_to_storage(org_id, path, filename, buffered, backend, validator, user, bin_purge):
     """Validate the buffered archive, unpack it into a new "<name> (n)" folder and record it.
     On failure only the objects this call created are removed, never by name or prefix."""
-    free = org_free_bytes(org_id)
+    # Under a bin_purge grant the early rejects count the storage bin as freeable; the
+    # row write purges it.
+    free = org_writable_bytes(org_id, bin_purge=bin_purge)
 
     # The route is picked by name alone, so a plain file with an archive suffix lands here too.
     # Headers only, nothing is unpacked: entries, names, declared size vs. quota, executables.
@@ -176,12 +188,23 @@ def _unpack_to_storage(org_id, path, filename, buffered, backend, validator):
         for directory in empty_dirs:
             created.append(f"{folder_key}/{directory}/")
             backend.mkdir(f"{folder_key}/{directory}")
-        record_files_within_quota(org_id, files, [f"{folder}/{d}" for d in empty_dirs])
+        purged = record_files_within_quota(
+            org_id,
+            files,
+            [f"{folder}/{d}" for d in empty_dirs],
+            recycle_bin=StorageRecycleBinService(StorageManager(backend)),
+            bin_purge=bin_purge,
+            user=user,
+        )
     except BaseException:
         backend.discard_keys(created)
         raise
 
-    return {"path": folder, "extracted": [file_path for file_path, _ in files]}
+    return {
+        "path": folder,
+        "extracted": [file_path for file_path, _ in files],
+        "recycle_bin_purged": purged,
+    }
 
 
 def _reserve_folder(org_id: int, folder: str, backend) -> str:

@@ -33,7 +33,6 @@ from .node_serializers import (
     ClassificationConditionGroupSerializer,
     ClassificationDecisionTableNodeSerializer,
     ClassificationDecisionTablePromptSerializer,
-    ConditionalEdgeSerializer,
     ConditionGroupSerializer,
     ConditionSerializer,
     DecisionTableNodeSerializer,
@@ -98,7 +97,7 @@ from .tag_serializers import (
     LLMConfigTagSerializer,
     LLMModelTagSerializer,
 )
-from .webhook_serializers import WebhookTriggerSerializer
+from .webhook_serializers import WebhookTriggerFlowsSerializer, WebhookTriggerSerializer
 
 __all__ = [
     "AgentNodeSerializer",
@@ -113,7 +112,6 @@ __all__ = [
     "ClassificationDecisionTablePromptSerializer",
     "ConditionGroupSerializer",
     "ConditionSerializer",
-    "ConditionalEdgeSerializer",
     "ConversationRecordingSerializer",
     "DecisionTableNodeSerializer",
     "EdgeSerializer",
@@ -179,6 +177,7 @@ __all__ = [
     "TelegramWebhookInfoSerializer",
     "TwilioChannelSerializer",
     "UserSessionMessageSerializer",
+    "WebhookTriggerFlowsSerializer",
     "WebhookTriggerNodeReadSerializer",
     "WebhookTriggerNodeSerializer",
     "WebhookTriggerSerializer",

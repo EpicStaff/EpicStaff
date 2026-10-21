@@ -9,6 +9,8 @@ env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(env_file=BASE_DIR / "../.env")
 
+LOG_LEVEL = env.log_level("CREW_LOG_LEVEL", allowed=env.LOG_LEVELS_WITH_BENCH)
+
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")
 REDIS_USER = env.str("REDIS_USER")
@@ -63,3 +65,7 @@ DJANGO_HOST = env.str("DJANGO_HOST")
 DJANGO_PORT = env.int("DJANGO_PORT")
 DJANGO_API_KEY = env.str("DJANGO_API_KEY")
 KEY_VALUE_TIMEOUT = env.time("CREW_KEY_VALUE_TIMEOUT")
+
+# Safety net for the wait on a sandbox code-execution result.
+# None means "wait indefinitely".
+CODE_RESULT_TIMEOUT = env.time("CREW_CODE_RESULT_TIMEOUT")

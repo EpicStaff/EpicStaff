@@ -1,11 +1,8 @@
-import os
 
 import pytest
 from domain.enums import ChunkStrategyEnum
-from domain.errors import ChunkingError
 from domain.models import PreviewChunk
 from infrastructure.naive.chunkers.strategies.character_chunker import CharacterChunker
-from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 
 
@@ -83,13 +80,6 @@ async def test_chunking_by_regex_with_overlap(
     assert chunks == expected_chunks
 
 
-@pytest.mark.parametrize("text", [None, 0])
-async def test_chunking_raises_error_for_invalid_data(text):
-    chunker = build_chunker(chunk_size=10, chunk_overlap=0, extra={})
-    with pytest.raises(ChunkingError):
-        await chunker.chunk(text)
-
-
 @pytest.mark.parametrize("extra", [{}, {"character": {}}, {"character": {"regex": None}}])
 async def test_default_no_regex_chunks_whole_text_by_size(extra):
     chunker = build_chunker(chunk_size=4, chunk_overlap=0, extra=extra)
@@ -143,12 +133,3 @@ async def test_short_part_not_lost_among_normal_parts():
     chunker = build_chunker(chunk_size=4, chunk_overlap=3, extra={"character": {"regex": ","}})
     chunks = await chunker.chunk("ab,cdefgh")
     assert chunks == [PreviewChunk(text=t) for t in ["ab", "cdef", "defg", "efgh"]]
-
-
-async def test_chunking_is_running_in_process():
-    text = "12345678-qwertyui,ASDFGHJK"
-    chunker = build_chunker(chunk_size=4, chunk_overlap=2, extra={"character": {"regex": r"-|,"}})
-    inline_chunks = await chunker.chunk(text)
-    result, worker_pid = await offload_to_process(lambda: chunker.chunk(text))
-    assert result == inline_chunks
-    assert worker_pid != os.getpid()

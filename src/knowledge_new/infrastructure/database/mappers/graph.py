@@ -1,5 +1,6 @@
 from domain.enums import SlotEnum
-from domain.models import Rag
+from domain.errors import GraphRagConfigNotFoundError
+from domain.models import EmbeddingConfig, GraphPricingConfig, Rag
 from graphrag.config.models.cluster_graph_config import ClusterGraphConfig
 from graphrag.config.models.extract_graph_config import ExtractGraphConfig
 from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -15,26 +16,61 @@ from infrastructure.database.models import (
 )
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.vector_stores import create_vector_store_config
+from loguru import logger
+from src.shared.models.ai_providers import LLMConfigData
+
+# GraphRAG never sends an LLM config's stop sequences or timeout. Stop sequences written
+# for agents would cut extraction output short, and the config's timeout (120 s by
+# default) would abort long extraction and community-report calls.
+_GRAPHRAG_EXCLUDED_GENERATION_FIELDS = {"stop", "timeout"}
+
+
+def _parse_logit_bias(llm_config: LLMConfig) -> dict[int, float] | None:
+    """Return the config's logit_bias with integer token ids, or None if it is malformed.
+
+    The column is JSON, so token ids arrive as string keys. A key or value that is not
+    numeric is dropped with a warning instead of failing the whole GraphRAG config.
+    """
+    raw_logit_bias = llm_config.logit_bias
+    if not raw_logit_bias:
+        return None
+    try:
+        return {int(token_id): float(bias) for token_id, bias in raw_logit_bias.items()}
+    except (AttributeError, TypeError, ValueError):
+        logger.warning(
+            "Ignoring malformed logit_bias on LLM config {}: {!r}",
+            llm_config.id,
+            raw_logit_bias,
+        )
+        return None
 
 
 def _build_completion_model(llm_config: LLMConfig) -> ModelConfig:
     llm_model = llm_config.model
-
-    call_args = {}
-    if llm_config.temperature is not None:
-        call_args["temperature"] = llm_config.temperature
-    if llm_config.max_tokens is not None:
-        call_args["max_tokens"] = llm_config.max_tokens
-    if llm_config.top_p is not None:
-        call_args["top_p"] = llm_config.top_p
+    provider = llm_model.llm_provider.name
+    # stop and timeout are left out here as well as excluded below: stop is unvalidated
+    # JSON, and a value GraphRAG discards must not be able to fail the config build.
+    llm_config_data = LLMConfigData(
+        model=llm_model.name,
+        temperature=llm_config.temperature,
+        top_p=llm_config.top_p,
+        max_tokens=llm_config.max_tokens,
+        presence_penalty=llm_config.presence_penalty,
+        frequency_penalty=llm_config.frequency_penalty,
+        logit_bias=_parse_logit_bias(llm_config),
+        seed=llm_config.seed,
+        reasoning_effort=llm_config.reasoning_effort,
+    )
 
     return ModelConfig(
-        model_provider=llm_model.llm_provider.name,
+        model_provider=provider,
         model=llm_model.name,
         api_key="dummy",
         api_base=llm_model.base_url,
         api_version=llm_model.api_version,
-        call_args=call_args,
+        call_args=llm_config_data.to_litellm_kwargs(
+            provider=provider, exclude=_GRAPHRAG_EXCLUDED_GENERATION_FIELDS
+        ),
     )
 
 
@@ -116,3 +152,32 @@ def graph_rag_update_values(rag: Rag) -> dict:
         "outdated_reasons": rag.outdated_reasons or {},
         "slot": rag.slot,
     }
+
+
+def graph_rag_orm_to_pricing_config(orm_rag: GraphRag) -> GraphPricingConfig:
+    """Map a GraphRag with its relations loaded to the config needed to price its usage.
+
+    Raises:
+        GraphRagConfigNotFoundError: If the LLM or embedder has no model or provider set.
+    """
+    llm_config: LLMConfig = orm_rag.llm
+    llm_model = llm_config.model
+    embedding_model = orm_rag.embedder.model
+    if (
+        llm_model is None
+        or llm_model.llm_provider is None
+        or embedding_model is None
+        or embedding_model.embedding_provider is None
+    ):
+        raise GraphRagConfigNotFoundError(rag_id=orm_rag.graph_rag_id)
+    return GraphPricingConfig(
+        embedding=EmbeddingConfig(
+            provider=embedding_model.embedding_provider.name.lower(),
+            model=embedding_model.name,
+            base_url=embedding_model.base_url or None,
+        ),
+        llm_provider=llm_model.llm_provider.name.lower(),
+        llm_model=llm_model.name,
+        input_cost_per_token=llm_config.input_cost_per_token,
+        output_cost_per_token=llm_config.output_cost_per_token,
+    )

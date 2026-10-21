@@ -8,6 +8,17 @@
         (mainClick)="exportAsJson()"
         (itemClick)="onExportItemSelected($event)"
     />
+
+    <app-button
+        type="outline-secondary"
+        mod="small"
+        leftIcon="decision-tree"
+        iconSize="10px"
+        matTooltip="View this table as a read-only flowchart"
+        matTooltipPosition="below"
+        (click)="openDecisionTree()"
+        >Decision Tree</app-button
+    >
 </ng-template>
 
 <div class="panel-container">
@@ -114,9 +125,12 @@
                             [llmConfigs]="llmConfigOptions()"
                             [preInputMapKeys]="inputMapVariableNames()"
                             [domainKeys]="domainKeys()"
+                            [routePortIdsWithTarget]="routePortIdsWithTarget()"
                             [readonly]="isReadOnly()"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
                             (sectionsChange)="onSectionsChange($event)"
+                            (enableContinueRequest)="onEnableContinueRequest($event)"
+                            (ruleIdentityEdit)="onRuleIdentityEdit($event)"
                             (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
                             (promptAdd)="onPromptAdd($event.id, $event.config)"
                             (openPromptLibrary)="onOpenPromptLibrary($event)"
@@ -169,6 +183,11 @@
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
                             ></app-custom-input>
+                            <app-execution-timeout-field
+                                [field]="preExecutionTimeout"
+                                [readonly]="isReadOnly()"
+                                label="Pre-computation execution timeout"
+                            />
                             <app-node-storage-section
                                 [useStorage]="preUseStorage()"
                                 (onToggleChange)="onPreStorageToggle($event)"
@@ -245,6 +264,11 @@
                                 [activeColor]="activeColor"
                                 [readonly]="isReadOnly()"
                             ></app-custom-input>
+                            <app-execution-timeout-field
+                                [field]="postExecutionTimeout"
+                                [readonly]="isReadOnly()"
+                                label="Post-computation execution timeout"
+                            />
                             <app-node-storage-section
                                 [useStorage]="postUseStorage()"
                                 (onToggleChange)="onPostStorageToggle($event)"

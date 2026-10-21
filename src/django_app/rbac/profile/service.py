@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models.functions import Lower
+from django.utils import timezone
 from loguru import logger
 
 from rbac.access.resolver import PermissionResolver
@@ -107,16 +108,47 @@ class UserProfileService:
 
     # ---- profile field updates ----
 
-    def update_display_name(self, user, display_name: str | None):
-        """Set or clear display_name. None clears (column allows NULL)."""
-        user.display_name = display_name
-        user.save(update_fields=["display_name", "updated_at"])
-        logger.info(
-            "profile.display_name_updated user_id={} cleared={}",
-            user.id,
-            display_name is None,
-        )
+    def update_profile(self, user, changes: dict):
+        update_fields = []
+        if "display_name" in changes:
+            user.display_name = changes["display_name"]
+            update_fields.append("display_name")
+        if "custom_shortcuts" in changes:
+            user.custom_shortcuts = changes["custom_shortcuts"]
+            update_fields.append("custom_shortcuts")
+        if not update_fields:
+            return user
+
+        user.save(update_fields=[*update_fields, "updated_at"])
+        if "display_name" in changes:
+            logger.info(
+                "profile.display_name_updated user_id={} cleared={}",
+                user.id,
+                changes["display_name"] is None,
+            )
+        if "custom_shortcuts" in changes:
+            logger.info(
+                "profile.custom_shortcuts_updated user_id={} custom={} overrides={}",
+                user.id,
+                len(changes["custom_shortcuts"]["custom"]),
+                len(changes["custom_shortcuts"]["overrides"]),
+            )
         return user
+
+    def complete_quickstart_tour(self, user) -> None:
+        """Record that the user finished or skipped the Quick Start tour.
+
+        Idempotent: the first timestamp wins. The conditional UPDATE runs as a
+        single statement, so concurrent calls (two tabs closing the tour at once)
+        cannot overwrite it. `updated_at` is deliberately left alone — this is a
+        UI preference, not a profile edit.
+        """
+        User = get_user_model()  # noqa: N806
+        marked = User.objects.filter(pk=user.pk, quickstart_tour_completed_at__isnull=True).update(
+            quickstart_tour_completed_at=timezone.now()
+        )
+        if marked:
+            logger.info("profile.quickstart_tour_completed user_id={}", user.pk)
 
     # ---- avatar ----
 

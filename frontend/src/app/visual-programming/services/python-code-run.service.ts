@@ -8,7 +8,10 @@ import { ConfigService } from '../../services/config';
 /** Poll cadence and limits for python-code-result. */
 const POLL_INITIAL_DELAY_MS = 1000;
 const POLL_INTERVAL_MS = 2000;
-const POLL_TIMEOUT_MS = 60000;
+/** How long past the code's execution timeout to wait: queueing, installing the libraries and publishing the result come on top. */
+const POLL_DEADLINE_GRACE_MS = 60_000;
+/** The longest delay `setTimeout` keeps: a longer one overflows and fires at once. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 const MAX_NOT_FOUND_RETRIES = 3;
 
@@ -70,7 +73,8 @@ export class PythonCodeRunService {
         );
     }
 
-    pollResultWithEvents(executionId: string): Observable<PollEvent> {
+    /** Polls the result of run `executionId`, giving up a grace period after the code's `executionTimeoutSeconds`. */
+    pollResultWithEvents(executionId: string, executionTimeoutSeconds: number): Observable<PollEvent> {
         let attempt = 0;
         let notFoundRetries = 0;
 
@@ -114,11 +118,15 @@ export class PythonCodeRunService {
             )
         );
 
-        const deadline$: Observable<PollEvent> = timer(POLL_TIMEOUT_MS).pipe(
+        const deadline$: Observable<PollEvent> = timer(
+            Math.min(executionTimeoutSeconds * 1000 + POLL_DEADLINE_GRACE_MS, MAX_TIMER_DELAY_MS)
+        ).pipe(
             switchMap(() =>
                 throwError(
                     () =>
-                        new Error('Execution timed out after 60 seconds. The code may still be running on the server.')
+                        new Error(
+                            `No result within the execution timeout of ${executionTimeoutSeconds} s and a grace period. The code may still be running on the server.`
+                        )
                 )
             )
         );

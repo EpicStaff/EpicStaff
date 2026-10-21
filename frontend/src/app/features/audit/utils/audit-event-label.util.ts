@@ -1,4 +1,3 @@
-import { RUN_TYPE_OPTIONS } from '../models/audit-filter-options';
 import { AuditSessionEvent } from '../models/audit-session.models';
 
 const EVENT_TYPE_LABELS = new Map<string, string>([
@@ -34,12 +33,9 @@ export function auditEventLabel(event: AuditSessionEvent): string | null {
     return EVENT_TYPE_LABELS.get(type) ?? humanize(type);
 }
 
-export function auditRunTypeLabel(runType: string | null): string | null {
-    const type = runType?.trim() ?? '';
-    if (type === '') {
-        return null;
-    }
-    return RUN_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? humanize(type);
+// FILE_EXTRACTOR → "File extractor"
+export function auditNodeTypeLabel(nodeType: string): string {
+    return humanize(nodeType.toLowerCase());
 }
 
 export function auditNameLabel(event: AuditSessionEvent): string | null {

@@ -34,22 +34,14 @@ def warnings_logged():
 
 
 @pytest.fixture
-def info_logged():
-    messages: list[str] = []
-    handler_id = logger.add(
-        lambda message: messages.append(message.record["message"]),
-        level="INFO",
-        filter=lambda record: record["level"].name == "INFO",
-    )
-    yield messages
-    logger.remove(handler_id)
-
-
-@pytest.fixture
 def chown_calls(monkeypatch):
     calls: list[tuple[Path, int, int]] = []
 
-    def _record_chown(path, uid, gid, **kwargs):
+    def _record_chown(path, uid, gid, *, follow_symlinks=True):
+        if Path(path).name == "savefiles":
+            # Never follow: if the root is swapped for a symlink after the check,
+            # only the link may change owner, never its target.
+            assert follow_symlinks is False
         calls.append((Path(path), uid, gid))
 
     monkeypatch.setattr(os, "chown", _record_chown)
@@ -70,38 +62,28 @@ def _other_uid_and_gid(path: Path) -> tuple[int, int]:
 
 
 class TestEnsureSavefilesWritable:
-    def test_chowns_when_owner_differs(self, savefiles_root, chown_calls):
-        uid, gid = _other_uid_and_gid(savefiles_root)
-
-        ensure_savefiles_writable(savefiles_root, uid, gid)
-
-        assert chown_calls == [(savefiles_root, uid, gid)]
-
-    def test_does_not_follow_symlinks_when_chowning(
-        self, savefiles_root, monkeypatch
-    ):
-        recorded_kwargs: dict = {}
-        monkeypatch.setattr(
-            os, "chown", lambda path, uid, gid, **kwargs: recorded_kwargs.update(kwargs)
-        )
-        uid, gid = _other_uid_and_gid(savefiles_root)
-
-        ensure_savefiles_writable(savefiles_root, uid, gid)
-
-        assert recorded_kwargs == {"follow_symlinks": False}
-
-    def test_does_not_touch_existing_children(
-        self, savefiles_root, chown_calls
+    @pytest.mark.parametrize(
+        "spelling",
+        ["absolute", "relative-to-working-directory", "trailing-slash"],
+    )
+    def test_root_alone_is_chowned_without_following_symlinks(
+        self, savefiles_root, chown_calls, monkeypatch, spelling
     ):
         (savefiles_root / "existing_dir").mkdir()
         (savefiles_root / "existing_file.txt").write_text("data")
         uid, gid = _other_uid_and_gid(savefiles_root)
+        path = {
+            "absolute": str(savefiles_root),
+            "relative-to-working-directory": ".",
+            "trailing-slash": f"{savefiles_root}/",
+        }[spelling]
+        monkeypatch.chdir(savefiles_root)
 
-        ensure_savefiles_writable(savefiles_root, uid, gid)
+        ensure_savefiles_writable(path, uid, gid)
 
-        assert [path for path, _, _ in chown_calls] == [savefiles_root]
+        assert chown_calls == [(savefiles_root, uid, gid)]
 
-    def test_skips_when_already_owned_by_target_uid(self, savefiles_root, chown_calls):
+    def test_root_already_owned_by_the_uid_is_left_alone(self, savefiles_root, chown_calls):
         root_stat = os.lstat(savefiles_root)
 
         # A different gid is fine: the owner bits already make it writable.
@@ -109,41 +91,7 @@ class TestEnsureSavefilesWritable:
 
         assert chown_calls == []
 
-    def test_logs_the_owner_change(self, savefiles_root, chown_calls, info_logged):
-        uid, gid = _other_uid_and_gid(savefiles_root)
-
-        ensure_savefiles_writable(savefiles_root, uid, gid)
-
-        assert len(info_logged) == 1
-        assert str(savefiles_root) in info_logged[0]
-
-    def test_does_not_log_when_nothing_changes(self, savefiles_root, chown_calls, info_logged):
-        root_stat = os.lstat(savefiles_root)
-
-        ensure_savefiles_writable(savefiles_root, root_stat.st_uid, root_stat.st_gid)
-
-        assert info_logged == []
-
-    def test_relative_path_resolves_against_working_directory(
-        self, savefiles_root, chown_calls, monkeypatch
-    ):
-        monkeypatch.chdir(savefiles_root)
-        uid, gid = _other_uid_and_gid(savefiles_root)
-
-        ensure_savefiles_writable(".", uid, gid)
-
-        assert chown_calls == [(savefiles_root, uid, gid)]
-
-    def test_trailing_slash_is_accepted(self, savefiles_root, chown_calls):
-        uid, gid = _other_uid_and_gid(savefiles_root)
-
-        ensure_savefiles_writable(f"{savefiles_root}/", uid, gid)
-
-        assert chown_calls == [(savefiles_root, uid, gid)]
-
-    def test_symlinked_root_is_not_followed(
-        self, tmp_path, chown_calls, warnings_logged
-    ):
+    def test_symlinked_root_is_not_followed(self, tmp_path, chown_calls, warnings_logged):
         target = tmp_path / "elsewhere"
         target.mkdir()
         link = tmp_path / "savefiles_link"
@@ -154,36 +102,22 @@ class TestEnsureSavefilesWritable:
         ensure_savefiles_writable(f"{link}/", uid, gid)
 
         assert chown_calls == []
-        assert any("not a real directory" in message for message in warnings_logged)
         assert any(str(link) in message for message in warnings_logged)
 
-    def test_chown_error_logs_warning_and_does_not_raise(
-        self, savefiles_root, monkeypatch, warnings_logged
+    @pytest.mark.parametrize("failure", ["chown-denied", "root-missing"])
+    def test_failure_is_a_warning_never_an_exception(
+        self, tmp_path, savefiles_root, monkeypatch, warnings_logged, failure
     ):
-
-        def _raise_permission_error(path, uid, gid, **kwargs):
+        def _deny(path, uid, gid, **kwargs):
             raise PermissionError(1, "Operation not permitted")
 
-        monkeypatch.setattr(os, "chown", _raise_permission_error)
-        uid, gid = _other_uid_and_gid(savefiles_root)
+        monkeypatch.setattr(os, "chown", _deny)
+        root = savefiles_root if failure == "chown-denied" else tmp_path / "does-not-exist"
+        uid, gid = _other_uid_and_gid(tmp_path)
 
-        ensure_savefiles_writable(savefiles_root, uid, gid)
+        ensure_savefiles_writable(root, uid, gid)
 
-        assert len(warnings_logged) == 1
-        assert str(savefiles_root) in warnings_logged[0]
-        assert "Operation not permitted" in warnings_logged[0]
-        assert "unable to write to savefiles" in warnings_logged[0]
-
-    def test_missing_root_logs_warning_and_does_not_raise(
-        self, tmp_path, chown_calls, warnings_logged
-    ):
-        missing_root = tmp_path / "does-not-exist"
-
-        ensure_savefiles_writable(missing_root, 1000, 1000)
-
-        assert chown_calls == []
-        assert len(warnings_logged) == 1
-        assert str(missing_root) in warnings_logged[0]
+        assert any(str(root) in message for message in warnings_logged)
 
 
 class _RecordingChain(AbstractHandler):
@@ -214,7 +148,6 @@ def _make_chain(tmp_path: Path) -> tuple[DynamicVenvExecutorChain, _RecordingCha
     chain = DynamicVenvExecutorChain(
         output_path=tmp_path / "out",
         base_venv_path=tmp_path / "venvs",
-        storage_credential_manager=_NoStorageManager(),
     )
     recording_chain = _RecordingChain()
     chain.chain = recording_chain

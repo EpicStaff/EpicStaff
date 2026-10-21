@@ -26,8 +26,8 @@ class Emitter(ABC):
     """Abstract output transport for agent execution events.
 
     Subclasses must implement all six lifecycle hooks.  Implementations may
-    buffer events internally (``RedisStreamBatchEmitter``), buffer while also
-    publishing select events live (``RedisStreamToolEventEmitter``), or
+    publish only the final result (``RedisStreamBatchEmitter``), also
+    publish select events live (``RedisStreamToolEventEmitter``), or
     publish each event immediately (future ``RedisStreamDeltaEmitter``).
 
     ``RequestHandler`` holds a reference to the emitter and also constructs
@@ -102,11 +102,16 @@ class Emitter(ABC):
         return
 
     async def on_knowledge_search(
-        self, target: object, query: str, result: object, error: str | None = None
+        self,
+        target: object,
+        query: str,
+        result: object,
+        error: str | None = None,
+        usage: object | None = None,
     ) -> None:
         """Optional hook: called after a knowledge-search executor finishes,
         carrying the search target, query, and result (or ``error`` when the
-        search failed).
+        search failed), plus the embedding ``usage`` the search consumed.
 
         Default is a no-op; implementations that publish a dedicated
         ``agent.knowledge_search`` envelope override it.

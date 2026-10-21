@@ -10,7 +10,7 @@ other suites rely on).
 import pytest
 from rest_framework.test import APIClient
 
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole
 
 
@@ -80,3 +80,32 @@ def superadmin(db, django_user_model):
         password="StrongPass123!",
         is_superadmin=True,
     )
+
+
+@pytest.fixture
+def custom_role_user(db, django_user_model):
+    """Factory → a member of `org` with a custom role holding exactly `permissions`.
+
+    `permissions` maps a ResourceType to a Permission bitmask; built-in roles grant
+    fixed bundles, so a test needing e.g. secrets READ without USE builds its own.
+    """
+
+    def _make(org, email, permissions):
+        role = Role.objects.create(name=f"role-{email}", org=org, is_built_in=False)
+        for resource_type, bitmask in permissions.items():
+            RolePermission.objects.create(
+                role=role, resource_type=resource_type.value, permissions=int(bitmask)
+            )
+        user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+        OrganizationUser.objects.create(user=user, org=org, role=role)
+        return user
+
+    return _make
+
+
+@pytest.fixture
+def superadmin_in_acme(client_as, superadmin, acme):
+    """A superadmin client with Acme as the active org (superadmins need the header too)."""
+    client = client_as(superadmin)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    return client

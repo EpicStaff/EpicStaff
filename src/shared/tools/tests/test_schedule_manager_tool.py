@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -35,6 +37,55 @@ def _mock_httpx_client(monkeypatch, handler):
 def _configure(module, graph_id=7, api_key="test-key"):
     module.graph_id = graph_id
     module.api_key = api_key
+
+
+_AUTHORSHIP_KEYS = {"created_by", "last_edited_by", "last_edited_at"}
+
+_SCHEDULE_BLOCK = {
+    "run_mode": "once",
+    "timezone": "UTC",
+    "start_date_time": "2026-07-06T09:15:00",
+    "interval": {"every": None, "unit": None, "weekdays": None},
+    "end": {"type": "never", "date_time": None, "max_runs": None},
+}
+
+
+def _schedule_with_authorship(schedule_id, node_name="nightly"):
+    return {
+        "id": schedule_id,
+        "graph": 7,
+        "node_name": node_name,
+        "is_active": True,
+        "schedule": _SCHEDULE_BLOCK,
+        "created_by": {
+            "id": 3,
+            "display_name": "Jane Colleague",
+            "avatar_url": "http://djangoapp:8000/media/avatars/3.png",
+        },
+        "last_edited_by": {
+            "id": 4,
+            "display_name": "John Colleague",
+            "avatar_url": "http://djangoapp:8000/media/avatars/4.png",
+        },
+        "last_edited_at": "2026-07-05T12:00:00Z",
+    }
+
+
+def _assert_no_authorship_anywhere(value):
+    if isinstance(value, dict):
+        assert not _AUTHORSHIP_KEYS & value.keys(), value
+        for nested in value.values():
+            _assert_no_authorship_anywhere(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            _assert_no_authorship_anywhere(nested)
+
+
+def _assert_schedule_fields_kept(returned, schedule_id, node_name="nightly"):
+    assert returned["id"] == schedule_id
+    assert returned["graph"] == 7
+    assert returned["node_name"] == node_name
+    assert returned["schedule"] == _SCHEDULE_BLOCK
 
 
 class TestScheduleManagerToolCreate:
@@ -106,18 +157,6 @@ class TestScheduleManagerToolCreate:
 
         assert "Error" not in result
 
-    def test_create_invalid_graph_id_returns_readable_error(self):
-        _configure(schedule_module, graph_id="not-a-number")
-
-        result = schedule_main(
-            action="create",
-            run_mode="once",
-            start_date_time="2026-07-06T09:15:00",
-        )
-
-        assert result.startswith("Error:")
-        assert "graph_id" in result
-
     def test_create_applies_jitter_on_round_boundary(self, monkeypatch):
         _configure(schedule_module)
         captured = {}
@@ -170,39 +209,24 @@ class TestScheduleManagerToolCreate:
 
         assert captured["start"] == "2026-07-06T09:00:00"
 
-    def test_create_repeat_requires_unit_with_every(self):
+    def test_create_result_omits_authorship(self, monkeypatch):
         _configure(schedule_module)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(201, json=_schedule_with_authorship(55))
+
+        _mock_httpx_client(monkeypatch, handler)
 
         result = schedule_main(
             action="create",
-            run_mode="repeat",
-            start_date_time="2026-07-06T09:15:00",
-            every=2,
-        )
-
-        assert result.startswith("Error:")
-        assert "every" in result and "unit" in result
-
-    def test_create_missing_start_date_time(self):
-        _configure(schedule_module)
-
-        result = schedule_main(action="create", run_mode="once")
-
-        assert result.startswith("Error:")
-        assert "start_date_time" in result
-
-    def test_create_after_n_runs_requires_max_runs(self):
-        _configure(schedule_module)
-
-        result = schedule_main(
-            action="create",
+            node_name="nightly",
             run_mode="once",
             start_date_time="2026-07-06T09:15:00",
-            end_type="after_n_runs",
         )
 
-        assert result.startswith("Error:")
-        assert "max_runs" in result
+        returned = json.loads(result)
+        _assert_no_authorship_anywhere(returned)
+        _assert_schedule_fields_kept(returned["created"], 55)
 
 
 class TestScheduleManagerToolList:
@@ -263,6 +287,31 @@ class TestScheduleManagerToolList:
         assert '"count_returned": 100' in result
         assert '"truncated": true' in result
 
+    def test_list_results_omit_authorship(self, monkeypatch):
+        _configure(schedule_module)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "count": 2,
+                    "results": [
+                        _schedule_with_authorship(1, node_name="a"),
+                        _schedule_with_authorship(2, node_name="b"),
+                    ],
+                },
+            )
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = schedule_main(action="list")
+
+        returned = json.loads(result)
+        _assert_no_authorship_anywhere(returned)
+        assert returned["count_returned"] == 2
+        _assert_schedule_fields_kept(returned["schedules"][0], 1, node_name="a")
+        _assert_schedule_fields_kept(returned["schedules"][1], 2, node_name="b")
+
 
 class TestScheduleManagerToolUpdate:
     def test_update_toggle_is_active_only(self, monkeypatch):
@@ -299,41 +348,19 @@ class TestScheduleManagerToolUpdate:
 
         assert "Error" not in result
 
-    def test_update_missing_schedule_id(self):
-        _configure(schedule_module)
-
-        result = schedule_main(action="update")
-
-        assert result.startswith("Error:")
-        assert "schedule_id" in result
-
-    def test_update_rejects_cross_graph_schedule(self, monkeypatch):
-        _configure(schedule_module, graph_id=7)
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, json={"id": 10, "graph": 999, "node_name": "other-org"}
-            )
-
-        _mock_httpx_client(monkeypatch, handler)
-
-        result = schedule_main(action="update", schedule_id=10, is_active=False)
-
-        assert result.startswith("Error:")
-        assert "another graph" in result
-
-    def test_update_unknown_schedule_id(self, monkeypatch):
+    def test_update_result_omits_authorship(self, monkeypatch):
         _configure(schedule_module)
 
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(404)
+            return httpx.Response(200, json=_schedule_with_authorship(10))
 
         _mock_httpx_client(monkeypatch, handler)
 
-        result = schedule_main(action="update", schedule_id=9999, is_active=False)
+        result = schedule_main(action="update", schedule_id=10, node_name="nightly")
 
-        assert result.startswith("Error:")
-        assert "not found" in result
+        returned = json.loads(result)
+        _assert_no_authorship_anywhere(returned)
+        _assert_schedule_fields_kept(returned["updated"], 10)
 
 
 class TestScheduleManagerToolDelete:
@@ -352,66 +379,8 @@ class TestScheduleManagerToolDelete:
 
         assert '"deleted": 10' in result
 
-    def test_delete_missing_schedule_id(self):
-        _configure(schedule_module)
-
-        result = schedule_main(action="delete")
-
-        assert result.startswith("Error:")
-        assert "schedule_id" in result
-
-    def test_delete_rejects_cross_graph_schedule(self, monkeypatch):
-        _configure(schedule_module, graph_id=7)
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"id": 10, "graph": 999})
-
-        _mock_httpx_client(monkeypatch, handler)
-
-        result = schedule_main(action="delete", schedule_id=10)
-
-        assert result.startswith("Error:")
-        assert "another graph" in result
-
-    def test_delete_unknown_schedule_id(self, monkeypatch):
-        _configure(schedule_module)
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(404)
-
-        _mock_httpx_client(monkeypatch, handler)
-
-        result = schedule_main(action="delete", schedule_id=9999)
-
-        assert result.startswith("Error:")
-        assert "not found" in result
-
 
 class TestScheduleManagerToolGeneral:
-    def test_invalid_action_returns_error(self):
-        _configure(schedule_module)
-
-        result = schedule_main(action="destroy")
-
-        assert result.startswith("Error:")
-        assert "action" in result
-
-    def test_missing_graph_id_returns_error(self):
-        schedule_module.api_key = "test-key"
-
-        result = schedule_main(action="list")
-
-        assert result.startswith("Error:")
-        assert "graph_id" in result
-
-    def test_missing_api_key_returns_error(self):
-        schedule_module.graph_id = 7
-
-        result = schedule_main(action="list")
-
-        assert result.startswith("Error:")
-        assert "api_key" in result
-
     def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
         """Regression test (smoke test): python_code.global_kwargs
         folds user_input config (graph_id/api_key) into func_kwargs, so
@@ -431,22 +400,87 @@ class TestScheduleManagerToolGeneral:
         assert "Error" not in result
 
 
-class TestScheduleManagerToolHeaders:
-    """org_id (server-side resolved from Graph.org_id, injected by
-    the crew engine) must be sent as X-Organization-Id so
-    /schedule-trigger-nodes/ (org-scoped) doesn't 400 with
-    org_context_required."""
+def _refuse_requests(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"no request expected, got {request.method} {request.url}")
 
-    def test_headers_includes_org_header_when_org_id_injected(self):
-        schedule_module.org_id = 42
+    _mock_httpx_client(monkeypatch, handler)
 
-        headers = schedule_module._headers("test-key")
 
-        assert headers["X-Organization-Id"] == "42"
-        assert headers["X-Api-Key"] == "test-key"
+@pytest.mark.parametrize(
+    ("config", "kwargs", "mentions"),
+    [
+        ({"graph_id": "not-a-number"}, {"action": "create", "run_mode": "once", "start_date_time": "2026-07-06T09:15:00"}, ("graph_id",)),
+        ({}, {"action": "create", "run_mode": "repeat", "start_date_time": "2026-07-06T09:15:00", "every": 2}, ("every", "unit")),
+        ({}, {"action": "create", "run_mode": "once"}, ("start_date_time",)),
+        ({}, {"action": "create", "run_mode": "once", "start_date_time": "2026-07-06T09:15:00", "end_type": "after_n_runs"}, ("max_runs",)),
+        ({}, {"action": "update"}, ("schedule_id",)),
+        ({}, {"action": "delete"}, ("schedule_id",)),
+        ({}, {"action": "destroy"}, ("action",)),
+        ({"graph_id": None}, {"action": "list"}, ("graph_id",)),
+        ({"api_key": None}, {"action": "list"}, ("api_key",)),
+    ],
+    ids=[
+        "bad-graph-id", "repeat-every-without-unit", "no-start", "after-n-runs-without-max",
+        "update-without-id", "delete-without-id", "unknown-action", "no-graph-id", "no-api-key",
+    ],
+)
+def test_invalid_call_is_explained_without_calling_django(monkeypatch, config, kwargs, mentions):
+    for name, value in {"graph_id": 7, "api_key": "test-key", **config}.items():
+        if value is not None:
+            setattr(schedule_module, name, value)
+    _refuse_requests(monkeypatch)
 
-    def test_headers_omits_org_header_when_org_id_absent(self):
-        headers = schedule_module._headers("test-key")
+    result = schedule_main(**kwargs)
 
-        assert "X-Organization-Id" not in headers
-        assert headers["X-Api-Key"] == "test-key"
+    assert result.startswith("Error:")
+    for word in mentions:
+        assert word in result
+
+
+@pytest.mark.parametrize("action", ["update", "delete"])
+@pytest.mark.parametrize(
+    ("response", "message"),
+    [
+        (httpx.Response(200, json={"id": 10, "graph": 999, "node_name": "other-org"}), "another graph"),
+        (httpx.Response(404), "not found"),
+    ],
+    ids=["another-graphs-schedule", "unknown-schedule"],
+)
+def test_schedule_outside_this_graph_is_not_touched(monkeypatch, action, response, message):
+    _configure(schedule_module, graph_id=7)
+    methods = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        methods.append(request.method)
+        return response
+
+    _mock_httpx_client(monkeypatch, handler)
+
+    result = schedule_main(action=action, schedule_id=10, is_active=False)
+
+    assert result.startswith("Error:")
+    assert message in result
+    assert methods == ["GET"]
+
+
+@pytest.mark.parametrize(("org_id", "expected_header"), [(42, "42"), (None, None)], ids=["org-injected", "no-org"])
+def test_requests_carry_the_api_key_and_the_injected_org(monkeypatch, org_id, expected_header):
+    """org_id (resolved server-side from Graph.org_id, injected by crew) must be sent
+    as X-Organization-Id: /schedule-trigger-nodes/ is org-scoped."""
+    _configure(schedule_module)
+    if org_id is not None:
+        schedule_module.org_id = org_id
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers)
+        return httpx.Response(200, json={"count": 0, "results": []})
+
+    _mock_httpx_client(monkeypatch, handler)
+
+    schedule_main(action="list")
+
+    (headers,) = seen
+    assert headers["X-Api-Key"] == "test-key"
+    assert headers.get("X-Organization-Id") == expected_header

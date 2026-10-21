@@ -1,6 +1,6 @@
 """
-RedisStreamBatchEmitter: buffers all mid-execution events and publishes a
-single ``agent.result`` (or ``agent.error``) envelope to the run's own result
+RedisStreamBatchEmitter: publishes a single ``agent.result`` (or
+``agent.error``) envelope to the run's own result
 stream (``<prefix>:<correlation_id>``) only on ``on_final`` / ``on_error``.
 
 This is the only ``Emitter`` implementation built in this plan; it is used
@@ -14,12 +14,13 @@ from loguru import logger
 from app.emitters.base import Emitter
 from app.llm.client import LLMChunk
 from app.logging_utils import redact
+from shared.bench_log import BENCH_LEVEL
 from shared.models.agent_service import AgentRequest, LoopResult, ToolResult
 from shared.redis_streams import RedisStreamClient, StreamEnvelope, agent_result_stream
 
 
 class RedisStreamBatchEmitter(Emitter):
-    """Buffers events and publishes one result envelope per ``AgentLoop`` run.
+    """Publishes one result envelope per ``AgentLoop`` run; mid-run events are dropped.
 
     Collaborators:
     - ``RedisStreamClient`` — publishes each envelope to the per-run stream
@@ -43,7 +44,6 @@ class RedisStreamBatchEmitter(Emitter):
         self._result_stream = agent_result_stream(result_stream_prefix, correlation_id)
         self._result_stream_ttl_s = result_stream_ttl_s
         self._correlation_id = correlation_id
-        self._buffered_events: list[dict] = []
         self._warnings: list[str] = []
 
     async def _publish(self, envelope: StreamEnvelope) -> None:
@@ -55,20 +55,17 @@ class RedisStreamBatchEmitter(Emitter):
         )
 
     async def on_start(self, request: AgentRequest) -> None:
-        """Log the start of a run; no event is buffered or published yet."""
+        """Log the start of a run; nothing is published yet."""
         logger.debug("emitter on_start correlation_id={}", self._correlation_id)
 
     async def on_chunk(self, chunk: LLMChunk) -> None:
-        """Buffer an LLM chunk event for inclusion in the final envelope."""
-        self._buffered_events.append({"event": "chunk", "data": chunk.model_dump()})
+        pass
 
     async def on_tool_call(self, call: object) -> None:
-        """Buffer a tool-call event for inclusion in the final envelope."""
-        self._buffered_events.append({"event": "tool_call", "data": str(call)})
+        pass
 
     async def on_tool_result(self, result: ToolResult) -> None:
-        """Buffer a tool-result event for inclusion in the final envelope."""
-        self._buffered_events.append({"event": "tool_result", "data": result.model_dump()})
+        pass
 
     async def on_warning(self, message: str) -> None:
         """Buffer an advisory warning; deduplicate identical messages."""
@@ -81,7 +78,7 @@ class RedisStreamBatchEmitter(Emitter):
         )
 
     async def on_final(self, result: LoopResult) -> None:
-        """Publish a single ``agent.result`` envelope containing the loop summary and all buffered events."""
+        """Publish a single ``agent.result`` envelope containing the loop summary."""
         envelope = StreamEnvelope(
             type="agent.result",
             correlation_id=self._correlation_id,
@@ -93,7 +90,6 @@ class RedisStreamBatchEmitter(Emitter):
                 "stop_reason": result.stop_reason,
                 "token_usage": result.token_usage.model_dump(),
                 "error": result.error,
-                "events": self._buffered_events,
                 "warnings": self._warnings,
                 "tasks": (
                     [task.model_dump() for task in result.tasks]
@@ -109,6 +105,13 @@ class RedisStreamBatchEmitter(Emitter):
             lambda: redact(envelope.payload),
         )
         await self._publish(envelope)
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="result_published",
+            correlation_id=self._correlation_id,
+            ok=True,
+        )
         logger.info("published agent.result correlation_id={}", self._correlation_id)
 
     async def on_error(self, error: Exception) -> None:
@@ -119,6 +122,13 @@ class RedisStreamBatchEmitter(Emitter):
             payload={"error": str(error), "warnings": self._warnings},
         )
         await self._publish(envelope)
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="result_published",
+            correlation_id=self._correlation_id,
+            ok=False,
+        )
         logger.error(
             "published agent.error correlation_id={} error={}",
             self._correlation_id,
