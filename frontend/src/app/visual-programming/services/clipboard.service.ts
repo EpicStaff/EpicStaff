@@ -77,18 +77,29 @@ export class ClipboardService {
         };
     }
 
-    public paste(mousePosition: { x: number; y: number }): {
+    /**
+     * Adds a copy of the clipboard at `mousePosition`, keeping the copied nodes' layout. Nodes `canPaste`
+     * rejects (e.g. trigger nodes the user may not add) are left out with their connections, and counted
+     * in `skippedNodeCount`.
+     */
+    public paste(
+        mousePosition: { x: number; y: number },
+        canPaste: (node: NodeModel) => boolean = () => true
+    ): {
         newNodes: NodeModel[];
         newConnections: ConnectionModel[];
+        skippedNodeCount: number;
     } {
         if (!this.clipboard) {
-            return { newNodes: [], newConnections: [] };
+            return { newNodes: [], newConnections: [], skippedNodeCount: 0 };
         }
 
-        const { nodes: clipboardNodes, connections: clipboardConnections, boundingBox } = this.clipboard;
+        const { connections: clipboardConnections, boundingBox } = this.clipboard;
+        const clipboardNodes = this.clipboard.nodes.filter(canPaste);
+        const skippedNodeCount = this.clipboard.nodes.length - clipboardNodes.length;
 
         if (clipboardNodes.length === 0) {
-            return { newNodes: [], newConnections: [] };
+            return { newNodes: [], newConnections: [], skippedNodeCount };
         }
 
         const offsetX = mousePosition.x - boundingBox.minX;
@@ -187,7 +198,7 @@ export class ClipboardService {
         const finalNodeById = new Map(this.flowService.nodes().map((n) => [n.id, n]));
         const returnedNodes = newNodes.map((n) => finalNodeById.get(n.id) ?? n);
 
-        return { newNodes: returnedNodes, newConnections };
+        return { newNodes: returnedNodes, newConnections, skippedNodeCount };
     }
 
     private clearDecisionTableNextNodeRefs(type: NodeType, data: NodeModel['data'] | null): void {

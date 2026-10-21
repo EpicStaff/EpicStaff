@@ -134,6 +134,14 @@
             border-color: var(--purple-alpha-70);
         }
 
+        // After :hover with the same specificity, so a disabled button shows no hover highlight.
+        &:disabled {
+            cursor: default;
+            opacity: 0.5;
+            background: transparent;
+            border-color: var(--purple-alpha-40);
+        }
+
         &--active,
         &--active:hover {
             background: var(--accent-color);

@@ -1,7 +1,7 @@
 <div
     class="dialog"
     (appEnterSubmit)="onSubmit()"
-    [appEnterSubmitDisabled]="form.invalid || isSubmitting()"
+    [appEnterSubmitDisabled]="isReadonly || form.invalid || isSubmitting()"
 >
     <div class="dialog__header">
         {{ isEdit ? 'Edit Webhook Trigger' : 'Add Webhook Trigger' }}
@@ -11,6 +11,15 @@
         class="dialog__form"
         [formGroup]="form"
     >
+        @if (isReadonly) {
+            <p
+                class="dialog__readonly-banner"
+                role="note"
+            >
+                You can't <strong>edit</strong> it because you don't have the <strong>Use</strong> permission on flows.
+            </p>
+        }
+
         @if (errorMessage()) {
             <div class="dialog__error-message">
                 <p>{{ errorMessage() }}</p>
@@ -20,6 +29,7 @@
         <app-webhook-trigger-field
             formControlName="webhook_trigger"
             [allowPickExisting]="false"
+            [readonly]="isReadonly"
         ></app-webhook-trigger-field>
     </form>
 
@@ -29,16 +39,18 @@
             (click)="onCancel()"
             >Cancel</app-button
         >
-        <app-button
-            type="primary"
-            (click)="onSubmit()"
-            [disabled]="form.invalid || isSubmitting()"
-        >
-            @if (isSubmitting()) {
-                {{ isEdit ? 'Saving…' : 'Creating…' }}
-            } @else {
-                {{ isEdit ? 'Save' : 'Create' }}
-            }
-        </app-button>
+        @if (!isReadonly) {
+            <app-button
+                type="primary"
+                (click)="onSubmit()"
+                [disabled]="form.invalid || isSubmitting()"
+            >
+                @if (isSubmitting()) {
+                    {{ isEdit ? 'Saving…' : 'Creating…' }}
+                } @else {
+                    {{ isEdit ? 'Save' : 'Create' }}
+                }
+            </app-button>
+        }
     </div>
 </div>

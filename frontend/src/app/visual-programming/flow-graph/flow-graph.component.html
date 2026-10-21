@@ -4,6 +4,7 @@
     [class.readonly]="flowReadOnly.isReadOnly()"
 >
     <f-flow
+        #flowHost
         appMouseTracker
         (mousePosition)="updateMouseTrackerPosition($event)"
         (contextmenu)="onContextMenu($event)"
@@ -25,13 +26,6 @@
         [hCellSize]="GRID_CELL_SIZE"
         [fCellSizeWhileDragging]="false"
         class="visual-programming-flow"
-        appShortcutListener
-        (delete)="onDelete()"
-        (escape)="onEscapeKey()"
-        (undo)="onUndo()"
-        (redo)="onRedo()"
-        (copy)="onCopy()"
-        (paste)="onPaste()"
         (fLoaded)="onInitialized()"
         (fSelectionChange)="onSelectionChange($event)"
         (fDragStarted)="onDragStarted($event)"
@@ -127,7 +121,7 @@
                     [fNodeId]="node.id"
                     [fNodeSize]="node.size"
                     [fNodePosition]="node.position"
-                    [fNodeDraggingDisabled]="flowReadOnly.isReadOnly()"
+                    [fNodeDraggingDisabled]="isNodeReadOnly(node)"
                     [style.z-index]="getNodeZIndex(node)"
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
@@ -293,8 +287,6 @@
                 <div
                     #shortcutsAnchor
                     #shortcutsButton
-                    appShortcutListener
-                    (openShortcuts)="onOpenShortcuts(shortcutsAnchor)"
                 >
                     <app-flow-shortcuts-button (clicked)="onOpenShortcuts(shortcutsAnchor)">
                     </app-flow-shortcuts-button>
@@ -343,7 +335,7 @@
                         title="Auto arrange"
                         matTooltip="Auto arrange"
                         matTooltipPosition="below"
-                        [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
+                        [disabled]="isAutoArrangeDisabled()"
                         (click)="onAutoArrange()"
                     >
                         <app-svg-icon

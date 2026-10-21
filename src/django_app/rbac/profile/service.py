@@ -107,15 +107,31 @@ class UserProfileService:
 
     # ---- profile field updates ----
 
-    def update_display_name(self, user, display_name: str | None):
-        """Set or clear display_name. None clears (column allows NULL)."""
-        user.display_name = display_name
-        user.save(update_fields=["display_name", "updated_at"])
-        logger.info(
-            "profile.display_name_updated user_id={} cleared={}",
-            user.id,
-            display_name is None,
-        )
+    def update_profile(self, user, changes: dict):
+        update_fields = []
+        if "display_name" in changes:
+            user.display_name = changes["display_name"]
+            update_fields.append("display_name")
+        if "custom_shortcuts" in changes:
+            user.custom_shortcuts = changes["custom_shortcuts"]
+            update_fields.append("custom_shortcuts")
+        if not update_fields:
+            return user
+
+        user.save(update_fields=[*update_fields, "updated_at"])
+        if "display_name" in changes:
+            logger.info(
+                "profile.display_name_updated user_id={} cleared={}",
+                user.id,
+                changes["display_name"] is None,
+            )
+        if "custom_shortcuts" in changes:
+            logger.info(
+                "profile.custom_shortcuts_updated user_id={} custom={} overrides={}",
+                user.id,
+                len(changes["custom_shortcuts"]["custom"]),
+                len(changes["custom_shortcuts"]["overrides"]),
+            )
         return user
 
     # ---- avatar ----
