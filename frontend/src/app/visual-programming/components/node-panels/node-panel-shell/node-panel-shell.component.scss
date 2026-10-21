@@ -168,6 +168,37 @@ header {
     }
 }
 
+// The header content (inside the regular padding) is a 28px row, so the shell's own controls
+// are 28px too; panels pass 28px-tall actions of their own.
+header.dialog-header--compact {
+    box-sizing: content-box;
+    height: 28px;
+
+    .header-actions {
+        gap: 0.5rem;
+
+        .save-btn {
+            height: 28px;
+        }
+
+        // The ESC + close group sits 16px from the buttons before it (the 8px gap + 8px).
+        .close-action {
+            margin-left: 0.5rem;
+        }
+
+        // An outlined 28x28 square around a 16px icon, matching the panels' outlined buttons.
+        .details-btn {
+            box-sizing: border-box;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid var(--color-input-border);
+            border-radius: 4px;
+            color: var(--color-ks-transparent-text-60);
+        }
+    }
+}
+
 main {
     flex: 1;
     overflow-y: auto;

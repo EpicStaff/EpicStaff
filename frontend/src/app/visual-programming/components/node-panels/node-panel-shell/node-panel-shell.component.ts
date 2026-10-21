@@ -18,7 +18,7 @@ import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/com
 import { NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
-import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
+import { COMPACT_HEADER_NODE_TYPES, PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { hasNodeDetails } from '../../../core/helpers/node-details.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
@@ -52,7 +52,10 @@ interface PanelInstanceView {
                 [class.shake-attention]="isShaking()"
                 [class.expanded]="isExpanded()"
             >
-                <header class="dialog-header">
+                <header
+                    class="dialog-header"
+                    [class.dialog-header--compact]="isCompactHeader()"
+                >
                     <div class="icon-and-title">
                         <i
                             [class]="node()!.icon"
@@ -61,6 +64,10 @@ interface PanelInstanceView {
                         <span class="title">{{ nodeNameToDisplay() }}</span>
                     </div>
                     <div class="header-actions">
+                        <!-- The compact header shows the details button first, before the panel's own actions. -->
+                        @if (isCompactHeader()) {
+                            <ng-container [ngTemplateOutlet]="detailsButtonTpl"></ng-container>
+                        }
                         @if (panelInstanceSig()?.headerActionsTemplate?.()) {
                             <ng-container
                                 [ngTemplateOutlet]="panelInstanceSig()!.headerActionsTemplate!()!"
@@ -83,21 +90,8 @@ interface PanelInstanceView {
                                 <span class="btn-label">Save</span>
                             </button>
                         }
-                        @if (showDetailsButton()) {
-                            <button
-                                #detailsButton
-                                class="details-btn"
-                                type="button"
-                                aria-label="Node details"
-                                matTooltip="Node details"
-                                matTooltipPosition="below"
-                                (click)="openNodeDetails(detailsButton)"
-                            >
-                                <app-svg-icon
-                                    icon="alert-circle"
-                                    size="1.25rem"
-                                ></app-svg-icon>
-                            </button>
+                        @if (!isCompactHeader()) {
+                            <ng-container [ngTemplateOutlet]="detailsButtonTpl"></ng-container>
                         }
                         @if (shouldShowExpandButton()) {
                             <button
@@ -122,11 +116,33 @@ interface PanelInstanceView {
                                 matTooltipPosition="below"
                                 (click)="onCloseClick()"
                             >
-                                <app-svg-icon icon="x"></app-svg-icon>
+                                <app-svg-icon
+                                    icon="x"
+                                    [size]="isCompactHeader() ? '1.25rem' : '24px'"
+                                ></app-svg-icon>
                             </button>
                         </div>
                     </div>
                 </header>
+
+                <ng-template #detailsButtonTpl>
+                    @if (showDetailsButton()) {
+                        <button
+                            #detailsButton
+                            class="details-btn"
+                            type="button"
+                            aria-label="Node details"
+                            matTooltip="Node details"
+                            matTooltipPosition="below"
+                            (click)="openNodeDetails(detailsButton)"
+                        >
+                            <app-svg-icon
+                                icon="alert-circle"
+                                [size]="isCompactHeader() ? '1rem' : '1.25rem'"
+                            ></app-svg-icon>
+                        </button>
+                    }
+                </ng-template>
 
                 <main>
                     <ng-container
@@ -171,6 +187,12 @@ export class NodePanelShellComponent {
             node.type !== NodeType.KEY_VALUE &&
             node.type !== 'classification-decision-table'
         );
+    });
+
+    /** The open panel's header content is a 28px row (see COMPACT_HEADER_NODE_TYPES). */
+    protected readonly isCompactHeader = computed(() => {
+        const node = this.node();
+        return !!node && COMPACT_HEADER_NODE_TYPES.has(node.type);
     });
 
     /** Viewing details needs only flow read access, so read-only and preview modes show it too. */
