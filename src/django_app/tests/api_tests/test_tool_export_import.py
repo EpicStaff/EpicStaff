@@ -69,7 +69,7 @@ def tool_label_a(org_a):
 @pytest.fixture
 def python_tool_a(org_a, tool_label_a):
     code = PythonCode.objects.create(
-        code="def main(): return 1", entrypoint="main", libraries=""
+        code="def main(): return 1", entrypoint="main"
     )
     tool = PythonCodeTool.objects.create(
         name="PyToolA",
@@ -112,7 +112,7 @@ def mcp_tool_with_auth_a(org_a, tool_label_a):
 @pytest.fixture
 def python_tool_a2(org_a, tool_label_a):
     code = PythonCode.objects.create(
-        code="def main(): return 2", entrypoint="main", libraries=""
+        code="def main(): return 2", entrypoint="main"
     )
     tool = PythonCodeTool.objects.create(
         name="PyToolA2",
@@ -136,7 +136,7 @@ def mcp_tool_a2(org_a):
 @pytest.fixture
 def builtin_python_tool(db):
     code = PythonCode.objects.create(
-        code="def main(): return 3", entrypoint="main", libraries=""
+        code="def main(): return 3", entrypoint="main"
     )
     return PythonCodeTool.objects.create(
         name="BuiltInPyTool",
@@ -175,7 +175,7 @@ def client_b(user_b, org_b):
 @pytest.fixture
 def shared_built_in_tool_with_both_orgs_labels(org_a, org_b):
     code = PythonCode.objects.create(
-        code="def main(): return 1", entrypoint="main", libraries=""
+        code="def main(): return 1", entrypoint="main"
     )
     tool = PythonCodeTool.objects.create(
         name="SharedBuiltIn",
@@ -220,7 +220,7 @@ class ToolKind:
 
 
 def _foreign_python_tool(org):
-    code = PythonCode.objects.create(code="x", entrypoint="main", libraries="")
+    code = PythonCode.objects.create(code="x", entrypoint="main")
     return PythonCodeTool.objects.create(name="theirs", description="", python_code=code, org=org)
 
 

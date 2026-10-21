@@ -241,7 +241,6 @@ def test_wipe_graph_children_deletes_orphan_python_codes(
     code = PythonCode.objects.create(
         code="def main(): return 1",
         entrypoint="main",
-        libraries="",
         global_kwargs={},
     )
     PythonNode.objects.create(graph=graph, python_code=code)

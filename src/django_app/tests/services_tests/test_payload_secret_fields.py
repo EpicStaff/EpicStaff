@@ -37,7 +37,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code='def main(): return get_secret("STRIPE_KEY")',
             entrypoint="main",
-            libraries=[],
             secret_names=["STRIPE_KEY"],
         )
 
@@ -59,7 +58,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code="def main(): return 1",
             entrypoint="main",
-            libraries=[],
             secret_names=["STRIPE_KEY"],
         )
         data.secrets = {"STRIPE_KEY": "sk-live-for-the-sandbox"}
@@ -77,7 +75,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code="def main(): return 1",
             entrypoint="main",
-            libraries=[],
             secret_names=["STRIPE_KEY"],
         )
         data.secrets = {"A": "b"}
@@ -90,7 +87,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code="def main(): return 1",
             entrypoint="main",
-            libraries=[],
         )
 
         assert data.secret_names == []
@@ -101,7 +97,6 @@ class TestCodeTaskDataSerializesSecrets:
     def test_secrets_reach_the_wire(self):
         task = CodeTaskData(
             venv_name="default",
-            libraries=[],
             code="def main(): return 1",
             execution_id="exec-1",
             entrypoint="main",
@@ -115,7 +110,6 @@ class TestCodeTaskDataSerializesSecrets:
     def test_defaults_to_empty(self):
         task = CodeTaskData(
             venv_name="default",
-            libraries=[],
             code="def main(): return 1",
             execution_id="exec-1",
             entrypoint="main",
@@ -159,7 +153,6 @@ class TestLogSummaryIsSafe:
     def test_summary_of_a_task_with_no_secrets(self):
         task = CodeTaskData(
             venv_name="default",
-            libraries=[],
             code="def main(): return 1",
             execution_id="exec-0",
             entrypoint="main",

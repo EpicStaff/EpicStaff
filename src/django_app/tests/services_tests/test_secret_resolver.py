@@ -442,7 +442,6 @@ class TestResolveNamed:
             venv_name="default",
             code='def main(): return get_secret("NODE_KEY")',
             entrypoint="main",
-            libraries=[],
             secret_names=["NODE_KEY"],
         )
 

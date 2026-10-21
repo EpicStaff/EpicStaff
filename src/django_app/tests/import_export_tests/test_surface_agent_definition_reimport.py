@@ -56,7 +56,7 @@ def agent_flow(default_org):
         name="py",
         description="description",
         python_code=PythonCode.objects.create(
-            code="def main(): return 1", entrypoint="main", libraries=""
+            code="def main(): return 1", entrypoint="main"
         ),
         org=default_org,
     )
@@ -443,7 +443,7 @@ class TestBuiltInTool:
             name="built_in_py",
             description="built-in",
             python_code=PythonCode.objects.create(
-                code="def main(): return 'old'", entrypoint="main", libraries=""
+                code="def main(): return 'old'", entrypoint="main"
             ),
             built_in=True,
         )

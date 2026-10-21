@@ -34,7 +34,7 @@ from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 def _build_source_graph(org, path):
     graph = Graph.objects.create(name="src-webhook-graph", org=org)
     trigger = WebhookTrigger.objects.create(path=path, org=org)
-    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main", libraries="")
+    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main")
     node = WebhookTriggerNode.objects.create(
         graph=graph, node_name="wt", webhook_trigger=trigger, python_code=code
     )

@@ -25,7 +25,7 @@ def tools(default_org):
             org=default_org,
             name="matching py",
             description="description",
-            python_code=PythonCode.objects.create(code="x", entrypoint="main", libraries=""),
+            python_code=PythonCode.objects.create(code="x", entrypoint="main"),
         ),
         "mcp": McpTool.objects.create(
             org=default_org, name="matching mcp", transport="https://example.com", tool_name="t"
