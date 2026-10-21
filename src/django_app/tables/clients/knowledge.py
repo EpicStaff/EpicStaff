@@ -36,6 +36,8 @@ class KnowledgeClient:
         document_ids: frozenset[int],
         embedding_api_key: str,
         llm_api_key: str | None = None,
+        embedding_extra_headers: dict[str, str] | None = None,
+        llm_extra_headers: dict[str, str] | None = None,
     ) -> None:
         self._request(
             method="post",
@@ -44,8 +46,33 @@ class KnowledgeClient:
                 "document_ids": list(document_ids),
                 "embedding_api_key": embedding_api_key,
                 "llm_api_key": llm_api_key,
+                "embedding_extra_headers": embedding_extra_headers or {},
+                "llm_extra_headers": llm_extra_headers or {},
             },
         )
+
+    def index_estimate(
+        self,
+        strategy: RAGStrategy,
+        rag_id: int,
+        document_ids: frozenset[int],
+        chunking_overrides: dict[int, ChunkingConfig] | None = None,
+    ) -> dict:
+        response = self._request(
+            method="post",
+            url=f"rags/{strategy}/{rag_id}/index-estimate/",
+            json={
+                "document_ids": list(document_ids),
+                "chunking_overrides": [
+                    {
+                        "document_id": document_id,
+                        "chunking_config": chunking_config.model_dump(mode="json"),
+                    }
+                    for document_id, chunking_config in (chunking_overrides or {}).items()
+                ],
+            },
+        )
+        return response.json()
 
     def prechunk(
         self,

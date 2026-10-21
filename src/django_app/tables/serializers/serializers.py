@@ -9,6 +9,7 @@ from tables.models import PythonCode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
+from tables.serializers.naive_rag_serializers import DocumentConfigEstimateOverrideSerializer
 from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
 from tables.validators.trigger_payload_validator import validate_trigger_payload
@@ -180,6 +181,34 @@ class ProcessRagIndexingSerializer(serializers.Serializer):
     rag_id = serializers.IntegerField(required=True, min_value=1)
     rag_type = serializers.ChoiceField(required=True, choices=["naive", "graph"])
     document_config_ids = serializers.ListField(child=serializers.IntegerField(min_value=1))
+
+
+class ProcessRagIndexingEstimateSerializer(ProcessRagIndexingSerializer):
+    """Estimate request: the indexing body plus optional unsaved per-document chunking settings."""
+
+    document_configs = DocumentConfigEstimateOverrideSerializer(
+        many=True, required=False, default=list
+    )
+
+    def validate_document_configs(self, document_configs):
+        config_ids = [item["document_config_id"] for item in document_configs]
+        if len(config_ids) != len(set(config_ids)):
+            raise serializers.ValidationError("document_config_id must be unique.")
+        return document_configs
+
+    def validate(self, attrs):
+        extra_ids = {item["document_config_id"] for item in attrs["document_configs"]} - set(
+            attrs["document_config_ids"]
+        )
+        if extra_ids:
+            raise serializers.ValidationError(
+                {
+                    "document_configs": (
+                        f"document_config_id not in document_config_ids: {sorted(extra_ids)}"
+                    )
+                }
+            )
+        return attrs
 
 
 class BulkExportSerializer(serializers.Serializer):

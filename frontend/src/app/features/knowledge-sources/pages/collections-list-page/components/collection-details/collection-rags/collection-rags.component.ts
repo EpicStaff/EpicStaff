@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
@@ -13,6 +13,7 @@ import { GraphRagConfigurationDialog } from '../../../../../components/rag-confi
 import { NaiveRagConfigurationDialog } from '../../../../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { RagConfigurationDialogComponent } from '../../../../../components/rag-configuration-dialog/rag-configuration-dialog.component';
 import { RAG_STATUS_CONFIG, RAG_TYPE_CONFIG } from '../../../../../constants/constants';
+import { getIndexingUsageLines } from '../../../../../helpers/format-indexing-usage.util';
 import { RagType } from '../../../../../models/base-rag.model';
 import { CreateCollectionDtoResponse } from '../../../../../models/collection.model';
 import { CollectionsStorageService } from '../../../../../services/collections-storage.service';
@@ -38,6 +39,14 @@ export class CollectionRagsComponent {
     private graphRagDocumentsStorage = inject(GraphRagDocumentsStorageService);
 
     collection = input.required<CreateCollectionDtoResponse>();
+
+    protected readonly usageLines = computed(() => {
+        const linesByType: Partial<Record<RagType, string[]>> = {};
+        for (const config of this.collection().rag_configurations) {
+            linesByType[config.rag_type] = getIndexingUsageLines(config.indexing_usage);
+        }
+        return linesByType;
+    });
 
     ragTypeConfig = RAG_TYPE_CONFIG;
     ragStatusConfig = RAG_STATUS_CONFIG;
