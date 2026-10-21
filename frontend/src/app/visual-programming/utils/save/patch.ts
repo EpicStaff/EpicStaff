@@ -270,6 +270,11 @@ function buildCreatedNodeIdMap(
         responseGraph.classification_decision_table_node_list ?? [],
         existingIdsByType(NodeType.CLASSIFICATION_TABLE)
     );
+    mapByNewIds(
+        nodeDiff.knowledgeRetrieverNodes.toCreate,
+        responseGraph.knowledge_node_list ?? [],
+        existingIdsByType(NodeType.KNOWLEDGE_RETRIEVER)
+    );
 
     return mapping;
 }
