@@ -23,7 +23,7 @@ interface InputMapPair {
                     <div class="node-name-field">
                         <app-custom-input
                             label="Node Name"
-                            tooltipText="A label for this node. Names may repeat — the #N badge identifies the node."
+                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"

@@ -429,22 +429,28 @@ describe('NodePanelShellComponent', () => {
             expect(open).toHaveBeenCalledWith('Node Details', recorded, detailsButton(fixture));
         });
 
-        it('heads the panel with the node name and its number, so same-named nodes are told apart', async () => {
+        const headerText = (fixture: { nativeElement: HTMLElement }, selector: string): string | undefined =>
+            fixture.nativeElement.querySelector(`.dialog-header ${selector}`)?.textContent?.trim();
+
+        it('heads the panel with the node name and its number beside it, so same-named nodes are told apart', async () => {
             const { fixture } = await mountDetails({ ...savedPythonNode, node_name: 'Fetch', nodeNumber: 4 });
 
-            expect(fixture.nativeElement.querySelector('.dialog-header .title').textContent.trim()).toBe('Fetch #4');
+            expect(headerText(fixture, '.title')).toBe('Fetch');
+            expect(headerText(fixture, '.node-number')).toBe('#4');
         });
 
         it('shows no lone number in the header while the node has no name', async () => {
             const { fixture } = await mountDetails({ ...savedPythonNode, node_name: '', nodeNumber: 4 });
 
-            expect(fixture.nativeElement.querySelector('.dialog-header .title').textContent.trim()).toBe('');
+            expect(headerText(fixture, '.title')).toBe('');
+            expect(headerText(fixture, '.node-number')).toBeUndefined();
         });
 
         it('heads an End node panel with its fixed name and no number', async () => {
             const { fixture } = await mountDetails({ ...endNode, backendId: liveEnd.id });
 
-            expect(fixture.nativeElement.querySelector('.dialog-header .title').textContent.trim()).toBe('End');
+            expect(headerText(fixture, '.title')).toBe('End');
+            expect(headerText(fixture, '.node-number')).toBeUndefined();
         });
 
         it('shows no author for a node that is not saved yet', async () => {
