@@ -17,8 +17,10 @@ export async function useOrganization(page: Page, org: Organization): Promise<vo
  * frame), and submits it.
  */
 export async function fillLoginForm(scope: Page | FrameLocator): Promise<void> {
-    await scope.getByPlaceholder('example@gmail.com').fill(STACK.email);
-    const password = scope.getByPlaceholder('Enter password');
+    // The form's `<app-custom-input>` elements carry the placeholder too, so `getByPlaceholder` would match two
+    // elements; their labels are not tied to the inputs, so `getByLabel` matches none.
+    await scope.locator('input[placeholder="example@gmail.com"]').fill(STACK.email);
+    const password = scope.locator('input[placeholder="Enter password"]');
     await password.fill(STACK.password);
     await password.press('Enter');
 }

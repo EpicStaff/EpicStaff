@@ -77,4 +77,29 @@ E2E_ORG_A_ID=3 E2E_ORG_A_NAME=Acme E2E_ORG_C_ID=5 E2E_ORG_C_NAME=Cobalt \
 | `E2E_EMAIL`, `E2E_PASSWORD` | Required: the person above |
 | `E2E_ORG_A_ID`, `E2E_ORG_A_NAME`, `E2E_ORG_C_ID`, `E2E_ORG_C_NAME` | Required: the two organizations |
 
-Add `--project=webkit` (or `chromium`, `firefox`) to run one engine. They do not run in CI.
+Add `--project=webkit` (or `chromium`, `firefox`) to run one engine. They do not run in CI. Against the HTTPS stack of
+[Safari](#safari), set `E2E_EPICSTAFF_URL=https://epicstaff.test` and
+`E2E_PLUGIN_URL=https://weather.plugins.epicstaff.test`; the browsers accept its local certificate.
+
+### Login and refresh rates
+
+The suite signs the person in seven times per browser, 21 times for a run of all three, and every EpicStaff page it
+opens renews EpicStaff's session, all from your address within a minute. EpicStaff's default throttles
+(`DJANGO_LOGIN_THROTTLE_RATE=5/min`, `DJANGO_LOGIN_IP_THROTTLE_RATE=20/min`, `DJANGO_TOKEN_REFRESH_THROTTLE_RATE=30/min`)
+stop a run part-way: a test then waits on a login form that says "Too many login attempts" until it times out. On
+your local stack only, raise them in `src/.env`:
+
+```bash
+DJANGO_LOGIN_THROTTLE_RATE=100/min
+DJANGO_LOGIN_IP_THROTTLE_RATE=300/min
+DJANGO_TOKEN_REFRESH_THROTTLE_RATE=600/min
+```
+
+and recreate django_app, which reads them only when it starts (from `src/`):
+
+```bash
+docker compose -f docker-compose.yaml --env-file ./.env up -d django_app
+```
+
+Each test signs in for itself instead of reusing a saved browser state: EpicStaff replaces the refresh cookie at every
+renewal and refuses the old one, so a saved state is signed out once the first test has used it.

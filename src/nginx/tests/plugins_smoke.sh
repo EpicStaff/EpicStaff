@@ -25,12 +25,14 @@
 #   PUBLIC_PATH             optional, default /api/ping: a public GET path of the plugin that
 #                           answers 200 with "mode": "public"
 #   GATEWAY_LOAD_SECONDS    optional: also measure the gateway check under load for this many
-#                           seconds and print its p50/p99 (needs python3)
+#                           whole seconds, print its p50/p99, and fail on any answer other than
+#                           the expected 401 (login refused) or 200 (public path)
 #   SMOKE_ADMIN_TOKEN       optional: a SuperAdmin's access token. Adds the checks that need a
 #                           login: the upload route takes 51 MiB, and a real 51 MiB upload that
 #                           Django must read to the end and refuse as an invalid package.
-# Arguments: extra curl options for every request, e.g. --insecure for a self-signed certificate,
-# or --connect-to ::127.0.0.1:8080 to reach nginx at another address without DNS entries.
+# Arguments: extra curl options for every request, the load included, e.g. --cacert ca.pem (or
+# --insecure) for a local certificate, or --connect-to ::127.0.0.1:8080 to reach nginx at another
+# address without DNS entries.
 #
 # Usage:
 #   EPICSTAFF_URL=http://epicstaff.localhost PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
@@ -44,6 +46,12 @@ max_package_megabytes=${PLUGINS_MAX_PACKAGE_MB:?set PLUGINS_MAX_PACKAGE_MB, e.g.
 admin_token=${SMOKE_ADMIN_TOKEN-}
 public_path=${PUBLIC_PATH:-/api/ping}
 load_seconds=${GATEWAY_LOAD_SECONDS-}
+case "$load_seconds" in
+  *[!0-9]*)
+    echo "GATEWAY_LOAD_SECONDS must be a whole number of seconds, not [$load_seconds]" >&2
+    exit 2
+    ;;
+esac
 curl_options=("$@")
 
 scheme=${epicstaff_url%%://*}
@@ -60,9 +68,25 @@ unknown_plugin_origin=$scheme://smoke-no-such-plugin.$base_domain$port_suffix
 invalid_label_origin=$scheme://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.$base_domain$port_suffix
 
 work_dir=$(mktemp -d)
-trap 'rm -rf "$work_dir"' EXIT
-
 failures=0
+load_pids=()
+summary_printed=false
+# Whatever stops the script, it ends with a summary line, and stopping early is a failure.
+finish() {
+  local status=$?
+  if [ ${#load_pids[@]} -gt 0 ]; then
+    kill "${load_pids[@]}" 2> /dev/null || true
+  fi
+  rm -rf "$work_dir"
+  if [ "$summary_printed" = false ]; then
+    # macOS's bash 3.2 leaves $? at 0 after a failed expansion in an assignment.
+    [ "$status" -ne 0 ] || status=1
+    echo "FAILED: stopped early (exit status $status), $failures check(s) failed before that"
+    exit "$status"
+  fi
+}
+trap finish EXIT
+
 pass() { echo "ok - $1"; }
 fail() {
   echo "not ok - $1"
@@ -309,6 +333,12 @@ expect_status "Django's upload permission check is not reachable from outside" 4
 if [ "$max_package_megabytes" -le 51 ]; then
   echo "# PLUGINS_MAX_PACKAGE_MB=$max_package_megabytes is not above 51: skipping the 51 MiB upload checks"
 else
+  # Only the headers, above the server's usual 50 MB: the permission check must still answer.
+  status=$(fetch "$epicstaff_url/api/admin/plugins/packages/" -X POST --max-time 3 \
+    -H "Authorization: Bearer not-a-token" -H "Content-Type: multipart/form-data; boundary=smoke" \
+    -H "Content-Length: $over_default_limit")
+  expect_status "a 51 MiB upload with a made-up token is refused before its body is read" 401 "$status"
+  expect_body "that refusal is Django's JSON envelope" '"code":"not_authenticated"'
   if [ -n "$admin_token" ]; then
     expect_status "the package upload takes 51 MiB" 100 \
       "$(upload_decision /api/admin/plugins/packages/ "$over_default_limit")"
@@ -331,64 +361,77 @@ else
   echo "# SMOKE_ADMIN_TOKEN not set: skipping the streamed 51 MiB upload"
 fi
 
+# requests_until URL DEADLINE OUTPUT BATCH PAUSE: GETs URL until DEADLINE (seconds since the
+# epoch), BATCH requests per curl run over one connection, then PAUSE seconds. Appends a line per
+# request to OUTPUT, "<status> <ms>", the time from sending the request to the end of the answer
+# (connecting and the TLS handshake are left out); curl's errors go to OUTPUT.errors. It runs curl
+# with the script's options, so the load reaches nginx exactly as the checks above do.
+requests_until() {
+  local url=$1 deadline=$2 output=$3 batch_size=$4 pause=$5 batch=()
+  for _ in $(seq "$batch_size"); do
+    batch+=(-o /dev/null "$url")
+  done
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    curl -sS --max-time 10 -w '%{http_code} %{time_pretransfer} %{time_total}\n' \
+      ${curl_options[@]+"${curl_options[@]}"} "${batch[@]}" 2>> "$output.errors" \
+      | LC_ALL=C awk '{ printf "%s %.3f\n", $1, ($3 - $2) * 1000 }' >> "$output" || true
+    sleep "$pause"
+  done
+}
+
+# load_summary DESCRIPTION EXPECTED_STATUS OUTPUT: prints the count, p50 and p99 (nearest rank) of
+# the answered requests in OUTPUT, and passes when every request was answered with
+# EXPECTED_STATUS.
+load_summary() {
+  local description=$1 expected=$2 output=$3 requests answered unexpected statuses first_error
+  requests=$(wc -l < "$output" | tr -d ' ')
+  answered=$(awk '$1 != "000"' "$output" | wc -l | tr -d ' ')
+  if [ "$answered" -eq 0 ]; then
+    fail "$description: none of $requests request(s) was answered: $(head -n 1 "$output.errors")"
+    return
+  fi
+  awk '$1 != "000" { print $2 }' "$output" | LC_ALL=C sort -n | LC_ALL=C awk -v description="$description" \
+    -v requests="$requests" '
+    { latency[NR] = $1 }
+    END {
+      printf "%s: %d requests, p50 %.1f ms, p99 %.1f ms", description, requests,
+        latency[int((NR * 50 + 99) / 100)], latency[int((NR * 99 + 99) / 100)]
+    }'
+  unexpected=$(awk -v expected="$expected" '$1 != expected' "$output" | wc -l | tr -d ' ')
+  echo ", unexpected statuses $unexpected"
+  if [ "$unexpected" -eq 0 ]; then
+    pass "$description: every request got $expected"
+  else
+    statuses=$(awk -v expected="$expected" '
+      $1 != expected { count[$1]++ }
+      END { for (status in count) { printf "%s %d got %s", separator, count[status], status; separator = "," } }' \
+      "$output")
+    first_error=$(head -n 1 "$output.errors")
+    fail "$description: $unexpected request(s) did not get $expected:$statuses${first_error:+ ($first_error)}"
+  fi
+}
+
 if [ -n "$load_seconds" ]; then
   echo "# the gateway check under load ($load_seconds s, 8 connections)"
   # The login refusal runs the whole check but the signing; the public path, limited by its
   # rate, is sampled once a second for the signed answer.
-  python3 - "$plugin_origin/api/x" "$plugin_origin$public_path" "$load_seconds" \
-    ${curl_options[@]+"${curl_options[@]}"} <<'PYTHON'
-import http.client, ssl, statistics, sys, threading, time, urllib.parse
-
-refused_url, public_url, seconds = sys.argv[1], sys.argv[2], float(sys.argv[3])
-insecure = "--insecure" in sys.argv[4:]
-
-
-def connection(url):
-    parts = urllib.parse.urlsplit(url)
-    if parts.scheme == "https":
-        context = ssl._create_unverified_context() if insecure else ssl.create_default_context()
-        return http.client.HTTPSConnection(parts.netloc, context=context, timeout=10), parts.path
-    return http.client.HTTPConnection(parts.netloc, timeout=10), parts.path
-
-
-def timed(client, path, expected, samples, failures):
-    started = time.perf_counter()
-    client.request("GET", path)
-    response = client.getresponse()
-    response.read()
-    samples.append((time.perf_counter() - started) * 1000)
-    if response.status != expected:
-        failures.append(response.status)
-
-
-def hammer(samples, failures, deadline):
-    client, path = connection(refused_url)
-    while time.monotonic() < deadline:
-        timed(client, path, 401, samples, failures)
-
-
-def percentiles(name, samples, failures):
-    quantiles = statistics.quantiles(samples, n=100)
-    print(f"{name}: {len(samples)} requests, p50 {quantiles[49]:.1f} ms, p99 {quantiles[98]:.1f} ms,"
-          f" unexpected statuses {len(failures)}")
-
-
-deadline = time.monotonic() + seconds
-refused, refused_failures, public, public_failures = [], [], [], []
-workers = [threading.Thread(target=hammer, args=(refused, refused_failures, deadline)) for _ in range(8)]
-for worker in workers:
-    worker.start()
-client, path = connection(public_url)
-while time.monotonic() < deadline:
-    timed(client, path, 200, public, public_failures)
-    time.sleep(1)
-for worker in workers:
-    worker.join()
-percentiles("401 login_required under load", refused, refused_failures)
-percentiles("200 public path (signed context), sampled", public, public_failures)
-PYTHON
+  : > "$work_dir/load-public"
+  deadline=$(($(date +%s) + load_seconds))
+  for worker in 1 2 3 4 5 6 7 8; do
+    : > "$work_dir/load-refused.$worker"
+    requests_until "$plugin_origin/api/x" "$deadline" "$work_dir/load-refused.$worker" 50 0 &
+    load_pids+=("$!")
+  done
+  requests_until "$plugin_origin$public_path" "$deadline" "$work_dir/load-public" 1 1
+  wait "${load_pids[@]}" || true
+  load_pids=()
+  cat "$work_dir"/load-refused.? > "$work_dir/load-refused"
+  cat "$work_dir"/load-refused.?.errors > "$work_dir/load-refused.errors" 2> /dev/null || true
+  load_summary "401 login_required under load" 401 "$work_dir/load-refused"
+  load_summary "200 public path (signed context), sampled" 200 "$work_dir/load-public"
 fi
 
+summary_printed=true
 if [ "$failures" -ne 0 ]; then
   echo "FAILED: $failures check(s)"
   exit 1

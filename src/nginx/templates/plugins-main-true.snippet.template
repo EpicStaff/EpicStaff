@@ -43,6 +43,11 @@ location = /api/admin/plugins/packages/ {
 # credentials and without the body. `internal`, so only auth_request reaches it.
 location = /_epicstaff/plugin-upload-permission {
     internal;
+    # No body limit here. The subrequest carries the upload's Content-Length, and nginx compares
+    # it with this location's limit although no body is read here: the server's 50M would turn
+    # every larger upload into a 500 (auth_request gets the 413). The upload route applies its own
+    # limit when nginx picks it, before the access phase runs this check.
+    client_max_body_size 0;
     proxy_pass http://backend_server/api/admin/plugins/packages/upload-permission/;
     include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
     proxy_method GET;
