@@ -53,6 +53,10 @@ server {
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
 
+    # Strict-Transport-Security is decided separately from NGINX_SSL_MODE: a load
+    # balancer in front of nginx can terminate TLS while nginx serves plain HTTP.
+    include /etc/nginx/conf.d/hsts-${NGINX_HSTS_ENABLED}.snippet;
+
     # Report-only: the SPA is built from a separate repository, so this policy
     # has not been verified against it. Violations surface in the browser
     # console; there is no report collector in this stack. Promote to

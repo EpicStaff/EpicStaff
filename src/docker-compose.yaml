@@ -504,6 +504,7 @@ services:
     environment:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?}
       NGINX_SSL_MODE: ${NGINX_SSL_MODE:?}
+      NGINX_HSTS_ENABLED: ${NGINX_HSTS_ENABLED:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       FRONTEND_HOST: ${FRONTEND_HOST:?}
@@ -519,6 +520,7 @@ services:
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
       - ./nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
+      - ./nginx/docker-entrypoint.d/17-normalize-hsts-enabled.envsh:/docker-entrypoint.d/17-normalize-hsts-enabled.envsh:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - media_data:/usr/share/nginx/html/media:ro
     networks:
