@@ -5,7 +5,8 @@
 # Only /api/ is served, and not the parts no plugin and no node may call: logins and tokens,
 # the SuperAdmin's administration, and the gateway check. Only the headers set here reach
 # Django: no cookie, no X-API-Key, nothing a plugin would forge (the address is nginx's own
-# view of the caller).
+# view of the caller). X-Plugin-Network-Secret tells Django a request came this way: plugin
+# service-account and node keys authenticate only with it.
 server {
     listen 8081;
     server_name _;
@@ -43,6 +44,10 @@ server {
         proxy_set_header Host localhost;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-Organization-Id $http_x_organization_id;
+        # The person a plugin backend acts for; Django checks they may use the plugin.
+        proxy_set_header X-EpicStaff-On-Behalf-Of $http_x_epicstaff_on_behalf_of;
+        # From the environment, never from the caller (proxy_pass_request_headers is off).
+        proxy_set_header X-Plugin-Network-Secret "${PLUGINS_GATEWAY_SECRET}";
         # Needed to carry a request body and the node's conditional desired-state request.
         proxy_set_header Content-Type $content_type;
         proxy_set_header Accept $http_accept;

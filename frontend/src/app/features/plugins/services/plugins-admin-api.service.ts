@@ -73,6 +73,11 @@ export class PluginsAdminApiService {
         return this.http.post<PluginGrant>(`${this.pluginUrl(identifier)}grants/`, { organization_id: organizationId });
     }
 
+    /** Runs a failed install hook again; the grant answers back in `granting` (409 `hook_not_retryable` otherwise). */
+    retryInstallHook(identifier: string, grantId: number): Observable<PluginGrant> {
+        return this.http.post<PluginGrant>(`${this.pluginUrl(identifier)}grants/${grantId}/retry-hook/`, null);
+    }
+
     /** The settings of a plugin with a backend (409 `plugin_has_no_backend` otherwise; so are the calls below). */
     getSettings(identifier: string): Observable<PluginSettingsResponse> {
         return this.http.get<PluginSettingsResponse>(`${this.pluginUrl(identifier)}settings/`);

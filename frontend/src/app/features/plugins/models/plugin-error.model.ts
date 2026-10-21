@@ -24,7 +24,10 @@ export type PluginErrorCode =
     | 'plugin_has_no_backend'
     | 'invalid_plugin_settings'
     | 'invalid_plugin_limits'
-    | 'no_plugin_node';
+    | 'no_plugin_node'
+    | 'grant_not_found'
+    | 'hook_not_retryable'
+    | 'throttled';
 
 /** One problem in a refused package: `loc` is a dotted path such as `manifest.user_permissions[1].action`. */
 export interface PluginErrorItem {

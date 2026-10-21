@@ -18,21 +18,33 @@ install.
 
 from typing import Annotated, Literal
 
+from epicstaff_plugin.contracts.hook_api import (
+    MAX_HOOK_ASSERTION_LENGTH,
+    MAX_HOOK_BODY_BYTES,
+    MAX_HOOK_ERROR_MESSAGE_LENGTH,
+    HookKind,
+)
+from epicstaff_plugin.contracts.manifest import MAX_HOOK_TIMEOUT_SECONDS
 from epicstaff_plugin.contracts.runtime import RuntimeFile
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
 __all__ = [
     "CONTRACT_FORMAT",
+    "MAX_HOOK_ERROR_LENGTH",
     "MAX_LAST_ERROR_LENGTH",
     "MAX_LOG_LINE_LENGTH",
     "MAX_LOG_TAIL_LINES",
+    "MAX_PENDING_HOOK_JOBS",
     "MAX_PLACEMENTS_PER_NODE",
     "NODE_PORT_RANGE",
+    "DesiredHookJob",
     "DesiredPackage",
     "DesiredPlacement",
     "DesiredRuntime",
     "DesiredState",
     "DesiredStateNode",
+    "HookInvocation",
+    "HookResult",
     "NodeReport",
     "PlacementReport",
     "RuntimeCredentials",
@@ -44,6 +56,9 @@ MAX_LOG_TAIL_LINES = 200
 MAX_LOG_LINE_LENGTH = 1000
 # The node's port and UID ranges hold at most this many placements.
 MAX_PLACEMENTS_PER_NODE = 1000
+# A desired placement lists at most this many pending hook jobs.
+MAX_PENDING_HOOK_JOBS = 1000
+MAX_HOOK_ERROR_LENGTH = MAX_HOOK_ERROR_MESSAGE_LENGTH
 # The ports a node gives plugin processes: first and last, both included. The node agent
 # holds every port of it from start-up; django_app registers the node with it and gives each
 # placement the lowest free one.
@@ -113,6 +128,18 @@ class DesiredRuntime(_NodeContractModel):
     cpu_priority: CpuPriority
 
 
+class DesiredHookJob(_NodeContractModel):
+    """A lifecycle hook call the node should make to the plugin's process.
+
+    The node claims the job (`POST .../hook-jobs/{job_id}/claim/`) only once the process is
+    healthy and its runtime file holds a service-account key for `organization_id`.
+    """
+
+    job_id: PositiveInt
+    kind: HookKind
+    organization_id: PositiveInt
+
+
 class DesiredPlacement(_NodeContractModel):
     """One plugin process the node should run (or keep stopped).
 
@@ -132,6 +159,11 @@ class DesiredPlacement(_NodeContractModel):
     runtime: DesiredRuntime
     credentials_revision: Sha256Hex
     settings_revision: NonNegativeInt
+    hook_jobs: Annotated[list[DesiredHookJob], Field(max_length=MAX_PENDING_HOOK_JOBS)] = Field(
+        default_factory=list
+    )
+    """Pending hook jobs, oldest first. An install job is listed only while its grant exists
+    and is still being granted."""
 
 
 class DesiredState(_NodeContractModel):
@@ -195,3 +227,37 @@ class NodeReport(_NodeContractModel):
     agent_version: Annotated[str, StringConstraints(min_length=1, max_length=64)]
     reported_at: AwareDatetime
     placements: Annotated[list[PlacementReport], Field(max_length=MAX_PLACEMENTS_PER_NODE)]
+
+
+class HookInvocation(_NodeContractModel):
+    """The answer to a hook job claim: the one call the node makes to the plugin's process.
+
+    Sent as `POST http://127.0.0.1:<port><HOOK_PATHS[kind]>` with `assertion` in the
+    `X-EpicStaff-Hook` header and `body` as the exact request body. The assertion is bound to
+    the body's sha256 and expires `timeout_seconds` plus a minute after the claim, so the node
+    makes the call at once. Neither is ever logged.
+    """
+
+    job_id: PositiveInt
+    kind: HookKind
+    attempt: PositiveInt
+    organization_id: PositiveInt
+    timeout_seconds: Annotated[int, Field(ge=1, le=max(MAX_HOOK_TIMEOUT_SECONDS.values()))]
+    assertion: Annotated[str, StringConstraints(min_length=1, max_length=MAX_HOOK_ASSERTION_LENGTH)]
+    body: Annotated[str, StringConstraints(min_length=2, max_length=MAX_HOOK_BODY_BYTES)]
+    """The exact JSON text to send, UTF-8."""
+
+
+class HookResult(_NodeContractModel):
+    """What came of a claimed hook call, posted to `.../hook-jobs/{job_id}/result/`.
+
+    `attempt` is the one the claim returned; a result for another attempt is refused.
+    """
+
+    attempt: PositiveInt
+    outcome: Literal["succeeded", "failed"]
+    error: Annotated[str, StringConstraints(max_length=MAX_HOOK_ERROR_LENGTH)] | None = None
+    """Why the call failed, for the SuperAdmin; null when it succeeded."""
+
+    http_status: Annotated[int, Field(ge=100, le=599)] | None = None
+    duration_ms: NonNegativeInt

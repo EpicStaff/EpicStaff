@@ -8,6 +8,7 @@ from src.shared.models.plugin_nodes import NodeReport, PlacementReport
 from utils.logger import logger
 
 from plugins.exceptions import InvalidNodeReportError
+from plugins.lifecycle.hook_job_service import HookJobService
 from plugins.models import (
     PlacementHealth,
     PlacementObservedState,
@@ -47,7 +48,8 @@ class NodeReportService:
         `provisioning` or `failed` plugin `running`; one reported failed makes a
         `provisioning` or `running` plugin `failed`; anything else leaves the state. A report
         about a process older than the latest restart or settings change is stored for the
-        Runtime tab but moves no state.
+        Runtime tab but moves no state. A running hook job of the node whose result is
+        overdue fails.
         """
         now = timezone.now()
         by_id = {placement.placement_id: placement for placement in report.placements}
@@ -65,6 +67,7 @@ class NodeReportService:
                 observed = by_id.pop(placement.pk)
                 _store_observation(placement, observed, now)
                 _follow_plugin_state(placement, observed)
+        HookJobService().fail_overdue(node)
         if by_id:
             logger.warning(
                 "Plugin node {node} reported placements it does not have: {placement_ids}",

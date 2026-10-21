@@ -170,6 +170,47 @@ check "its positive controls pass (own runtime file, ptrace of its own child)" j
   and .target_pid > 0' "$work/probe.json"
 jq -r 'to_entries[] | "    \(.key): \(.value)"' "$work/probe.json" | cut -c1-150
 
+echo "# hooks: the node claims a job, calls the plugin on loopback, reports the result"
+
+lab_job() { in_tools curl -s http://control:8000/lab/hook-jobs | jq -c --arg id "$1" '.[$id]'; }
+job_state_is() { [ "$(lab_job "$1" | jq -r .state)" = "$2" ]; }
+add_job() { # placement id, job id, organization id
+  in_tools curl -s -o /dev/null -X POST -H 'Content-Type: application/json' \
+    --data "{\"placement_id\": $1, \"job_id\": $2, \"organization_id\": $3}" \
+    http://control:8000/lab/hook-jobs
+}
+a_pid=$(placement 1 .pid)
+add_job 1 41 7
+if wait_for 60 job_state_is 41 succeeded; then
+  check "an install hook reaches probe-a, passes the SDK's assertion check and succeeds, claimed once ($(lab_job 41 | jq -c .result))" \
+    jq -e '.result.http_status == 200 and .result.attempt == 1 and .claims == 1' <<< "$(lab_job 41)"
+  # As probe-a's UID: its HOME is 0700, and root here has no CAP_DAC_OVERRIDE.
+  check "the plugin's handler ran for the job's organization" \
+    test "$(docker exec --user 20001:20001 "$node" cat /var/lib/es_plugins/data/probe-a/install-hook-41.json)" \
+    = '{"organization": 7, "attempt": 1}'
+else
+  fail "the install hook of job 41: $(lab_job 41)"
+fi
+# The runtime file holds a key for organization 7 only: job 42's hook waits until it holds one
+# for 8, which comes with the next credentials revision.
+add_job 1 42 8
+sleep 12
+check "a hook waits while the runtime file has no key for its organization (no claim in 12 s)" \
+  test "$(lab_job 42 | jq .claims)" = 0
+in_tools curl -s -o /dev/null -X POST -H 'Content-Type: application/json' --data '[7, 8]' \
+  http://control:8000/lab/service-accounts/1
+change 1 "{\"credentials_revision\": \"$(printf '2%.0s' $(seq 64))\"}"
+if wait_for 60 job_state_is 42 failed; then
+  check "with the key written, the hook runs, and the plugin's failure comes back with its message ($(lab_job 42 | jq -c .result))" \
+    jq -e '.result.http_status == 500 and .result.error == "the probe refuses organization 8" and .claims == 1' <<< "$(lab_job 42)"
+else
+  fail "the install hook of job 42: $(lab_job 42)"
+fi
+check "probe-a ran both hooks without a restart (same pid)" test "$(placement 1 .pid)" = "$a_pid"
+service_account_key="esp-$(printf 'lab%.0s' $(seq 14))k"
+check "no hook assertion and no service-account key reaches the node's log" \
+  sh -c "! docker logs $node 2>&1 | grep -q -e '$service_account_key' -e 'eyJ'"
+
 echo "# limits"
 
 call probe-a 20001 /api/forkbomb > "$work/bomb.json" &

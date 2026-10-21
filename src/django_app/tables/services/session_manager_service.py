@@ -2,6 +2,7 @@ from dataclasses import replace
 
 from django.db import transaction
 from django.utils import timezone
+from rbac.access.principals import is_pinned_org_principal
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import (
@@ -767,6 +768,16 @@ class SessionManagerService(metaclass=SingletonMeta):
         )
 
     def _resolve_principal_fields(self, user, api_key) -> dict:
+        # First: a plugin credential is not an ApiKey, so the run view passes
+        # api_key=None and the USER branch would otherwise read a missing email.
+        if is_pinned_org_principal(user):
+            person = user.person
+            return {
+                "kind": SessionPrincipal.ActionKind.PLUGIN,
+                "plugin_identifier": user.plugin_identifier,
+                "user": person,
+                "email": person.email if person is not None else None,
+            }
         if user is None:
             return {"kind": SessionPrincipal.ActionKind.TRIGGER}
         if isinstance(user, SystemServicePrincipal):

@@ -105,12 +105,10 @@
                         />
                     }
                     <span class="group-name">{{ group.label }}</span>
-                    @if (group.note === null) {
-                        <span class="group-count">
-                            {{ groupCounts().get(group.key)?.selected }} /
-                            {{ groupCounts().get(group.key)?.total }}
-                        </span>
-                    }
+                    <span class="group-count">
+                        {{ groupCounts().get(group.key)?.selected }} /
+                        {{ groupCounts().get(group.key)?.total }}
+                    </span>
                 </div>
 
                 <!-- Resources (collapsible with animation) -->
@@ -118,9 +116,6 @@
                     class="group-content"
                     [class.is-collapsed]="isGroupCollapsed(group.key)"
                 >
-                    @if (group.note !== null) {
-                        <p class="group-note">{{ group.note }}</p>
-                    }
                     @if (!readonly() && group.rows.length > 0) {
                         <div class="resource-row bulk">
                             <app-checkbox

@@ -154,3 +154,72 @@ def log_origin_refused(*, origin: str, method: str, path: str) -> None:
         method=method,
         path=path,
     )
+
+
+# The service-account and hook lines never carry a key, a key hash, a hook assertion, a hook
+# body or a person's permissions.
+def log_service_account_keys_minted(identifier: str, org_ids: list[int]) -> None:
+    logger.info(
+        "plugins.service_account.keys_minted plugin={identifier} org_ids={org_ids} count={count}",
+        identifier=identifier,
+        org_ids=",".join(str(org_id) for org_id in org_ids),
+        count=len(org_ids),
+    )
+
+
+def log_service_account_refused(*, identifier: str | None, reason: str) -> None:
+    """Log a refused service-account key; `identifier` is None when the key named no plugin.
+
+    `reason` is `outside_internal_listener`, `unknown_key`, `revoked`, `superseded`,
+    `grant_state`, `org_inactive` or `no_backend`.
+    """
+    logger.info(
+        "plugins.service_account.refused plugin={identifier} reason={reason}",
+        identifier=identifier or "-",
+        reason=reason,
+    )
+
+
+def log_on_behalf_of_refused(*, identifier: str, org_id: int, user_id: int) -> None:
+    logger.info(
+        "plugins.on_behalf_of.refused plugin={identifier} org={org_id} user_id={user_id}",
+        identifier=identifier,
+        org_id=org_id,
+        user_id=user_id,
+    )
+
+
+def log_hook_claimed(*, identifier: str, job_id: int, kind: str, org_id: int, attempt: int) -> None:
+    logger.info(
+        "plugins.hook.claimed plugin={identifier} job={job_id} kind={kind} org={org_id} "
+        "attempt={attempt}",
+        identifier=identifier,
+        job_id=job_id,
+        kind=kind,
+        org_id=org_id,
+        attempt=attempt,
+    )
+
+
+def log_hook_finished(
+    *,
+    identifier: str,
+    job_id: int,
+    kind: str,
+    org_id: int,
+    attempt: int,
+    outcome: str,
+    duration_ms: int | None,
+) -> None:
+    """Log a hook's outcome; `duration_ms` is None when the node never reported one."""
+    logger.info(
+        "plugins.hook.finished plugin={identifier} job={job_id} kind={kind} org={org_id} "
+        "attempt={attempt} outcome={outcome} duration_ms={duration_ms}",
+        identifier=identifier,
+        job_id=job_id,
+        kind=kind,
+        org_id=org_id,
+        attempt=attempt,
+        outcome=outcome,
+        duration_ms="-" if duration_ms is None else duration_ms,
+    )

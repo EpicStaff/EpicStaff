@@ -1026,6 +1026,21 @@ describe('FlowVisualProgrammingComponent', () => {
             return flowService.getFlowState().nodes.some((node) => node.backendId === 77);
         }
 
+        it('names a plugin that saved the flow and never takes it for the signed-in person', () => {
+            // No profile is loaded here (the current user id is undefined), the case a loose `==` would take for "me".
+            TestBed.inject(GraphCollaborationWsService).graphSaved$.next({
+                type: 'graph_saved',
+                graph_id: 1,
+                new_save_version: 2,
+                saved_by: { user_id: null, display_name: 'Weather (plugin)', avatar_url: null },
+                saved_at: '',
+            });
+            fixture.detectChanges();
+
+            expect(toast['info']).toHaveBeenCalledWith('Graph was saved by Weather (plugin)', 4000, 'bottom-right');
+            expect(showsRemoteSave()).toBe(true);
+        });
+
         it('loads the save into a clean editor and drops the undo history from before it', () => {
             undoRedo.setUndoStack([flowService.getFlowState()]);
 

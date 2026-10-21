@@ -9,6 +9,10 @@
     --es-color-text-secondary: #9a9aa3;
     --es-color-accent: #685fff;
     --es-color-accent-hover: #574fd6;
+    --es-color-text-disabled: #676767;
+    --es-color-input-background: #27272b;
+    --es-color-input-border: #c8ceda24;
+    --es-color-input-placeholder: #c8ceda4d;
     --es-color-border: #c8ceda24;
     --es-color-divider-subtle: #c8ceda14;
     --es-color-warning: #ffcf00;
@@ -133,34 +137,99 @@ body {
     background: transparent;
 }
 
-.places {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
+.content,
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
-.place {
+.page > p {
+    margin: 0;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 480px;
+}
+
+.form--inline {
+    flex-direction: row;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.field {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 16px;
-    border: 1px solid var(--es-color-divider-subtle);
-    border-radius: 10px;
-    background: var(--es-color-surface);
+    min-width: 220px;
 }
 
-.place-name {
+.field-label {
+    color: var(--es-color-text-secondary);
+}
+
+.input {
+    padding: 6px 10px;
+    border: 1px solid var(--es-color-input-border);
+    border-radius: 4px;
+    background: var(--es-color-input-background);
+    color: var(--es-color-text);
+    font: inherit;
+}
+
+.input::placeholder {
+    color: var(--es-color-input-placeholder);
+}
+
+.input:focus-visible {
+    outline: none;
+    border-color: var(--es-color-accent);
+    box-shadow: var(--es-focus-ring);
+}
+
+.input:disabled {
+    color: var(--es-color-text-disabled);
+}
+
+.button:disabled,
+.button[aria-disabled='true'] {
+    border-color: var(--es-color-border);
+    background: transparent;
+    color: var(--es-color-text-disabled);
+    cursor: default;
+}
+
+.table {
+    width: 100%;
+    max-width: 480px;
+    border-collapse: collapse;
+}
+
+.table caption {
+    padding-bottom: 8px;
     font-size: 1.125rem;
     font-weight: 500;
+    text-align: left;
 }
 
-.place-temperature {
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--es-color-accent);
+.table th {
+    color: var(--es-color-text-secondary);
+    font-weight: 500;
+    text-align: left;
+}
+
+.table th,
+.table td {
+    padding: 6px 8px 6px 0;
+    border-bottom: 1px solid var(--es-color-divider-subtle);
+}
+
+.table .number {
+    font-variant-numeric: tabular-nums;
 }
 
 .facts {
@@ -176,4 +245,8 @@ body {
 
 .facts dd {
     margin: 0;
+}
+
+.form--inline .button {
+    align-self: flex-end;
 }

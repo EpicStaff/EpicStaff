@@ -14,9 +14,15 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rbac.identity.authentication.JwtAuthentication",
         "rbac.identity.authentication.ApiKeyAuthentication",
+        # Answers only `Authorization: PluginKey …`, and only while plugins are on.
+        "plugins.identity.service_account_authentication.PluginServiceAccountAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
+    ],
+    # A view that sets `throttle_classes` must list these too, or it drops them.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "plugins.throttles.PluginServiceAccountRateThrottle",
     ],
     "NUM_PROXIES": env.int("DJANGO_NUM_PROXIES"),
     "DEFAULT_THROTTLE_RATES": {

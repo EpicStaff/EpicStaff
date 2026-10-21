@@ -5,6 +5,9 @@ Views for the Flow Assistant feature.
 
 Non-streaming endpoints: DRF APIView.
 Streaming endpoint: SSEMixin (Django View) with ticket auth.
+
+Every DRF view refuses plugin credentials: conversations belong to a person's
+membership, and the stream's ticket is issued only by these views.
 """
 
 import contextlib
@@ -14,7 +17,7 @@ from django.db.models import Count
 from django.http import Http404
 from django.utils import timezone
 from rbac.access.asserts import assert_org_permission
-from rbac.access.gates import IsSuperadmin
+from rbac.access.gates import DenyPluginCredential, IsSuperadmin
 from rbac.access.org_context import OrgContextService
 from rbac.identity.tickets import sse_ticket_service
 from rbac.models.enums import Permission, ResourceType
@@ -99,7 +102,7 @@ class FlowAssistantConfigView(APIView):
     PATCH /api/flow-assistants/<graph_id>/   — update llm_config
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
     _org_service = OrgContextService()
 
     def get(self, request, graph_id: int):
@@ -149,7 +152,7 @@ class FlowAssistantConversationsView(APIView):
     POST /api/flow-assistants/<graph_id>/conversations/ — start a new conversation
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def get(self, request, graph_id: int):
         organization_user = resolve_organization_user(request)
@@ -205,7 +208,7 @@ class FlowAssistantConversationView(APIView):
     DELETE /api/flow-assistants/<graph_id>/conversations/<conversation_id>/
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def get(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)
@@ -241,7 +244,7 @@ class FlowAssistantConversationView(APIView):
 class FlowAssistantSendMessageView(APIView):
     """POST /api/flow-assistants/<graph_id>/conversations/<conversation_id>/messages/"""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def post(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)
@@ -373,7 +376,7 @@ class FlowAssistantAuditView(APIView):
       include_deleted       bool  — include soft-deleted rows (default false)
     """
 
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+    permission_classes = [IsAuthenticated, DenyPluginCredential, IsSuperadmin]
     pagination_class = LimitOffsetPagination
 
     def get(self, request):
@@ -433,7 +436,7 @@ class FlowAssistantCancelView(APIView):
     assistant content, and return a done event with interrupted=True.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def post(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)

@@ -3,13 +3,14 @@ import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angula
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, ButtonComponent, SelectComponent, SelectItem } from '@shared/components';
 import { GetOrganizationResponse } from '@shared/models';
-import { EMPTY, expand, finalize, map, Observable, reduce } from 'rxjs';
+import { finalize } from 'rxjs';
 
 import { AdminOrganizationsService } from '../../../role-base-access/services/admin/organizations.service';
 import { PluginGrant } from '../../models/plugin-admin.model';
 import { PluginErrorView } from '../../models/plugin-error.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
+import { fetchAllOrganizations } from '../../utils/plugin-organizations.util';
 
 export interface PluginGrantDialogData {
     identifier: string;
@@ -18,9 +19,6 @@ export interface PluginGrantDialogData {
 
 /** The dialog's title element; pass it as `ariaLabelledBy` when opening the dialog. */
 export const PLUGIN_GRANT_DIALOG_TITLE_ID = 'plugin-grant-dialog-title';
-
-/** The most organizations one admin list request returns. */
-const ORGANIZATIONS_PAGE_SIZE = 200;
 
 /** Grants a plugin to one active organization, picked from the SuperAdmin's organization list. */
 @Component({
@@ -49,16 +47,13 @@ export class PluginGrantDialogComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
 
     ngOnInit(): void {
-        this.loadActiveOrganizations()
+        fetchAllOrganizations(this.organizationsApi, { is_active: [true] })
             .pipe(
                 finalize(() => this.isLoading.set(false)),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: (organizations) =>
-                    this.organizations.set(
-                        [...organizations].sort((first, second) => first.name.localeCompare(second.name))
-                    ),
+                next: (organizations) => this.organizations.set(organizations),
                 error: (error: unknown) => this.error.set(toPluginErrorView(error, "Couldn't load the organizations.")),
             });
     }
@@ -87,22 +82,5 @@ export class PluginGrantDialogComponent implements OnInit {
 
     protected close(): void {
         this.dialogRef.close();
-    }
-
-    /** Every active organization, page by page. */
-    private loadActiveOrganizations(): Observable<GetOrganizationResponse[]> {
-        const fetchPage = (page: number) =>
-            this.organizationsApi
-                .list({ is_active: [true], page, page_size: ORGANIZATIONS_PAGE_SIZE })
-                .pipe(map((response) => ({ response, page })));
-        return fetchPage(1).pipe(
-            expand(({ response, page }) =>
-                response.next && response.results.length > 0 ? fetchPage(page + 1) : EMPTY
-            ),
-            reduce(
-                (organizations: GetOrganizationResponse[], { response }) => organizations.concat(response.results),
-                []
-            )
-        );
     }
 }

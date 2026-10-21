@@ -1,4 +1,5 @@
 from rbac.access.org_context import OrgContextService
+from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,9 +13,11 @@ class AvailablePluginsView(APIView):
 
     The header is resolved like every org-scoped endpoint (missing → 400, not a member →
     403, unknown org for a SuperAdmin → 404). The list itself comes from the caller's
-    membership, so a SuperAdmin who is not a member gets an empty list.
+    membership, so a SuperAdmin who is not a member gets an empty list. A person's surface:
+    pinned to people's credentials, so a plugin's service account is never read here.
     """
 
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):

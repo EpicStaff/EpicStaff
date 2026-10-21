@@ -9,7 +9,10 @@ operator sets up for that. How to build and sign a package is in [the plugin doc
 A plugin is a web page, which nginx serves, and may have a Python backend. Backends run on the
 **plugin node**, the `es_plugins` container, each as a process and Unix user of its own; nginx's
 **gateway** asks Django about every request to `<identifier>.<PLUGINS_BASE_DOMAIN>/api/` before
-passing it on. A deployment whose plugins are all frontend-only does not need the node.
+passing it on. A backend calls EpicStaff's API as the plugin's **service account** in each
+organization the plugin is granted to, within the access its package declares (see
+[Service accounts](#service-accounts)). A deployment whose plugins are all frontend-only does not
+need the node.
 
 ## Before you start
 
@@ -78,7 +81,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_TRUSTED_SIGNING_KEYS` | `none` | The publishers you trust, comma-separated `<name>:<minisign public key>`. Packages signed by one of these keys are shown as Trusted; see [trust and signing](../explanation/trust-and-signing.md). |
 | `PLUGINS_MAX_PACKAGE_MB` | `300` | The largest package an upload may carry, in MiB (1 MiB = 1,048,576 bytes). Django applies it to the package; nginx accepts a request body one MiB larger, for the multipart framing. Before nginx reads any of an upload, it asks Django (without the body) whether the caller is a logged-in SuperAdmin, and refuses everyone else with 401 or 403, so nobody else can make EpicStaff store a large body. A proxy in front of EpicStaff must allow that size too. |
 | `PLUGINS_STORAGE_BUCKET` | `epicstaff-plugins` | The bucket in EpicStaff's storage that keeps uploaded packages. Created on the first upload. |
-| `PLUGINS_GATEWAY_SECRET` | `none` | A random value of at least 32 characters, made of letters, digits and `. _ ~ + / = -`: `openssl rand -hex 32`. nginx sends it with every gateway check, and Django answers a check without it with 404. Required with plugins on. |
+| `PLUGINS_GATEWAY_SECRET` | `none` | A random value of at least 32 characters, made of letters, digits and `. _ ~ + / = -`: `openssl rand -hex 32`. nginx sends it with every gateway check and with every request that comes through its internal API listener. Django answers a check without it with 404, and accepts a plugin's service-account key or the node's key only on a request that carries it. Required with plugins on. |
 | `DJANGO_FRONTEND_BASE_URL` | already set | The exact origin people open EpicStaff at, such as `https://epicstaff.example.com`: scheme, host and port only, no path (a trailing `/` is allowed). Only this origin may frame a plugin page, so any other value (the development default `http://localhost:4200`, a different port) leaves every plugin page blank. It is also the issuer of the signed context plugin backends verify. |
 | `DJANGO_REFRESH_COOKIE_SECURE` | already set | `true` on HTTPS. It also chooses the name and path of EpicStaff's login cookie (see [Sign-in and EpicStaff's login cookie](#sign-in-and-epicstaffs-login-cookie)). |
 | `DJANGO_ALLOWED_HOSTS` | already set | Only if you restrict it (the default is `*`): add `.plugins.example.com`, because each plugin host fetches its configuration from Django under its own host name, and keep `localhost`, the host name of nginx's gateway checks and of the plugin node's requests. |
@@ -106,7 +109,8 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_MAX_PROCESS_MEMORY_MB` | `1024` | Largest memory limit of one plugin backend. |
 | `PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE` | `120` | Highest rate a public path may declare, counted per client address. |
 | `PLUGINS_MAX_REQUEST_BODY_MB` | `20` | Largest request body nginx accepts on a plugin host (a whole number of MiB above 0); a public path's own cap may not be larger. |
-| `PLUGINS_MAX_DB_CONNECTIONS`, `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS`, `PLUGINS_MAX_REQUESTS_PER_MINUTE` | `20`, `60`, `600` | Accepted and checked against manifests, not enforced yet. |
+| `PLUGINS_MAX_REQUESTS_PER_MINUTE` | `600` | Highest rate of calls to EpicStaff's API a plugin may ask for. It is counted per service account, so per organization the plugin is granted to; a call over the rate gets `429` with `Retry-After`. |
+| `PLUGINS_MAX_DB_CONNECTIONS`, `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS` | `20`, `60` | Accepted and checked against manifests, not enforced yet. |
 
 [Limits](../reference/limits.md) says which limits this version enforces and how.
 
@@ -212,6 +216,25 @@ SMOKE_EMAIL=smoke@example.com SMOKE_PASSWORD='…' SMOKE_PLUGINS_OFF=1 \
 bash src/nginx/tests/login_smoke.sh
 ```
 
+Then check a plugin backend's service account, on the machine that runs the stack, once the
+plugin is granted to an organization. It needs three people: a member of that organization whose
+role gives View on the plugin, a member whose role gives none (with Weather, a Viewer), and
+someone who is not a member. Pass their user ids:
+
+```bash
+SMOKE_BASE_URL=https://epicstaff.example.com SMOKE_PLUGIN=weather SMOKE_ORG_ID=3 \
+SMOKE_PERSON_ID=11 SMOKE_OUTSIDER_ID=12 SMOKE_NO_VIEW_ID=13 \
+bash src/nginx/tests/service_account_smoke.sh
+```
+
+It reads the plugin's key for that organization from its runtime file in the `es_plugins`
+container (as root, without printing it) and calls EpicStaff's API with it from a throwaway curl
+container on `plugins-network`, the way the backend does. It checks that the key works through
+nginx's internal listener and is refused on EpicStaff's public address, that the people endpoint
+answers for the member with View and not for the outsider, that the backend may act on behalf of
+the member with View and not of the one without, and that a person-only endpoint (the flow
+assistant's) refuses the key. Extra arguments go to the curl call to `SMOKE_BASE_URL`, as above.
+
 The repository has two labs that need nothing but Docker: `bash src/nginx/tests/gateway/run.sh`
 checks the gateway's header and path rules and its overhead under load, and
 `bash src/es_plugins/lab/run.sh` runs the node exactly as compose defines it with probe plugins
@@ -275,11 +298,75 @@ version. nginx refuses every request from the network's subnet (`PLUGINS_NETWORK
 EpicStaff's own site and on the plugin hosts, so a plugin backend cannot use EpicStaff or another
 plugin the way a browser does. All it can reach is EpicStaff's API through nginx's internal
 listener (`epicstaff-api:8081`), which serves only that subnet and refuses the API's login,
-administration and gateway routes. A memory limit is checked every 2 s against the memory every
+administration and gateway routes. There it calls as its service account, with the key of the
+organization it acts in (see [Service accounts](#service-accounts)). Every request through the
+listener carries `PLUGINS_GATEWAY_SECRET`, which nginx adds and no caller can set, and Django
+accepts a plugin's key or the node's key only with it: a key copied out of the node is of no use
+from anywhere else. A memory limit is checked every 2 s against the memory every
 process of the plugin's user id holds, so a plugin can overshoot it briefly; the container's
 `ES_PLUGINS_MEMORY` is the hard limit for all of them. `/dev/shm` is read-only, so plugin
 backends have no POSIX shared memory (see [Limits](../reference/limits.md)). Disk is capped per
 plugin too; see [Disk](#disk).
+
+## Service accounts
+
+A plugin with a backend gets a service account in each organization a SuperAdmin grants it to.
+The backend uses it to call EpicStaff's API: to create the flows, files, secrets or LLM
+configurations its features need, to run flows, and to look up the people who use it.
+
+- **It can do only what the package declares.** The manifest lists the access the plugin needs
+  (for example `flows: read, create, use`), with a reason for each; the SuperAdmin approves that
+  list with the package, and the service account gets exactly that in each organization, never
+  more, whatever the roles there. It never gets the administration of EpicStaff: organizations,
+  members, roles, API keys, the audit log and chats cannot be declared, and person-only features
+  (the flow assistant, notification mail, saved audit filters) refuse it.
+- **On behalf of a person.** When the backend acts for someone using the plugin, it names them.
+  EpicStaff checks that this person may use the plugin in the organization (an active member
+  whose role gives View on it) and records them with the request; it does not check what that
+  person may do in EpicStaff, so the plugin's declared access is still the limit.
+- **Its keys.** The node writes one key per organization into the plugin's runtime file, which
+  only the plugin's own Unix user can read. Django keeps only their hashes. The keys are
+  replaced every time the plugin's process (re)starts and whenever the organizations it serves
+  change (a new grant, a grant that becomes active or ends, a renamed organization); the
+  previous key keeps working for 10 minutes. So **Restart** on the Runtime tab replaces every
+  key of the plugin.
+- **What it did.** Each organization's Settings → Plugin activity (for people who may read the
+  audit log, Org Admins by default) lists the plugins acting there with the access they declared,
+  and every change a plugin's service account made: who it acted for, the request and what it
+  created. A SuperAdmin sees the same for every organization on the plugin's Activity tab.
+- **How fast.** Calls are limited per service account to the plugin's `requests_per_minute`
+  (at most `PLUGINS_MAX_REQUESTS_PER_MINUTE`).
+
+### Install hooks
+
+A plugin may run an **install hook** when it is granted to an organization, to set itself up
+there (the sample `weather` creates its flow and a README in the organization's storage). Its
+grant then shows "Installing…" until the hook is done, and only then becomes active; people
+cannot open the plugin in that organization until it is.
+
+The node runs the hook once the plugin's process runs, has passed its health check and holds the
+organization's key. It asks Django for the job, which answers with a call signed for this one
+hook, and makes the call at once on the node's loopback; one hook at a time per plugin. A hook
+may take as long as its manifest says (at most 15 minutes for an install hook). If the node
+reports no result within that time and two minutes more (it was stopped, or lost its connection
+to Django), Django fails the hook itself.
+
+A failed hook leaves the grant **Install failed** with the reason. Fix the cause, then press
+**Retry install** on the grants list: the same job runs again, and the plugin is expected to
+finish what an earlier attempt began without doing it twice.
+
+| The reason says | Cause and fix |
+|---|---|
+| The plugin's own message | The plugin's hook failed; its log on the Runtime tab says more. Often the plugin lacks access it did not declare (a publisher fix) or a setting is missing. |
+| `timed out after … s` | The hook did not answer within its timeout. Look at the plugin's log. |
+| `could not connect: …` | The plugin's process did not take the call. Check its state and log on the Runtime tab. |
+| `the connection was lost: …` | The process took the call but closed the connection, or answered with something that is not HTTP, before it answered. Its log says more; a crash in the hook is the usual cause. |
+| `the plugin restarted during the hook` | The process was restarted while the hook ran: Restart, a settings change, a crash or its memory limit. Retry. |
+| `the plugin stopped during the hook` | The process was stopped while the hook ran (a required setting went missing, the plugin node stopped, or the plugin left the node). Start it again, then retry. |
+| `hook assertion rejected: …` | The plugin refused the signed call. Most often the clocks of the Docker host and EpicStaff's server differ by more than 30 s; fix the host's clock (NTP), then retry. |
+| `this plugin has no install hook` | The package says it has one, but its backend registers none. The publisher must fix the package. |
+| `HTTP …` | The plugin answered with that status and no message of its own. Look at its log. |
+| `The plugin node reported no result in time` | The node did not report back: see that it is running and online. |
 
 ## Disk
 
@@ -408,8 +495,8 @@ in the volume it cannot rebuild.
 
 Set `PLUGINS_ENABLED=false`, recreate django_app, epicstaff-nginx and frontend, and stop the node
 (`docker compose stop es_plugins`, and remove `plugins` from `COMPOSE_PROFILES`). Plugin host
-names then reach EpicStaff's own pages, the plugin API answers 404 and the plugins leave the left
-bar. Nothing is deleted: packages, approvals, grants, settings, published files and the node's
+names then reach EpicStaff's own pages, the plugin API answers 404, the plugins leave the left
+bar and no plugin key is accepted any more (401); people and API keys work as before. Nothing is deleted: packages, approvals, grants, settings, published files and the node's
 volume stay, and come back when you turn the platform on again.
 
 ## Behind another proxy or load balancer

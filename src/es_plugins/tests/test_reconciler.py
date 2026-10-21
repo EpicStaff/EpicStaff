@@ -4,6 +4,8 @@ The plugin's process is a real child answering the health check; the venv build 
 recorded instead of run (it has its own tests).
 """
 
+import asyncio
+import base64
 import errno
 import json
 import socket
@@ -12,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from loguru import logger
 
 from es_plugins.agent import reconciler as reconciler_module
 from es_plugins.agent.django_client import DjangoNodeClient
@@ -19,21 +22,29 @@ from es_plugins.agent.main import prepare_agent_directories
 from es_plugins.agent.port_reservation import PortReservation
 from es_plugins.agent.reconciler import AgentServices, Reconciler
 from es_plugins.health.health_checker import HealthChecker
+from es_plugins.hooks.hook_caller import PluginHookCaller
+from es_plugins.hooks.hook_runner import RESTARTED_DURING_HOOK, STOPPED_DURING_HOOK
 from es_plugins.node_disk import INSTALL_RESERVE_BYTES, NodeDisk
 from es_plugins.packages.package_fetcher import PackageFetcher
 from tests.helpers import (
     API_URL,
+    HOOK_ASSERTION,
     NODE_KEY,
+    SERVICE_ACCOUNT_KEY,
     FakeDjango,
     FakeLauncher,
     backend_wheels,
     desired_state,
     free_port,
     free_ports,
+    hook_body,
+    hook_invocation,
+    hook_job,
     manifest,
     package_files,
     placement,
     runtime_file_document,
+    service_account,
     write_package,
 )
 from tests.test_supervisor_backoff import wait_until
@@ -99,8 +110,11 @@ async def node(tmp_path, layout, package_bytes):
     django.runtime_files[7] = runtime_file_document()
     client = DjangoNodeClient(API_URL, NODE_KEY, transport=django.transport)
     launcher = FakeLauncher()
+    launcher.hook_record = tmp_path / "hooks.jsonl"
     venv_builder = RecordingVenvBuilder()
     health_checker = HealthChecker()
+    hook_caller = PluginHookCaller()
+    changes = []
     port, other_port = free_ports(2)
     volume = Volume()
     ports = PortReservation([port, other_port])
@@ -113,7 +127,8 @@ async def node(tmp_path, layout, package_bytes):
         health_checker=health_checker,
         ports=ports,
         disk=NodeDisk(layout.data_root, statvfs=volume),
-        on_change=lambda: None,
+        hook_caller=hook_caller,
+        on_change=lambda: changes.append(reconciler.reports()),
         interpreter_for=lambda python: Path(sys.executable),
         venv_builder=venv_builder,
     )
@@ -125,12 +140,16 @@ async def node(tmp_path, layout, package_bytes):
         )
 
     desired.port, desired.other_port = port, other_port
+    desired.package_bytes = package_bytes
     desired.volume = volume
+    desired.changes = changes
+    desired.services = services
     yield reconciler, django, launcher, venv_builder, desired
     await reconciler.close()
     ports.close()
     launcher.stop_all()
     await health_checker.aclose()
+    await hook_caller.aclose()
     await client.aclose()
 
 
@@ -330,3 +349,209 @@ async def test_a_venv_is_not_built_below_the_install_reserve(node, monkeypatch):
     assert "installing needs 2048 MB" in reconciler.reports()[0].last_error
     assert venv_builder.requests == []
     assert launcher.spawned == []
+
+
+def hook_calls(launcher) -> list[dict]:
+    """The hook calls the plugin stand-ins received, in order."""
+    if not launcher.hook_record.exists():
+        return []
+    return [json.loads(line) for line in launcher.hook_record.read_text().splitlines()]
+
+
+def with_service_accounts(*organization_ids, identifier="weather") -> dict:
+    return runtime_file_document(
+        identifier,
+        service_accounts={str(organization_id): service_account() for organization_id in organization_ids},
+    )
+
+
+async def test_a_hook_is_called_only_once_the_process_answers_its_health_check(node):
+    reconciler, django, launcher, _, desired = node
+    launcher.healthy_after = 1.5
+    django.runtime_files[7] = with_service_accounts(3)
+    django.hook_invocations[41] = hook_invocation()
+    state_at_claim = []
+    django.on_claim = lambda job_id: state_at_claim.append(
+        (reconciler.reports()[0].observed_state, reconciler.reports()[0].health)
+    )
+
+    await reconciler.apply(desired(hook_jobs=[hook_job()]))
+    await wait_until(lambda: django.hook_results)
+
+    assert state_at_claim == [("running", "ok")]
+    [call] = hook_calls(launcher)
+    assert call["path"] == "/_epicstaff/hooks/install"
+    assert (call["hook"], call["content_type"]) == (HOOK_ASSERTION, "application/json")
+    assert base64.b64decode(call["body"]) == hook_body().encode()
+    assert django.hook_results[0][0] == 41
+    assert (django.hook_results[0][1]["outcome"], django.hook_results[0][1]["attempt"]) == ("succeeded", 1)
+
+
+async def test_a_hook_waits_for_a_runtime_file_of_the_desired_revision_that_lists_its_organization(node):
+    reconciler, django, launcher, _, desired = node
+    django.hook_invocations[41] = hook_invocation()
+
+    # Running and healthy, but the runtime file holds no service account for organization 3.
+    await reconciler.apply(desired(hook_jobs=[hook_job()]))
+    await wait_until(lambda: running(reconciler))
+    await asyncio.sleep(0.5)
+    assert django.requests_to("claim") == []
+
+    # The rewritten file lists the organization, but django_app answered with another revision
+    # than the desired state names.
+    django.runtime_files[7] = with_service_accounts(3)
+    django.credentials_revisions[7] = "e" * 64
+    await reconciler.apply(desired(hook_jobs=[hook_job()], credentials_revision="d" * 64))
+    await wait_until(lambda: SERVICE_ACCOUNT_KEY.encode() in launcher.runtime_files["weather"])
+    await asyncio.sleep(0.5)
+    assert django.requests_to("claim") == []
+
+    await reconciler.apply(desired(hook_jobs=[hook_job()], credentials_revision="e" * 64))
+    await wait_until(lambda: django.hook_results)
+
+    assert django.requests_to("claim") == [41]
+    assert len(launcher.spawned) == 1
+
+
+async def test_a_placement_runs_one_hook_at_a_time_oldest_first(node):
+    reconciler, django, launcher, _, desired = node
+    launcher.hook_delay = 0.5
+    django.runtime_files[7] = with_service_accounts(3, 4)
+    django.hook_invocations[41] = hook_invocation(41, 3)
+    django.hook_invocations[42] = hook_invocation(42, 4)
+
+    await reconciler.apply(desired(hook_jobs=[hook_job(41, 3), hook_job(42, 4)]))
+    await wait_until(lambda: len(django.hook_results) == 2)
+
+    hook_requests = [
+        (request.url.path.split("/")[-3], request.url.path.split("/")[-2])
+        for request in django.requests
+        if "/hook-jobs/" in request.url.path
+    ]
+    assert hook_requests == [("41", "claim"), ("41", "result"), ("42", "claim"), ("42", "result")]
+    first, second = hook_calls(launcher)
+    assert second["started"] - first["started"] >= 0.5
+
+
+async def test_placements_run_their_hooks_in_parallel(node, tmp_path):
+    reconciler, django, launcher, _, desired = node
+    launcher.hook_delay = 5.0
+    other_files = package_files(
+        backend_wheels(tmp_path / "other-wheels"), manifest(identifier="other")
+    )
+    other_bytes = write_package(
+        tmp_path / "other.esplugin", other_files, identifier="other"
+    ).read_bytes()
+    django.packages[13] = other_bytes
+    django.runtime_files[7] = with_service_accounts(3)
+    django.runtime_files[8] = with_service_accounts(3, identifier="other")
+    django.hook_invocations[41] = hook_invocation(41, 3)
+    django.hook_invocations[51] = hook_invocation(51, 3, identifier="other")
+
+    await reconciler.apply(
+        desired_state(
+            [
+                placement(
+                    desired.package_bytes,
+                    runtime__port=desired.port,
+                    uid=UID,
+                    hook_jobs=[hook_job(41, 3)],
+                ),
+                placement(
+                    other_bytes,
+                    placement_id=8,
+                    package_id=13,
+                    identifier="other",
+                    uid=UID + 1,
+                    runtime__port=desired.other_port,
+                    hook_jobs=[hook_job(51, 3)],
+                ),
+            ]
+        )
+    )
+    await wait_until(lambda: len(django.hook_results) == 2, timeout=20)
+
+    first, second = sorted(hook_calls(launcher), key=lambda call: call["started"])
+    assert {base64.b64decode(call["body"]) for call in (first, second)} == {
+        hook_body(41, 3).encode(),
+        hook_body(51, 3, identifier="other").encode(),
+    }
+    # The second call began while the first plugin still held its hook.
+    assert second["started"] < first["started"] + launcher.hook_delay
+
+
+async def test_converge_goes_on_while_a_hook_runs(node):
+    reconciler, django, launcher, _, desired = node
+    launcher.hook_delay = 5.0
+    django.runtime_files[7] = with_service_accounts(3)
+    django.hook_invocations[41] = hook_invocation()
+    await reconciler.apply(desired(hook_jobs=[hook_job()]))
+    await wait_until(lambda: hook_calls(launcher))
+
+    django.credentials_revisions[7] = "d" * 64
+    django.runtime_files[7] = {**with_service_accounts(3), "settings": {"units": "imperial"}}
+    await reconciler.apply(desired(hook_jobs=[hook_job()], credentials_revision="d" * 64))
+    await wait_until(lambda: reconciler.reports()[0].applied_credentials_revision == "d" * 64)
+
+    assert django.hook_results == []
+    assert json.loads(launcher.runtime_files["weather"])["settings"] == {"units": "imperial"}
+    await wait_until(lambda: django.hook_results)
+    assert django.hook_results[0][1]["outcome"] == "succeeded"
+
+
+async def test_a_restart_during_a_hook_reports_it_failed(node):
+    reconciler, django, launcher, _, desired = node
+    launcher.hook_delay = 30.0
+    django.runtime_files[7] = with_service_accounts(3)
+    django.hook_invocations[41] = hook_invocation(timeout_seconds=60)
+    await reconciler.apply(desired(hook_jobs=[hook_job()]))
+    await wait_until(lambda: hook_calls(launcher))
+
+    await reconciler.apply(desired(hook_jobs=[hook_job()], restart_generation=1))
+    await wait_until(lambda: django.hook_results)
+
+    result = django.hook_results[0][1]
+    assert (result["outcome"], result["error"], result["http_status"]) == (
+        "failed",
+        RESTARTED_DURING_HOOK,
+        None,
+    )
+    assert result["duration_ms"] < 30_000
+    await wait_until(lambda: len(launcher.spawned) == 2 and running(reconciler))
+
+
+async def test_a_stop_during_a_hook_reports_it_failed_as_stopped(node):
+    reconciler, django, launcher, _, desired = node
+    launcher.hook_delay = 30.0
+    django.runtime_files[7] = with_service_accounts(3)
+    django.hook_invocations[41] = hook_invocation(timeout_seconds=60)
+    await reconciler.apply(desired(hook_jobs=[hook_job()]))
+    await wait_until(lambda: hook_calls(launcher))
+
+    await reconciler.apply(desired(hook_jobs=[hook_job()], desired_state="stopped"))
+    await wait_until(lambda: django.hook_results)
+
+    result = django.hook_results[0][1]
+    assert (result["outcome"], result["error"]) == ("failed", STOPPED_DURING_HOOK)
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "stopped")
+    assert len(launcher.spawned) == 1
+
+
+async def test_no_key_assertion_or_hook_body_reaches_a_log_line_or_a_report(node):
+    reconciler, django, launcher, _, desired = node
+    django.runtime_files[7] = with_service_accounts(3)
+    django.hook_invocations[41] = hook_invocation()
+    lines = []
+    sink = logger.add(lines.append, format="{message} {exception}", level="DEBUG")
+    try:
+        await reconciler.apply(desired(hook_jobs=[hook_job()]))
+        await wait_until(lambda: django.hook_results)
+    finally:
+        logger.remove(sink)
+
+    assert any("hook job 41" in line for line in lines)
+    reports = [report.model_dump_json() for reports in desired.changes for report in reports]
+    for secret in (SERVICE_ACCOUNT_KEY, HOOK_ASSERTION, hook_body(), '"job_id":41'):
+        assert not [line for line in lines if secret in line], secret
+        assert not [report for report in reports if secret in report], secret
+    assert SERVICE_ACCOUNT_KEY not in json.dumps(django.hook_results)

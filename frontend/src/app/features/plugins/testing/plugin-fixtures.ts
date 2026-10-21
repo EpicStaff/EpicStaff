@@ -1,5 +1,6 @@
 import { AvailablePlugin } from '../models/available-plugin.model';
-import { PackageReview, PluginDetail } from '../models/plugin-admin.model';
+import { OrganizationServiceAccount, PluginActivityEvent } from '../models/plugin-activity.model';
+import { PackageReview, PluginDetail, PluginGrant } from '../models/plugin-admin.model';
 import {
     PluginLimitsResponse,
     PluginPlacement,
@@ -208,6 +209,75 @@ export function buildPluginRuntime(overrides: Partial<PluginRuntimeResponse> = {
     return {
         node: { name: 'node-1', online: true, last_seen_at: '2026-10-21T08:00:05Z', agent_version: '0.1.0' },
         placement: buildPluginPlacement(),
+        ...overrides,
+    };
+}
+
+/** Weather granted to Acme by a SuperAdmin; its backend acts there, its install hook succeeded, it owns 2 resources. */
+export function buildPluginGrant(overrides: Partial<PluginGrant> = {}): PluginGrant {
+    return {
+        id: 5,
+        plugin_identifier: 'weather',
+        organization: { id: 3, name: 'Acme' },
+        state: 'active',
+        granted_by: { id: 1, email: 'sam@example.com' },
+        granted_at: '2026-10-21T08:00:00Z',
+        suspended_at: null,
+        purge_after: null,
+        last_hook_error: null,
+        service_account: { created_at: '2026-10-21T08:00:00Z', key_last_used_at: null },
+        install_hook: {
+            state: 'succeeded',
+            attempt: 1,
+            started_at: '2026-10-21T08:00:05Z',
+            finished_at: '2026-10-21T08:00:09Z',
+            error: null,
+        },
+        owned_resource_count: 2,
+        ...overrides,
+    };
+}
+
+/** Weather running its flow in Acme on behalf of Ada. */
+export function buildPluginActivityEvent(overrides: Partial<PluginActivityEvent> = {}): PluginActivityEvent {
+    return {
+        id: 41,
+        created_at: '2026-10-21T08:10:00Z',
+        plugin: { identifier: 'weather', name: 'Weather' },
+        organization: { id: 3, name: 'Acme' },
+        actor: { kind: 'plugin', label: 'Weather (plugin)' },
+        on_behalf_of: { user_id: 12, label: 'ada@example.com' },
+        action: 'api_request',
+        request: { method: 'POST', path: '/api/run-session/', route: 'api/run-session/', status: 201 },
+        target: { resource_type: 'flows', id: '18', label: 'Weather forecast' },
+        detail: { created_count: 1 },
+        ...overrides,
+    };
+}
+
+/** Weather acting in the active organization, with the flows and files access it declares. */
+export function buildOrganizationServiceAccount(
+    overrides: Partial<OrganizationServiceAccount> = {}
+): OrganizationServiceAccount {
+    return {
+        plugin: { identifier: 'weather', name: 'Weather', icon_url: '/api/plugin-public/weather/icon/?v=0.4.0' },
+        grant_state: 'active',
+        created_at: '2026-10-21T08:00:00Z',
+        key_last_used_at: null,
+        access: [
+            {
+                resource_type: 'flows',
+                resource_label: 'Flows',
+                actions: ['read', 'create', 'update', 'use'],
+                reason: 'Creates the Weather forecast flow and runs it for you.',
+            },
+            {
+                resource_type: 'files',
+                resource_label: 'Files',
+                actions: ['read', 'create'],
+                reason: "Stores the Weather readme in your organization's storage.",
+            },
+        ],
         ...overrides,
     };
 }

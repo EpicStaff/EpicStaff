@@ -103,6 +103,8 @@ class ProcessSupervisor:
         self._pid: int | None = None
         self._rss_mb: float | None = None
         self._last_error: str | None = None
+        # How many processes this supervisor has started; numbers each one (`running_process`).
+        self._started_processes = 0
 
     @property
     def spec(self) -> ProcessSpec | None:
@@ -133,6 +135,18 @@ class ProcessSupervisor:
             last_error=self._last_error,
             version=self._spec.version if self._spec else None,
         )
+
+    def running_process(self) -> int | None:
+        """The running process's number; None while none runs or it is being stopped.
+
+        Each process the supervisor starts gets the next number, so a caller that saw one number
+        and later sees None or another number knows the process it talked to is gone. The
+        number turns None before a stop or restart signals the process, so a caller whose
+        connection to the process broke already sees it.
+        """
+        if self._pid is None or self._stopping or self._interrupt.is_set():
+            return None
+        return self._started_processes
 
     def record_memory(self, rss_mb: float | None) -> None:
         self._rss_mb = rss_mb
@@ -298,6 +312,7 @@ class ProcessSupervisor:
         finally:
             os.close(write_end)
         self._pid = process.pid
+        self._started_processes += 1
         logger.info(
             "Started plugin {} {} as UID {} (pid {})",
             spec.plugin,

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from rbac.access.principals import is_plugin_credential
 from rbac.access.resolver import PermissionResolver
 from rbac.models.api_key import ApiKey
 from rbac.models.enums import Permission, ResourceType
@@ -17,9 +18,10 @@ class StorageBinPurgeAccess:
 
     A write that doesn't fit the quota purges the org's oldest bin entries only for a user
     session holding FILES DELETE in that org (`grant`): purging can't be undone, so
-    neither a role without DELETE nor a possibly leaked API key may cause one. Everyone
-    else gets the 413, the bin counted as used. The response names the purged entries
-    only to a caller holding FILES READ there; to anyone else it shows their sizes alone.
+    neither a role without DELETE nor a possibly leaked API key or plugin credential may
+    cause one. Everyone else gets the 413, the bin counted as used. The response names the
+    purged entries only to a caller holding FILES READ there; to anyone else it shows their
+    sizes alone.
     """
 
     grant: BinPurgeGrant | None
@@ -32,8 +34,9 @@ class StorageBinPurgeAccess:
         The caller must already be a member of `org_id` or a superadmin: the view's
         permission gate (or the cross-org superadmin check) has run before this.
         """
-        # An API key never purges, so nothing purged is ever shown to it either.
-        if isinstance(request.auth, ApiKey):
+        # An API key or a plugin credential never purges, so nothing purged is ever
+        # shown to it either.
+        if isinstance(request.auth, ApiKey) or is_plugin_credential(request):
             return cls(grant=None, names_visible=False)
         permissions = _resolver.resolve(user=request.user, org_id=org_id)
         may_purge = permissions.can(ResourceType.FILES, Permission.DELETE)

@@ -16,6 +16,7 @@ from drf_spectacular.utils import (
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
+    DenyPluginCredential,
     HasOrgPermission,
 )
 from rbac.access.org_context import OrgContextService
@@ -30,6 +31,7 @@ from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.settings import api_settings
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
@@ -590,9 +592,15 @@ class NotifyEmailView(APIView):
     does not prevent abuse: this is driven by notification_tool (LLM output),
     so a prompt-injected agent or a leaked API key could otherwise send
     unlimited mail to arbitrary external addresses from our domain.
-    NotifyEmailThrottle caps that per authenticated user."""
+    NotifyEmailThrottle caps that per authenticated user.
 
-    throttle_classes = [NotifyEmailThrottle]
+    Plugin service accounts are refused: no resource type governs mail, so a
+    plugin's declared access could not cap it."""
+
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
+    # Extends the defaults rather than replacing them, so a default throttle
+    # (such as the per-plugin request rate) still applies here.
+    throttle_classes = [*api_settings.DEFAULT_THROTTLE_CLASSES, NotifyEmailThrottle]
 
     @extend_schema(
         summary="Send a notification email",
@@ -697,6 +705,8 @@ class RunPythonCodeAPIView(APIView):
 
 
 class InitRealtimeAPIView(APIView):
+    # A realtime session is a person's voice conversation; plugins have no part in it.
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
     _org_context = OrgContextService()
 
     @extend_schema(**INIT_REALTIME_POST)

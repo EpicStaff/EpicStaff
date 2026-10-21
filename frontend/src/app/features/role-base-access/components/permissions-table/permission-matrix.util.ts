@@ -24,7 +24,7 @@ export function catalogMatrixGroups(catalog: CatalogResponse): PermissionMatrixG
     }
     return Array.from(rowsByGroup, ([key, rows]) => {
         const meta: GroupMeta = GROUP_META[key] ?? { label: key, icon: 'settings' };
-        return { key, label: meta.label, icon: meta.icon, iconClass: null, rows, note: null };
+        return { key, label: meta.label, icon: meta.icon, iconClass: null, rows };
     });
 }
 
@@ -39,19 +39,6 @@ export function extensionMatrixGroup(
         icon: null,
         iconClass: extension.groupIconClass,
         rows: rows.map((row) => extensionMatrixRow(row)),
-        note: null,
-    };
-}
-
-/** An extension's group showing a note instead of rows. */
-export function extensionNoteGroup(extension: RolePermissionExtension, note: string): PermissionMatrixGroup {
-    return {
-        key: extension.groupKey,
-        label: extension.groupLabel,
-        icon: null,
-        iconClass: extension.groupIconClass,
-        rows: [],
-        note,
     };
 }
 

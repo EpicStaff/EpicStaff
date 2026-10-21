@@ -195,7 +195,7 @@ expect_no_header() { # $1 = description, $2 = header name
 
 # Vary of the last response names Origin, in any letter case, alone or in a list.
 expect_vary_origin() { # $1 = description
-  case ",$(header_values Vary | tr -d ' ' | tr '[:upper:]' '[:lower:]' | tr '|' ',')," in
+  case ",$(header_values Vary | tr -d ' ' | awk '{ print tolower($0) }' | tr '|' ',')," in
     *,origin,*) pass "$1" ;;
     *) fail "$1: Vary is [$(header_values Vary)]" ;;
   esac

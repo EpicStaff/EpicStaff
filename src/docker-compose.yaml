@@ -542,7 +542,8 @@ services:
       PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
       # The plugins network's subnet: nginx denies it on 80/443 and allows only it on 8081.
       PLUGINS_NETWORK_SUBNET: ${PLUGINS_NETWORK_SUBNET:?}
-      # Sent with every plugin gateway check; django_app answers a check without it with 404.
+      # Sent with every plugin gateway check (django_app answers a check without it with 404), and
+      # with every request of the internal API listener (plugin and node keys work only with it).
       PLUGINS_GATEWAY_SECRET: ${PLUGINS_GATEWAY_SECRET:?}
       # EpicStaff's public origin: the only page allowed to frame a plugin.
       DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}

@@ -108,6 +108,7 @@ version = "0.1.0"
 source = { editable = "../plugin_sdk" }
 dependencies = [
     { name = "cryptography" },
+    { name = "httpx" },
     { name = "packaging" },
     { name = "pydantic" },
     { name = "pyjwt" },
@@ -116,6 +117,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "cryptography", specifier = ">=50" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "packaging", specifier = ">=24" },
     { name = "pydantic", specifier = ">=2.13,<3" },
     { name = "pyjwt", specifier = ">=2.10,<3" },
@@ -134,8 +136,14 @@ dev = [
 ]
 django-app-versions = [
     { name = "annotated-types", specifier = "==0.8.0" },
+    { name = "anyio", specifier = "==4.14.2" },
+    { name = "certifi", specifier = "==2026.7.22" },
     { name = "cffi", specifier = "==2.1.1" },
     { name = "cryptography", specifier = "==50.0.1" },
+    { name = "h11", specifier = "==0.16.0" },
+    { name = "httpcore", specifier = "==1.0.9" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "idna", specifier = "==3.18" },
     { name = "packaging", specifier = "==26.3" },
     { name = "pycparser", specifier = "==3.0" },
     { name = "pydantic", specifier = "==2.13.4" },

@@ -13,7 +13,7 @@ actually enforces.
 | `cpu_priority` | `normal` or `low` | `normal` | — | Yes: `normal` runs at nice 0, `low` at nice 10 |
 | `db_connections` | 1–100 | 5 | `PLUGINS_MAX_DB_CONNECTIONS` (20) | No: plugins have no database yet |
 | `statement_timeout_seconds` | 1–600 | 30 | `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS` (60) | No: plugins have no database yet |
-| `requests_per_minute` | 1–6000 | 120 | `PLUGINS_MAX_REQUESTS_PER_MINUTE` (600) | No: plugins cannot call EpicStaff's API yet |
+| `requests_per_minute` | 1–6000 | 120 | `PLUGINS_MAX_REQUESTS_PER_MINUTE` (600) | Yes, by EpicStaff's API, per organization (see below) |
 
 `limits` and each of its fields are optional. A limit the manifest leaves out (or sets to `null`)
 gets the default above, lowered to the platform maximum if that is smaller. A limit the manifest
@@ -48,6 +48,16 @@ platform maximum below what a running plugin asked for, the effective limit drop
 
 Changing the effective `memory_mb` or `cpu_priority` restarts the plugin's process with the new
 value. The tab marks the limits this version does not enforce as such.
+
+## How the request rate is enforced
+
+`requests_per_minute` caps the calls a plugin's backend makes to EpicStaff's API with the
+service-account key of one organization (see the [service account API](service-account-api.md)).
+Each organization the plugin is granted to counts separately, in a fixed one-minute window that
+starts on the minute. Every endpoint counts, the upload stream and `/api/plugin-runtime/` too.
+A call over the rate gets `429 throttled` with `Retry-After` set to the seconds left in the
+minute; wait that long before calling again. The rate is the effective limit, so a SuperAdmin's
+override applies at once. People's requests and API keys are never counted against a plugin.
 
 ## How memory is enforced
 

@@ -34,8 +34,9 @@ A person's actions on your plugin come from their role in the organization they 
 | Role | Actions |
 |---|---|
 | Built-in **Org Admin**, **Member**, **Viewer** | The manifest's `defaults` for that role. No organization can change them; the Roles matrix shows them read-only |
+| Built-in **Superadmin** (the role of the first SuperAdmin's membership, usually in the default organization) | The manifest's `org_admin` defaults while the person is a SuperAdmin, read-only like the other built-in roles. Someone whose SuperAdmin rights were revoked gets nothing through it |
 | A **custom role** | What the organization's admins tick for it in the Roles matrix. Nothing until they do |
-| SuperAdmin who is not a member of the organization | Nothing: SuperAdmins administer plugins, they do not use them in organizations they do not belong to |
+| SuperAdmin who is not a member of the organization | Nothing: being a SuperAdmin gives no action on a plugin; SuperAdmins administer plugins, they do not use them in organizations they do not belong to |
 
 Actions are kept per organization: ticking View for a custom role of one organization gives
 nothing in another, and a plugin row appears in an organization's Roles matrix only while the
@@ -64,8 +65,10 @@ the plugin. Copying a role to another organization does not copy its plugin acti
 
 ## Use them in your plugin
 
-EpicStaff uses `read` to decide who sees your plugin in the left bar. Once people can log in to
-plugins, every request your backend receives in `user` mode carries the person's actions in the
+EpicStaff uses `read` to decide who sees your plugin in the left bar. Every request your backend
+receives in `user` mode carries the person's actions in the
 [gateway context](../reference/gateway-context.md) as `permissions` (for example
 `["read", "update"]`): check them on the server for anything that changes data, never only in
-the page.
+the page. When your backend acts for a person outside a request of theirs, the
+[service account API](../reference/service-account-api.md)'s people endpoint gives the same
+actions, and the person's own EpicStaff rights.

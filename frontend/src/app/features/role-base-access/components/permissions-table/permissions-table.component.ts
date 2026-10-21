@@ -72,24 +72,18 @@ export class PermissionsTableComponent {
         const term = this.searchTerm().toLowerCase().trim();
         const hideEmpty = this.readonly();
         if (!term && !hideEmpty) return this.groups();
-        return (
-            this.groups()
-                .map((g) => ({
-                    ...g,
-                    rows: g.rows.filter((r) => {
-                        if (
-                            term &&
-                            !(r.label.toLowerCase().includes(term) || r.description.toLowerCase().includes(term))
-                        ) {
-                            return false;
-                        }
-                        if (hideEmpty && !this.hasGrantedPermission(r)) return false;
-                        return true;
-                    }),
-                }))
-                // A note group has no rows to match: it stays until something is searched for.
-                .filter((g) => g.rows.length > 0 || (g.note !== null && !term))
-        );
+        return this.groups()
+            .map((g) => ({
+                ...g,
+                rows: g.rows.filter((r) => {
+                    if (term && !(r.label.toLowerCase().includes(term) || r.description.toLowerCase().includes(term))) {
+                        return false;
+                    }
+                    if (hideEmpty && !this.hasGrantedPermission(r)) return false;
+                    return true;
+                }),
+            }))
+            .filter((g) => g.rows.length > 0);
     });
 
     groupCounts = computed(() => {

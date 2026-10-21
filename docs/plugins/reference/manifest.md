@@ -20,10 +20,11 @@ A package that declares `database` is refused with `plugin_feature_unavailable`,
 neither `spa` nor `backend` (nothing to install) with `invalid_plugin`.
 
 A backend runs as its own process on the deployment's plugin node ([Runtime](runtime.md)). In
-this version it serves its `public_paths` through EpicStaff's gateway, every other path answers
-`401 login_required` until people can log in to plugins, and it reads its `settings` and
-`limits`. `access`, `outbound_hosts` and hooks are accepted and shown at review, but nothing uses
-them yet.
+this version it serves its `public_paths` and the requests of people logged in to the plugin
+through EpicStaff's gateway, reads its `settings` and `limits`, calls EpicStaff's API within its
+`access` ([Service account API](service-account-api.md)), and runs its `install` hook when an
+organization is granted the plugin ([Hook API](hook-api.md)). `outbound_hosts` and the `upgrade`
+and `org_removed` hooks are accepted and shown at review, but nothing uses them yet.
 
 ## Example
 
@@ -126,7 +127,7 @@ install):
 | `outbound_hosts` | array | no (default `[]`) | Hosts the backend may call, over HTTPS on port 443 only. Each: `host` is a lower-case DNS name or `*.` and a name (no IP address, no port, distinct) and `reason` (1–200 characters). *Cross-field:* needs `backend`. |
 | `settings` | array | no (default `[]`) | Deployment-wide settings a SuperAdmin fills in; see [settings](#settings). *Cross-field:* needs `backend`. |
 | `limits` | object | no | `memory_mb` 64–8192, `db_connections` 1–100, `statement_timeout_seconds` 1–600, `requests_per_minute` 1–6000, `cpu_priority` `normal` or `low`. Each is optional: one left out (or `null`) gets the platform default, and each is at most the deployment's maximum ([Platform maximums](#platform-maximums)). A SuperAdmin may lower them per plugin. *Cross-field:* needs `backend`. |
-| `hooks` | object | no (default all off) | `install`, `upgrade`, `org_removed` (booleans) and optional `timeouts_seconds` with `install` ≤ 900, `upgrade` ≤ 1800, `org_removed` ≤ 900. *Cross-field:* any hook turned on needs `backend`. |
+| `hooks` | object | no (default all off) | `install`, `upgrade`, `org_removed` (booleans) and optional `timeouts_seconds` with `install` ≤ 900, `upgrade` ≤ 1800, `org_removed` ≤ 900. A hook without a timeout gets that maximum. This version runs the `install` hook ([Run code when an organization gets your plugin](../how-to/install-hook.md)); the other two are reserved. *Cross-field:* any hook turned on needs `backend`. |
 
 ### access
 
@@ -140,10 +141,20 @@ backend needs, in the same terms as the Roles page:
   EpicStaff versions, so EpicStaff checks this at upload (`epicstaff-plugin validate` checks only
   the form). `GET /api/permissions/catalog/` on an EpicStaff lists its resource types and their
   actions.
-- `reason`: 1–200 characters, shown to the SuperAdmin who approves the plugin.
+- `reason`: 1–200 characters, shown to the SuperAdmin who approves the plugin, and to the Org
+  Admins of every organization the plugin is granted to.
 
-Running flows and writing schedule, webhook or Telegram trigger nodes needs `flows: use`; the
-review warns when `flows` has `create` or `update` without `use`.
+Six resource types cannot be declared, because their endpoints never accept a plugin's
+credentials: `organizations`, `memberships`, `roles`, `api_keys`, `audit` and `chats`. An upload
+that declares one is refused with `invalid_plugin` at `manifest.access[<i>].resource_type`
+("'audit' cannot be declared by a plugin").
+
+`access` is everything the plugin's backend may do in an organization it is granted to, and
+nothing more: its service account there holds exactly these actions, whoever the call is made
+for. Running flows and writing schedule, webhook or Telegram trigger nodes needs `flows: use`;
+the review warns when `flows` has `create` or `update` without `use`. `secrets` has no `update`:
+replace a secret by creating a new one and deleting the old. See
+[Declare what your backend may do](../how-to/declare-access.md).
 
 ### user_permissions
 
@@ -155,7 +166,10 @@ Each entry is `{action, description, defaults}`: one action people can be given 
 - `description`: 1–200 characters saying what the action means inside your plugin.
 - `defaults`: `{org_admin, member, viewer}`, all three booleans: whether each built-in role gets
   the action. Organizations cannot change what built-in roles get; a custom role gets only the
-  actions an Org Admin gives it on the Roles page.
+  actions an Org Admin gives it on the Roles page. The built-in Superadmin role, which the
+  first SuperAdmin's membership holds, gets the `org_admin` defaults while its holder is a
+  SuperAdmin; someone no longer a SuperAdmin gets nothing through it. Being a SuperAdmin gives no
+  action by itself: a SuperAdmin who is no member of an organization cannot use a plugin there.
 - *Cross-field:* a built-in role that gets any action must also get `read`.
 - *Cross-field:* the built-in roles build on each other. For every action, `viewer: true` needs
   `member: true`, and `member: true` needs `org_admin: true` (refused at

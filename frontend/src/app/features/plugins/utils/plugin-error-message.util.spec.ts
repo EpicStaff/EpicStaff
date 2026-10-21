@@ -34,6 +34,9 @@ const CONTRACT_CODES: PluginErrorCode[] = [
     'invalid_plugin_settings',
     'invalid_plugin_limits',
     'no_plugin_node',
+    'grant_not_found',
+    'hook_not_retryable',
+    'throttled',
 ];
 
 describe('toPluginErrorView', () => {

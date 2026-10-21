@@ -7,11 +7,13 @@ Python 3.12 and 3.13.
 
 | Module | What it is for |
 |---|---|
-| `epicstaff_plugin.serve` | The runner the node starts: health, context check, uvicorn |
+| `epicstaff_plugin.serve` | The runner the node starts: health, hook dispatch, context check, uvicorn |
 | `epicstaff_plugin.gateway` | Verifying the [gateway context](gateway-context.md) of each request |
+| `epicstaff_plugin.hooks` | Registering [lifecycle hook](hook-api.md) handlers, verifying hook calls |
+| `epicstaff_plugin.client` | Calling EpicStaff's API as the plugin's service account, alone or on behalf of a person |
 | `epicstaff_plugin.runtime` | Reading the [runtime file](runtime.md#runtime-file): settings, addresses, keys |
 | `epicstaff_plugin.health` | The `GET /_epicstaff/health` endpoint |
-| `epicstaff_plugin.testing` | Forged contexts and runtime files for your tests |
+| `epicstaff_plugin.testing` | Forged contexts, hook calls and runtime files for your tests |
 | `epicstaff_plugin.contracts` | The documents EpicStaff and plugins exchange, as Pydantic models |
 | `epicstaff-plugin` (command) | `validate`, `pack`, `keygen`, `sign`, `verify`, `schema`; see [Sign and package a plugin](../how-to/sign-and-package.md) |
 
@@ -62,9 +64,10 @@ python -I -m epicstaff_plugin.serve
 ```
 
 What the node runs ([Runtime](runtime.md#how-the-backend-is-started)). It reads the runtime
-file, imports the app `EPICSTAFF_PLUGIN_ENTRYPOINT` names, and serves
-`HealthCheckMiddleware(EpicStaffContextMiddleware(app))` with uvicorn (one worker, no `Server`
-header, no proxy headers, lifespan on). It serves on the listening socket the node passes as
+file, imports the app `EPICSTAFF_PLUGIN_ENTRYPOINT` names (which registers your hook handlers),
+and serves `HealthCheckMiddleware(HookDispatchMiddleware(EpicStaffContextMiddleware(app)))` with
+uvicorn (one worker, no `Server` header, no proxy headers, lifespan on). So health answers
+first, then hook calls, and every other request needs a gateway context. It serves on the listening socket the node passes as
 the descriptor `EPICSTAFF_PLUGIN_LISTEN_FD` names, and binds `0.0.0.0:$PORT` itself only when
 that variable is not set. It exits with status 1 and a line on standard error when the runtime
 file or the entrypoint is missing or wrong, the descriptor is not a listening TCP socket, `PORT`
@@ -72,7 +75,7 @@ is wrong (without a descriptor), or uvicorn is not installed.
 
 | Function | Use |
 |---|---|
-| `build_app(app, runtime)` | The wrapped app `serve` runs, for tests of your app as the node serves it |
+| `build_app(app, runtime, *, hooks=None, epicstaff=None)` | The wrapped app `serve` runs, for tests of your app as the node serves it. `hooks` replaces the process-wide `hook_registry`, and `epicstaff` the `EpicStaffClient` hook handlers get (by default a new one over `runtime`) |
 | `load_entrypoint("module.path:attribute")` | Import an ASGI app by its entrypoint; raises `ServeError` |
 | `inherited_listen_fd()` | The node's listening socket from `EPICSTAFF_PLUGIN_LISTEN_FD`, checked and made non-inheritable, or `None`; raises `ServeError` |
 
@@ -122,14 +125,54 @@ last good one.
 | `plugin_identifier`, `plugin_version` | The running plugin |
 | `public_url` | The plugin's public address: build external callback addresses from it |
 | `epicstaff_public_url`, `epicstaff_api_url`, `issuer` | EpicStaff's addresses and context issuer |
+| `service_account(org_id)` | The plugin's service account in the organization (`key`, `org_name`, `grant_state`), or `None`. Read it per call: keys rotate |
 | `jwks`, `public_paths`, `service_accounts` | As in the runtime file |
 | `document` | The whole `RuntimeFile`. It holds secrets: never log it |
 
 ## `epicstaff_plugin.health`
 
 `HealthCheckMiddleware(app)` answers `GET /_epicstaff/health` with `200 {"status":"ok"}` and
-passes everything else to `app`. `serve` puts it in front of the context check; you never need
-it yourself. nginx does not forward `/_epicstaff/` from outside.
+passes everything else to `app`. `serve` puts it in front of the hook dispatch and the context
+check; you never need it yourself. nginx does not forward `/_epicstaff/` from outside.
+
+## `epicstaff_plugin.hooks`
+
+| Name | What it does |
+|---|---|
+| `hook_registry` | The process's `HookRegistry`, which `serve` dispatches to |
+| `hook_registry.on_install(handler)` | Registers the install hook; usable as a decorator. `on_upgrade` and `on_org_removed` register the other kinds, `register(kind, handler)` any kind. A kind takes one handler (`ValueError` for a second one); a handler is an async function (`TypeError` otherwise) |
+| `HookDispatchMiddleware(app, verifier, registry, epicstaff)` | ASGI middleware that answers `POST` on the hook paths: verifies the call, runs the handler, answers as the [Hook API](hook-api.md#the-answer) says. Every other request goes to `app`. `serve` installs it |
+| `verify_hook_assertion(assertion, body, *, kind, jwks, issuer, plugin_identifier)` | The checks of [Verification](hook-api.md#verification), outside the runner. Returns `VerifiedHook(claims, request)` or raises `HookAssertionRejected` |
+| `HookAssertionRejected` | `.reason` names the failed check |
+
+A handler is `async def handler(request: HookRequest, epicstaff: OrgClient) -> None`. `request`
+is the verified body; `epicstaff` is the client for `request.org.id`, acting as the plugin
+alone. Return to succeed; raise to fail, with the exception's first line as the error. Handlers
+for one organization run one at a time. [Write an install hook](../how-to/install-hook.md) walks
+through one.
+
+## `epicstaff_plugin.client`
+
+| Name | What it does |
+|---|---|
+| `EpicStaffClient(runtime=None, *, transport=None, timeout_seconds=30, person_cache_seconds=30)` | The client; one per process. `runtime` defaults to `runtime_config()`; `transport` replaces the HTTP transport (an `httpx.MockTransport` in tests). Use it as `async with`, or call `aclose()` |
+| `client.for_org(org_id)` | The `OrgClient` for an organization, acting as the plugin alone |
+| `client.client_for_context(context)` | `for_org(context.org.id).on_behalf_of(context.user.id)`; `ValueError` for a public context |
+| `org.on_behalf_of(user_id)` | The same organization, on behalf of a person (`X-EpicStaff-On-Behalf-Of`) |
+| `org.get(path, *, params=None)`, `post(path, json)`, `put(path, json)`, `patch(path, json)`, `delete(path)` | Call a path under EpicStaff's API (`graphs/` is `/api/graphs/`); return the decoded JSON answer, `None` when empty |
+| `org.request(method, path, *, params, json, content, headers)` | The same, returning the `httpx.Response` |
+| `org.me()` | `ServiceAccountInfo` |
+| `org.person(user_id)`, `org.people(user_ids)` | `PluginPerson` or `None`; the eligible people, sorted by id |
+| `org.run_flow(graph_id, variables)` | Starts a run; returns its session id |
+| `org.session(session_id)`, `org.wait_for_session(session_id, *, timeout, poll_seconds=2)` | `FlowSession` (`id`, `status`, `finished`, `succeeded`, `variables`, `document`) |
+| `org.upload_file(folder, filename, content)` | Stores bytes in the organization's storage |
+| `EpicStaffApiError` | EpicStaff answered 400 or more: `status`, `code`, `message`, `errors` |
+| `ServiceAccountUnavailable` | The runtime file holds no key for the organization: `org_id` |
+
+The client never uses a proxy, never follows redirects, reads the organization's key from the
+runtime file on every call, and retries a 401 once when the key has been replaced since. Its
+behaviour, and what on behalf of means, is in
+[Call EpicStaff from your backend](../how-to/call-epicstaff-from-the-backend.md).
 
 ## Testing
 
@@ -144,7 +187,11 @@ itself, which no EpicStaff trusts, so never import it in production code.
 | `signer.context(method, path, *, mode="public", user=None, org=None, permissions=None, issued_at=None, lifetime_seconds=60)` | The `GatewayContext` it would sign. With `mode="user"`, whichever of `user`, `org` and `permissions` is not given becomes a test member (`epicstaff_plugin.testing.DEFAULT_USER`), a test organization (`DEFAULT_ORGANIZATION`) and `["read"]`. A context that breaks the rules of its mode raises `pydantic.ValidationError` |
 | `signer.sign_claims(claims, headers=None)` | Signs any claims, for tests of contexts that must be refused |
 | `signer.jwks` | Its public key, as a `Jwks` |
-| `write_runtime_file(path, *, signer=None, **fields)` | Writes a valid runtime file whose plugin, issuer and JWKS are the signer's; `fields` replace top-level fields, such as `settings={"units": "imperial"}` |
+| `write_runtime_file(path, *, signer=None, **fields)` | Writes a valid runtime file whose plugin, issuer and JWKS are the signer's; `fields` replace top-level fields, such as `settings={"units": "imperial"}` or `service_accounts={"3": {"key": service_account_key(), "org_name": "Acme", "grant_state": "active"}}` |
+| `service_account_key()` | A new key in the form EpicStaff gives service accounts |
+| `HookSigner(signer)` | Signs hook calls with the signer's key, as EpicStaff signs them with its context key |
+| `HookSigner(signer).call(kind, *, org=None, job_id=1, attempt=1, previous_version=None, timeout_seconds=None, issued_at=None)` | A `HookCall` with `path`, `headers`, `body` (bytes), `request` and `claims`: post `body` to `path` with `headers` |
+| `HookSigner(signer).sign(claims, headers=None)` | Signs any claims as a hook assertion, for tests of calls that must be refused |
 
 A test of the Weather sample, served as the node serves it:
 
@@ -186,7 +233,9 @@ The documents of the platform, defined once and used by EpicStaff and the SDK al
 |---|---|
 | `contracts.manifest.PluginManifest` | `manifest.json` ([reference](manifest.md)) |
 | `contracts.gateway_context.GatewayContext`, `Jwks`, `Jwk` | The gateway context and its keys ([reference](gateway-context.md)) |
-| `contracts.runtime.RuntimeFile` | The runtime file ([reference](runtime.md#runtime-file)) |
+| `contracts.runtime.RuntimeFile`, `ServiceAccountEntry` | The runtime file ([reference](runtime.md#runtime-file)) |
+| `contracts.hook_api.HookRequest`, `HookAssertionClaims`, `HookResponse`, `HOOK_PATHS` | Hook calls ([reference](hook-api.md)) |
+| `contracts.service_account_api.ServiceAccountInfo`, `PluginPerson`, `PeopleLookupRequest`, `PeopleLookupResponse` | What EpicStaff's `/api/plugin-runtime/` endpoints answer ([reference](service-account-api.md)) |
 
 Each model refuses unknown fields, so whoever builds a document cannot misspell one. Read a
 document from a newer EpicStaff leniently with `Model.model_validate_json(raw, extra="ignore")`,

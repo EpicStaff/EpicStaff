@@ -13,12 +13,30 @@ from rbac.models.enums import BuiltInRole
 
 from plugins.models import PluginGrant, PluginRolePermission
 
-# The manifest's `defaults` key for each built-in role a membership can hold.
+# The manifest's `defaults` key for each built-in role a membership can hold. The bootstrap
+# SuperAdmin's membership holds the built-in Superadmin role, which gets Org Admin's
+# defaults while its holder is a SuperAdmin (`holds_plugin_role`): the flag alone never lets
+# anyone use a plugin, and the membership alone does not once the flag is revoked.
 BUILT_IN_ROLE_DEFAULT_KEYS = {
+    BuiltInRole.SUPERADMIN: "org_admin",
     BuiltInRole.ORG_ADMIN: "org_admin",
     BuiltInRole.MEMBER: "member",
     BuiltInRole.VIEWER: "viewer",
 }
+
+
+def is_built_in_superadmin_role(role: Role) -> bool:
+    return role.is_built_in and role.name == BuiltInRole.SUPERADMIN
+
+
+def holds_plugin_role(user, role: Role) -> bool:
+    """Whether `user`'s membership with `role` counts for plugin actions.
+
+    Every role does, except the built-in Superadmin role, which counts only while its holder
+    is a SuperAdmin: revoking the flag leaves that membership in place, and a demoted
+    SuperAdmin must not keep Org Admin's plugin actions through it.
+    """
+    return not is_built_in_superadmin_role(role) or getattr(user, "is_superadmin", False) is True
 
 
 def declared_actions(manifest: PluginManifest) -> list[str]:
@@ -31,7 +49,8 @@ def role_plugin_actions(
 ) -> list[str]:
     """Return the actions a membership role has on a plugin, in manifest order.
 
-    A built-in role gets the manifest's defaults, which no organization can change. A
+    A built-in role gets the manifest's defaults, which no organization can change (the
+    built-in Superadmin role gets Org Admin's). A
     custom role gets the actions stored for it on the plugin's grant to its organization
     (`stored_permissions`, the bitmask `stored_permissions_by_grant` returns), limited to
     the actions the plugin declares.
@@ -57,6 +76,22 @@ def stored_permissions_by_grant(role: Role, grant_ids: Iterable[int]) -> dict[in
         PluginRolePermission.objects.filter(role=role, grant_id__in=grant_ids).values_list(
             "grant_id", "permissions"
         )
+    )
+
+
+def stored_permissions_by_role(roles: Iterable[Role], grant_id: int) -> dict[int, int]:
+    """Return the bitmask stored on one grant for each custom role of `roles`, by role id.
+
+    Roles without a stored row are absent (no actions). At most one query; none when every
+    role is built in.
+    """
+    custom_role_ids = {role.pk for role in roles if not role.is_built_in}
+    if not custom_role_ids:
+        return {}
+    return dict(
+        PluginRolePermission.objects.filter(
+            grant_id=grant_id, role_id__in=custom_role_ids
+        ).values_list("role_id", "permissions")
     )
 
 

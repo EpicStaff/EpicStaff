@@ -22,6 +22,7 @@ location = /api/admin/plugins/packages/ {
 
     proxy_pass http://backend_server;
     include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
     # One MiB above PLUGINS_MAX_PACKAGE_MB, room for the multipart framing: a package of exactly
     # the cap reaches Django, which answers a larger one with its own JSON 413.
     client_max_body_size ${PLUGINS_UPLOAD_BODY_MB}m;
@@ -50,6 +51,7 @@ location = /_epicstaff/plugin-upload-permission {
     client_max_body_size 0;
     proxy_pass http://backend_server/api/admin/plugins/packages/upload-permission/;
     include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+    include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
     proxy_method GET;
     proxy_pass_request_body off;
     proxy_set_header Content-Length "";

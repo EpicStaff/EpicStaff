@@ -143,15 +143,6 @@
     }
 }
 
-.group-note {
-    margin: 0;
-    padding: 12px 8px 12px 40px;
-    color: var(--color-text-secondary);
-    font-size: var(--text-body-size);
-    font-weight: var(--text-body-weight);
-    line-height: var(--text-body-line-height);
-}
-
 .resource-row {
     display: grid;
     grid-template-columns: var(--perm-row-grid);

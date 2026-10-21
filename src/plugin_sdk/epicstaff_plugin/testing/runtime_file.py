@@ -9,6 +9,12 @@ from epicstaff_plugin.contracts.runtime import RUNTIME_FILE_FORMAT, RuntimeFile
 from epicstaff_plugin.testing.context_signer import ContextSigner
 
 DEFAULT_API_URL = "http://epicstaff-api:8081/api/"
+SERVICE_ACCOUNT_KEY_PREFIX = "esp-"
+
+
+def service_account_key() -> str:
+    """Return a new key in the form EpicStaff mints service-account keys in."""
+    return SERVICE_ACCOUNT_KEY_PREFIX + secrets.token_urlsafe(32)
 
 
 def write_runtime_file(
@@ -17,9 +23,11 @@ def write_runtime_file(
     """Write a valid runtime file to `path` and return it.
 
     The plugin, issuer and JWKS come from `signer` (a new one when none is given), so the
-    contexts it issues verify against the file. `overrides` replace top-level fields
-    (`settings={"units": "imperial"}`, `secret_settings=...`, `public_paths=...`). The file
-    is replaced with a rename, as the node does, so a running `RuntimeConfig` sees the change.
+    contexts it issues, and the hook calls a `HookSigner` over it signs, verify against the
+    file. `overrides` replace top-level fields (`settings={"units": "imperial"}`,
+    `secret_settings=...`, `public_paths=...`, `service_accounts={"3": {"key":
+    service_account_key(), "org_name": "Acme", "grant_state": "active"}}`). The file is
+    replaced with a rename, as the node does, so a running `RuntimeConfig` sees the change.
 
     Raises:
         pydantic.ValidationError: The overrides do not make a valid runtime file.

@@ -1,10 +1,15 @@
 """Granting plugins to organizations."""
 
+from datetime import datetime
+
 import pytest
 from django.db import IntegrityError
 from plugins.lifecycle.grant_service import PluginGrantService
-from plugins.models import GrantState, PluginGrant
+from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
+from plugins.models import GrantState, PluginGrant, PluginOwnedResource, PluginServiceAccountKey
 from rbac.models import Organization
+from tables.models import Graph
 
 from tests.plugins_tests.conftest import upload_file
 from tests.plugins_tests.package_builder import build_package
@@ -153,3 +158,49 @@ def test_an_integrity_error_other_than_a_repeated_grant_surfaces(running_plugin,
     with pytest.raises(IntegrityError, match="a different constraint"):
         PluginGrantService().grant("weather", acme.id, superadmin)
 
+
+
+# ---- service accounts, install hooks, owned resources ----
+
+
+def test_a_grant_shows_its_service_account_install_hook_and_owned_resources(
+    weather_backend, superadmin_client, service_account_key, acme
+):
+    plugin = weather_backend()
+    service_account_key(plugin, acme)
+    graphs = [Graph.objects.create(name=f"Owned {index}", org=acme) for index in range(2)]
+    grant = PluginGrant.objects.get(org=acme)
+    PluginOwnedResource.objects.bulk_create(
+        PluginOwnedResource(
+            org=acme,
+            grant=grant,
+            plugin_identifier="weather",
+            content_type=ContentType.objects.get_for_model(Graph),
+            object_id=graph.pk,
+        )
+        for graph in graphs
+    )
+    used_at = timezone.now()
+    PluginServiceAccountKey.objects.update(last_used_at=used_at)
+
+    [listed] = superadmin_client.get(_grants_url()).json()["results"]
+
+    assert listed["owned_resource_count"] == 2
+    assert listed["install_hook"] is None
+    assert listed["service_account"]["created_at"]
+    assert datetime.fromisoformat(listed["service_account"]["key_last_used_at"]) == used_at
+
+
+def test_the_grant_list_takes_a_fixed_number_of_queries(
+    weather_backend, superadmin_client, superadmin, django_assert_max_num_queries
+):
+    plugin = weather_backend(hooks={"install": True})
+    for index in range(5):
+        PluginGrantService().grant(plugin.identifier, Organization.objects.create(name=f"queries-{index}").pk, superadmin)
+    superadmin_client.get(_grants_url())
+
+    with django_assert_max_num_queries(8):
+        page = superadmin_client.get(_grants_url()).json()
+
+    assert page["count"] == 5
+    assert {grant["install_hook"]["state"] for grant in page["results"]} == {"pending"}

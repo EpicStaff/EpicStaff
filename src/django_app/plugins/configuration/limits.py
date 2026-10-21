@@ -1,9 +1,9 @@
 """Per-plugin limits: what the manifest asks for, the platform maximums, and the SuperAdmin's overrides.
 
 The effective limit is the lowest of the three, so an override can only lower what the
-plugin gets. This version enforces `memory_mb` (the node's watchdog) and `cpu_priority`
-(nice); the other limits are recorded and checked against the maximums but nothing applies
-them yet.
+plugin gets. This version enforces `memory_mb` (the node's watchdog), `cpu_priority` (nice)
+and `requests_per_minute` (the service-account throttle, per organization); the database
+limits are recorded and checked against the maximums but nothing applies them yet.
 """
 
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ from django.db import transaction
 from epicstaff_plugin.contracts.manifest import PluginManifest
 from epicstaff_plugin.problems import Problem
 
+from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import log_limit_overrides
 from plugins.exceptions import InvalidPluginLimitsError
 from plugins.models import Plugin
@@ -31,14 +32,14 @@ PLATFORM_DEFAULTS: dict[str, Any] = {
     "requests_per_minute": 120,
     CPU_PRIORITY: NORMAL_PRIORITY,
 }
-# Which limits something applies in this version (the database ones and the request rate
-# arrive with plugin databases and service accounts).
+# Which limits something applies in this version (the database ones arrive with plugin
+# databases).
 ENFORCED_LIMITS = {
     "memory_mb": True,
     CPU_PRIORITY: True,
     "db_connections": False,
     "statement_timeout_seconds": False,
-    "requests_per_minute": False,
+    "requests_per_minute": True,
 }
 # The environment variable behind each platform maximum, for the plugins.E009 check.
 MAXIMUM_SETTINGS = {
@@ -231,6 +232,7 @@ class PluginLimitsService:
                     overrides[name] = value
             locked.limit_overrides = overrides
             locked.save(update_fields=["limit_overrides", "updated_at"])
+            ActivityRecorder().limits_changed(actor, plugin.identifier, overrides)
         log_limit_overrides(actor, plugin.identifier, overrides)
         return plugin_limits(locked, manifest)
 

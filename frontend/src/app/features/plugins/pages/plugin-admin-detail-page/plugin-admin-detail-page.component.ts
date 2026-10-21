@@ -11,6 +11,7 @@ import {
 } from '@shared/components';
 import { catchError, finalize, of, switchMap, tap } from 'rxjs';
 
+import { PluginAdminActivityComponent } from '../../components/plugin-admin-activity/plugin-admin-activity.component';
 import { PluginBadgeComponent } from '../../components/plugin-badge/plugin-badge.component';
 import { PluginGrantsTableComponent } from '../../components/plugin-grants-table/plugin-grants-table.component';
 import { PluginIconComponent } from '../../components/plugin-icon/plugin-icon.component';
@@ -30,7 +31,7 @@ import {
 } from '../../utils/plugin-display.util';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
 
-export type PluginDetailTab = 'overview' | 'organizations' | 'settings' | 'limits' | 'runtime';
+export type PluginDetailTab = 'overview' | 'organizations' | 'settings' | 'limits' | 'runtime' | 'activity';
 
 /** The tabs only a plugin whose current package has a backend has. */
 const BACKEND_TABS: readonly PluginDetailTab[] = ['settings', 'limits', 'runtime'];
@@ -39,8 +40,8 @@ const BACKEND_TABS: readonly PluginDetailTab[] = ['settings', 'limits', 'runtime
 const PLUGINS_LIST_ROUTE = '/workspace/plugins';
 
 /**
- * `/workspace/plugins/:identifier`: one plugin's approved package and the organizations it is granted to; for a plugin
- * with a backend also its settings, limits and runtime.
+ * `/workspace/plugins/:identifier`: one plugin's approved package, the organizations it is granted to and its activity;
+ * for a plugin with a backend also its settings, limits and runtime.
  */
 @Component({
     selector: 'app-plugin-admin-detail-page',
@@ -49,6 +50,7 @@ const PLUGINS_LIST_ROUTE = '/workspace/plugins';
         ButtonComponent,
         FetchErrorStateComponent,
         LoadingSpinnerComponent,
+        PluginAdminActivityComponent,
         PluginBadgeComponent,
         PluginGrantsTableComponent,
         PluginIconComponent,
@@ -134,7 +136,10 @@ export class PluginAdminDetailPageComponent {
         this.selectedTab.set(tab);
     }
 
-    /** Reloads the plugin quietly (its state badge follows the runtime); a failure keeps what is shown. */
+    /**
+     * Reloads the plugin quietly (its state follows the runtime, its count of active grants the grants); a failure
+     * keeps what is shown.
+     */
     protected refreshPlugin(): void {
         this.storage
             .getPlugin(this.identifier())

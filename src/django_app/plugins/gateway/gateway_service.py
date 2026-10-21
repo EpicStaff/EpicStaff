@@ -17,7 +17,6 @@ the process for 10 s; whether its process is up is read fresh on every check, in
 by primary key, so a stopped plugin is refused at once and a started one served at once.
 """
 
-import hmac
 import threading
 import time
 from collections.abc import Callable
@@ -25,7 +24,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from asgiref.sync import sync_to_async
-from django.conf import settings
 from django.db import close_old_connections
 from epicstaff_plugin.contracts.gateway_context import ContextOrganization, ContextUser
 from epicstaff_plugin.contracts.manifest import PublicPath
@@ -35,6 +33,7 @@ from plugins.gateway.context_builder import public_context, user_context
 from plugins.gateway.path_policy import canonical_path, match_public_path
 from plugins.gateway.person_cache import person_for
 from plugins.gateway.public_rate_limiter import PublicRateLimiter
+from plugins.identity.internal_listener import holds_gateway_secret
 from plugins.identity.plugin_login_tokens import (
     PluginLoginTokenRejected,
     looks_like_plugin_login_token,
@@ -50,7 +49,6 @@ from plugins.models import (
 from plugins.nodes.desired_state_builder import PLACED_PLUGIN_STATES
 from plugins.origins import PluginOrigins
 
-UNCONFIGURED_SECRET = "none"
 SNAPSHOT_CACHE_SECONDS = 10
 # Requests for many made-up plugin hosts must not grow one process's memory without bound.
 MAX_CACHED_SNAPSHOTS = 1024
@@ -206,7 +204,7 @@ class GatewayDecisionService:
         )
 
     def decide(self, check: GatewayCheckRequest) -> GatewayDecision:
-        if not _holds_gateway_secret(check.secret):
+        if not holds_gateway_secret(check.secret):
             return GatewayDecision(status=404)
         snapshot = snapshot_cache.get(check.identifier)
         if snapshot is None:
@@ -311,13 +309,6 @@ def _releasing_connections(function: Callable[..., Any]) -> Callable[..., Any]:
             close_old_connections()
 
     return run
-
-
-def _holds_gateway_secret(presented: str) -> bool:
-    configured = settings.PLUGINS_GATEWAY_SECRET or ""
-    if configured in ("", UNCONFIGURED_SECRET):
-        return False
-    return hmac.compare_digest(presented.encode("utf-8"), configured.encode("utf-8"))
 
 
 def _body_too_large(check: GatewayCheckRequest, rule: PublicPath) -> bool:

@@ -99,6 +99,11 @@ export class PluginsAdminStorageService implements StorageService {
         });
     }
 
+    /** The grant stays out of the active count until the hook succeeds, so the list does not change. */
+    retryInstallHook(identifier: string, grantId: number): Observable<PluginGrant> {
+        return this.api.retryInstallHook(identifier, grantId);
+    }
+
     getSettings(identifier: string): Observable<PluginSettingsResponse> {
         return this.api.getSettings(identifier);
     }

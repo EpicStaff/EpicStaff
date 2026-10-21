@@ -128,6 +128,7 @@ def test_the_desired_state_describes_each_backend_on_the_node(backend_plugin, pl
         },
         "credentials_revision": placement["credentials_revision"],
         "settings_revision": 0,
+        "hook_jobs": [],
     }
     assert len(placement["credentials_revision"]) == 64
 

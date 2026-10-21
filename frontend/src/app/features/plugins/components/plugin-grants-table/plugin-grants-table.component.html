@@ -44,10 +44,79 @@
         let-row
     >
         @if (grantOf(row); as grant) {
-            <app-plugin-badge
-                [label]="stateLabel(grant)"
-                [tone]="stateTone(grant)"
-            />
+            <div
+                class="grants__state"
+                aria-live="polite"
+            >
+                @switch (grant.state) {
+                    @case ('granting') {
+                        <span class="grants__installing text-body">
+                            <app-spinner2 [size]="16" />
+                            {{ stateLabel(grant) }}…
+                        </span>
+                    }
+                    @case ('install_failed') {
+                        <div class="grants__failed">
+                            <app-plugin-badge
+                                [label]="stateLabel(grant)"
+                                [tone]="stateTone(grant)"
+                            />
+                            <span
+                                class="grants__hook-error text-body-small"
+                                tabindex="0"
+                                [matTooltip]="installError(grant)"
+                                matTooltipPosition="above"
+                            >
+                                {{ installError(grant) }}
+                            </span>
+                            <app-button
+                                type="outline-primary"
+                                mod="small"
+                                [disabled]="isRetrying(grant)"
+                                (click)="retryInstall(grant)"
+                            >
+                                Retry install
+                            </app-button>
+                        </div>
+                    }
+                    @default {
+                        <app-plugin-badge
+                            [label]="stateLabel(grant)"
+                            [tone]="stateTone(grant)"
+                        />
+                    }
+                }
+            </div>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="serviceAccount"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            @if (grant.service_account; as account) {
+                <div class="grants__stack text-body-small">
+                    <span class="grants__primary">Created {{ account.created_at | date: 'mediumDate' }}</span>
+                    <span
+                        class="grants__muted"
+                        [matTooltip]="(account.key_last_used_at | date: 'medium') ?? ''"
+                        [matTooltipDisabled]="account.key_last_used_at === null"
+                        matTooltipPosition="above"
+                    >
+                        {{ keyLastUsed(grant) }}
+                    </span>
+                </div>
+            } @else {
+                <span class="grants__cell grants__muted">—</span>
+            }
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="ownedResources"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.owned_resource_count }}</span>
         }
     </ng-template>
     <ng-template

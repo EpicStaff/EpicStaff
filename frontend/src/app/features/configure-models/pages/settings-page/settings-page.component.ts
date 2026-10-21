@@ -50,6 +50,12 @@ export class SettingsPageComponent {
             isPermitted: () =>
                 this.permissionsService.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]),
         },
+        {
+            routerLink: 'plugin-activity',
+            iconClass: 'ti ti-puzzle',
+            label: 'Plugin activity',
+            isPermitted: () => this.permissionsService.canSeePluginActivity(),
+        },
     ];
 
     private readonly permissionsService = inject(PermissionsService);

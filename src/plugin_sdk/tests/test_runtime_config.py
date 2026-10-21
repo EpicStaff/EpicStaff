@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from epicstaff_plugin.contracts.runtime import RuntimeFile
 from epicstaff_plugin.runtime import RuntimeConfig, RuntimeConfigError, runtime_config
-from epicstaff_plugin.testing import write_runtime_file
+from epicstaff_plugin.testing import service_account_key, write_runtime_file
 
 PUBLIC_PING = {"path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0}
 
@@ -165,3 +165,117 @@ def test_a_validation_error_never_repeats_a_secret(runtime_file, secret_settings
         assert "secret_settings" in str(error)
         assert "s3cret-token" not in str(error)
         assert "12345678" not in str(error)
+
+
+# --- Service accounts ---
+
+ACME_KEY = "esp-" + "A" * 43
+
+
+def _service_account(key=ACME_KEY, org_name="Acme", grant_state="active"):
+    return {"key": key, "org_name": org_name, "grant_state": grant_state}
+
+
+def test_a_service_account_is_found_by_organization_id(tmp_path, signer):
+    path = tmp_path / "runtime.json"
+    write_runtime_file(path, signer=signer, service_accounts={"3": _service_account(), "12": _service_account(service_account_key(), "Contoso", "granting")})
+
+    config = RuntimeConfig.load(path)
+
+    acme = config.service_account(3)
+    assert (acme.key, acme.org_name, acme.grant_state) == (ACME_KEY, "Acme", "active")
+    assert config.service_account(12).grant_state == "granting"
+    assert config.service_account(4) is None
+    assert sorted(config.service_accounts) == ["12", "3"]
+
+
+def test_the_service_accounts_cannot_be_changed_through_the_accessor(tmp_path, signer):
+    path = tmp_path / "runtime.json"
+    write_runtime_file(path, signer=signer, service_accounts={"3": _service_account()})
+
+    with pytest.raises(TypeError):
+        RuntimeConfig.load(path).service_accounts["4"] = _service_account()
+
+
+def test_a_rewritten_key_is_read_from_the_new_file(tmp_path, signer):
+    path = tmp_path / "runtime.json"
+    write_runtime_file(path, signer=signer, service_accounts={"3": _service_account()})
+    config = RuntimeConfig.load(path)
+    rotated = service_account_key()
+
+    write_runtime_file(path, signer=signer, service_accounts={"3": _service_account(rotated)})
+
+    assert config.service_account(3).key == rotated
+
+
+def test_a_grant_state_a_newer_epicstaff_adds_is_read_as_text(tmp_path, signer):
+    path = tmp_path / "runtime.json"
+    write_runtime_file(path, signer=signer, service_accounts={"3": _service_account(grant_state="upgrading")})
+
+    assert RuntimeConfig.load(path).service_account(3).grant_state == "upgrading"
+
+
+def test_a_field_a_newer_epicstaff_adds_to_a_service_account_is_ignored(runtime_file):
+    document = json.loads(runtime_file.read_text())
+    document["service_accounts"] = {"3": {**_service_account(), "expires_at": None}}
+    runtime_file.write_text(json.dumps(document))
+
+    assert RuntimeConfig.load(runtime_file).service_account(3).key == ACME_KEY
+
+
+def test_the_test_helper_mints_keys_in_epicstaffs_form():
+    keys = {service_account_key() for _ in range(20)}
+
+    assert len(keys) == 20
+    assert all(len(key) == 47 and key.startswith("esp-") for key in keys)
+
+
+@pytest.mark.parametrize(
+    "service_accounts",
+    [
+        {"03": _service_account()},
+        {"0": _service_account()},
+        {"acme": _service_account()},
+        {"12345678901234567890": _service_account()},
+        {"3": _service_account(key="esp-short")},
+        {"3": _service_account(key="pk-" + "A" * 44)},
+        {"3": _service_account(key="esp-" + "A" * 42 + "=")},
+        {"3": _service_account(org_name="x" * 256)},
+        {"3": _service_account(grant_state="")},
+        {"3": _service_account(grant_state="x" * 33)},
+        {"3": {**_service_account(), "extra": 1}},
+        {"3": {"key": ACME_KEY, "org_name": "Acme"}},
+    ],
+    ids=[
+        "leading zero",
+        "org 0",
+        "not a number",
+        "org id too long",
+        "short key",
+        "wrong prefix",
+        "padded key",
+        "org name too long",
+        "empty state",
+        "state too long",
+        "unknown field",
+        "no state",
+    ],
+)
+def test_epicstaff_cannot_build_a_malformed_service_account(tmp_path, service_accounts):
+    with pytest.raises(ValidationError):
+        write_runtime_file(tmp_path / "runtime.json", service_accounts=service_accounts)
+
+
+def test_a_validation_error_never_repeats_a_key(runtime_file):
+    document = json.loads(runtime_file.read_text())
+    leaked = "esp-" + "B" * 40
+    document["service_accounts"] = {"3": _service_account(key=leaked)}
+
+    with pytest.raises(ValidationError) as from_python:
+        RuntimeFile.model_validate(document)
+    with pytest.raises(ValidationError) as from_json:
+        RuntimeFile.model_validate_json(json.dumps(document))
+
+    for error in (from_python.value, from_json.value):
+        assert "service_accounts" in str(error)
+        assert leaked not in str(error)

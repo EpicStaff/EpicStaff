@@ -1,7 +1,9 @@
 """How a plugin node proves who it is: `Authorization: PluginNodeKey <PLUGINS_NODE_KEY>`.
 
 Used only by the node API views. It is never one of DRF's default authentication classes,
-so a node key authenticates nowhere else, and no other credential authenticates there.
+so a node key authenticates nowhere else, and no other credential authenticates there. Like
+a service-account key, a node key works only through nginx's internal listener on the plugins
+network (`internal_listener`).
 """
 
 import hashlib
@@ -12,6 +14,7 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.permissions import BasePermission
 
 from plugins.exceptions import NodeNotAuthenticatedError
+from plugins.identity.internal_listener import came_through_internal_listener
 from plugins.models import PluginNode
 
 KEYWORD = "PluginNodeKey"
@@ -32,9 +35,12 @@ class PluginNodePrincipal:
 
 
 class PluginNodeAuthentication(BaseAuthentication):
-    """Authenticate a node by its key; a missing or wrong key is 401 `node_not_authenticated`."""
+    """Authenticate a node by its key; a missing or wrong key, or a request from outside the
+    plugins network, is 401 `node_not_authenticated`."""
 
     def authenticate(self, request):
+        if not came_through_internal_listener(request):
+            raise NodeNotAuthenticatedError()
         scheme, _, key = request.META.get("HTTP_AUTHORIZATION", "").partition(" ")
         if scheme != KEYWORD or not key:
             raise NodeNotAuthenticatedError()

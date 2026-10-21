@@ -4,13 +4,13 @@ import hashlib
 
 import jwt
 import pytest
-from loguru import logger as loguru_logger
 from plugins.exceptions import UntrustedNotAcknowledgedError
 from plugins.lifecycle.grant_service import PluginGrantService
-from plugins.models import GrantState, PluginGrant
+from plugins.models import GrantState, PluginGrant, PluginHookJob
 from rest_framework.test import APIClient
 
-from tests.plugins_tests.conftest import upload_file
+from src.shared.models.plugin_nodes import HookInvocation
+from tests.plugins_tests.conftest import service_account_client, upload_file
 from tests.plugins_tests.login_helpers import (
     STATE,
     WEATHER_ORIGIN,
@@ -27,15 +27,6 @@ pytestmark = pytest.mark.django_db
 
 # utils.logger cuts a message at 200 characters; every line must fit with realistic values.
 MAX_MESSAGE_LENGTH = 200
-
-
-@pytest.fixture
-def log_messages():
-    """The formatted message of every log record written during the test."""
-    messages = []
-    sink_id = loguru_logger.add(lambda message: messages.append(message.record["message"]), level="INFO")
-    yield messages
-    loguru_logger.remove(sink_id)
 
 
 def _lines(messages, prefix):
@@ -221,3 +212,36 @@ def test_an_origin_refusal_is_logged_without_the_request_s_credentials(member_on
         f"plugins.origin_refused origin='{WEATHER_ORIGIN}' method='POST' path='/api/auth/logout/'"
     ]
     _assert_no_secret(_login_lines(log_messages), cookie.partition("=")[2], "bearer-secret", STATE)
+
+
+# ---- service accounts and hooks ----
+
+
+def test_service_account_and_hook_lines_never_carry_a_key_hash_assertion_or_body(
+    weather_backend, service_account_key, acme, node_client, log_messages, superadmin_client
+):
+    plugin = weather_backend(hooks={"install": True})
+    superadmin_client.post("/api/admin/plugins/weather/grants/", {"organization_id": acme.pk}, format="json")
+    key = service_account_key(plugin, acme)
+    service_account_client("esp-" + "q" * 43, acme).get("/api/plugin-runtime/me/")
+    job = PluginHookJob.objects.get()
+    invocation = HookInvocation.model_validate_json(
+        node_client.post(f"/api/plugin-nodes/self/hook-jobs/{job.pk}/claim/").content
+    )
+    node_client.post(
+        f"/api/plugin-nodes/self/hook-jobs/{job.pk}/result/",
+        {"attempt": 1, "outcome": "succeeded", "duration_ms": 42},
+        format="json",
+    )
+
+    lines = [message for message in log_messages if message.startswith(("plugins.service_account", "plugins.hook"))]
+    assert {line.split(" ")[0] for line in lines} == {
+        "plugins.service_account.keys_minted",
+        "plugins.service_account.refused",
+        "plugins.hook.claimed",
+        "plugins.hook.finished",
+    }
+    secrets = (key, hashlib.sha256(key.encode()).hexdigest(), invocation.assertion, invocation.body)
+    assert not [line for line in log_messages if any(secret in line for secret in secrets)]
+    assert all(len(line) <= MAX_MESSAGE_LENGTH for line in lines)
+    assert f"plugins.hook.finished plugin=weather job={job.pk} kind=install org={acme.pk} attempt=1 outcome=succeeded duration_ms=42" in lines

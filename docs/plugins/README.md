@@ -24,6 +24,9 @@ These pages are for people who build plugins and for operators who run them.
   ([token exchange](reference/token-exchange.md)) and sends it to the plugin's backend, which
   receives a signed [gateway context](reference/gateway-context.md) instead. A backend's
   [public paths](how-to/public-paths.md) need no login.
+- A backend calls EpicStaff's API as the plugin's service account in each organization it is
+  granted to, within the `access` its manifest declares, on its own or on behalf of a person
+  ([Service account API](reference/service-account-api.md)). Org Admins see what it does there.
 - Your plugin page must also work when opened directly at its own address, and must not hard-code
   that address: load the platform config from `/.well-known/epicstaff/config.json` and use
   relative paths.
@@ -32,6 +35,7 @@ These pages are for people who build plugins and for operators who run them.
 
 | Page | What it covers |
 |---|---|
+| [Build your first plugin](tutorial/build-your-first-plugin.md) | A tutorial: the Weather sample from manifest to a running backend that creates its flow when installed and runs it for people |
 | [Manifest and package format](reference/manifest.md) | Every manifest field and rule, the package layout, caps, `CONTENTS.json`, error locations |
 | [`manifest.schema.json`](reference/manifest.schema.json) | The manifest as JSON Schema, for editors and your own checks |
 | [Frame protocol](reference/frame-protocol.md) | How the plugin page and EpicStaff talk: handshake, navigation sync, theme tokens |
@@ -48,7 +52,12 @@ These pages are for people who build plugins and for operators who run them.
 | [Gateway context](reference/gateway-context.md) | The signed statement every backend request carries (public or a logged-in person), and how it is verified |
 | [Serve public paths](how-to/public-paths.md) | Paths reached without a login: canonical paths, body caps, rate limits |
 | [Use settings](how-to/settings.md) | Settings a SuperAdmin fills in, secrets, required settings |
-| [Limits](reference/limits.md) | Memory, CPU and the other limits, the platform maximums, what is enforced |
+| [Declare what your backend may do](how-to/declare-access.md) | `access`: which actions each call needs, what a declaration never gives, what administrators see |
+| [Call EpicStaff from your backend](how-to/call-epicstaff-from-the-backend.md) | The SDK's EpicStaff client: per-organization keys, calling on behalf of a person, people lookups, running flows |
+| [Service account API](reference/service-account-api.md) | The service account and its keys, what it may do, on behalf of a person, `/api/plugin-runtime/`, activity |
+| [Run code when an organization gets your plugin](how-to/install-hook.md) | The install hook: registering a handler, idempotency, failures and retries |
+| [Hook API](reference/hook-api.md) | How EpicStaff calls a lifecycle hook: the signed assertion, the body, the answer |
+| [Limits](reference/limits.md) | Memory, CPU, the request rate and the other limits, the platform maximums, what is enforced |
 | [Error codes](reference/error-codes.md) | Every code the plugin API, the login and the gateway answer with |
 
 The sample plugin `plugin-samples/weather/` has a vanilla TypeScript app using the JS SDK
@@ -67,11 +76,12 @@ EpicStaff supports:
 
 | Contract | Version | Status |
 |---|---|---|
-| Manifest (`manifest_version`) | 1 | Supported. A `database` section is refused with `plugin_feature_unavailable`; `access`, `outbound_hosts` and `hooks` are accepted and shown at review, but not used yet |
+| Manifest (`manifest_version`) | 1 | Supported. A `database` section is refused with `plugin_feature_unavailable`; `outbound_hosts` is accepted and shown at review, but not used yet |
 | Frame protocol (`platform.frame_protocol`) | 1 | Supported |
 | Gateway context (`platform.gateway_context`) | 1 | Supported: `public` mode on public paths, `user` mode for logged-in people |
 | Login protocol (`plugin-sdk/contracts/login-protocol.json`, `protocol`) | 1 | Supported, for plugins with a backend |
-| Hook API (`platform.hook_api`) | 1 | Reserved for lifecycle hooks; declare `1` |
+| Hook API (`platform.hook_api`) | 1 | Supported for `install`; `upgrade` and `org_removed` are reserved |
+| Service account API (`/api/plugin-runtime/`) | 1 | Supported |
 | Runtime file (`format`) | 1 | Supported |
 | Backend Python (`backend.python`) | 3.12, 3.13 | Supported |
 | Package signature | minisign, pre-hashed Ed25519 | Supported |

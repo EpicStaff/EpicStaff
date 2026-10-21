@@ -46,7 +46,7 @@ def test_limits_show_every_view(weather, superadmin_client):
             "cpu_priority": True,
             "db_connections": False,
             "statement_timeout_seconds": False,
-            "requests_per_minute": False,
+            "requests_per_minute": True,
         },
     }
 

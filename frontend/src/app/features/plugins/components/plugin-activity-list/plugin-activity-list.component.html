@@ -1,0 +1,87 @@
+<app-table
+    [columns]="columns()"
+    [data]="rows()"
+    rowId="id"
+>
+    <ng-template
+        appTableCell="when"
+        let-row
+    >
+        @if (entryOf(row); as entry) {
+            <span
+                class="activity__cell activity__muted"
+                [matTooltip]="(entry.createdAt | date: 'medium') ?? ''"
+                matTooltipPosition="above"
+            >
+                {{ entry.relativeTime }}
+            </span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="plugin"
+        let-row
+    >
+        @if (entryOf(row); as entry) {
+            <span class="activity__cell">{{ entry.plugin }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="organization"
+        let-row
+    >
+        @if (entryOf(row); as entry) {
+            <span class="activity__cell">{{ entry.organization }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="actor"
+        let-row
+    >
+        @if (entryOf(row); as entry) {
+            <span class="activity__text">{{ entry.actor }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="action"
+        let-row
+    >
+        @if (entryOf(row); as entry) {
+            <span class="activity__cell">{{ entry.action }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="details"
+        let-row
+    >
+        @if (entryOf(row); as entry) {
+            <div class="activity__details">
+                @if (entry.requestLine) {
+                    <code class="activity__request">{{ entry.requestLine }}</code>
+                }
+                @if (entry.target) {
+                    <span class="activity__text">{{ entry.target }}</span>
+                }
+                @if (entry.error) {
+                    <span class="activity__error">{{ entry.error }}</span>
+                }
+            </div>
+        }
+    </ng-template>
+
+    <div tableEmpty>
+        @if (isLoading()) {
+            <app-loading-spinner size="sm" />
+        } @else {
+            <p class="activity__empty text-body">{{ emptyMessage() }}</p>
+        }
+    </div>
+</app-table>
+
+@if (totalCount() > pageSize()) {
+    <app-pagination-controls
+        [pageSize]="pageSize()"
+        [totalCount]="totalCount()"
+        [currentPage]="page()"
+        (pageChange)="onPageChange($event)"
+    />
+}

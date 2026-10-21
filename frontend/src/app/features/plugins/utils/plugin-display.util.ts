@@ -37,7 +37,7 @@ export const PLUGIN_STATE_LABELS: Readonly<Record<PluginState, string>> = {
 };
 
 export const PLUGIN_GRANT_STATE_LABELS: Readonly<Record<PluginGrantState, string>> = {
-    granting: 'Granting',
+    granting: 'Installing',
     active: 'Active',
     install_failed: 'Install failed',
     upgrading: 'Upgrading',

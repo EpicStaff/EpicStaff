@@ -8,6 +8,7 @@ from django.db.models import F
 from django.utils import timezone
 from epicstaff_plugin.contracts.manifest import PluginManifest
 
+from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import log_restart
 from plugins.configuration.setting_values import blocked_reason
 from plugins.exceptions import PlacementNotFoundError
@@ -64,5 +65,6 @@ class PluginRuntimeService:
                 state=PluginState.PROVISIONING, updated_at=timezone.now()
             )
             placement.refresh_from_db(fields=["restart_generation"])
+            ActivityRecorder().restarted(actor, plugin.identifier, placement.restart_generation)
         log_restart(actor, plugin.identifier, placement.restart_generation)
         return self.runtime_of(plugin, manifest)

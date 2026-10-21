@@ -225,6 +225,11 @@ server {
     # Authorization (where a person's login travels), and never the body.
     location = /_plugin_gateway_check {
         internal;
+        # No body limit here. The subrequest carries the request's Content-Length, and nginx
+        # compares it with this location's limit although no body is read here: a limit below
+        # /api/'s would turn every larger request into a 500 (auth_request gets the 413). /api/
+        # applies its own limit when nginx picks it, before the access phase runs this check.
+        client_max_body_size 0;
         proxy_pass http://backend_server/api/plugin-gateway/check/;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_method GET;

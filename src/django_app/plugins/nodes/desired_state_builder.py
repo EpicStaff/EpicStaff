@@ -6,13 +6,23 @@ from collections import defaultdict
 from django.utils import timezone
 from epicstaff_plugin.contracts.manifest import PluginManifest
 from epicstaff_plugin.json_documents import canonical_json
-from src.shared.models.plugin_nodes import CONTRACT_FORMAT, DesiredPlacement, DesiredState
+from src.shared.models.plugin_nodes import (
+    CONTRACT_FORMAT,
+    DesiredHookJob,
+    DesiredPlacement,
+    DesiredState,
+)
 
 from plugins.configuration.limits import plugin_limits
 from plugins.configuration.setting_values import blocked_reason
 from plugins.identity.signing_keys import PluginSigningKeyService
+from plugins.lifecycle.hook_job_service import HookJobService
 from plugins.models import PluginNode, PluginPlacement, PluginSettingValue, PluginState
-from plugins.nodes.runtime_credentials_service import RuntimeFileBuilder
+from plugins.nodes.runtime_credentials_service import (
+    Roster,
+    RuntimeFileBuilder,
+    service_account_rosters,
+)
 
 # Plugin states whose backend should be on its node. Uploaded plugins have no approved
 # package yet; the later lifecycle states arrive with suspension, upgrade and uninstall.
@@ -38,7 +48,9 @@ class DesiredStateBuilder:
 
     `revision` is the sha256 of the canonical JSON of the document without `revision` and
     `generated_at`, so it changes exactly when something the node acts on changes, and
-    serves as the ETag. Three queries plus the signing keys, whatever the number of plugins.
+    serves as the ETag. Five queries plus the signing keys, whatever the number of plugins:
+    the placements, the stored setting keys, the service-account rosters and the pending
+    hook jobs.
     """
 
     def build(self, node: PluginNode) -> DesiredState:
@@ -47,14 +59,23 @@ class DesiredStateBuilder:
             for placement in placements_to_run(node)
             if placement.plugin.current_package.parsed_manifest.backend is not None
         ]
+        plugin_ids = [placement.plugin_id for placement in placements]
         stored_keys = defaultdict(set)
         for plugin_id, key in PluginSettingValue.objects.filter(
-            plugin_id__in=[placement.plugin_id for placement in placements]
+            plugin_id__in=plugin_ids
         ).values_list("plugin_id", "key"):
             stored_keys[plugin_id].add(key)
+        rosters = service_account_rosters(plugin_ids)
+        hook_jobs = HookJobService().pending_jobs_by_plugin(plugin_ids)
         runtime_files = RuntimeFileBuilder(PluginSigningKeyService().jwks())
         desired = [
-            self._placement(placement, stored_keys[placement.plugin_id], runtime_files)
+            self._placement(
+                placement,
+                stored_keys[placement.plugin_id],
+                runtime_files,
+                rosters[placement.plugin_id],
+                hook_jobs[placement.plugin_id],
+            )
             for placement in placements
         ]
         body = {
@@ -75,6 +96,8 @@ class DesiredStateBuilder:
         placement: PluginPlacement,
         stored_keys: set[str],
         runtime_files: RuntimeFileBuilder,
+        roster: Roster,
+        hook_jobs: list[DesiredHookJob],
     ) -> DesiredPlacement:
         plugin = placement.plugin
         package = plugin.current_package
@@ -105,7 +128,10 @@ class DesiredStateBuilder:
                     "memory_mb": effective["memory_mb"],
                     "cpu_priority": effective["cpu_priority"],
                 },
-                "credentials_revision": runtime_files.credentials_revision(plugin, manifest),
+                "credentials_revision": runtime_files.credentials_revision(
+                    plugin, manifest, roster
+                ),
                 "settings_revision": placement.settings_revision,
+                "hook_jobs": hook_jobs,
             }
         )

@@ -16,7 +16,7 @@ Pydantic applies the per-call `extra` to every nested model.
 """
 
 import unicodedata
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, StringConstraints
@@ -49,6 +49,28 @@ def _http_url(value: str) -> str:
 HttpUrl = Annotated[str, StringConstraints(max_length=2048), AfterValidator(_http_url)]
 SettingKey = Annotated[str, StringConstraints(pattern=SETTING_KEY_PATTERN)]
 SettingValue = str | int | bool
+# An organization id as a JSON object key.
+OrgIdText = Annotated[str, StringConstraints(pattern=r"^[1-9][0-9]{0,18}$")]
+SERVICE_ACCOUNT_KEY_PATTERN = r"^esp-[A-Za-z0-9_-]{43}$"
+ServiceAccountKey = Annotated[str, StringConstraints(pattern=SERVICE_ACCOUNT_KEY_PATTERN)]
+
+
+class ServiceAccountEntry(BaseModel):
+    """The plugin's service account in one organization it is granted to.
+
+    `key` authenticates the plugin's calls to EpicStaff's API in that organization
+    (`Authorization: PluginKey <key>`). EpicStaff mints a new one every time the node fetches
+    the runtime file, and the one before it keeps working for 10 minutes, so always read the
+    key from the current file instead of keeping it.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+    key: ServiceAccountKey
+    org_name: Annotated[str, StringConstraints(max_length=255)]
+    grant_state: Annotated[str, StringConstraints(min_length=1, max_length=32)]
+    """`granting` while the install hook runs, `active` after it. Read as text: a newer
+    EpicStaff may add states."""
 
 
 class RuntimeFile(BaseModel):
@@ -56,7 +78,8 @@ class RuntimeFile(BaseModel):
 
     `settings` holds every non-secret setting with its stored value, or its default when none
     is stored; an optional setting with neither is left out. `secret_settings` holds only the
-    secrets that are set. `service_accounts` is empty in this version of EpicStaff.
+    secrets that are set. `service_accounts` has one entry per organization whose grant holds
+    a key (`granting` or `active`), keyed by the organization id as text.
     """
 
     # A validation error never repeats the input: it may be a secret setting. Pydantic applies
@@ -79,7 +102,7 @@ class RuntimeFile(BaseModel):
 
     settings: dict[SettingKey, SettingValue]
     secret_settings: dict[SettingKey, str]
-    service_accounts: dict[str, Any]
+    service_accounts: dict[OrgIdText, ServiceAccountEntry]
     jwks: Jwks
     """The public keys gateway contexts are signed with."""
 

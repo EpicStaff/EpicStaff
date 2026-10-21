@@ -8,8 +8,8 @@ from plugins.access.plugin_access import (
     resolve_person_plugin_access,
 )
 from plugins.models import GrantState, PluginGrant, PluginRolePermission, PluginState
-from rbac.models import Organization, OrganizationUser
-from rbac.models.enums import Permission
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole, Permission
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
@@ -104,6 +104,21 @@ def _superadmin_member(context):
     return context["superadmin"]
 
 
+def _superadmin_membership_role(context):
+    # The bootstrap SuperAdmin's membership holds the built-in Superadmin role.
+    superadmin_role = Role.objects.get(name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True)
+    OrganizationUser.objects.create(user=context["superadmin"], org=context["acme"], role=superadmin_role)
+    return context["superadmin"]
+
+
+def _demoted_superadmin_membership_role(context):
+    # The Superadmin-role membership counts only while its holder is a SuperAdmin.
+    user = _superadmin_membership_role(context)
+    type(user).objects.filter(pk=user.pk).update(is_superadmin=False)
+    user.refresh_from_db()
+    return user
+
+
 def _system_principal(context):
     return SystemServicePrincipal()
 
@@ -122,6 +137,8 @@ MATRIX = [
     (_plugin_not_running, None),
     (_superadmin_non_member, None),
     (_superadmin_member, ["read", "update"]),
+    (_superadmin_membership_role, ["read", "update", "delete"]),
+    (_demoted_superadmin_membership_role, None),
     (_system_principal, None),
 ]
 

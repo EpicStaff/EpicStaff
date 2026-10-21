@@ -116,8 +116,9 @@ CATALOG_RULES = [
     ("unknown resource type", {"resource_type": "plugins", "actions": ["read"]}, "manifest.access[0].resource_type"),
     ("use is not an action of agents", {"resource_type": "agents", "actions": ["read", "use"]}, "manifest.access[0].actions[1]"),
     ("update is not an action of secrets", {"resource_type": "secrets", "actions": ["update"]}, "manifest.access[0].actions[0]"),
-    ("creating organizations is a platform action", {"resource_type": "organizations", "actions": ["create"]}, "manifest.access[0].actions[0]"),
-    ("audit cannot be deleted", {"resource_type": "audit", "actions": ["read", "delete"]}, "manifest.access[0].actions[1]"),
+    ("export is not an action of llm_configs", {"resource_type": "llm_configs", "actions": ["read", "export"]}, "manifest.access[0].actions[1]"),
+    ("organizations cannot be declared", {"resource_type": "organizations", "actions": ["create"]}, "manifest.access[0].resource_type"),
+    ("audit cannot be declared", {"resource_type": "audit", "actions": ["read", "delete"]}, "manifest.access[0].resource_type"),
 ]
 
 

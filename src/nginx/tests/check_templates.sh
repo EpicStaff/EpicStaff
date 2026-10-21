@@ -9,10 +9,16 @@
 #     drops the Cookie header and the upstream's Set-Cookie and Clear-Site-Data, and that nginx's
 #     X-Frame-Options is the only one (read from the rendered configuration, includes expanded);
 #   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse;
+#   - that only the internal API listener's /api/ sets X-Plugin-Network-Secret (from
+#     PLUGINS_GATEWAY_SECRET, never from the caller) and X-EpicStaff-On-Behalf-Of, that every
+#     other location that passes a caller's headers on to Django blanks both in every spelling,
+#     and that the internal checks nginx makes before an upload or a plugin request apply no body
+#     limit;
 #   - live, inside the container: which upstreams receive the browser's cookies and may set
-#     one, the package upload route, the login callback pages a plugin host serves from src/nginx/plugin-platform,
-#     and which listener answers a caller on the plugins subnet (127.0.0.0/8 stands in for it)
-#     and which refuses it.
+#     one, the package upload route (with a 1 MiB and a 300 MiB package limit), the login callback
+#     pages a plugin host serves from src/nginx/plugin-platform, which listener answers a caller
+#     on the plugins subnet (127.0.0.0/8 stands in for it) and which refuses it, and the headers
+#     the internal API listener sends Django.
 #
 # Needs Docker and openssl. The containers have no network and publish no ports; nothing is left
 # behind. Usage, from anywhere: bash src/nginx/tests/check_templates.sh
@@ -349,6 +355,171 @@ expect_gateway_denies_marked() {
   fi
 }
 
+# Reads the flattened configuration twice (the file name, twice) and checks the two headers the
+# internal API listener adds for Django: X-Plugin-Network-Secret, which tells Django a request came
+# through that listener (plugin keys authenticate only with it), and X-EpicStaff-On-Behalf-Of. Each
+# must be set exactly once, in the 8081 server's ^~ /api/, and nowhere else to a value (elsewhere
+# they are only blanked, see the next check); the secret must be the rendered PLUGINS_GATEWAY_SECRET
+# (-v secret, quoted as rendered), never a variable a caller could fill, and that location must
+# not pass the caller's own headers on. Prints one line per problem, then "checked".
+read -r -d '' internal_headers_check_program << 'AWK' || :
+BEGIN { FS = "\t" }
+NR == FNR {
+  if ($3 == "listen 8081") internal_server = $1
+  next
+}
+{
+  in_api = (internal_server != "" && $1 == internal_server && $2 == "^~ /api/")
+  if (in_api && $3 == "proxy_pass_request_headers off") headers_off = 1
+  split($3, word, " ")
+  if (word[1] != "proxy_set_header") next
+  name = tolower(word[2])
+  if (name != "x-plugin-network-secret" && name != "x-epicstaff-on-behalf-of") next
+  if (!in_api) {
+    if (word[3] != "\"\"" && word[3] != "''")
+      print "set outside the internal listener's /api/ (server " $1 ", location [" $2 "]): " $3
+    next
+  }
+  count[name]++
+  value[name] = substr($3, length(word[1]) + length(word[2]) + 3)
+}
+END {
+  if (internal_server == "") print "no server listens on 8081"
+  if (!headers_off) print "the internal listener's /api/ passes the caller's headers on"
+  if (count["x-plugin-network-secret"] != 1)
+    print "X-Plugin-Network-Secret is set " count["x-plugin-network-secret"] + 0 " times in the internal listener's /api/"
+  else if (value["x-plugin-network-secret"] != "\"" secret "\"")
+    print "X-Plugin-Network-Secret is " value["x-plugin-network-secret"] ", not PLUGINS_GATEWAY_SECRET"
+  if (count["x-epicstaff-on-behalf-of"] != 1)
+    print "X-EpicStaff-On-Behalf-Of is set " count["x-epicstaff-on-behalf-of"] + 0 " times in the internal listener's /api/"
+  else if (value["x-epicstaff-on-behalf-of"] != "$http_x_epicstaff_on_behalf_of")
+    print "X-EpicStaff-On-Behalf-Of is " value["x-epicstaff-on-behalf-of"] ", not the caller's header"
+  print "checked"
+}
+AWK
+
+# $1 = a file of `nginx -T` output; prints the internal header check's problems.
+internal_header_problems() {
+  flatten_configuration "$1" > "$work_dir/flat"
+  awk -v secret="$gateway_secret" "$internal_headers_check_program" "$work_dir/flat" "$work_dir/flat" \
+    | { grep -v '^checked$' || true; }
+}
+
+# $1 = description. Checks the last rendered configuration (plugins on).
+expect_internal_headers() {
+  local problems
+  problems=$(internal_header_problems "$work_dir/out")
+  if [ -n "$problems" ]; then
+    fail "$1: $(printf '%s\n' "$problems" | paste -sd ';' -)"
+  else
+    pass "$1"
+  fi
+}
+
+# Every spelling of a header name with - or _ between its words, in lower case, one per line: with
+# underscores_in_headers on, nginx passes each as a header of its own and Django folds them into
+# one.
+spellings_of() { # $1 = header name
+  local rest word spelling
+  local -a spellings next
+  rest=$(printf '%s' "$1" | awk '{ print tolower($0) }')
+  spellings=("${rest%%-*}")
+  while [ "$rest" != "${rest#*-}" ]; do
+    rest=${rest#*-}
+    word=${rest%%-*}
+    next=()
+    for spelling in "${spellings[@]}"; do next+=("$spelling-$word" "${spelling}_$word"); done
+    spellings=("${next[@]}")
+  done
+  printf '%s\n' "${spellings[@]}"
+}
+plugin_internal_header_spellings=$(
+  { spellings_of X-Plugin-Network-Secret; spellings_of X-EpicStaff-On-Behalf-Of; } | paste -sd ' ' -
+)
+
+# Reads the flattened configuration and checks every location that proxies to Django
+# (backend_server) and passes the caller's headers on (no proxy_pass_request_headers off): it
+# must blank every spelling of the two internal listener headers (-v spellings), so no caller of
+# a public server can send Django either. A location's proxy_set_header lines replace its
+# server's, and the server's the http level's, only when it has any; the check applies that.
+# Prints one line per location that passes a spelling on, then "checked <n> <m>": how many such
+# locations it checked, and how many proxy to Django without the caller's headers.
+read -r -d '' django_header_strip_check_program << 'AWK' || :
+BEGIN {
+  FS = "\t"
+  wanted_count = split(spellings, wanted, " ")
+}
+{
+  key = $1 SUBSEP $2
+  if (!(key in seen)) { seen[key] = 1; order[++location_count] = key }
+  split($3, word, " ")
+  if (word[1] == "proxy_pass") target[key] = word[2]
+  if (word[1] == "proxy_pass_request_headers") passes[key] = word[2]
+  if (word[1] == "proxy_set_header") {
+    sets_headers[key] = 1
+    if (word[3] == "\"\"" || word[3] == "''") blanked[key, tolower(word[2])] = 1
+  }
+}
+function header_level(server, location) {
+  if ((server SUBSEP location) in sets_headers) return server SUBSEP location
+  if ((server SUBSEP "") in sets_headers) return server SUBSEP ""
+  return 0 SUBSEP ""
+}
+function passes_caller_headers(server, location,    value) {
+  value = "on"
+  if ((0 SUBSEP "") in passes) value = passes[0 SUBSEP ""]
+  if ((server SUBSEP "") in passes) value = passes[server SUBSEP ""]
+  if ((server SUBSEP location) in passes) value = passes[server SUBSEP location]
+  return value != "off"
+}
+END {
+  for (i = 1; i <= location_count; i++) {
+    split(order[i], part, SUBSEP)
+    if (part[2] == "" || target[order[i]] !~ /^http:\/\/backend_server(\/|$)/) continue
+    if (!passes_caller_headers(part[1], part[2])) { closed++; continue }
+    checked++
+    level = header_level(part[1], part[2])
+    missing = ""
+    for (w = 1; w <= wanted_count; w++) if (!((level, wanted[w]) in blanked)) missing = missing " " wanted[w]
+    if (missing != "") print "server " part[1] " [" part[2] "] passes on:" missing
+  }
+  print "checked " checked + 0 " " closed + 0
+}
+AWK
+
+# $1 = a file of `nginx -T` output; prints the Django header check's problems, sorted.
+django_header_problems() {
+  flatten_configuration "$1" | awk -v spellings="$plugin_internal_header_spellings" \
+    "$django_header_strip_check_program" | { grep -v '^checked ' || true; } | LC_ALL=C sort
+}
+
+# $1 = description, $2 = the least number of locations that must pass headers on to Django.
+expect_django_headers_blanked() {
+  local problems counts
+  problems=$(django_header_problems "$work_dir/out")
+  counts=$(flatten_configuration "$work_dir/out" | awk -v spellings="$plugin_internal_header_spellings" \
+    "$django_header_strip_check_program" | sed -n 's/^checked //p')
+  if [ -n "$problems" ]; then
+    fail "$1: $(printf '%s\n' "$problems" | paste -sd ';' -)"
+  elif [ "${counts% *}" -lt "$2" ]; then
+    fail "$1: found only ${counts% *} locations that pass headers on to Django"
+  else
+    pass "$1 (${counts% *} locations pass headers on to Django and blank them, ${counts#* } pass none)"
+  fi
+}
+
+# $1 = description, $2 = location (as written after `location`), $3 = directive without its ";".
+# Passes when that location of the last rendered configuration has the directive itself.
+expect_location_directive() {
+  if flatten_configuration "$work_dir/out" \
+    | awk -F '\t' -v location="$2" -v directive="$3" '$2 == location && $3 == directive { found = 1 }
+                                                      END { exit !found }'; then
+    pass "$1"
+  else
+    fail "$1: [$2] has no [$3;]"
+  fi
+}
+
 if [ -x "$plugins_envsh" ]; then
   pass "16-normalize-plugins-enabled.envsh is executable (the image ignores it otherwise)"
 else
@@ -360,11 +531,13 @@ for chat_enabled in false true; do for ssl_mode in off on; do
   if expect_valid "nginx -t: PLUGINS_ENABLED=false $flags" \
     PLUGINS_ENABLED=false NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled; then
     expect_only_django_cookies "PLUGINS_ENABLED=false $flags: only Django gets and sets cookies"
+    expect_django_headers_blanked "PLUGINS_ENABLED=false $flags: no caller can send Django the internal listener's headers" 6
     leaked=""
     for text in plugin_identifier /srv/plugin-spa /api/admin/plugins/packages/ \
       /_epicstaff/plugin-upload-permission auth_request \
       /api/plugin-gateway/ /api/plugin-nodes/ plugins-fullchain.pem frame-ancestors\ \'self\'\ http \
       /_plugin_gateway_check X-Plugin-Gateway-Secret "listen 8081" "$gateway_secret" \
+      '$http_x_epicstaff_on_behalf_of' \
       plugin_network_caller 10.235.0.0/24 /.well-known/epicstaff/callback \
       /usr/share/nginx/plugin-platform X-EpicStaff-Gateway-Deny; do
       if has_directive "$text"; then
@@ -452,9 +625,69 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       'location ^~ /api/auth/ {' \
       'location ^~ /api/admin/ {' \
       'proxy_set_header X-Organization-Id $http_x_organization_id;' \
+      'proxy_set_header X-EpicStaff-On-Behalf-Of $http_x_epicstaff_on_behalf_of;' \
+      "proxy_set_header X-Plugin-Network-Secret \"$gateway_secret\";" \
       'if ($plugin_network_caller = 0) {'
+    expect_internal_headers "PLUGINS_ENABLED=true $flags: only the internal listener's /api/ sets the network secret (from the environment) and the on-behalf-of header"
+    expect_django_headers_blanked "PLUGINS_ENABLED=true $flags: no caller of a public server can send Django the internal listener's headers" 8
+    # Both checks run as subrequests that carry the request's Content-Length but read no body;
+    # a limit of their own would turn a larger request into a 500.
+    expect_location_directive "PLUGINS_ENABLED=true $flags: the upload permission check applies no body limit" \
+      "= /_epicstaff/plugin-upload-permission" "client_max_body_size 0"
+    expect_location_directive "PLUGINS_ENABLED=true $flags: the gateway check applies no body limit" \
+      "= /_plugin_gateway_check" "client_max_body_size 0"
   fi
 done; done
+
+# The internal header check itself, on configurations broken on purpose: it must name each break.
+if expect_valid "nginx -t: PLUGINS_ENABLED=true, for the internal header check's self-test" \
+  PLUGINS_ENABLED=true; then
+  # $1 = what was broken, $2 = text the problems must contain, $3 = the awk program that breaks
+  # the internal listener's snippet in the `nginx -T` output (in_snippet is set for its lines).
+  expect_internal_header_break() {
+    local problems
+    awk "/^# configuration file / { in_snippet = (\$0 ~ /plugins-internal-api-true\\.snippet:\$/) } $3" \
+      "$work_dir/out" > "$work_dir/out-broken"
+    problems=$(internal_header_problems "$work_dir/out-broken")
+    case "$problems" in
+      *"$2"*) pass "the internal header check finds $1" ;;
+      *) fail "the internal header check, with $1, found [$(printf '%s\n' "$problems" | paste -sd ';' -)]" ;;
+    esac
+  }
+  expect_internal_header_break "the secret taken from the caller" "not PLUGINS_GATEWAY_SECRET" \
+    'in_snippet && /^ *proxy_set_header X-Plugin-Network-Secret / { print "        proxy_set_header X-Plugin-Network-Secret $http_x_plugin_network_secret;"; next } { print }'
+  expect_internal_header_break "the secret missing" "X-Plugin-Network-Secret is set 0 times" \
+    '!(in_snippet && /^ *proxy_set_header X-Plugin-Network-Secret /)'
+  expect_internal_header_break "the on-behalf-of header missing" "X-EpicStaff-On-Behalf-Of is set 0 times" \
+    '!(in_snippet && /^ *proxy_set_header X-EpicStaff-On-Behalf-Of /)'
+  expect_internal_header_break "the caller's headers passed on" "passes the caller's headers on" \
+    '!(in_snippet && /^ *proxy_pass_request_headers off;/)'
+  expect_internal_header_break "the secret set in another location" "set outside the internal listener's /api/" \
+    '{ print } in_snippet && /^ *location \/ [{]/ { print "        proxy_set_header X-Plugin-Network-Secret \"x\";" }'
+
+  # The Django header check itself: one spelling dropped from the snippet must show in every
+  # location it checks, and one include dropped in exactly that location.
+  checked=$(flatten_configuration "$work_dir/out" | awk -v spellings="$plugin_internal_header_spellings" \
+    "$django_header_strip_check_program" | sed -n 's/^checked \([0-9]*\) .*/\1/p')
+  awk '/^# configuration file / { in_snippet = ($0 ~ /strip-plugin-internal-headers\.snippet:$/) }
+       !(in_snippet && /^proxy_set_header X_EpicStaff_On-Behalf_Of /)' "$work_dir/out" > "$work_dir/out-broken"
+  found=$(django_header_problems "$work_dir/out-broken")
+  if [ "$(printf '%s\n' "$found" | grep -c ' passes on: x_epicstaff_on-behalf_of$')" = "$checked" ]; then
+    pass "the Django header check finds a spelling missing from the snippet in all $checked locations"
+  else
+    fail "the Django header check, with one spelling dropped, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+  awk '/^# configuration file / { in_default = ($0 ~ /\/default\.conf:$/) }
+       in_default && !dropped && /include \/etc\/nginx\/conf\.d\/strip-plugin-internal-headers\.snippet;/ { dropped = 1; next }
+       { print }' "$work_dir/out" > "$work_dir/out-broken"
+  found=$(django_header_problems "$work_dir/out-broken")
+  if [ "$(printf '%s\n' "$found" | grep -c .)" = 1 ] \
+    && [ "$(printf '%s\n' "$found" | wc -w)" -ge 26 ]; then
+    pass "the Django header check finds a location without the snippet ($(printf '%s' "$found" | cut -d: -f1))"
+  else
+    fail "the Django header check, with one include dropped, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+fi
 
 # The check itself, on a configuration with chat and plugins on, from which rules are deleted:
 #   - every Cookie, Set-Cookie and Clear-Site-Data rule: it must name exactly EpicStaff's own
@@ -620,12 +853,27 @@ fi
 #   - A SuperAdmin's package of exactly PLUGINS_MAX_PACKAGE_MB, with its multipart framing,
 #     reaches Django; a body more than one MiB above the cap gets nginx's 413.
 #   - Neither the internal location nor Django's permission path answers from outside.
+# The stub also records the headers that reach it on /api/plugin-runtime/ and /api/plugin-nodes/
+# (/tmp/stub-headers.log), to check what the internal API listener sends Django on the routes of
+# plugin backends and of the node, and that EpicStaff's own server passes none of them on.
 cat > "$work_dir/stub-django.conf" <<'STUB'
 log_format stub_django '$request_method $uri $request_length';
+log_format stub_headers 'secret=[$http_x_plugin_network_secret] on_behalf_of=[$http_x_epicstaff_on_behalf_of] authorization=[$http_authorization] organization=[$http_x_organization_id]';
 server {
     listen 127.0.0.1:8000;
     access_log /tmp/stub-django.log stub_django;
     client_max_body_size 0;
+    location ^~ /api/plugin-runtime/ {
+        access_log /tmp/stub-headers.log stub_headers;
+        default_type application/json;
+        return 200 '{"stub":"plugin runtime"}';
+    }
+    location ^~ /api/plugin-nodes/ {
+        access_log /tmp/stub-django.log stub_django;
+        access_log /tmp/stub-headers.log stub_headers;
+        default_type application/json;
+        return 200 '{"stub":"plugin node API"}';
+    }
     location = /api/admin/plugins/packages/upload-permission/ {
         if ($http_x_api_key) { return 403; }
         if ($http_authorization = "Bearer superadmin") { return 204; }
@@ -700,6 +948,21 @@ done
 status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Host: epicstaff.test' http://127.0.0.1/ || true)
 [ "$status" != 403 ] && pass "EpicStaff's server answers a caller outside the plugins subnet ($status)" \
   || fail "EpicStaff's server refused a caller outside the plugins subnet"
+
+# A caller of EpicStaff's own server cannot send Django the internal listener's headers in any
+# spelling (the stub's $http_ variables match every spelling, and would join them).
+live sh -c ': > /tmp/stub-headers.log'
+status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Host: epicstaff.test' \
+  -H 'Authorization: PluginKey esp-check' -H "X-Plugin-Network-Secret: $gateway_secret" \
+  -H 'X_Plugin_Network_Secret: forged' -H 'X-Plugin_Network-Secret: forged' \
+  -H 'X-EpicStaff-On-Behalf-Of: 7' -H 'X_EpicStaff_On_Behalf_Of: 7' -H 'X-EpicStaff_On-Behalf_Of: 7' \
+  http://127.0.0.1/api/plugin-runtime/me/ || true)
+received=$(live cat /tmp/stub-headers.log)
+if [ "$status" = 200 ] && [ "$received" = "secret=[-] on_behalf_of=[-] authorization=[PluginKey esp-check] organization=[-]" ]; then
+  pass "EpicStaff's own server passes Django neither a network secret nor an on-behalf-of header, in any spelling"
+else
+  fail "EpicStaff's own server, /api/plugin-runtime/me/: status $status, Django got other headers than expected"
+fi
 
 for path in /_epicstaff/plugin-upload-permission /api/admin/plugins/packages/upload-permission/; do
   live sh -c ': > /tmp/stub-django.log'
@@ -785,6 +1048,57 @@ fi
 docker rm -f "$live_container" > /dev/null
 live_container=""
 
+# The package upload route with the default PLUGINS_MAX_PACKAGE_MB=300, above the server's 50M:
+# nginx compares an upload's Content-Length with the limit of every location it passes through,
+# including the permission check's, which reads no body. Only the upload's headers are sent: nginx
+# decides on them before it reads any of the body.
+#   - an upload of 51 MiB with a made-up token gets the JSON 401 (not a 500 from the check),
+#     after a 100 Continue nginx sends to read and drop the body;
+#   - a SuperAdmin's gets 100 Continue and goes on to Django (the stub answers 201 without
+#     waiting for the body; nginx streams uploads unbuffered);
+#   - 301 MiB and one byte, more than the cap plus the framing allowance, get 413 before Django
+#     is asked anything.
+set_docker_arguments PLUGINS_ENABLED=true PLUGINS_MAX_PACKAGE_MB=300 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000
+live_container=$(docker run -d "${docker_arguments[@]}" \
+  -v "$work_dir/stub-django.conf:/etc/nginx/conf.d/zz-stub-django.conf:ro" "$image")
+for _ in $(seq 50); do
+  if live curl -s -o /dev/null http://127.0.0.1:8000/ 2> /dev/null; then break; fi
+  sleep 0.1
+done
+# upload_headers AUTHORIZATION CONTENT_LENGTH: prints the status codes nginx answered, in order;
+# the answer's body goes to /tmp/response in the container.
+upload_headers() {
+  live sh -c ': > /tmp/stub-django.log; : > /tmp/response
+    curl -s -o /tmp/response -D /tmp/headers --max-time 3 -X POST -H "Host: epicstaff.test" \
+      -H "Authorization: $1" -H "Content-Type: multipart/form-data; boundary=check" \
+      -H "Content-Length: $2" -H "Expect: 100-continue" \
+      http://127.0.0.1/api/admin/plugins/packages/ > /dev/null 2>&1
+    awk "/^HTTP\\// { printf \"%s \", \$2 }" /tmp/headers' upload_headers "$@" || true
+}
+permission_asked() { live grep -q "^GET /api/admin/plugins/packages/upload-permission/ " /tmp/stub-django.log; }
+mebibyte=1048576
+statuses=$(upload_headers "Bearer made-up" $((51 * mebibyte)))
+if { [ "$statuses" = "401 " ] || [ "$statuses" = "100 401 " ]; } \
+  && live grep -q '"code":"not_authenticated"' /tmp/response && permission_asked; then
+  pass "PLUGINS_MAX_PACKAGE_MB=300: a 51 MiB upload with a made-up token gets the JSON 401"
+else
+  fail "PLUGINS_MAX_PACKAGE_MB=300: a 51 MiB upload with a made-up token: statuses [$statuses], body $(live head -c 120 /tmp/response | tr '\n' ' ')"
+fi
+statuses=$(upload_headers "Bearer superadmin" $((51 * mebibyte)))
+if [ "$statuses" = "100 201 " ] && permission_asked && reached_django "POST /api/admin/plugins/packages/ "; then
+  pass "PLUGINS_MAX_PACKAGE_MB=300: a SuperAdmin's 51 MiB upload is taken and reaches Django"
+else
+  fail "PLUGINS_MAX_PACKAGE_MB=300: a SuperAdmin's 51 MiB upload: statuses [$statuses], expected 100 then Django's 201"
+fi
+statuses=$(upload_headers "Bearer superadmin" $((301 * mebibyte + 1)))
+if [ "$statuses" = "413 " ] && ! permission_asked; then
+  pass "PLUGINS_MAX_PACKAGE_MB=300: 301 MiB and one byte get 413 before Django is asked"
+else
+  fail "PLUGINS_MAX_PACKAGE_MB=300: 301 MiB and one byte: statuses [$statuses], permission asked: $(permission_asked && echo yes || echo no)"
+fi
+docker rm -f "$live_container" > /dev/null
+live_container=""
+
 # The same, seen from the plugins network: PLUGINS_NETWORK_SUBNET=127.0.0.0/8 makes curl inside
 # the container a plugin backend. The 8081 listener reaches "Django"; EpicStaff's server and a
 # plugin host refuse it before any location, so even the plugin API's own error pages (which
@@ -797,14 +1111,38 @@ for _ in $(seq 50); do
   if live curl -s -o /dev/null http://127.0.0.1:8000/ 2> /dev/null; then break; fi
   sleep 0.1
 done
-live sh -c ': > /tmp/stub-django.log'
+live sh -c ': > /tmp/stub-django.log; : > /tmp/stub-headers.log'
 status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: PluginNodeKey k' \
-  http://127.0.0.1:8081/api/plugin-nodes/self/desired-state/ || true)
-if reached_django "GET /api/plugin-nodes/self/desired-state/"; then
-  pass "the internal API listener serves a caller on the plugins subnet ($status from the stub)"
-else
+  -H 'X-Plugin-Network-Secret: forged' http://127.0.0.1:8081/api/plugin-nodes/self/desired-state/ || true)
+received=$(live cat /tmp/stub-headers.log)
+if ! reached_django "GET /api/plugin-nodes/self/desired-state/"; then
   fail "the internal API listener did not pass a plugins-subnet caller on to Django ($status)"
+elif [ "$received" = "secret=[$gateway_secret] on_behalf_of=[-] authorization=[PluginNodeKey k] organization=[-]" ]; then
+  pass "the internal API listener serves the node's API to the plugins subnet, with the environment's network secret ($status from the stub)"
+else
+  # Never print the received line: on a failure it may hold the secret.
+  fail "the internal API listener, node API: status $status, Django got other headers than expected"
 fi
+# What Django receives through the internal listener: the network secret from the environment,
+# whatever the caller sends in its place (every spelling), and the caller's on-behalf-of header,
+# key and organization. Without an on-behalf-of header, none reaches Django.
+expected_secret="secret=[$gateway_secret]"
+for case in "7|-H X-EpicStaff-On-Behalf-Of:7|$expected_secret on_behalf_of=[7]" \
+  "forged|-H X-Plugin-Network-Secret:forged -H X_Plugin_Network_Secret:forged -H X-Plugin_Network-Secret:forged -H X-EpicStaff-On-Behalf-Of:7|$expected_secret on_behalf_of=[7]" \
+  "none|-H X-Plugin-Network-Secret:forged|$expected_secret on_behalf_of=[-]"; do
+  IFS='|' read -r label extra expected <<< "$case"
+  live sh -c ': > /tmp/stub-headers.log'
+  # shellcheck disable=SC2086  # $extra is a list of curl arguments without spaces in them.
+  status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: PluginKey esp-check' \
+    -H 'X-Organization-Id: 3' $extra http://127.0.0.1:8081/api/plugin-runtime/me/ || true)
+  received=$(live cat /tmp/stub-headers.log)
+  if [ "$status" = 200 ] && [ "$received" = "$expected authorization=[PluginKey esp-check] organization=[3]" ]; then
+    pass "the internal API listener sends Django the environment's network secret ($label)"
+  else
+    # Never print the received line: on a failure it may hold the secret.
+    fail "the internal API listener ($label): status $status, Django got other headers than expected"
+  fi
+done
 for target in "epicstaff.test /" "epicstaff.test /api/other/" "epicstaff.test /api/admin/plugins/packages/" \
   "alpha.plugins.epicstaff.test /api/ping" "alpha.plugins.epicstaff.test /"; do
   live sh -c ': > /tmp/stub-django.log'

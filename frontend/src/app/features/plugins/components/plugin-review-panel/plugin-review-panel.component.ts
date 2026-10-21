@@ -5,12 +5,8 @@ import { ButtonComponent, CheckboxComponent, ConfirmationDialogService } from '@
 import { escapeHtml, formatFileSize } from '@shared/utils';
 
 import { PackageReview, PluginBuiltInRoleDefaults, PluginSettingDeclaration } from '../../models/plugin-admin.model';
-import {
-    PLUGIN_SIGNATURE_LABELS,
-    PLUGIN_TRUST_LABELS,
-    pluginActionLabels,
-    pluginTrustTone,
-} from '../../utils/plugin-display.util';
+import { PLUGIN_SIGNATURE_LABELS, PLUGIN_TRUST_LABELS, pluginTrustTone } from '../../utils/plugin-display.util';
+import { PluginAccessTableComponent } from '../plugin-access-table/plugin-access-table.component';
 import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
 import { PluginIconComponent } from '../plugin-icon/plugin-icon.component';
 
@@ -36,7 +32,14 @@ export interface PluginApproveRequest {
  */
 @Component({
     selector: 'app-plugin-review-panel',
-    imports: [ButtonComponent, CheckboxComponent, DatePipe, PluginBadgeComponent, PluginIconComponent],
+    imports: [
+        ButtonComponent,
+        CheckboxComponent,
+        DatePipe,
+        PluginAccessTableComponent,
+        PluginBadgeComponent,
+        PluginIconComponent,
+    ],
     templateUrl: './plugin-review-panel.component.html',
     styleUrl: './plugin-review-panel.component.scss',
 })
@@ -73,9 +76,6 @@ export class PluginReviewPanelComponent {
             matchLabel: publicPath.match === 'prefix' ? 'and below' : '',
             methodsLabel: publicPath.methods.join(', '),
         }))
-    );
-    protected readonly declaredAccess = computed(() =>
-        this.review().access.map((entry) => ({ ...entry, actionLabels: pluginActionLabels(entry.actions) }))
     );
     protected readonly hooksLabel = computed(() => {
         const hooks = this.review().hooks;

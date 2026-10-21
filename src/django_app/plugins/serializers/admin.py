@@ -1,5 +1,6 @@
 import base64
 
+from epicstaff_plugin.contracts.manifest import PluginManifest
 from rest_framework import serializers
 
 from plugins.models import Plugin, PluginGrant, PluginPackage, SignatureStatus, Trust
@@ -12,6 +13,24 @@ def icon_url(plugin: Plugin) -> str | None:
     if plugin.current_package is None:
         return None
     return f"/api/plugin-public/{plugin.identifier}/icon/?v={plugin.current_package.version}"
+
+
+def declared_access_rows(manifest: PluginManifest) -> list[dict]:
+    """The manifest's `access`, as the review and the organization's service-account list show it."""
+    return [
+        {
+            "resource_type": declaration.resource_type,
+            "resource_label": resource_label(declaration.resource_type),
+            "actions": list(declaration.actions),
+            "reason": declaration.reason,
+        }
+        for declaration in manifest.access
+    ]
+
+
+def datetime_text(value) -> str | None:
+    """A datetime as the API writes it, or None."""
+    return serializers.DateTimeField().to_representation(value) if value is not None else None
 
 
 class UserRefSerializer(serializers.Serializer):
@@ -130,15 +149,7 @@ class PackageReviewSerializer(serializers.ModelSerializer):
         }
 
     def get_access(self, package: PluginPackage) -> list[dict]:
-        return [
-            {
-                "resource_type": declaration.resource_type,
-                "resource_label": resource_label(declaration.resource_type),
-                "actions": list(declaration.actions),
-                "reason": declaration.reason,
-            }
-            for declaration in package.parsed_manifest.access
-        ]
+        return declared_access_rows(package.parsed_manifest)
 
     def get_user_permissions(self, package: PluginPackage) -> list[dict]:
         return [
@@ -255,10 +266,15 @@ class PluginDetailSerializer(PluginSummarySerializer):
 
 
 class PluginGrantSerializer(serializers.ModelSerializer):
+    """A grant in the SuperAdmin's list; expects a `PluginGrant.objects.with_admin_details()` row."""
+
     plugin_identifier = serializers.CharField(source="plugin.identifier")
     organization = serializers.SerializerMethodField()
     granted_by = UserRefSerializer(source="created_by", allow_null=True)
     granted_at = serializers.DateTimeField(source="created_at")
+    service_account = serializers.SerializerMethodField()
+    install_hook = serializers.SerializerMethodField()
+    owned_resource_count = serializers.IntegerField()
 
     class Meta:
         model = PluginGrant
@@ -272,8 +288,33 @@ class PluginGrantSerializer(serializers.ModelSerializer):
             "suspended_at",
             "purge_after",
             "last_hook_error",
+            "service_account",
+            "install_hook",
+            "owned_resource_count",
         ]
         read_only_fields = fields
 
     def get_organization(self, grant: PluginGrant) -> dict:
         return {"id": grant.org_id, "name": grant.org.name}
+
+    def get_service_account(self, grant: PluginGrant) -> dict | None:
+        # A grant of a plugin without a backend has none (reverse one-to-one).
+        account = getattr(grant, "service_account", None)
+        if account is None:
+            return None
+        return {
+            "created_at": datetime_text(account.created_at),
+            "key_last_used_at": datetime_text(grant.key_last_used_at),
+        }
+
+    def get_install_hook(self, grant: PluginGrant) -> dict | None:
+        if not grant.install_jobs:
+            return None
+        job = grant.install_jobs[0]
+        return {
+            "state": job.state,
+            "attempt": job.attempt,
+            "started_at": datetime_text(job.claimed_at),
+            "finished_at": datetime_text(job.finished_at),
+            "error": job.error,
+        }

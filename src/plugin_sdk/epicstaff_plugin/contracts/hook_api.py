@@ -1,0 +1,178 @@
+"""Hook API version 1: how EpicStaff calls a plugin backend's lifecycle hooks.
+
+EpicStaff decides that a hook runs (an organization was granted the plugin, for example) and
+the node calls the plugin process over loopback:
+
+    POST http://127.0.0.1:<port><HOOK_PATHS[kind]>
+    X-EpicStaff-Hook: <assertion>
+    Content-Type: application/json
+
+    <the HookRequest, as exact JSON bytes>
+
+The assertion is a compact JWS (EdDSA over Ed25519) that EpicStaff signs with the key it signs
+gateway contexts with; its `typ` keeps the two apart. It names the plugin, the hook and the
+organization, and binds the exact body bytes through their SHA-256, so another process on the
+node can neither forge a hook call nor replay an assertion with another body. The plugin
+verifies it with `epicstaff_plugin.hooks.verify_hook_assertion`, which
+`python -m epicstaff_plugin.serve` runs on every hook call.
+
+The plugin answers `200 {"status": "done"}` when the hook succeeded. Any other answer fails the
+hook: `{"status": "failed", "error": {"message": "..."}}` with a status that says why.
+
+Every model forbids unknown fields, so the side that builds a document cannot misspell one.
+The side that reads one parses it leniently, so a newer EpicStaff that adds a field does not
+break a plugin built against an older SDK:
+
+    HookRequest.model_validate_json(body, extra="ignore")
+
+Adding a hook kind: `HookKind` and `HOOK_PATHS` here, then EpicStaff's job kind and the
+lifecycle step that creates the job, then the registration method of
+`epicstaff_plugin.hooks.HookRegistry`.
+"""
+
+import hashlib
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Annotated, Literal, Self, get_args
+
+import jwt
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    StringConstraints,
+    model_validator,
+)
+
+from epicstaff_plugin.contracts.gateway_context import (
+    JTI_PATTERN,
+    ContextOrganization,
+    PluginIdentifier,
+    PluginIdentity,
+)
+from epicstaff_plugin.contracts.manifest import Version
+
+HookKind = Literal["install", "upgrade", "org_removed"]
+HOOK_KINDS: tuple[str, ...] = get_args(HookKind)
+HOOK_PATHS: Mapping[str, str] = MappingProxyType(
+    {
+        "install": "/_epicstaff/hooks/install",
+        "upgrade": "/_epicstaff/hooks/upgrade",
+        "org_removed": "/_epicstaff/hooks/org-removed",
+    }
+)
+HOOK_HEADER = "X-EpicStaff-Hook"
+HOOK_ASSERTION_TYPE = "epicstaff-plugin-hook+jwt"
+HOOK_ASSERTION_ALGORITHM = "EdDSA"
+# How far a plugin's clock may run ahead of EpicStaff's before a fresh assertion looks expired.
+HOOK_ASSERTION_LEEWAY_SECONDS = 30
+# An assertion expires this long after the hook's timeout, counted from when it was signed.
+HOOK_ASSERTION_GRACE_SECONDS = 60
+MAX_HOOK_ASSERTION_LENGTH = 8192
+HOOK_REQUEST_FORMAT = 1
+MAX_HOOK_BODY_BYTES = 16384
+MAX_HOOK_ERROR_MESSAGE_LENGTH = 2000
+
+BODY_SHA256_PATTERN = r"^[0-9a-f]{64}$"
+
+
+class _HookContractModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class HookAssertionClaims(_HookContractModel):
+    """The claims of a hook assertion, the payload of `X-EpicStaff-Hook`.
+
+    `exp` is `iat` plus the hook's timeout plus 60 seconds. `job_id`, `attempt`, `kind` and
+    `org_id` repeat the body's, and `body_sha256` is the hex SHA-256 of the exact body bytes.
+    """
+
+    iss: Annotated[str, StringConstraints(min_length=1, max_length=2048)]
+    """EpicStaff's public origin; equals the runtime file's `issuer`."""
+
+    aud: PluginIdentifier
+    """The plugin the hook is for."""
+
+    iat: Annotated[int, Field(ge=0)]
+    exp: Annotated[int, Field(ge=0)]
+    jti: Annotated[str, StringConstraints(pattern=JTI_PATTERN)]
+    kind: HookKind
+    job_id: PositiveInt
+    attempt: PositiveInt
+    org_id: PositiveInt
+    body_sha256: Annotated[str, StringConstraints(pattern=BODY_SHA256_PATTERN)]
+
+    @model_validator(mode="after")
+    def _expires_after_issue(self) -> Self:
+        if self.exp <= self.iat:
+            raise ValueError("exp must be later than iat")
+        return self
+
+
+class HookRequest(_HookContractModel):
+    """The body of a hook call: which job, which attempt, for which organization.
+
+    A retried job keeps its `job_id` and gets the next `attempt`; a handler that already did
+    the work for a `job_id` must succeed again without doing it twice. `previous_version` is
+    the version the organization ran before an upgrade, null for every other kind.
+    """
+
+    format: Literal[1]
+    job_id: PositiveInt
+    attempt: PositiveInt
+    kind: HookKind
+    org: ContextOrganization
+    plugin: PluginIdentity
+    previous_version: Version | None
+
+
+class HookError(_HookContractModel):
+    """Why a hook failed, in words a SuperAdmin can act on."""
+
+    message: Annotated[str, StringConstraints(max_length=MAX_HOOK_ERROR_MESSAGE_LENGTH)]
+
+
+class HookResponse(_HookContractModel):
+    """The plugin's answer to a hook call: `done`, or `failed` with an error."""
+
+    status: Literal["done", "failed"]
+    error: HookError | None = None
+
+    @model_validator(mode="after")
+    def _error_only_when_failed(self) -> Self:
+        if self.status == "done" and self.error is not None:
+            raise ValueError("a done hook has no error")
+        if self.status == "failed" and self.error is None:
+            raise ValueError("a failed hook has an error")
+        return self
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == "done"
+
+
+def hook_body_sha256(body: bytes) -> str:
+    """Return the `body_sha256` claim for a hook body: the hex SHA-256 of its exact bytes."""
+    return hashlib.sha256(body).hexdigest()
+
+
+def encode_hook_body(request: HookRequest) -> bytes:
+    """Return the exact bytes EpicStaff sends, and digests, as a hook's body."""
+    return request.model_dump_json().encode("utf-8")
+
+
+def encode_hook_assertion(
+    claims: HookAssertionClaims, private_key: Ed25519PrivateKey, kid: str
+) -> str:
+    """Sign `claims` as the compact JWS EpicStaff sends in `X-EpicStaff-Hook`.
+
+    The header is `{"alg": "EdDSA", "typ": "epicstaff-plugin-hook+jwt", "kid": kid}`.
+    """
+    return jwt.encode(
+        claims.model_dump(mode="json"),
+        private_key,
+        algorithm=HOOK_ASSERTION_ALGORITHM,
+        headers={"typ": HOOK_ASSERTION_TYPE, "kid": kid},
+    )

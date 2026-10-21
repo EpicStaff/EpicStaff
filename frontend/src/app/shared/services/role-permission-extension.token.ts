@@ -57,11 +57,6 @@ export interface RolePermissionExtension {
     readonly groupLabel: string;
     /** The CSS class of the icon-font glyph in the group header, e.g. `ti ti-puzzle`. */
     readonly groupIconClass: string;
-    /**
-     * The line the group shows for the built-in Superadmin role instead of rows: that role holds no permissions of its
-     * own (a superadmin's authority comes from the account), so it has nothing to tick here.
-     */
-    readonly superadminRoleNote: string;
 
     /** `false` while the feature is switched off: the matrix then neither calls nor shows the extension. */
     isActive(): boolean;

@@ -4,12 +4,16 @@ from datetime import timedelta
 
 import pytest
 from django.utils import timezone
+from epicstaff_plugin.contracts.runtime import RuntimeFile
 from plugins.identity.signing_keys import PluginSigningKeyService
+from plugins.lifecycle.grant_service import PluginGrantService
 from plugins.nodes.runtime_credentials_service import RuntimeCredentialsService
 from pydantic import ValidationError
-from plugins.models import PluginSigningKey
+from plugins.models import GrantState, PluginGrant, PluginSigningKey
+from rbac.models import Organization
 
 from src.shared.models.plugin_nodes import RuntimeCredentials
+from tests.plugins_tests.conftest import mark_running, service_account_client
 from tests.plugins_tests.package_builder import TOKEN_SETTING, UNITS_SETTING
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
@@ -171,3 +175,93 @@ def test_a_runtime_file_the_service_cannot_build_never_shows_a_secret(weather, p
         RuntimeCredentialsService().credentials_for(plugin_node, weather.placement.pk)
 
     assert SECRET_VALUE not in str(raised.value)
+
+
+# ---- service accounts ----
+
+ME_URL = "/api/plugin-runtime/me/"
+
+
+@pytest.fixture
+def granted(weather, superadmin):
+    """Factory → `organization` with a grant of Weather made through the grant service, in `state`."""
+
+    mark_running(weather)
+
+    def _make(organization, state=GrantState.ACTIVE):
+        PluginGrantService().grant("weather", organization.pk, superadmin)
+        PluginGrant.objects.filter(plugin=weather, org=organization).update(state=state)
+        return organization
+
+    return _make
+
+
+def test_service_accounts_list_the_key_holding_grants_each_with_a_working_key(weather, node_client, granted, acme, beta):
+    granted(acme)
+    granted(beta, GrantState.GRANTING)
+    granted(Organization.objects.create(name="failed-install"), GrantState.INSTALL_FAILED)
+    granted(Organization.objects.create(name="suspended"), GrantState.SUSPENDED)
+
+    runtime_file = RuntimeFile.model_validate(_credentials(node_client, weather).json()["runtime_file"])
+
+    assert set(runtime_file.service_accounts) == {str(acme.pk), str(beta.pk)}
+    assert runtime_file.service_accounts[str(acme.pk)].org_name == acme.name
+    assert runtime_file.service_accounts[str(acme.pk)].grant_state == "active"
+    assert runtime_file.service_accounts[str(beta.pk)].grant_state == "granting"
+    for org_id, entry in runtime_file.service_accounts.items():
+        response = service_account_client(entry.key).get(ME_URL)
+        assert response.status_code == 200
+        assert response.json()["organization"]["id"] == int(org_id)
+
+
+def test_an_inactive_organization_gets_no_key(weather, node_client, granted, acme):
+    granted(acme)
+    Organization.objects.filter(pk=acme.pk).update(is_active=False)
+
+    assert _credentials(node_client, weather).json()["runtime_file"]["service_accounts"] == {}
+
+
+def test_every_fetch_mints_new_keys(weather, node_client, granted, acme):
+    granted(acme)
+
+    first = _credentials(node_client, weather).json()["runtime_file"]["service_accounts"][str(acme.pk)]["key"]
+    second = _credentials(node_client, weather).json()["runtime_file"]["service_accounts"][str(acme.pk)]["key"]
+
+    assert first != second
+
+
+def test_the_revision_is_stable_across_fetches_and_never_follows_the_keys(weather, node_client, granted, acme):
+    granted(acme)
+    desired = _desired_placement(node_client)["credentials_revision"]
+
+    first = _credentials(node_client, weather).json()["credentials_revision"]
+    second = _credentials(node_client, weather).json()["credentials_revision"]
+
+    assert first == second == desired == _desired_placement(node_client)["credentials_revision"]
+
+
+def _revision_change(node_client, weather, change):
+    before = _desired_placement(node_client)["credentials_revision"]
+    change()
+    after = _desired_placement(node_client)["credentials_revision"]
+    assert after != before
+    assert _credentials(node_client, weather).json()["credentials_revision"] == after
+
+
+def test_a_new_grant_changes_the_revision(weather, node_client, granted, acme, beta):
+    granted(beta)
+
+    _revision_change(node_client, weather, lambda: granted(acme))
+
+
+@pytest.mark.parametrize("state", [GrantState.ACTIVE, GrantState.INSTALL_FAILED])
+def test_a_grant_changing_state_changes_the_revision(weather, node_client, granted, acme, state):
+    granted(acme, GrantState.GRANTING)
+
+    _revision_change(node_client, weather, lambda: PluginGrant.objects.filter(org=acme).update(state=state))
+
+
+def test_renaming_a_granted_organization_changes_the_revision(weather, node_client, granted, acme):
+    granted(acme)
+
+    _revision_change(node_client, weather, lambda: Organization.objects.filter(pk=acme.pk).update(name="Acme renamed"))

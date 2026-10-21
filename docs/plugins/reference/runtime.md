@@ -22,12 +22,15 @@ It puts `backend/src` on the environment's import path, and starts:
 
 `epicstaff_plugin.serve` reads the runtime file, imports the ASGI app the manifest's
 `backend.entrypoint` names, and serves it with uvicorn: one worker, no `Server` header, proxy
-headers ignored, lifespan events on (an app that does not handle them fails to start). In front
-of your app it puts two things you cannot turn off:
+headers ignored, lifespan events on (an app that does not handle them fails to start). Importing
+the entrypoint module registers your [hook](hook-api.md) handlers. In front of your app it puts
+three things you cannot turn off, in this order:
 
 1. `GET /_epicstaff/health` answers `200 {"status":"ok"}`. The node calls it every 15 s;
    three failures in a row restart the process.
-2. Every other request needs a valid [gateway context](gateway-context.md); without one it is
+2. `POST` on the hook paths (`/_epicstaff/hooks/…`) runs your hook handler, once the call's
+   [hook assertion](hook-api.md#verification) verifies; these calls never reach your app.
+3. Every other request needs a valid [gateway context](gateway-context.md); without one it is
    answered `401 {"code":"context_invalid"}` and never reaches your app.
 
 **The platform owns the port.** The node binds the plugin's port itself and keeps it bound while
@@ -89,7 +92,7 @@ A JSON document at `EPICSTAFF_PLUGIN_RUNTIME_FILE`, readable only by the plugin'
   "epicstaff_api_url": "http://epicstaff-api:8081/api/",
   "settings": { "units": "metric" },
   "secret_settings": { "forecast_api_token": "…" },
-  "service_accounts": {},
+  "service_accounts": { "3": { "key": "esp-…", "org_name": "Acme", "grant_state": "active" } },
   "jwks": { "keys": [ { "kty": "OKP", "crv": "Ed25519", "x": "…", "kid": "…", "alg": "EdDSA", "use": "sig" } ] },
   "public_paths": [ { "path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0 } ]
 }
@@ -105,7 +108,7 @@ A JSON document at `EPICSTAFF_PLUGIN_RUNTIME_FILE`, readable only by the plugin'
 | `epicstaff_api_url` | EpicStaff's API from inside the node. Only `/api/` is reachable there, without `/api/auth/` and `/api/admin/` |
 | `settings` | Every non-secret setting: its stored value, else its default. An optional setting with neither is left out |
 | `secret_settings` | The secret settings that are set, in clear text. Unset ones are left out |
-| `service_accounts` | Empty in this version |
+| `service_accounts` | The plugin's [service account](#service-accounts) in each organization it is granted to, keyed by the organization id as text |
 | `jwks` | The keys gateway contexts are signed with: the current one and any retired in the last 24 h |
 | `public_paths` | The manifest's public paths, as the gateway applies them |
 
@@ -113,9 +116,36 @@ Settings are deployment-wide: one value per plugin, set by a SuperAdmin on the p
 tab. Saving them restarts the process, so read them whenever you need them or once at start-up;
 both see the current values.
 
-The node rewrites the file atomically (a rename) when EpicStaff's signing keys change, without
-restarting the process. `RuntimeConfig` in the SDK notices the change and reads the file again.
-A newer EpicStaff may add fields; read the file with the SDK, or ignore fields you do not know.
+The node rewrites the file atomically (a rename) when EpicStaff's signing keys change and when
+the plugin's service accounts change, without restarting the process. `RuntimeConfig` in the SDK
+notices the change and reads the file again. A newer EpicStaff may add fields; read the file
+with the SDK, or ignore fields you do not know.
+
+### Service accounts
+
+```json
+"service_accounts": { "3": { "key": "esp-…", "org_name": "Acme", "grant_state": "active" } }
+```
+
+There is one entry per organization whose grant holds a key: `granting` while the install hook
+runs, then `active`. A grant whose install hook failed holds none, nor does an organization the
+plugin is not granted to.
+
+| Field | Meaning |
+|---|---|
+| `key` | `esp-` and 43 more characters: `Authorization: PluginKey <key>` on calls to EpicStaff's API in that organization |
+| `org_name` | The organization's name |
+| `grant_state` | The grant's state, as text: a newer EpicStaff may add states |
+
+EpicStaff keeps only a hash of each key and issues new ones every time the node fetches the
+runtime file: at every start or restart of the process, and whenever the plugin is granted to
+another organization or a grant changes state. The key before the current one keeps working for
+10 minutes, so calls in flight during a rewrite still succeed. Read the key from the current file
+for every call (`RuntimeConfig.service_account(org_id)`; the SDK's
+[client](../how-to/call-epicstaff-from-the-backend.md) does), and never store or log it.
+
+A key works only on `epicstaff_api_url`, from the plugin network; EpicStaff refuses it on its
+public address.
 
 ## File system and identity
 
@@ -153,9 +183,9 @@ Hence two rules:
 - **Never put a secret in a command line**, your own or a child process's: every plugin on the
   node can read it. Pass secrets in environment variables of the child or in files under
   `HOME`.
-- **Trust a request only through its gateway context.** Another plugin can call your port
-  directly, but it cannot forge a context: `epicstaff_plugin.serve` refuses every request
-  without a valid one, which is why it cannot be turned off.
+- **Trust a request only through its gateway context or hook assertion.** Another plugin can
+  call your port directly, but it can forge neither: `epicstaff_plugin.serve` refuses every
+  request without a valid one, which is why it cannot be turned off.
 
 ## Limits
 

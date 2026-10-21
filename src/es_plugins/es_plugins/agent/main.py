@@ -4,6 +4,7 @@ Loops, all in one event loop:
 
 - reconcile, every 5 s: `GET desired-state` with `If-None-Match`, apply a changed one, touch
   the heartbeat file the container's health check reads;
+- per placement: converge, and the hooks it lists (see `reconciler`);
 - report, every 10 s and right after anything a report shows changed;
 - memory watchdog, every 2 s;
 - disk watchdog, every 30 s.
@@ -30,6 +31,7 @@ from es_plugins.agent.port_reservation import PortReservation
 from es_plugins.agent.reconciler import AgentServices, Reconciler
 from es_plugins.agent.settings import AgentSettings
 from es_plugins.health.health_checker import HealthChecker
+from es_plugins.hooks.hook_caller import PluginHookCaller
 from es_plugins.layout import NodeLayout
 from es_plugins.node_disk import NodeDisk
 from es_plugins.packages.package_fetcher import PackageFetcher
@@ -195,6 +197,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
     await launcher.connect()
     django = DjangoNodeClient(settings.api_url, settings.node_key)
     health_checker = HealthChecker()
+    hook_caller = PluginHookCaller()
     node_disk = NodeDisk(layout.data_root)
     reconciler: Reconciler
     reporter = Reporter(django, lambda: reconciler.reports())
@@ -206,6 +209,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
         health_checker=health_checker,
         ports=ports,
         disk=node_disk,
+        hook_caller=hook_caller,
         on_change=reporter.request,
     )
     reconciler = Reconciler(services)
@@ -230,6 +234,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
         await agent.run(stop)
     finally:
         await health_checker.aclose()
+        await hook_caller.aclose()
         await django.aclose()
         launcher.close()
         ports.close()

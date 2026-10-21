@@ -14,6 +14,7 @@ from epicstaff_plugin.signing import SignatureVerdict
 from utils.logger import logger
 
 from plugins.access.declared_access import declared_access_problems
+from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import PackageFacts, log_package_action
 from plugins.configuration.limits import PlatformMaximums, manifest_limit_problems
 from plugins.exceptions import (
@@ -252,6 +253,12 @@ class PluginInstallationService:
                 plugin.description = manifest.description
                 plugin.save(
                     update_fields=["current_package", "state", "name", "description", "updated_at"]
+                )
+                ActivityRecorder().package_approved(
+                    approved_by,
+                    identifier=plugin.identifier,
+                    version=package.version,
+                    trust=package.trust,
                 )
         except BaseException:
             if version_written and not committed:

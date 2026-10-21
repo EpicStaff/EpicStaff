@@ -6,7 +6,6 @@ import threading
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -15,6 +14,7 @@ from epicstaff_plugin.contracts.manifest import PublicPath
 from epicstaff_plugin.contracts.runtime import (
     RUNTIME_FILE_ENVIRONMENT_VARIABLE,
     RuntimeFile,
+    ServiceAccountEntry,
     SettingValue,
 )
 from epicstaff_plugin.problems import format_loc
@@ -108,7 +108,8 @@ class RuntimeConfig:
         return MappingProxyType(self.document.secret_settings)
 
     @property
-    def service_accounts(self) -> Mapping[str, Any]:
+    def service_accounts(self) -> Mapping[str, ServiceAccountEntry]:
+        """The plugin's service account per granted organization, keyed by the org id as text."""
         return MappingProxyType(self.document.service_accounts)
 
     @property
@@ -126,6 +127,13 @@ class RuntimeConfig:
     def secret_setting(self, key: str) -> str | None:
         """Return a secret setting, or None when it is not set."""
         return self.document.secret_settings.get(key)
+
+    def service_account(self, org_id: int) -> ServiceAccountEntry | None:
+        """Return the service account for an organization, or None when it holds none.
+
+        Read it per request: the key changes whenever the node fetches new credentials.
+        """
+        return self.document.service_accounts.get(str(org_id))
 
     def _reload(self, stamp: _FileStamp) -> None:
         with self._lock:

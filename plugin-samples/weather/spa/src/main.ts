@@ -6,7 +6,9 @@ import {
     startPlugin,
 } from '@epicstaff/plugin-sdk';
 
+import type { ApiFetch } from './api';
 import { element } from './dom';
+import { FORECAST_PATH, ForecastPage } from './forecast';
 import {
     CONNECT_PATH,
     type ConnectState,
@@ -20,14 +22,29 @@ import {
     type WhoAmI,
     type WhoAmIState,
 } from './login-pages';
-import { ABOUT_PATH, FORECAST_PATH, renderAbout, renderForecast, renderNotFound } from './pages';
+import { ORG_SETTINGS_PATH, ORG_SETTINGS_PERMISSION, OrgSettingsPage, type Permissions } from './org-settings';
+import { ABOUT_PATH, renderAbout, renderNotFound } from './pages';
 
-const NAVIGATION: readonly (readonly [string, string])[] = [
-    [FORECAST_PATH, 'Forecast'],
-    [WHO_AM_I_PATH, 'Who am I'],
-    [CONNECT_PATH, 'Connect'],
-    [ABOUT_PATH, 'About'],
+interface NavigationEntry {
+    path: string;
+    label: string;
+    /** Shown only to a person holding this permission on the plugin. */
+    permission?: string;
+}
+
+const NAVIGATION: readonly NavigationEntry[] = [
+    { path: FORECAST_PATH, label: 'Forecast' },
+    { path: ORG_SETTINGS_PATH, label: 'Organization settings', permission: ORG_SETTINGS_PERMISSION },
+    { path: WHO_AM_I_PATH, label: 'Who am I' },
+    { path: CONNECT_PATH, label: 'Connect' },
+    { path: ABOUT_PATH, label: 'About' },
 ];
+
+/** The pages that need the person signed in. */
+const SIGNED_IN_PATHS: readonly string[] = [FORECAST_PATH, ORG_SETTINGS_PATH, WHO_AM_I_PATH, CONNECT_PATH];
+
+/** The address the page starts on; it shows the forecast. */
+const HOME_PATH = '/';
 
 /**
  * The Weather page: routes kept in the address path. `startPlugin` runs before the first render, so it removes the
@@ -62,23 +79,51 @@ async function main(): Promise<void> {
     let whoAmI: WhoAmIState = { status: 'loading' };
     /** The token expiry the "Who am I" answer belongs to: a renewed token asks again. */
     let whoAmIExpiry: number | null = null;
+    /** The permissions of the last answer, kept while a renewed token asks again. */
+    let knownPermissions: readonly string[] | null = null;
     let connect: ConnectState = { status: 'idle' };
+    // Built on first visit and kept, so what the person typed and the running forecast survive moving around.
+    let forecastPage: ForecastPage | null = null;
+    let orgSettingsPage: OrgSettingsPage | null = null;
+
+    // The header is built once and updated in place, so a re-render never takes the focus from a link in it.
+    const signedInLine = element('span', 'muted');
+    const nav = element('nav', 'nav');
+    nav.setAttribute('aria-label', pluginName);
+    const navLinks = NAVIGATION.map((entry) => {
+        const link = element('a', null, entry.label);
+        link.href = entry.path;
+        nav.append(link);
+        return { entry, link };
+    });
+    const title = element('div', 'title-block');
+    title.append(element('h1', 'title', pluginName), signedInLine);
+    const header = element('header', 'header');
+    header.append(title, nav);
+    const content = element('div', 'content');
+    root.replaceChildren(header, content);
 
     const render = (): void => {
+        if (location.pathname === HOME_PATH) history.replaceState(null, '', FORECAST_PATH);
         const path = location.pathname;
-        const header = element('header', 'header');
-        const nav = element('nav', 'nav');
-        nav.setAttribute('aria-label', pluginName);
-        for (const [href, label] of NAVIGATION) {
-            const link = element('a', null, label);
-            link.href = href;
-            if (href === path) link.setAttribute('aria-current', 'page');
-            nav.append(link);
+        if (login?.state === 'signed-in') askWhoAmI(login);
+        updateHeader(path);
+        const page = pageFor(path);
+        // Re-inserting the same elements would take the focus from a field being typed in.
+        const current = Array.from(content.children);
+        if (current.length !== page.length || current.some((child, index) => child !== page[index])) {
+            content.replaceChildren(...page);
         }
-        const title = element('div', 'title-block');
-        title.append(element('h1', 'title', pluginName), element('span', 'muted', signedInAs()));
-        header.append(title, nav);
-        root.replaceChildren(header, ...pageFor(path));
+    };
+
+    const updateHeader = (path: string): void => {
+        for (const { entry, link } of navLinks) {
+            link.hidden = entry.permission !== undefined && !knownPermissions?.includes(entry.permission);
+            if (entry.path === path) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
+        }
+        const signedIn = signedInAs();
+        if (signedInLine.textContent !== signedIn) signedInLine.textContent = signedIn;
     };
 
     const signedInAs = (): string => {
@@ -88,17 +133,33 @@ async function main(): Promise<void> {
         return login.state === 'access-denied' ? 'No access' : 'Not signed in';
     };
 
+    const permissions = (): Permissions => {
+        if (knownPermissions !== null) return { status: 'known', actions: knownPermissions };
+        return whoAmI.status === 'failed' ? { status: 'failed', message: whoAmI.message } : { status: 'loading' };
+    };
+
     const pageFor = (path: string): HTMLElement[] => {
-        if (path === FORECAST_PATH) return renderForecast();
         if (path === ABOUT_PATH) return renderAbout(plugin);
-        if (path !== WHO_AM_I_PATH && path !== CONNECT_PATH) return renderNotFound();
+        if (!SIGNED_IN_PATHS.includes(path)) return renderNotFound();
         if (login === null) return [element('p', 'note', loginUnavailable)];
         const signedIn = login;
         const notSignedIn = renderLoginState(signedIn, pluginName);
         if (notSignedIn !== null) return notSignedIn;
-        if (path === CONNECT_PATH) return renderConnect(connect, (severOpener) => connectWith(signedIn, severOpener));
-        askWhoAmI(signedIn);
-        return renderWhoAmI(signedIn, whoAmI, () => void signedIn.renew());
+        const fetchApi: ApiFetch = (apiPath, init) => signedIn.fetch(apiPath, init);
+        switch (path) {
+            case FORECAST_PATH:
+                forecastPage ??= new ForecastPage(fetchApi, pluginName, render);
+                forecastPage.update();
+                return [forecastPage.root];
+            case ORG_SETTINGS_PATH:
+                orgSettingsPage ??= new OrgSettingsPage(fetchApi, pluginName, render);
+                orgSettingsPage.update(permissions());
+                return [orgSettingsPage.root];
+            case CONNECT_PATH:
+                return renderConnect(connect, (severOpener) => connectWith(signedIn, severOpener));
+            default:
+                return renderWhoAmI(signedIn, whoAmI, () => void signedIn.renew());
+        }
     };
 
     const askWhoAmI = (signedIn: PluginLogin): void => {
@@ -116,6 +177,7 @@ async function main(): Promise<void> {
             .then((next) => {
                 if (whoAmIExpiry !== expiry) return;
                 whoAmI = next;
+                if (next.status === 'loaded') knownPermissions = next.body.permissions;
                 render();
             });
     };

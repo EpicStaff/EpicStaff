@@ -12,10 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from src.shared.models.plugin_nodes import (
     DesiredPackage,
     DesiredState,
+    HookInvocation,
+    HookResult,
     NodeReport,
     RuntimeCredentials,
 )
@@ -24,6 +26,11 @@ DESIRED_STATE_PATH = "plugin-nodes/self/desired-state/"
 PACKAGE_PATH = "plugin-nodes/self/packages/{package_id}/"
 RUNTIME_CREDENTIALS_PATH = "plugin-nodes/self/placements/{placement_id}/runtime-credentials/"
 REPORTS_PATH = "plugin-nodes/self/reports/"
+HOOK_CLAIM_PATH = "plugin-nodes/self/hook-jobs/{job_id}/claim/"
+HOOK_RESULT_PATH = "plugin-nodes/self/hook-jobs/{job_id}/result/"
+# What django_app answers a claim of a job that is no longer pending for this node: unknown or
+# another node's (404), or taken by an earlier claim, finished, or its grant gone (409).
+_NOT_CLAIMABLE_STATUSES = (404, 409)
 MAX_DOCUMENT_BYTES = 4 * 1024 * 1024
 _DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 _TIMEOUT = httpx.Timeout(30.0, connect=5.0)
@@ -171,10 +178,45 @@ class DjangoNodeClient:
         Raises:
             NodeApiError: django_app did not accept it.
         """
+        await self._post_json(REPORTS_PATH, report)
+
+    async def claim_hook_job(self, job_id: int) -> HookInvocation | None:
+        """Claim a pending hook job; return the call to make to the plugin, or None.
+
+        None means the job is no longer pending for this node (another claim took it, it
+        finished, or its grant is gone): there is nothing to do. The invocation holds a signed
+        assertion and the body it is bound to; never log either.
+
+        Raises:
+            NodeApiError: The request failed, or the answer is not the invocation of this job.
+        """
+        try:
+            response = await self._request("POST", HOOK_CLAIM_PATH.format(job_id=job_id))
+        except NodeApiError as error:
+            if error.status in _NOT_CLAIMABLE_STATUSES:
+                return None
+            raise
+        invocation = _parse(HookInvocation, response)
+        if invocation.job_id != job_id:
+            raise NodeApiError(
+                f"claimed hook job {job_id}, got {invocation.job_id}", transient=False
+            )
+        return invocation
+
+    async def send_hook_result(self, job_id: int, result: HookResult) -> None:
+        """Report what came of a claimed hook call.
+
+        Raises:
+            NodeApiError: django_app did not accept it (409 once the job is no longer running
+                with this attempt, e.g. after it was failed for reporting too late).
+        """
+        await self._post_json(HOOK_RESULT_PATH.format(job_id=job_id), result)
+
+    async def _post_json(self, path: str, document: BaseModel) -> None:
         await self._request(
             "POST",
-            REPORTS_PATH,
-            content=report.model_dump_json().encode(),
+            path,
+            content=document.model_dump_json().encode(),
             headers={"Content-Type": "application/json"},
         )
 

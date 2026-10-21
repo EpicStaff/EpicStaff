@@ -7,6 +7,8 @@ from plugins.models import PluginNode, PluginSigningKey
 from plugins.nodes.node_authentication import node_key_hash
 from rest_framework.test import APIClient
 
+from tests.plugins_tests.conftest import GATEWAY_SECRET
+
 pytestmark = pytest.mark.django_db
 
 KEY = "seed-node-key-" + "k" * 40
@@ -97,8 +99,9 @@ def test_a_renamed_node_s_old_key_stops_working(node_settings, plugins_enabled):
 
     old = PluginNode.objects.get(name="node-1")
     assert old.key_hash is None
+    node_settings.PLUGINS_GATEWAY_SECRET = GATEWAY_SECRET
     client = APIClient()
-    client.credentials(HTTP_AUTHORIZATION=f"PluginNodeKey {KEY}")
+    client.credentials(HTTP_AUTHORIZATION=f"PluginNodeKey {KEY}", HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET)
     assert client.get("/api/plugin-nodes/self/desired-state/").status_code == 401
-    client.credentials(HTTP_AUTHORIZATION=f"PluginNodeKey new-{KEY}")
+    client.credentials(HTTP_AUTHORIZATION=f"PluginNodeKey new-{KEY}", HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET)
     assert client.get("/api/plugin-nodes/self/desired-state/").status_code == 200

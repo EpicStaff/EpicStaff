@@ -3702,9 +3702,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-20T22:51:03Z UTC -->
-<!-- commit: 277ce8fad50345843e3a468d78e70d567f82000f -->
-<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:be59166b6b1b75ee, es_plugins:747887bbed5e89f5, knowledge_new:3d46a714e418362f, manager:b4bef382144a5a4a, plugin_sdk:f16e38ab35882874, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-10-21T08:53:52Z UTC -->
+<!-- commit: e6c9a89cb1051fd8f382afb449a23430a2ccadbe -->
+<!-- lock-hashes: agent:9b92f9d4824f778f, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:3185b98c6b25f3cd, django_app:e957a64771163665, es_plugins:2f8bb2c7f82fb6b3, knowledge_new:3d46a714e418362f, manager:b4bef382144a5a4a, plugin_sdk:07f7a93928e9aa6e, realtime:89847825abf867bd, sandbox:6db6900f51e81e02, webhook:6e6a68286cd96f18 -->
 
 ## Backend (Python)
 

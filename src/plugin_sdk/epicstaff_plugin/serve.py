@@ -1,10 +1,14 @@
 """Run a plugin's backend as the EpicStaff node does: `python -I -m epicstaff_plugin.serve`.
 
 Reads the runtime file, imports the ASGI app `EPICSTAFF_PLUGIN_ENTRYPOINT` names
-(`module.path:attribute`), and serves it with uvicorn behind the health endpoint and the
-context check, in that order. So every request except `GET /_epicstaff/health` needs a valid
-gateway context: other plugins on the node can reach this port, and the context is what tells
+(`module.path:attribute`), and serves it with uvicorn behind the health endpoint, the hook
+dispatch and the context check, in that order. So every request except `GET /_epicstaff/health`
+needs proof that EpicStaff sent it: a hook call a valid hook assertion, anything else a valid
+gateway context. Other plugins on the node can reach this port, and those two are what tell
 EpicStaff's requests apart from theirs.
+
+Importing the entrypoint module registers the plugin's hook handlers
+(`epicstaff_plugin.hooks.hook_registry`).
 
 On the node the port belongs to the platform: the node binds it, holds it across restarts, and
 passes the listening socket in as the file descriptor `EPICSTAFF_PLUGIN_LISTEN_FD` names, so
@@ -20,10 +24,14 @@ import socket
 import sys
 
 from epicstaff_plugin.asgi import ASGIApp
+from epicstaff_plugin.client.epicstaff_client import EpicStaffClient
 from epicstaff_plugin.contracts.manifest import ENTRYPOINT_PATTERN
 from epicstaff_plugin.gateway.asgi_middleware import EpicStaffContextMiddleware
 from epicstaff_plugin.gateway.context_verifier import ContextVerifier
 from epicstaff_plugin.health import HealthCheckMiddleware
+from epicstaff_plugin.hooks.assertion_verifier import HookAssertionVerifier
+from epicstaff_plugin.hooks.hook_dispatch import HookDispatchMiddleware
+from epicstaff_plugin.hooks.hook_registry import HookRegistry, hook_registry
 from epicstaff_plugin.runtime.runtime_config import (
     RuntimeConfig,
     RuntimeConfigError,
@@ -42,9 +50,29 @@ class ServeError(Exception):
     """The plugin cannot be started: a missing variable, a bad port, socket or entrypoint."""
 
 
-def build_app(app: ASGIApp, runtime: RuntimeConfig) -> ASGIApp:
-    """Wrap the plugin's app the way the node serves it: health, then the context check."""
-    return HealthCheckMiddleware(EpicStaffContextMiddleware(app, ContextVerifier(runtime)))
+def build_app(
+    app: ASGIApp,
+    runtime: RuntimeConfig,
+    *,
+    hooks: HookRegistry | None = None,
+    epicstaff: EpicStaffClient | None = None,
+) -> ASGIApp:
+    """Wrap the plugin's app the way the node serves it: health, hook dispatch, context check.
+
+    `hooks` defaults to the process-wide `hook_registry`, and `epicstaff` (the client hook
+    handlers get) to a new client over `runtime`.
+    """
+    context_verifier = ContextVerifier(runtime)
+    return HealthCheckMiddleware(
+        HookDispatchMiddleware(
+            EpicStaffContextMiddleware(app, context_verifier),
+            # One key lookup for both checks: they trust the same keys, under one
+            # download budget.
+            HookAssertionVerifier(context_verifier.signing_keys),
+            hook_registry if hooks is None else hooks,
+            EpicStaffClient(runtime) if epicstaff is None else epicstaff,
+        )
+    )
 
 
 def load_entrypoint(entrypoint: str) -> ASGIApp:

@@ -16,9 +16,16 @@ def test_the_health_endpoint_answers_without_a_context(runtime):
     assert (response.status, response.json()) == (200, {"status": "ok"})
 
 
+# The hook paths are answered by the hook dispatch instead (test_hook_router.py).
 @pytest.mark.parametrize(
     ("method", "path"),
-    [("POST", "/_epicstaff/health"), ("GET", "/_epicstaff/health/"), ("GET", "/_epicstaff/hooks/install")],
+    [
+        ("POST", "/_epicstaff/health"),
+        ("GET", "/_epicstaff/health/"),
+        ("POST", "/_epicstaff/hooks"),
+        ("POST", "/_epicstaff/hooks/uninstall"),
+        ("POST", "/_epicstaff/hooks/org_removed"),
+    ],
 )
 def test_nothing_else_under_epicstaff_skips_the_context_check(runtime, method, path):
     assert request(build_app(plugin_app, runtime), method, path).status == 401

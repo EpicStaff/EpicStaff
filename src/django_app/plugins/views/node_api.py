@@ -10,6 +10,7 @@ from rest_framework import status
 from rest_framework.views import APIView
 
 from plugins.exceptions import PluginPackageNotFoundError
+from plugins.lifecycle.hook_job_service import HookJobService, parse_hook_result
 from plugins.models import PluginPackage
 from plugins.nodes.desired_state_builder import DesiredStateBuilder, placements_to_run
 from plugins.nodes.node_authentication import IsPluginNode, PluginNodeAuthentication
@@ -71,4 +72,19 @@ class RuntimeCredentialsView(PluginNodeView):
 class NodeReportView(PluginNodeView):
     def post(self, request):
         NodeReportService().record(request.auth, parse_node_report(request.body))
+        return HttpResponse(status=status.HTTP_204_NO_CONTENT)
+
+
+class HookJobClaimView(PluginNodeView):
+    def post(self, request, job_id: int):
+        invocation = HookJobService().claim(request.auth, job_id)
+        response = HttpResponse(invocation.model_dump_json(), content_type=JSON)
+        # The body holds a signed hook assertion.
+        response["Cache-Control"] = "no-store"
+        return response
+
+
+class HookJobResultView(PluginNodeView):
+    def post(self, request, job_id: int):
+        HookJobService().record_result(request.auth, job_id, parse_hook_result(request.body))
         return HttpResponse(status=status.HTTP_204_NO_CONTENT)

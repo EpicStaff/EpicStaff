@@ -34,8 +34,8 @@ export class RoleInfoDialogComponent implements OnInit {
     readonly role = inject<GetRoleResponse>(DIALOG_DATA);
     readonly catalog = computed<CatalogResponse | null>(() => this.permissionsService.catalog());
 
-    /** The global built-in Superadmin role: shown with every catalog permission, while extensions show a note, since
-     *  the role itself holds nothing (a superadmin's authority comes from the account). */
+    /** The global built-in Superadmin role: shown with every catalog permission, since a superadmin's authority over
+     *  the catalog comes from the account. Its extension rows show what the role holds, like any built-in role's. */
     private readonly isSuperadminRole = this.role.is_built_in && this.role.name === 'Superadmin';
 
     readonly selectedPermissions = computed<Set<string>>(() => {
@@ -65,10 +65,6 @@ export class RoleInfoDialogComponent implements OnInit {
 
     ngOnInit() {
         this.permissionsService.loadCatalog().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-        if (this.isSuperadminRole) {
-            this.extensionRows.showSuperadminNotes();
-            return;
-        }
         // No organization: a built-in role then shows its rows in every organization the actor can read.
         this.extensionRows.loadForRole(this.role.id);
     }

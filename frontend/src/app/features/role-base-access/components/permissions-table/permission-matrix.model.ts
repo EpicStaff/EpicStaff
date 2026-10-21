@@ -25,6 +25,4 @@ export interface PermissionMatrixGroup {
     /** The CSS class of an icon-font glyph, or `null` when the group uses `icon`. */
     iconClass: string | null;
     rows: PermissionMatrixRow[];
-    /** A line shown instead of the rows (the group has none then), or `null`. */
-    note: string | null;
 }

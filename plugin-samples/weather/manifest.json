@@ -1,7 +1,7 @@
 {
     "manifest_version": 1,
     "id": "weather",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "name": "Weather",
     "description": "Forecasts for the places your organization cares about.",
     "publisher": { "name": "EpicStaff" },
@@ -9,11 +9,22 @@
     "platform": { "frame_protocol": 1, "gateway_context": 1, "hook_api": 1 },
     "spa": { "entry": "index.html" },
     "backend": { "python": "3.13", "entrypoint": "weather_plugin.app:app" },
+    "access": [
+        { "resource_type": "flows", "actions": ["read", "create", "update", "use"], "reason": "Creates the Weather forecast flow and runs it for you." },
+        { "resource_type": "files", "actions": ["read", "create"], "reason": "Stores the Weather readme in your organization's storage." },
+        { "resource_type": "secrets", "actions": ["read", "create", "use"], "reason": "Stores the LLM key an admin enters on the Weather settings page." },
+        { "resource_type": "llm_configs", "actions": ["read", "create"], "reason": "Creates the LLM config for Weather summaries." }
+    ],
     "user_permissions": [
         {
             "action": "read",
             "description": "Open Weather and see forecasts.",
             "defaults": { "org_admin": true, "member": true, "viewer": false }
+        },
+        {
+            "action": "delete",
+            "description": "Change the organization's Weather settings, such as its LLM key.",
+            "defaults": { "org_admin": true, "member": false, "viewer": false }
         }
     ],
     "public_paths": [
@@ -38,5 +49,6 @@
             "required": false
         }
     ],
-    "limits": { "memory_mb": 256 }
+    "limits": { "memory_mb": 256 },
+    "hooks": { "install": true }
 }

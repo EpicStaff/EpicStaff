@@ -6,7 +6,12 @@ import { authGuard } from './core/guards/auth.guard';
 import { bootstrapGuard } from './core/guards/bootstrap.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
-import { secretsPermissionGuard, settingsGuard, settingsIndexGuard } from './core/guards/settings.guard';
+import {
+    pluginActivityPermissionGuard,
+    secretsPermissionGuard,
+    settingsGuard,
+    settingsIndexGuard,
+} from './core/guards/settings.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import {
     permissionGuard,
@@ -408,6 +413,15 @@ export const routes: Routes = [
                                         (m) => m.SecretsSectionComponent
                                     ),
                                 canActivate: [secretsPermissionGuard],
+                            },
+                            {
+                                // What plugins do in the active organization, for whoever may read its audit trail.
+                                path: 'plugin-activity',
+                                loadComponent: () =>
+                                    import('./features/plugins/pages/plugin-activity-settings-page/plugin-activity-settings-page.component').then(
+                                        (m) => m.PluginActivitySettingsPageComponent
+                                    ),
+                                canActivate: [pluginActivityPermissionGuard],
                             },
                         ],
                     },

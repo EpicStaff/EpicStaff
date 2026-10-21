@@ -7,11 +7,16 @@ from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import clear_url_caches
 from django_redis import get_redis_connection
+from loguru import logger as loguru_logger
 from epicstaff_plugin.signing import generate_secret_key
+from plugins.access.declared_access import package_declared_access_bits
 from plugins.gateway.gateway_service import snapshot_cache
 from plugins.gateway.gateway_service import GatewayDecisionService
+from plugins.identity.service_account_keys import ServiceAccountKeyService
 from plugins.identity.signing_keys import PluginSigningKeyService, cached_signing_key
+from plugins.lifecycle.grant_service import PluginGrantService
 from plugins.lifecycle.installation_service import PluginInstallationService
+from plugins.ownership import request_scope
 from plugins.models import (
     GrantState,
     PlacementHealth,
@@ -85,12 +90,26 @@ def package_store(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def fresh_process_caches():
-    """Forget the gateway's plugin snapshots and the cached signing key between tests."""
+    """Forget the gateway's plugin snapshots, the cached signing key and declared access bits
+    between tests, and any request scope a view called without the middleware left behind."""
     snapshot_cache.clear()
     cached_signing_key.clear()
+    package_declared_access_bits.clear()
+    token = request_scope._current_scope.set(None)
     yield
+    request_scope._current_scope.reset(token)
     snapshot_cache.clear()
     cached_signing_key.clear()
+    package_declared_access_bits.clear()
+
+
+@pytest.fixture
+def log_messages():
+    """The formatted message of every log record written during the test."""
+    messages = []
+    sink_id = loguru_logger.add(lambda message: messages.append(message.record["message"]), level="INFO")
+    yield messages
+    loguru_logger.remove(sink_id)
 
 
 @pytest.fixture
@@ -186,8 +205,13 @@ GATEWAY_SECRET = "gateway-secret-" + "s" * 40
 
 @pytest.fixture
 def plugin_node(db, settings):
-    """The deployment's plugin node and the first signing key, as `seed_plugin_node` makes them."""
+    """The deployment's plugin node and the first signing key, as `seed_plugin_node` makes them.
+
+    The gateway secret is set too: nginx's internal listener sends it with every request from
+    the plugins network, and plugin credentials are accepted only with it.
+    """
     settings.PLUGINS_NODE_NAME = "node-1"
+    settings.PLUGINS_GATEWAY_SECRET = GATEWAY_SECRET
     PluginSigningKeyService().ensure_key()
     return PluginNode.objects.create(
         name="node-1",
@@ -203,7 +227,7 @@ def plugin_node(db, settings):
 @pytest.fixture
 def node_client():
     client = APIClient()
-    client.credentials(HTTP_AUTHORIZATION=f"PluginNodeKey {NODE_KEY}")
+    client.credentials(HTTP_AUTHORIZATION=f"PluginNodeKey {NODE_KEY}", HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET)
     return client
 
 
@@ -253,7 +277,7 @@ def other_node(db):
 @pytest.fixture
 def other_node_client(other_node):
     client = APIClient()
-    client.credentials(HTTP_AUTHORIZATION=f"PluginNodeKey {OTHER_NODE_KEY}")
+    client.credentials(HTTP_AUTHORIZATION=f"PluginNodeKey {OTHER_NODE_KEY}", HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET)
     return client
 
 
@@ -298,3 +322,67 @@ def login_platform(plugins_enabled, package_store, spa_root, clean_login_state, 
 def loginable_weather(backend_plugin, login_platform):
     """Weather with a backend, approved and running: people can log in to it."""
     return mark_running(backend_plugin())
+
+
+# ---- service accounts ----
+
+# What Weather 0.4.0 declares.
+WEATHER_ACCESS = [
+    {"resource_type": "flows", "actions": ["read", "create", "update", "use"], "reason": "Creates and runs the forecast flow."},
+    {"resource_type": "files", "actions": ["read", "create"], "reason": "Stores the readme."},
+    {"resource_type": "secrets", "actions": ["read", "create", "use"], "reason": "Stores the LLM key."},
+    {"resource_type": "llm_configs", "actions": ["read", "create"], "reason": "Creates the LLM config."},
+]
+
+
+def service_account_client(raw_key, organization=None, *, on_behalf_of=None, network_secret=GATEWAY_SECRET):
+    """An API client calling as a plugin backend does: its key, through the internal listener."""
+    headers = {"HTTP_AUTHORIZATION": f"PluginKey {raw_key}"}
+    if network_secret is not None:
+        headers["HTTP_X_PLUGIN_NETWORK_SECRET"] = network_secret
+    if organization is not None:
+        headers["HTTP_X_ORGANIZATION_ID"] = str(organization.pk)
+    if on_behalf_of is not None:
+        headers["HTTP_X_EPICSTAFF_ON_BEHALF_OF"] = str(on_behalf_of)
+    client = APIClient()
+    client.credentials(**headers)
+    return client
+
+
+@pytest.fixture
+def service_account_platform(plugins_enabled, package_store, spa_root):
+    """The plugin platform on, for service-account calls (the node fixture sets the secret)."""
+
+
+@pytest.fixture
+def weather_backend(backend_plugin, service_account_platform):
+    """Factory → Weather with a backend, declaring `access` (Weather 0.4.0's by default), running."""
+
+    def _make(access=None, **manifest_changes):
+        return mark_running(backend_plugin(access=WEATHER_ACCESS if access is None else access, **manifest_changes))
+
+    return _make
+
+
+@pytest.fixture
+def service_account_key(superadmin):
+    """Factory → a fresh key of `plugin`'s service account in `organization`, granting it first.
+
+    Minted as the node's runtime-credentials call mints them, so every other organization's
+    key of the plugin is superseded too.
+    """
+
+    def _make(plugin, organization):
+        if not PluginGrant.objects.filter(plugin=plugin, org=organization).exists():
+            PluginGrantService().grant(plugin.identifier, organization.pk, superadmin)
+        minted = ServiceAccountKeyService().mint_for_plugin(plugin)
+        return next(key.raw_key for key in minted if key.service_account.grant.org_id == organization.pk)
+
+    return _make
+
+
+@pytest.fixture
+def weather_client(weather_backend, service_account_key, acme):
+    """Weather 0.4.0's service account in Acme, as a client without on-behalf-of."""
+    plugin = weather_backend()
+    return service_account_client(service_account_key(plugin, acme), acme)

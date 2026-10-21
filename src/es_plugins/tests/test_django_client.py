@@ -3,10 +3,21 @@ from datetime import UTC, datetime
 
 import httpx
 import pytest
-from src.shared.models.plugin_nodes import NodeReport
+from src.shared.models.plugin_nodes import HookResult, NodeReport
 
 from es_plugins.agent.django_client import DjangoNodeClient, NodeApiError, top_level_member
-from tests.helpers import API_URL, NODE_KEY, FakeDjango, desired_state, placement, runtime_file_document
+from tests.helpers import (
+    API_URL,
+    HOOK_ASSERTION,
+    NODE_KEY,
+    FakeDjango,
+    desired_state,
+    hook_body,
+    hook_invocation,
+    hook_job,
+    placement,
+    runtime_file_document,
+)
 
 
 def client_answering(handler) -> DjangoNodeClient:
@@ -160,3 +171,120 @@ async def test_the_report_is_posted_as_json(django):
 
     assert fake.reports[0]["agent_version"] == "0.1.0"
     assert fake.requests[0].headers["Content-Type"] == "application/json"
+
+
+async def test_a_desired_placement_lists_its_pending_hook_jobs(django):
+    fake, client = django
+    fake.desired = desired_state(
+        [placement(b"package", hook_jobs=[hook_job(41, 3), hook_job(42, 4)])]
+    )
+
+    desired = await client.fetch_desired_state()
+
+    assert [(job.job_id, job.kind, job.organization_id) for job in desired.placements[0].hook_jobs] == [
+        (41, "install", 3),
+        (42, "install", 4),
+    ]
+
+
+async def test_a_desired_placement_from_a_django_app_without_hooks_has_none():
+    document = json.loads(desired_state([placement(b"package")]).model_dump_json())
+    del document["placements"][0]["hook_jobs"]
+    client = client_answering(lambda request: httpx.Response(200, json=document))
+
+    desired = await client.fetch_desired_state()
+
+    assert desired.placements[0].hook_jobs == []
+
+
+async def test_a_claim_is_posted_for_the_job_and_answers_its_invocation(django):
+    fake, client = django
+    fake.hook_invocations[41] = {**hook_invocation(), "added_later": True}
+
+    invocation = await client.claim_hook_job(41)
+
+    claim = fake.requests[0]
+    assert (claim.method, claim.url.path) == ("POST", "/api/plugin-nodes/self/hook-jobs/41/claim/")
+    assert claim.headers["Authorization"] == f"PluginNodeKey {NODE_KEY}"
+    assert (invocation.job_id, invocation.kind, invocation.attempt, invocation.organization_id) == (
+        41,
+        "install",
+        1,
+        3,
+    )
+    assert (invocation.assertion, invocation.body) == (HOOK_ASSERTION, hook_body())
+
+
+@pytest.mark.parametrize("status", [404, 409])
+async def test_a_job_that_is_no_longer_pending_cannot_be_claimed(status):
+    client = client_answering(lambda request: httpx.Response(status, json={"code": "x"}))
+
+    assert await client.claim_hook_job(41) is None
+
+
+@pytest.mark.parametrize(("status", "transient"), [(400, False), (401, False), (503, True)])
+async def test_a_failed_claim_says_whether_to_try_again(status, transient):
+    client = client_answering(lambda request: httpx.Response(status, json={"code": "x"}))
+
+    with pytest.raises(NodeApiError) as failed:
+        await client.claim_hook_job(41)
+
+    assert (failed.value.status, failed.value.transient) == (status, transient)
+
+
+async def test_a_claim_answered_for_another_job_is_refused():
+    client = client_answering(lambda request: httpx.Response(200, json=hook_invocation(job_id=42)))
+
+    with pytest.raises(NodeApiError, match="claimed hook job 41, got 42") as refused:
+        await client.claim_hook_job(41)
+
+    assert not refused.value.transient
+
+
+async def test_an_invalid_invocation_is_refused_without_its_assertion_or_body_in_the_message():
+    document = {**hook_invocation(), "timeout_seconds": 0, "kind": "uninstall"}
+    client = client_answering(lambda request: httpx.Response(200, json=document))
+
+    with pytest.raises(NodeApiError) as refused:
+        await client.claim_hook_job(41)
+
+    message = str(refused.value)
+    assert "timeout_seconds:" in message and "kind:" in message
+    assert HOOK_ASSERTION not in message
+    assert "Acme" not in message
+
+
+async def test_a_hook_result_is_posted_as_json_for_its_job(django):
+    fake, client = django
+    result = HookResult(
+        attempt=2, outcome="failed", error="HTTP 500", http_status=500, duration_ms=1234
+    )
+
+    await client.send_hook_result(41, result)
+
+    request = fake.requests[0]
+    assert request.url.path == "/api/plugin-nodes/self/hook-jobs/41/result/"
+    assert request.headers["Content-Type"] == "application/json"
+    assert fake.hook_results == [
+        (
+            41,
+            {
+                "attempt": 2,
+                "outcome": "failed",
+                "error": "HTTP 500",
+                "http_status": 500,
+                "duration_ms": 1234,
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(("status", "transient"), [(409, False), (400, False), (502, True)])
+async def test_a_refused_hook_result_says_whether_to_try_again(django, status, transient):
+    fake, client = django
+    fake.failing_result_posts, fake.failing_result_status = 1, status
+
+    with pytest.raises(NodeApiError) as refused:
+        await client.send_hook_result(41, HookResult(attempt=1, outcome="succeeded", duration_ms=1))
+
+    assert (refused.value.status, refused.value.transient) == (status, transient)

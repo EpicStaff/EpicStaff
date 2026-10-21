@@ -17,6 +17,7 @@ from epicstaff_plugin.contracts.manifest import PluginManifest, Setting
 from epicstaff_plugin.problems import Problem
 from tables.services.secrets import MAX_TEXT_BYTES, secret_encryption
 
+from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import log_setting_changes
 from plugins.exceptions import InvalidPluginSettingsError
 from plugins.models import Plugin, PluginPlacement, PluginSettingValue
@@ -130,6 +131,8 @@ class PluginSettingsService:
             if changed and placement is not None:
                 placement.settings_revision = F("settings_revision") + 1
                 placement.save(update_fields=["settings_revision", "updated_at"])
+            if changed:
+                ActivityRecorder().settings_changed(actor, plugin.identifier, changed)
         if changed:
             log_setting_changes(actor, plugin.identifier, changed)
         return self.settings_of(plugin, manifest)

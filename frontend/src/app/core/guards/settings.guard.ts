@@ -36,6 +36,9 @@ export const settingsIndexGuard: CanActivateFn = () => {
     if (permissionsService.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create])) {
         return router.parseUrl('/settings/secrets');
     }
+    if (permissionsService.canSeePluginActivity()) {
+        return router.parseUrl('/settings/plugin-activity');
+    }
 
     return router.parseUrl(permissionsService.resolveDefaultRoute());
 };
@@ -46,5 +49,13 @@ export const secretsPermissionGuard: CanActivateFn = () => {
     return (
         permissionsService.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]) ||
         inject(Router).parseUrl(permissionsService.resolveDefaultRoute())
+    );
+};
+
+/** Per-tab guard for /settings/plugin-activity — requires the plugin platform on and Read on Audit. */
+export const pluginActivityPermissionGuard: CanActivateFn = () => {
+    const permissionsService = inject(PermissionsService);
+    return (
+        permissionsService.canSeePluginActivity() || inject(Router).parseUrl(permissionsService.resolveDefaultRoute())
     );
 };

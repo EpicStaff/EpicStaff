@@ -6,7 +6,7 @@ from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.node_surface_service import NodeSurfaceService
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import NOT_PROVIDED, Count, Exists, F, OuterRef, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Count, Exists, F, OuterRef, Prefetch, Q, Value
 from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.utils import timezone
@@ -27,7 +27,8 @@ from drf_spectacular.utils import (
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
-    DenyApiKeyAuth,
+    DenyPersonalAndSystemApiKeys,
+    DenyPluginCredential,
     HasOrgPermission,
     IsSystemApiKeyAuthenticated,
 )
@@ -592,21 +593,26 @@ class PythonCodeToolViewSet(
         )
 
     def get_queryset(self):
-        queryset = (
-            super()
-            .get_queryset()
-            .annotate(
-                is_favorite=Exists(
-                    PythonCodeToolFavorite.objects.filter(
-                        user=self.request.user, tool=OuterRef("pk")
-                    )
-                )
-            )
+        # Only a user has favorites; any other caller (a plugin service account,
+        # the system API key) sees none rather than a filter on a non-user.
+        author = resolve_author(self.request.user)
+        is_favorite = (
+            Exists(PythonCodeToolFavorite.objects.filter(user=author, tool=OuterRef("pk")))
+            if author is not None
+            else Value(False)
         )
+        queryset = super().get_queryset().annotate(is_favorite=is_favorite)
         ordering = ["-id"]
         if self.request.query_params.get("ordering") == "favorite":
             ordering = ["-is_favorite", "-id"]
         return queryset.order_by(*ordering)
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        # A favorite belongs to a person.
+        if self.action == "favorite":
+            return [*permissions, DenyPluginCredential()]
+        return permissions
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -2334,19 +2340,26 @@ class McpToolViewSet(
         )
 
     def get_queryset(self):
-        queryset = (
-            super()
-            .get_queryset()
-            .annotate(
-                is_favorite=Exists(
-                    McpToolFavorite.objects.filter(user=self.request.user, tool=OuterRef("pk"))
-                )
-            )
+        # Only a user has favorites; any other caller (a plugin service account,
+        # the system API key) sees none rather than a filter on a non-user.
+        author = resolve_author(self.request.user)
+        is_favorite = (
+            Exists(McpToolFavorite.objects.filter(user=author, tool=OuterRef("pk")))
+            if author is not None
+            else Value(False)
         )
+        queryset = super().get_queryset().annotate(is_favorite=is_favorite)
         ordering = ["-id"]
         if self.request.query_params.get("ordering") == "favorite":
             ordering = ["-is_favorite", "-id"]
         return queryset.order_by(*ordering)
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        # A favorite belongs to a person.
+        if self.action == "favorite":
+            return [*permissions, DenyPluginCredential()]
+        return permissions
 
     @extend_schema(methods=["POST"], **MCP_TOOL_FAVORITE_POST)
     @extend_schema(methods=["DELETE"], **MCP_TOOL_FAVORITE_DELETE)
@@ -2512,7 +2525,11 @@ class WebhookTriggerNodeViewSet(
 class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "flows_using_trigger": Permission.READ, **RECYCLE_BIN_ACTION_MAP}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "flows_using_trigger": Permission.READ,
+        **RECYCLE_BIN_ACTION_MAP,
+    }
     recycle_bin_resource_key = RecycleBinSource.WEBHOOK_TRIGGER
     queryset = WebhookTrigger.objects.select_related(
         "ngrok", "localhost", "auth", "auth__secret"
@@ -2757,9 +2774,13 @@ class SecretViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Create / read / delete only — a Secret's name and value are immutable."""
+    """Create / read / delete only — a Secret's name and value are immutable.
 
-    permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
+    Closed to USER and SYSTEM API keys; a plugin service account passes when its
+    declared access grants the action. No caller ever reads a value back.
+    """
+
+    permission_classes = [IsAuthenticated, DenyPersonalAndSystemApiKeys, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "usage": Permission.READ}
     recycle_bin_resource_key = RecycleBinSource.SECRET
@@ -2798,7 +2819,8 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
     """
 
-    permission_classes = [IsAuthenticated, HasOrgPermission]
+    # Presets belong to a person, so a plugin service account never reaches them.
+    permission_classes = [IsAuthenticated, DenyPluginCredential, HasOrgPermission]
     rbac_resource_type = ResourceType.AUDIT
     rbac_action_map = {
         "list": Permission.READ,

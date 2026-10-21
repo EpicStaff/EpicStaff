@@ -1,8 +1,9 @@
 """The node lab's probe plugin: reports what its own process is, and tries to reach another plugin.
 
-A plain ASGI app. `epicstaff_plugin.serve` runs it behind the health endpoint and the context
-check, so every route here needs a valid gateway context, which the lab's control service
-mints. Every attempt that must fail reports `DENIED ...`; positive controls report `OK ...`.
+A plain ASGI app. `epicstaff_plugin.serve` runs it behind the health endpoint, the hook
+dispatch and the context check, so every route here needs a valid gateway context, which the
+lab's control service mints. Every attempt that must fail reports `DENIED ...`; positive
+controls report `OK ...`. Its install hook leaves a mark in its HOME for each job it ran.
 """
 
 import ctypes
@@ -16,6 +17,8 @@ import socket
 import stat
 import time
 from urllib.parse import parse_qs
+
+from epicstaff_plugin.hooks import hook_registry
 
 DATA_ROOT = "/var/lib/es_plugins"
 RUN_ROOT = "/run/es_plugins"
@@ -291,6 +294,22 @@ def fork_bomb() -> dict:
     for child in children:
         os.waitpid(child, 0)
     return {"forked": forked, "processes_at_peak": processes, "stopped_by": error}
+
+
+def write_mark(name: str, document: dict) -> None:
+    with open(os.path.join(os.environ["HOME"], name), "w") as mark_file:
+        json.dump(document, mark_file)
+
+
+@hook_registry.on_install
+async def mark_install(request, epicstaff) -> None:
+    """Write `install-hook-<job>.json` to HOME; refuse organization 8, to show a failure."""
+    if request.org.id == 8:
+        raise RuntimeError("the probe refuses organization 8")
+    write_mark(
+        f"install-hook-{request.job_id}.json",
+        {"organization": request.org.id, "attempt": request.attempt},
+    )
 
 
 async def app(scope, receive, send):

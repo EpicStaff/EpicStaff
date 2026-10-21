@@ -9,10 +9,12 @@ import socket
 import subprocess
 import sys
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+from epicstaff_plugin.contracts.hook_api import HookRequest, encode_hook_body
 from epicstaff_plugin.package_layout import PackageFile, build_contents
 from epicstaff_plugin.signing import SecretKey, sign_package
 from epicstaff_plugin.testing import ContextSigner
@@ -27,6 +29,9 @@ ICON_SVG = (
     b'<circle cx="12" cy="12" r="5" fill="currentColor"/></svg>'
 )
 FOREIGN_WHEEL_TAG = "cp313-cp313-win_amd64"
+# Stand-ins for the secrets a hook involves: none of them may reach a log line or a report.
+SERVICE_ACCOUNT_KEY = "esp-" + "k" * 40 + "abc"
+HOOK_ASSERTION = "eyJhbGciOiJFZERTQSJ9.hook-assertion-never-logged.c2lnbmF0dXJl"
 
 
 def make_wheel(
@@ -213,6 +218,51 @@ def desired_state(placements: list[DesiredPlacement], node_name: str = "node-1")
     )
 
 
+def service_account(org_name: str = "Acme", grant_state: str = "granting") -> dict:
+    return {"key": SERVICE_ACCOUNT_KEY, "org_name": org_name, "grant_state": grant_state}
+
+
+def hook_job(job_id: int = 41, organization_id: int = 3, kind: str = "install") -> dict:
+    """A `DesiredHookJob` as a desired placement lists it."""
+    return {"job_id": job_id, "kind": kind, "organization_id": organization_id}
+
+
+def hook_body(
+    job_id: int = 41, organization_id: int = 3, attempt: int = 1, identifier: str = "weather"
+) -> str:
+    """The exact JSON text django_app sends as a hook's body."""
+    request = HookRequest(
+        format=1,
+        job_id=job_id,
+        attempt=attempt,
+        kind="install",
+        org={"id": organization_id, "name": "Acme"},
+        plugin={"identifier": identifier, "version": "0.2.0"},
+        previous_version=None,
+    )
+    return encode_hook_body(request).decode("utf-8")
+
+
+def hook_invocation(
+    job_id: int = 41,
+    organization_id: int = 3,
+    *,
+    attempt: int = 1,
+    timeout_seconds: int = 30,
+    identifier: str = "weather",
+) -> dict:
+    """A `HookInvocation` as django_app answers a claim."""
+    return {
+        "job_id": job_id,
+        "kind": "install",
+        "attempt": attempt,
+        "organization_id": organization_id,
+        "timeout_seconds": timeout_seconds,
+        "assertion": HOOK_ASSERTION,
+        "body": hook_body(job_id, organization_id, attempt, identifier),
+    }
+
+
 def runtime_file_document(identifier: str = "weather", version: str = "0.2.0", **overrides) -> dict:
     signer = ContextSigner(plugin_identifier=identifier, plugin_version=version)
     return {
@@ -243,6 +293,13 @@ class FakeDjango:
         self.reports: list[dict] = []
         self.requests: list[httpx.Request] = []
         self.unavailable = False
+        self.hook_invocations: dict[int, dict] = {}
+        """job id -> what its claim answers; claimed once (popped), then the job answers 409."""
+        self.hook_results: list[tuple[int, dict]] = []
+        self.failing_result_posts = 0
+        """Answer this many result posts with `failing_result_status` before taking one."""
+        self.failing_result_status = 503
+        self.on_claim: Callable[[int], None] | None = None
         self.transport = httpx.MockTransport(self.handle)
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -281,21 +338,70 @@ class FakeDjango:
         if path == "plugin-nodes/self/reports/" and request.method == "POST":
             self.reports.append(json.loads(request.content))
             return httpx.Response(204)
+        if parts[:3] == ["plugin-nodes", "self", "hook-jobs"] and request.method == "POST":
+            return self._handle_hook_job(int(parts[3]), parts[4], request)
         return httpx.Response(404)
+
+    def _handle_hook_job(self, job_id: int, action: str, request: httpx.Request) -> httpx.Response:
+        if action == "claim":
+            if self.on_claim is not None:
+                self.on_claim(job_id)
+            invocation = self.hook_invocations.pop(job_id, None)
+            if invocation is None:
+                return httpx.Response(409, json={"code": "hook_job_not_claimable"})
+            return httpx.Response(200, json=invocation, headers={"Cache-Control": "no-store"})
+        if self.failing_result_posts:
+            self.failing_result_posts -= 1
+            return httpx.Response(self.failing_result_status, json={"code": "refused_by_the_test"})
+        self.hook_results.append((job_id, json.loads(request.content)))
+        return httpx.Response(204)
+
+    def requests_to(self, action: str) -> list[int]:
+        """The job ids of the hook-job requests for `action` (`claim` or `result`), in order."""
+        return [
+            int(request.url.path.split("/")[-3])
+            for request in self.requests
+            if request.url.path.startswith("/api/plugin-nodes/self/hook-jobs/")
+            and request.url.path.endswith(f"/{action}/")
+        ]
 
 
 # Serves the health check on the inherited listening socket (fd in EPICSTAFF_PLUGIN_LISTEN_FD),
 # as a real plugin does; it never binds a port, so it cannot clash with the agent's held socket.
+# It answers hook calls too: it appends each to HOOK_RECORD (path, the X-EpicStaff-Hook and
+# Content-Type headers, the body in base64), waits HOOK_DELAY seconds, then answers done. One
+# thread per request, so the health check goes on during a slow hook. Its health check fails
+# until HEALTHY_AFTER seconds after its start.
 HEALTH_SERVER = """
-import http.server, os, signal, socket, sys
+import base64, http.server, json, os, signal, socket, sys, time
 listener = socket.socket(fileno=int(os.environ["EPICSTAFF_PLUGIN_LISTEN_FD"]))
+started = time.monotonic()
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200 if self.path == "/_epicstaff/health" else 404)
+        healthy = time.monotonic() - started >= float(os.environ.get("HEALTHY_AFTER", "0"))
+        self.send_response(200 if self.path == "/_epicstaff/health" and healthy else 404)
         self.end_headers()
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        record = {
+            "path": self.path,
+            "hook": self.headers.get("X-EpicStaff-Hook"),
+            "content_type": self.headers.get("Content-Type"),
+            "body": base64.b64encode(body).decode(),
+            "started": time.time(),
+        }
+        with open(os.environ["HOOK_RECORD"], "a") as hooks:
+            hooks.write(json.dumps(record) + "\\n")
+        time.sleep(float(os.environ.get("HOOK_DELAY", "0")))
+        answer = b'{"status":"done"}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(answer)))
+        self.end_headers()
+        self.wfile.write(answer)
     def log_message(self, *arguments):
         pass
-server = http.server.HTTPServer(("0.0.0.0", 0), Handler, bind_and_activate=False)
+server = http.server.ThreadingHTTPServer(("0.0.0.0", 0), Handler, bind_and_activate=False)
 server.socket = listener
 print("listening", flush=True)
 if os.environ.get("IGNORE_SIGTERM"):
@@ -331,6 +437,10 @@ class FakeLauncher:
         self.refuse_spawn: str | None = None
         # A plugin that ignores SIGTERM, so only the SIGKILL after the grace period stops it.
         self.ignore_sigterm = False
+        # How the plugin stand-in answers hooks and its health check (see HEALTH_SERVER).
+        self.hook_record = Path(os.devnull)
+        self.hook_delay = 0.0
+        self.healthy_after = 0.0
 
     async def prepare_plugin(self, plugin, uid):
         self.operations.append(("prepare_plugin", plugin, uid))
@@ -354,6 +464,9 @@ class FakeLauncher:
                 "PORT": environment["PORT"],
                 "PATH": os.environ.get("PATH", ""),
                 "EPICSTAFF_PLUGIN_LISTEN_FD": str(listen_descriptor),
+                "HOOK_RECORD": str(self.hook_record),
+                "HOOK_DELAY": str(self.hook_delay),
+                "HEALTHY_AFTER": str(self.healthy_after),
                 **({"IGNORE_SIGTERM": "1"} if self.ignore_sigterm else {}),
             },
             stdout=output_descriptor,

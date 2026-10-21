@@ -73,6 +73,12 @@
                     Runtime
                 </app-tab-button>
             }
+            <app-tab-button
+                [active]="tab() === 'activity'"
+                (action)="selectTab('activity')"
+            >
+                Activity
+            </app-tab-button>
         </div>
 
         @switch (tab()) {
@@ -112,6 +118,7 @@
                     [identifier]="current.identifier"
                     [pluginName]="current.name"
                     [canGrant]="canGrant()"
+                    (grantsChanged)="refreshPlugin()"
                 />
             }
             @case ('settings') {
@@ -132,6 +139,9 @@
                     [pluginName]="current.name"
                     (runtimeChanged)="refreshPlugin()"
                 />
+            }
+            @case ('activity') {
+                <app-plugin-admin-activity [identifier]="current.identifier" />
             }
         }
     } @else if (loadError(); as failure) {

@@ -60,7 +60,6 @@ export class PluginRolePermissionExtension implements RolePermissionExtension {
     readonly groupKey = PLUGIN_ROLE_PERMISSION_GROUP_KEY;
     readonly groupLabel = 'Plugins';
     readonly groupIconClass = 'ti ti-puzzle';
-    readonly superadminRoleNote = 'Superadmins open plugins through their role in an organization.';
 
     /** Plugin names by identifier, from every row mapped so far: error messages name a plugin by them. */
     private readonly pluginNames = new Map<string, string>();

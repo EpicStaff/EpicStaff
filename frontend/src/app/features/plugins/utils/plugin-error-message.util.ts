@@ -34,6 +34,9 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
     no_plugin_node:
         'No plugin node is registered, so a plugin with a backend cannot run. Set PLUGINS_NODE_KEY, restart ' +
         'EpicStaff and approve the package again.',
+    grant_not_found: 'This grant no longer exists.',
+    hook_not_retryable: 'The install has not failed, so there is nothing to retry.',
+    throttled: 'Too many requests. Wait a moment and try again.',
 };
 
 function isPluginErrorCode(code: unknown): code is PluginErrorCode {

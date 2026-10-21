@@ -68,28 +68,7 @@
 
     <section class="review__section">
         <h4 class="review__section-title text-body-bold">Access to EpicStaff</h4>
-        @if (declaredAccess().length > 0) {
-            <table class="review__table">
-                <thead>
-                    <tr>
-                        <th scope="col">Resource</th>
-                        <th scope="col">Actions</th>
-                        <th scope="col">Reason</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @for (entry of declaredAccess(); track entry.resource_type) {
-                        <tr>
-                            <td>{{ entry.resource_label }}</td>
-                            <td>{{ entry.actionLabels }}</td>
-                            <td>{{ entry.reason }}</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        } @else {
-            <p class="review__none text-body">None. The plugin cannot read or change anything in EpicStaff.</p>
-        }
+        <app-plugin-access-table [access]="review().access" />
     </section>
 
     <section class="review__section">

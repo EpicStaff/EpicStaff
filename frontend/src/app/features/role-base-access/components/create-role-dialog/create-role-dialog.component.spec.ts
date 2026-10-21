@@ -95,7 +95,6 @@ function createExtension() {
         groupKey: 'plugins',
         groupLabel: 'Plugins',
         groupIconClass: 'ti ti-puzzle',
-        superadminRoleNote: 'Superadmins use plugins through their organization role.',
         isActive: vi.fn(() => true),
         rowsForOrg: vi.fn<(orgId: number) => Observable<RolePermissionExtensionRow[]>>(() => of([WEATHER_ROW])),
         roleState: vi.fn<(roleId: number, orgId?: number) => Observable<RolePermissionExtensionRoleState>>(() =>

@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 
 from epicstaff_plugin.problems import Problem
+from rest_framework.exceptions import AuthenticationFailed
 from utils.exceptions import CustomAPIExeption
 
 
@@ -223,3 +224,74 @@ class PluginOriginRefusedError(CustomAPIExeption):
     status_code = 403
     default_detail = "Plugin pages cannot call EpicStaff's API."
     default_code = "plugin_origin_refused"
+
+
+class ServiceAccountNotAuthenticatedError(CustomAPIExeption, AuthenticationFailed):
+    """A `PluginKey` that is unknown, no longer valid, or sent from outside the plugins network.
+
+    The same answer for every reason, so a caller learns nothing about a key it does not hold.
+    """
+
+    status_code = 401
+    default_detail = "The plugin service-account key is missing, invalid or no longer valid."
+    default_code = "service_account_not_authenticated"
+
+
+class InvalidOnBehalfOfError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "X-EpicStaff-On-Behalf-Of must be a user id: a positive whole number."
+    default_code = "invalid_on_behalf_of"
+
+
+class OnBehalfOfNotAllowedError(CustomAPIExeption):
+    """The named person may not use the plugin in its organization, whatever the reason."""
+
+    status_code = 403
+    default_detail = "The plugin cannot act on behalf of this person."
+    default_code = "on_behalf_of_not_allowed"
+
+
+class PersonNotFoundError(CustomAPIExeption):
+    status_code = 404
+    default_detail = "Person not found."
+    default_code = "person_not_found"
+
+
+class GrantNotFoundError(CustomAPIExeption):
+    status_code = 404
+    default_detail = "Grant not found."
+    default_code = "grant_not_found"
+
+
+class HookNotRetryableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "Only a grant whose install hook failed can retry it."
+    default_code = "hook_not_retryable"
+
+
+class HookJobNotFoundError(CustomAPIExeption):
+    status_code = 404
+    default_detail = "Hook job not found."
+    default_code = "hook_job_not_found"
+
+
+class HookJobNotClaimableError(CustomAPIExeption):
+    """The job is not waiting, its plugin is not running, or its grant is gone or moved on."""
+
+    status_code = 409
+    default_detail = "The hook job cannot be claimed now."
+    default_code = "hook_job_not_claimable"
+
+
+class HookJobNotRunningError(CustomAPIExeption):
+    """A result for a job that is not running, or for another attempt than the running one."""
+
+    status_code = 409
+    default_detail = "The hook job is not running this attempt."
+    default_code = "hook_job_not_running"
+
+
+class InvalidHookResultError(_ProblemListError):
+    status_code = 400
+    default_detail = "The hook result is invalid."
+    default_code = "invalid_hook_result"

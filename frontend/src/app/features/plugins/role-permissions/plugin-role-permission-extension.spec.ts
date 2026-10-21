@@ -51,7 +51,6 @@ describe('PluginRolePermissionExtension', () => {
         expect(TestBed.inject(ROLE_PERMISSION_EXTENSIONS)).toEqual([extension]);
         expect(extension.groupKey).toBe('plugins');
         expect(extension.groupLabel).toBe('Plugins');
-        expect(extension.superadminRoleNote).toBe('Superadmins open plugins through their role in an organization.');
         expect(extension.isActive()).toBe(true);
 
         config.isPluginsEnabled = false;

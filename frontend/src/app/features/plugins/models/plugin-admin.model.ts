@@ -172,16 +172,42 @@ export interface PluginDetail extends PluginSummary {
     current_package: PackageReview | null;
 }
 
+export type PluginHookJobState = 'pending' | 'running' | 'succeeded' | 'failed';
+
+/** The account a plugin's backend acts with in one organization. */
+export interface PluginGrantServiceAccount {
+    created_at: string;
+    /** `null` until the backend first calls EpicStaff with its key. */
+    key_last_used_at: string | null;
+}
+
+/** The latest run of the plugin's install hook for one organization. */
+export interface PluginInstallHook {
+    state: PluginHookJobState;
+    attempt: number;
+    started_at: string | null;
+    finished_at: string | null;
+    error: string | null;
+}
+
 export interface PluginGrant {
     id: number;
     plugin_identifier: string;
     organization: PluginOrganizationRef;
+    /** `granting` while the install hook runs; `install_failed` when it failed (a SuperAdmin may retry). */
     state: PluginGrantState;
     granted_by: PluginUserRef | null;
     granted_at: string;
     suspended_at: string | null;
     purge_after: string | null;
+    /** The install hook's last error. */
     last_hook_error: string | null;
+    /** `null` for a plugin without a backend. */
+    service_account: PluginGrantServiceAccount | null;
+    /** `null` for a plugin without an install hook. */
+    install_hook: PluginInstallHook | null;
+    /** What the plugin's service account created in the organization and still exists. */
+    owned_resource_count: number;
 }
 
 /** One step of a package upload: progress while the bytes go up, then the review of the stored package. */

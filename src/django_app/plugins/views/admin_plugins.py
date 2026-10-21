@@ -6,6 +6,7 @@ body), never the `X-Organization-Id` header, which the frontend does not send on
 
 from django.db.models.functions import Lower
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
+from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.views.cross_org_base import CrossOrgAdminPagination
 from rest_framework import generics, status
 from rest_framework.parsers import MultiPartParser
@@ -15,6 +16,7 @@ from rest_framework.views import APIView
 
 from plugins.exceptions import PackageTooLargeError, PluginNotFoundError, PluginPackageNotFoundError
 from plugins.lifecycle.grant_service import PluginGrantService
+from plugins.lifecycle.hook_job_service import HookJobService
 from plugins.lifecycle.installation_service import PluginInstallationService, max_package_bytes
 from plugins.models import Plugin, PluginGrant, PluginPackage
 from plugins.serializers.admin import (
@@ -28,6 +30,8 @@ from plugins.serializers.admin import (
 )
 
 ADMIN_PERMISSIONS = [IsAuthenticated, IsSuperadmin, DenyApiKeyAuth]
+# Pinned rather than inherited from the defaults, so no plugin credential is ever read here.
+ADMIN_AUTHENTICATION = [JwtAuthentication, ApiKeyAuthentication]
 # Room for the multipart boundaries and headers around the package in the request body.
 MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 
@@ -60,6 +64,7 @@ class PluginUploadPermissionView(APIView):
     location.
     """
 
+    authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
     def get(self, request):
@@ -67,6 +72,7 @@ class PluginUploadPermissionView(APIView):
 
 
 class PluginPackageUploadView(APIView):
+    authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
     parser_classes = [MultiPartParser]
 
@@ -92,6 +98,7 @@ class PluginPackageUploadView(APIView):
 
 
 class PluginPackageReviewView(APIView):
+    authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
     def get(self, request, package_id: int):
@@ -99,6 +106,7 @@ class PluginPackageReviewView(APIView):
 
 
 class PluginPackageApproveView(APIView):
+    authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
     def post(self, request, package_id: int):
@@ -113,6 +121,7 @@ class PluginPackageApproveView(APIView):
 
 
 class PluginPackageRejectView(APIView):
+    authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
     def post(self, request, package_id: int):
@@ -121,6 +130,7 @@ class PluginPackageRejectView(APIView):
 
 
 class PluginListView(APIView):
+    authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
     def get(self, request):
@@ -129,6 +139,7 @@ class PluginListView(APIView):
 
 
 class PluginDetailView(APIView):
+    authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
     def get(self, request, identifier: str):
@@ -138,6 +149,7 @@ class PluginDetailView(APIView):
 class PluginGrantListView(generics.ListAPIView):
     """Every organization's grant of one plugin; the SuperAdmin sees them all by design."""
 
+    authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
     serializer_class = PluginGrantSerializer
     pagination_class = CrossOrgAdminPagination
@@ -148,7 +160,7 @@ class PluginGrantListView(generics.ListAPIView):
             raise PluginNotFoundError()
         return (
             PluginGrant.objects.filter(plugin__identifier=identifier)
-            .select_related("plugin", "org", "created_by")
+            .with_admin_details()
             .order_by(Lower("org__name"), "id")
         )
 
@@ -158,4 +170,19 @@ class PluginGrantListView(generics.ListAPIView):
         grant = PluginGrantService().grant(
             identifier, serializer.validated_data["organization_id"], request.user
         )
-        return Response(PluginGrantSerializer(grant).data, status=status.HTTP_201_CREATED)
+        return Response(_grant_details(grant.pk), status=status.HTTP_201_CREATED)
+
+
+class PluginGrantRetryHookView(APIView):
+    """Run a grant's failed install hook again: the grant is `granting` until it reports."""
+
+    authentication_classes = ADMIN_AUTHENTICATION
+    permission_classes = ADMIN_PERMISSIONS
+
+    def post(self, request, identifier: str, grant_id: int):
+        grant = HookJobService().retry(identifier, grant_id, request.user)
+        return Response(_grant_details(grant.pk), status=status.HTTP_202_ACCEPTED)
+
+
+def _grant_details(grant_id: int) -> dict:
+    return PluginGrantSerializer(PluginGrant.objects.with_admin_details().get(pk=grant_id)).data

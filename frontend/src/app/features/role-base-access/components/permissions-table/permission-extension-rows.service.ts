@@ -11,7 +11,7 @@ import {
 import { catchError, forkJoin, map, Observable, of, Subject, switchMap, tap } from 'rxjs';
 
 import { PermissionMatrixGroup } from './permission-matrix.model';
-import { extensionMatrixGroup, extensionNoteGroup, permissionKey } from './permission-matrix.util';
+import { extensionMatrixGroup, permissionKey } from './permission-matrix.util';
 
 /** A failed load or save of one extension's rows, ready to show. */
 export interface PermissionExtensionFailure {
@@ -60,8 +60,6 @@ interface ExtensionRowsLoad {
 @Injectable()
 export class PermissionExtensionRowsService {
     private readonly entries = signal<readonly ExtensionRows[]>([]);
-    /** Groups that show a note instead of rows (the built-in Superadmin role). */
-    private readonly noteGroups = signal<readonly PermissionMatrixGroup[]>([]);
     private readonly selectedSignal = signal<ReadonlySet<string>>(new Set());
     /** The ticked extension cells. */
     readonly selected = this.selectedSignal.asReadonly();
@@ -74,13 +72,12 @@ export class PermissionExtensionRowsService {
     /** What the last load for an organization dropped from the selection, per extension. */
     readonly leftOut = this.leftOutSignal.asReadonly();
 
-    /** One group per extension that has rows or a note, in provider order. */
-    readonly groups = computed<PermissionMatrixGroup[]>(() => [
-        ...this.entries()
+    /** One group per extension that has rows, in provider order. */
+    readonly groups = computed<PermissionMatrixGroup[]>(() =>
+        this.entries()
             .filter((entry) => entry.rows.length > 0)
-            .map((entry) => extensionMatrixGroup(entry.extension, entry.rows)),
-        ...this.noteGroups(),
-    ]);
+            .map((entry) => extensionMatrixGroup(entry.extension, entry.rows))
+    );
 
     /**
      * Cells that cannot be ticked or cleared now: locked ones (outside the caller's grantable actions, or in read-only
@@ -176,7 +173,6 @@ export class PermissionExtensionRowsService {
      */
     loadForOrg(orgId: number | null): void {
         this.entries.set([]);
-        this.noteGroups.set([]);
         this.loadFailuresSignal.set([]);
         this.leftOutSignal.set([]);
         this.isLoadingSignal.set(orgId !== null);
@@ -186,28 +182,10 @@ export class PermissionExtensionRowsService {
     /** Loads an existing role's rows; the selection becomes what the role holds. */
     loadForRole(roleId: number, orgId?: number): void {
         this.entries.set([]);
-        this.noteGroups.set([]);
         this.loadFailuresSignal.set([]);
         this.leftOutSignal.set([]);
         this.isLoadingSignal.set(true);
         this.requests.next({ kind: 'role', roleId, orgId });
-    }
-
-    /**
-     * For the built-in Superadmin role, which holds no permissions of its own: each active extension's group shows its
-     * note instead of rows, and nothing is loaded or selected.
-     */
-    showSuperadminNotes(): void {
-        this.requests.next(null);
-        this.entries.set([]);
-        this.loadFailuresSignal.set([]);
-        this.leftOutSignal.set([]);
-        this.selectedSignal.set(new Set());
-        this.noteGroups.set(
-            this.extensions
-                .filter((extension) => extension.isActive())
-                .map((extension) => extensionNoteGroup(extension, extension.superadminRoleNote))
-        );
     }
 
     /** Sets the selection before the rows are loaded, e.g. from the role a duplicate is made of. */

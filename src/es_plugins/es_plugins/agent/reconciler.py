@@ -15,6 +15,10 @@ same desired placement twice does nothing the second time. In order:
    `settings_revision` (upwards), `runtime` or `package` changed. A change of
    `credentials_revision` alone only rewrites the runtime file; the SDK reloads it.
 
+Each controller also has a `HookRunner`, a task of its own, which calls the plugin's lifecycle
+hooks (`hook_jobs`) once the process and the runtime file are ready for them; converge goes on
+while a hook runs.
+
 A plugin that failed (its package could not be installed, it was restarted ten times in a
 row without a stable run between them, or it went over its disk cap) stays failed until
 `restart_generation` or the package changes. A failure that may pass by itself (django_app not reachable, the port
@@ -47,6 +51,8 @@ from es_plugins.agent.django_client import DjangoNodeClient, FetchedCredentials,
 from es_plugins.agent.launcher_client import LauncherClient, LauncherError
 from es_plugins.agent.port_reservation import PortReservation, PortUnavailableError
 from es_plugins.health.health_checker import HealthChecker
+from es_plugins.hooks.hook_caller import PluginHookCaller
+from es_plugins.hooks.hook_runner import HookRunner, WrittenRuntimeFile
 from es_plugins.layout import NodeLayout
 from es_plugins.logs.log_collector import LogCollector, RotatingLogFile
 from es_plugins.node_disk import NodeDisk, NodeDiskFullError
@@ -91,6 +97,7 @@ class AgentServices:
     health_checker: HealthChecker
     ports: PortReservation
     disk: NodeDisk
+    hook_caller: PluginHookCaller
     on_change: Callable[[], None]
     """Called whenever something a report shows changed."""
 
@@ -125,7 +132,10 @@ class PlacementController:
             services.launcher,
             services.health_checker,
             self._log_collector,
-            services.on_change,
+            self._process_changed,
+        )
+        self._hook_runner = HookRunner(
+            placement, self.supervisor, services.django, services.hook_caller
         )
         self._installed_package: DesiredPackage | None = None
         self._venv: Path | None = None
@@ -144,18 +154,21 @@ class PlacementController:
         self._task = asyncio.create_task(
             self._loop(), name=f"placement-{self._desired.placement_id}"
         )
+        self._hook_runner.start()
 
     def update(self, placement: DesiredPlacement) -> None:
         if placement != self._desired:
             self._desired = placement
             self._wake.set()
+            self._hook_runner.update(placement)
 
     async def close(self) -> None:
         """Stop the controller and the plugin's process, and give its port back."""
         if self._task is not None:
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
-        await self.supervisor.stop()
+        # Together: a hook call in progress is reported while the process stops.
+        await asyncio.gather(self._hook_runner.close(), self.supervisor.stop())
         self._log_collector.close()
         if self._taken_port is not None:
             self._services.ports.give_back(self._taken_port, self._desired.placement_id)
@@ -179,6 +192,10 @@ class PlacementController:
             applied_settings_revision=self._running_settings_revision,
             applied_restart_generation=started.restart_generation if started else None,
         )
+
+    def _process_changed(self) -> None:
+        self._services.on_change()
+        self._hook_runner.notice_change()
 
     async def _loop(self) -> None:
         while True:
@@ -310,7 +327,17 @@ class PlacementController:
         await services.launcher.write_runtime_file(
             desired.plugin_identifier, desired.runtime.unix_uid, fetched.runtime_file
         )
-        self._applied_credentials_revision = fetched.credentials.credentials_revision
+        credentials = fetched.credentials
+        self._applied_credentials_revision = credentials.credentials_revision
+        self._hook_runner.runtime_file_written(
+            WrittenRuntimeFile(
+                credentials_revision=credentials.credentials_revision,
+                organization_ids=frozenset(
+                    int(organization_id)
+                    for organization_id in credentials.runtime_file.service_accounts
+                ),
+            )
+        )
         return fetched
 
     def _process_spec(self, desired: DesiredPlacement, runtime_file: RuntimeFile) -> ProcessSpec:

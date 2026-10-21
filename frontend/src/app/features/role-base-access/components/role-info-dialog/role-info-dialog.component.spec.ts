@@ -42,8 +42,6 @@ function row(code: string, label: string): RolePermissionExtensionRow {
     };
 }
 
-const SUPERADMIN_NOTE = 'Superadmins use plugins through their organization role.';
-
 const MEMBER: GetRoleResponse = {
     id: 3,
     name: 'Member',
@@ -89,7 +87,6 @@ describe('RoleInfoDialogComponent with extension rows', () => {
             groupKey: 'plugins',
             groupLabel: 'Plugins',
             groupIconClass: 'ti ti-puzzle',
-            superadminRoleNote: SUPERADMIN_NOTE,
             isActive: () => true,
             rowsForOrg: () => of([]),
             roleState,
@@ -131,7 +128,6 @@ describe('RoleInfoDialogComponent with extension rows', () => {
         );
 
         expect(pluginsGroup()?.querySelector('.group-name')?.textContent?.trim()).toBe('Plugins');
-        expect(pluginsGroup()?.querySelector('.group-note')).toBeNull();
         expect(weatherBoxes).toHaveLength(1);
         expect(weatherBoxes[0].checked).toBe(true);
         expect(weatherBoxes[0].disabled).toBe(true);
@@ -141,14 +137,25 @@ describe('RoleInfoDialogComponent with extension rows', () => {
         expect(element.querySelector('[data-group-key="plugins"] .resource-row.bulk')).toBeNull();
     });
 
-    it("shows the built-in Superadmin role's extension group as its note, without asking for rows", () => {
-        render({ ...MEMBER, id: 1, name: 'Superadmin', description: 'Platform administrators.' });
+    it("shows the built-in Superadmin role's extension rows read-only, like any built-in role's", () => {
+        const superadmin: GetRoleResponse = { ...MEMBER, id: 1, name: 'Superadmin', description: 'Administrators.' };
+        roleState.mockReturnValueOnce(
+            of({
+                rows: [row('plugin:weather', 'Weather')],
+                granted: [{ code: 'plugin:weather', actions: [ActionCode.Read, ActionCode.Update] }],
+                editable: false,
+            })
+        );
+        render(superadmin);
 
-        expect(roleState).not.toHaveBeenCalled();
-        expect(pluginsGroup()?.querySelector('.group-name')?.textContent?.trim()).toBe('Plugins');
-        expect(pluginsGroup()?.querySelector('.group-note')?.textContent?.trim()).toBe(SUPERADMIN_NOTE);
-        expect(pluginsGroup()?.querySelector('.resource-row')).toBeNull();
-        expect(pluginsGroup()?.querySelector('.group-count')).toBeNull();
+        expect(roleState).toHaveBeenCalledWith(superadmin.id, undefined);
+        const weatherBoxes = Array.from(
+            element.querySelectorAll<HTMLInputElement>('[data-resource-code="plugin:weather"] input[type="checkbox"]')
+        );
+        expect(weatherBoxes).toHaveLength(2);
+        expect(weatherBoxes.every((box) => box.checked && box.disabled)).toBe(true);
+        expect(pluginsGroup()?.querySelector('.group-count')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('2 / 2');
+        expect(element.querySelector('[data-group-key="plugins"] .resource-row.bulk')).toBeNull();
     });
 
     it('keeps Duplicate disabled until the extension rows have loaded', () => {
