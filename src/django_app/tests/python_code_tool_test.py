@@ -1,4 +1,5 @@
 import pytest
+from proxies.sandbox.models import SandboxVenvBinding
 from rest_framework.test import APIRequestFactory
 
 from tables.exceptions import PythonCodeToolConfigSerializerError
@@ -20,13 +21,15 @@ def _org_request(org_id: int):
 
 
 @pytest.mark.django_db
-def test_python_code_serializer_basic():
-    code = PythonCode.objects.create(code="print('Hello')", venv_id=9)
+def test_python_code_serializer_basic(default_org):
+    venv = SandboxVenvBinding.objects.create(org_id=default_org.id, resource_id="4711")
+    code = PythonCode.objects.create(code="print('Hello')", venv=venv)
     serializer = PythonCodeSerializer(code)
     data = serializer.data
     assert data["code"] == "print('Hello')"
-    # The venv is the only thing that decides what the code can import.
-    assert data["venv_id"] == 9
+    # The venv is the only thing that decides what the code can import. The API
+    # names it by its binding, never by the id the sandbox knows it under.
+    assert data["venv_id"] == venv.pk
 
 
 @pytest.mark.django_db

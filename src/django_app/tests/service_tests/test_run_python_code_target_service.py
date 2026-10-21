@@ -3,6 +3,7 @@ org-scoped lookup, the slot's real-run payload, secrets and the submit to the
 sandbox. Only the sandbox itself is replaced (`sandbox_intake`)."""
 
 import pytest
+from proxies.sandbox.models import SandboxVenvBinding
 
 from rbac.models import Organization
 from tables.exceptions import CodeRunTargetNotFoundError
@@ -66,8 +67,15 @@ def _submitted_tasks(sandbox_intake):
 
 @pytest.mark.django_db
 def test_python_node_runs_in_the_same_venv_as_a_real_run(service, org, graph, user, sandbox_intake):
+    """And the sandbox is told the id it knows, not the binding's.
+
+    The binding pk and the upstream id are different numbers here on purpose: the
+    sandbox has no idea what a binding is, so sending the wrong one would silently
+    run the code in another environment, or in none.
+    """
+    venv = SandboxVenvBinding.objects.create(org_id=org.id, resource_id="4711")
     python_code = PythonCode.objects.create(
-        code="def main(): return 1", entrypoint="main", venv_id=12
+        code="def main(): return 1", entrypoint="main", venv=venv
     )
     node = PythonNode.objects.create(graph=graph, python_code=python_code)
     real_run_venv_id = (
@@ -85,7 +93,8 @@ def test_python_node_runs_in_the_same_venv_as_a_real_run(service, org, graph, us
     )
 
     [task] = _submitted_tasks(sandbox_intake)
-    assert task["venv_id"] == real_run_venv_id == 12
+    assert task["venv_id"] == real_run_venv_id == 4711
+    assert task["venv_id"] != venv.pk
 
 
 @pytest.mark.django_db
