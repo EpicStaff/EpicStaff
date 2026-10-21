@@ -81,7 +81,7 @@ from tables.views.storage_bin_purge_access import StorageBinPurgeAccess
 _USER_ID_KEYS = ("created_by", "last_edited_by")
 
 
-def _replace_user_ids_with_summaries(entries: list[dict], request) -> None:
+def _replace_user_ids_with_summaries(entries: list[dict]) -> None:
     """Swap, in place, the author and editor ids in each entry for their user summaries.
 
     The storage manager reports `created_by` and `last_edited_by` as ids; this renders
@@ -89,9 +89,7 @@ def _replace_user_ids_with_summaries(entries: list[dict], request) -> None:
     and editor loads in one query. A user deleted since renders as None.
     """
     all_entries = list(_with_descendants(entries))
-    summaries = user_summaries_by_id(
-        (entry[key] for entry in all_entries for key in _USER_ID_KEYS), request
-    )
+    summaries = user_summaries_by_id(entry[key] for entry in all_entries for key in _USER_ID_KEYS)
     for entry in all_entries:
         for key in _USER_ID_KEYS:
             entry[key] = summaries.get(entry[key])
@@ -170,7 +168,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 raise NotFound({"path": f"Path does not exist: {prefix}"}) from e
 
         items = [item.to_dict() for item in self.manager.list_(org_id, prefix)]
-        _replace_user_ids_with_summaries(items, request)
+        _replace_user_ids_with_summaries(items)
         return Response({"path": prefix, "items": items})
 
     @extend_schema(**STORAGE_INFO_SWAGGER)
@@ -187,7 +185,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             raise NotFound({"path": f"File does not exist: {path}"}) from e
 
         response = data.to_dict()
-        _replace_user_ids_with_summaries([response], request)
+        _replace_user_ids_with_summaries([response])
 
         graph_path = path
         if isinstance(data, FolderInfo) and not graph_path.endswith("/"):
@@ -460,7 +458,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         root, truncated = self.manager.list_tree(org_id, prefix, max_depth=max_depth)
         tree = root.to_dict()
-        _replace_user_ids_with_summaries([tree], request)
+        _replace_user_ids_with_summaries([tree])
         return Response({"path": prefix, "truncated": truncated, "tree": tree})
 
     @extend_schema(**STORAGE_GRAPH_FILES_SWAGGER)
@@ -506,7 +504,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             limit=params.validated_data["limit"],
             offset=params.validated_data["offset"],
         )
-        _replace_user_ids_with_summaries(results, request)
+        _replace_user_ids_with_summaries(results)
         return Response(
             {
                 "total": total,
@@ -548,9 +546,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             item_type=request.query_params.get("item_type", ""),
         )
         page = paginator.paginate_queryset(rows, request, view=self)
-        entries = StorageRecycleBinService.to_entries(
-            self.get_active_org_id(), page, request=request
-        )
+        entries = StorageRecycleBinService.to_entries(self.get_active_org_id(), page)
         return paginator.get_paginated_response(
             StorageRecycleBinEntrySerializer(entries, many=True).data
         )

@@ -93,13 +93,8 @@ class BinContentsService:
         presentation: BinPresentation,
         org_id: int,
         rows,
-        *,
-        request=None,
     ) -> list[RecycleBinEntryWithContents]:
-        """Entries for a page of entry_rows, each with what its restore brings back.
-
-        `request` makes the avatar URLs of the "Created by" and "Deleted by" lines absolute.
-        """
+        """Entries for a page of entry_rows, each with what its restore brings back."""
         entries = RecycleBinService.to_entries(rows)
         batch_by_parent = {entry.id: entry.batch for entry in entries}
         contents, totals = cls._contents(
@@ -108,7 +103,7 @@ class BinContentsService:
             names=presentation.named_contents,
         )
         details = cls._details(
-            resource, presentation, list(batch_by_parent), DetailContext(org_id=org_id), request
+            resource, presentation, list(batch_by_parent), DetailContext(org_id=org_id)
         )
         return [
             RecycleBinEntryWithContents(
@@ -219,7 +214,6 @@ class BinContentsService:
         presentation: BinPresentation,
         ids: list[int],
         context: DetailContext,
-        request,
     ) -> dict[int, list[BinDetail]]:
         """Basic info per entry: who created and who deleted it first, then the tab's fields.
 
@@ -259,7 +253,6 @@ class BinContentsService:
                 )
                 for row in rows
             },
-            request,
             deleted_with=_deleted_with_owner(resource, rows),
         )
         details: dict[int, list[BinDetail]] = {}

@@ -147,11 +147,8 @@ class StorageRecycleBinService:
         )
 
     @classmethod
-    def to_entries(cls, org_id: int, rows, *, request=None) -> list[StorageRecycleBinEntry]:
-        """Entries for a page of entry_rows; a folder lists what its restore brings back.
-
-        `request` makes the avatar URLs of the "Created by" and "Deleted by" lines absolute.
-        """
+    def to_entries(cls, org_id: int, rows) -> list[StorageRecycleBinEntry]:
+        """Entries for a page of entry_rows; a folder lists what its restore brings back."""
         rows = list(rows)
         parent_paths = {row[6] for row in rows if row[6]}
         live_folders = set(
@@ -160,7 +157,7 @@ class StorageRecycleBinService:
             )
         )
         authorship = authorship_details(
-            StorageFile, {row[0]: BinEntryAuthorship(row[9], row[3]) for row in rows}, request
+            StorageFile, {row[0]: BinEntryAuthorship(row[9], row[3]) for row in rows}
         )
         entries = []
         for (

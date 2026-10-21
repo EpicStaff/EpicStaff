@@ -2,6 +2,7 @@ from rest_framework import serializers
 from tables.models.user import User
 
 from rbac.models import Organization, OrganizationConfig
+from rbac.profile.avatar import build_avatar_url
 
 # Product cap: 100 years. 0 = unlimited.
 AUDIT_RETENTION_DAYS_MAX = 36_500
@@ -78,18 +79,17 @@ class OrganizationResponseSerializer(serializers.ModelSerializer):
 
 
 class OrganizationAdminUserSerializer(serializers.ModelSerializer):
-    """User shape embedded under `admins` in the organizations list response.
+    """User shape embedded under `admins` in the organizations list response."""
 
-    `avatar_url` is built by DRF's ImageField when `request` is in the
-    serializer context, matching the convention used by /api/profile/.
-    """
-
-    avatar_url = serializers.ImageField(source="avatar", use_url=True, read_only=True)
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ["id", "email", "display_name", "avatar_url"]
         read_only_fields = fields
+
+    def get_avatar_url(self, user) -> str | None:
+        return build_avatar_url(user)
 
 
 class OrganizationListResponseSerializer(OrganizationResponseSerializer):

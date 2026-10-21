@@ -138,9 +138,7 @@ class RecycleBinActionsMixin:
             contents=request.query_params.get("contents", ""),
         )
         page = paginator.paginate_queryset(rows, request, view=self)
-        entries = BinContentsService.to_entries(
-            resource, presentation, org_id, page, request=request
-        )
+        entries = BinContentsService.to_entries(resource, presentation, org_id, page)
         return paginator.get_paginated_response(RecycleBinEntrySerializer(entries, many=True).data)
 
     @extend_schema(request=None, responses=RecycleBinContentsSerializer)

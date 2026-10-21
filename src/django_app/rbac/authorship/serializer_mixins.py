@@ -134,7 +134,7 @@ class LastEditFieldsSerializerMixin(AuthorSummarySerializerMixin):
         if last_edit is None:
             return None
         # A NULL `edited_by_id` resolves to None without a query.
-        return represent_user_summary(last_edit.edited_by, self.context.get("request"))
+        return represent_user_summary(last_edit.edited_by)
 
     def get_last_edited_at(self, instance) -> str | None:
         last_edit = self._last_edit_being_rendered(instance)

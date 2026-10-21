@@ -226,6 +226,17 @@ class AvatarTooLargeError(CustomAPIExeption):
     default_code = "avatar_too_large"
 
 
+class AvatarNotFoundError(CustomAPIExeption):
+    """Raised by UserAvatarReadService when the avatar is not served: the user is
+    unknown or not visible to the caller, has no avatar, the requested version is
+    stale, or the stored object is gone. One answer for all, so the response never
+    reveals whether a user exists or has an avatar."""
+
+    status_code = 404
+    default_detail = "Avatar not found."
+    default_code = "avatar_not_found"
+
+
 class BuiltInRoleImmutableError(CustomAPIExeption):
     """Raised by RoleManagementService when an edit or delete targets a
     Role with is_built_in=True. The four built-in roles (Superadmin,
