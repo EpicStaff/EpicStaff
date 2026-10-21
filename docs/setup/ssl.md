@@ -42,7 +42,10 @@ docker compose -f docker-compose.yaml --env-file ./.env up -d epicstaff-nginx
 Browsers will warn about the self-signed certificate; that is expected.
 
 Note that `src/.env.example` ships with `NGINX_SSL_MODE=on` (production default),
-while `python scripts/envtool.py --dev` renders `off`.
+while `python scripts/envtool.py --dev` renders `off`. With `on` and no certificate, nginx
+doesn't start: its log (`docker logs epicstaff-nginx`) names the missing file. Add the
+certificate as above, or set `NGINX_SSL_MODE=off` only if a load balancer in front of nginx
+handles TLS (see below).
 
 ## HSTS
 
