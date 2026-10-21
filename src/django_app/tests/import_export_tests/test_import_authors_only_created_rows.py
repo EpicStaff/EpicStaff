@@ -8,6 +8,9 @@ factory and stamps `created_by` on the rows it creates. Not walked here:
   `test_node_authorship_import_export.py`, which builds one node of every type in
   `NODE_RELATIONS`;
 - `Session`: its strategy is export-only (`create_entity` raises);
+- `Venv`: the environment itself lives in the sandbox service, so this walk cannot
+  export or import one without it; its binding's authorship is covered in
+  `test_venv_import_export.py`, where that service is faked;
 - tag strategies: tag models record no author.
 
 Each case exports a source authored in `beta` and imports it into `acme`; org-scoped
@@ -55,6 +58,8 @@ from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 NODE_ENTITY_TYPES = frozenset(NODE_TYPE_TO_ENTITY_TYPE.values())
 EXPORT_ONLY_ENTITY_TYPES = frozenset({EntityType.SESSION})
+# Needs the sandbox service to export or import at all; covered separately.
+OUT_OF_PROCESS_ENTITY_TYPES = frozenset({EntityType.VENV})
 
 # Source factories take (org, author, provider) and return the row to export.
 SourceFactory = Callable[..., Model]
@@ -254,6 +259,7 @@ def _authored_top_level_entity_types() -> list[EntityType]:
         if entity_registry.has_strategy(entity_type)
         and entity_type not in NODE_ENTITY_TYPES
         and entity_type not in EXPORT_ONLY_ENTITY_TYPES
+        and entity_type not in OUT_OF_PROCESS_ENTITY_TYPES
         and (
             _strategy_model(entity_type) is None
             or has_author_field(_strategy_model(entity_type))
