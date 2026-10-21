@@ -159,6 +159,48 @@ def test_venv_apply_resolved_versions_stamps_each_library():
     ]
 
 
+@pytest.mark.parametrize(
+    ("declared_specification", "declared_version", "expected_specification"),
+    [
+        # Only a name: uv picks a release, and the stamped `>=` becomes the guard rail
+        # the user's later version edits are held to.
+        ("", None, ">=2.2.3"),
+        # A version and no specification: the guard rail is built from what went in.
+        ("", "2.2.3", ">=2.2.3"),
+        # The user's own specification is their statement of intent; the build keeps it.
+        (">=2.0", None, ">=2.0"),
+        (">=2.0", "2.2.3", ">=2.0"),
+        ("!=2.1,>=2.0,<=2.3", "2.2.3", "!=2.1,>=2.0,<=2.3"),
+    ],
+    ids=["name-only", "version-only", "specification-only", "both", "complex-specification"],
+)
+def test_venv_apply_resolved_versions_fills_a_missing_specification_only(
+    declared_specification, declared_version, expected_specification
+):
+    venv = make_venv(
+        libs=[
+            make_library(
+                name="pandas", specification=declared_specification, version=declared_version
+            )
+        ]
+    )
+
+    venv.apply_resolved_versions({"pandas": "2.2.3"})
+
+    assert venv.libs[0].specification == expected_specification
+    assert venv.libs[0].version == "2.2.3"
+
+
+def test_venv_apply_resolved_versions_stamps_a_specification_the_version_satisfies():
+    """The stamped default must not contradict the version it was built from, or the
+    next edit of the row would be rejected by the library's own validator."""
+    venv = make_venv(libs=[make_library(name="pandas", specification="")])
+
+    venv.apply_resolved_versions({"pandas": "2.2.3"})
+
+    assert Library(**venv.libs[0].model_dump()).version == "2.2.3"
+
+
 def test_venv_apply_resolved_versions_matches_a_name_given_in_another_spelling():
     venv = make_venv(libs=[make_library(name="zope.interface", specification="")])
 

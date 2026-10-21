@@ -187,3 +187,31 @@ async def test_build_failure_leaves_the_declared_versions_alone(uow, uv_provider
     await VenvBuildOrchestrator(uow, uv_provider).build(stored)
 
     assert uow.venv_repo.rows[stored.id].libs[0].version is None
+
+
+async def test_a_failure_after_the_resolve_leaves_the_declared_libraries_alone(
+    uow, uv_provider, venvs_dir
+):
+    """The resolve succeeded but the venv did not: a stamped version and the `>=`
+    specification derived from it would describe an environment that was never built."""
+    stored = uow.venv_repo.seed(make_venv(libs=[make_library(name="pandas", specification="")]))[0]
+    uv_provider.resolved_versions = {"pandas": "2.2.3"}
+    uv_provider.fail_install_local = RuntimeError("pip install of the shared packages failed")
+
+    await VenvBuildOrchestrator(uow, uv_provider).build(stored)
+
+    built = uow.venv_repo.rows[stored.id]
+    assert built.status is VenvStatus.FAILED
+    assert (built.libs[0].version, built.libs[0].specification) == (None, "")
+
+
+async def test_build_stamps_a_specification_when_the_library_declared_none(
+    uow, uv_provider, venvs_dir
+):
+    stored = uow.venv_repo.seed(make_venv(libs=[make_library(name="pandas", specification="")]))[0]
+    uv_provider.resolved_versions = {"pandas": "2.2.3"}
+
+    await VenvBuildOrchestrator(uow, uv_provider).build(stored)
+
+    built = uow.venv_repo.rows[stored.id]
+    assert (built.libs[0].version, built.libs[0].specification) == ("2.2.3", ">=2.2.3")
