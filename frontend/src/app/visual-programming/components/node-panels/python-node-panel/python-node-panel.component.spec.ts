@@ -378,6 +378,7 @@ describe('PythonNodePanelComponent node name', () => {
             providers: [
                 { provide: FLOW_EDITOR_PREVIEW, useValue: false },
                 { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+                provideLoadedExecutionTimeoutLimits(),
             ],
         });
         TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
@@ -389,7 +390,7 @@ describe('PythonNodePanelComponent node name', () => {
         return fixture.componentInstance;
     }
 
-    it('accepts a name another node in the flow already has: the #N badge tells them apart', () => {
+    it('accepts a name another node in the flow already has: the #N under the name tells them apart', () => {
         const panel = openPanelBesideNodeNamed('Fetch orders');
 
         panel.form.controls['node_name'].setValue('Fetch orders');
