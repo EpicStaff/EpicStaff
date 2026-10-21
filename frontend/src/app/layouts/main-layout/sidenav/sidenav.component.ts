@@ -21,6 +21,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { QUICK_START_TOUR_ANCHORS } from '../../../features/quick-start-tour/quick-start-tour-anchors';
 import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
@@ -113,6 +114,7 @@ export class LeftSidebarComponent {
     public isOrgMenuOpen = signal<boolean>(false);
     public showAccountTooltip = false;
     public showOrgTooltip = false;
+    protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
 
     private router = inject(Router);
     private currentPath = toSignal(

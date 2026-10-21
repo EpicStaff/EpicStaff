@@ -263,6 +263,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
                         can: (resource: ResourceCode) => !hiddenResources.has(resource),
                         resolveStorageTab: () => 'files',
                         canOpenConfigureModelsDialog: () => settingsAllowed,
+                        canApplyQuickstart: () => false,
                         canAccessWorkspace: () => workspaceAllowed,
                     },
                 },
