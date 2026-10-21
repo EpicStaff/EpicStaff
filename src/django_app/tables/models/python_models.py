@@ -28,7 +28,13 @@ def linked_secrets_prefetch(python_code_path: str) -> Prefetch:
 
 
 class PythonCode(ContentHashMixin, models.Model):
-    venv_id = models.IntegerField(null=True)
+    venv = models.ForeignKey(
+        "proxies.SandboxVenvBinding",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="python_codes",
+    )
     code = models.TextField()
     entrypoint = models.TextField(default="main")
     global_kwargs = models.JSONField(default=dict)

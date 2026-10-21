@@ -86,7 +86,9 @@ class BaseNodePayloadService:
 
         tools: list[BaseToolData] = []
 
-        for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_python_tool_ids):
+        for python_tool in PythonCodeTool.objects.filter(
+            pk__in=allowed_python_tool_ids
+        ).select_related("python_code__venv"):
             tools.append(
                 self.converter_service.convert_tool_to_base_tool_pydantic(
                     python_tool,

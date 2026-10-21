@@ -60,7 +60,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         """
         additional_global_kwargs = additional_global_kwargs or {}
 
-        python_code: PythonCode = PythonCode.objects.get(id=python_code_id)
+        python_code: PythonCode = PythonCode.objects.select_related("venv").get(id=python_code_id)
 
         # Resolve before anything is written or published: this path never goes
         # through the session payload, so it resolves for itself, and a failure
@@ -120,8 +120,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         try:
             code_task_data = CodeTaskData(
                 # The code's own venv: a test run must execute where the real run
-                # would, not on the sandbox's default venv.
-                venv_id=python_code.venv_id,
+                # would, not on the sandbox's default venv. The sandbox's own id,
+                # not the binding's: this payload leaves django.
+                venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
                 code=python_code.code,
                 entrypoint=python_code.entrypoint,
                 func_kwargs=varaibles,

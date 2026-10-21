@@ -401,8 +401,7 @@ class ConverterService(metaclass=SingletonMeta):
         org_id: int | None = None,
     ):
         return PythonCodeData(
-            # The venv is resolved by the sandbox from this id; None uses its default.
-            venv_id=python_code.venv_id,
+            venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
             global_kwargs=python_code.global_kwargs,
