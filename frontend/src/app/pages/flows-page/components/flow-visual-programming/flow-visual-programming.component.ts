@@ -78,6 +78,7 @@ import {
 } from '../../../../features/flows/models/graph.model';
 import { RunGraphResponse } from '../../../../features/flows/models/run-session.model';
 import { CreateGraphWarningsService } from '../../../../features/flows/services/create-graph-warnings.service';
+import { FlowUsePermissionRefusalService } from '../../../../features/flows/services/flow-use-permission-refusal.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { LabelsStorageService } from '../../../../features/flows/services/labels-storage.service';
@@ -90,6 +91,7 @@ import { ConfigService } from '../../../../services/config';
 import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
+import { isTriggerNodeType } from '../../../../visual-programming/core/helpers/trigger-node-type.util';
 import {
     CdtExplanations,
     PromptConfig,
@@ -111,8 +113,10 @@ import { CdtExplanationsApiService } from '../../../../visual-programming/servic
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
+import { KeymapService } from '../../../../visual-programming/services/keymap.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
+import { ScheduleTriggerRuntimeService } from '../../../../visual-programming/services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
 import { toStoredCdtExplanations } from '../../../../visual-programming/utils/cdt-explanations';
@@ -120,6 +124,7 @@ import { extractToSubflow } from '../../../../visual-programming/utils/extract/e
 import {
     buildFlowModelFromGraphDto,
     mapGraphDtoToFlowModel,
+    mapSnapshotToGraphDto,
     normalizeFlowPorts,
 } from '../../../../visual-programming/utils/load';
 import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/utils/load/nodes/schedule-trigger-node.mapper';
@@ -131,17 +136,22 @@ import {
     cloneFlowState,
     getConnectionDiff,
     getNodeDiff,
+    hasTriggerNodeWrites,
+    NodeDiffByType,
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
     patchLiveFlowWithBackendIds,
     toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
+import { withGraphScheduleTriggerRuntimeState } from '../../../../visual-programming/utils/save/schedule-trigger-runtime-state';
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
 import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
-import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
-import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
+import {
+    SHORTCUTS_MODAL_HEIGHT_PX,
+    ShortcutsModalComponent,
+} from './components/shortcuts-modal/shortcuts-modal.component';
 import { SerialSaveQueue } from './serial-save-queue';
 
 /**
@@ -158,6 +168,8 @@ export const TEST_RUN_PAYLOAD_REJECTED_MESSAGE = 'Test payload rejected — open
 export const extractParentNotUpdatedMessage = (subflowName: string): string =>
     `Subflow "${subflowName}" was created, but another flow was opened before the original flow was updated — the extracted nodes are still in it`;
 export const REMOTE_SAVE_RELOAD_FAILED_MESSAGE = 'Failed to load the latest version of this flow — refresh it';
+export const TRIGGER_NODE_CHANGES_NEED_USE_MESSAGE =
+    'This change includes trigger nodes, which need the Use permission on flows. Remove or revert the trigger node changes to save.';
 
 @Component({
     selector: 'app-flow-visual-programming',
@@ -197,10 +209,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly keymap = inject(KeymapService);
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly flowTestRunService = inject(FlowTestRunService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
+    /** The root instance, as for the live canvas and its panels; the version preview has its own. */
+    private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
+    private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
@@ -220,6 +236,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
     private readonly storedGraph = computed<GraphDto | null>(() => (this.isGraphOutdated() ? null : this.graphState()));
     protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
+    protected readonly currentFlowId = computed(() => this.graphState()?.id ?? null);
     /** The as-persisted snapshot used for dirty tracking; shared so panels can compare against it. */
     private readonly savedFlowStateService = inject(SavedFlowStateService);
     protected readonly collaborationEditors = this.wsService.editors;
@@ -336,6 +353,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.flowService.bindSavedGraph(this.storedGraph);
         this.destroyRef.onDestroy(() => this.flowService.bindSavedGraph(null));
+        this.keymap.register('editing.save', () => this.saveFromShortcut(), {
+            allowInEditable: true,
+            destroyRef: this.destroyRef,
+        });
 
         effect(() => {
             const params = this.routeQueryParamMap();
@@ -439,6 +460,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.flowTestRunService.requests$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((request) => this.handleTestRun(request));
+
+        // The service already updated the canvas and the dirty baseline; the saved graph the save diff
+        // starts from must follow, or the next save would send the schedule as changed.
+        this.scheduleTriggerRuntime.updates$
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(({ backendId, state }) =>
+                this.graphState.update(
+                    (graph) => graph && withGraphScheduleTriggerRuntimeState(graph, backendId, state)
+                )
+            );
         this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
             const currentId = this.profileService.currentUserSignal()?.id;
             if (event.saved_by.user_id === currentId) return;
@@ -662,51 +693,55 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const subflowName = subGraphNode.data.name || subGraphNode.node_name || `Subflow #${subgraphId}`;
         const graphId = this.graph.id;
 
-        // Step 2: Check how many other flows reference this subflow.
+        // Step 2: Fetch the subflow graph first: one this user may not unpack is refused before any question.
         this.flowApiService
-            .getSubflowUsage(subgraphId)
+            .getGraphById(subgraphId, true)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                catchError((err: HttpErrorResponse) => {
-                    this.toastService.error(`Could not check subflow usage: ${extractHttpErrorMessage(err)}`);
-                    return EMPTY;
-                }),
-                // Step 3: If used elsewhere, show a confirmation dialog; otherwise skip it.
-                switchMap(({ parent_flow_ids }) => {
-                    const currentGraphId = this.graph!.id;
-                    const otherFlowIds = parent_flow_ids.filter((id) => id !== currentGraphId);
-                    if (otherFlowIds.length > 0) {
-                        return this.confirmationDialogService
-                            .confirmWithOptions({
-                                title: 'Unpack Subflow',
-                                message:
-                                    `This subflow is used in ${otherFlowIds.length} other flow(s). ` +
-                                    `Unpack <strong>${escapeHtml(subflowName)}</strong> into the current graph?`,
-                                confirmText: 'Unpack',
-                                cancelText: 'Cancel',
-                                type: 'warning',
-                                checkbox: { label: 'Also delete the subflow (will break other flows that use it)' },
-                            })
-                            .pipe(
-                                filter(
-                                    (result): result is Exclude<typeof result, 'close'> =>
-                                        result !== 'close' && result.confirmed
-                                ),
-                                map((dialogResult) => dialogResult.checked)
-                            );
-                    }
-                    // Not used elsewhere — skip dialog, auto-delete after unpack.
-                    return of(true);
-                }),
-                // Step 4: Fetch the subflow graph from the server.
-                switchMap((deleteSubflow) =>
-                    this.flowApiService
-                        .getGraphById(subgraphId, true)
-                        .pipe(map((graphDto) => ({ graphDto, deleteSubflow })))
+                map((graphDto) => normalizeFlowPorts(mapGraphDtoToFlowModel(graphDto))),
+                filter((subflowFlowModel) => !this.refuseUnpackOfTriggerNodes(subflowFlowModel)),
+                // Step 3: Check how many other flows reference this subflow.
+                switchMap((subflowFlowModel) =>
+                    this.flowApiService.getSubflowUsage(subgraphId).pipe(
+                        catchError((err: HttpErrorResponse) => {
+                            this.toastService.error(`Could not check subflow usage: ${extractHttpErrorMessage(err)}`);
+                            return EMPTY;
+                        }),
+                        // Step 4: If used elsewhere, show a confirmation dialog; otherwise skip it.
+                        switchMap(({ parent_flow_ids }) => {
+                            const currentGraphId = this.graph!.id;
+                            const otherFlowIds = parent_flow_ids.filter((id) => id !== currentGraphId);
+                            if (otherFlowIds.length > 0) {
+                                return this.confirmationDialogService
+                                    .confirmWithOptions({
+                                        title: 'Unpack Subflow',
+                                        message:
+                                            `This subflow is used in ${otherFlowIds.length} other flow(s). ` +
+                                            `Unpack <strong>${escapeHtml(subflowName)}</strong> into the current graph?`,
+                                        confirmText: 'Unpack',
+                                        cancelText: 'Cancel',
+                                        type: 'warning',
+                                        checkbox: {
+                                            label: 'Also delete the subflow (will break other flows that use it)',
+                                        },
+                                    })
+                                    .pipe(
+                                        filter(
+                                            (result): result is Exclude<typeof result, 'close'> =>
+                                                result !== 'close' && result.confirmed
+                                        ),
+                                        map((dialogResult) => dialogResult.checked)
+                                    );
+                            }
+                            // Not used elsewhere — skip dialog, auto-delete after unpack.
+                            return of(true);
+                        }),
+                        map((deleteSubflow) => ({ subflowFlowModel, deleteSubflow }))
+                    )
                 ),
                 // Steps 5-7 run as one queued save, so no other save lands between the canvas change and its save.
-                switchMap(({ graphDto, deleteSubflow }) =>
-                    this.queueFullSave(() => this.unpackAndSave(graphId, subGraphNodeId, graphDto)).pipe(
+                switchMap(({ subflowFlowModel, deleteSubflow }) =>
+                    this.queueFullSave(() => this.unpackAndSave(graphId, subGraphNodeId, subflowFlowModel)).pipe(
                         map(() => deleteSubflow)
                     )
                 ),
@@ -732,6 +767,22 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 const suffix = deleted ? ' and deleted the subflow' : '';
                 this.toastService.success(`Unpacked "${subflowName}" into the current graph${suffix}`);
             });
+    }
+
+    /**
+     * Unpacking creates the subflow's nodes in this flow, and creating a trigger node needs Flows:Use, so for a
+     * user without it a subflow with trigger nodes is refused as a whole. Returns true when it refused, after
+     * telling the user why.
+     */
+    private refuseUnpackOfTriggerNodes(subflowFlowModel: FlowModel): boolean {
+        if (
+            this.flowReadOnly.canEditTriggerNodes() ||
+            !subflowFlowModel.nodes.some((node) => isTriggerNodeType(node.type))
+        ) {
+            return false;
+        }
+        this.usePermissionRefusal.showRefusal('unpack');
+        return true;
     }
 
     /**
@@ -807,11 +858,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
      * Steps 5-7 of an unpack: puts the subflow's nodes in place of its subgraph node and saves the
      * parent. Runs inside `saveQueue` as one task, for the reasons given at `extractAndSave`.
      */
-    private unpackAndSave(graphId: number, subGraphNodeId: string, subflowGraph: GraphDto): Observable<void> {
+    private unpackAndSave(graphId: number, subGraphNodeId: string, subflowFlowModel: FlowModel): Observable<void> {
         if (!this.isCurrentGraph(graphId)) return EMPTY;
-
-        // Step 5: Map the subflow DTO to a FlowModel.
-        const subflowFlowModel = normalizeFlowPorts(mapGraphDtoToFlowModel(subflowGraph));
 
         // Step 6: Run the unpack utility.
         const unpackedModel = unpackSubflow(this.currentFlowState(), subGraphNodeId, subflowFlowModel);
@@ -1087,6 +1135,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const previous = this.loadedFlowState();
         const flowToSave = clearStaleIds(previous, flowState);
         const nodeDiff = getNodeDiff(previous, flowToSave);
+        if (this.refuseTriggerNodeWrites(nodeDiff)) {
+            return EMPTY;
+        }
+
         const idMap = buildUuidToBackendIdMap(flowToSave.nodes);
         const connectionDiff = getConnectionDiff(previous, flowToSave, idMap);
         const payload = buildBulkSavePayload(
@@ -1171,6 +1223,20 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     /**
+     * Last line of defence: the editor already keeps a user without Flows:Use from creating or changing a
+     * trigger node, but a diff can still carry one (undo bringing back a deleted trigger node, say). The backend
+     * would refuse the whole save, so it is not sent; the unsaved changes stay for the user to revert.
+     * Returns true when it refused the save, after telling the user why.
+     */
+    private refuseTriggerNodeWrites(nodeDiff: NodeDiffByType): boolean {
+        if (this.flowReadOnly.canEditTriggerNodes() || !hasTriggerNodeWrites(nodeDiff)) {
+            return false;
+        }
+        this.toastService.warning(TRIGGER_NODE_CHANGES_NEED_USE_MESSAGE, 6000, 'bottom-right');
+        return true;
+    }
+
+    /**
      * The panel's node goes onto the canvas now, as asked; the save itself waits its turn
      * in `saveQueue` and then sends the node as the canvas holds it (see `saveNodeToBackend`).
      */
@@ -1218,6 +1284,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         };
         const singleNodeFlow: FlowModel = { nodes: [node], connections: [] };
         const nodeDiff = getNodeDiff(previousForDiff, singleNodeFlow);
+        if (this.refuseTriggerNodeWrites(nodeDiff)) {
+            return EMPTY;
+        }
         const connectionDiff = { toCreate: [], toUpdate: [], toDelete: [] };
 
         // The diff stays single-node — only this node is sent — but the payload needs
@@ -1555,22 +1624,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
-    @HostListener('document:keydown', ['$event'])
-    public handleCtrlS(event: KeyboardEvent): void {
-        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
-            event.preventDefault();
-            if (this.previewedVersion()) {
-                this.toastService.info('Exit preview mode to save');
-                return;
-            }
-            if (this.flowReadOnly.isReadOnly()) {
-                this.flowReadOnly.notifyBlocked();
-                return;
-            }
-            this.onHeaderSave();
-        }
-    }
-
     public hasUnsavedChanges(): boolean {
         return this.hasUnsavedChangesSignal();
     }
@@ -1684,8 +1737,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     /**
-     * The only way to set `graphState`: every graph the API returns here is the full graph, and the node
-     * authorship store takes it in the same step, so it always mirrors `graphState`.
+     * The only way to load a graph into `graphState`: every graph the API returns here is the full graph,
+     * and the node authorship store takes it in the same step, so it always mirrors `graphState`. (Runtime
+     * schedule trigger state is applied to `graphState` in place: it carries no authorship.)
      */
     private setGraphState(graph: GraphDto): void {
         this.graphState.set(graph);
@@ -1705,14 +1759,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         // Eagerly rewrite legacy "at HH:MM" once-schedule names to "at HH-MM" in the
         // live canvas state. Because the saved baseline already holds the old names, the
         // flow will be marked dirty until the user saves, which is the intended UX.
-        const rewrittenFlow: FlowModel = {
-            ...normalizedFlow,
-            nodes: normalizedFlow.nodes.map((node) => {
-                if (node.type !== NodeType.SCHEDULE_TRIGGER) return node;
-                const rewrittenName = rewriteLegacyOnceScheduleName(node.node_name);
-                return rewrittenName !== node.node_name ? { ...node, node_name: rewrittenName } : node;
-            }),
-        };
+        // Renaming changes the schedule node, which needs Flows:Use: without it the old name stays,
+        // or every save of the flow would be refused.
+        const rewrittenFlow: FlowModel = this.flowReadOnly.canEditTriggerNodes()
+            ? {
+                  ...normalizedFlow,
+                  nodes: normalizedFlow.nodes.map((node) => {
+                      if (node.type !== NodeType.SCHEDULE_TRIGGER) return node;
+                      const rewrittenName = rewriteLegacyOnceScheduleName(node.node_name);
+                      return rewrittenName !== node.node_name ? { ...node, node_name: rewrittenName } : node;
+                  }),
+              }
+            : normalizedFlow;
         this.flowService.setFlow(rewrittenFlow);
         this.cleanupCdtGridState(rewrittenFlow);
 
@@ -1804,7 +1862,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public isShortcutsOpen = signal(false);
     public shortcutsPos = signal<{ top: number; left: number } | null>(null);
-    public readonly shortcutSections = FLOW_SHORTCUT_SECTIONS;
 
     public openShortcutsModal(rect: DOMRect): void {
         if (this.isShortcutsOpen()) {
@@ -1812,7 +1869,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             return;
         }
 
-        const top = rect.top;
+        const screenMargin = 16;
+        const lowestTop = window.innerHeight - screenMargin - SHORTCUTS_MODAL_HEIGHT_PX;
+        const top = Math.max(screenMargin, Math.min(rect.top, lowestTop));
         const left = rect.right + 8;
 
         this.shortcutsPos.set({ top, left });
@@ -1890,17 +1949,21 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             ? `You have unsaved changes. Restoring <strong>${escapeHtml(version.name)}</strong> will replace the current flow state. Save a backup of the current state first?`
             : `Restoring <strong>${escapeHtml(version.name)}</strong> will replace the current flow state. Save a backup of the current state first?`;
 
-        this.unsavedChangesDialog
-            .confirm({
-                title: 'Restore version',
-                message,
-                saveText: 'Save & Restore',
-                dontSaveText: 'Discard & Restore',
-                cancelText: 'Cancel',
-                type: 'warning',
-                showDontSave: true,
-            })
+        // A restore this user may not do is refused first: before the backup question, the preview exit or a save.
+        this.refuseRestoreOfTriggerNodes(version)
             .pipe(
+                filter((refused) => !refused),
+                switchMap(() =>
+                    this.unsavedChangesDialog.confirm({
+                        title: 'Restore version',
+                        message,
+                        saveText: 'Save & Restore',
+                        dontSaveText: 'Discard & Restore',
+                        cancelText: 'Cancel',
+                        type: 'warning',
+                        showDontSave: true,
+                    })
+                ),
                 switchMap((result) => {
                     if (result === 'save' || result === 'dont-save') {
                         this.onPreviewExit();
@@ -1913,9 +1976,35 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     }
                     return EMPTY;
                 }),
+                // The backend's refusal (e.g. permissions changed since they were loaded) is explained there and
+                // emits nothing: no toast, nothing reloaded.
+                this.usePermissionRefusal.catchRefusal('restore'),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({ error: () => this.toastService.error('Failed to restore version') });
+    }
+
+    /**
+     * Restoring creates the version's nodes again, and creating a trigger node needs Flows:Use, so for a user
+     * without it a version with trigger nodes is refused as a whole; emits true when it refused, after telling
+     * the user why. Users with Flows:Use get `false` at once, without fetching the version.
+     */
+    private refuseRestoreOfTriggerNodes(version: GraphVersionDto): Observable<boolean> {
+        if (this.flowReadOnly.canEditTriggerNodes()) {
+            return of(false);
+        }
+        return this.flowApiService.previewGraphVersion(version.id).pipe(
+            map(({ snapshot }) =>
+                mapGraphDtoToFlowModel(mapSnapshotToGraphDto(snapshot, new Map())).nodes.some((node) =>
+                    isTriggerNodeType(node.type)
+                )
+            ),
+            // Unknown (the version could not be read): the restore request decides, through catchRefusal.
+            catchError(() => of(false)),
+            tap((refused) => {
+                if (refused) this.usePermissionRefusal.showRefusal('restore');
+            })
+        );
     }
 
     public onShowRestoreWarnings(): void {
@@ -2004,6 +2093,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 })
             )
             .subscribe(() => openVersionDialog());
+    }
+
+    private saveFromShortcut(): void {
+        if (this.previewedVersion()) {
+            this.toastService.info('Exit preview mode to save');
+            return;
+        }
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        this.onHeaderSave();
     }
 
     /**

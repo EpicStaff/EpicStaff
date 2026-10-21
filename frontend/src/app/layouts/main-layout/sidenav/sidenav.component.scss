@@ -368,6 +368,11 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
         min-width: 0;
     }
 
+    // Collapsed the divider is as wide as the button; expanded it spans the sidebar like the switcher's.
+    .sidenav-nav-item .tooltip-wrapper.recycle-bin-block {
+        width: 100%;
+    }
+
     .org-menu-container .org-menu-btn,
     .sidenav-nav-item .tooltip-wrapper .sidenav-nav-link,
     .user-avatar-btn {

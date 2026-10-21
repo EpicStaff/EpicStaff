@@ -1,5 +1,6 @@
 import { FlexibleConnectedPositionStrategy, Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
+import { ViewportRuler } from '@angular/cdk/scrolling';
 import {
     afterNextRender,
     AfterViewInit,
@@ -7,7 +8,9 @@ import {
     Component,
     computed,
     DestroyRef,
+    DOCUMENT,
     effect,
+    ElementRef,
     inject,
     Injector,
     input,
@@ -15,6 +18,7 @@ import {
     signal,
     TemplateRef,
     ViewChild,
+    viewChild,
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -28,11 +32,19 @@ import {
     FLOW_GRAPH_CONTEXT_MENU_ITEMS,
     FLOW_GRAPH_CONTEXT_MENU_POSITIONS,
 } from '../../core/constants/flow-graph-context-menu.constants';
+import { subgraphFlowOptions } from '../../core/helpers/subgraph-flows.util';
 import { CreateNodeRequest } from '../../core/models/node-creation.types';
 import { FlowGraphCoreMenuComponent } from './flow-graph-core-menu/flow-graph-core-menu.component';
 import { FlowsMenuComponent } from './flows-menu/flows-menu.component';
 
 export type { ContextMenuTab };
+
+interface MenuBox {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+}
 
 @Component({
     selector: 'app-flow-graph-context-menu',
@@ -50,12 +62,11 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
 
     @ViewChild('menuTemplate', { static: true })
     private menuTemplate!: TemplateRef<unknown>;
+    private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
     public readonly searchTerm = signal('');
     public readonly selectedMenu = signal<ContextMenuTab>(CONTEXT_MENU_TAB.FLOW_CORE);
-    protected readonly otherFlows = computed(() =>
-        this.availableFlows().filter((flow) => flow.id !== this.currentFlowId())
-    );
+    protected readonly otherFlows = computed(() => subgraphFlowOptions(this.availableFlows(), this.currentFlowId()));
     protected readonly visibleTabs = computed(() =>
         FLOW_GRAPH_CONTEXT_MENU_ITEMS.filter(
             (item) => item.type !== CONTEXT_MENU_TAB.FLOWS || this.otherFlows().length > 0
@@ -66,11 +77,14 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
     public readonly overlayPositions = FLOW_GRAPH_CONTEXT_MENU_POSITIONS;
 
     private readonly overlay = inject(Overlay);
+    private readonly viewportRuler = inject(ViewportRuler);
+    private readonly document = inject(DOCUMENT);
     private readonly injector = inject(Injector);
     private readonly viewContainerRef = inject(ViewContainerRef);
     private readonly destroyRef = inject(DestroyRef);
 
     private overlayRef?: OverlayRef;
+    private openedMenu: MenuBox | null = null;
 
     public ngAfterViewInit(): void {
         this.createOverlay();
@@ -96,8 +110,7 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
 
     private createOverlay(): void {
         this.overlayRef = this.overlay.create({
-            positionStrategy: this.createPositionStrategy(this.position()),
-            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            scrollStrategy: this.overlay.scrollStrategies.noop(),
             disposeOnNavigation: true,
             hasBackdrop: true,
             backdropClass: 'cdk-overlay-transparent-backdrop',
@@ -114,12 +127,52 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe((event) => {
-                // Esc belongs to the topmost layer: keep it from also reaching the window-level
-                // ShortcutListenerDirective (canvas multi-select reset, node side panel save-and-close).
+                // Esc belongs to the topmost layer: keep it from also reaching the editor's window-level
+                // keymap (canvas multi-select reset, node side panel save-and-close).
                 event.stopPropagation();
                 this.closed.emit();
             });
         this.overlayRef.attach(new TemplatePortal(this.menuTemplate, this.viewContainerRef));
+        this.viewportRuler
+            .change()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.anchorMenu());
+        afterNextRender(() => this.searchInput()?.nativeElement.focus(), { injector: this.injector });
+    }
+
+    private placeMenu(position: IPoint): void {
+        const overlayRef = this.overlayRef;
+        if (!overlayRef) {
+            return;
+        }
+
+        overlayRef.updateSize({ maxHeight: undefined });
+        overlayRef.updatePositionStrategy(this.createPositionStrategy(position));
+        const { top, left, width, height } = overlayRef.overlayElement.getBoundingClientRect();
+        this.openedMenu = { top, left, width, height };
+        this.anchorMenu();
+    }
+
+    private anchorMenu(): void {
+        const overlayRef = this.overlayRef;
+        const openedMenu = this.openedMenu;
+        if (!overlayRef || !openedMenu) {
+            return;
+        }
+
+        const { clientWidth: viewportWidth, clientHeight: viewportHeight } = this.document.documentElement;
+        const top = Math.max(
+            this.viewportMargin,
+            Math.min(openedMenu.top, viewportHeight - this.viewportMargin - openedMenu.height)
+        );
+        const left = Math.max(
+            this.viewportMargin,
+            Math.min(openedMenu.left, viewportWidth - this.viewportMargin - openedMenu.width)
+        );
+        overlayRef.updateSize({
+            maxHeight: Math.min(openedMenu.height, viewportHeight - top - this.viewportMargin),
+        });
+        overlayRef.updatePositionStrategy(this.overlay.position().global().top(`${top}px`).left(`${left}px`));
     }
 
     private createPositionStrategy(position: IPoint): FlexibleConnectedPositionStrategy {
@@ -139,30 +192,7 @@ export class FlowGraphContextMenuComponent implements AfterViewInit {
     private initializeEffects(): void {
         effect(
             () => {
-                const position = this.position();
-                if (!this.overlayRef) {
-                    return;
-                }
-
-                this.overlayRef.updatePositionStrategy(this.createPositionStrategy(position));
-                this.overlayRef.updatePosition();
-            },
-            { injector: this.injector }
-        );
-
-        effect(
-            () => {
-                this.selectedMenu();
-                this.searchTerm();
-                this.visibleTabs();
-
-                if (!this.overlayRef) {
-                    return;
-                }
-
-                afterNextRender(() => this.overlayRef?.updatePosition(), {
-                    injector: this.injector,
-                });
+                this.placeMenu(this.position());
             },
             { injector: this.injector }
         );

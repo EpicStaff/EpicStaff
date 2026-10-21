@@ -585,7 +585,7 @@ def test_cdt_export_csv_allowed_for_org_admin(client_a, org_a):
 
 @pytest.mark.django_db
 def test_cdt_export_denied_for_viewer(db, django_user_model, org_a):
-    # Viewer's FLOWS bitmask (READ+USE) does not include EXPORT.
+    # Viewer's FLOWS bitmask (READ) does not include EXPORT.
     graph_a = _graph(org_a, "a")
     node = ClassificationDecisionTableNode.objects.create(
         graph=graph_a, node_name="cdt1"

@@ -5,6 +5,7 @@ import { NodeType } from '@shared/models';
 import { downloadBlob } from '@shared/utils';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
+import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
 import { ToastService } from '../../services/notifications';
 import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { FlowModel } from '../core/models/flow.model';
@@ -22,6 +23,7 @@ export class FlowImportExportService {
     private readonly flowService = inject(FlowService);
     private readonly selectionManager = inject(FlowSelectionManagerService);
     private readonly importExportService = inject(ImportExportService);
+    private readonly flowCopyImportFacade = inject(FlowCopyImportFacadeService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
@@ -262,7 +264,9 @@ export class FlowImportExportService {
     }
 
     private doPartialImport(file: File, currentFlowId: number, onImportComplete: () => void): void {
-        this.importExportService
+        // Through the facade: the backend refuses a file with trigger nodes to a user without Flows:Use, and the
+        // facade explains that refusal (nothing is emitted then, so nothing below runs).
+        this.flowCopyImportFacade
             .partialImport(currentFlowId, file)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({

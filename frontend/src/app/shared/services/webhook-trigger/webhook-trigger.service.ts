@@ -1,6 +1,11 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { BinnedWebhookTrigger, WebhookTriggerModel, WebhookTriggerPayload } from '@shared/models';
+import {
+    BinnedWebhookTrigger,
+    WebhookTriggerFlowsResponse,
+    WebhookTriggerModel,
+    WebhookTriggerPayload,
+} from '@shared/models';
 import { CountedPage, fetchAllPages } from '@shared/utils';
 import { map, Observable, Subject, tap } from 'rxjs';
 
@@ -31,6 +36,10 @@ export class WebhookTriggerService {
 
     getById(id: number): Observable<WebhookTriggerModel> {
         return this.http.get<WebhookTriggerModel>(`${this.apiUrl}${id}/`, { headers: this.headers });
+    }
+
+    getFlows(id: number): Observable<WebhookTriggerFlowsResponse> {
+        return this.http.get<WebhookTriggerFlowsResponse>(`${this.apiUrl}${id}/flows/`, { headers: this.headers });
     }
 
     /**
