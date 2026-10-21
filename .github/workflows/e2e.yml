@@ -1,0 +1,220 @@
+name: e2e
+
+# Runs tests/e2e against the full stack on a GitHub-hosted runner. Manual only for now; pick the
+# branch with "Use workflow from". docs/e2e-tests.md → CI explains the inputs and the results.
+on:
+  workflow_dispatch:
+    inputs:
+      images:
+        description: 'build: build and push e2e-<sha7> images first. existing: reuse image_tag'
+        type: choice
+        options: [build, existing]
+        default: build
+      image_tag:
+        description: 'Only for images=existing: e2e-<sha7>, a branch slug or latest'
+        type: string
+        default: ''
+      pytest_args:
+        description: 'Extra pytest arguments, e.g. -k sse or -m "not load"'
+        type: string
+        default: ''
+  # Same inputs, so another workflow can reuse this one (workflow_call has no choice type).
+  workflow_call:
+    inputs:
+      images:
+        type: string
+        default: build
+      image_tag:
+        type: string
+        default: ''
+      pytest_args:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: Resolve image tag
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.r.outputs.tag }}
+    steps:
+      - id: r
+        shell: bash
+        env:
+          IMAGES: ${{ inputs.images }}
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          case "$IMAGES" in
+            build) TAG="e2e-${GITHUB_SHA::7}" ;;
+            existing) TAG="$INPUT_IMAGE_TAG" ;;
+            *) echo "::error::images must be build or existing, got '$IMAGES'"; exit 1 ;;
+          esac
+          if [[ ! "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::images=existing needs image_tag (e2e-<sha7>, a branch slug or latest), got '$TAG'"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo ">> tag=$TAG"
+
+  build:
+    name: Build images
+    needs: resolve
+    if: ${{ inputs.images == 'build' }}
+    uses: ./.github/workflows/build-and-push.yml
+    with:
+      ref: ${{ github.sha }}
+      tag: ${{ needs.resolve.outputs.tag }}
+    # build-and-push.yml asks for id-token at workflow level; a caller must grant it or the run
+    # is rejected before it starts.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    secrets: inherit
+
+  e2e:
+    name: Run e2e suite
+    needs: [resolve, build]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DC: docker compose -p epicstaff-e2e --env-file src/.env --env-file tests/e2e/e2e.env -f src/docker-compose.yaml -f tests/e2e/docker-compose.e2e.yaml
+      # The shell environment wins over every --env-file, so these need no extra env file.
+      IMAGE_TAG: ${{ needs.resolve.outputs.tag }}
+      E2E_TIMINGS_DIR: ${{ github.workspace }}/reports
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /usr/share/swift /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Check kernel features for the sandbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          # landlock_create_ruleset(NULL, 0, LANDLOCK_CREATE_RULESET_VERSION), as src/sandbox/landlock.py does.
+          ABI=$(python3 -c 'import ctypes; print(max(0, ctypes.CDLL(None).syscall(444, None, 0, 1)))')
+          SIGNAL_ISOLATION=true
+          # Signal isolation needs Landlock ABI 6 (Linux 6.12+); without it the sandbox refuses every run.
+          if [ "$ABI" -lt 6 ]; then
+            SIGNAL_ISOLATION=false
+            echo "SANDBOX_REQUIRE_SIGNAL_ISOLATION=false" >> "$GITHUB_ENV"
+          fi
+          {
+            echo "### Runner"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | \`$GITHUB_SHA\` |"
+            echo "| Image tag | \`$IMAGE_TAG\` |"
+            echo "| Kernel | \`$(uname -r)\` |"
+            echo "| Landlock ABI | $ABI |"
+            echo "| SANDBOX_REQUIRE_SIGNAL_ISOLATION | $SIGNAL_ISOLATION |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo ">> kernel=$(uname -r) landlock_abi=$ABI signal_isolation=$SIGNAL_ISOLATION"
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv
+        run: python -m pip install --no-cache-dir uv==0.11.21
+
+      - name: Generate dev env from env.yaml
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/envtool.py --dev
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull images
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker network create mcp-network
+          if ! $DC pull --quiet; then
+            echo "::error::Could not pull the images for tag '$IMAGE_TAG'. If the tag does not exist, run with images=build."
+            exit 1
+          fi
+
+      - name: Start the stack
+        run: $DC up -d --no-build
+
+      - name: Wait for the stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          E2E_COMPOSE_CMD="$DC" uv run --project tests/e2e python tests/e2e/scripts/wait_for_stack.py
+          # The sandbox logs its isolation state once at startup; "will be refused" means every
+          # python run would fail (missing Landlock, or no egress firewall / xt_owner match).
+          ISOLATION=$($DC logs --no-log-prefix sandbox | grep "isolation is") || {
+            echo "::error::The sandbox logged no isolation state; see its log in the e2e-logs artifact."
+            exit 1
+          }
+          echo "$ISOLATION"
+          if grep "will be refused" <<< "$ISOLATION"; then
+            echo "::error::The sandbox refuses executions on this runner (see the line above)."
+            exit 1
+          fi
+
+      - name: Run e2e tests
+        shell: bash
+        env:
+          PYTEST_ARGS: ${{ inputs.pytest_args }}
+        # xargs splits PYTEST_ARGS like a shell would (quotes kept) without eval.
+        run: printf '%s' "$PYTEST_ARGS" | xargs uv run --project tests/e2e pytest tests/e2e -v --junitxml=reports/junit.xml
+
+      - name: Collect container state and logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p logs
+          $DC ps -a > logs/ps.txt 2>&1 || true
+          for service in $($DC config --services 2>/dev/null); do
+            $DC logs --no-color --timestamps "$service" > "logs/$service.log" 2>&1 || true
+          done
+
+      - name: Write job summary
+        if: always()
+        run: python tests/e2e/scripts/ci_summary.py reports/junit.xml reports/timings.json >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: e2e-reports
+          path: reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: e2e-logs
+          path: logs/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop the stack
+        if: always()
+        run: $DC down -v --remove-orphans || true
