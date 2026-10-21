@@ -1,4 +1,5 @@
 from django.db.models import Q
+from proxies.sandbox.models import SandboxVenvBinding
 from rbac.authorship import resolve_author
 
 from tables.import_export.constants import MAX_REUSE_CANDIDATES
@@ -17,6 +18,7 @@ from tables.import_export.utils import (
     ensure_unique_identifier,
     filter_by_name_or_renamed_copy,
     import_values,
+    remap_python_code_venv,
 )
 from tables.models import PythonCode, PythonCodeTool, User
 
@@ -29,19 +31,17 @@ from tables.models import PythonCode, PythonCodeTool, User
 COMPARED_FIELDS = ("description", "variables", "use_storage")
 
 
-# KNOWN BROKEN: `libraries` is no longer a field of `PythonCode`, so every read of
-# it here raises. See PythonCodeImportSerializer; both are fixed together, once it
-# is decided how a venv travels in an exported flow.
-def python_code_key(code: str, libraries: str, entrypoint: str) -> tuple:
+def python_code_key(code: str, venv_id: int | None, entrypoint: str) -> tuple:
     """Return what python code is matched on, from file values or a stored row.
 
     File values arrive as PythonCodeImportSerializer stores them (trimmed, an
-    empty entrypoint made "main"). A stored row is compared as it would run:
-    only trailing whitespace is ignored in code, since the sandbox indents
-    every line and leading whitespace changes it; libraries split on spaces;
-    the entrypoint must be exact.
+    empty entrypoint made "main") and with `venv_id` already remapped to a local
+    binding. A stored row is compared as it would run: only trailing whitespace is
+    ignored in code, since the sandbox indents every line and leading whitespace
+    changes it; the venv and the entrypoint must be exact. The venv stands in for
+    the libraries the code used to carry -- it is the only place they live now.
     """
-    return (code.rstrip(), libraries.strip(), entrypoint)
+    return (code.rstrip(), venv_id, entrypoint)
 
 
 class PythonCodeToolStrategy(EntityImportExportStrategy):
@@ -55,7 +55,10 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return {"id": instance.id, "name": instance.name}
 
     def extract_dependencies_from_instance(self, instance) -> dict[str, list[int]]:
-        return {EntityType.LABEL: list(instance.labels.values_list("id", flat=True))}
+        return {
+            EntityType.LABEL: list(instance.labels.values_list("id", flat=True)),
+            EntityType.VENV: self._venv_dependency(instance),
+        }
 
     def extract_org_scoped_dependencies(
         self, instance: PythonCodeTool, org_id: int
@@ -63,8 +66,28 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return {
             EntityType.LABEL: list(
                 instance.labels.filter(org_id=org_id).values_list("id", flat=True)
-            )
+            ),
+            EntityType.VENV: self._venv_dependency(instance, org_id=org_id),
         }
+
+    @staticmethod
+    def _venv_dependency(instance: PythonCodeTool, org_id: int | None = None) -> list[int]:
+        """The environment the tool's code runs in, empty when it uses the default one.
+
+        A built-in tool is one row shared by every organization, so the environment
+        on it can belong to a different tenant than the one exporting. With an
+        `org_id` the reference is dropped unless its binding is that org's, which
+        keeps another org's environment name and library list out of the file.
+        """
+        venv_id = instance.python_code.venv_id
+        if not venv_id:
+            return []
+        if (
+            org_id is not None
+            and not SandboxVenvBinding.objects.filter(pk=venv_id, org_id=org_id).exists()
+        ):
+            return []
+        return [venv_id]
 
     def export_entity(self, instance: PythonCodeTool) -> dict:
         """Export the tool without configs: with no org known, none can be attributed to the caller."""
@@ -98,7 +121,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
                 existing_names=existing_names,
             )
 
-        python_code = self._create_python_code(python_code_data)
+        python_code = self._create_python_code(python_code_data, id_mapper)
 
         serializer = self.serializer_class(
             data={
@@ -122,20 +145,23 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return python_code_tool
 
     def find_existing(self, data, id_mapper, org_id: int | None = None):
-        # SQL narrows on stored columns: entrypoint and global_kwargs exactly
+        # SQL narrows on stored columns: venv, entrypoint and global_kwargs exactly
         # (create stores them so, and jsonb equality keeps true apart from 1).
-        # Code and libraries are compared in Python.
+        # Only the code itself is compared in Python.
         filters, null_filters = create_filters(
             compared_values(PythonCodeTool, self.serializer_class, data, COMPARED_FIELDS)
         )
-        python_code = self.validated_python_code(data.get("python_code"))
+        python_code = self.validated_python_code(
+            remap_python_code_venv(data.get("python_code"), id_mapper)
+        )
         code_key = python_code_key(
-            python_code["code"], python_code["libraries"], python_code["entrypoint"]
+            python_code["code"], python_code["venv_id"], python_code["entrypoint"]
         )
         candidates = filter_by_name_or_renamed_copy(
             PythonCodeTool.objects.filter(**filters, **null_filters)
             .filter(
                 self.get_org_scope_q(org_id),
+                python_code__venv_id=code_key[1],
                 python_code__entrypoint=code_key[2],
                 python_code__global_kwargs=python_code["global_kwargs"],
             )
@@ -148,7 +174,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
                 for candidate in candidates
                 if python_code_key(
                     candidate.python_code.code,
-                    candidate.python_code.libraries,
+                    candidate.python_code.venv_id,
                     candidate.python_code.entrypoint,
                 )
                 == code_key
@@ -163,11 +189,14 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         return {
             "global_kwargs": PythonCode._meta.get_field("global_kwargs").get_default(),
+            "venv_id": None,
             **serializer.validated_data,
         }
 
-    def _create_python_code(self, python_code_data: dict) -> PythonCode:
-        serializer = PythonCodeImportSerializer(data=python_code_data)
+    def _create_python_code(self, python_code_data: dict, id_mapper: IDMapper) -> PythonCode:
+        serializer = PythonCodeImportSerializer(
+            data=remap_python_code_venv(python_code_data, id_mapper)
+        )
         serializer.is_valid(raise_exception=True)
         return serializer.save()
 

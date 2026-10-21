@@ -38,6 +38,7 @@ class TablesConfig(AppConfig):
             session,
             surface,
             tags,
+            venv,
             webhook,
         )
         from tables.import_export.strategies.nodes import (
@@ -123,6 +124,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(configs.OpenAIRealtimeConfigStrategy())
         entity_registry.register(configs.ElevenLabsRealtimeConfigStrategy())
         entity_registry.register(configs.GeminiRealtimeConfigStrategy())
+        entity_registry.register(venv.VenvStrategy())
         entity_registry.register(python_tools.PythonCodeToolStrategy())
         entity_registry.register(mcp_tools.McpToolStrategy())
         entity_registry.register(surface.SurfaceStrategy())

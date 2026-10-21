@@ -10,6 +10,7 @@ from tables.import_export.serializers.classification_decision_table_node import 
 )
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.utils import remap_python_code_venv
 from tables.models import ClassificationDecisionTableNode, PythonCode
 from tables.models.graph_models import (
     ClassificationConditionGroupSection,
@@ -59,8 +60,8 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
         # ever gets code created here from the file's code body.
         data.pop("pre_python_code_id", None)
         data.pop("post_python_code_id", None)
-        pre_python_code = self._create_python_code(data.pop("pre_python_code", None))
-        post_python_code = self._create_python_code(data.pop("post_python_code", None))
+        pre_python_code = self._create_python_code(data.pop("pre_python_code", None), id_mapper)
+        post_python_code = self._create_python_code(data.pop("post_python_code", None), id_mapper)
 
         old_llm_config_id = data.pop("default_llm_config", None)
         data["default_llm_config"] = id_mapper.get_or_none(EntityType.LLM_CONFIG, old_llm_config_id)
@@ -115,9 +116,13 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
 
         return node
 
-    def _create_python_code(self, python_code_data: dict | None) -> PythonCode | None:
+    def _create_python_code(
+        self, python_code_data: dict | None, id_mapper: IDMapper
+    ) -> PythonCode | None:
         if not python_code_data:
             return None
-        python_code_serializer = PythonCodeImportSerializer(data=python_code_data)
+        python_code_serializer = PythonCodeImportSerializer(
+            data=remap_python_code_venv(python_code_data, id_mapper)
+        )
         python_code_serializer.is_valid(raise_exception=True)
         return python_code_serializer.save()

@@ -6,38 +6,26 @@ from tables.models import (
     PythonCodeToolConfig,
 )
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
-from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
 class PythonCodeImportSerializer(serializers.ModelSerializer):
     """Python code as it travels in an import/export file.
 
-    KNOWN BROKEN: `libraries` is declared here but `PythonCode` has no such field
-    any more -- libraries live only on the venv, and an export carries no venv.
-    Serializing reads an attribute that does not exist and importing passes a
-    keyword the model will not take, so python-tool import/export does not work.
-    Fixing it means deciding how a venv travels in an exported flow; the field is
-    left in place until then so the file format is not changed twice.
+    Libraries are not here: they belong to the venv, which travels as its own
+    `Venv` entry, and the code only names which one it runs in.
     """
 
     code = serializers.CharField(allow_blank=True)
-    libraries = serializers.CharField(allow_blank=True)
     entrypoint = serializers.CharField(allow_blank=True, required=False)
+    # A plain integer on purpose, not a related field: the value is the exporting
+    # system's binding pk, so resolving it against this database would validate --
+    # and could import -- another organization's environment. The strategies remap
+    # it through the IDMapper before this serializer ever sees a local id.
+    venv = serializers.IntegerField(source="venv_id", required=False, allow_null=True)
 
     class Meta:
         model = PythonCode
         exclude = ["id", "secrets"]
-
-    def validate_libraries(self, value: str) -> str:
-        """Apply the runtime rule to every entry of the space-separated string.
-
-        An import file is untrusted input, and the sandbox runs `pip install` on
-        each entry, so a VCS URL, a direct `name @ url` reference or a file path
-        must be rejected here exactly as `PythonCodeSerializer` rejects it.
-        """
-        for entry in value.split():
-            validate_python_library_spec(entry)
-        return value
 
     def to_internal_value(self, data):
         result = super().to_internal_value(data)
