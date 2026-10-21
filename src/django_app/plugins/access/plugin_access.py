@@ -11,24 +11,24 @@ not a member of an organization may use no plugin there, and one who is gets the
 actions, like anyone else (the built-in Superadmin role of the bootstrap SuperAdmin's
 membership gets Org Admin's, while they are a SuperAdmin; see
 `plugin_permissions.holds_plugin_role`). A role's actions come from
-`plugin_permissions.role_actions_by_grant`, the resolution the Roles matrix uses too.
+`plugin_permissions.role_plugin_actions`, the resolution the Roles matrix uses too.
 """
 
 from dataclasses import dataclass
 
 from django.contrib.auth import get_user_model
+from django.db.models import OuterRef, Subquery
 from django.db.models.functions import Lower
 from epicstaff_plugin.contracts.manifest import READ_ACTION
-from rbac.models import Organization, OrganizationUser
+from rbac.models import Organization, OrganizationUser, Role
 
 from plugins.access.plugin_permissions import (
     holds_plugin_role,
     role_actions_by_grant,
     role_plugin_actions,
-    stored_permissions_by_role,
 )
 from plugins.exceptions import PluginNotFoundError
-from plugins.models import Plugin, PluginGrant, PluginState
+from plugins.models import Plugin, PluginGrant, PluginRolePermission, PluginState
 from plugins.models.grant import PluginGrantQuerySet
 
 
@@ -48,7 +48,8 @@ class GatewayPersonFacts:
 
     `user` is None when the user no longer exists, `grant` when the token's grant is no longer
     a usable grant of this plugin to this organization, and `membership` when the person is no
-    member of it. `may_use` is the rule above for this grant.
+    member of it. `may_use` is the rule above for this grant; `actions` are the person's
+    plugin actions when they may use it, and empty otherwise.
     """
 
     user: object | None
@@ -109,32 +110,42 @@ def resolve_person_plugin_access(user, org_id: int, plugin: Plugin) -> PersonPlu
 
 
 def eligible_people(
-    user_ids: list[int], org_id: int, plugin: Plugin
+    user_ids: list[int], grant: PluginGrant
 ) -> list[tuple[OrganizationUser, PersonPluginAccess]]:
-    """Return each of `user_ids` who may use `plugin` in organization `org_id`, by user id.
+    """Return each of `user_ids` who may use the grant's plugin in its organization, by user id.
 
     The rule above, for many people at once: each comes with their membership (user, role
-    with its permission rows, and organization) and their access. At most four queries,
-    whatever the number of people: the grant, the memberships, their roles' permission rows,
-    and the stored actions of their custom roles.
+    and organization) and their access. `grant` comes with its plugin and current package,
+    as a service-account key loads it; while it is not usable nobody is eligible.
+
+    One query, whatever the number of people and whether or not any of them exists, is a
+    member or holds a custom role (its stored actions come along in the same query), so
+    the time an answer takes tells nothing about who exists.
     """
-    grant = PluginGrant.objects.filter(org_id=org_id, plugin=plugin).usable().first()
-    if grant is None or not user_ids:
+    if not user_ids or not grant.is_usable:
         return []
-    memberships = list(
+    stored_actions = PluginRolePermission.objects.filter(
+        grant_id=grant.pk, role_id=OuterRef("role_id")
+    ).values("permissions")[:1]
+    memberships = (
         OrganizationUser.objects.select_related("user", "role", "org")
-        .prefetch_related("role__permissions_set")
-        .filter(org_id=org_id, org__is_active=True, user_id__in=user_ids, user__is_active=True)
+        .filter(
+            org_id=grant.org_id, org__is_active=True, user_id__in=user_ids, user__is_active=True
+        )
+        .annotate(stored_plugin_permissions=Subquery(stored_actions))
         .order_by("user_id")
     )
-    stored = stored_permissions_by_role([membership.role for membership in memberships], grant.pk)
     manifest = grant.plugin.current_package.parsed_manifest
     eligible = []
     for membership in memberships:
-        if not holds_plugin_role(membership.user, membership.role):
-            continue
-        actions = role_plugin_actions(membership.role, manifest, stored.get(membership.role_id, 0))
-        if READ_ACTION in actions:
+        actions = _usable_actions(
+            membership.user,
+            membership.role,
+            role_plugin_actions(
+                membership.role, manifest, membership.stored_plugin_permissions or 0
+            ),
+        )
+        if actions is not None:
             eligible.append(
                 (
                     membership,
@@ -204,16 +215,18 @@ def gateway_person_facts(
     )
     membership = _membership(user, org_id) if user is not None else None
     actions = (
-        role_actions_by_grant(membership.role, [grant])[grant.pk]
-        if membership is not None and grant is not None and holds_plugin_role(user, membership.role)
-        else []
+        _usable_actions(
+            user, membership.role, role_actions_by_grant(membership.role, [grant])[grant.pk]
+        )
+        if membership is not None and grant is not None
+        else None
     )
     return GatewayPersonFacts(
         user=user,
         grant=grant,
         membership=membership,
-        actions=actions,
-        may_use=membership is not None and READ_ACTION in actions,
+        actions=actions if actions is not None else [],
+        may_use=actions is not None,
     )
 
 
@@ -236,11 +249,20 @@ def _membership(user, org_id: int) -> OrganizationUser | None:
 def _readable(
     user, membership: OrganizationUser, grants: list[PluginGrant]
 ) -> dict[int, list[str]]:
-    if not holds_plugin_role(user, membership.role):
-        return {}
-    actions_by_grant = role_actions_by_grant(membership.role, grants)
-    return {
-        grant_id: actions
-        for grant_id, actions in actions_by_grant.items()
-        if READ_ACTION in actions
-    }
+    readable = {}
+    for grant_id, actions in role_actions_by_grant(membership.role, grants).items():
+        usable = _usable_actions(user, membership.role, actions)
+        if usable is not None:
+            readable[grant_id] = usable
+    return readable
+
+
+def _usable_actions(user, role: Role, actions: list[str]) -> list[str] | None:
+    """`actions`, the role's on the plugin, when they let `user` use it; None when they do not.
+
+    The core of the rule above, shared by every way of asking it: the role must count for
+    the person (`holds_plugin_role`) and give `read`.
+    """
+    if holds_plugin_role(user, role) and READ_ACTION in actions:
+        return actions
+    return None

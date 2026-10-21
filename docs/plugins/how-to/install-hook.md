@@ -127,5 +127,16 @@ EpicStaff repository) do all three against an in-memory fake of the API.
 ## 5. Watch it run
 
 After the SuperAdmin grants the plugin, the organization's row in the plugin's Grants table
-shows "Installing…" and then "Active", or the hook's error with a "Retry install" button. The
-plugin's Activity tab lists every write the hook made and the hook's outcome.
+shows "Waiting for the plugin to start" until your process claims the hook, "Installing…" while
+it runs, and then "Active", or the hook's error with a "Retry install" button. The plugin's
+Activity tab lists every write the hook made and the hook's outcome.
+
+Until the install hook succeeds, the plugin is not active in the organization: every run that
+uses something it owns there, such as a flow the hook created, is refused with 409
+`plugin_suspended` ("… which is not active in this organization").
+
+A hook waiting for your process never times out: it waits for as long as the plugin is stopped,
+failed or restarting, and runs once the process is healthy and claims it. A running hook fails
+when it overruns its timeout. A SuperAdmin who gives up on a waiting hook suspends the
+organization's grant, which fails the hook ("Suspended before the hook finished."), and resumes
+it, which leaves it "Install failed" with "Retry install". See [the plugin lifecycle](../explanation/lifecycle.md).

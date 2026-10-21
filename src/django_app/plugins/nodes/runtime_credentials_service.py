@@ -4,6 +4,7 @@ import hashlib
 from collections import defaultdict
 
 from django.conf import settings
+from django.db import transaction
 from epicstaff_plugin.contracts.gateway_context import Jwks, PluginIdentity
 from epicstaff_plugin.contracts.manifest import PluginManifest
 from epicstaff_plugin.contracts.runtime import RUNTIME_FILE_FORMAT
@@ -19,7 +20,6 @@ from plugins.models import (
     PluginNode,
     PluginPlacement,
     PluginServiceAccount,
-    PluginSettingValue,
 )
 from plugins.origins import PluginOrigins
 
@@ -78,16 +78,16 @@ class RuntimeFileBuilder:
         self,
         plugin: Plugin,
         manifest: PluginManifest,
-        stored: list[PluginSettingValue],
+        settings_and_secrets: tuple[dict, dict],
         minted: list[MintedKey],
     ) -> dict:
         """The runtime file as plain data, secret settings decrypted and minted keys in clear.
 
-        Not validated here: `RuntimeCredentials` validates it, so an error can never show
-        a secret or a key (that model hides inputs in its errors; `RuntimeFile` alone does
-        not).
+        `settings_and_secrets` is what `runtime_settings` returns. Not validated here:
+        `RuntimeCredentials` validates it, so an error can never show a secret or a key (that
+        model hides inputs in its errors; `RuntimeFile` alone does not).
         """
-        plain, secret = runtime_settings(manifest, stored)
+        plain, secret = settings_and_secrets
         return {
             **self._without_settings(plugin, manifest),
             "settings": plain,
@@ -130,32 +130,40 @@ class RuntimeCredentialsService:
         (`ServiceAccountKeyService`): EpicStaff keeps only hashes, so a key cannot be handed
         over twice. The keys the previous call minted keep working for ten minutes.
 
+        All or nothing, in one transaction: when the secret settings cannot be decrypted or
+        the document does not validate, no key is minted and none is superseded or revoked,
+        so the process keeps running on the keys it has.
+
         Raises:
             PlacementNotFoundError: No such placement on this node, or its plugin has no
                 backend package to run.
         """
-        placement = (
-            PluginPlacement.objects.select_related("plugin__current_package")
-            .filter(pk=placement_id, node=node, plugin__current_package__isnull=False)
-            .first()
-        )
-        if placement is None:
-            raise PlacementNotFoundError()
-        plugin = placement.plugin
-        manifest = plugin.current_package.parsed_manifest
-        if manifest.backend is None:
-            raise PlacementNotFoundError()
-        builder = RuntimeFileBuilder(PluginSigningKeyService().jwks())
-        minted = ServiceAccountKeyService().mint_for_plugin(plugin)
-        return RuntimeCredentials.model_validate(
-            {
-                "placement_id": placement.pk,
-                "credentials_revision": builder.credentials_revision(
-                    plugin, manifest, roster_of(minted)
-                ),
-                "settings_revision": placement.settings_revision,
-                "runtime_file": builder.runtime_file_document(
-                    plugin, manifest, list(plugin.setting_values.all()), minted
-                ),
-            }
-        )
+        with transaction.atomic():
+            placement = (
+                PluginPlacement.objects.select_related("plugin__current_package")
+                .defer("plugin__current_package__icon_bytes")
+                .filter(pk=placement_id, node=node, plugin__current_package__isnull=False)
+                .first()
+            )
+            if placement is None:
+                raise PlacementNotFoundError()
+            plugin = placement.plugin
+            manifest = plugin.current_package.parsed_manifest
+            if manifest.backend is None:
+                raise PlacementNotFoundError()
+            builder = RuntimeFileBuilder(PluginSigningKeyService().jwks())
+            # Decrypted before minting, so a setting that cannot be decrypted never mints.
+            settings_and_secrets = runtime_settings(manifest, plugin.setting_values.all())
+            minted = ServiceAccountKeyService().mint_for_plugin(plugin)
+            return RuntimeCredentials.model_validate(
+                {
+                    "placement_id": placement.pk,
+                    "credentials_revision": builder.credentials_revision(
+                        plugin, manifest, roster_of(minted)
+                    ),
+                    "settings_revision": placement.settings_revision,
+                    "runtime_file": builder.runtime_file_document(
+                        plugin, manifest, settings_and_secrets, minted
+                    ),
+                }
+            )

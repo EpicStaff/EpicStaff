@@ -170,7 +170,7 @@ class PluginGrantListView(generics.ListAPIView):
         grant = PluginGrantService().grant(
             identifier, serializer.validated_data["organization_id"], request.user
         )
-        return Response(_grant_details(grant.pk), status=status.HTTP_201_CREATED)
+        return Response(grant_details(grant.pk), status=status.HTTP_201_CREATED)
 
 
 class PluginGrantRetryHookView(APIView):
@@ -181,8 +181,9 @@ class PluginGrantRetryHookView(APIView):
 
     def post(self, request, identifier: str, grant_id: int):
         grant = HookJobService().retry(identifier, grant_id, request.user)
-        return Response(_grant_details(grant.pk), status=status.HTTP_202_ACCEPTED)
+        return Response(grant_details(grant.pk), status=status.HTTP_202_ACCEPTED)
 
 
-def _grant_details(grant_id: int) -> dict:
+def grant_details(grant_id: int) -> dict:
+    """A grant as the SuperAdmin's grant list shows it, read again after a change."""
     return PluginGrantSerializer(PluginGrant.objects.with_admin_details().get(pk=grant_id)).data

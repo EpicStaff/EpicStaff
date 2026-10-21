@@ -52,6 +52,7 @@ from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService, secret_names_prefetch
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 from tables.services.secrets import (
     UndeclaredSecretError,
     secret_declaration_validator,
@@ -265,6 +266,9 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         `callback_url` / `callback_secret`: delivered on the terminal status by the
         callback sender; validated by the caller.
+
+        Raises:
+            RunAdmissionRefusedError: The run is refused; nothing was written or published.
         """
         variables = self._get_actual_variables(variables)
         # Keys only: values hold user input and base64-encoded uploads, and the log
@@ -274,6 +278,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         # Nothing on the run path reads the canvas JSON in metadata; org is joined
         # here because issuing session storage credentials reads graph.org.
         graph = Graph.objects.defer("metadata").select_related("org").get(pk=graph_id)
+        # Before anything is written: building the run variables can create
+        # persistent-variable rows.
+        assert_run_admitted(RunSubject(RunKind.FLOW, graph.pk, graph.org_id))
         # The server does not require a start node (the editor only hides its delete
         # button); without one, the run needs an entrypoint from its trigger.
         start_node = StartNode.objects.filter(graph_id=graph_id).first()

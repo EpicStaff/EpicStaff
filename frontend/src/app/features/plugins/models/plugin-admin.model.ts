@@ -190,15 +190,22 @@ export interface PluginInstallHook {
     error: string | null;
 }
 
+/** What a SuperAdmin can do to a grant. */
+export type PluginGrantAction = 'suspend' | 'resume' | 'retry_install';
+
 export interface PluginGrant {
     id: number;
     plugin_identifier: string;
     organization: PluginOrganizationRef;
     /** `granting` while the install hook runs; `install_failed` when it failed (a SuperAdmin may retry). */
     state: PluginGrantState;
+    /** What the grant allows in its current state. The server decides; the buttons follow this list only. */
+    allowed_actions: PluginGrantAction[];
     granted_by: PluginUserRef | null;
     granted_at: string;
+    /** Set while the grant is suspended. */
     suspended_at: string | null;
+    /** Until when a suspended grant keeps the plugin's data in the organization. */
     purge_after: string | null;
     /** The install hook's last error. */
     last_hook_error: string | null;

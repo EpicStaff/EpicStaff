@@ -11,6 +11,8 @@ class ActivityAction(models.TextChoices):
     INSTALL_HOOK_SUCCEEDED = "install_hook_succeeded"
     INSTALL_HOOK_FAILED = "install_hook_failed"
     INSTALL_HOOK_RETRIED = "install_hook_retried"
+    GRANT_SUSPENDED = "grant_suspended"
+    GRANT_RESUMED = "grant_resumed"
     SETTINGS_CHANGED = "settings_changed"
     LIMITS_CHANGED = "limits_changed"
     RESTARTED = "restarted"
@@ -63,10 +65,19 @@ class PluginActivityEvent(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        # Each list reads newest first (`-created_at`, then `-id`), filtered by organization,
+        # by plugin, or by both.
         indexes = [
-            models.Index(fields=["organization_id", "-created_at"], name="plugins_activity_by_org"),
             models.Index(
-                fields=["plugin_identifier", "-created_at"], name="plugins_activity_by_plugin"
+                fields=["organization_id", "-created_at", "-id"], name="plugins_activity_by_org"
+            ),
+            models.Index(
+                fields=["plugin_identifier", "-created_at", "-id"],
+                name="plugins_activity_by_plugin",
+            ),
+            models.Index(
+                fields=["organization_id", "plugin_identifier", "-created_at", "-id"],
+                name="plugins_activity_by_org_plugin",
             ),
         ]
 

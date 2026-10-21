@@ -1,10 +1,17 @@
 """Plugin activity: what is recorded, and who reads it where."""
 
 import pytest
-from plugins.models import Plugin, PluginActivityEvent
-from tables.models import Graph
+from django.http import HttpResponse
+from django.urls import resolve
+from plugins.activity.recorder import ActivityRecorder, url_path_pattern
+from plugins.identity.service_account_authentication import PluginServiceAccountAuthentication
+from plugins.models import Plugin, PluginActivityEvent, PluginGrant
+from plugins.ownership.request_scope import PluginRequestScope
+from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
+from tables.models import Graph, LLMConfig
 
-from tests.plugins_tests.conftest import WEATHER_ACCESS, service_account_client, upload_file
+from tests.plugins_tests.conftest import GATEWAY_SECRET, WEATHER_ACCESS, service_account_client, upload_file
 from tests.plugins_tests.package_builder import backend_manifest, build_package
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("service_account_platform")]
@@ -46,7 +53,7 @@ def test_a_successful_write_is_recorded_with_its_target(client, acme):
     assert (event.actor_kind, event.actor_label, event.actor_user_id) == ("plugin", "Weather (plugin)", None)
     assert (event.on_behalf_of_user_id, event.on_behalf_of_label) == (None, None)
     assert (event.request_method, event.request_path, event.response_status) == ("POST", "/api/graphs/", 201)
-    assert "graphs" in event.request_route
+    assert event.request_route == "api/graphs/"
     assert (event.target_resource_type, event.target_id, event.target_label) == (
         "flows",
         str(response.json()["id"]),
@@ -131,12 +138,17 @@ def test_settings_limits_and_restart_are_deployment_wide_events_without_values(w
         format="json",
     )
     superadmin_client.patch("/api/admin/plugins/weather/limits/", {"overrides": {"memory_mb": 128}}, format="json")
+    superadmin_client.patch("/api/admin/plugins/weather/limits/", {"overrides": {"cpu_priority": "low"}}, format="json")
     superadmin_client.post("/api/admin/plugins/weather/restart/")
 
     settings_event = PluginActivityEvent.objects.get(action="settings_changed")
     assert settings_event.detail == {"keys": ["forecast_api_token", "units"]}
     assert "token-123456789" not in str(settings_event.detail)
-    assert PluginActivityEvent.objects.get(action="limits_changed").detail == {"overrides": {"memory_mb": 128}}
+    # The overrides in force after each change, one scalar per limit.
+    assert [event.detail for event in PluginActivityEvent.objects.filter(action="limits_changed").order_by("pk")] == [
+        {"memory_mb": 128},
+        {"memory_mb": 128, "cpu_priority": "low"},
+    ]
     assert PluginActivityEvent.objects.get(action="restarted").detail == {"restart_generation": 1}
     assert set(
         PluginActivityEvent.objects.filter(action__in=["settings_changed", "limits_changed", "restarted"]).values_list(
@@ -304,3 +316,97 @@ def test_events_outlive_the_plugin_row(client, superadmin_client, weather):
     body = superadmin_client.get(ADMIN_ACTIVITY_URL).json()
     assert body["count"] >= 2
     assert {event["plugin"]["name"] for event in body["results"]} == {None}
+
+
+# ---- suspension ----
+
+
+def test_suspension_and_resume_are_events_of_the_organization(
+    weather, service_account_key, superadmin_client, org_admin_client, client_as, make_member, role_org_admin, acme, beta
+):
+    service_account_key(weather, acme)
+    grant = PluginGrant.objects.get(org=acme)
+    superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant.pk}/suspend/")
+    superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant.pk}/resume/")
+    beta_admin = client_as(make_member(beta, role_org_admin, "admin-beta-activity@example.com"))
+    beta_admin.credentials(HTTP_X_ORGANIZATION_ID=str(beta.pk))
+
+    in_acme = org_admin_client.get(ACTIVITY_URL).json()["results"]
+    suspended = next(event for event in in_acme if event["action"] == "grant_suspended")
+
+    assert [event["action"] for event in in_acme if event["action"].startswith("grant_")] == [
+        "grant_resumed",
+        "grant_suspended",
+        "grant_created",
+    ]
+    assert suspended["actor"]["kind"] == "superadmin"
+    assert set(suspended["detail"]) == {"previous_state", "purge_after"}
+    assert beta_admin.get(ACTIVITY_URL).json()["results"] == []
+    assert beta_admin.get(f"{ACTIVITY_URL}{suspended['id']}/").status_code == 404
+    admin_actions = {event["action"] for event in superadmin_client.get(ADMIN_ACTIVITY_URL).json()["results"]}
+    assert {"grant_suspended", "grant_resumed"} <= admin_actions
+
+
+# ---- what an event names ----
+
+
+@pytest.fixture
+def principal(weather, service_account_key, acme):
+    """The service account of Weather in Acme, as authentication makes it."""
+    request = Request(
+        APIRequestFactory().get(
+            "/",
+            HTTP_AUTHORIZATION=f"PluginKey {service_account_key(weather, acme)}",
+            HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET,
+        ),
+        authenticators=[PluginServiceAccountAuthentication()],
+    )
+    return request.user
+
+
+def _record_patch(principal, path):
+    """Record a successful PATCH of `path`, as the request-scope middleware does."""
+    request = APIRequestFactory().patch(path)
+    request.resolver_match = resolve(path)
+    ActivityRecorder().record_django_request(PluginRequestScope(principal=principal), request, HttpResponse(status=200))
+    return PluginActivityEvent.objects.filter(action="api_request").latest("pk")
+
+
+def test_a_row_named_by_the_url_is_labelled_only_from_the_principal_s_organization(principal, acme, beta):
+    own_graph = Graph.objects.create(name="Acme's flow", org=acme)
+    other_graph = Graph.objects.create(name="Beta's secret plans", org=beta)
+
+    own_event = _record_patch(principal, f"/api/graphs/{own_graph.pk}/")
+    other_event = _record_patch(principal, f"/api/graphs/{other_graph.pk}/")
+
+    assert (own_event.target_id, own_event.target_label) == (str(own_graph.pk), "Acme's flow")
+    assert (other_event.target_id, other_event.target_label) == (str(other_graph.pk), None)
+
+
+def test_a_row_without_a_name_is_labelled_with_its_custom_name(principal, acme):
+    config = LLMConfig.objects.create(org=acme, custom_name="Weather summaries")
+
+    event = _record_patch(principal, f"/api/llm-configs/{config.pk}/")
+
+    assert event.target_label == "Weather summaries"
+
+
+def test_a_router_route_is_recorded_as_a_path_pattern(principal, acme):
+    graph = Graph.objects.create(name="Acme's flow", org=acme)
+
+    assert _record_patch(principal, f"/api/graphs/{graph.pk}/").request_route == "api/graphs/<pk>/"
+
+
+@pytest.mark.parametrize(
+    ("route", "pattern"),
+    [
+        ("api/^graphs/$", "api/graphs/"),
+        ("api/graphs/(?P<pk>[^/.]+)/copy/$", "api/graphs/<pk>/copy/"),
+        (r"api/^files/(?P<path>(?:[^/]+/)*[^/]+)\.json$", "api/files/<path>.json"),
+        ("api/graphs/<int:pk>/", "api/graphs/<int:pk>/"),
+        ("api/storage/upload/stream", "api/storage/upload/stream"),
+    ],
+    ids=["router-list", "router-detail-action", "nested-groups-and-an-escape", "path-converter", "the-upload-stream"],
+)
+def test_every_route_takes_the_same_path_pattern_form(route, pattern):
+    assert url_path_pattern(route) == pattern

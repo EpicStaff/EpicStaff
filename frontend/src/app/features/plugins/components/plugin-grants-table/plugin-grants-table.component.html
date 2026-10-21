@@ -52,11 +52,11 @@
                     @case ('granting') {
                         <span class="grants__installing text-body">
                             <app-spinner2 [size]="16" />
-                            {{ stateLabel(grant) }}…
+                            {{ installProgress(grant) }}
                         </span>
                     }
                     @case ('install_failed') {
-                        <div class="grants__failed">
+                        <div class="grants__stacked">
                             <app-plugin-badge
                                 [label]="stateLabel(grant)"
                                 [tone]="stateTone(grant)"
@@ -69,14 +69,24 @@
                             >
                                 {{ installError(grant) }}
                             </span>
-                            <app-button
-                                type="outline-primary"
-                                mod="small"
-                                [disabled]="isRetrying(grant)"
-                                (click)="retryInstall(grant)"
-                            >
-                                Retry install
-                            </app-button>
+                        </div>
+                    }
+                    @case ('suspended') {
+                        <div class="grants__stacked">
+                            <app-plugin-badge
+                                [label]="stateLabel(grant)"
+                                [tone]="stateTone(grant)"
+                            />
+                            @if (grant.suspended_at) {
+                                <span class="grants__suspended-at grants__muted text-body-small">
+                                    Since {{ grant.suspended_at | date: 'mediumDate' }}
+                                </span>
+                            }
+                            @if (grant.purge_after) {
+                                <span class="grants__kept-until grants__muted text-body-small">
+                                    Data kept until {{ grant.purge_after | date: 'mediumDate' }}
+                                </span>
+                            }
                         </div>
                     }
                     @default {
@@ -133,6 +143,25 @@
     >
         @if (grantOf(row); as grant) {
             <span class="grants__cell">{{ grant.granted_at | date: 'mediumDate' }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="actions"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <div class="grants__actions">
+                @for (button of actionButtonsOf(grant); track button.action) {
+                    <app-button
+                        [type]="button.type"
+                        mod="small"
+                        [disabled]="isBusy(grant)"
+                        (click)="runAction(grant, button.action)"
+                    >
+                        {{ button.label }}
+                    </app-button>
+                }
+            </div>
         }
     </ng-template>
 

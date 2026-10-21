@@ -27,6 +27,9 @@ export type PluginErrorCode =
     | 'no_plugin_node'
     | 'grant_not_found'
     | 'hook_not_retryable'
+    | 'grant_not_suspendable'
+    | 'grant_not_suspended'
+    | 'plugin_suspended'
     | 'throttled';
 
 /** One problem in a refused package: `loc` is a dotted path such as `manifest.user_permissions[1].action`. */

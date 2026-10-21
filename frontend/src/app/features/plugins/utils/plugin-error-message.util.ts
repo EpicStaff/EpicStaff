@@ -36,8 +36,15 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
         'EpicStaff and approve the package again.',
     grant_not_found: 'This grant no longer exists.',
     hook_not_retryable: 'The install has not failed, so there is nothing to retry.',
+    grant_not_suspendable: "This organization's grant cannot be suspended in its current state. Reload the list.",
+    grant_not_suspended: 'This grant is not suspended. Reload the list.',
+    // Shown only when the server sends no message of its own (see SERVER_MESSAGE_CODES).
+    plugin_suspended: 'This run uses resources of a plugin that is not active in this organization.',
     throttled: 'Too many requests. Wait a moment and try again.',
 };
+
+/** Codes whose server message is what the UI shows, because it names what only the server knows (the plugin). */
+const SERVER_MESSAGE_CODES: ReadonlySet<PluginErrorCode> = new Set<PluginErrorCode>(['plugin_suspended']);
 
 function isPluginErrorCode(code: unknown): code is PluginErrorCode {
     return typeof code === 'string' && Object.hasOwn(PLUGIN_ERROR_MESSAGES, code);
@@ -57,9 +64,10 @@ function toErrorItems(errors: unknown): PluginErrorItem[] {
 }
 
 /**
- * Turns a failed plugin request into what the UI shows: the message for a known `code`, the server's own message for
- * an unknown one, else `fallback`; and the `errors[]` items of a refused package. Any 413 is `package_too_large`,
- * because nginx may refuse an oversized upload before Django, with an HTML body.
+ * Turns a failed plugin request into what the UI shows: the message for a known `code` (the server's own for a code
+ * whose message names the plugin), the server's own message for an unknown code, else `fallback`; and the `errors[]`
+ * items of a refused package. Any 413 is `package_too_large`, because nginx may refuse an oversized upload before
+ * Django, with an HTML body.
  */
 export function toPluginErrorView(error: unknown, fallback: string): PluginErrorView {
     if (!(error instanceof HttpErrorResponse)) return { code: null, message: fallback, items: [] };
@@ -70,11 +78,11 @@ export function toPluginErrorView(error: unknown, fallback: string): PluginError
     if (!isRecord(body)) return { code: null, message: fallback, items: [] };
     const items = toErrorItems(body['errors']);
     const code = body['code'];
-    if (isPluginErrorCode(code)) return { code, message: PLUGIN_ERROR_MESSAGES[code], items };
-    const serverMessage = body['message'];
-    return {
-        code: null,
-        message: typeof serverMessage === 'string' && serverMessage ? serverMessage : fallback,
-        items,
-    };
+    const rawMessage = body['message'];
+    const serverMessage = typeof rawMessage === 'string' && rawMessage ? rawMessage : null;
+    if (isPluginErrorCode(code)) {
+        const message = SERVER_MESSAGE_CODES.has(code) && serverMessage ? serverMessage : PLUGIN_ERROR_MESSAGES[code];
+        return { code, message, items };
+    }
+    return { code: null, message: serverMessage ?? fallback, items };
 }

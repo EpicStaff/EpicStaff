@@ -80,6 +80,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_BASE_DOMAIN` | `plugins.invalid` (production), `plugins.epicstaff.localhost` (development) | The parent of every plugin host, in lower case: `plugins.example.com`. The production default is a placeholder that EpicStaff refuses with plugins on. |
 | `PLUGINS_TRUSTED_SIGNING_KEYS` | `none` | The publishers you trust, comma-separated `<name>:<minisign public key>`. Packages signed by one of these keys are shown as Trusted; see [trust and signing](../explanation/trust-and-signing.md). |
 | `PLUGINS_MAX_PACKAGE_MB` | `300` | The largest package an upload may carry, in MiB (1 MiB = 1,048,576 bytes). Django applies it to the package; nginx accepts a request body one MiB larger, for the multipart framing. Before nginx reads any of an upload, it asks Django (without the body) whether the caller is a logged-in SuperAdmin, and refuses everyone else with 401 or 403, so nobody else can make EpicStaff store a large body. A proxy in front of EpicStaff must allow that size too. |
+| `PLUGINS_GRACE_PERIOD_DAYS` | `30` | Days a suspended plugin keeps its data in an organization before the data is deleted. Resuming within this time restores everything. A whole number from 1 to 3650; EpicStaff refuses to start with plugins on otherwise (`plugins.E011`). Each suspension records its deadline when it happens, so a changed value applies only to later suspensions: set it before the first suspension. A suspended plugin's process keeps running, for the other organizations it is granted to; suspending stops it only in the one organization (see [Suspending a plugin in an organization](#suspending-a-plugin-in-an-organization)). |
 | `PLUGINS_STORAGE_BUCKET` | `epicstaff-plugins` | The bucket in EpicStaff's storage that keeps uploaded packages. Created on the first upload. |
 | `PLUGINS_GATEWAY_SECRET` | `none` | A random value of at least 32 characters, made of letters, digits and `. _ ~ + / = -`: `openssl rand -hex 32`. nginx sends it with every gateway check and with every request that comes through its internal API listener. Django answers a check without it with 404, and accepts a plugin's service-account key or the node's key only on a request that carries it. Required with plugins on. |
 | `DJANGO_FRONTEND_BASE_URL` | already set | The exact origin people open EpicStaff at, such as `https://epicstaff.example.com`: scheme, host and port only, no path (a trailing `/` is allowed). Only this origin may frame a plugin page, so any other value (the development default `http://localhost:4200`, a different port) leaves every plugin page blank. It is also the issuer of the signed context plugin backends verify. |
@@ -153,6 +154,7 @@ Wrong values stop a container with a message instead of serving a broken plugin 
 | `plugins.E008` | `PLUGINS_NODE_UID_RANGE` is not `<start>-<end>` with 10000 < start ≤ end < 60000 and at least 10 ids. |
 | `plugins.E009` | A `PLUGINS_MAX_*` value is not a positive whole number. |
 | `plugins.E010` | The host of `DJANGO_FRONTEND_BASE_URL` is `PLUGINS_BASE_DOMAIN` or a name under it. A plugin's address could then be EpicStaff's own, and EpicStaff would refuse its own pages as a plugin's. |
+| `plugins.E011` | `PLUGINS_GRACE_PERIOD_DAYS` is not a whole number from 1 to 3650. |
 
 **epicstaff-nginx** exits with an `ERROR:` line when `PLUGINS_ENABLED` is not a boolean, and, with
 plugins on, when `PLUGINS_BASE_DOMAIN` is not a lower-case DNS name of two or more labels,
@@ -234,6 +236,24 @@ nginx's internal listener and is refused on EpicStaff's public address, that the
 answers for the member with View and not for the outsider, that the backend may act on behalf of
 the member with View and not of the one without, and that a person-only endpoint (the flow
 assistant's) refuses the key. Extra arguments go to the curl call to `SMOKE_BASE_URL`, as above.
+
+Then check suspending and resuming, on the machine that runs the stack, with a SuperAdmin, an Org
+Admin of the organization and a flow of that organization that uses something the plugin owns
+(with Weather, the flow its install hook creates). The script leaves the grant active, also when a
+check fails:
+
+```bash
+SMOKE_BASE_URL=https://epicstaff.example.com SMOKE_PLUGIN=weather SMOKE_ORG_ID=3 \
+SMOKE_PLUGIN_FLOW_ID=41 SMOKE_SUPERADMIN_EMAIL=root@example.com SMOKE_SUPERADMIN_PASSWORD='…' \
+SMOKE_ORG_ADMIN_EMAIL=ada@example.com SMOKE_ORG_ADMIN_PASSWORD='…' \
+bash src/nginx/tests/suspend_smoke.sh
+```
+
+It suspends the grant and checks that the plugin's key for the organization stops working and the
+organization leaves the runtime file within 30 seconds, that the Org Admin's run of the flow is
+refused with `plugin_suspended`, then resumes and checks that a new key appears and works, the old
+one stays refused, and the run starts. It starts one session of the flow and stops it again. Extra
+arguments go to curl as above.
 
 The repository has two labs that need nothing but Docker: `bash src/nginx/tests/gateway/run.sh`
 checks the gateway's header and path rules and its overhead under load, and
@@ -367,6 +387,20 @@ finish what an earlier attempt began without doing it twice.
 | `this plugin has no install hook` | The package says it has one, but its backend registers none. The publisher must fix the package. |
 | `HTTP …` | The plugin answered with that status and no message of its own. Look at its log. |
 | `The plugin node reported no result in time` | The node did not report back: see that it is running and online. |
+
+## Suspending a plugin in an organization
+
+A SuperAdmin can suspend a plugin's grant in one organization, and resume it, in the plugin's Grants table
+(see [the lifecycle](../explanation/lifecycle.md) for what each does to the organization). For
+the operator:
+
+- **The plugin's process keeps running.** Suspension is per organization: the node removes only that
+  organization from the plugin's runtime file, within seconds, and the plugin's backend keeps serving
+  its other organizations. Nothing restarts, and no hook is called. To take the plugin out of every organization, suspend each grant.
+- **The data is kept for `PLUGINS_GRACE_PERIOD_DAYS`.** Set the variable before the first
+  suspension (see [Settings](#3-settings)); a suspension keeps the deadline it was given.
+- **Resume mints new keys.** The organization's keys are revoked at suspension; the next credentials
+  refresh of the node, within seconds of the resume, writes a new one.
 
 ## Disk
 

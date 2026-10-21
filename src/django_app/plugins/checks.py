@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core import checks
 from epicstaff_plugin.signing import SignatureFormatError, parse_trusted_keys
 
+from plugins.configuration.grace_period import MAX_GRACE_PERIOD_DAYS, grace_period_days
 from plugins.configuration.limits import MAXIMUM_SETTINGS, positive_integer
 from plugins.nodes.node_registration import parse_uid_range
 
@@ -24,6 +25,7 @@ NODE_KEY_CHECK_ID = "plugins.E007"
 NODE_UID_RANGE_CHECK_ID = "plugins.E008"
 PLATFORM_MAXIMUMS_CHECK_ID = "plugins.E009"
 EPICSTAFF_HOST_CHECK_ID = "plugins.E010"
+GRACE_PERIOD_CHECK_ID = "plugins.E011"
 
 MIN_SHARED_SECRET_LENGTH = 32
 UNCONFIGURED = "none"
@@ -69,6 +71,7 @@ def check_plugin_platform_settings(app_configs, **kwargs) -> list[checks.Error]:
         ),
         *_uid_range_errors(),
         *_platform_maximum_errors(),
+        *_grace_period_errors(),
     ]
 
 
@@ -280,4 +283,19 @@ def _platform_maximum_errors() -> list[checks.Error]:
         )
         for setting in MAXIMUM_SETTINGS.values()
         if positive_integer(getattr(settings, setting)) is None
+    ]
+
+
+def _grace_period_errors() -> list[checks.Error]:
+    if grace_period_days(settings.PLUGINS_GRACE_PERIOD_DAYS) is not None:
+        return []
+    return [
+        checks.Error(
+            f"PLUGINS_GRACE_PERIOD_DAYS must be a whole number from 1 to {MAX_GRACE_PERIOD_DAYS}.",
+            hint=(
+                "It is how many days a suspended plugin keeps its data in an organization; "
+                "the default is 30."
+            ),
+            id=GRACE_PERIOD_CHECK_ID,
+        )
     ]

@@ -67,7 +67,7 @@ PLUGIN_REACHABLE_VIEWS: dict[str, tuple[str, str]] = {
     "tables.views.views.ProcessRagIndexingView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source, fetched in the active organization"),
     "tables.views.views.CancelRagIndexingView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source, fetched in the active organization"),
     "tables.views.views.TelegramTriggerNodeAvailableFieldsView": (GLOBAL_READ_ONLY, "the fixed list of Telegram trigger fields"),
-    "tables.views.default_config.DefaultModelsAPIView": (RESOLVER_IN_CODE, "assert_org_permission in the active organization"),
+    "tables.views.default_config.DefaultModelsAPIView": (RESOLVER_IN_CODE, "assert_org_permission in the active organization: llm_configs read for a plugin's read, update for every write"),
     "tables.views.recycle_bin_views.RecycleBinSettingsView": (GLOBAL_READ_ONLY, "the deployment's recycle-bin retention"),
     "tables.views.sse_views.RunSessionSSEViewSwagger": (GLOBAL_READ_ONLY, "a documentation stub that answers nothing"),
     "tables.views.knowledge_views.naive_rag_views.ProcessNaiveRagDocumentChunkingView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source, fetched in the active organization"),

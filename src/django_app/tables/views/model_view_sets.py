@@ -277,6 +277,7 @@ from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
@@ -1807,6 +1808,10 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         itself (an unguessable UUID) is the lookup/authorization key, so the
         normal `HasOrgPermission` + `OrgScopedViewSetMixin.get_queryset` org
         filter is deliberately bypassed here.
+
+        A found channel still passes run admission in its own organization: a
+        refused call answers 409, which the realtime service treats as no
+        channel and drops.
         """
         raw_token = request.query_params.get("token")
         if not raw_token:
@@ -1826,6 +1831,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         )
         if channel is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
+        assert_run_admitted(RunSubject(RunKind.VOICE_CHANNEL, channel.pk, channel.org_id))
         return Response(RealtimeChannelInternalSerializer(channel).data)
 
 

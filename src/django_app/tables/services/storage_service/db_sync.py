@@ -367,17 +367,19 @@ def _insert_skipping_live_paths(rows: list[StorageFile]) -> list[int]:
         field for field in opts.concrete_fields if not field.primary_key and not field.generated
     ]
     inserted_ids = []
-    for start in range(0, len(rows), _BULK_BATCH):
-        # bulk_create refuses to return ids with ignore_conflicts, so this calls the insert
-        # it is built on.
-        returned = StorageFile.objects._insert(
-            rows[start : start + _BULK_BATCH],
-            fields=fields,
-            returning_fields=[opts.pk],
-            on_conflict=OnConflict.IGNORE,
-        )
-        # A one-row batch that conflicts comes back as [None], not [].
-        inserted_ids.extend(row[0] for row in returned if row is not None)
+    # All batches or none, as bulk_create does.
+    with transaction.atomic(savepoint=False):
+        for start in range(0, len(rows), _BULK_BATCH):
+            # bulk_create refuses to return ids with ignore_conflicts, so this calls the
+            # insert it is built on.
+            returned = StorageFile.objects._insert(
+                rows[start : start + _BULK_BATCH],
+                fields=fields,
+                returning_fields=[opts.pk],
+                on_conflict=OnConflict.IGNORE,
+            )
+            # A one-row batch that conflicts comes back as [None], not [].
+            inserted_ids.extend(row[0] for row in returned if row is not None)
     return inserted_ids
 
 

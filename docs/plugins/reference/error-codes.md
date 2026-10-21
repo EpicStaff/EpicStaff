@@ -49,8 +49,11 @@ back.
 | `invalid_on_behalf_of` | 400 | `X-EpicStaff-On-Behalf-Of` is not a user id: a decimal positive whole number below 2^63 |
 | `on_behalf_of_not_allowed` | 403 | The person `X-EpicStaff-On-Behalf-Of` names may not use the plugin in the service account's organization: unknown, deactivated, no member, no `read` on the plugin, or the grant is not active (always while the install hook runs). One answer for every reason |
 | `person_not_found` | 404 | The people endpoint: the user may not use the plugin in the service account's organization, members without `read` included |
-| `grant_not_found` | 404 | Retrying the install hook of a grant that does not exist, or that is another plugin's |
+| `grant_not_found` | 404 | Suspending, resuming or previewing a suspension of a grant, or retrying its install hook, when the grant does not exist or is another plugin's |
 | `hook_not_retryable` | 409 | Retrying the install hook of a grant whose install hook has not failed |
+| `grant_not_suspendable` | 409 | Suspending a grant that is already suspended, or in a state that cannot be suspended. Reload the grant: its `allowed_actions` lists what it allows |
+| `grant_not_suspended` | 409 | Resuming a grant that is not suspended |
+| `plugin_suspended` | 409 | A flow run, test run, realtime conversation, voice call or code test-run would use something a plugin owns in the organization, and the plugin is not active there: suspended, still installing, its install failed, or its grant is gone. Every run of the organization's own flows that uses one of the plugin's resources is refused too. The body also has `plugin` (`identifier`, `name`) and `organization` (`id`); it never names the resource. See [the plugin lifecycle](../explanation/lifecycle.md) |
 | `hook_job_not_found` | 404 | A plugin node claims or reports a hook job that does not exist or belongs to another node |
 | `hook_job_not_claimable` | 409 | A plugin node claims a hook job that is not waiting, whose plugin is not running, or whose grant is gone or no longer in the state the hook runs in |
 | `hook_job_not_running` | 409 | A plugin node reports the result of a hook job that is not running, or of another attempt than the running one |

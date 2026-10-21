@@ -9,6 +9,7 @@ from loguru import logger
 from src.shared.models import ScheduleTriggerNodePayload
 from src.shared.schedule.trigger_builder import build_trigger
 from tables.models.graph_models import ScheduleTriggerNode
+from tables.services.run_admission import RunAdmissionRefusedError, log_trigger_refusal_once
 from tables.services.schedule_condition_strategies import get_end_condition_strategy
 from tables.services.trigger_spec import TriggerSpec
 from tables.validators.schedule_trigger_validator import ScheduleTriggerValidator
@@ -86,6 +87,9 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         Manager just fired this node and does not need its APScheduler job
         rebuilt for a derived-field change.
 
+        A run refused at admission writes nothing and raises nothing: the refusal is
+        logged once per node and cause, and the node keeps firing.
+
         Terminal conditions (end_date reached, max_runs reached) flip
         is_active=False AND next_run_date_time=None via .save() — the post_save
         signal publishes a node_update echo that Manager consumes to drop its
@@ -111,7 +115,15 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
                 )
                 return
 
-            self._start_session(node)
+            try:
+                self._start_session(node)
+            except RunAdmissionRefusedError as error:
+                # Each tick while refused is skipped and nothing about the node changes;
+                # a one-time schedule that fires now does not run later.
+                log_trigger_refusal_once(
+                    trigger="schedule", node_id=node.pk, graph_id=node.graph_id, error=error
+                )
+                return
             self._increment_runs(node)
 
             if strategy.is_run_limit_reached(node):

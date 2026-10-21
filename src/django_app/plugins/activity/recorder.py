@@ -6,14 +6,18 @@ except the `/api/plugin-runtime/` calls, which only read. Recording it never cha
 response: a failure is logged and the response goes out as it is. Lifecycle events are
 written by the services that change the plugin, in their transaction.
 
+`detail` holds only scalars and lists of strings, so every reader can show it as it is.
+
 Adding an action: an `ActivityAction` choice and its migration, a method here called where
 the thing happens, then the frontend's label for it and its row in the service-account API
 reference.
 """
 
+import re
 from typing import TYPE_CHECKING
 
 from django.db.models import Model
+from rest_framework import serializers
 from rest_framework.permissions import SAFE_METHODS
 from utils.logger import logger
 
@@ -35,6 +39,9 @@ RUNTIME_API_PATH_PREFIX = "/api/plugin-runtime/"
 FIRST_FAILURE_STATUS = 400
 # URL kwargs a detail route names its object by.
 TARGET_URL_KWARGS = ("pk", "id")
+# The columns a row is labelled with, the first one its model has.
+TARGET_LABEL_FIELDS = ("name", "custom_name")
+_NAMED_GROUP_START = re.compile(r"\(\?P<(\w+)>")
 PLATFORM_ACTOR_LABEL = "Platform"
 # The actions a finished hook job of each kind is recorded as: (succeeded, failed).
 HOOK_FINISHED_ACTIONS = {
@@ -53,7 +60,9 @@ class ActivityRecorder:
                 return
             match = getattr(request, "resolver_match", None)
             view_class = getattr(getattr(match, "func", None), "cls", None)
-            target = _target_from_created(scope) or _target_from_url(view_class, match)
+            target = _target_from_created(scope) or _target_from_url(
+                view_class, match, scope.principal.pinned_org_id
+            )
             self._write_api_request(
                 scope,
                 method=request.method,
@@ -106,6 +115,27 @@ class ActivityRecorder:
             actor, grant.plugin.identifier, grant.org_id, ActivityAction.GRANT_CREATED, {}
         )
 
+    def grant_suspended(self, actor, grant: PluginGrant, previous_state: str) -> None:
+        _superadmin_event(
+            actor,
+            grant.plugin.identifier,
+            grant.org_id,
+            ActivityAction.GRANT_SUSPENDED,
+            {
+                "previous_state": previous_state,
+                "purge_after": serializers.DateTimeField().to_representation(grant.purge_after),
+            },
+        )
+
+    def grant_resumed(self, actor, grant: PluginGrant) -> None:
+        _superadmin_event(
+            actor,
+            grant.plugin.identifier,
+            grant.org_id,
+            ActivityAction.GRANT_RESUMED,
+            {"state": grant.state},
+        )
+
     def install_hook_retried(self, actor, job: PluginHookJob, identifier: str) -> None:
         _superadmin_event(
             actor,
@@ -138,9 +168,8 @@ class ActivityRecorder:
         )
 
     def limits_changed(self, actor, identifier: str, overrides: dict) -> None:
-        _superadmin_event(
-            actor, identifier, None, ActivityAction.LIMITS_CHANGED, {"overrides": overrides}
-        )
+        """Record the overrides in force after the change, one scalar per limit."""
+        _superadmin_event(actor, identifier, None, ActivityAction.LIMITS_CHANGED, dict(overrides))
 
     def restarted(self, actor, identifier: str, restart_generation: int) -> None:
         _superadmin_event(
@@ -175,7 +204,7 @@ class ActivityRecorder:
             action=ActivityAction.API_REQUEST,
             request_method=method,
             request_path=path,
-            request_route=route,
+            request_route=url_path_pattern(route) if route is not None else None,
             response_status=status,
             target_resource_type=resource_type,
             target_id=target_id,
@@ -199,24 +228,65 @@ def _target_from_created(scope: "PluginRequestScope") -> tuple[str, str | None] 
     return str(first.pk), first.label
 
 
-def _target_from_url(view_class, match) -> tuple[str, str | None] | None:
-    """The object a detail route names, labelled with its name when it has one and still exists."""
+def url_path_pattern(route: str) -> str:
+    """A resolved route as a URL path pattern, the same form for every view.
+
+    A router's regular expressions lose their anchors and escapes, and each named group
+    becomes `<name>`: `api/^graphs/(?P<pk>[^/.]+)/$` is recorded as `api/graphs/<pk>/`.
+    """
+    parts = []
+    position = 0
+    while (group := _NAMED_GROUP_START.search(route, position)) is not None:
+        parts.append(route[position : group.start()])
+        parts.append(f"<{group.group(1)}>")
+        position = _end_of_group(route, group.end())
+    parts.append(route[position:])
+    return re.sub(r"\\(.)", r"\1", "".join(parts).replace("^", "").replace("$", ""))
+
+
+def _end_of_group(route: str, position: int) -> int:
+    """The position after the parenthesis that closes the group open before `position`."""
+    depth = 1
+    while position < len(route) and depth:
+        character = route[position]
+        if character == "\\":
+            position += 1
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        position += 1
+    return position
+
+
+def _target_from_url(view_class, match, org_id: int) -> tuple[str, str | None] | None:
+    """The object a detail route names, labelled when the organization still has it."""
     kwargs = match.kwargs if match is not None else {}
     value = next((kwargs[name] for name in TARGET_URL_KWARGS if name in kwargs), None)
     if value is None:
         return None
-    return str(value), _name_of_row(view_class, value)
+    return str(value), _label_of_row(view_class, value, org_id)
 
 
-def _name_of_row(view_class, value) -> str | None:
+def _label_of_row(view_class, value, org_id: int) -> str | None:
+    """The row's name (or custom name), read in `org_id` only, so a label never comes from
+    another organization's row; None for a model without an organization."""
     model = _model_of(view_class)
-    if model is None or "name" not in {field.name for field in model._meta.concrete_fields}:
+    if model is None:
+        return None
+    field_names = {field.name for field in model._meta.concrete_fields}
+    label_field = next((name for name in TARGET_LABEL_FIELDS if name in field_names), None)
+    if "org" not in field_names or label_field is None:
         return None
     try:
-        name = model._base_manager.filter(pk=value).values_list("name", flat=True).first()
+        label = (
+            model._base_manager.filter(pk=value, org_id=org_id)
+            .values_list(label_field, flat=True)
+            .first()
+        )
     except (TypeError, ValueError):
         return None
-    return name if isinstance(name, str) else None
+    return label if isinstance(label, str) else None
 
 
 def _model_of(view_class) -> type[Model] | None:

@@ -87,6 +87,12 @@ from tables.services.notification_email_sender import NotificationEmailSender
 from tables.services.quickstart_service import QuickstartService
 from tables.services.realtime_service import RealtimeService
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import (
+    RunAdmissionRefusedError,
+    RunKind,
+    RunSubject,
+    assert_run_admitted,
+)
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
 from tables.services.session_access import (
@@ -501,6 +507,9 @@ class RunSession(APIView):
                 session_id=session_id,
                 arrival_ts=request_received_ts,
             )
+        except RunAdmissionRefusedError:
+            # A refusal is the caller's answer (409), not a failure to start.
+            raise
         except Exception as e:
             logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
@@ -791,6 +800,8 @@ class InitRealtimeAPIView(APIView):
                     "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
                 }
             )
+        # Outside the try below, whose generic handler would turn the 409 into a 400.
+        assert_run_admitted(RunSubject(RunKind.REALTIME, agent_definition_id, org_id))
 
         try:
             connection_key = realtime_service.init_realtime_agent_definition(

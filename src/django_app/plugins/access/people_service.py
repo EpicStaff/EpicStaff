@@ -9,19 +9,17 @@ use it.
 
 from dataclasses import dataclass
 
-from django.contrib.auth import get_user_model
+from django.db.models import prefetch_related_objects
+from epicstaff_plugin.contracts.service_account_api import MAX_USER_ID
 from rbac.access.effective import EffectivePermissions
 from rbac.models import OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
-from plugins.access.plugin_access import eligible_people, resolve_person_plugin_access
+from plugins.access.plugin_access import eligible_people
 from plugins.access.plugin_permissions import is_built_in_superadmin_role
 from plugins.audit import log_on_behalf_of_refused
 from plugins.exceptions import OnBehalfOfNotAllowedError, PersonNotFoundError
 from plugins.models import PluginGrant
-
-# EpicStaff's ids are signed 64-bit integers.
-MAX_USER_ID = 2**63 - 1
 
 
 @dataclass(frozen=True)
@@ -42,33 +40,34 @@ class PluginPersonFacts:
 
 
 class PluginPeopleService:
+    """Answers a plugin's service account about people.
+
+    Every method takes the grant as the service-account key loads it: with its plugin and
+    current package.
+    """
+
     def on_behalf_of(self, grant: PluginGrant, user_id: int):
         """Return the user a service account call names, when the plugin may act for them.
 
         Only the plugin's rule is checked (may the person use the plugin here), never the
         person's own EpicStaff rights: the plugin's declared access still caps every call.
+        One query whoever `user_id` names (`eligible_people`), so a plugin cannot tell an
+        unknown id from a person it may not act for by how long the refusal takes.
+        `user_id` is the authentication's, already checked to be a valid id.
 
         Raises:
             OnBehalfOfNotAllowedError: The user is unknown, inactive, no member of the
                 grant's active organization, holds no `read` on the plugin, or the grant is
                 not active; one answer for every case.
         """
-        user = (
-            get_user_model().objects.filter(pk=user_id).first()
-            if 0 < user_id <= MAX_USER_ID
-            else None
-        )
-        access = (
-            resolve_person_plugin_access(user, grant.org_id, grant.plugin)
-            if user is not None
-            else None
-        )
-        if access is None:
+        eligible = eligible_people([user_id], grant)
+        if not eligible:
             log_on_behalf_of_refused(
                 identifier=grant.plugin.identifier, org_id=grant.org_id, user_id=user_id
             )
             raise OnBehalfOfNotAllowedError()
-        return user
+        membership, _ = eligible[0]
+        return membership.user
 
     def person(self, grant: PluginGrant, user_id: int) -> PluginPersonFacts:
         """Return one person who may use the plugin in the grant's organization.
@@ -84,11 +83,14 @@ class PluginPeopleService:
     def people(self, grant: PluginGrant, user_ids: list[int]) -> list[PluginPersonFacts]:
         """Return those of `user_ids` who may use the plugin there, sorted by user id.
 
-        At most six queries, whatever the number of ids: four for the people, two for the
-        Org Admin role when one of them holds the built-in Superadmin role.
+        At most four queries, whatever the number of ids: one for the people, one for their
+        roles' permission rows, and two for the Org Admin role when one of them holds the
+        built-in Superadmin role.
         """
+        # A URL's id may be any size; anything outside EpicStaff's ids names nobody.
         valid_ids = [user_id for user_id in user_ids if 0 < user_id <= MAX_USER_ID]
-        eligible = eligible_people(valid_ids, grant.org_id, grant.plugin)
+        eligible = eligible_people(valid_ids, grant)
+        prefetch_related_objects([membership.role for membership, _ in eligible], "permissions_set")
         org_admin_role = (
             _built_in_org_admin_role()
             if any(is_built_in_superadmin_role(membership.role) for membership, _ in eligible)

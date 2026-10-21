@@ -2,10 +2,12 @@
 
 An ownable root is a model of the recycle bin (`bin_resources()`) or of
 `EXTRA_OWNABLE_MODELS`. While the current request scope holds a service account, every new
-row of one is recorded as a `PluginOwnedResource`, on behalf of a person or not, in the
-transaction that created it (a rollback removes both). Deleting a root deletes its row, in the
-transaction of the delete: one query per deleted object, or per queryset however many rows it
-deletes.
+row of one in the service account's own organization is recorded as a `PluginOwnedResource`,
+on behalf of a person or not, in the transaction that created it (a rollback removes both).
+
+Deleting a root leaves its row behind as a tombstone (`existing_owned`): no delete listener is
+ever connected to an ownable model, because any listener turns off Django's column deferral
+for every row of that model a cascade deletes.
 
 Rows arrive two ways: `post_save(created=True)`, and `tables.signals.rows_bulk_created` for a
 `bulk_create`, which sends no `post_save`. Adding an ownable root model: list it in the bin
@@ -15,15 +17,14 @@ registry or in `EXTRA_OWNABLE_MODELS`, and make each `bulk_create` of it send
 
 from collections.abc import Callable, Iterable
 from functools import cache
-from weakref import WeakSet
 
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Model, QuerySet
-from django.db.models.signals import post_save, pre_delete
-from rbac.models import Organization
+from django.db.models import Model
+from django.db.models.signals import post_save
 from tables.services.recycle_bin.registry import bin_resources
 from tables.signals import rows_bulk_created
+from utils.logger import logger
 
 from plugins.identity.principals import PluginServiceAccountPrincipal
 from plugins.models import PluginOwnedResource
@@ -44,10 +45,8 @@ EXTRA_OWNABLE_MODELS = (
     "tables.RealtimeTranscriptionModel",
     "tables.StorageFile",
 )
-# A queryset delete sends `pre_delete` once per row. The ownership rows of every row it
-# matches go at its first signal; the querysets already handled are remembered here (until
-# they are garbage collected) so the signals that follow cost nothing.
-_forgotten_querysets: WeakSet = WeakSet()
+# Rows per INSERT, so a bulk upload of many files never builds one huge statement.
+OWNERSHIP_INSERT_BATCH_SIZE = 1000
 # Rows of an ownable model that are owned. A folder is a container the organization's own
 # files live in: owning it would let a later purge of the plugin's rows take them along.
 OWNED_ROWS: dict[str, Callable[[Model], bool]] = {
@@ -70,9 +69,6 @@ def connect_ownership_recorder() -> None:
         post_save.connect(
             _record_created, sender=model, dispatch_uid=f"plugins-ownership-created-{label}"
         )
-        pre_delete.connect(
-            _forget_deleted, sender=model, dispatch_uid=f"plugins-ownership-deleted-{label}"
-        )
     rows_bulk_created.connect(_record_bulk_created, dispatch_uid="plugins-ownership-bulk")
 
 
@@ -92,41 +88,41 @@ def _record_bulk_created(sender, queryset, **kwargs) -> None:
     _record(sender, list(queryset), scope)
 
 
-def _forget_deleted(sender, instance, origin=None, **kwargs) -> None:
-    # An organization delete takes its ownership rows along by cascade; asking for each of
-    # its resources one by one would only slow it down.
-    if isinstance(origin, Organization):
-        return
-    owned = PluginOwnedResource.objects.filter(
-        content_type=ContentType.objects.get_for_model(sender)
-    )
-    # Deleting a queryset deletes exactly the rows it matches, as no ownable root cascades
-    # from a row of its own model (the ownership guards check it): one query covers them all.
-    if isinstance(origin, QuerySet) and origin.model is sender:
-        if origin not in _forgotten_querysets:
-            owned.filter(object_id__in=origin.values("pk")).delete()
-            _forgotten_querysets.add(origin)
-        return
-    owned.filter(object_id=instance.pk).delete()
-
-
 def _record(model: type[Model], rows: Iterable[Model], scope) -> None:
     principal: PluginServiceAccountPrincipal = scope.principal
     is_owned = OWNED_ROWS.get(model._meta.label, lambda row: True)
-    owned = [row for row in rows if is_owned(row)]
+    owned = []
+    for row in rows:
+        if not is_owned(row):
+            continue
+        # A purge of the plugin's rows trusts what is recorded here, so a row outside the
+        # service account's organization (another one's, or a built-in without one) is never
+        # recorded, whichever code path created it.
+        if row.org_id != principal.pinned_org_id:
+            logger.warning(
+                "plugins.ownership.foreign_row plugin={plugin} model={model} pk={pk}",
+                plugin=principal.plugin_identifier,
+                model=model._meta.label,
+                pk=row.pk,
+            )
+            continue
+        owned.append(row)
     if not owned:
         return
     content_type = ContentType.objects.get_for_model(model)
     PluginOwnedResource.objects.bulk_create(
-        PluginOwnedResource(
-            org_id=principal.pinned_org_id,
-            grant_id=principal.grant_id,
-            plugin_identifier=principal.plugin_identifier,
-            content_type=content_type,
-            object_id=row.pk,
-            on_behalf_of=principal.person,
-        )
-        for row in owned
+        (
+            PluginOwnedResource(
+                org_id=principal.pinned_org_id,
+                grant_id=principal.grant_id,
+                plugin_identifier=principal.plugin_identifier,
+                content_type=content_type,
+                object_id=row.pk,
+                on_behalf_of=principal.person,
+            )
+            for row in owned
+        ),
+        batch_size=OWNERSHIP_INSERT_BATCH_SIZE,
     )
     scope.created.extend(
         CreatedRoot(model_label=model._meta.label, pk=row.pk, label=_name_of(row)) for row in owned
@@ -134,5 +130,9 @@ def _record(model: type[Model], rows: Iterable[Model], scope) -> None:
 
 
 def _name_of(row: Model) -> str | None:
-    name = getattr(row, "name", None)
-    return name if isinstance(name, str) else None
+    # Most roots have a `name`; configs (an LLM config) have only a `custom_name`.
+    for field_name in ("name", "custom_name"):
+        value = getattr(row, field_name, None)
+        if isinstance(value, str):
+            return value
+    return None

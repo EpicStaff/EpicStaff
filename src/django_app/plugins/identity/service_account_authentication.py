@@ -17,6 +17,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
+from epicstaff_plugin.contracts.service_account_api import MAX_USER_ID
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.permissions import BasePermission
 
@@ -27,13 +28,11 @@ from plugins.exceptions import InvalidOnBehalfOfError, ServiceAccountNotAuthenti
 from plugins.identity.internal_listener import came_through_internal_listener
 from plugins.identity.principals import PluginServiceAccountPrincipal
 from plugins.identity.service_account_keys import hash_service_account_key
-from plugins.models import KEY_HOLDING_GRANT_STATES, PluginServiceAccountKey
+from plugins.models import KEY_HOLDING_GRANT_STATES, PluginServiceAccount, PluginServiceAccountKey
 from plugins.ownership.request_scope import scope_for_authentication
 
 KEYWORD = "PluginKey"
 ON_BEHALF_OF_META_KEY = "HTTP_X_EPICSTAFF_ON_BEHALF_OF"
-# EpicStaff's ids are signed 64-bit integers.
-MAX_ON_BEHALF_OF_ID = 2**63 - 1
 LAST_USED_WRITE_INTERVAL = timedelta(seconds=60)
 
 
@@ -139,11 +138,14 @@ def _refuse(identifier: str | None, reason: str):
 
 
 def _mark_used(key: PluginServiceAccountKey, now) -> None:
-    # At most one write per key a minute, so a busy plugin does not turn every call into one.
-    if key.last_used_at is not None and now - key.last_used_at < LAST_USED_WRITE_INTERVAL:
+    # On the account, not the key: a mint every few minutes would otherwise leave a trail of
+    # keys to sort for the latest use. At most one write a minute, so a busy plugin does not
+    # turn every call into one.
+    account = key.service_account
+    if account.last_used_at is not None and now - account.last_used_at < LAST_USED_WRITE_INTERVAL:
         return
-    PluginServiceAccountKey.objects.filter(pk=key.pk).update(last_used_at=now)
-    key.last_used_at = now
+    PluginServiceAccount.objects.filter(pk=account.pk).update(last_used_at=now)
+    account.last_used_at = now
 
 
 def _on_behalf_of_user_id(request) -> int | None:
@@ -158,6 +160,6 @@ def _on_behalf_of_user_id(request) -> int | None:
     if not value.isascii() or not value.isdigit():
         raise InvalidOnBehalfOfError()
     user_id = int(value)
-    if not 0 < user_id <= MAX_ON_BEHALF_OF_ID:
+    if not 0 < user_id <= MAX_USER_ID:
         raise InvalidOnBehalfOfError()
     return user_id

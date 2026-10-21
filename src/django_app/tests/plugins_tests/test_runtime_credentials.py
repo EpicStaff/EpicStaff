@@ -5,11 +5,12 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 from epicstaff_plugin.contracts.runtime import RuntimeFile
+from plugins.identity.service_account_keys import ServiceAccountKeyService
 from plugins.identity.signing_keys import PluginSigningKeyService
 from plugins.lifecycle.grant_service import PluginGrantService
 from plugins.nodes.runtime_credentials_service import RuntimeCredentialsService
 from pydantic import ValidationError
-from plugins.models import GrantState, PluginGrant, PluginSigningKey
+from plugins.models import GrantState, PluginGrant, PluginServiceAccountKey, PluginSigningKey
 from rbac.models import Organization
 
 from src.shared.models.plugin_nodes import RuntimeCredentials
@@ -194,6 +195,66 @@ def granted(weather, superadmin):
         return organization
 
     return _make
+
+
+def _keys():
+    return sorted(PluginServiceAccountKey.objects.values_list("pk", "expires_at", "revoked_at"))
+
+
+@pytest.fixture
+def keys_in_use(weather, plugin_node, granted, acme, beta):
+    """Two organizations whose service accounts hold keys: a current one and a superseded one each."""
+    granted(acme)
+    granted(beta)
+    ServiceAccountKeyService().mint_for_plugin(weather)
+    ServiceAccountKeyService().mint_for_plugin(weather)
+    keys = _keys()
+    assert len(keys) == 4
+    return keys
+
+
+def test_a_document_that_does_not_validate_mints_nothing_and_revokes_nothing(
+    weather, plugin_node, keys_in_use, monkeypatch, log_messages, django_capture_on_commit_callbacks
+):
+    monkeypatch.setattr(
+        "plugins.nodes.runtime_credentials_service.runtime_settings",
+        lambda manifest, stored: ({}, {"forecast_api_token": [SECRET_VALUE]}),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True), pytest.raises(ValidationError) as raised:
+        RuntimeCredentialsService().credentials_for(plugin_node, weather.placement.pk)
+
+    assert SECRET_VALUE not in str(raised.value)
+    assert _keys() == keys_in_use
+    assert not [line for line in log_messages if line.startswith("plugins.service_account.keys_minted")]
+
+
+def test_secret_settings_that_cannot_be_decrypted_mint_nothing(weather, plugin_node, keys_in_use, monkeypatch, log_messages):
+    def undecryptable(manifest, stored):
+        raise RuntimeError("cannot decrypt")
+
+    monkeypatch.setattr("plugins.nodes.runtime_credentials_service.runtime_settings", undecryptable)
+
+    with pytest.raises(RuntimeError):
+        RuntimeCredentialsService().credentials_for(plugin_node, weather.placement.pk)
+
+    assert _keys() == keys_in_use
+    assert not [line for line in log_messages if line.startswith("plugins.service_account.keys_minted")]
+
+
+def test_a_failed_call_leaves_the_keys_working(weather, plugin_node, node_client, keys_in_use, acme, monkeypatch):
+    current = _credentials(node_client, weather).json()["runtime_file"]["service_accounts"][str(acme.pk)]["key"]
+    monkeypatch.setattr(
+        "plugins.nodes.runtime_credentials_service.runtime_settings",
+        lambda manifest, stored: ({}, {"forecast_api_token": [SECRET_VALUE]}),
+    )
+
+    for _ in range(2):
+        with pytest.raises(ValidationError):
+            RuntimeCredentialsService().credentials_for(plugin_node, weather.placement.pk)
+
+    assert PluginServiceAccountKey.objects.get(prefix=current[:12]).expires_at is None
+    assert service_account_client(current, acme).get(ME_URL).status_code == 200
 
 
 def test_service_accounts_list_the_key_holding_grants_each_with_a_working_key(weather, node_client, granted, acme, beta):

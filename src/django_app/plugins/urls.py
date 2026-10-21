@@ -12,6 +12,11 @@ from plugins.views.admin_backend import (
     PluginRuntimeView,
     PluginSettingsView,
 )
+from plugins.views.admin_grant_lifecycle import (
+    PluginGrantResumeView,
+    PluginGrantSuspendPreviewView,
+    PluginGrantSuspendView,
+)
 from plugins.views.admin_plugins import (
     PluginDetailView,
     PluginGrantListView,
@@ -85,6 +90,21 @@ urlpatterns = [
         "api/admin/plugins/<str:identifier>/grants/<int:grant_id>/retry-hook/",
         PluginGrantRetryHookView.as_view(),
         name="admin-plugin-grant-retry-hook",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/grants/<int:grant_id>/suspend-preview/",
+        PluginGrantSuspendPreviewView.as_view(),
+        name="admin-plugin-grant-suspend-preview",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/grants/<int:grant_id>/suspend/",
+        PluginGrantSuspendView.as_view(),
+        name="admin-plugin-grant-suspend",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/grants/<int:grant_id>/resume/",
+        PluginGrantResumeView.as_view(),
+        name="admin-plugin-grant-resume",
     ),
     path(
         "api/admin/plugins/<str:identifier>/activity/",

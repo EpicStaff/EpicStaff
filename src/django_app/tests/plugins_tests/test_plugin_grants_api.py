@@ -1,13 +1,13 @@
 """Granting plugins to organizations."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from django.db import IntegrityError
 from plugins.lifecycle.grant_service import PluginGrantService
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
-from plugins.models import GrantState, PluginGrant, PluginOwnedResource, PluginServiceAccountKey
+from plugins.models import GrantState, PluginGrant, PluginOwnedResource, PluginServiceAccount
 from rbac.models import Organization
 from tables.models import Graph
 
@@ -36,6 +36,31 @@ def test_granting_creates_an_active_grant(superadmin_client, superadmin_user, ru
     assert (grant["suspended_at"], grant["purge_after"], grant["last_hook_error"]) == (None, None, None)
     stored = PluginGrant.objects.get(pk=grant["id"])
     assert (stored.org_id, stored.created_by_id, stored.state) == (acme.id, superadmin_user.id, GrantState.ACTIVE)
+
+
+def test_every_grant_response_carries_the_actions_it_allows(superadmin_client, running_plugin, grant_to, acme, beta):
+    plugin = running_plugin()
+    created = superadmin_client.post(_grants_url(), {"organization_id": acme.id}, format="json").json()
+    suspended_at = timezone.now()
+    grant_to(plugin, beta, state=GrantState.SUSPENDED)
+    PluginGrant.objects.filter(org=beta).update(suspended_at=suspended_at, purge_after=suspended_at + timedelta(days=30))
+
+    listed = {grant["organization"]["id"]: grant for grant in superadmin_client.get(_grants_url()).json()["results"]}
+
+    assert created["allowed_actions"] == ["suspend"]
+    assert listed[acme.id]["allowed_actions"] == ["suspend"]
+    suspended = listed[beta.id]
+    assert (suspended["state"], suspended["allowed_actions"]) == ("suspended", ["resume"])
+    assert datetime.fromisoformat(suspended["suspended_at"]) == suspended_at
+    assert datetime.fromisoformat(suspended["purge_after"]) == suspended_at + timedelta(days=30)
+
+
+def test_granting_an_organization_whose_grant_is_suspended_conflicts(superadmin_client, running_plugin, grant_to, acme):
+    grant_to(running_plugin(), acme, state=GrantState.SUSPENDED)
+
+    response = superadmin_client.post(_grants_url(), {"organization_id": acme.id}, format="json")
+
+    assert (response.status_code, response.json()["code"]) == (409, "plugin_already_granted")
 
 
 def test_the_plugin_count_shows_active_grants(superadmin_client, running_plugin, grant_to, acme, beta):
@@ -181,7 +206,7 @@ def test_a_grant_shows_its_service_account_install_hook_and_owned_resources(
         for graph in graphs
     )
     used_at = timezone.now()
-    PluginServiceAccountKey.objects.update(last_used_at=used_at)
+    PluginServiceAccount.objects.update(last_used_at=used_at)
 
     [listed] = superadmin_client.get(_grants_url()).json()["results"]
 

@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ConfirmationDialogService } from '@shared/components';
+import { ConfirmationDialogData, ConfirmationDialogService } from '@shared/components';
 import { Observable, of, Subject, throwError } from 'rxjs';
 import type { Mock } from 'vitest';
 
@@ -11,6 +11,7 @@ import { PluginDialogsService } from '../../services/plugin-dialogs.service';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import { buildPluginGrant } from '../../testing/plugin-fixtures';
 import { PLUGIN_ERROR_MESSAGES } from '../../utils/plugin-error-message.util';
+import { PluginSuspendDialogData } from '../plugin-suspend-dialog/plugin-suspend-dialog.component';
 import { PLUGIN_GRANTS_POLL_MS, PluginGrantsTableComponent } from './plugin-grants-table.component';
 
 class ResizeObserverStub {
@@ -28,6 +29,7 @@ const INSTALLING = buildPluginGrant({
     id: 6,
     organization: { id: 4, name: 'Bravo' },
     state: 'granting',
+    allowed_actions: ['suspend'],
     owned_resource_count: 0,
     install_hook: { state: 'running', attempt: 1, started_at: '2026-10-21T08:00:05Z', finished_at: null, error: null },
 });
@@ -35,6 +37,7 @@ const FAILED = buildPluginGrant({
     id: 7,
     organization: { id: 5, name: 'Charlie' },
     state: 'install_failed',
+    allowed_actions: ['retry_install', 'suspend'],
     owned_resource_count: 1,
     last_hook_error: 'The plugin node reported no result in time',
     install_hook: {
@@ -52,6 +55,28 @@ const FRONTEND_ONLY = buildPluginGrant({
     install_hook: null,
     owned_resource_count: 0,
 });
+const SUSPENDED = buildPluginGrant({
+    id: 9,
+    organization: { id: 7, name: 'Echo' },
+    state: 'suspended',
+    allowed_actions: ['resume'],
+    suspended_at: '2026-10-21T09:00:00Z',
+    purge_after: '2026-11-20T09:00:00Z',
+});
+
+/** The grant as the server answers once its install runs again. */
+function installing(grant: PluginGrant): PluginGrant {
+    return {
+        ...grant,
+        state: 'granting',
+        allowed_actions: ['suspend'],
+        install_hook: grant.install_hook ? { ...grant.install_hook, state: 'pending' } : null,
+    };
+}
+
+function conflict(code: string): HttpErrorResponse {
+    return new HttpErrorResponse({ status: 409, error: { status_code: 409, code, message: 'Refused.' } });
+}
 
 describe('PluginGrantsTableComponent', () => {
     let fixture: ComponentFixture<PluginGrantsTableComponent>;
@@ -61,8 +86,10 @@ describe('PluginGrantsTableComponent', () => {
             (identifier: string, page: number, pageSize: number) => Observable<ApiGetRequest<PluginGrant>>
         >;
         retryInstallHook: Mock<(identifier: string, grantId: number) => Observable<PluginGrant>>;
+        resumeGrant: Mock<(identifier: string, grantId: number) => Observable<PluginGrant>>;
     };
-    let confirm: Mock<() => Observable<boolean | 'close'>>;
+    let openSuspend: Mock<(data: PluginSuspendDialogData) => Observable<PluginGrant | undefined>>;
+    let confirm: Mock<(options: ConfirmationDialogData) => Observable<boolean | 'close'>>;
     let toast: { success: Mock; error: Mock };
     let changes: number;
 
@@ -93,9 +120,20 @@ describe('PluginGrantsTableComponent', () => {
         )!;
     }
 
-    function retryButton(organization: string): HTMLButtonElement | undefined {
+    function actionButton(organization: string, label: string): HTMLButtonElement | undefined {
         return Array.from(rowOf(organization).querySelectorAll<HTMLButtonElement>('button')).find(
-            (button) => button.textContent?.trim() === 'Retry install'
+            (button) => button.textContent?.trim() === label
+        );
+    }
+
+    function retryButton(organization: string): HTMLButtonElement | undefined {
+        return actionButton(organization, 'Retry install');
+    }
+
+    /** The labels of the row's buttons, in order. */
+    function actionLabels(organization: string): string[] {
+        return Array.from(rowOf(organization).querySelectorAll<HTMLButtonElement>('.grants__actions button')).map(
+            (button) => button.textContent?.trim() ?? ''
         );
     }
 
@@ -105,21 +143,17 @@ describe('PluginGrantsTableComponent', () => {
         changes = 0;
         storage = {
             listGrants: vi.fn(() => of(page([ACTIVE]))),
-            retryInstallHook: vi.fn(() =>
-                of({
-                    ...FAILED,
-                    state: 'granting' as const,
-                    install_hook: { ...FAILED.install_hook!, state: 'pending' as const },
-                })
-            ),
+            retryInstallHook: vi.fn(() => of(installing(FAILED))),
+            resumeGrant: vi.fn(() => of({ ...SUSPENDED, state: 'active' as const, allowed_actions: ['suspend'] })),
         };
+        openSuspend = vi.fn(() => of<PluginGrant | undefined>(undefined));
         confirm = vi.fn(() => of<boolean | 'close'>(true));
         toast = { success: vi.fn(), error: vi.fn() };
         TestBed.configureTestingModule({
             imports: [PluginGrantsTableComponent],
             providers: [
                 { provide: PluginsAdminStorageService, useValue: storage },
-                { provide: PluginDialogsService, useValue: {} },
+                { provide: PluginDialogsService, useValue: { openSuspend } },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
                 { provide: ToastService, useValue: toast },
             ],
@@ -148,6 +182,29 @@ describe('PluginGrantsTableComponent', () => {
         expect(rowOf('Acme').textContent).toContain('Active');
         expect(rowOf('Acme').querySelector('app-spinner2')).toBeNull();
         expect(retryButton('Acme')).toBeUndefined();
+    });
+
+    it('says a pending install waits for the plugin to start, and a running one installs', () => {
+        storage.listGrants.mockReturnValue(
+            of(
+                page([
+                    {
+                        ...INSTALLING,
+                        install_hook: { ...INSTALLING.install_hook!, state: 'pending', started_at: null },
+                    },
+                    { ...installing(FAILED), install_hook: { ...FAILED.install_hook!, state: 'running' } },
+                ])
+            )
+        );
+        render();
+
+        expect(rowOf('Bravo').querySelector('.grants__installing')?.textContent?.trim()).toBe(
+            'Waiting for the plugin to start'
+        );
+        expect(rowOf('Bravo').querySelector('app-spinner2')).not.toBeNull();
+        expect(rowOf('Charlie').querySelector('.grants__installing')?.textContent?.trim()).toBe('Installing…');
+        // Suspending is the way out of an install that waits for a plugin that never starts.
+        expect(actionLabels('Bravo')).toEqual(['Suspend…']);
     });
 
     it("shows the grant's copy of the hook error when the job has none", () => {
@@ -191,7 +248,7 @@ describe('PluginGrantsTableComponent', () => {
         storage.listGrants.mockReturnValue(of(page([FAILED])));
         render();
         // What the server says once the retry is accepted.
-        storage.listGrants.mockReturnValue(of(page([{ ...FAILED, state: 'granting' }])));
+        storage.listGrants.mockReturnValue(of(page([installing(FAILED)])));
 
         confirm.mockReturnValueOnce(of(false));
         retryButton('Charlie')!.click();
@@ -203,7 +260,7 @@ describe('PluginGrantsTableComponent', () => {
         expect(confirm).toHaveBeenCalledTimes(2);
         expect(storage.retryInstallHook).toHaveBeenCalledWith('weather', FAILED.id);
         expect(toast.success).toHaveBeenCalledWith('Weather is installing in Charlie again.');
-        expect(rowOf('Charlie').textContent).toContain('Installing…');
+        expect(rowOf('Charlie').textContent).toContain('Waiting for the plugin to start');
         expect(retryButton('Charlie')).toBeUndefined();
     });
 
@@ -256,7 +313,7 @@ describe('PluginGrantsTableComponent', () => {
         storage.listGrants
             .mockReturnValueOnce(of(page([INSTALLING, FAILED])))
             .mockReturnValueOnce(stalePoll)
-            .mockReturnValue(of(page([INSTALLING, { ...FAILED, state: 'granting' }])));
+            .mockReturnValue(of(page([INSTALLING, installing(FAILED)])));
         render();
         // The poll asks and waits for its answer.
         poll();
@@ -271,7 +328,7 @@ describe('PluginGrantsTableComponent', () => {
         stalePoll.complete();
         refresh();
 
-        expect(rowOf('Charlie').textContent).toContain('Installing…');
+        expect(rowOf('Charlie').textContent).toContain('Waiting for the plugin to start');
         expect(retryButton('Charlie')).toBeUndefined();
     });
 
@@ -338,5 +395,170 @@ describe('PluginGrantsTableComponent', () => {
         vi.advanceTimersByTime(PLUGIN_GRANTS_POLL_MS * 3);
 
         expect(storage.listGrants).toHaveBeenCalledTimes(2);
+    });
+
+    it("shows exactly the actions the grant allows, in the server's order, whatever its state", () => {
+        storage.listGrants.mockReturnValue(
+            of(
+                page([
+                    ACTIVE,
+                    FAILED,
+                    SUSPENDED,
+                    // The buttons never come from the state: an active grant the server allows nothing on has none.
+                    { ...FRONTEND_ONLY, allowed_actions: [] },
+                    buildPluginGrant({ id: 10, organization: { id: 8, name: 'Foxtrot' }, allowed_actions: ['resume'] }),
+                ])
+            )
+        );
+        render();
+
+        expect(actionLabels('Acme')).toEqual(['Suspend…']);
+        expect(actionLabels('Charlie')).toEqual(['Retry install', 'Suspend…']);
+        expect(actionLabels('Echo')).toEqual(['Resume']);
+        expect(actionLabels('Delta')).toEqual([]);
+        expect(actionLabels('Foxtrot')).toEqual(['Resume']);
+        expect(element.querySelector('.table-header')?.textContent).toContain('Actions');
+    });
+
+    it('leaves out an action this page does not know', () => {
+        const unknownAction = { ...ACTIVE, allowed_actions: ['purge', 'suspend'] } as unknown as PluginGrant;
+        storage.listGrants.mockReturnValue(of(page([unknownAction])));
+        render();
+
+        expect(actionLabels('Acme')).toEqual(['Suspend…']);
+    });
+
+    it('shows a suspended grant with its suspension date and until when its data is kept', () => {
+        storage.listGrants.mockReturnValue(of(page([SUSPENDED])));
+        render();
+
+        expect(rowOf('Echo').textContent).toContain('Suspended');
+        expect(rowOf('Echo').querySelector('.grants__suspended-at')?.textContent?.trim()).toBe('Since Oct 21, 2026');
+        expect(rowOf('Echo').querySelector('.grants__kept-until')?.textContent?.trim()).toBe(
+            'Data kept until Nov 20, 2026'
+        );
+    });
+
+    it('opens the suspend preview, and once suspended shows the grant, tells the page and reloads', () => {
+        const suspended: PluginGrant = {
+            ...ACTIVE,
+            state: 'suspended',
+            allowed_actions: ['resume'],
+            suspended_at: '2026-10-21T09:00:00Z',
+            purge_after: '2026-11-20T09:00:00Z',
+        };
+        openSuspend.mockReturnValue(of(suspended));
+        storage.listGrants.mockReturnValue(of(page([ACTIVE])));
+        render();
+        storage.listGrants.mockReturnValue(of(page([suspended])));
+
+        actionButton('Acme', 'Suspend…')!.click();
+        refresh();
+
+        expect(openSuspend).toHaveBeenCalledWith({ identifier: 'weather', pluginName: 'Weather', grant: ACTIVE });
+        expect(confirm).not.toHaveBeenCalled();
+        expect(toast.success).toHaveBeenCalledWith('Weather is suspended in Acme.');
+        expect(changes).toBe(1);
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+        expect(actionLabels('Acme')).toEqual(['Resume']);
+        expect(rowOf('Acme').querySelector('.grants__kept-until')?.textContent?.trim()).toBe(
+            'Data kept until Nov 20, 2026'
+        );
+    });
+
+    it('reloads after the suspend preview is cancelled, and says nothing', () => {
+        storage.listGrants.mockReturnValue(of(page([ACTIVE])));
+        render();
+
+        actionButton('Acme', 'Suspend…')!.click();
+        refresh();
+
+        expect(toast.success).not.toHaveBeenCalled();
+        expect(changes).toBe(0);
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+    });
+
+    it('resumes only after confirmation, then shows the grant active, tells the page and reloads', () => {
+        storage.listGrants.mockReturnValue(of(page([SUSPENDED])));
+        render();
+        storage.listGrants.mockReturnValue(of(page([{ ...SUSPENDED, state: 'active', allowed_actions: ['suspend'] }])));
+
+        confirm.mockReturnValueOnce(of(false));
+        actionButton('Echo', 'Resume')!.click();
+        expect(storage.resumeGrant).not.toHaveBeenCalled();
+
+        actionButton('Echo', 'Resume')!.click();
+        refresh();
+
+        expect(confirm).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                message: 'Resume Weather in Echo? Its runs work again and the plugin gets new keys.',
+                confirmText: 'Resume',
+            })
+        );
+        expect(storage.resumeGrant).toHaveBeenCalledWith('weather', SUSPENDED.id);
+        expect(toast.success).toHaveBeenCalledWith('Weather is resumed in Echo.');
+        expect(changes).toBe(1);
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+        expect(rowOf('Echo').textContent).toContain('Active');
+        expect(actionLabels('Echo')).toEqual(['Suspend…']);
+    });
+
+    it('escapes the names in the resume confirmation', () => {
+        storage.listGrants.mockReturnValue(of(page([{ ...SUSPENDED, organization: { id: 7, name: '<b>Echo</b>' } }])));
+        render();
+
+        actionButton('Echo', 'Resume')!.click();
+
+        expect(confirm.mock.calls[0][0].message).toContain('&lt;b&gt;Echo&lt;/b&gt;');
+    });
+
+    it('says why a resume was refused and shows the grant as it is now', () => {
+        storage.listGrants.mockReturnValue(of(page([SUSPENDED])));
+        storage.resumeGrant.mockReturnValue(throwError(() => conflict('grant_not_suspended')));
+        render();
+        storage.listGrants.mockReturnValue(of(page([{ ...SUSPENDED, state: 'active', allowed_actions: ['suspend'] }])));
+
+        actionButton('Echo', 'Resume')!.click();
+        refresh();
+
+        expect(toast.error).toHaveBeenCalledWith(PLUGIN_ERROR_MESSAGES.grant_not_suspended);
+        expect(changes).toBe(1);
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+        expect(actionLabels('Echo')).toEqual(['Suspend…']);
+    });
+
+    it("keeps a row's buttons waiting while its request is under way", () => {
+        const answer = new Subject<PluginGrant>();
+        storage.listGrants.mockReturnValue(of(page([SUSPENDED, ACTIVE])));
+        storage.resumeGrant.mockReturnValue(answer);
+        render();
+
+        actionButton('Echo', 'Resume')!.click();
+        refresh();
+        expect(actionButton('Echo', 'Resume')!.disabled).toBe(true);
+        expect(actionButton('Acme', 'Suspend…')!.disabled).toBe(false);
+
+        const resumed: PluginGrant = { ...SUSPENDED, state: 'active', allowed_actions: ['suspend'] };
+        storage.listGrants.mockReturnValue(of(page([resumed, ACTIVE])));
+        answer.next(resumed);
+        answer.complete();
+        refresh();
+        expect(actionButton('Echo', 'Suspend…')!.disabled).toBe(false);
+    });
+
+    it('keeps polling after an action while a grant still installs', () => {
+        storage.listGrants.mockReturnValue(of(page([SUSPENDED, INSTALLING])));
+        render();
+        storage.listGrants.mockReturnValue(
+            of(page([{ ...SUSPENDED, state: 'active', allowed_actions: ['suspend'] }, INSTALLING]))
+        );
+
+        actionButton('Echo', 'Resume')!.click();
+        refresh();
+        expect(storage.listGrants).toHaveBeenCalledTimes(2);
+
+        poll();
+        expect(storage.listGrants).toHaveBeenCalledTimes(3);
     });
 });

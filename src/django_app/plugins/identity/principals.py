@@ -1,7 +1,9 @@
 """`request.user` of a request a plugin's backend makes with its service-account key."""
 
+from django.db.models import Model
 from rbac.access.effective import EffectivePermissions
 from rbac.exceptions import OrgMembershipRequiredError
+from tables.models import Secret
 
 from plugins.access.declared_access import package_declared_access_bits
 from plugins.models import PluginPackage
@@ -58,6 +60,24 @@ class PluginServiceAccountPrincipal:
             role=None,
             by_resource=package_declared_access_bits.get(self._package),
         )
+
+    def may_reference_secrets(self, secret_ids: frozenset[int]) -> bool:
+        """Only secrets the plugin created under this grant, and that still exist.
+
+        Never the organization's other secrets, whatever access the plugin declares and
+        whoever the call is made for: the plugin chooses where a referencing row sends the
+        value, so referencing a secret it did not create would hand it the value.
+        """
+        # Imported here: the ownership modules import this one.
+        from plugins.ownership.existing_owned import grant_owns_every
+
+        return grant_owns_every(self.grant_id, Secret, secret_ids)
+
+    def owns(self, instance: Model) -> bool:
+        """Whether the plugin created `instance` under this grant, and it still exists."""
+        from plugins.ownership.existing_owned import grant_owns_every
+
+        return grant_owns_every(self.grant_id, type(instance), frozenset({instance.pk}))
 
     def __str__(self) -> str:
         return f"plugin {self.plugin_identifier} (org {self.pinned_org_id})"

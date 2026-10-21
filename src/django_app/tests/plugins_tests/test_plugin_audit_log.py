@@ -218,11 +218,13 @@ def test_an_origin_refusal_is_logged_without_the_request_s_credentials(member_on
 
 
 def test_service_account_and_hook_lines_never_carry_a_key_hash_assertion_or_body(
-    weather_backend, service_account_key, acme, node_client, log_messages, superadmin_client
+    weather_backend, service_account_key, acme, node_client, log_messages, superadmin_client, django_capture_on_commit_callbacks
 ):
     plugin = weather_backend(hooks={"install": True})
     superadmin_client.post("/api/admin/plugins/weather/grants/", {"organization_id": acme.pk}, format="json")
-    key = service_account_key(plugin, acme)
+    # The minted keys are logged once their transaction commits.
+    with django_capture_on_commit_callbacks(execute=True):
+        key = service_account_key(plugin, acme)
     service_account_client("esp-" + "q" * 43, acme).get("/api/plugin-runtime/me/")
     job = PluginHookJob.objects.get()
     invocation = HookInvocation.model_validate_json(
@@ -245,3 +247,29 @@ def test_service_account_and_hook_lines_never_carry_a_key_hash_assertion_or_body
     assert not [line for line in log_messages if any(secret in line for secret in secrets)]
     assert all(len(line) <= MAX_MESSAGE_LENGTH for line in lines)
     assert f"plugins.hook.finished plugin=weather job={job.pk} kind=install org={acme.pk} attempt=1 outcome=succeeded duration_ms=42" in lines
+
+
+# ---- suspension: names and ids, never a key ----
+
+
+@pytest.mark.usefixtures("plugins_enabled")
+def test_suspension_lines_name_the_actor_and_the_grant_and_never_a_key(
+    weather_backend, service_account_key, acme, superadmin_client, superadmin_user, log_messages, django_capture_on_commit_callbacks
+):
+    plugin = weather_backend()
+    key = service_account_key(plugin, acme)
+    grant = PluginGrant.objects.get(org=acme)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant.pk}/suspend/")
+    superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant.pk}/resume/")
+
+    lines = _lines(log_messages, "plugins.grant.")
+    assert [line.split(" ")[0] for line in lines] == [
+        "plugins.grant.suspended",
+        "plugins.grant.sessions_stopped",
+        "plugins.grant.resumed",
+    ]
+    assert _actor(superadmin_user) in lines[0] and _actor(superadmin_user) in lines[2]
+    assert f"plugin=weather grant={grant.pk} org={acme.pk}" in lines[1]
+    _assert_no_secret(lines, key, hashlib.sha256(key.encode()).hexdigest())

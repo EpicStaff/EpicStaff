@@ -10,7 +10,9 @@ export type PluginActivityAction =
     | 'install_hook_retried'
     | 'settings_changed'
     | 'limits_changed'
-    | 'restarted';
+    | 'restarted'
+    | 'grant_suspended'
+    | 'grant_resumed';
 
 /** `plugin`: its service account; `superadmin`: a SuperAdmin on the admin pages; `platform`: EpicStaff itself. */
 export type PluginActivityActorKind = 'plugin' | 'superadmin' | 'platform';

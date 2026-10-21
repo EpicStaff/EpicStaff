@@ -1,4 +1,4 @@
-"""Start-up checks plugins.E001-E010, which run only while the plugin platform is on."""
+"""Start-up checks plugins.E001-E011, which run only while the plugin platform is on."""
 
 import pytest
 from django.core.management import call_command
@@ -32,6 +32,7 @@ def valid_platform(settings):
     settings.PLUGINS_NODE_UID_RANGE = "20000-20999"
     for setting, value in PLATFORM_MAXIMUMS.items():
         setattr(settings, setting, value)
+    settings.PLUGINS_GRACE_PERIOD_DAYS = "30"
     return settings
 
 
@@ -57,6 +58,7 @@ def test_nothing_is_checked_while_the_platform_is_off(valid_platform):
     valid_platform.PLUGINS_BASE_DOMAIN = "plugins.invalid"
     valid_platform.FRONTEND_BASE_URL = "not a url"
     valid_platform.PLUGINS_TRUSTED_SIGNING_KEYS = ["broken"]
+    valid_platform.PLUGINS_GRACE_PERIOD_DAYS = "abc"
 
     assert _ids() == []
 
@@ -248,5 +250,22 @@ def test_e010_is_quiet_for_a_host_outside_the_plugin_base_domain(valid_platform,
     valid_platform.REFRESH_COOKIE_SECURE = True
     valid_platform.FRONTEND_BASE_URL = frontend_url
     valid_platform.PLUGINS_BASE_DOMAIN = base_domain
+
+    assert _ids() == []
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "abc", "3651", "1.5", ""])
+def test_e011_a_grace_period_outside_one_to_3650_days(valid_platform, value):
+    valid_platform.PLUGINS_GRACE_PERIOD_DAYS = value
+
+    errors = check_plugin_platform_settings(None)
+
+    assert [error.id for error in errors] == ["plugins.E011"]
+    assert errors[0].msg == "PLUGINS_GRACE_PERIOD_DAYS must be a whole number from 1 to 3650."
+
+
+@pytest.mark.parametrize("value", ["1", "30", "3650", " 7 "])
+def test_e011_accepts_one_to_3650_days(valid_platform, value):
+    valid_platform.PLUGINS_GRACE_PERIOD_DAYS = value
 
     assert _ids() == []

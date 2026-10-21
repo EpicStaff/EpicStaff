@@ -4,11 +4,15 @@ import json
 from datetime import timedelta
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from epicstaff_plugin.contracts.hook_api import HookRequest
 from epicstaff_plugin.contracts.manifest import MAX_HOOK_TIMEOUT_SECONDS
 from epicstaff_plugin.hooks import verify_hook_assertion
 from plugins.identity.signing_keys import PluginSigningKeyService
+from plugins.lifecycle.hook_job_service import HookJobService
+from plugins.lifecycle.suspension_service import PluginSuspensionService
 from plugins.models import (
     GrantState,
     HookJobState,
@@ -17,7 +21,8 @@ from plugins.models import (
     PluginHookJob,
     PluginServiceAccount,
 )
-from src.shared.models.plugin_nodes import HookInvocation
+from rbac.models import Organization
+from src.shared.models.plugin_nodes import MAX_PENDING_HOOK_JOBS, HookInvocation, HookResult
 
 from tests.plugins_tests.conftest import mark_running
 
@@ -278,6 +283,7 @@ def test_a_retry_puts_the_same_job_back_and_the_next_claim_is_the_next_attempt(j
     assert response.status_code == 202
     body = response.json()
     assert body["state"] == "granting"
+    assert body["allowed_actions"] == ["suspend"]
     assert body["install_hook"]["state"] == "pending"
     assert body["install_hook"]["error"] is None
     assert PluginHookJob.objects.get().pk == job.pk
@@ -358,3 +364,125 @@ def test_an_overdue_job_is_failed_before_a_claim_too(job, node_client, superadmi
     assert node_client.post(_claim_url(job.pk)).status_code == 409
 
     assert PluginGrant.objects.get().state == GrantState.INSTALL_FAILED
+
+
+# ---- suspension ----
+
+
+def _suspend(superadmin_client, grant_id):
+    response = superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant_id}/suspend/")
+    assert response.status_code == 200, response.content
+
+
+def test_a_result_for_a_job_the_suspension_failed_conflicts_and_the_grant_stays_suspended(job, node_client, superadmin_client):
+    node_client.post(_claim_url(job.pk))
+    _suspend(superadmin_client, job.grant_id)
+
+    response = _result(node_client, job.pk, 1)
+
+    assert (response.status_code, response.json()["code"]) == (409, "hook_job_not_running")
+    assert PluginGrant.objects.get().state == GrantState.SUSPENDED
+
+
+def test_a_job_of_a_suspended_grant_cannot_be_claimed(job, node_client, superadmin_client):
+    _suspend(superadmin_client, job.grant_id)
+    # Put the job back as if the suspension had missed it: the grant's state alone refuses it.
+    PluginHookJob.objects.filter(pk=job.pk).update(state=HookJobState.PENDING)
+
+    response = node_client.post(_claim_url(job.pk))
+
+    assert (response.status_code, response.json()["code"]) == (409, "hook_job_not_claimable")
+
+
+# ---- lock order: the grant first, then its jobs, everywhere ----
+
+
+def _locked_tables(captured):
+    """The tables each `SELECT ... FOR UPDATE` locked, in order."""
+    tables = []
+    for query in captured.captured_queries:
+        sql = query["sql"]
+        if "FOR UPDATE" not in sql:
+            continue
+        from_clause = sql.split(" FROM ", 1)[1]
+        if from_clause.startswith('"plugins_plugingrant"'):
+            tables.append("grant")
+        elif from_clause.startswith('"plugins_pluginhookjob"'):
+            tables.append("job")
+        else:
+            tables.append(from_clause.split(" ", 1)[0])
+    return tables
+
+
+def _locks_of(call):
+    with CaptureQueriesContext(connection) as captured:
+        call()
+    return _locked_tables(captured)
+
+
+def test_a_claim_locks_the_grant_before_the_job(job, plugin_node):
+    assert _locks_of(lambda: HookJobService().claim(plugin_node, job.pk)) == ["grant", "job"]
+
+
+def test_a_result_locks_the_grant_before_the_job(job, plugin_node):
+    HookJobService().claim(plugin_node, job.pk)
+
+    locks = _locks_of(
+        lambda: HookJobService().record_result(
+            plugin_node, job.pk, HookResult(attempt=1, outcome="succeeded", duration_ms=5)
+        )
+    )
+
+    assert locks == ["grant", "job"]
+
+
+def test_failing_an_overdue_job_locks_the_grant_before_the_job(job, plugin_node):
+    HookJobService().claim(plugin_node, job.pk)
+    PluginHookJob.objects.update(deadline_at=timezone.now() - timedelta(seconds=121))
+
+    assert _locks_of(lambda: HookJobService().fail_overdue(plugin_node)) == ["grant", "job"]
+
+
+def test_a_retry_locks_the_grant_before_the_job(job, plugin_node, superadmin):
+    HookJobService().claim(plugin_node, job.pk)
+    HookJobService().record_result(plugin_node, job.pk, HookResult(attempt=1, outcome="failed", duration_ms=5))
+
+    assert _locks_of(lambda: HookJobService().retry("weather", job.grant_id, superadmin)) == ["grant", "job"]
+
+
+def test_a_suspension_locks_the_grant_before_the_jobs(job, superadmin):
+    assert _locks_of(lambda: PluginSuspensionService().suspend("weather", job.grant_id, superadmin)) == ["grant", "job"]
+
+
+# ---- many pending jobs ----
+
+
+def test_a_plugin_with_more_pending_jobs_than_a_placement_carries_lists_the_oldest(hooked_weather, node_client, superadmin):
+    organizations = Organization.objects.bulk_create(
+        [Organization(name=f"Pending {number:04}") for number in range(MAX_PENDING_HOOK_JOBS + 1)]
+    )
+    grants = PluginGrant.objects.bulk_create(
+        [
+            PluginGrant(plugin=hooked_weather, org=organization, state=GrantState.GRANTING, created_by=superadmin)
+            for organization in organizations
+        ]
+    )
+    jobs = PluginHookJob.objects.bulk_create(
+        [
+            PluginHookJob(
+                plugin=hooked_weather,
+                grant=grant,
+                organization_id=grant.org_id,
+                kind="install",
+                package=hooked_weather.current_package,
+                timeout_seconds=60,
+            )
+            for grant in grants
+        ]
+    )
+
+    response = node_client.get(DESIRED_STATE_URL)
+
+    assert response.status_code == 200, response.content
+    listed = [entry["job_id"] for entry in response.json()["placements"][0]["hook_jobs"]]
+    assert listed == sorted(job.pk for job in jobs)[:MAX_PENDING_HOOK_JOBS]

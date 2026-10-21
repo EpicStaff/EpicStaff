@@ -15,6 +15,7 @@ from django.contrib.auth import get_user_model
 from rbac.access.effective import EffectivePermissions
 
 if TYPE_CHECKING:
+    from django.db.models import Model
     from tables.models.user import User
 
 
@@ -45,6 +46,25 @@ class PinnedOrgPrincipal(Protocol):
     rate_limit_key: str
 
     def resolve_effective_permissions(self, org_id: int) -> EffectivePermissions: ...
+
+    def may_reference_secrets(self, secret_ids: frozenset[int]) -> bool:
+        """Return whether a row the principal writes may reference every one of `secret_ids`.
+
+        Asked by `SecretReferenceGuard` for each secret reference of every row the
+        principal creates or changes, on top of `secrets: use`. A row that references a
+        secret also says where its value is sent (an LLM config's `base_url`, a Python
+        node's code), so a principal that could reference any of the organization's
+        secrets could send their values anywhere.
+        """
+        ...
+
+    def owns(self, instance: "Model") -> bool:
+        """Return whether the principal created `instance`, a row that still exists.
+
+        Asked by `SecretDestinationGuard` before the principal changes where a model row
+        sends the keys of the organization's configs that use it: only its own rows.
+        """
+        ...
 
 
 def is_pinned_org_principal(user: object) -> bool:

@@ -17,6 +17,7 @@ import {
     PluginSettingsResponse,
     PluginSettingsUpdate,
 } from '../models/plugin-backend.model';
+import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 import { PluginsAdminApiService } from './plugins-admin-api.service';
 
 /**
@@ -102,6 +103,23 @@ export class PluginsAdminStorageService implements StorageService {
     /** The grant stays out of the active count until the hook succeeds, so the list does not change. */
     retryInstallHook(identifier: string, grantId: number): Observable<PluginGrant> {
         return this.api.retryInstallHook(identifier, grantId);
+    }
+
+    getSuspendPreview(identifier: string, grantId: number): Observable<PluginSuspendPreview> {
+        return this.api.getSuspendPreview(identifier, grantId);
+    }
+
+    /**
+     * Suspending and resuming may change the plugin's count of active grants; only the server knows by how much (the
+     * grant may have been installing), so reload the plugin with `getPlugin` afterwards.
+     */
+    suspendGrant(identifier: string, grantId: number): Observable<PluginGrant> {
+        return this.api.suspendGrant(identifier, grantId);
+    }
+
+    /** As `suspendGrant`: reload the plugin with `getPlugin` afterwards. */
+    resumeGrant(identifier: string, grantId: number): Observable<PluginGrant> {
+        return this.api.resumeGrant(identifier, grantId);
     }
 
     getSettings(identifier: string): Observable<PluginSettingsResponse> {

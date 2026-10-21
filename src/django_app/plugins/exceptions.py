@@ -1,10 +1,17 @@
 """Plugin errors. Each `default_code` is a stable API code the frontend maps to a message."""
 
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from epicstaff_plugin.problems import Problem
 from rest_framework.exceptions import AuthenticationFailed
+from tables.services.run_admission import RunAdmissionRefusedError
 from utils.exceptions import CustomAPIExeption
+
+from plugins.models.enums import GrantState
+
+if TYPE_CHECKING:
+    from plugins.runs.owned_resource_index import BlockingOwner
 
 
 class _ProblemListError(CustomAPIExeption):
@@ -267,6 +274,50 @@ class HookNotRetryableError(CustomAPIExeption):
     status_code = 409
     default_detail = "Only a grant whose install hook failed can retry it."
     default_code = "hook_not_retryable"
+
+
+class GrantNotSuspendableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "The grant cannot be suspended in its current state."
+    default_code = "grant_not_suspendable"
+
+
+class GrantNotSuspendedError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "The grant is not suspended."
+    default_code = "grant_not_suspended"
+
+
+class PluginSuspendedError(RunAdmissionRefusedError):
+    """A run would use something a plugin owns, and the plugin is not active in the organization.
+
+    Names the plugin and the organization, never the resource: the caller may not be allowed to
+    see which of the plugin's rows the run reaches.
+    """
+
+    status_code = 409
+    default_detail = "This run uses resources of a plugin that is not active in this organization."
+    default_code = "plugin_suspended"
+
+    def __init__(self, owner: "BlockingOwner", organization_id: int):
+        state = "suspended" if owner.grant_state == GrantState.SUSPENDED else "not active"
+        super().__init__(
+            detail=(
+                f'This run uses resources of the plugin "{owner.plugin_name}", which is {state} '
+                "in this organization."
+            )
+        )
+        self.extra_response_data = {
+            "plugin": {"identifier": owner.plugin_identifier, "name": owner.plugin_name},
+            "organization": {"id": organization_id},
+        }
+        since = int(owner.since.timestamp()) if owner.since is not None else 0
+        # Equal for every refusal of one episode, so a trigger logs it once; a new suspension
+        # of the same grant (a new `since`) logs again.
+        self.log_key = (
+            f"{owner.plugin_identifier}:{owner.grant_id or 'none'}:"
+            f"{owner.grant_state or 'removed'}:{since}"
+        )
 
 
 class HookJobNotFoundError(CustomAPIExeption):

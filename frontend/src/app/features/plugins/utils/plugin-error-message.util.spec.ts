@@ -8,7 +8,7 @@ function failure(status: number, body: unknown): HttpErrorResponse {
 }
 
 /** Every code the plugin endpoints answer with. */
-const CONTRACT_CODES: PluginErrorCode[] = [
+const ENDPOINT_CODES: PluginErrorCode[] = [
     'not_authenticated',
     'permission_denied',
     'org_context_required',
@@ -36,19 +36,63 @@ const CONTRACT_CODES: PluginErrorCode[] = [
     'no_plugin_node',
     'grant_not_found',
     'hook_not_retryable',
+    'grant_not_suspendable',
+    'grant_not_suspended',
+    'plugin_suspended',
     'throttled',
 ];
 
+/** Codes the UI shows with the server's own message. */
+const SERVER_MESSAGE_CODES: PluginErrorCode[] = ['plugin_suspended'];
+
 describe('toPluginErrorView', () => {
-    it('has a message for every code of the contract, and no other', () => {
-        expect(Object.keys(PLUGIN_ERROR_MESSAGES).sort()).toEqual([...CONTRACT_CODES].sort());
+    it('has a message for every code the plugin endpoints answer with, and no other', () => {
+        expect(Object.keys(PLUGIN_ERROR_MESSAGES).sort()).toEqual([...ENDPOINT_CODES].sort());
     });
 
-    it.each(CONTRACT_CODES)('maps %s to its message', (code) => {
+    it.each(ENDPOINT_CODES.filter((code) => !SERVER_MESSAGE_CODES.includes(code)))('maps %s to its message', (code) => {
         const view = toPluginErrorView(failure(400, { status_code: 400, code, message: 'server text' }), 'fallback');
 
         expect(view.code).toBe(code);
         expect(view.message).toBe(PLUGIN_ERROR_MESSAGES[code]);
+    });
+
+    it("shows the server's message for a refused run, which names the plugin", () => {
+        const message = 'This run uses resources of the plugin "Weather", which is suspended in this organization.';
+        const view = toPluginErrorView(
+            failure(409, {
+                status_code: 409,
+                code: 'plugin_suspended',
+                message,
+                plugin: { identifier: 'weather', name: 'Weather' },
+                organization: { id: 3 },
+            }),
+            'fallback'
+        );
+
+        expect(view).toEqual({ code: 'plugin_suspended', message, items: [] });
+    });
+
+    it('falls back to its own text for a refused run without a server message', () => {
+        const view = toPluginErrorView(failure(409, { status_code: 409, code: 'plugin_suspended' }), 'fallback');
+
+        expect(view.message).toBe(PLUGIN_ERROR_MESSAGES.plugin_suspended);
+    });
+
+    it('tells to reload the list when a suspend or a resume no longer fits the grant', () => {
+        const suspend = toPluginErrorView(
+            failure(409, { status_code: 409, code: 'grant_not_suspendable', message: 'Not suspendable.' }),
+            'fallback'
+        );
+        const resume = toPluginErrorView(
+            failure(409, { status_code: 409, code: 'grant_not_suspended', message: 'Not suspended.' }),
+            'fallback'
+        );
+
+        expect(suspend.message).toBe(
+            "This organization's grant cannot be suspended in its current state. Reload the list."
+        );
+        expect(resume.message).toBe('This grant is not suspended. Reload the list.');
     });
 
     it('tells to reject and upload again when the stored package no longer matches the review', () => {

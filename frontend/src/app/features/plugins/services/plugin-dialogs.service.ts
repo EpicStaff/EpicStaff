@@ -14,6 +14,11 @@ import {
     PluginReviewDialogResult,
 } from '../components/plugin-review-dialog/plugin-review-dialog.component';
 import {
+    PLUGIN_SUSPEND_DIALOG_TITLE_ID,
+    PluginSuspendDialogComponent,
+    PluginSuspendDialogData,
+} from '../components/plugin-suspend-dialog/plugin-suspend-dialog.component';
+import {
     PLUGIN_UPLOAD_DIALOG_TITLE_ID,
     PluginUploadDialogComponent,
 } from '../components/plugin-upload-dialog/plugin-upload-dialog.component';
@@ -42,6 +47,15 @@ export class PluginDialogsService {
     openGrant(data: PluginGrantDialogData): Observable<PluginGrant | undefined> {
         return this.dialog.open<PluginGrant, PluginGrantDialogData>(PluginGrantDialogComponent, {
             ariaLabelledBy: PLUGIN_GRANT_DIALOG_TITLE_ID,
+            data,
+        }).closed;
+    }
+
+    /** Emits the suspended grant; a stray click outside does not close it, Cancel and the close button do. */
+    openSuspend(data: PluginSuspendDialogData): Observable<PluginGrant | undefined> {
+        return this.dialog.open<PluginGrant, PluginSuspendDialogData>(PluginSuspendDialogComponent, {
+            ariaLabelledBy: PLUGIN_SUSPEND_DIALOG_TITLE_ID,
+            disableClose: true,
             data,
         }).closed;
     }

@@ -1,8 +1,10 @@
 import base64
 
+from drf_spectacular.utils import extend_schema_field
 from epicstaff_plugin.contracts.manifest import PluginManifest
 from rest_framework import serializers
 
+from plugins.lifecycle.grant_actions import GrantAction, allowed_grant_actions
 from plugins.models import Plugin, PluginGrant, PluginPackage, SignatureStatus, Trust
 from plugins.origins import PluginOrigins
 from plugins.packages.review import action_label, resource_label, review_warnings
@@ -275,6 +277,7 @@ class PluginGrantSerializer(serializers.ModelSerializer):
     service_account = serializers.SerializerMethodField()
     install_hook = serializers.SerializerMethodField()
     owned_resource_count = serializers.IntegerField()
+    allowed_actions = serializers.SerializerMethodField()
 
     class Meta:
         model = PluginGrant
@@ -291,6 +294,7 @@ class PluginGrantSerializer(serializers.ModelSerializer):
             "service_account",
             "install_hook",
             "owned_resource_count",
+            "allowed_actions",
         ]
         read_only_fields = fields
 
@@ -318,3 +322,12 @@ class PluginGrantSerializer(serializers.ModelSerializer):
             "finished_at": datetime_text(job.finished_at),
             "error": job.error,
         }
+
+    @extend_schema_field(
+        serializers.ListField(
+            child=serializers.ChoiceField(choices=[action.value for action in GrantAction])
+        )
+    )
+    def get_allowed_actions(self, grant: PluginGrant) -> list[str]:
+        """The lifecycle actions the grant allows now: the only input of the frontend's buttons."""
+        return [action.value for action in allowed_grant_actions(grant)]

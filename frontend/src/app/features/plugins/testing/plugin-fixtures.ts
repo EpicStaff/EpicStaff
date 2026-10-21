@@ -9,6 +9,7 @@ import {
     PluginSettingState,
 } from '../models/plugin-backend.model';
 import { PluginRolePermissionsResponse, PluginRoleRow } from '../models/plugin-role-permissions.model';
+import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 
 /** A pending review of the Weather sample (frontend only), signed by a trusted key. */
 export function buildPackageReview(overrides: Partial<PackageReview> = {}): PackageReview {
@@ -220,6 +221,7 @@ export function buildPluginGrant(overrides: Partial<PluginGrant> = {}): PluginGr
         plugin_identifier: 'weather',
         organization: { id: 3, name: 'Acme' },
         state: 'active',
+        allowed_actions: ['suspend'],
         granted_by: { id: 1, email: 'sam@example.com' },
         granted_at: '2026-10-21T08:00:00Z',
         suspended_at: null,
@@ -234,6 +236,50 @@ export function buildPluginGrant(overrides: Partial<PluginGrant> = {}): PluginGr
             error: null,
         },
         owned_resource_count: 2,
+        ...overrides,
+    };
+}
+
+/**
+ * What suspending Weather in Acme stops: "Daily digest" uses Weather's LLM config and is running on a schedule,
+ * "Weather forecast" is Weather's own flow, and the agent default model points at Weather's config.
+ */
+export function buildSuspendPreview(overrides: Partial<PluginSuspendPreview> = {}): PluginSuspendPreview {
+    return {
+        grant: { id: 5, state: 'active' },
+        plugin: { identifier: 'weather', name: 'Weather' },
+        organization: { id: 3, name: 'Acme' },
+        data_kept_until: '2026-11-20T08:00:00Z',
+        owned_resources: [
+            { model: 'tables.StorageFile', label: 'Files', count: 1 },
+            { model: 'tables.Graph', label: 'Flows', count: 1 },
+            { model: 'tables.LLMConfig', label: 'LLM configs', count: 1 },
+            { model: 'tables.Secret', label: 'Secrets', count: 1 },
+        ],
+        flows: {
+            organization: { total: 1, items: [{ id: 21, name: 'Daily digest' }] },
+            plugin: { total: 1, items: [{ id: 18, name: 'Weather forecast' }] },
+        },
+        running_sessions: {
+            total: 1,
+            items: [
+                {
+                    id: 301,
+                    flow: { id: 21, name: 'Daily digest' },
+                    status: 'run',
+                    created_at: '2026-10-21T08:00:00Z',
+                },
+            ],
+        },
+        triggers: {
+            total: 1,
+            items: [
+                { kind: 'schedule', node_id: 44, node_name: 'Every 2 minutes', flow: { id: 21, name: 'Daily digest' } },
+            ],
+        },
+        realtime_agents: { total: 0, items: [] },
+        voice_channels: { total: 0, items: [] },
+        default_models: [{ setting: 'agent_llm_config', config: { id: 9, name: 'Weather summaries' } }],
         ...overrides,
     };
 }

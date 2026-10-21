@@ -56,6 +56,7 @@ These pages are for people who build plugins and for operators who run them.
 | [Call EpicStaff from your backend](how-to/call-epicstaff-from-the-backend.md) | The SDK's EpicStaff client: per-organization keys, calling on behalf of a person, people lookups, running flows |
 | [Service account API](reference/service-account-api.md) | The service account and its keys, what it may do, on behalf of a person, `/api/plugin-runtime/`, activity |
 | [Run code when an organization gets your plugin](how-to/install-hook.md) | The install hook: registering a handler, idempotency, failures and retries |
+| [The plugin lifecycle](explanation/lifecycle.md) | A plugin's states in an organization, what suspending it stops and what it does not, resuming, how long its data is kept |
 | [Hook API](reference/hook-api.md) | How EpicStaff calls a lifecycle hook: the signed assertion, the body, the answer |
 | [Limits](reference/limits.md) | Memory, CPU, the request rate and the other limits, the platform maximums, what is enforced |
 | [Error codes](reference/error-codes.md) | Every code the plugin API, the login and the gateway answer with |

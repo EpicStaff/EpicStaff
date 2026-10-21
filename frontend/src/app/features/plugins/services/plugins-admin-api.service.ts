@@ -18,6 +18,7 @@ import {
     PluginSettingsResponse,
     PluginSettingsUpdate,
 } from '../models/plugin-backend.model';
+import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 
 /** SuperAdmin plugin endpoints (`/api/admin/plugins/**`). Cross-org: the org interceptor sends no org header here. */
 @Injectable({ providedIn: 'root' })
@@ -75,7 +76,22 @@ export class PluginsAdminApiService {
 
     /** Runs a failed install hook again; the grant answers back in `granting` (409 `hook_not_retryable` otherwise). */
     retryInstallHook(identifier: string, grantId: number): Observable<PluginGrant> {
-        return this.http.post<PluginGrant>(`${this.pluginUrl(identifier)}grants/${grantId}/retry-hook/`, null);
+        return this.http.post<PluginGrant>(`${this.grantUrl(identifier, grantId)}retry-hook/`, null);
+    }
+
+    /** What suspending the grant would stop in its organization. Read-only; answers in any state of the grant. */
+    getSuspendPreview(identifier: string, grantId: number): Observable<PluginSuspendPreview> {
+        return this.http.get<PluginSuspendPreview>(`${this.grantUrl(identifier, grantId)}suspend-preview/`);
+    }
+
+    /** Answers with the grant `suspended` (409 `grant_not_suspendable` when its state does not allow it). */
+    suspendGrant(identifier: string, grantId: number): Observable<PluginGrant> {
+        return this.http.post<PluginGrant>(`${this.grantUrl(identifier, grantId)}suspend/`, null);
+    }
+
+    /** Answers with the grant `active`, or `install_failed` when its install never finished (409 `grant_not_suspended`). */
+    resumeGrant(identifier: string, grantId: number): Observable<PluginGrant> {
+        return this.http.post<PluginGrant>(`${this.grantUrl(identifier, grantId)}resume/`, null);
     }
 
     /** The settings of a plugin with a backend (409 `plugin_has_no_backend` otherwise; so are the calls below). */
@@ -108,6 +124,10 @@ export class PluginsAdminApiService {
 
     private pluginUrl(identifier: string): string {
         return `${this.baseUrl}${encodeURIComponent(identifier)}/`;
+    }
+
+    private grantUrl(identifier: string, grantId: number): string {
+        return `${this.pluginUrl(identifier)}grants/${grantId}/`;
     }
 }
 

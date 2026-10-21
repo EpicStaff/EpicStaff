@@ -28,10 +28,15 @@ from tables.utils.litellm_model_info import model_reasoning_support, validate_re
 
 from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
 from ..utils.mixins import TagHandlingMixin
+from ..utils.secret_destination_guard_mixin import SecretDestinationGuardMixin
 from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
-class RealtimeModelSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
+class RealtimeModelSerializer(
+    AuthorSummarySerializerMixin, SecretDestinationGuardMixin, serializers.ModelSerializer
+):
+    secret_destination_fields = ("provider",)
+
     class Meta:
         model = RealtimeModel
         fields = ["id", "name", "provider", "is_custom", "org", "created_by"]
@@ -67,8 +72,10 @@ class RealtimeConfigSerializer(
 
 
 class RealtimeTranscriptionModelSerializer(
-    AuthorSummarySerializerMixin, serializers.ModelSerializer
+    AuthorSummarySerializerMixin, SecretDestinationGuardMixin, serializers.ModelSerializer
 ):
+    secret_destination_fields = ("provider",)
+
     class Meta:
         model = RealtimeTranscriptionModel
         fields = ["id", "name", "provider", "is_custom", "org", "created_by"]
@@ -160,8 +167,13 @@ class LLMConfigSerializer(
 
 
 class LLMModelSerializer(
-    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
+    AuthorSummarySerializerMixin,
+    SecretDestinationGuardMixin,
+    TagHandlingMixin,
+    serializers.ModelSerializer,
 ):
+    secret_destination_fields = ("base_url", "llm_provider")
+
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
     supports_reasoning = serializers.SerializerMethodField()

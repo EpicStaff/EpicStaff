@@ -50,10 +50,9 @@ def role_plugin_actions(
     """Return the actions a membership role has on a plugin, in manifest order.
 
     A built-in role gets the manifest's defaults, which no organization can change (the
-    built-in Superadmin role gets Org Admin's). A
-    custom role gets the actions stored for it on the plugin's grant to its organization
-    (`stored_permissions`, the bitmask `stored_permissions_by_grant` returns), limited to
-    the actions the plugin declares.
+    built-in Superadmin role gets Org Admin's). A custom role gets the actions stored for
+    it on the plugin's grant to its organization (`stored_permissions`, the bitmask of its
+    `PluginRolePermission` row), limited to the actions the plugin declares.
     """
     if role.is_built_in:
         default_key = BUILT_IN_ROLE_DEFAULT_KEYS.get(role.name)
@@ -79,27 +78,13 @@ def stored_permissions_by_grant(role: Role, grant_ids: Iterable[int]) -> dict[in
     )
 
 
-def stored_permissions_by_role(roles: Iterable[Role], grant_id: int) -> dict[int, int]:
-    """Return the bitmask stored on one grant for each custom role of `roles`, by role id.
-
-    Roles without a stored row are absent (no actions). At most one query; none when every
-    role is built in.
-    """
-    custom_role_ids = {role.pk for role in roles if not role.is_built_in}
-    if not custom_role_ids:
-        return {}
-    return dict(
-        PluginRolePermission.objects.filter(
-            grant_id=grant_id, role_id__in=custom_role_ids
-        ).values_list("role_id", "permissions")
-    )
-
-
 def role_actions_by_grant(role: Role, grants: Iterable[PluginGrant]) -> dict[int, list[str]]:
     """Return `role`'s actions on each grant's plugin, by grant id, in one query at most.
 
-    The one resolution every caller uses: the left bar, the Roles matrix and role
-    assignment. Each grant must come with its plugin's current package.
+    One role on many grants, as the left bar, the Roles matrix, role assignment and the
+    gateway ask it. `plugin_access.eligible_people` asks the other way round (many people's
+    roles on one grant) and reads the stored actions in its own query; both resolve through
+    `role_plugin_actions`. Each grant must come with its plugin's current package.
     """
     grants = list(grants)
     stored = stored_permissions_by_grant(role, (grant.pk for grant in grants))

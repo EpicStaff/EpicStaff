@@ -1,6 +1,8 @@
 """`X-EpicStaff-On-Behalf-Of`: a service account names the person a call is for, and EpicStaff checks it."""
 
 import pytest
+from plugins.access.people_service import PluginPeopleService
+from plugins.exceptions import OnBehalfOfNotAllowedError
 from plugins.models import GrantState, PluginActivityEvent, PluginGrant, PluginRolePermission
 from rbac.models import Organization, OrganizationUser
 from rbac.models.enums import Permission
@@ -168,3 +170,47 @@ def test_an_inactive_organization_refuses_the_key_before_the_person_is_checked(a
     response = service_account_client(acme_key, acme, on_behalf_of=member_only.pk).get(ME_URL)
 
     assert response.status_code == 401
+
+
+# ---- one rule, one query, whoever the id names ----
+
+
+def _grant_as_the_key_loads_it(acme):
+    return PluginGrant.objects.select_related("org", "plugin__current_package").get(org=acme)
+
+
+@pytest.mark.parametrize("who", ["unknown", "non_member", "member", "custom_role_with_view", "custom_role_without_view"])
+def test_the_answer_takes_one_query_whoever_the_id_names(
+    acme_key, acme, who, member_only, django_user_model, make_custom_role, django_assert_num_queries
+):
+    grant = _grant_as_the_key_loads_it(acme)
+    if who == "unknown":
+        user_id = 987654321
+    elif who == "non_member":
+        user_id = django_user_model.objects.create_user(email="stranger-count@example.com", password="StrongPass123!").pk
+    elif who == "member":
+        user_id = member_only.pk
+    else:
+        role = make_custom_role(acme, who)
+        person = django_user_model.objects.create_user(email=f"{who}@example.com", password="StrongPass123!")
+        OrganizationUser.objects.create(user=person, org=acme, role=role)
+        stored = int(Permission.READ) if who == "custom_role_with_view" else int(Permission.UPDATE)
+        PluginRolePermission.objects.create(grant=grant, role=role, permissions=stored)
+        user_id = person.pk
+    may_act = who in ("member", "custom_role_with_view")
+
+    with django_assert_num_queries(1):
+        try:
+            acted_for = PluginPeopleService().on_behalf_of(grant, user_id)
+        except OnBehalfOfNotAllowedError:
+            acted_for = None
+
+    assert (acted_for.pk if acted_for else None) == (user_id if may_act else None)
+
+
+def test_a_grant_that_is_not_usable_acts_for_nobody_without_a_query(acme_key, acme, member_only, django_assert_num_queries):
+    PluginGrant.objects.update(state=GrantState.GRANTING)
+    grant = _grant_as_the_key_loads_it(acme)
+
+    with django_assert_num_queries(0), pytest.raises(OnBehalfOfNotAllowedError):
+        PluginPeopleService().on_behalf_of(grant, member_only.pk)

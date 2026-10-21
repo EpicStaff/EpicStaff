@@ -9,6 +9,10 @@ PLUGINS_BASE_DOMAIN = env.str("PLUGINS_BASE_DOMAIN")
 # by the plugins.E004 system check rather than here, so a disabled platform never fails on them.
 PLUGINS_TRUSTED_SIGNING_KEYS = env.list("PLUGINS_TRUSTED_SIGNING_KEYS") or []
 PLUGINS_MAX_PACKAGE_MB = env.int("PLUGINS_MAX_PACKAGE_MB")
+# Days a suspended plugin keeps its data in an organization. Read as text: the plugins.E011
+# start-up check reports a value outside 1-3650, so a disabled platform never fails on one
+# (plugins.configuration.grace_period reads it as a number).
+PLUGINS_GRACE_PERIOD_DAYS = env.str("PLUGINS_GRACE_PERIOD_DAYS")
 PLUGINS_STORAGE_BUCKET = env.str("PLUGINS_STORAGE_BUCKET")
 # The plugin_spa volume: written here, served read-only by nginx from the same path.
 PLUGINS_SPA_ROOT = Path("/srv/plugin-spa")

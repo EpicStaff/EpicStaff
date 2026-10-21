@@ -6,7 +6,8 @@ from epicstaff_plugin.contracts.service_account_api import (
     PluginPerson,
     ServiceAccountInfo,
 )
-from plugins.models import GrantState, PluginGrant
+from plugins.access.people_service import PluginPeopleService
+from plugins.models import GrantState, Plugin, PluginGrant, PluginState
 from rbac.models import Organization, OrganizationUser
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -233,3 +234,38 @@ def test_a_person_s_token_is_not_accepted(admin_acme, acme, weather, member_only
 
     for response in (client.get(ME_URL), client.get(_person_url(member_only.pk))):
         assert response.status_code == 401
+
+
+# ---- the grant rule, loaded or queried ----
+
+
+@pytest.mark.parametrize("grant_state", list(GrantState))
+@pytest.mark.parametrize("plugin_state", list(PluginState))
+def test_a_loaded_grant_is_usable_exactly_when_the_query_says_so(weather, grant_to, beta, grant_state, plugin_state):
+    grant = grant_to(weather, beta, state=grant_state)
+    Plugin.objects.filter(pk=weather.pk).update(state=plugin_state)
+    loaded = PluginGrant.objects.select_related("plugin").get(pk=grant.pk)
+
+    assert loaded.is_usable == PluginGrant.objects.filter(pk=grant.pk).usable().exists()
+
+
+def test_a_grant_without_an_approved_package_is_not_usable(weather, grant_to, beta):
+    grant = grant_to(weather, beta)
+    Plugin.objects.filter(pk=weather.pk).update(current_package=None)
+    loaded = PluginGrant.objects.select_related("plugin").get(pk=grant.pk)
+
+    assert (loaded.is_usable, PluginGrant.objects.filter(pk=grant.pk).usable().exists()) == (False, False)
+
+
+def test_a_person_lookup_reads_the_roles_once_for_many_people(
+    client, acme, role_member, django_user_model, django_assert_max_num_queries
+):
+    people = [_plain_member_with_role_named(django_user_model, acme, role_member, index) for index in range(5)]
+
+    with django_assert_max_num_queries(4):
+        lookup = PluginPeopleService().people(
+            PluginGrant.objects.select_related("org", "plugin__current_package").get(org=acme),
+            [person.pk for person in people],
+        )
+
+    assert [person.user.pk for person in lookup] == sorted(person.pk for person in people)

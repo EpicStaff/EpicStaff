@@ -41,10 +41,11 @@ class ServiceAccountKeyService:
         For each account, the previous current key keeps working for ten more minutes and
         every key superseded before it is revoked now, so at most two keys of an account are
         ever valid. Runs in one transaction with four queries, however many organizations
-        the plugin is granted to: the call either mints every key or none. Each account comes
-        with its grant and organization.
+        the plugin is granted to: the call either mints every key or none. Called inside a
+        caller's transaction it is a savepoint, and the caller's rollback undoes it too; the
+        `keys_minted` log line is written only once the mint is committed. Each account
+        comes with its grant and organization.
         """
-        now = timezone.now()
         with transaction.atomic():
             accounts = list(
                 PluginServiceAccount.objects.key_holding()
@@ -55,6 +56,9 @@ class ServiceAccountKeyService:
             )
             if not accounts:
                 return []
+            # Read once the accounts are locked: a mint that waited for another one still
+            # gives the key it supersedes its full ten minutes.
+            now = timezone.now()
             account_ids = [account.pk for account in accounts]
             keys = PluginServiceAccountKey.objects.filter(
                 service_account_id__in=account_ids, revoked_at__isnull=True
@@ -72,9 +76,12 @@ class ServiceAccountKeyService:
                 )
                 for key in minted
             )
-        log_service_account_keys_minted(
-            plugin.identifier, [account.grant.org_id for account in accounts]
-        )
+            org_ids = [account.grant.org_id for account in accounts]
+            # Once the outermost transaction commits: a caller that rolls the mint back
+            # (a runtime file that cannot be built) must leave no line saying keys exist.
+            transaction.on_commit(
+                lambda: log_service_account_keys_minted(plugin.identifier, org_ids)
+            )
         return minted
 
 

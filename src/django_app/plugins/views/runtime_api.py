@@ -23,7 +23,7 @@ from plugins.serializers.runtime_api import (
 )
 
 
-class PluginRuntimeView(APIView):
+class PluginRuntimeApiView(APIView):
     authentication_classes = [PluginServiceAccountAuthentication]
     permission_classes = [IsPluginServiceAccount]
 
@@ -36,18 +36,18 @@ class PluginRuntimeView(APIView):
         return self.request.auth.service_account.grant
 
 
-class ServiceAccountMeView(PluginRuntimeView):
+class ServiceAccountMeView(PluginRuntimeApiView):
     def get(self, request):
         return Response(service_account_info(request.auth, request.user))
 
 
-class PluginPersonView(PluginRuntimeView):
+class PluginPersonView(PluginRuntimeApiView):
     def get(self, request, user_id: int):
         facts = PluginPeopleService().person(self.grant, user_id)
         return Response(plugin_person(facts).model_dump(mode="json"))
 
 
-class PeopleLookupView(PluginRuntimeView):
+class PeopleLookupView(PluginRuntimeApiView):
     def post(self, request):
         body = PeopleLookupRequestSerializer(data=request.data)
         body.is_valid(raise_exception=True)

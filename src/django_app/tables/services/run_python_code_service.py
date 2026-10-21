@@ -16,6 +16,7 @@ from tables.exceptions import CodeRunTargetNotFoundError
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.services.code_run_targets import CODE_RUN_TARGETS, storage_path_for_test_run
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 from tables.services.secrets import (
     UndeclaredSecretError,
     parse_secret_names,
@@ -59,10 +60,14 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             additional_global_kwargs (dict[str, Any], optional): Additional global keyword arguments to be passed to the Python code. Defaults to None.
         Returns:
             str: The execution ID of the Python code.
+
+        Raises:
+            RunAdmissionRefusedError: The run is refused; nothing was written or published.
         """
         additional_global_kwargs = additional_global_kwargs or {}
 
         python_code: PythonCode = PythonCode.objects.get(id=python_code_id)
+        assert_run_admitted(RunSubject(RunKind.CODE, python_code.pk, organization_id))
 
         # Resolve before anything is written or published: this path never goes
         # through the session payload, so it resolves for itself, and a failure
@@ -175,12 +180,14 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 `organization_id`, or its code slot is empty.
             UndeclaredSecretError: The code reads a secret it did not declare.
                 Nothing is written or published.
+            RunAdmissionRefusedError: The run is refused; nothing was written or published.
         """
         code_run_target = CODE_RUN_TARGETS[target_type]
         owner = code_run_target.find_in_org(target_id=target_id, org_id=organization_id)
         if owner is None:
             raise CodeRunTargetNotFoundError(target_id)
         python_code = code_run_target.python_code_of(owner)
+        assert_run_admitted(RunSubject(RunKind.CODE, python_code.pk, organization_id))
         python_code_data = code_run_target.build_payload(
             owner, storage_path_for_test_run(target_type, target_id)
         )

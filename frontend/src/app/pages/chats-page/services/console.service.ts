@@ -20,6 +20,19 @@ export interface ConnectionResult {
     error?: Error;
 }
 
+/**
+ * What the server said when the realtime start failed: its `error` text, else the `message` of the error envelope
+ * (for example a run refused because it uses a suspended plugin); `undefined` for anything else.
+ */
+function realtimeStartErrorMessage(error: unknown): string | undefined {
+    if (!(error instanceof HttpErrorResponse)) return undefined;
+    const body: unknown = error.error;
+    if (typeof body !== 'object' || body === null) return undefined;
+    const { error: errorText, message } = body as { error?: unknown; message?: unknown };
+    if (typeof errorText === 'string') return errorText;
+    return typeof message === 'string' && message ? message : undefined;
+}
+
 @Injectable({
     providedIn: 'root',
 })
@@ -142,8 +155,7 @@ export class ConsoleService implements OnDestroy {
                 catchError((error: Error) => {
                     this.connectionError$.next(error);
                     this.cleanupAfterFailedConnection();
-                    const rawMessage = (error as unknown as HttpErrorResponse)?.error?.error;
-                    const backendMessage = typeof rawMessage === 'string' ? rawMessage : undefined;
+                    const backendMessage = realtimeStartErrorMessage(error);
                     const message = backendMessage?.includes('conflicting RAG configs')
                         ? "Conflict: the agent's surfaces use the same collection with different RAG settings."
                         : (backendMessage ?? 'Failed to start the realtime conversation');

@@ -1,5 +1,6 @@
 import {
     PluginAction,
+    PluginGrantAction,
     PluginGrantState,
     PluginSignatureStatus,
     PluginState,
@@ -12,6 +13,11 @@ import {
     PluginLimitKey,
     PluginObservedState,
 } from '../models/plugin-backend.model';
+import {
+    PluginDefaultModelSetting,
+    PluginPreviewSessionStatus,
+    PluginPreviewTriggerKind,
+} from '../models/plugin-suspend-preview.model';
 
 /** How a badge reads at a glance. */
 export type PluginBadgeTone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -44,6 +50,41 @@ export const PLUGIN_GRANT_STATE_LABELS: Readonly<Record<PluginGrantState, string
     upgrade_failed: 'Upgrade failed',
     suspended: 'Suspended',
     purging: 'Purging',
+};
+
+/** The button of each grant action; "Suspend…" opens a dialog first. */
+export const PLUGIN_GRANT_ACTION_LABELS: Readonly<Record<PluginGrantAction, string>> = {
+    suspend: 'Suspend…',
+    resume: 'Resume',
+    retry_install: 'Retry install',
+};
+
+/** As the Default LLMs settings page names them; the page shows only the agent ones. */
+export const PLUGIN_DEFAULT_MODEL_SETTING_LABELS: Readonly<Record<PluginDefaultModelSetting, string>> = {
+    agent_llm_config: 'Agent LLM',
+    agent_fcm_llm_config: 'Agent Function Calling LLM',
+    voice_llm_config: 'Voice LLM',
+    transcription_llm_config: 'Transcription LLM',
+    project_manager_llm_config: 'Project Manager LLM',
+    memory_embedding_config: 'Memory Embedding Model',
+    memory_llm_config: 'Memory LLM',
+};
+
+/** The settings the Default LLMs settings page shows and can change; the others have no page. */
+export const PLUGIN_DEFAULT_MODEL_SETTINGS_ON_SETTINGS_PAGE: ReadonlySet<PluginDefaultModelSetting> =
+    new Set<PluginDefaultModelSetting>(['agent_llm_config', 'agent_fcm_llm_config']);
+
+/** As the session lists name these statuses. */
+export const PLUGIN_PREVIEW_SESSION_STATUS_LABELS: Readonly<Record<PluginPreviewSessionStatus, string>> = {
+    pending: 'Pending',
+    run: 'Running',
+    wait_for_user: 'Waiting for User',
+};
+
+export const PLUGIN_PREVIEW_TRIGGER_KIND_LABELS: Readonly<Record<PluginPreviewTriggerKind, string>> = {
+    schedule: 'Schedule',
+    webhook: 'Webhook',
+    telegram: 'Telegram',
 };
 
 export const PLUGIN_TRUST_LABELS: Readonly<Record<PluginTrust, string>> = {

@@ -39,7 +39,7 @@ Each call needs the action its endpoint needs from a person:
 | Change a flow (save it, add nodes) | `flows: update` |
 | Run a flow, stop a run, or write schedule, webhook or Telegram trigger nodes | `flows: use` too |
 | Store a file in the organization's storage | `files: create` (`files: update` to replace one) |
-| Store a secret, and refer to it from a configuration | `secrets: create`, `secrets: use` |
+| Store a secret, and refer to it from a configuration (only secrets the plugin created) | `secrets: create`, `secrets: use` |
 | Create an LLM configuration; list the LLM models | `llm_configs: create`; `llm_configs: read` |
 
 Writing trigger nodes needs `flows: use` because a trigger starts runs by itself; the review warns
@@ -50,6 +50,10 @@ creating a new secret and deleting the old (`secrets: delete`).
 
 - **Nothing outside the organization.** A service account acts only in the organization its
   grant is to; every other organization's rows are "not found".
+- **No one else's secrets.** `secrets: use` refers only to secrets the plugin created; a reference
+  to any other secret of the organization is refused (`400 invalid`).
+- **Nothing while it is suspended.** A suspended plugin's keys stop working in that organization,
+  and runs that use what it owns there are refused ([the plugin lifecycle](../explanation/lifecycle.md)).
 - **Nothing that only people do.** Personal filter presets, tool favorites, the flow assistant,
   voice sessions and notification mail refuse service accounts, whatever the declaration.
 - **Nothing beyond the declaration on behalf of a person.** Calling on behalf of an Org Admin

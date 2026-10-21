@@ -4,7 +4,11 @@ A job is created `pending` by the lifecycle step that needs it (a grant, for `in
 node lists it in its desired state and claims it once the plugin's process is ready; the
 claim signs the call (an assertion bound to the exact body) and the node makes it at once,
 then posts the result. The result moves the grant on. A `running` job whose node never
-reports a result fails two minutes after its deadline.
+reports a result fails two minutes after its deadline. A `pending` job never times out: it
+waits until the plugin's process is ready to claim it.
+
+Lock order: whatever changes a job and may change its grant locks the grant first, then the
+job, as suspension does (it fails the grant's open jobs), so the two never deadlock.
 
 Adding a hook kind: `HookKind` and `HOOK_PATHS` in the SDK's hook API, a `HookJobKind`
 choice and its migration, its `HOOK_KIND_RULES` entry (the grant states it runs in and
@@ -20,7 +24,8 @@ from datetime import timedelta
 from functools import reduce
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q, QuerySet, Window
+from django.db.models.functions import RowNumber
 from django.utils import timezone
 from epicstaff_plugin.contracts.gateway_context import ContextOrganization, PluginIdentity
 from epicstaff_plugin.contracts.hook_api import (
@@ -34,7 +39,12 @@ from epicstaff_plugin.contracts.hook_api import (
 from epicstaff_plugin.contracts.manifest import MAX_HOOK_TIMEOUT_SECONDS, PluginManifest
 from epicstaff_plugin.problems import Problem, format_loc
 from pydantic import ValidationError
-from src.shared.models.plugin_nodes import DesiredHookJob, HookInvocation, HookResult
+from src.shared.models.plugin_nodes import (
+    MAX_PENDING_HOOK_JOBS,
+    DesiredHookJob,
+    HookInvocation,
+    HookResult,
+)
 
 from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import log_hook_claimed, log_hook_finished
@@ -47,6 +57,7 @@ from plugins.exceptions import (
     InvalidHookResultError,
 )
 from plugins.identity.signing_keys import cached_signing_key
+from plugins.lifecycle.grant_actions import GrantAction, assert_grant_action
 from plugins.models import (
     GrantState,
     HookJobKind,
@@ -123,7 +134,9 @@ class HookJobService:
         """The jobs each plugin's node should run, oldest first, in one query.
 
         A job is listed while it is pending and its grant still exists in the state the
-        job's kind runs in.
+        job's kind runs in. At most the oldest `MAX_PENDING_HOOK_JOBS` of a plugin are
+        listed, as many as a desired placement carries; the next ones are listed as these
+        finish.
         """
         jobs = defaultdict(list)
         if not plugin_ids:
@@ -132,6 +145,14 @@ class HookJobService:
             PluginHookJob.objects.filter(
                 _runnable_q(), plugin_id__in=plugin_ids, state=HookJobState.PENDING
             )
+            .annotate(
+                position=Window(
+                    RowNumber(),
+                    partition_by=[F("plugin_id")],
+                    order_by=[F("created_at").asc(), F("pk").asc()],
+                )
+            )
+            .filter(position__lte=MAX_PENDING_HOOK_JOBS)
             .order_by("created_at", "pk")
             .values_list("plugin_id", "pk", "kind", "organization_id")
         )
@@ -155,7 +176,7 @@ class HookJobService:
         self.fail_overdue(node)
         now = timezone.now()
         with transaction.atomic():
-            job = self._job_of_node(node, job_id, lock=True)
+            job = self._lock_job_of_node(node, job_id)
             grant = job.grant
             plugin = job.plugin
             if (
@@ -201,7 +222,7 @@ class HookJobService:
             HookJobNotRunningError: The job is not running, or runs another attempt.
         """
         with transaction.atomic():
-            job = self._job_of_node(node, job_id, lock=True)
+            job = self._lock_job_of_node(node, job_id)
             if job.state != HookJobState.RUNNING or job.attempt != result.attempt:
                 raise HookJobNotRunningError()
             succeeded = result.outcome == "succeeded"
@@ -233,13 +254,14 @@ class HookJobService:
             )
             if grant is None:
                 raise GrantNotFoundError()
+            assert_grant_action(grant, GrantAction.RETRY_INSTALL)
             job = (
                 grant.hook_jobs.select_for_update()
                 .filter(kind=HookJobKind.INSTALL, state=HookJobState.FAILED)
                 .order_by("-created_at", "-pk")
                 .first()
             )
-            if grant.state != GrantState.INSTALL_FAILED or job is None:
+            if job is None:
                 raise HookNotRetryableError()
             job.state = HookJobState.PENDING
             job.claimed_at = None
@@ -272,10 +294,11 @@ class HookJobService:
         )
         for job_id in overdue_ids:
             with transaction.atomic():
+                running = PluginHookJob.objects.filter(pk=job_id, state=HookJobState.RUNNING)
+                self._lock_grant_of(running)
                 job = (
-                    PluginHookJob.objects.select_for_update(of=("self",))
+                    running.select_for_update(of=("self",))
                     .select_related("plugin", "grant")
-                    .filter(pk=job_id, state=HookJobState.RUNNING)
                     .first()
                 )
                 if job is None:
@@ -291,17 +314,27 @@ class HookJobService:
                 duration_ms=None,
             )
 
-    @staticmethod
-    def _job_of_node(node: PluginNode, job_id: int, *, lock: bool) -> PluginHookJob:
-        jobs = PluginHookJob.objects.select_related("plugin__current_package", "grant__org").defer(
-            "plugin__current_package__icon_bytes"
+    @classmethod
+    def _lock_job_of_node(cls, node: PluginNode, job_id: int) -> PluginHookJob:
+        """Lock a job of `node`'s and its grant, the grant first; run inside a transaction."""
+        of_node = PluginHookJob.objects.filter(pk=job_id, plugin__placement__node=node)
+        cls._lock_grant_of(of_node)
+        job = (
+            of_node.select_for_update(of=("self",))
+            .select_related("plugin__current_package", "grant__org")
+            .defer("plugin__current_package__icon_bytes")
+            .first()
         )
-        if lock:
-            jobs = jobs.select_for_update(of=("self",))
-        job = jobs.filter(pk=job_id, plugin__placement__node=node).first()
         if job is None:
             raise HookJobNotFoundError()
         return job
+
+    @staticmethod
+    def _lock_grant_of(job: QuerySet) -> None:
+        """Lock the grant of the job `job` matches, when it matches one that has a grant."""
+        grant_id = job.values_list("grant_id", flat=True).first()
+        if grant_id is not None:
+            PluginGrant.objects.select_for_update().filter(pk=grant_id).only("pk").first()
 
     @staticmethod
     def _finish(job: PluginHookJob, *, succeeded: bool, error: str | None) -> None:

@@ -7,6 +7,7 @@ import pytest
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.db import connection, models, transaction
+from django.db.models.signals import post_delete, pre_delete
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from plugins.identity.service_account_authentication import PluginServiceAccountAuthentication
@@ -21,6 +22,7 @@ from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.models import Graph, KeyValueTable, LLMConfig, Secret, StorageFile
+from tables.models.llm_models import LLMModel
 from tables.models.graph_models import StartNode
 from tables.services.storage_service.db_sync import StorageFileSync
 
@@ -50,10 +52,11 @@ NOT_OWNABLE_MODELS = {
     "tables.PythonCodeToolConfig": "a configuration of one Python tool, deleted with the tool: not a root",
     "tables.RealtimeSessionItem": "conversation data the realtime service writes",
 }
-# Each `bulk_create` of an ownable root outside tests, by file and function, and how its rows
-# get owned (or why they never need to be).
+# Each `bulk_create` (or the `_insert` it is built on) of an ownable root outside tests, by file
+# and function, and how its rows get owned (or why they never need to be).
 BULK_CREATE_SITES = {
     "tables/services/storage_service/db_sync.py::StorageFileSync.on_bulk_upload": "sends rows_bulk_created for the files it inserts; its folder insert makes folders only, which are never owned",
+    "tables/services/storage_service/db_sync.py::_insert_skipping_live_paths": "inserts the uploaded files; its caller StorageFileSync.on_bulk_upload sends rows_bulk_created for the ids it returns",
     "tables/services/storage_service/reconciler.py::StorageReconciler.reconcile_tree": "background sync from the storage backend, never under a service account",
 }
 
@@ -191,44 +194,13 @@ def test_a_rolled_back_create_leaves_no_ownership(weather_backend, service_accou
     assert not PluginOwnedResource.objects.exists()
 
 
-def test_purging_a_root_deletes_its_ownership(owner, acme):
+def test_deleting_a_root_leaves_its_ownership_row_as_a_tombstone(owner, acme):
     graph = Graph.objects.get(pk=owner.post("/api/graphs/", {"name": "Short-lived"}, format="json").json()["id"])
 
     graph.delete()
-    assert _owned(Graph, graph.pk) is not None
     Graph.all_objects.get(pk=graph.pk).purge()
 
-    assert _owned(Graph, graph.pk) is None
-
-
-def _own_files_as_the_plugin(plugin, service_account_key, organization, count):
-    request = Request(
-        APIRequestFactory().post(
-            "/",
-            HTTP_AUTHORIZATION=f"PluginKey {service_account_key(plugin, organization)}",
-            HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET,
-        ),
-        authenticators=[PluginServiceAccountAuthentication()],
-    )
-    StorageFileSync.on_bulk_upload(organization.pk, [(f"many/{index}.txt", 1) for index in range(count)], user=request.user)
-    request_scope._current_scope.set(None)
-
-
-def test_deleting_owned_rows_by_queryset_costs_the_same_for_one_or_many(
-    weather_backend, service_account_key, acme, beta
-):
-    plugin = weather_backend(access=OWNER_ACCESS)
-    _own_files_as_the_plugin(plugin, service_account_key, acme, 1)
-    _own_files_as_the_plugin(plugin, service_account_key, beta, 5)
-    assert PluginOwnedResource.objects.count() == 6
-
-    def delete_files(organization):
-        with CaptureQueriesContext(connection) as captured:
-            StorageFile.all_objects.filter(org=organization, item_type="file").delete()
-        return len(captured.captured_queries)
-
-    assert delete_files(acme) == delete_files(beta)
-    assert not PluginOwnedResource.objects.exists()
+    assert _owned(Graph, graph.pk) is not None
 
 
 def test_deleting_the_organization_takes_its_ownership_rows(owner, acme):
@@ -237,6 +209,56 @@ def test_deleting_the_organization_takes_its_ownership_rows(owner, acme):
     Organization.objects.filter(pk=acme.pk).delete()
 
     assert not PluginOwnedResource.objects.exists()
+
+
+def test_a_row_outside_the_service_account_s_organization_is_never_owned(
+    weather_backend, service_account_key, acme, beta, log_messages
+):
+    plugin = weather_backend(access=OWNER_ACCESS)
+    _authenticate_directly(service_account_key(plugin, acme))
+
+    foreign = Graph.objects.create(name="Beta's", org=beta)
+    built_in = LLMModel.objects.create(name="shared-model", org=None)
+    own = Graph.objects.create(name="Acme's", org=acme)
+
+    assert (_owned(Graph, foreign.pk), _owned(LLMModel, built_in.pk)) == (None, None)
+    assert _owned(Graph, own.pk) is not None
+    assert [line for line in log_messages if line.startswith("plugins.ownership.foreign_row")] == [
+        f"plugins.ownership.foreign_row plugin=weather model=tables.Graph pk={foreign.pk}",
+        f"plugins.ownership.foreign_row plugin=weather model=tables.LLMModel pk={built_in.pk}",
+    ]
+
+
+def test_a_created_root_is_named_by_its_name_or_else_its_custom_name(weather_backend, service_account_key, acme):
+    plugin = weather_backend(access=OWNER_ACCESS)
+    _authenticate_directly(service_account_key(plugin, acme))
+
+    Graph.objects.create(name="Forecast", org=acme)
+    LLMConfig.objects.create(custom_name="Weather summaries", org=acme)
+
+    assert [root.label for root in request_scope.current_scope().created] == ["Forecast", "Weather summaries"]
+
+
+def test_a_large_bulk_upload_is_owned_in_batches(weather_backend, service_account_key, acme):
+    plugin = weather_backend(access=OWNER_ACCESS)
+    principal = _authenticate_directly(service_account_key(plugin, acme))
+    paths = [(f"many/{index}.txt", 1) for index in range(1500)]
+
+    with CaptureQueriesContext(connection) as captured:
+        StorageFileSync.on_bulk_upload(acme.pk, paths, user=principal)
+
+    ownership_inserts = [query for query in captured.captured_queries if query["sql"].startswith('INSERT INTO "plugins_pluginownedresource"')]
+    assert len(ownership_inserts) == 2
+    assert PluginOwnedResource.objects.filter(org=acme).count() == 1500
+
+
+def _authenticate_directly(raw_key):
+    """Authenticate as the view would, without the middleware: the scope stays open for the test."""
+    request = Request(
+        APIRequestFactory().post("/", HTTP_AUTHORIZATION=f"PluginKey {raw_key}", HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET),
+        authenticators=[PluginServiceAccountAuthentication()],
+    )
+    return request.user
 
 
 # ---- the guards ----
@@ -266,23 +288,29 @@ def test_every_organization_owned_model_is_ownable_or_named_as_not_ownable():
     assert all(apps.get_model(label) for label in NOT_OWNABLE_MODELS)
 
 
-def _cascade_reachable_from(model):
-    reachable, frontier = set(), [model]
-    while frontier:
-        current = frontier.pop()
-        for relation in current._meta.related_objects:
-            if getattr(relation.on_delete, "__name__", "") != "CASCADE":
-                continue
-            if relation.related_model not in reachable:
-                reachable.add(relation.related_model)
-                frontier.append(relation.related_model)
-    return reachable
+def test_the_plugins_app_listens_to_no_delete_of_an_ownable_root():
+    # Any delete listener on a model turns off Django's column deferral for every row of it
+    # a cascade deletes; an organization delete would then load every flow in full. Other
+    # apps' own listeners (a Python tool's, a secret's) are theirs to keep.
+    listening = sorted(
+        f"{model._meta.label}: {signal_name} {receiver.__module__}.{receiver.__qualname__}"
+        for model in ownable_models()
+        for signal_name, signal in (("pre_delete", pre_delete), ("post_delete", post_delete))
+        for receivers in signal._live_receivers(model)
+        for receiver in receivers
+        if receiver.__module__.split(".")[0] == "plugins"
+    )
+
+    assert listening == []
 
 
-def test_no_ownable_root_cascades_from_a_row_of_its_own_model():
-    # Ownership rows of a deleted queryset go in one query, which covers only the rows the
-    # queryset matches; a root deleted by cascade from a row of its own model would be missed.
-    assert sorted(model._meta.label for model in ownable_models() if model in _cascade_reachable_from(model)) == []
+def test_every_ownable_root_belongs_to_an_organization():
+    # The recorder owns a row only when its `org` is the service account's organization.
+    assert sorted(
+        model._meta.label
+        for model in ownable_models()
+        if getattr(model._meta.get_field("org"), "related_model", None) is not Organization
+    ) == []
 
 
 def test_every_ownable_root_has_an_integer_key():
@@ -293,8 +321,13 @@ def test_every_ownable_root_has_an_integer_key():
     assert {apps.get_model(label) for label in EXTRA_OWNABLE_MODELS} <= set(ownable_models())
 
 
+# `_insert` sends no `post_save` either, so a call of it escapes the recorder just as
+# `bulk_create` does.
+BULK_INSERT_METHODS = frozenset({"bulk_create", "_insert"})
+
+
 class _BulkCreateFinder(ast.NodeVisitor):
-    """`<Model>.<manager>.bulk_create(` calls, by enclosing function (`Class.method`)."""
+    """`<Model>.<manager>.bulk_create(` and `._insert(` calls, by enclosing function (`Class.method`)."""
 
     def __init__(self, model_names: set[str]):
         self._model_names = model_names
@@ -317,7 +350,7 @@ class _BulkCreateFinder(ast.NodeVisitor):
         function = node.func
         if (
             isinstance(function, ast.Attribute)
-            and function.attr == "bulk_create"
+            and function.attr in BULK_INSERT_METHODS
             and isinstance(function.value, ast.Attribute)
             and isinstance(function.value.value, ast.Name)
             and function.value.value.id in self._model_names

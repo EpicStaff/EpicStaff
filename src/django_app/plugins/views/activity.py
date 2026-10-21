@@ -7,14 +7,14 @@ events of one plugin and the deployment-wide ones. All are pinned to people's cr
 a plugin's service account never reads activity.
 """
 
-from django.db.models import F, OuterRef, Subquery
+from django.db.models import F
 from django.db.models.functions import Lower
 from rbac.access.gates import HasOrgPermission
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
-from rbac.views.cross_org_base import CrossOrgAdminPagination
 from rest_framework import generics, viewsets
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -23,7 +23,6 @@ from plugins.models import (
     Plugin,
     PluginActivityEvent,
     PluginServiceAccount,
-    PluginServiceAccountKey,
 )
 from plugins.serializers.activity import (
     AdminActivityQuerySerializer,
@@ -35,6 +34,14 @@ from plugins.serializers.activity import (
 from plugins.views.admin_plugins import ADMIN_AUTHENTICATION, ADMIN_PERMISSIONS
 
 NEWEST_FIRST = ("-created_at", "-pk")
+
+
+class ActivityPagination(PageNumberPagination):
+    """Pages of activity events, for an organization's admins and for a SuperAdmin alike."""
+
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
 
 
 class _OrganizationAuditView(OrgScopedResolverMixin):
@@ -49,7 +56,7 @@ class PluginActivityViewSet(_OrganizationAuditView, viewsets.ReadOnlyModelViewSe
 
     queryset = PluginActivityEvent.objects.all()
     serializer_class = PluginActivityEventSerializer
-    pagination_class = CrossOrgAdminPagination
+    pagination_class = ActivityPagination
     lookup_url_kwarg = "event_id"
 
     def get_queryset(self):
@@ -81,13 +88,6 @@ class OrganizationServiceAccountViewSet(_OrganizationAuditView, viewsets.ViewSet
     """The plugins acting in the active organization, with the access each declared."""
 
     def list(self, request):
-        last_used = (
-            PluginServiceAccountKey.objects.filter(
-                service_account=OuterRef("pk"), last_used_at__isnull=False
-            )
-            .order_by(F("last_used_at").desc())
-            .values("last_used_at")[:1]
-        )
         accounts = (
             PluginServiceAccount.objects.filter(
                 grant__org_id=self.get_active_org_id(),
@@ -95,7 +95,7 @@ class OrganizationServiceAccountViewSet(_OrganizationAuditView, viewsets.ViewSet
             )
             .select_related("grant__plugin__current_package")
             .defer("grant__plugin__current_package__icon_bytes")
-            .annotate(key_last_used_at=Subquery(last_used))
+            .annotate(key_last_used_at=F("last_used_at"))
             .order_by(Lower("grant__plugin__name"), "grant__plugin__identifier")
         )
         return Response(OrganizationServiceAccountSerializer(accounts, many=True).data)
@@ -107,7 +107,7 @@ class PluginAdminActivityView(generics.ListAPIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
     serializer_class = PluginActivityEventSerializer
-    pagination_class = CrossOrgAdminPagination
+    pagination_class = ActivityPagination
 
     def get_queryset(self):
         identifier = self.kwargs["identifier"]

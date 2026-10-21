@@ -21,6 +21,8 @@ const EVERY_ACTION: PluginActivityAction[] = [
     'settings_changed',
     'limits_changed',
     'restarted',
+    'grant_suspended',
+    'grant_resumed',
 ];
 
 describe('PluginActivityListComponent', () => {
@@ -125,6 +127,34 @@ describe('PluginActivityListComponent', () => {
 
         expect(row(0)['Action']).toBe(PLUGIN_ACTIVITY_ACTION_LABELS[action]);
         expect(row(0)['Action']).not.toBe(action);
+    });
+
+    it('says a SuperAdmin suspended or resumed the plugin in the organization', () => {
+        const bySam = { kind: 'superadmin' as const, label: 'sam@example.com' };
+        render([
+            buildPluginActivityEvent({
+                id: 1,
+                actor: bySam,
+                on_behalf_of: null,
+                action: 'grant_suspended',
+                request: null,
+                target: null,
+                detail: { previous_state: 'active', purge_after: '2026-11-20T09:00:00Z' },
+            }),
+            buildPluginActivityEvent({
+                id: 2,
+                actor: bySam,
+                on_behalf_of: null,
+                action: 'grant_resumed',
+                request: null,
+                target: null,
+                detail: { state: 'active' },
+            }),
+        ]);
+
+        expect(row(0)['Action']).toBe('Suspended in this organization');
+        expect(row(0)['Actor']).toBe('sam@example.com (SuperAdmin)');
+        expect(row(1)['Action']).toBe('Resumed in this organization');
     });
 
     it('shows the organization and plugin columns only when asked', () => {

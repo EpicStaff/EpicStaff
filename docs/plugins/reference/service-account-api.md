@@ -29,6 +29,10 @@ organization id as text ([Runtime](runtime.md)):
 - A key works only on calls that reach EpicStaff through the plugins network, at the runtime
   file's `epicstaff_api_url`. Sent to EpicStaff's public address, it gets `401`.
 - Keys and the runtime file are secrets: never log them, never send them anywhere but EpicStaff.
+- **Suspension.** When a SuperAdmin suspends the plugin in an organization, every key of that
+  organization's service account stops at once (`401`), the one inside its 10 minutes included,
+  and the organization leaves the runtime file at the node's next fetch. Resuming mints new keys at
+  the next fetch; the old ones never work again. See [the plugin lifecycle](../explanation/lifecycle.md).
 
 ## Calling EpicStaff
 
@@ -52,8 +56,13 @@ X-EpicStaff-On-Behalf-Of: 17            (optional: see below)
   organization, role, membership and API-key management, the plugin administration, purging the
   recycle bin and the WebSocket and SSE tickets never read a plugin key (`401`).
 - **Secrets.** A service account with `secrets` access creates and lists secrets and refers to them
-  (`use`); a secret's value is never returned. There is no `update`: create a new secret and
+  (`use`), only to secrets it created itself: a configuration, tool, Python code or trigger that
+  references any other secret of the organization is refused (`400 invalid`) on create and on
+  every update. A secret's value is never returned. There is no `update`: create a new secret and
   delete the old one.
+- **Models.** A service account may change where a model sends requests (`base_url`, the provider)
+  only on models it created; the organization's configurations use its other models with their
+  own keys (`400 invalid`). Its other fields stay editable with `llm_configs: update`.
 - **Rate.** Each organization's service account may make `requests_per_minute` calls a minute,
   every endpoint counted; over it, `429 throttled` with `Retry-After` ([Limits](limits.md)).
 - **What it creates is the plugin's.** EpicStaff records every flow, secret, LLM, embedding or
@@ -152,12 +161,16 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 | `grant_created` | A SuperAdmin granted the plugin to an organization | SuperAdmin | the grant's |
 | `install_hook_succeeded`, `install_hook_failed` | The install hook reported (`job_id`, `attempt`, and `error` when it failed) | Platform | the grant's |
 | `install_hook_retried` | A SuperAdmin retried a failed install hook (`job_id`) | SuperAdmin | the grant's |
+| `grant_suspended` | A SuperAdmin suspended the plugin in the organization (`previous_state`, `purge_after`) | SuperAdmin | the grant's |
+| `grant_resumed` | A SuperAdmin resumed it (`state`: `active`, or `install_failed` when its install hook never succeeded) | SuperAdmin | the grant's |
 | `settings_changed` | A SuperAdmin changed settings (the keys only, never values) | SuperAdmin | none |
-| `limits_changed` | A SuperAdmin changed limit overrides | SuperAdmin | none |
+| `limits_changed` | A SuperAdmin changed limit overrides (the overrides in force afterwards, one key per limit, such as `memory_mb` and `cpu_priority`) | SuperAdmin | none |
 | `restarted` | A SuperAdmin restarted the backend (`restart_generation`) | SuperAdmin | none |
 
 Events name the plugin by its identifier, so they outlive the plugin. Logins to the plugin are
-not activity.
+not activity, and neither are runs refused while the plugin is suspended. An event's `detail` holds
+only numbers, text, booleans and lists of text. `request.route` is the URL path pattern of the
+endpoint, such as `api/graphs/<pk>/`, the same form for every endpoint.
 
 ## Errors
 

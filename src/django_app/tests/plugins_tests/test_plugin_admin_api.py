@@ -4,6 +4,9 @@ import base64
 import os
 
 import pytest
+import yaml
+from drf_spectacular.generators import SchemaGenerator
+from drf_spectacular.renderers import OpenApiYamlRenderer
 from plugins.models import Plugin, PluginPackage, PluginState, ReviewState
 from rest_framework.test import APIClient
 
@@ -332,6 +335,10 @@ ADMIN_ENDPOINTS = [
     ("get", f"{PLUGINS_URL}weather/"),
     ("get", f"{PLUGINS_URL}weather/grants/"),
     ("post", f"{PLUGINS_URL}weather/grants/"),
+    ("post", f"{PLUGINS_URL}weather/grants/1/retry-hook/"),
+    ("get", f"{PLUGINS_URL}weather/grants/1/suspend-preview/"),
+    ("post", f"{PLUGINS_URL}weather/grants/1/suspend/"),
+    ("post", f"{PLUGINS_URL}weather/grants/1/resume/"),
 ]
 
 
@@ -383,3 +390,14 @@ def test_the_review_icon_is_the_package_icon(superadmin_client):
 
     assert base64.b64decode(review["icon_data_url"].split(",", 1)[1]) == ICON_SVG
     assert PluginPackage.objects.get().review_state == ReviewState.PENDING
+
+
+def test_the_api_schema_with_the_plugin_routes_renders_as_yaml():
+    schema = SchemaGenerator().get_schema(request=None, public=True)
+
+    paths = yaml.safe_load(OpenApiYamlRenderer().render(schema))["paths"]
+    assert {
+        "/api/admin/plugins/{identifier}/grants/{grant_id}/suspend-preview/",
+        "/api/admin/plugins/{identifier}/grants/{grant_id}/suspend/",
+        "/api/admin/plugins/{identifier}/grants/{grant_id}/resume/",
+    } <= set(paths)

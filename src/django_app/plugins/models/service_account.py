@@ -25,7 +25,8 @@ class PluginServiceAccount(models.Model):
 
     One per grant of a plugin whose current package has a backend, created with the grant.
     It holds no rights of its own: the plugin's declared access, in the grant's
-    organization only, is everything it may do.
+    organization only, is everything it may do. `last_used_at` is when any of its keys last
+    authenticated, written at most once a minute.
     """
 
     grant = models.OneToOneField(
@@ -33,6 +34,7 @@ class PluginServiceAccount(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
 
     objects = PluginServiceAccountQuerySet.as_manager()
 
@@ -58,7 +60,6 @@ class PluginServiceAccountKey(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
-    last_used_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -66,6 +67,15 @@ class PluginServiceAccountKey(models.Model):
                 fields=["service_account"],
                 condition=Q(expires_at__isnull=True, revoked_at__isnull=True),
                 name=ONE_CURRENT_KEY_PER_ACCOUNT_CONSTRAINT,
+            ),
+        ]
+        indexes = [
+            # Every mint reads an account's unrevoked keys (at most two), while revoked
+            # ones pile up until they are pruned.
+            models.Index(
+                fields=["service_account"],
+                condition=Q(revoked_at__isnull=True),
+                name="plugins_sa_key_unrevoked",
             ),
         ]
 

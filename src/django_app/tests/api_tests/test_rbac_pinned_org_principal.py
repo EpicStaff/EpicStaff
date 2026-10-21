@@ -48,6 +48,7 @@ from tables.import_export.export_tabular_projections.session import (
 )
 from tables.import_export.serializers.session import SessionPrincipalExportSerializer
 from tables.models import McpTool, StorageFile
+from tables.models.llm_models import LLMModel
 from tables.models.graph_models import Graph, GraphOrganizationUser, GraphSessionMessage
 from tables.models.session_models import Session, SessionPrincipal
 from tables.serializers.model_serializers.session_serializers import (
@@ -55,6 +56,7 @@ from tables.serializers.model_serializers.session_serializers import (
 )
 from tables.services.graph_message_store import GraphMessageStore
 from tables.services.persistent_variables_service import PersistentVariablesService
+from tables.services.secrets import secret_service
 from tables.services.session_access import get_runnable_graph
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.storage_service.db_sync import StorageFileSync
@@ -90,16 +92,28 @@ class FakePinnedPrincipal:
     is_superadmin = False
     is_plugin_credential = True
 
-    def __init__(self, org_id: int, by_resource: dict | None = None, person=None):
+    def __init__(self, org_id: int, by_resource: dict | None = None, person=None, references_secrets=True, owns_rows=True):
         self.pinned_org_id = org_id
         self.plugin_identifier = "fakeplugin"
         self.display_name = "Fake (plugin)"
         self.person = person
         self.rate_limit_key = f"fake-plugin-account:{org_id}"
         self._by_resource = {str(key): int(bits) for key, bits in (by_resource or DECLARED).items()}
+        self._references_secrets = references_secrets
+        self.secret_reference_questions: list[frozenset[int]] = []
+        self._owns_rows = owns_rows
+        self.ownership_questions: list[object] = []
 
     def resolve_effective_permissions(self, org_id: int) -> EffectivePermissions:
         return EffectivePermissions(is_superadmin=False, role=None, by_resource=self._by_resource)
+
+    def may_reference_secrets(self, secret_ids: frozenset[int]) -> bool:
+        self.secret_reference_questions.append(secret_ids)
+        return self._references_secrets
+
+    def owns(self, instance) -> bool:
+        self.ownership_questions.append(instance)
+        return self._owns_rows
 
 
 class FakePluginKey:
@@ -390,6 +404,38 @@ def test_plugin_credential_creates_a_secret_without_reading_it_back(plugin_clien
     assert "value" not in response.json()
     assert "s3cr3t-value" not in response.content.decode()
     assert response.json()["org"] == acme.id
+
+
+@pytest.mark.parametrize("references_secrets", [True, False], ids=["allowed", "refused"])
+def test_the_principal_decides_which_secrets_a_row_it_writes_may_reference(plugin_client, acme, references_secrets):
+    secret = secret_service.create(text="sk-org", org=acme, name="ORG_KEY")
+    principal = FakePinnedPrincipal(
+        acme.id,
+        by_resource={**DECLARED, ResourceType.LLM_CONFIGS: Permission.READ | Permission.CREATE},
+        references_secrets=references_secrets,
+    )
+
+    response = plugin_client(principal).post(
+        "/api/llm-configs/", {"custom_name": "Fake config", "api_key_secret_id": secret.pk}, format="json"
+    )
+
+    assert principal.secret_reference_questions == [frozenset({secret.pk})]
+    assert response.status_code == (201 if references_secrets else 400), response.content
+
+
+@pytest.mark.parametrize("owns_rows", [True, False], ids=["its_own", "not_its_own"])
+def test_the_principal_decides_whose_model_endpoints_it_may_change(plugin_client, acme, owns_rows):
+    model = LLMModel.objects.create(name="acme-model", org=acme, is_custom=True, base_url="https://llm.acme.example")
+    principal = FakePinnedPrincipal(
+        acme.id,
+        by_resource={**DECLARED, ResourceType.LLM_CONFIGS: Permission.READ | Permission.UPDATE},
+        owns_rows=owns_rows,
+    )
+
+    response = plugin_client(principal).patch(f"/api/llm-models/{model.pk}/", {"base_url": "https://elsewhere.example"}, format="json")
+
+    assert principal.ownership_questions == [model]
+    assert response.status_code == (200 if owns_rows else 400), response.content
 
 
 def test_user_api_key_is_still_refused_on_secrets(member_only, acme, issue_api_key):

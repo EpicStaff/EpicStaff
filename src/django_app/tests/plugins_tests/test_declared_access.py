@@ -134,6 +134,19 @@ def test_an_llm_config_is_created(weather_client, acme):
 # ---- surfaces a service account never reaches ----
 
 
+def test_reading_the_default_models_needs_llm_configs_read(weather_client, weather_client_without_use, acme):
+    assert weather_client.get(reverse("default_models")).status_code == 200
+    _assert_denied(weather_client_without_use.get(reverse("default_models")))
+
+
+def test_a_member_without_llm_configs_read_still_reads_the_default_models(client_as, acme, make_member, make_custom_role):
+    person = make_member(acme, make_custom_role(acme, "Readers of nothing"), "reader@example.com")
+    client = client_as(person)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.pk))
+
+    assert client.get(reverse("default_models")).status_code == 200
+
+
 def test_key_management_purges_and_the_admin_surface_are_refused(weather_client, acme):
     graph = Graph.objects.create(name="Binned", org=acme)
 

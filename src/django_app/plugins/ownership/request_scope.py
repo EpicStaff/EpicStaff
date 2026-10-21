@@ -7,7 +7,8 @@ account is the caller. A context variable holds one `PluginRequestScope` per req
   `PluginRequestScopeMiddleware` for Django's requests, `PluginRequestScopeASGI` for the
   upload stream (an ASGI app outside Django's middleware);
 - `PluginServiceAccountAuthentication` fills `principal`, and creates the scope itself only
-  when no wrapper did (a view called directly in a test);
+  when no wrapper did (a view called directly in a test), which leaves it open for the rest
+  of that context (`scope_for_authentication`);
 - the ownership recorder appends every root it records to `created`.
 
 Everything mutates the one scope object in place, so nothing depends on context changes
@@ -69,7 +70,16 @@ def request_scope() -> Iterator[PluginRequestScope]:
 
 
 def scope_for_authentication() -> PluginRequestScope:
-    """The request's scope, created here when no wrapper opened one (a view called directly)."""
+    """The request's scope, created here when no wrapper opened one (a view called directly).
+
+    A scope created here is never reset: nothing surrounds the call, and `request_finished`
+    is not sent for a view called directly either. That is harmless for every real request,
+    as each runs in a context of its own (ASGI gives every request its own task) and the
+    scope ends with it. Code that authenticates a service account in a long-lived context
+    without `request_scope()` around it (a worker, a test) must reset `_current_scope`
+    afterwards: until then, every root saved in that context is owned by the plugin. The
+    plugin tests' autouse fixture does it after each test.
+    """
     scope = _current_scope.get()
     if scope is None:
         scope = PluginRequestScope()

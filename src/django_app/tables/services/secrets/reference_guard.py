@@ -1,3 +1,4 @@
+from rbac.access.principals import is_pinned_org_principal
 from rbac.access.resolver import PermissionResolver
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
@@ -9,28 +10,53 @@ _DENIED = (
     "Secrets. The existing selection was left unchanged. Ask an organization "
     "admin to grant it."
 )
+# Name no secret: the caller may not even know which one the row references.
+_NOT_REFERENCEABLE = (
+    "This credential can reference only secrets it created, so it cannot save a row "
+    "that references any other secret."
+)
+_NOT_REPOINTABLE = (
+    "This credential can change where requests are sent only on models it created: "
+    "configurations of the organization use this one with their own keys."
+)
 
 
 class SecretReferenceGuard:
-    """Rejects a payload that changes a secret reference without secrets:USE."""
+    """Gates the secrets a written row references.
+
+    Changing a reference needs secrets:USE. A pinned-org principal (a plugin's service
+    account) may also write only rows whose references, changed or not, it is allowed to
+    make (`PinnedOrgPrincipal.may_reference_secrets`): otherwise it could point a row it
+    controls (an LLM config's `base_url`, a Python node's code) at a secret of the
+    organization and receive its value.
+    """
 
     def __init__(self, resolver=None):
         self._resolver = resolver or PermissionResolver()
 
     def assert_unchanged_or_permitted(self, *, serializer, attrs, fields) -> None:
-        """Raise ValidationError for each guarded field whose value changes without USE."""
+        """Raise ValidationError for each guarded field the caller may not write as it ends up.
+
+        A field whose value changes needs secrets:USE. For a pinned-org principal, every
+        guarded field is checked on every create and update, whether the payload carries
+        it or not: the incoming value when it does, the persisted one when it does not.
+        """
+        principal = _pinned_principal(serializer=serializer)
         for field_name in fields:
             field = serializer.fields.get(field_name)
             if field is None or field.read_only:
                 continue
             source = field.source
-            if source not in attrs:
+            if source in attrs:
+                referenced = self._normalize(value=attrs[source])
+                if referenced != self.current_ids(serializer=serializer, source=source):
+                    self._assert_may_use(serializer=serializer, field_name=field_name)
+            elif principal is not None:
+                referenced = self.current_ids(serializer=serializer, source=source)
+            else:
                 continue
-            incoming = self._normalize(value=attrs[source])
-            current = self.current_ids(serializer=serializer, source=source)
-            if incoming == current:
-                continue
-            self._assert_may_use(serializer=serializer, field_name=field_name)
+            if principal is not None and not principal.may_reference_secrets(referenced):
+                raise serializers.ValidationError({field_name: _NOT_REFERENCEABLE})
 
     def current_ids(self, *, serializer, source) -> frozenset:
         """The pks the persisted row links to through `source`, binned rows included.
@@ -87,4 +113,48 @@ class SecretReferenceGuard:
             raise serializers.ValidationError({field_name: _DENIED})
 
 
+class SecretDestinationGuard:
+    """Keeps a pinned-org principal from moving where an organization's secrets are sent.
+
+    A config that holds a secret sends it to the endpoint of the model it points at (an
+    LLM model's `base_url` and provider). The config itself is covered by
+    `SecretReferenceGuard`, but the model row is not: it references no secret. A pinned-org
+    principal may change those endpoint fields only on a row it owns
+    (`PinnedOrgPrincipal.owns`), which a row it created always is. People are not limited.
+    """
+
+    def assert_may_change_endpoints(self, *, serializer, attrs, fields) -> None:
+        """Raise ValidationError when a pinned-org principal changes an endpoint field of a row it does not own.
+
+        Args:
+            fields: Sources of the fields that decide where requests carrying a config's
+                key go. A field the payload leaves out, or sends unchanged, never counts.
+        """
+        instance = serializer.instance
+        principal = _pinned_principal(serializer=serializer)
+        if instance is None or principal is None:
+            return
+        changed = [
+            source
+            for source in fields
+            if source in attrs
+            and _endpoint_value(attrs[source]) != _endpoint_value(getattr(instance, source))
+        ]
+        if changed and not principal.owns(instance):
+            raise serializers.ValidationError(dict.fromkeys(changed, _NOT_REPOINTABLE))
+
+
+def _endpoint_value(value):
+    # An empty URL and no URL both mean the provider's default endpoint; a row compares by pk.
+    return getattr(value, "pk", value) or None
+
+
+def _pinned_principal(*, serializer):
+    """The request's pinned-org principal, or None for a person and without a request."""
+    request = serializer.context.get("request")
+    user = getattr(request, "user", None)
+    return user if is_pinned_org_principal(user) else None
+
+
 secret_reference_guard = SecretReferenceGuard()
+secret_destination_guard = SecretDestinationGuard()

@@ -5,6 +5,7 @@ import re
 from datetime import timedelta
 
 import pytest
+from django.db import connection, transaction
 from django.utils import timezone
 from plugins.identity.service_account_keys import ServiceAccountKeyService
 from plugins.lifecycle.grant_service import PluginGrantService
@@ -193,6 +194,47 @@ def test_minting_gives_each_key_holding_organization_one_key_in_a_fixed_number_o
     assert sorted(key.service_account.grant.org_id for key in minted) == sorted(org.pk for org in organizations[:3])
 
 
+def test_a_mint_that_waited_for_the_lock_still_gives_the_superseded_key_ten_minutes(weather, service_account_key, acme, monkeypatch):
+    service_account_key(weather, acme)
+    lock_taken_at = timezone.now() + timedelta(minutes=3)
+
+    def wait_for_the_lock(execute, sql, params, many, context):
+        result = execute(sql, params, many, context)
+        if "FOR UPDATE" in sql:
+            # Another mint held the accounts; the clock moved on while this one waited.
+            monkeypatch.setattr(timezone, "now", lambda: lock_taken_at)
+        return result
+
+    with connection.execute_wrapper(wait_for_the_lock):
+        ServiceAccountKeyService().mint_for_plugin(weather)
+
+    superseded = PluginServiceAccountKey.objects.get(expires_at__isnull=False, revoked_at__isnull=True)
+    assert superseded.expires_at == lock_taken_at + timedelta(minutes=10)
+
+
+def test_a_committed_mint_writes_its_log_line(weather, service_account_key, acme, log_messages, django_capture_on_commit_callbacks):
+    with django_capture_on_commit_callbacks(execute=True):
+        service_account_key(weather, acme)
+
+    assert [line for line in log_messages if line.startswith("plugins.service_account.keys_minted")] == [
+        f"plugins.service_account.keys_minted plugin=weather org_ids={acme.pk} count=1"
+    ]
+
+
+def test_a_rolled_back_mint_writes_no_log_line(weather, service_account_key, acme, log_messages, django_capture_on_commit_callbacks):
+    with django_capture_on_commit_callbacks(execute=True):
+        service_account_key(weather, acme)
+    log_messages.clear()
+
+    with django_capture_on_commit_callbacks(execute=True) as callbacks:
+        with pytest.raises(RuntimeError), transaction.atomic():
+            ServiceAccountKeyService().mint_for_plugin(weather)
+            raise RuntimeError("the caller fails after the mint")
+
+    assert callbacks == []
+    assert not [line for line in log_messages if line.startswith("plugins.service_account.keys_minted")]
+
+
 def test_a_failed_mint_leaves_no_new_key(weather, service_account_key, acme, monkeypatch):
     service_account_key(weather, acme)
     before = set(PluginServiceAccountKey.objects.values_list("pk", "expires_at", "revoked_at"))
@@ -208,7 +250,7 @@ def test_a_failed_mint_leaves_no_new_key(weather, service_account_key, acme, mon
     assert set(PluginServiceAccountKey.objects.values_list("pk", "expires_at", "revoked_at")) == before
 
 
-# ---- plugins off, last use ----
+# ---- plugins off ----
 
 
 def test_with_plugins_off_a_plugin_key_is_never_read(acme_key, acme, settings):
@@ -218,19 +260,6 @@ def test_with_plugins_off_a_plugin_key_is_never_read(acme_key, acme, settings):
 
     assert response.status_code == 401
     assert response.json()["code"] == "not_authenticated"
-
-
-def test_last_use_is_written_at_most_once_a_minute(acme_key, acme, monkeypatch):
-    client = service_account_client(acme_key, acme)
-    client.get(ME_URL)
-    first_use = PluginServiceAccountKey.objects.get().last_used_at
-
-    client.get(ME_URL)
-    assert PluginServiceAccountKey.objects.get().last_used_at == first_use
-
-    monkeypatch.setattr(timezone, "now", lambda: first_use + timedelta(seconds=61))
-    client.get(ME_URL)
-    assert PluginServiceAccountKey.objects.get().last_used_at == first_use + timedelta(seconds=61)
 
 
 # ---- node keys ----

@@ -11,6 +11,8 @@ export const PLUGIN_ACTIVITY_ACTION_LABELS: Readonly<Record<PluginActivityAction
     settings_changed: 'Settings changed',
     limits_changed: 'Limits changed',
     restarted: 'Restarted',
+    grant_suspended: 'Suspended in this organization',
+    grant_resumed: 'Resumed in this organization',
 };
 
 /**

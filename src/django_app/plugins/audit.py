@@ -67,6 +67,46 @@ def log_grant(actor, grant: PluginGrant) -> None:
     )
 
 
+def log_grant_suspended(actor, grant: PluginGrant, previous_state: str) -> None:
+    logger.info(
+        "plugins.grant.suspended actor={actor} plugin={identifier} grant={grant_id} org={org_id} "
+        "previous_state={previous_state} purge_after={purge_after}",
+        actor=actor_label(actor),
+        identifier=grant.plugin.identifier,
+        grant_id=grant.pk,
+        org_id=grant.org_id,
+        previous_state=previous_state,
+        purge_after=grant.purge_after.isoformat(),
+    )
+
+
+def log_grant_resumed(actor, grant: PluginGrant) -> None:
+    logger.info(
+        "plugins.grant.resumed actor={actor} plugin={identifier} grant={grant_id} org={org_id} "
+        "state={state}",
+        actor=actor_label(actor),
+        identifier=grant.plugin.identifier,
+        grant_id=grant.pk,
+        org_id=grant.org_id,
+        state=grant.state,
+    )
+
+
+def log_suspended_sessions_stopped(
+    *, identifier: str, grant_id: int, org_id: int, count: int, failed: int
+) -> None:
+    """Log how many running sessions a suspension stopped, and how many stops failed."""
+    logger.info(
+        "plugins.grant.sessions_stopped plugin={identifier} grant={grant_id} org={org_id} "
+        "count={count} failed={failed}",
+        identifier=identifier,
+        grant_id=grant_id,
+        org_id=org_id,
+        count=count,
+        failed=failed,
+    )
+
+
 def log_role_plugin_actions(
     actor, *, role_id: int, org_id: int, identifier: str, before: list[str], after: list[str]
 ) -> None:

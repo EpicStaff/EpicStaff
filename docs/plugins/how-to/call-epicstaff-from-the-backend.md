@@ -56,13 +56,21 @@ created = await acme.post("graphs/", {"name": "Weather forecast"})
 - An answer of 400 or more raises `EpicStaffApiError` with `status`, `code`, `message` and
   `errors` from EpicStaff's [error envelope](../reference/error-codes.md).
 - An organization the runtime file holds no key for raises `ServiceAccountUnavailable`: the
-  plugin is not granted there, its install hook failed, or the node has not written the new
-  runtime file yet.
+  plugin is not granted there, its install hook failed, it is suspended there, or the node has
+  not written the new runtime file yet.
 
 **Keys rotate.** EpicStaff issues new keys every time the plugin process (re)starts and whenever
 the plugin is granted to another organization; the previous key keeps working for 10 minutes.
 The client reads the key from the runtime file on every call, and retries once with the new key
 when EpicStaff answers 401 to a key that has since been replaced. Do not copy keys elsewhere.
+
+**Suspension.** A SuperAdmin can suspend your plugin in one organization. Its key there stops at
+once (401), the organization leaves the runtime file within seconds, so later calls raise
+`ServiceAccountUnavailable`, and EpicStaff calls no hook. Treat the organization leaving the runtime file as
+the signal: stop your per-organization background work for it, and start again when it comes
+back. Meanwhile every run that uses something your plugin owns there is refused with 409
+`plugin_suspended`, whoever starts it, the organization's people included: the error names your
+plugin and the organization, never the resource. See [the plugin lifecycle](../explanation/lifecycle.md).
 
 **Rate.** A service account may make the plugin's `requests_per_minute` calls per minute (see
 [Limits](../reference/limits.md)); above it EpicStaff answers 429 `throttled` with
