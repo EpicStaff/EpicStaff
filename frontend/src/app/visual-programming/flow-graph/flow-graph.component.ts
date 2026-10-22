@@ -1241,15 +1241,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportSelectedAsJson(): void {
-        this.importExportHandler.onExportSelectedAsJson(this.currentFlowId);
+        this.importExportHandler.onExportSelectedAsJson(this.currentFlowId, this.hasUnsavedChanges);
     }
 
     public onExportSelectedAsCsv(): void {
-        this.importExportHandler.onExportSelectedAsCsv();
+        this.importExportHandler.onExportSelectedAsCsv(this.hasUnsavedChanges);
     }
 
     public onExportAllAsJson(): void {
-        this.importExportHandler.onExportAllAsJson(this.currentFlowId);
+        this.importExportHandler.onExportAllAsJson(this.currentFlowId, this.hasUnsavedChanges);
     }
 
     public onImportNodes(): void {

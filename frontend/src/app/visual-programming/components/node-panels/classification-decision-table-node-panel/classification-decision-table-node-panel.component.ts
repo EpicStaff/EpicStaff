@@ -60,6 +60,7 @@ import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
 import { FlowService } from '../../../services/flow.service';
+import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import {
@@ -238,6 +239,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly explanationStore = inject(CdtExplanationStoreService);
+    private readonly savedFlowStateService = inject(SavedFlowStateService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -882,6 +884,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     // ── Export ──
 
+    /** A version preview has no saved state of its own, and exporting would serve the live node, not the version. */
+    protected readonly showsExport = !this.flowReadOnly.isPreview;
+
     readonly exportFormatItems: ActionDropdownItem[] = [
         { label: 'JSON', value: 'json' },
         { label: 'CSV', value: 'csv' },
@@ -897,7 +902,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public exportAsJson(): void {
         const backendId = this.node().backendId;
-        if (backendId == null) {
+        if (this.savedFlowStateService.hasUnsavedChanges() || backendId == null) {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
@@ -911,7 +916,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     public exportAsCsv(): void {
-        if (this.node().backendId == null) {
+        if (this.savedFlowStateService.hasUnsavedChanges()) {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
