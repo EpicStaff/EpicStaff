@@ -284,6 +284,7 @@ from tables.services.secrets.secret_use_checks import (
     check_gemini_realtime_config_write,
     check_llm_config_write,
     check_llm_model_write,
+    check_mcp_tool_write,
     check_openai_realtime_config_write,
     check_realtime_config_write,
     check_realtime_transcription_config_write,
@@ -2299,6 +2300,7 @@ class ClassificationDecisionTableNodeModelViewSet(
     list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
 )
 class McpToolViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedViewSetMixin,
     CopyActionMixin,
     InspectActionMixin,
@@ -2322,8 +2324,11 @@ class McpToolViewSet(
         "import_entity": Permission.CREATE,
         "inspect_import": Permission.CREATE,
     }
+    # Copy stays ungated on purpose: the copy keeps the source's auth secret and
+    # transport, and any later edit of the copy goes through the secret Use check.
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
+    secret_use_check = check_mcp_tool_write
 
     queryset = McpTool.objects.select_related("auth_secret").prefetch_related(
         *authorship_prefetches()

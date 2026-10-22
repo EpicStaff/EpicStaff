@@ -480,6 +480,11 @@ class McpToolBulkSerializer(McpToolSerializer):
 The coverage checks ask instances, not classes, so an override stays inside the
 guarantee.
 
+**MCP tools.** `McpToolViewSet` runs `check_mcp_tool_write` (`tables/services/secrets/secret_use_checks.py`)
+instead of this mixin: changing an MCP tool's `transport` while it has an `auth_secret` needs
+`secrets:USE`, because the secret is sent to that URL. Copying an MCP tool keeps its
+`auth_secret` without a Use check — unchanged and deliberate; an edit of the copy is checked.
+
 ---
 
 ## 6. Row scope layer (queryset scoping)

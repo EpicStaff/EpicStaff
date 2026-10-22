@@ -3,8 +3,11 @@ header marker) sends it to its destination: the config's `base_url` and its mode
 `base_url`. Pointing such a config, or a model one of them uses, at another host
 needs secrets:USE. Writes that leave the destination where it is stay free.
 
+An MCP tool sends its auth secret to its `transport`, so the same rule holds for it.
+
 The Twilio channel's create, which updates the channel's existing row in place, is a
-write path of its own and is covered here too."""
+write path of its own and is covered here too, as is the MCP tool's PUT, which fills
+fields missing from the body before it saves."""
 
 import pytest
 
@@ -12,6 +15,7 @@ from rbac.models.enums import Permission, ResourceType
 from tables.models import EmbeddingConfig, LLMConfig
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.llm_models import LLMModel
+from tables.models.mcp_models import McpTool
 from tables.models.realtime_models import OpenAIRealtimeConfig
 from tables.models.webhook_models import RealtimeChannel, TwilioChannel
 from tables.services.secrets import secret_service
@@ -33,6 +37,7 @@ def no_use_client(db, django_user_model, default_org):
             ResourceType.SECRETS.value: int(Permission.READ),
             ResourceType.LLM_CONFIGS.value: FULL_CRUD,
             ResourceType.VOICE.value: FULL_CRUD,
+            ResourceType.TOOLS.value: FULL_CRUD,
         },
     )
 
@@ -450,3 +455,77 @@ def test_twilio_upsert_cross_org_channel_is_404_before_secret_check(no_use_clien
     beta_twilio.refresh_from_db()
     assert beta_twilio.auth_token_secret_id == beta_secret.pk
     assert beta_twilio.account_sid == "AC_beta"
+
+
+MCP_SERVER_URL = "https://mcp.example.com/sse"
+ATTACKER_MCP_URL = "https://attacker.example.com/sse"
+
+
+@pytest.fixture
+def secret_mcp_tool(default_org, secret_a):
+    return McpTool.objects.create(
+        name="destination-mcp-tool",
+        transport=MCP_SERVER_URL,
+        tool_name="search",
+        auth_secret=secret_a,
+        org=default_org,
+    )
+
+
+@pytest.mark.django_db
+def test_mcp_transport_change_with_auth_secret_denied_patch(no_use_client, secret_mcp_tool):
+    response = no_use_client.patch(
+        f"/api/mcp-tools/{secret_mcp_tool.pk}/", {"transport": ATTACKER_MCP_URL}, format="json"
+    )
+
+    assert response.status_code == 400, response.json()
+    assert response.json()["message"].startswith("transport:")
+    secret_mcp_tool.refresh_from_db()
+    assert secret_mcp_tool.transport == MCP_SERVER_URL
+
+
+@pytest.mark.django_db
+def test_mcp_transport_change_with_auth_secret_denied_put(no_use_client, secret_mcp_tool):
+    # `auth_secret_id` is left out: PUT keeps the stored secret, so the tool still carries it.
+    response = no_use_client.put(
+        f"/api/mcp-tools/{secret_mcp_tool.pk}/",
+        {"name": secret_mcp_tool.name, "transport": ATTACKER_MCP_URL, "tool_name": "search"},
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    assert response.json()["message"].startswith("transport:")
+    secret_mcp_tool.refresh_from_db()
+    assert secret_mcp_tool.transport == MCP_SERVER_URL
+
+
+@pytest.mark.django_db
+def test_put_with_same_transport_is_free(no_use_client, secret_mcp_tool, secret_a):
+    response = no_use_client.put(
+        f"/api/mcp-tools/{secret_mcp_tool.pk}/",
+        {"name": secret_mcp_tool.name, "transport": MCP_SERVER_URL, "tool_name": "lookup"},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    secret_mcp_tool.refresh_from_db()
+    assert secret_mcp_tool.tool_name == "lookup"
+    assert secret_mcp_tool.auth_secret_id == secret_a.pk
+
+
+@pytest.mark.django_db
+def test_mcp_transport_change_without_auth_secret_free(no_use_client, default_org):
+    tool = McpTool.objects.create(
+        name="destination-plain-mcp-tool",
+        transport=MCP_SERVER_URL,
+        tool_name="search",
+        org=default_org,
+    )
+
+    response = no_use_client.patch(
+        f"/api/mcp-tools/{tool.pk}/", {"transport": ATTACKER_MCP_URL}, format="json"
+    )
+
+    assert response.status_code == 200, response.json()
+    tool.refresh_from_db()
+    assert tool.transport == ATTACKER_MCP_URL

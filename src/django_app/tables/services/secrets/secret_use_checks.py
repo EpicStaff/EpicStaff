@@ -110,6 +110,23 @@ def check_twilio_channel_write(actor: SecretActor | None, instance, data: dict) 
     _check_secret_reference(actor, instance, data, attribute="auth_token_secret")
 
 
+def check_mcp_tool_write(actor: SecretActor | None, instance, data: dict) -> None:
+    """Gate an McpTool write: its auth secret and its `transport`.
+
+    The agent service opens the MCP client on `transport` and sends the auth
+    secret with every request to it, so `transport` is the secret's destination.
+    """
+    _check_secret_reference(actor, instance, data, attribute="auth_secret")
+    current_transport = _persisted_value(instance, "transport")
+    secret_use_service.check_destination(
+        actor,
+        field_path=("transport",),
+        carries_secret=_references_secret_after_write(instance, data, "auth_secret"),
+        current=current_transport,
+        incoming=data.get("transport", current_transport),
+    )
+
+
 def _check_api_key_and_header_markers(actor: SecretActor | None, instance, data: dict) -> None:
     _check_secret_reference(actor, instance, data, attribute="api_key_secret")
     current_headers = _persisted_value(instance, "extra_headers")
