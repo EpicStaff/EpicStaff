@@ -3,6 +3,7 @@ import { Provider } from '@angular/core';
 import { APP_STORAGE } from './app-storage.token';
 import { EmbeddingConfigStorageService } from './embeddings/embedding-config-storage.service';
 import { EmbeddingModelsStorageService } from './embeddings/embedding-models-storage.service';
+import { ExecutionTimeoutLimitsStorageService } from './execution-timeout-limits/execution-timeout-limits-storage.service';
 import { LlmConfigStorageService } from './llms/llm-config-storage.service';
 import { LlmModelsStorageService } from './llms/llm-models-storage.service';
 import { LlmProvidersStorageService } from './llms/llm-providers-storage.service';
@@ -16,6 +17,7 @@ export function provideSharedStorages(): Provider[] {
     return [
         { provide: APP_STORAGE, useExisting: EmbeddingConfigStorageService, multi: true },
         { provide: APP_STORAGE, useExisting: EmbeddingModelsStorageService, multi: true },
+        { provide: APP_STORAGE, useExisting: ExecutionTimeoutLimitsStorageService, multi: true },
         { provide: APP_STORAGE, useExisting: LlmConfigStorageService, multi: true },
         { provide: APP_STORAGE, useExisting: LlmModelsStorageService, multi: true },
         { provide: APP_STORAGE, useExisting: LlmProvidersStorageService, multi: true },

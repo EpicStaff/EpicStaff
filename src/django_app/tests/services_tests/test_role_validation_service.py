@@ -101,3 +101,40 @@ def test_invalid_role_is_rejected_naming_the_field(validator, call, field_fragme
         assert any(field_fragment in error["field"] for error in exc.value.errors), exc.value.errors
     if reason_fragment:
         assert reason_fragment in " ".join(error["reason"] for error in exc.value.errors).lower()
+
+
+def test_granting_flows_use_is_accepted(validator):
+    cleaned = validator.validate_create(
+        {
+            "org_id": 10,
+            "name": "Flow Runner",
+            "permissions": [{"resource_type": "flows", "actions": ["read", "use"]}],
+        }
+    )
+    assert cleaned["permissions"] == [
+        {"resource_type": "flows", "bitmask": int(Permission.READ | Permission.USE)}
+    ]
+
+
+def test_granting_use_on_agents_is_rejected(validator):
+    with pytest.raises(FormValidationError) as exc:
+        validator.validate_create(
+            {
+                "org_id": 10,
+                "name": "Bad Agent User",
+                "permissions": [{"resource_type": "agents", "actions": ["use"]}],
+            }
+        )
+    assert any("agents" in e["field"] for e in exc.value.errors)
+
+
+def test_run_is_not_an_action_code(validator):
+    with pytest.raises(FormValidationError) as exc:
+        validator.validate_create(
+            {
+                "org_id": 10,
+                "name": "Old Runner",
+                "permissions": [{"resource_type": "flows", "actions": ["read", "run"]}],
+            }
+        )
+    assert any("flows" in e["field"] for e in exc.value.errors)

@@ -27,7 +27,7 @@
 
 <app-table
     [columns]="columns()"
-    [data]="filteredUsers()"
+    [data]="usersData()"
     [selectable]="false"
     rowId="id"
     (filterChange)="onFilterChange($event)"

@@ -9,11 +9,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from services.knowledge_search_service import KnowledgeSearchService
+from src.shared.models import SearchOutcome
 
 
 def _search_call_kwargs(service, **overrides):
     """Run one knowledge search against a mocked KnowledgeClient and return the
-    kwargs `KnowledgeClient.search(...)` was called with.
+    kwargs `KnowledgeClient.search_with_usage(...)` was called with.
 
     `KnowledgeSearchService.search_knowledges` builds its own `KnowledgeClient`
     (`with KnowledgeClient() as client:`), so that class is patched at its
@@ -21,7 +22,7 @@ def _search_call_kwargs(service, **overrides):
     """
     mock_client = MagicMock()
     mock_client.__enter__.return_value = mock_client
-    mock_client.search.return_value = []
+    mock_client.search_with_usage.return_value = SearchOutcome(result=[])
 
     with patch(
         "services.knowledge_search_service.KnowledgeClient", return_value=mock_client
@@ -35,7 +36,7 @@ def _search_call_kwargs(service, **overrides):
             **overrides,
         )
 
-    return mock_client.search.call_args.kwargs
+    return mock_client.search_with_usage.call_args.kwargs
 
 
 @pytest.mark.parametrize(
@@ -52,3 +53,21 @@ def test_the_resolved_embedder_credential_is_sent_with_the_search(instance_key, 
     overrides = {"rag_embedder_api_key": explicit_key} if explicit_key else {}
 
     assert _search_call_kwargs(service, **overrides)["embedding_api_key"] == sent_key
+
+
+def test_extra_headers_reach_the_client():
+    service = KnowledgeSearchService(redis_service=MagicMock())
+    kwargs = _search_call_kwargs(
+        service,
+        rag_embedder_extra_headers={"X-Emb": "emb-resolved"},
+        rag_llm_extra_headers={"X-Llm": "llm-resolved"},
+    )
+    assert kwargs["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
+    assert kwargs["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+
+
+def test_no_extra_headers_sends_none():
+    service = KnowledgeSearchService(redis_service=MagicMock())
+    kwargs = _search_call_kwargs(service)
+    assert kwargs["embedding_extra_headers"] is None
+    assert kwargs["llm_extra_headers"] is None

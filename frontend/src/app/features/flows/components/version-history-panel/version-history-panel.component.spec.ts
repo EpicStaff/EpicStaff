@@ -1,10 +1,12 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
+import { ConfirmationDialogService } from '@shared/components';
 import { ActionCode, BulkDeleteGroup, BulkDeleteResponse, ResourceCode } from '@shared/models';
 import { BulkDeleteService } from '@shared/services';
-import { map, of, Subject } from 'rxjs';
+import { map, of, Subject, throwError } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -37,12 +39,15 @@ describe('VersionHistoryPanelComponent', () => {
         getGraphVersions: ReturnType<typeof vi.fn>;
         bulkDeleteGraphVersions: ReturnType<typeof vi.fn>;
         updateGraphVersion: ReturnType<typeof vi.fn>;
+        createGraphFromVersion: ReturnType<typeof vi.fn>;
     };
+    let navigate: ReturnType<typeof vi.fn>;
     let toast: {
         success: ReturnType<typeof vi.fn>;
         error: ReturnType<typeof vi.fn>;
         warning: ReturnType<typeof vi.fn>;
     };
+    let confirmationDialog: { confirm: ReturnType<typeof vi.fn> };
     let previewed: GraphVersionDto[];
     let deleted: GraphVersionDto[];
     /** Read when a panel is created; every other action is always granted. */
@@ -63,8 +68,12 @@ describe('VersionHistoryPanelComponent', () => {
             getGraphVersions: vi.fn().mockReturnValue(of(VERSIONS)),
             bulkDeleteGraphVersions: vi.fn((ids: number[]) => of(deletedResponse(ids))),
             updateGraphVersion: vi.fn(),
+            createGraphFromVersion: vi.fn(),
         };
+        navigate = vi.fn().mockResolvedValue(true);
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
+        // Only the OK-only trigger-node refusal opens it; its result is never read.
+        confirmationDialog = { confirm: vi.fn() };
         // Stands in for the preview + confirmation dialog as if the user confirmed: runs the panel's own delete target.
         const bulkDelete = {
             run: vi.fn((groups: BulkDeleteGroup[]) =>
@@ -80,6 +89,10 @@ describe('VersionHistoryPanelComponent', () => {
                 { provide: FlowsApiService, useValue: flowsApi as unknown as FlowsApiService },
                 { provide: BulkDeleteService, useValue: bulkDelete as unknown as BulkDeleteService },
                 {
+                    provide: ConfirmationDialogService,
+                    useValue: confirmationDialog as unknown as ConfirmationDialogService,
+                },
+                {
                     provide: PermissionsService,
                     useValue: {
                         can: (_resource: ResourceCode, action: ActionCode) =>
@@ -89,7 +102,7 @@ describe('VersionHistoryPanelComponent', () => {
                     } as unknown as PermissionsService,
                 },
                 { provide: ToastService, useValue: toast as unknown as ToastService },
-                { provide: Router, useValue: { navigate: vi.fn() } as unknown as Router },
+                { provide: Router, useValue: { navigate } as unknown as Router },
                 {
                     provide: CreateGraphWarningsService,
                     useValue: { setPending: vi.fn() } as unknown as CreateGraphWarningsService,
@@ -200,6 +213,69 @@ describe('VersionHistoryPanelComponent', () => {
 
         expect(menuItemLabels()).toContain('Restore');
         expect(menuItemLabels()).not.toContain('Preview');
+    });
+
+    describe('new flow from a version', () => {
+        let closedCount: number;
+
+        beforeEach(() => {
+            closedCount = 0;
+            component.closed.subscribe(() => closedCount++);
+        });
+
+        it('opens the new flow', () => {
+            flowsApi.createGraphFromVersion.mockReturnValue(of({ created: true, graph_id: 42, warnings: [] }));
+
+            openMenuAndClick(0, 'Create flow from this');
+
+            expect(flowsApi.createGraphFromVersion).toHaveBeenCalledExactlyOnceWith(VERSIONS[0].id);
+            expect(toast.success).toHaveBeenCalledWith('New flow created');
+            expect(navigate).toHaveBeenCalledWith(['/flows', 42]);
+            expect(closedCount).toBe(1);
+        });
+
+        it('explains a refusal over trigger nodes, with no toast, no navigation and the panel left open', () => {
+            flowsApi.createGraphFromVersion.mockReturnValue(
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 403,
+                            error: {
+                                status_code: 403,
+                                code: 'flow_with_trigger_nodes_requires_use_permission',
+                                message: 'This flow contains trigger nodes.',
+                            },
+                        })
+                )
+            );
+
+            openMenuAndClick(0, 'Create flow from this');
+
+            expect(confirmationDialog.confirm).toHaveBeenCalledExactlyOnceWith(
+                expect.objectContaining({
+                    message: 'This version contains trigger nodes (Webhook, Telegram, Schedule).',
+                    caution:
+                        '<strong>Creating a flow</strong> from it requires the <strong>Use</strong> permission on flows.',
+                    hideConfirm: true,
+                })
+            );
+            expect(toast.success).not.toHaveBeenCalled();
+            expect(toast.error).not.toHaveBeenCalled();
+            expect(navigate).not.toHaveBeenCalled();
+            expect(closedCount).toBe(0);
+        });
+
+        it('reports any other failure', () => {
+            flowsApi.createGraphFromVersion.mockReturnValue(
+                throwError(() => new HttpErrorResponse({ status: 500, statusText: 'Server Error' }))
+            );
+
+            openMenuAndClick(0, 'Create flow from this');
+
+            expect(toast.error).toHaveBeenCalledWith('Failed to create flow');
+            expect(confirmationDialog.confirm).not.toHaveBeenCalled();
+            expect(navigate).not.toHaveBeenCalled();
+        });
     });
 
     describe('name/description clicks (double-click renames)', () => {

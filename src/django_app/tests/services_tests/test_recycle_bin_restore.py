@@ -23,7 +23,7 @@ def _binned(model, pk):
 
 
 def _tool(name: str, *, org, built_in: bool = False) -> PythonCodeTool:
-    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main", libraries="", global_kwargs={})
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main", global_kwargs={})
     return PythonCodeTool.objects.create(
         name=name, description="", variables=[], python_code=code, built_in=built_in, org=org
     )

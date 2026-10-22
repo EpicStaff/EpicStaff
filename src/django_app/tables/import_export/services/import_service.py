@@ -2,6 +2,7 @@ from collections import defaultdict
 
 from django.db import transaction
 from loguru import logger
+from proxies.sandbox.clients import SandboxVenvClient
 from rbac.authorship import record_last_edits
 from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
@@ -14,6 +15,7 @@ from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
+from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 
 
 class ImportService:
@@ -29,53 +31,94 @@ class ImportService:
         user=None,
         effective_permissions=None,
     ):
+        """Import `export_data` into `org_id`, `main_entity` being the file's main type.
+
+        `effective_permissions=None` means a trusted internal caller: both permission
+        checks (CREATE on each new resource, and USE for trigger nodes) are skipped.
+        """
         if settings is None:
             settings = ImportSettings()
 
         id_mapper = IDMapper()
         denied_resources = set()
         export_data = prepare_import_data(export_data)
+        # A trigger node in the file is live once created, so the whole import needs
+        # flows:USE; refused here, before the transaction opens, so nothing is written.
+        if effective_permissions is not None and TriggerNodeInspector.has_any_in_export(
+            export_data
+        ):
+            trigger_node_access.assert_may_recreate(effective_permissions)
         created_resources: list[LastEditTrackedModel] = []
+        # Venvs are created in the sandbox service, which the transaction does not
+        # cover; a rollback has to undo them by hand.
+        created_venv_ids: list[int] = []
 
-        with transaction.atomic():
-            ordered_types = self._resolve_import_order(export_data)
+        try:
+            with transaction.atomic():
+                ordered_types = self._resolve_import_order(export_data)
 
-            for entity_type in ordered_types:
-                if not self.registry.has_strategy(entity_type):
-                    logger.warning(
-                        "Skipping unsupported entity type {} during import (no longer supported)",
-                        entity_type,
+                for entity_type in ordered_types:
+                    if not self.registry.has_strategy(entity_type):
+                        logger.warning(
+                            "Skipping unsupported entity type {} during import (no longer supported)",
+                            entity_type,
+                        )
+                        continue
+
+                    entities = export_data.get(entity_type, [])
+                    strategy = self.registry.get_strategy(entity_type)
+
+                    if entity_type == EntityType.GRAPH:
+                        entities = self._resolve_graph_order(entities)
+
+                    for entity_data in entities:
+                        denied_resources |= self._import_single_entity(
+                            entity_data,
+                            entity_type,
+                            strategy,
+                            id_mapper,
+                            entity_type == main_entity,
+                            settings=settings,
+                            org_id=org_id,
+                            user=user,
+                            effective_permissions=effective_permissions,
+                            created_resources=created_resources,
+                            created_venv_ids=created_venv_ids,
+                        )
+
+                if denied_resources:
+                    names = ", ".join(sorted(r.value for r in denied_resources))
+                    raise PermissionDenied(
+                        f"Missing CREATE permission on: {names}. No changes were made."
                     )
-                    continue
-
-                entities = export_data.get(entity_type, [])
-                strategy = self.registry.get_strategy(entity_type)
-
-                if entity_type == EntityType.GRAPH:
-                    entities = self._resolve_graph_order(entities)
-
-                for entity_data in entities:
-                    denied_resources |= self._import_single_entity(
-                        entity_data,
-                        entity_type,
-                        strategy,
-                        id_mapper,
-                        entity_type == main_entity,
-                        settings=settings,
-                        org_id=org_id,
-                        user=user,
-                        effective_permissions=effective_permissions,
-                        created_resources=created_resources,
-                    )
-
-            if denied_resources:
-                names = ", ".join(sorted(r.value for r in denied_resources))
-                raise PermissionDenied(
-                    f"Missing CREATE permission on: {names}. No changes were made."
-                )
-            record_last_edits(created_resources, user)
+                record_last_edits(created_resources, user)
+        except Exception:
+            self._remove_created_venvs(created_venv_ids)
+            raise
 
         return id_mapper, self.registry
+
+    @staticmethod
+    def _remove_created_venvs(venv_ids: list[int]) -> None:
+        """Delete environments this import created upstream, after it rolled back.
+
+        The rollback already took their bindings with it. Left alone, the sandbox
+        would keep an environment no organization can see, use, or delete through
+        the API -- only directly in its database.
+
+        Best effort by design: the import has already failed and the caller must be
+        told about that failure, not about a failed cleanup.
+        """
+        if not venv_ids:
+            return
+        with SandboxVenvClient() as client:
+            for venv_id in venv_ids:
+                try:
+                    client.remove(str(venv_id))
+                except Exception:
+                    logger.exception(
+                        "Could not remove venv {} created by an import that rolled back", venv_id
+                    )
 
     def _resolve_import_order(self, export_data: dict) -> list[str]:
         """

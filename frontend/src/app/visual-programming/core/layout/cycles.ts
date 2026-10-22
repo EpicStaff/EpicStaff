@@ -1,4 +1,4 @@
-import { byId, LayoutEdge, LayoutGraph } from './layout-graph';
+import { byId, edgesInComponent, LayoutEdge, LayoutGraph } from './layout-graph';
 
 /**
  * Back edges of one component: a DFS marks every edge into a node still on its stack.
@@ -9,12 +9,10 @@ import { byId, LayoutEdge, LayoutGraph } from './layout-graph';
  * ever layered right of another node.
  */
 export function findBackEdges(graph: LayoutGraph, componentIds: string[]): Set<string> {
-    const members = new Set(componentIds);
     const outgoing = new Map<string, LayoutEdge[]>(componentIds.map((id) => [id, []]));
     const inDegree = new Map<string, number>(componentIds.map((id) => [id, 0]));
     const backEdges = new Set<string>();
-    for (const edge of graph.edges) {
-        if (!members.has(edge.source) || !members.has(edge.target)) continue;
+    for (const edge of edgesInComponent(graph.edges, new Set(componentIds))) {
         if (graph.nodes.get(edge.target)!.isTrigger) {
             backEdges.add(edge.id);
             continue;

@@ -5,8 +5,9 @@ Sandbox (RunPythonCodeService.run_code) is patched to execute the generated code
 in-process so expression/manipulation logic is fully exercised.
 LLM calls (litellm.acompletion) are replaced with AsyncMock.
 
-NOTE: The CDT subgraph uses `src.crew.services.run_python_code_service.RunPythonCodeService`
-(absolute import). We must patch that exact class, not the bare `services.*` alias.
+NOTE: Patch `services.run_python_code_service.RunPythonCodeService`, the module path the
+CDT subgraph and every other caller import; a second import path would be a second
+class with its own singleton.
 """
 
 from __future__ import annotations
@@ -21,11 +22,10 @@ from langgraph.graph import END, StateGraph
 from models.state import State
 from services.graph.events import StopEvent
 
-# Import via the same absolute path the CDT uses so we patch the right object
 from src.crew.services.graph.subgraphs.classification_decision_table_node import (
     ClassificationDecisionTableNodeSubgraph,
 )
-from src.crew.services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
@@ -33,7 +33,7 @@ from src.shared.models.graph_nodes import (
 )
 from src.shared.models import PythonCodeData
 from src.shared.models.ai_providers import LLMConfigData, LLMData
-from src.crew.utils.singleton_meta import SingletonMeta
+from utils.singleton_meta import SingletonMeta
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +85,12 @@ def make_node_data(
     )
 
 
+def recording_redis_service() -> MagicMock:
+    redis_service = MagicMock()
+    redis_service.aadd_graph_message = AsyncMock()
+    return redis_service
+
+
 def make_subgraph(node_data: ClassificationDecisionTableNodeData) -> object:
     """Compile a ClassificationDecisionTableNodeSubgraph and return the compiled graph."""
     graph_builder = StateGraph(State)
@@ -93,7 +99,7 @@ def make_subgraph(node_data: ClassificationDecisionTableNodeData) -> object:
         node_data=node_data,
         graph_builder=graph_builder,
         stop_event=StopEvent(),
-        redis_service=MagicMock(),
+        redis_service=recording_redis_service(),
     )
     return builder.build()
 
@@ -367,7 +373,7 @@ async def test_prompt_llm_call_forwards_reasoning_effort(monkeypatch):
 
     assert call_kwargs["reasoning_effort"] == "high"
     assert call_kwargs["temperature"] == 0.2
-    assert call_kwargs["model"] == "openai/gpt-5-mini"
+    assert call_kwargs["model"] == "gpt-5-mini"
 
 
 @pytest.mark.asyncio
@@ -423,7 +429,7 @@ async def fake_run_code_raises(
 
 
 _FAILING_CODE = PythonCodeData(
-    venv_name="default", code="def main(): pass", entrypoint="main", libraries=[]
+    code="def main(): pass", entrypoint="main"
 )
 
 
@@ -460,7 +466,7 @@ async def test_error_route_emits_finish_after_error(
     node_data = make_node_data(
         condition_groups=groups, next_error_node="error_node"
     ).model_copy(update=node_data_overrides)
-    redis_service = MagicMock()
+    redis_service = recording_redis_service()
     subgraph = ClassificationDecisionTableNodeSubgraph(
         session_id=1,
         node_data=node_data,
@@ -508,7 +514,7 @@ def expression_batch_calls(calls: list[dict]) -> list[dict]:
 
 
 def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
-    redis_service = MagicMock()
+    redis_service = recording_redis_service()
     subgraph = ClassificationDecisionTableNodeSubgraph(
         session_id=1,
         node_data=node_data,
@@ -522,7 +528,7 @@ def build_subgraph_with_redis(node_data: ClassificationDecisionTableNodeData):
 def published_messages(redis_service: MagicMock) -> list[dict]:
     return [
         json.loads(added.args[1])["message_data"]
-        for added in redis_service.add_graph_message.call_args_list
+        for added in redis_service.aadd_graph_message.await_args_list
     ]
 
 

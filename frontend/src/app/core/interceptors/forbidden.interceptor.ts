@@ -25,6 +25,9 @@ const BUSINESS_RULE_FORBIDDEN_CODES = new Set<string>([
     'key_value_mode_denied',
     // An upload over an existing file without FILES:UPDATE; the upload's own error handling shows it.
     'overwrite_not_permitted',
+    // A copy, import, partial import or version restore / new flow from a version of a flow with trigger nodes,
+    // without Flows:Use; FlowUsePermissionRefusalService shows it.
+    'flow_with_trigger_nodes_requires_use_permission',
 ]);
 
 /**

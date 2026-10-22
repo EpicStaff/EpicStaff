@@ -14,6 +14,8 @@
                         <span>Recommended Provider</span>
                     </div>
                     <app-select
+                        [attr.data-tour]="tourAnchors.quickstartProvider"
+                        [dropdownDataAnchor]="tourAnchors.quickstartProviderList"
                         formControlName="provider"
                         placeholder="Select recommended Provider"
                         [required]="true"
@@ -21,7 +23,10 @@
                     />
                 </div>
 
-                <div class="quickstart-section__row">
+                <div
+                    class="quickstart-section__row"
+                    [attr.data-tour]="tourAnchors.quickstartApiKey"
+                >
                     <div class="quickstart-section__label">
                         <span>API Key</span>
                         <app-help-tooltip
@@ -48,6 +53,7 @@
                     @if (canApplyQuickstart()) {
                         <app-button
                             type="primary"
+                            [attr.data-tour]="tourAnchors.quickstartActivate"
                             (click)="onQuickStart()"
                             [disabled]="quickStartForm.invalid || isSaving()"
                         >
@@ -110,7 +116,11 @@
         </div>
 
         @if (activeCard) {
-            <div class="quickstart-section__card quickstart-section__card--success">
+            <div
+                class="quickstart-section__card quickstart-section__card--success"
+                [attr.data-tour]="hasActivatedInThisVisit() ? tourAnchors.quickstartResult : null"
+                [attr.data-quickstart-status]="tourResultStatus()"
+            >
                 <div class="quickstart-section__card-title quickstart-section__card-title--success">
                     @if (activeCard.showIcon) {
                         <i

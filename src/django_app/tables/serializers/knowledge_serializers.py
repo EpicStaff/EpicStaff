@@ -86,6 +86,10 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
         allow_null=True,
         help_text="Outdated reasons for this RAG configuration.",
     )
+    indexing_usage = serializers.DictField(
+        required=False,
+        help_text="Token usage and cost of the last indexing run and the total across runs.",
+    )
     created_at = serializers.DateTimeField(help_text="When this RAG configuration was created")
     updated_at = serializers.DateTimeField(help_text="When this RAG configuration was last updated")
 

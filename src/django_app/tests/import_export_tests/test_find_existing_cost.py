@@ -57,7 +57,7 @@ def _family_name(base_name: str, number: int) -> str:
 
 
 def _python_code_data(code: str) -> dict:
-    return {"code": code, "entrypoint": "main", "libraries": "", "global_kwargs": {}}
+    return {"code": code, "entrypoint": "main", "global_kwargs": {}}
 
 
 def _python_tool_entry(code: str) -> dict:

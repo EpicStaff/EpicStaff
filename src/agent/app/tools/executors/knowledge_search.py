@@ -9,7 +9,7 @@ from app.knowledge.events import KnowledgeEventSink
 from shared.knowledge.client import KnowledgeClient
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import ToolResult
-from shared.models.knowledge_new import FoundChunk
+from shared.models.knowledge_new import FoundChunk, SearchUsage
 
 
 async def _notify_sink(
@@ -18,6 +18,7 @@ async def _notify_sink(
     query: str,
     result: list[FoundChunk] | str,
     error: str | None = None,
+    usage: SearchUsage | None = None,
 ) -> None:
     """Best-effort notification: a sink failure is logged and swallowed so it
     never affects the tool's own result."""
@@ -25,7 +26,7 @@ async def _notify_sink(
         return
 
     try:
-        await sink.on_knowledge_search(target, query, result, error=error)
+        await sink.on_knowledge_search(target, query, result, error=error, usage=usage)
 
     except Exception as exc:
         logger.warning(
@@ -48,7 +49,7 @@ async def _execute_search(
     )
 
     try:
-        result = await client.search(target, query, timeout=timeout)
+        outcome = await client.search_with_usage(target, query, timeout=timeout)
 
     except Exception as error:
         await _notify_sink(sink, target, query, [], error=str(error))
@@ -58,7 +59,8 @@ async def _execute_search(
             is_error=True,
         )
 
-    await _notify_sink(sink, target, query, result)
+    result = outcome.result
+    await _notify_sink(sink, target, query, result, usage=outcome.usage)
 
     if isinstance(result, str):
         return ToolResult(

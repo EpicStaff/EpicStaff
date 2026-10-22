@@ -67,7 +67,10 @@ class AgentNodeStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)
-        agent_node = serializer.save(created_by=resolve_author(kwargs.get("user")))
+        agent_node = serializer.save(
+            created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
+        )
 
         assign_node_surface_list(agent_node, surface_ids, id_mapper)
         create_inline_surface(

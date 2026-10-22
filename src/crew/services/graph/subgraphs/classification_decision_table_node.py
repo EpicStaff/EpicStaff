@@ -7,7 +7,9 @@ import litellm
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
+from litellm.types.utils import CostPerToken
 from loguru import logger
+from services.run_python_code_service import RunPythonCodeService
 from src.crew.models.graph_models import (
     GraphMessage,
 )
@@ -15,8 +17,8 @@ from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
-from src.crew.services.run_python_code_service import RunPythonCodeService
-from src.shared.models import LLMData, PythonCodeData, TokenUsage
+from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
+from src.shared.models import LLMConfigData, LLMData, PythonCodeData, TokenUsage
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
@@ -28,14 +30,16 @@ from src.shared.models.storage_scope import StorageCredentials
 # ("This response_format type is unavailable now") and only accept json_object.
 JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
 
-# Provider rows whose name is not a litellm provider, mapped to the litellm provider their
-# stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
-PROVIDER_ALIASES = {
-    "google_ai": "gemini",
-    "novita_ai": "novita",
-    "aws_sagemaker": "sagemaker",
-    "featherless-ai": "featherless_ai",
-}
+
+def _custom_cost_per_token(llm_config: LLMConfigData) -> CostPerToken | None:
+    """Return the config's own token prices, or None when it does not set both."""
+    if llm_config.input_cost_per_token is None or llm_config.output_cost_per_token is None:
+        return None
+    return CostPerToken(
+        input_cost_per_token=llm_config.input_cost_per_token,
+        output_cost_per_token=llm_config.output_cost_per_token,
+    )
+
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -137,7 +141,7 @@ class ClassificationDecisionTableNodeSubgraph:
         )
         self.storage_credentials = storage_credentials
 
-    def _publish_message(self, graph_message: GraphMessage):
+    async def _publish_message(self, graph_message: GraphMessage):
         """Add a GraphMessage directly to the graph message stream.
         Subgraph StreamWriter messages don't propagate to the parent graph's
         astream, so we write to Redis directly instead - and, since that
@@ -150,7 +154,7 @@ class ClassificationDecisionTableNodeSubgraph:
             return
         data = graph_message.to_payload()
         encoded_data = GraphMessage.encode_payload(data)
-        self.redis_service.add_graph_message(data["uuid"], encoded_data)
+        await self.redis_service.aadd_graph_message(data["uuid"], encoded_data)
         try:
             emit_session_audit_event(encoded_data)
         except Exception as audit_exc:
@@ -353,7 +357,7 @@ class ClassificationDecisionTableNodeSubgraph:
         Only a matched row changes state, so every row up to the next match sees the
         same variables and can share one run. Evaluation stops at the first True or the
         first failing expression; later expressions are never compiled or run. The
-        whole batch shares one SANDBOX_EXECUTION_TIMEOUT.
+        whole batch shares one SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
 
         Returns:
             The result of each evaluated row, and the error message of the row right
@@ -365,10 +369,8 @@ class ClassificationDecisionTableNodeSubgraph:
         """
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
             python_code_data=PythonCodeData(
-                venv_name="default",
                 code=_EVALUATE_UNTIL_MATCH_CODE,
                 entrypoint="main",
-                libraries=[],
             ),
             inputs={
                 "expressions": expressions,
@@ -424,10 +426,8 @@ def main(**kwargs) -> dict:
     return _from_ns(variables)
 """
         python_code_data = PythonCodeData(
-            venv_name="default",
             code=code,
             entrypoint="main",
-            libraries=[],
         )
 
         variables_dict = state["variables"].model_dump()
@@ -490,28 +490,34 @@ def main(**kwargs) -> dict:
                     },
                 }
 
-        # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
-        # Only the row's own provider counts: "openai/gpt-oss-120b" on a Groq row is a Groq
-        # model id and must become "groq/openai/gpt-oss-120b".
-        litellm_provider = PROVIDER_ALIASES.get(llm.provider.lower().strip(), llm.provider)
-        model = (
-            llm_config.model
-            if llm_config.model.startswith(f"{litellm_provider}/")
-            else f"{litellm_provider}/{llm_config.model}"
-        )
+        model = litellm_call_model(llm.provider, llm_config.model, llm_config.deployment_id)
         params = {
             "model": model,
-            **llm_config.to_litellm_kwargs(provider=litellm_provider),
+            **llm_config.to_litellm_kwargs(provider=litellm_routed_provider(model)),
             "response_format": response_format,
             "base_url": llm_config.base_url,
             "api_version": llm_config.api_version,
             "api_key": llm_config.api_key,
+            "extra_headers": llm_config.extra_headers,
             "stream": False,
         }
         resp = await litellm.acompletion(**{**params, "messages": messages})
 
+        custom_cost_per_token = _custom_cost_per_token(llm_config)
         try:
-            cost = litellm.completion_cost(completion_response=resp)
+            if custom_cost_per_token is not None:
+                # Not completion_cost: with a custom price it bills Anthropic cache reads
+                # twice, since litellm's prompt_tokens already include them. Cached
+                # prompt tokens are billed at the input price.
+                prompt_cost, completion_cost = litellm.cost_per_token(
+                    model=model,
+                    prompt_tokens=resp.usage.prompt_tokens,
+                    completion_tokens=resp.usage.completion_tokens,
+                    custom_cost_per_token=custom_cost_per_token,
+                )
+                cost = prompt_cost + completion_cost
+            else:
+                cost = litellm.completion_cost(completion_response=resp)
         except Exception:
             cost = 0.0  # litellm raises for models without a pricing entry — don't crash CDT
 
@@ -564,9 +570,12 @@ def main(**kwargs) -> dict:
         variables_dict = state["variables"].model_dump()
         rendered_prompt = self._render_prompt(prompt_config.prompt_text, variables_dict)
 
-        logger.info(
-            f"Executing prompt '{prompt_id}' with LLM {llm_data.provider}/{llm_data.config.model}, "
-            f"result_variable='{prompt_config.result_variable}'"
+        logger.debug(
+            "Executing prompt '{}' with LLM {}/{}, result_variable='{}'",
+            prompt_id,
+            llm_data.provider,
+            llm_data.config.model,
+            prompt_config.result_variable,
         )
 
         try:
@@ -576,8 +585,6 @@ def main(**kwargs) -> dict:
                 output_schema=prompt_config.output_schema,
             )
         except Exception as e:
-            error_msg = f"ERROR Prompt '{prompt_id}' LLM call failed: {type(e).__name__}: {e}"
-            logger.info(error_msg)
             raise ClassificationDecisionTableNodeError(
                 f"LLM call failed for prompt '{prompt_id}': {type(e).__name__}: {e}"
             ) from e
@@ -585,10 +592,11 @@ def main(**kwargs) -> dict:
         # Capture raw response text before JSON parsing
         raw_response = str(result) if not isinstance(result, str) else result
 
-        logger.info(
-            f"Prompt '{prompt_id}' completed. "
-            f"Tokens: {usage.total_tokens}, "
-            f"Result type: {type(result).__name__}"
+        logger.debug(
+            "Prompt '{}' completed. Tokens: {}, Result type: {}",
+            prompt_id,
+            usage.total_tokens,
+            type(result).__name__,
         )
 
         # Store result in state variables under result_variable
@@ -600,7 +608,7 @@ def main(**kwargs) -> dict:
             for state_var, result_field in prompt_config.variable_mappings.items():
                 if result_field in result:
                     state["variables"].update({state_var: result[result_field]})
-                    logger.info(f"Mapped result.{result_field} -> variables.{state_var}")
+                    logger.debug("Mapped result.{} -> variables.{}", result_field, state_var)
 
         return {
             "prompt_text": rendered_prompt,
@@ -628,8 +636,10 @@ def main(**kwargs) -> dict:
         enabled_groups = [g for g in self.node_data.condition_groups if g.dock_visible]
         skipped = [g.group_name for g in self.node_data.condition_groups if not g.dock_visible]
         if skipped:
-            logger.info(
-                f"Skipping disabled condition groups in '{self.node_data.node_name}': {skipped}"
+            logger.debug(
+                "Skipping disabled condition groups in '{}': {}",
+                self.node_data.node_name,
+                skipped,
             )
         sorted_groups = sorted(
             enabled_groups,
@@ -638,7 +648,7 @@ def main(**kwargs) -> dict:
         condition_expressions = [self._build_condition_expression(g) for g in sorted_groups]
 
         async def enter_node_function(state: State, writer: StreamWriter):
-            logger.info(f"Entering classification decision table: {self.node_name}")
+            logger.debug("Entering classification decision table: {}", self.node_name)
 
             update_variables = {
                 "result_node": None,
@@ -665,7 +675,7 @@ def main(**kwargs) -> dict:
                 execution_order=self.execution_order(state),
                 node_type=self.TYPE,
             )
-            self._publish_message(msg)
+            await self._publish_message(msg)
 
             # Execute pre-computation
             try:
@@ -683,12 +693,12 @@ def main(**kwargs) -> dict:
                     execution_order=self.execution_order(state),
                     node_type=self.TYPE,
                 )
-                self._publish_message(msg)
+                await self._publish_message(msg)
                 return state
 
             return state
 
-        def route_to_error_node(state: State, writer: StreamWriter, error: str):
+        async def route_to_error_node(state: State, writer: StreamWriter, error: str):
             """Route to the error node and publish error, then finish.
 
             The finish closes the CDT message group in the UI, as on the
@@ -703,7 +713,7 @@ def main(**kwargs) -> dict:
                 execution_order=self.execution_order(state),
                 node_type=self.TYPE,
             )
-            self._publish_message(msg)
+            await self._publish_message(msg)
             msg = self.custom_session_message_writer.add_finish_message(
                 session_id=self.session_id,
                 node_name=self.node_name,
@@ -713,12 +723,12 @@ def main(**kwargs) -> dict:
                 state=state,
                 node_type=self.TYPE,
             )
-            self._publish_message(msg)
+            await self._publish_message(msg)
             return state
 
         async def evaluate_node_function(state: State, writer: StreamWriter):
             """Evaluate all condition groups top-to-bottom with continue/stop logic."""
-            logger.info(f"Evaluating classification decision table: {self.node_name}")
+            logger.debug("Evaluating classification decision table: {}", self.node_name)
 
             decision_vars = state["system_variables"]["nodes"][self.node_name]
 
@@ -733,7 +743,7 @@ def main(**kwargs) -> dict:
                     state=state,
                     node_type=self.TYPE,
                 )
-                self._publish_message(msg)
+                await self._publish_message(msg)
                 return state
 
             matched_next_node = None
@@ -776,7 +786,7 @@ def main(**kwargs) -> dict:
                             execution_order=self.execution_order(state),
                             expression=group.expression,
                         )
-                        self._publish_message(msg)
+                        await self._publish_message(msg)
                         group_index += 1
 
                     if expression_error is not None:
@@ -788,7 +798,7 @@ def main(**kwargs) -> dict:
                     if not results[-1]:
                         continue
 
-                    logger.info(f"Condition '{group.group_name}' matched.")
+                    logger.debug("Condition '{}' matched.", group.group_name)
                     matched_condition_name = group.group_name
 
                     # Step 2: Execute prompt (if prompt_id is set)
@@ -807,7 +817,7 @@ def main(**kwargs) -> dict:
                                 result_variable=prompt_result.get("result_variable", ""),
                                 usage=prompt_result.get("usage", {}),
                             )
-                            self._publish_message(msg)
+                            await self._publish_message(msg)
 
                     # Step 3: Execute manipulation (field_manipulations + main manipulation)
                     manip_parts = []
@@ -836,7 +846,7 @@ def main(**kwargs) -> dict:
                             execution_order=self.execution_order(state),
                             changed_variables=changed,
                         )
-                        self._publish_message(msg)
+                        await self._publish_message(msg)
 
                     # Step 4: An explicit route is terminal — take it and stop, ignoring continue.
                     if group.next_node:
@@ -850,13 +860,21 @@ def main(**kwargs) -> dict:
                 except ClassificationDecisionTableNodeError as e:
                     scope = batch_failure_scope or f"in condition '{group.group_name}'"
                     error = f"Error {scope}: {e}"
-                    logger.info(f"ERROR {error}")
-                    return route_to_error_node(state, writer, error)
+                    logger.warning(
+                        "Classification decision table '{}' routed to its error node: {}",
+                        self.node_name,
+                        error,
+                    )
+                    return await route_to_error_node(state, writer, error)
                 except Exception as e:
                     scope = batch_failure_scope or f"in condition '{group.group_name}'"
                     error = f"Unexpected error {scope}: {type(e).__name__}: {e}"
-                    logger.info(f"ERROR {error}")
-                    return route_to_error_node(state, writer, error)
+                    logger.opt(exception=e).error(
+                        "Classification decision table '{}' routed to its error node: {}",
+                        self.node_name,
+                        error,
+                    )
+                    return await route_to_error_node(state, writer, error)
 
             decision_vars["result_node"] = (
                 matched_next_node or self.node_data.default_next_node or END
@@ -867,11 +885,12 @@ def main(**kwargs) -> dict:
                 await self._execute_post_computation(state)
             except ClassificationDecisionTableNodeError as e:
                 logger.error(f"Post-computation error: {e}")
-                return route_to_error_node(state, writer, str(e))
+                return await route_to_error_node(state, writer, str(e))
 
-            logger.info(
-                f"Classification table '{self.node_name}' result: "
-                f"result_node={decision_vars['result_node']}"
+            logger.debug(
+                "Classification table '{}' result: result_node={}",
+                self.node_name,
+                decision_vars["result_node"],
             )
 
             msg = self.custom_session_message_writer.add_finish_message(
@@ -884,7 +903,7 @@ def main(**kwargs) -> dict:
                 node_type=self.TYPE,
                 matched_condition=matched_condition_name,
             )
-            self._publish_message(msg)
+            await self._publish_message(msg)
 
             return state
 

@@ -1,6 +1,8 @@
 import csv
 import io
 
+from utils.graph_utils import node_label
+
 from tables.import_export.export_tabular_projections._csv_helpers import (
     _format_mapping,
     _llm_config_label,
@@ -89,7 +91,7 @@ def export_condition_groups_csv(node: ClassificationDecisionTableNode) -> io.Str
         writer.writerow([_neutralize_formula(value) for value in row])
 
     write(["CLASSIFICATION DECISION TABLE"])
-    write(["Node Name", node.node_name])
+    write(["Node Name", node_label(node_name=node.node_name, node_number=node.node_number)])
     write(["Default AI Model", _llm_config_label(node.default_llm_config)])
     write(["Pre-processing Script", _yes_no(node.pre_python_code_id)])
     write(["Post-processing Script", _yes_no(node.post_python_code_id)])

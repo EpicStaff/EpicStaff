@@ -133,7 +133,8 @@
     &--mod-small {
         border-radius: 4px;
         height: 28px;
-        font-weight: var(--text-body-small-weight);
+        // Overridable from outside: set the custom property on the <app-button> element.
+        font-weight: var(--button-small-font-weight, var(--text-body-small-weight));
         font-size: var(--text-body-small-size);
         padding: 0.25rem 0.5rem;
 
@@ -149,7 +150,8 @@
         }
 
         &-small {
-            padding-left: 2rem;
+            // Overridable like the font weight above: where the label starts, after the icon.
+            padding-left: var(--button-small-icon-left-padding, 2rem);
             padding-right: 0.75rem;
         }
     }

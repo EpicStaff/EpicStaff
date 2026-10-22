@@ -3,8 +3,8 @@ import { ICurrentSelection } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { generateMultipleNodeDisplayNames } from '../core/helpers/generate-node-display-name.util';
 import { generatePortsForNode, parsePortId } from '../core/helpers/helpers';
+import { isNumberedNodeType } from '../core/helpers/node-number.util';
 import { CdtSection } from '../core/models/cdt-section.model';
 import { ConnectionModel } from '../core/models/connection.model';
 import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel, NodeModel } from '../core/models/node.model';
@@ -77,18 +77,29 @@ export class ClipboardService {
         };
     }
 
-    public paste(mousePosition: { x: number; y: number }): {
+    /**
+     * Adds a copy of the clipboard at `mousePosition`, keeping the copied nodes' layout. Nodes `canPaste`
+     * rejects (e.g. trigger nodes the user may not add) are left out with their connections, and counted
+     * in `skippedNodeCount`.
+     */
+    public paste(
+        mousePosition: { x: number; y: number },
+        canPaste: (node: NodeModel) => boolean = () => true
+    ): {
         newNodes: NodeModel[];
         newConnections: ConnectionModel[];
+        skippedNodeCount: number;
     } {
         if (!this.clipboard) {
-            return { newNodes: [], newConnections: [] };
+            return { newNodes: [], newConnections: [], skippedNodeCount: 0 };
         }
 
-        const { nodes: clipboardNodes, connections: clipboardConnections, boundingBox } = this.clipboard;
+        const { connections: clipboardConnections, boundingBox } = this.clipboard;
+        const clipboardNodes = this.clipboard.nodes.filter(canPaste);
+        const skippedNodeCount = this.clipboard.nodes.length - clipboardNodes.length;
 
         if (clipboardNodes.length === 0) {
-            return { newNodes: [], newConnections: [] };
+            return { newNodes: [], newConnections: [], skippedNodeCount };
         }
 
         const offsetX = mousePosition.x - boundingBox.minX;
@@ -101,13 +112,7 @@ export class ClipboardService {
             return newNodeId;
         });
 
-        // Assign sequential badge numbers and generate names in one pass
-        const nodesToCreate = clipboardNodes.map((oldNode) => ({
-            type: oldNode.type,
-            data: oldNode.data,
-        }));
-        const nodeNumbers = nodesToCreate.map(() => this.flowService.getNextNodeNumber());
-        const displayNames = generateMultipleNodeDisplayNames(nodesToCreate, nodeNumbers);
+        const newNumberByOldId = this.assignNewNodeNumbers(clipboardNodes);
 
         // Create new nodes with backendId: null for diff-save support
         const newNodes: NodeModel[] = clipboardNodes.map((oldNode, index) => {
@@ -123,17 +128,17 @@ export class ClipboardService {
 
             const newPorts: ViewPort[] = generatePortsForNode(newNodeId, oldNode.type, newData);
 
+            // The copy keeps its name (names may repeat); the number, which tells the two apart, is new.
             return {
                 ...oldNode,
                 id: newNodeId,
                 backendId: null,
-                nodeNumber: nodeNumbers[index],
+                nodeNumber: newNumberByOldId.get(oldNode.id),
                 position: {
                     x: oldNode.position.x + offsetX,
                     y: oldNode.position.y + offsetY,
                 },
                 ports: newPorts,
-                node_name: displayNames[index],
                 data: newData,
             };
         });
@@ -187,7 +192,24 @@ export class ClipboardService {
         const finalNodeById = new Map(this.flowService.nodes().map((n) => [n.id, n]));
         const returnedNodes = newNodes.map((n) => finalNodeById.get(n.id) ?? n);
 
-        return { newNodes: returnedNodes, newConnections };
+        return { newNodes: returnedNodes, newConnections, skippedNodeCount };
+    }
+
+    /**
+     * Issues new numbers to the numbered nodes in ascending order of their source number, so the copies
+     * keep the originals' relative order whatever order the selection came in. Nodes without a source
+     * number go last; ties keep clipboard order.
+     */
+    private assignNewNodeNumbers(clipboardNodes: NodeModel[]): Map<string, number> {
+        const sourceNumber = (node: NodeModel): number => node.nodeNumber ?? Number.MAX_SAFE_INTEGER;
+        const newNumberByOldId = new Map<string, number>();
+
+        clipboardNodes
+            .filter((node) => isNumberedNodeType(node.type))
+            .sort((first, second) => sourceNumber(first) - sourceNumber(second))
+            .forEach((node) => newNumberByOldId.set(node.id, this.flowService.getNextNodeNumber()));
+
+        return newNumberByOldId;
     }
 
     private clearDecisionTableNextNodeRefs(type: NodeType, data: NodeModel['data'] | null): void {

@@ -1,6 +1,7 @@
 import sys
 
 from loguru import logger
+from src.shared.bench_log import BENCH_LEVEL_NAME
 
 from django_app.settings import env
 
@@ -8,7 +9,15 @@ from django_app.settings import env
 def _resolve_log_level() -> str:
     """Resolve the stdlib root log level from DJANGO_LOG_LEVEL, falling back to WARNING on an invalid/missing value."""
     raw_level = env.str("DJANGO_LOG_LEVEL", "WARNING").upper()
-    if raw_level not in {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"}:
+    if raw_level not in {
+        "CRITICAL",
+        "ERROR",
+        "WARNING",
+        "INFO",
+        BENCH_LEVEL_NAME,
+        "DEBUG",
+        "NOTSET",
+    }:
         logger.warning(
             "Ignoring invalid DJANGO_LOG_LEVEL={!r}; falling back to WARNING.",
             raw_level,
@@ -16,6 +25,8 @@ def _resolve_log_level() -> str:
         return "WARNING"
     return raw_level
 
+
+LOG_LEVEL = _resolve_log_level()
 
 LOGGING = {
     "version": 1,
@@ -28,7 +39,7 @@ LOGGING = {
     },
     "root": {
         "handlers": ["loguru"],
-        "level": _resolve_log_level(),
+        "level": LOG_LEVEL,
     },
     "loggers": {
         # Never DEBUG, whatever DJANGO_LOG_LEVEL says: with DEBUG on it logs every

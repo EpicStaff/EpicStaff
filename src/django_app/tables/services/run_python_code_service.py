@@ -2,8 +2,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from django.conf import settings
 from django.utils import timezone
+from foundation.transport.http import ClientError
 from loguru import logger
 from pydantic import ValidationError
 from rbac.authorship import resolve_author
@@ -12,10 +12,10 @@ from src.shared.models.storage_scope import StorageCredentials
 from storage_credentials.exceptions import StorageCredentialError
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
+from tables.clients import SandboxExecutionClient
 from tables.exceptions import CodeRunTargetNotFoundError
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.services.code_run_targets import CODE_RUN_TARGETS, storage_path_for_test_run
-from tables.services.redis_service import RedisService
 from tables.services.secrets import (
     UndeclaredSecretError,
     parse_secret_names,
@@ -37,10 +37,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         "Failed to issue storage credentials for code execution (execution_id={})"
     )
     _CREDENTIAL_ISSUE_STDERR = "Could not grant file storage access for this run."
-
-    def __init__(self, redis_service: RedisService):
-        self.redis_service = redis_service
-        self.code_exec_task_channel: str = settings.CODE_EXEC_CHANNEL
+    _SUBMIT_FAILED_LOG = "Failed to submit code execution to the sandbox (execution_id={}, {})"
+    _SUBMIT_FAILED_STDERR = "Could not reach the code sandbox for this run."
 
     def run_code(
         self,
@@ -51,7 +49,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         additional_global_kwargs: dict[str, Any] | None = None,
     ) -> str:
         """
-        Sends a Redis request to execute Python code.
+        Submits Python code to the sandbox for execution.
 
         Args:
             python_code_id (int): The ID of the Python code in the database.
@@ -62,7 +60,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         """
         additional_global_kwargs = additional_global_kwargs or {}
 
-        python_code: PythonCode = PythonCode.objects.get(id=python_code_id)
+        python_code: PythonCode = PythonCode.objects.select_related("venv").get(id=python_code_id)
 
         # Resolve before anything is written or published: this path never goes
         # through the session payload, so it resolves for itself, and a failure
@@ -121,8 +119,10 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         try:
             code_task_data = CodeTaskData(
-                venv_name=f"venv_{python_code_id}",
-                libraries=python_code.get_libraries_list(),
+                # The code's own venv: a test run must execute where the real run
+                # would, not on the sandbox's default venv. The sandbox's own id,
+                # not the binding's: this payload leaves django.
+                venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
                 code=python_code.code,
                 entrypoint=python_code.entrypoint,
                 func_kwargs=varaibles,
@@ -134,6 +134,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 org_id=organization_id if use_storage else None,
                 secrets=secrets,
                 storage_credentials=storage_credentials,
+                execution_timeout=python_code.execution_timeout,
             )
         except ValidationError:
             return self._fail_execution(
@@ -143,8 +144,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 stderr=self._INVALID_REQUEST_STDERR,
             )
 
-        self._publish(code_task_data)
-        return execution_id
+        return self._submit(
+            code_task_data=code_task_data, execution_id=execution_id, use_storage=use_storage
+        )
 
     def run_target(
         self,
@@ -161,8 +163,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         test run's own folder (`test-runs/<type>-<id>/`) in place of the session
         folder. Secrets are resolved on a copy, the way `RedisService` resolves a
         session payload, and `org_id` is put into the code's globals the way crew
-        does. Writes a PENDING `PythonCodeResult` and publishes the task on the
-        code-exec channel.
+        does. Writes a PENDING `PythonCodeResult` and submits the task to the
+        sandbox.
 
         Args:
             target_type: A key of `CODE_RUN_TARGETS`.
@@ -174,7 +176,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             CodeRunTargetNotFoundError: No live target with this id in
                 `organization_id`, or its code slot is empty.
             UndeclaredSecretError: The code reads a secret it did not declare.
-                Nothing is written or published.
+                Nothing is written or submitted.
         """
         code_run_target = CODE_RUN_TARGETS[target_type]
         owner = code_run_target.find_in_org(target_id=target_id, org_id=organization_id)
@@ -218,8 +220,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         try:
             code_task_data = CodeTaskData(
-                venv_name=resolved.venv_name,
-                libraries=resolved.libraries,
+                # The slot's real-run venv: a test run of a slot must execute where
+                # the real run would, not on the sandbox's default venv.
+                venv_id=resolved.venv_id,
                 code=resolved.code,
                 entrypoint=resolved.entrypoint,
                 func_kwargs=variables,
@@ -232,6 +235,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 org_id=resolved.org_id,
                 secrets=resolved.secrets,
                 storage_credentials=storage_credentials,
+                execution_timeout=resolved.execution_timeout,
             )
         except ValidationError:
             return self._fail_execution(
@@ -241,8 +245,11 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 stderr=self._INVALID_REQUEST_STDERR,
             )
 
-        self._publish(code_task_data)
-        return execution_id
+        return self._submit(
+            code_task_data=code_task_data,
+            execution_id=execution_id,
+            use_storage=resolved.use_storage,
+        )
 
     def _mint_storage_credentials(
         self,
@@ -277,9 +284,15 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             return None, False
 
     def _fail_execution(
-        self, *, execution_id: str, use_storage: bool, log_message: str, stderr: str
+        self,
+        *,
+        execution_id: str,
+        use_storage: bool,
+        log_message: str,
+        stderr: str,
+        log_args: tuple = (),
     ) -> str:
-        logger.error(log_message, execution_id)
+        logger.error(log_message, execution_id, *log_args)
         PythonCodeResult.objects.filter(execution_id=execution_id).update(
             status=PythonCodeResult.Status.ERROR,
             stderr=stderr,
@@ -339,10 +352,30 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         if use_storage:
             session_credential_service.revoke_for_test_run(execution_id=execution_id)
 
-    def _publish(self, code_task_data: CodeTaskData) -> None:
-        self.redis_service.redis_client.publish(
-            self.code_exec_task_channel, code_task_data.model_dump_json()
-        )
+    def _submit(self, *, code_task_data: CodeTaskData, execution_id: str, use_storage: bool) -> str:
+        """Hand the task to the sandbox, failing the execution if it does not take it.
+
+        A rejected or undelivered submission produces no result on the result
+        channel, so the PENDING row would stay PENDING for good -- it is marked
+        ERROR here instead, and any minted credentials are revoked.
+
+        Returns:
+            The execution id, whether the submit succeeded or failed.
+        """
+        try:
+            with SandboxExecutionClient() as client:
+                client.submit(code_task_data)
+        except ClientError as error:
+            # The class name, never the error: it holds the sandbox response and,
+            # through it, the submitted body with resolved secret plaintext.
+            return self._fail_execution(
+                execution_id=execution_id,
+                use_storage=use_storage,
+                log_message=self._SUBMIT_FAILED_LOG,
+                stderr=self._SUBMIT_FAILED_STDERR,
+                log_args=(type(error).__name__,),
+            )
+        return execution_id
 
     def gen_execution_id(self):
         now = datetime.now(UTC)

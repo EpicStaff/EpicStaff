@@ -7,6 +7,8 @@ from tables.services.secrets import (
     secret_resolver,
     secret_service,
 )
+from src.shared.models import KnowledgeNodeData
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 
 
 @pytest.fixture
@@ -442,7 +444,6 @@ class TestResolveNamed:
             venv_name="default",
             code='def main(): return get_secret("NODE_KEY")',
             entrypoint="main",
-            libraries=[],
             secret_names=["NODE_KEY"],
         )
 
@@ -566,3 +567,141 @@ class TestResolveHeaderMarkers:
                 ),
                 org_id=org.id,
             )
+
+
+
+@pytest.mark.django_db
+class TestResolveSuffixedHeaderFields:
+    """Every field whose name ends with `extra_headers` resolves its markers, so
+    the RAG header carriers next to the RAG api keys need no registration."""
+
+    def test_knowledge_node_embedder_and_llm_headers_resolve(self, org):
+        secret_service.create(text="emb-plain", org=org, name="EMB_HDR")
+        secret_service.create(text="llm-plain", org=org, name="LLM_HDR")
+        payload = KnowledgeNodeData(
+            node_name="knowledge",
+            query="q",
+            input_map={},
+            embedder_extra_headers={"X-Emb": "epicstaff_secret(EMB_HDR)"},
+            llm_extra_headers={"X-Llm": "Bearer epicstaff_secret(LLM_HDR)"},
+        )
+
+        resolved = secret_resolver.resolve_payload(payload=payload, org_id=org.id)
+
+        assert resolved.embedder_extra_headers == {"X-Emb": "emb-plain"}
+        assert resolved.llm_extra_headers == {"X-Llm": "Bearer llm-plain"}
+        assert payload.embedder_extra_headers == {"X-Emb": "epicstaff_secret(EMB_HDR)"}
+
+    def test_embedder_config_headers_resolve(self, org):
+        secret_service.create(text="emb-cfg-plain", org=org, name="EMB_CFG_HDR")
+
+        resolved = secret_resolver.resolve_payload(
+            payload=EmbedderConfigData(
+                model="text-embedding-3-small",
+                extra_headers={"api-key": "epicstaff_secret(EMB_CFG_HDR)"},
+            ),
+            org_id=org.id,
+        )
+
+        assert resolved.extra_headers == {"api-key": "emb-cfg-plain"}
+
+    def test_realtime_rag_headers_resolve(self, org):
+        secret_service.create(text="rt-emb-plain", org=org, name="RT_EMB_HDR")
+        payload = RealtimeAgentChatData(
+            role="r",
+            goal="g",
+            backstory="b",
+            org_id=org.id,
+            knowledge_collection_id=None,
+            rt_model_name="m",
+            temperature=None,
+            memory=False,
+            connection_key="k",
+            wake_word=None,
+            stop_prompt=None,
+            language=None,
+            voice_recognition_prompt=None,
+            voice="alloy",
+            rag_embedder_extra_headers={"X-Emb": "epicstaff_secret(RT_EMB_HDR)"},
+        )
+
+        resolved = secret_resolver.resolve_payload(payload=payload, org_id=org.id)
+
+        assert resolved.rag_embedder_extra_headers == {"X-Emb": "rt-emb-plain"}
+
+    def test_foreign_org_marker_in_a_suffixed_field_is_rejected(self, org, other_org):
+        secret_service.create(text="sk-foreign", org=other_org, name="FOREIGN_EMB_HDR")
+
+        with pytest.raises(SecretResolutionError) as exc:
+            secret_resolver.resolve_payload(
+                payload=KnowledgeNodeData(
+                    node_name="knowledge",
+                    query="q",
+                    input_map={},
+                    embedder_extra_headers={"X-Emb": "epicstaff_secret(FOREIGN_EMB_HDR)"},
+                ),
+                org_id=org.id,
+            )
+
+        assert "KnowledgeNodeData.embedder_extra_headers" in str(exc.value)
+
+
+@pytest.mark.django_db
+class TestResolveHeaderMarkersDirectly:
+    """The public entry point used where there is no payload model to walk."""
+
+    def test_returns_a_resolved_copy_and_leaves_the_input_alone(self, org):
+        secret_service.create(text="direct-plain", org=org, name="DIRECT_HDR")
+        headers = {"X-Key": "epicstaff_secret(DIRECT_HDR)", "X-Trace": "t"}
+
+        resolved = secret_resolver.resolve_header_markers(headers=headers, org_id=org.id)
+
+        assert resolved == {"X-Key": "direct-plain", "X-Trace": "t"}
+        assert headers == {"X-Key": "epicstaff_secret(DIRECT_HDR)", "X-Trace": "t"}
+
+    @pytest.mark.parametrize("headers", [None, {}])
+    def test_empty_input_is_returned_without_a_query(
+        self, org, headers, django_assert_num_queries
+    ):
+        with django_assert_num_queries(0):
+            assert (
+                secret_resolver.resolve_header_markers(headers=headers, org_id=org.id)
+                == headers
+            )
+
+    def test_unknown_name_raises_with_the_given_context(self, org):
+        with pytest.raises(SecretResolutionError) as exc:
+            secret_resolver.resolve_header_markers(
+                headers={"X-Key": "epicstaff_secret(MISSING)"},
+                org_id=org.id,
+                context="EmbeddingConfig.extra_headers",
+            )
+
+        assert "EmbeddingConfig.extra_headers" in str(exc.value)
+        assert "MISSING" in str(exc.value)
+
+    def test_foreign_org_name_is_not_resolvable(self, org, other_org):
+        secret_service.create(text="sk-other", org=other_org, name="OTHER_DIRECT")
+
+        with pytest.raises(SecretResolutionError):
+            secret_resolver.resolve_header_markers(
+                headers={"X-Key": "epicstaff_secret(OTHER_DIRECT)"}, org_id=org.id
+            )
+
+
+
+@pytest.mark.parametrize(
+    "headers, expected",
+    [
+        (None, set()),
+        ({}, set()),
+        ({"X-Trace": "plain"}, set()),
+        ({"A": "epicstaff_secret( ONE )", "B": "x epicstaff_secret(TWO) epicstaff_secret(ONE)"}, {"ONE", "TWO"}),
+        ({"A": 1}, set()),
+        (["epicstaff_secret(ONE)"], set()),
+        ("epicstaff_secret(ONE)", set()),
+    ],
+    ids=["none", "empty", "no-marker", "several", "non-string", "list", "string"],
+)
+def test_extract_secret_marker_names(headers, expected):
+    assert extract_secret_marker_names(headers) == expected

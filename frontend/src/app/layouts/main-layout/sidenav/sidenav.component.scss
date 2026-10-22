@@ -1,11 +1,17 @@
-// Every row is a $row-size box. Collapsed, the box is centred in the 60px sidebar; expanded, it stretches
-// but keeps the same left edge ($row-inset) and inner padding, so icons stay put when the sidebar expands.
+@use '../../../../styles/count-badge';
+
+// Every row is a $row-size box. Collapsed, the box is centred in the 60px sidebar ($row-inset); expanded, it
+// stretches between $nav-padding-inline insets and keeps its inner padding, so icons move only 2px left.
 $row-size: 2.5rem;
 $row-inset: 0.625rem; // (60px collapsed sidebar - 40px row) / 2
-$nav-icon-size: 1.4rem;
-$nav-icon-padding: ($row-size - $nav-icon-size) * 0.5;
+$nav-padding-inline: 0.5rem; // expanded rows sit 8px from the sidebar edges
 $avatar-size: 1.5rem; // app-org-avatar and app-user-avatar are 24px
 $avatar-padding: ($row-size - $avatar-size) * 0.5;
+// Nav icons sit centred in a $row-size wrapper, 8px from their label; avatar rows match it, so every label
+// lines up 48px from its row edge.
+$avatar-label-gap: calc(#{$avatar-padding} + var(--space-sm));
+$logo-padding-top: 1.75rem;
+$logo-padding-bottom: 0.75rem;
 
 :host {
     display: block;
@@ -19,25 +25,44 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
     flex-direction: column;
     height: 100%;
     width: 100%;
-    border-right: 1px solid var(--color-divider-subtle);
+    // Drawn inside the edge rather than as a border, so the line takes no width and a 40px row sits exactly
+    // 10px from both sides of the 60px collapsed sidebar.
+    box-shadow: inset -1px 0 0 var(--color-divider-subtle);
     align-items: center;
+    // The wordmark sizes itself against the sidebar width (cqi).
+    container-type: inline-size;
 }
 
 .logo-container {
-    height: 4.3rem;
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
     position: relative;
-    margin: 1rem 0;
+    padding: $logo-padding-top $row-inset $logo-padding-bottom;
     flex-shrink: 0;
+
+    // The line under the logo: as wide as a row when collapsed, the full width when expanded. It is drawn
+    // over the bottom padding, so the row stays 80px and the line lines up with the 80px page headers (Flows).
+    &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: $row-inset;
+        width: $row-size;
+        border-top: 1px solid var(--color-divider-subtle);
+
+        .sidenav.expanded & {
+            left: 0;
+            width: 100%;
+        }
+    }
 
     .app-logo {
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 0.5rem;
+        padding: 0;
         width: 100%;
         position: relative;
         margin: 0 auto;
@@ -54,13 +79,21 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
             height: $row-size;
         }
 
+        // The product wordmark, not a text style: it has its own size, weight and tracking.
+        // At 24px it is about 118px wide and the rest of the row takes 116px (10px inset + 40px mark + 8px gap +
+        // 8px gap + 40px toggle + 10px inset), so it keeps 24px down to a ~236px sidebar and below that shrinks
+        // with the width (24px per 120px of room, a little spare against rounding) instead of being cut short.
         .app-logo-name {
             min-width: 0;
             margin-left: var(--space-sm);
             overflow: hidden;
             white-space: nowrap;
             text-overflow: ellipsis;
-            color: var(--color-text-primary);
+            font-size: min(1.5rem, calc((100cqi - 116px) / 5));
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: 0.04em;
+            color: var(--accent-color);
         }
 
         .logo-svg {
@@ -97,11 +130,11 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
         transition: opacity 0.15s ease;
     }
 
+    // The toggle is the logo mark's size, so it covers the mark exactly.
     .logo-sidebar-toggle {
         position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
+        top: $logo-padding-top;
+        left: $row-inset;
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.15s ease;
@@ -132,60 +165,29 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
 
     &.main-nav {
         flex-grow: 1;
+        padding-top: 0.75rem;
     }
 
     &.bottom-nav {
         flex-shrink: 0;
-        padding-bottom: 0.75rem;
+        padding-bottom: 1.75rem; // 28px
     }
 
-    .org-menu-container {
-        width: 100%;
-        display: flex;
-        justify-content: center;
+    // As wide as a row: centred in the collapsed sidebar, stretched between the row insets when expanded.
+    .sidenav-divider {
+        flex-shrink: 0;
+        width: $row-size;
+        border-top: 1px solid var(--color-divider-subtle);
 
-        .org-menu-wrapper {
-            position: relative;
-            display: flex;
-            justify-content: center;
-            padding: 16px 0;
-            border-top: 1px solid var(--color-divider-subtle);
-            border-bottom: 1px solid var(--color-divider-subtle);
+        .sidenav.expanded & {
+            align-self: stretch;
+            width: auto;
+            margin: 0 $nav-padding-inline;
         }
 
-        .org-menu-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: var(--space-sm);
-            width: $row-size;
-            height: $row-size;
-            padding: 0 $avatar-padding;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            transition: background-color 0.2s ease-out;
-
-            .workspace-icon {
-                color: var(--accent-color);
-            }
-
-            &:hover {
-                background-color: var(--white-alpha-5);
-            }
-            &:hover .sidenav-row-label {
-                color: var(--gray-200);
-            }
-
-            &.opened {
-                background-color: var(--graphite-750);
-            }
-
-            &.active {
-                background-color: var(--purple-alpha-15);
-            }
-            &.active .sidenav-row-label {
-                color: var(--accent-color);
-            }
+        // Group dividers in the main list span the whole expanded sidebar, like the line under the logo.
+        .sidenav.expanded &.full-width-when-expanded {
+            margin: 0;
         }
     }
 
@@ -197,18 +199,47 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
             display: flex;
             justify-content: center;
 
-            // Closes the bottom group with a divider like the workspace switcher's (.org-menu-wrapper
-            // above): it shrinks to the button, so the line is as wide as the button.
-            &.recycle-bin-block {
-                width: fit-content;
-                margin: 0 auto;
-                padding: 0 0 8px;
-                border-bottom: 1px solid var(--color-divider-subtle);
+            // On the icon wrapper's top-right corner, 2px inside it.
+            .sidenav-badge {
+                @include count-badge.pill;
+                position: absolute;
+                top: 2px;
+                right: 2px;
             }
 
-            // The size of the nav icons above (app-svg-icon size="1.4rem"): Tabler's glyph has the same 24px box.
+            // A sibling of the item's link (links cannot nest). Its 24px target (WCAG 2.5.8) sits on the icon box's
+            // top-right corner and reaches past it, clear of the icon itself; the pill inside looks like the others.
+            // Anchored to the row's left edge: $row-inset collapsed, $nav-padding-inline expanded.
+            .sidenav-badge-link {
+                position: absolute;
+                top: -4px;
+                left: calc(#{$row-inset} + #{$row-size} + 6px);
+
+                .sidenav.expanded & {
+                    left: calc(#{$nav-padding-inline} + #{$row-size} + 6px);
+                }
+                transform: translateX(-100%);
+                z-index: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 24px;
+                height: 24px;
+                text-decoration: none;
+                border-radius: 12px;
+
+                .sidenav-badge {
+                    position: static;
+                }
+
+                &:focus-visible {
+                    outline: 1px solid var(--accent-color);
+                }
+            }
+
+            // The size of the other nav icons (app-svg-icon size="1.25rem"): Tabler's glyph has the same square box.
             .recycle-bin-icon {
-                font-size: 1.4rem;
+                font-size: 1.25rem;
                 line-height: 1;
             }
 
@@ -222,7 +253,7 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
                 cursor: pointer;
                 width: $row-size;
                 height: $row-size;
-                padding: 0 $nav-icon-padding;
+                padding: 0;
                 border-radius: 0.5rem;
                 // Only colours animate: the row geometry changes with the sidebar width and must follow the pointer.
                 transition: background-color 0.2s ease-out;
@@ -237,12 +268,13 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
                 }
 
                 .sidenav-link-icon {
+                    position: relative;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     flex-shrink: 0;
-                    width: $nav-icon-size;
-                    height: $nav-icon-size;
+                    width: $row-size;
+                    height: $row-size;
                     color: var(--gray-400);
                     transition: color 0.2s ease-in-out;
                 }
@@ -257,15 +289,6 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
             }
         }
     }
-}
-
-.sidenav-row-leading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    width: $avatar-size;
-    height: $avatar-size;
 }
 
 // Same colours as the row icons, so a label always matches its icon's hover/active state.
@@ -288,7 +311,7 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-sm);
+    gap: $avatar-label-gap;
     width: $row-size;
     height: $row-size;
     padding: 0 $avatar-padding;
@@ -304,13 +327,48 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
         color: var(--gray-200);
     }
 
-    &.opened {
-        background-color: var(--graphite-750);
+    // Open, or on a page of its menu: the row takes the selected colours.
+    &.opened,
+    &.active {
+        background-color: var(--purple-alpha-8);
+    }
+    &.opened .sidenav-row-label,
+    &.active .sidenav-row-label {
+        color: var(--accent-color);
+    }
+}
+
+// The organization name over the user's role in it.
+.account-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+
+    .account-role {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        color: var(--color-ks-transparent-text-60);
+    }
+}
+
+// The account menu opens upwards from its row: aligned with the row when collapsed, as wide as it when expanded.
+// Collapsed it has a fixed width, so long names are cut short instead of widening the menu.
+app-user-menu {
+    bottom: calc(100% + var(--space-sm));
+    left: $row-inset;
+    width: 240px;
+
+    .sidenav.expanded & {
+        left: $nav-padding-inline;
+        right: $nav-padding-inline;
+        width: auto;
     }
 }
 
 // Expanded: rows stretch to the sidebar width (minus the inset) and show their labels left-aligned.
-// The org and user menus are positioned against their full-width wrappers, so they open beside the sidebar edge.
+// The account menu is positioned against its full-width wrapper, so it can span the expanded row.
 .sidenav.expanded {
     // The toggle takes its own place in the row, so the name never runs under it.
     .logo-container .app-logo {
@@ -318,25 +376,15 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
         min-width: 0;
         width: auto;
         justify-content: flex-start;
-        padding-inline: $row-inset var(--space-sm);
+        padding-inline: 0 var(--space-sm);
     }
 
-    .logo-container .logo-sidebar-toggle {
-        margin-right: $row-inset;
-    }
-
-    .org-menu-container .org-menu-wrapper {
-        flex: 1 1 auto;
-        min-width: 0;
-    }
-
-    .org-menu-container .org-menu-btn,
     .sidenav-nav-item .tooltip-wrapper .sidenav-nav-link,
     .user-avatar-btn {
         flex: 1 1 auto;
         min-width: 0;
         width: auto;
-        margin: 0 $row-inset;
+        margin: 0 $nav-padding-inline;
         justify-content: flex-start;
     }
 }

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import hashlib
 import json
-import re
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
 
@@ -13,11 +16,16 @@ from mcp import McpError
 
 from app.exceptions import McpToolError
 from app.tools.mcp.client_factory import FastMCPClientFactory
+from app.tools.mcp.schema_sanitizer import (
+    MAX_TEXT_CHARS,
+    UnsafeSchemaError,
+    sanitize_input_schema,
+    strip_control_chars,
+)
 from shared.models.tools import McpToolData
 
-_MAX_MCP_DESCRIPTION_CHARS = 1024
-_C0_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _CANCEL_SEND_TIMEOUT_SECONDS = 5
+_MAX_CACHED_DESCRIPTIONS = 256
 
 
 @dataclass
@@ -34,14 +42,62 @@ class McpToolGateway:
     method knows about ToolResult; that adaptation lives in McpToolExecutor.
     """
 
-    def __init__(self, factory: FastMCPClientFactory) -> None:
+    def __init__(
+        self,
+        factory: FastMCPClientFactory,
+        *,
+        describe_cache_ttl_s: float,
+        clock: Callable[[], float] = time.monotonic,
+        max_cached_descriptions: int = _MAX_CACHED_DESCRIPTIONS,
+    ) -> None:
         self._factory = factory
+        self._describe_cache_ttl_s = describe_cache_ttl_s
+        self._clock = clock
+        self._max_cached_descriptions = max_cached_descriptions
+        self._describe_cache: dict[str, tuple[float, McpToolDescription]] = {}
 
     async def describe(self, data: McpToolData) -> McpToolDescription:
-        """Fetch tool metadata from the MCP server.
+        """Fetch tool metadata from the MCP server, reusing a success for the cache TTL.
 
-        Raises McpToolError if the server is unreachable or the tool is absent.
+        Results are cached per (transport, auth, tool name), so a run that resolves
+        several tools of one server, or back-to-back runs, do not reconnect each time.
+        Failures are not cached.
+
+        Raises McpToolError if the server is unreachable, the tool is absent, or its
+        input schema is unsafe (see sanitize_input_schema).
         """
+        cache_key = self._describe_cache_key(data)
+        now = self._clock()
+        cached = self._describe_cache.get(cache_key)
+
+        if cached is not None and cached[0] > now:
+            return copy.deepcopy(cached[1])
+
+        description = await self._fetch_description(data)
+        self._store_description(cache_key, description, now)
+        return copy.deepcopy(description)
+
+    @staticmethod
+    def _describe_cache_key(data: McpToolData) -> str:
+        # Hashed so neither the auth token nor a credential in the URL sits in the key.
+        identity = json.dumps([data.transport, data.auth, data.tool_name])
+        return hashlib.sha256(identity.encode()).hexdigest()
+
+    def _store_description(
+        self, cache_key: str, description: McpToolDescription, now: float
+    ) -> None:
+        self._describe_cache = {
+            key: entry for key, entry in self._describe_cache.items() if entry[0] > now
+        }
+        self._describe_cache.pop(cache_key, None)
+
+        if len(self._describe_cache) >= self._max_cached_descriptions:
+            oldest_key = next(iter(self._describe_cache))
+            del self._describe_cache[oldest_key]
+
+        self._describe_cache[cache_key] = (now + self._describe_cache_ttl_s, description)
+
+    async def _fetch_description(self, data: McpToolData) -> McpToolDescription:
         client = self._factory.create(data)
 
         try:
@@ -60,18 +116,22 @@ class McpToolGateway:
                 f"Tool '{data.tool_name}' not found on MCP server at {data.transport!r}"
             )
 
-        has_description = bool(tool.description and tool.description.strip())
-        description = tool.description if has_description else data.tool_name
+        # The input schema reaches the model next to the description, so it gets the
+        # same cleaning; the marker goes on the description even when the server
+        # sent none, since the schema is external text all the same.
+        cleaned = strip_control_chars(tool.description or "").strip()[:MAX_TEXT_CHARS]
+        description = f"[external MCP tool description] {cleaned or data.tool_name}"
 
-        if has_description:
-            cleaned = _C0_CONTROL_CHARS_RE.sub("", tool.description)
-            truncated = cleaned[:_MAX_MCP_DESCRIPTION_CHARS]
-            description = f"[external MCP tool description] {truncated}"
+        try:
+            input_schema = sanitize_input_schema(dict(tool.inputSchema)) if tool.inputSchema else {}
+        except UnsafeSchemaError as error:
+            # No transport here: the URL can carry credentials, and this message
+            # reaches the client through the run's error event.
+            raise McpToolError(
+                f"MCP tool '{data.tool_name}' has an unsafe input schema: {error}"
+            ) from error
 
-        return McpToolDescription(
-            description=description,
-            input_schema=dict(tool.inputSchema) if tool.inputSchema else {},
-        )
+        return McpToolDescription(description=description, input_schema=input_schema)
 
     @staticmethod
     def _render_content_block(block) -> str:

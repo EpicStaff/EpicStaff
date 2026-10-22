@@ -102,9 +102,6 @@ def _render_computation_fields(block: dict) -> list[str]:
     lines = _render_mapping("values it receives", block.get("input_map"))
     path = block.get("output_variable_path")
     lines.append(f"  result stored as: {path}" if path else "  result stored as: (not kept)")
-    libraries = block.get("libraries") or []
-    if libraries:
-        lines.append(f"  outside tools used: {', '.join(libraries)}")
     lines.append("  code:")
     lines.append(_truncate(block.get("code"), CODE_LIMIT))
     return lines

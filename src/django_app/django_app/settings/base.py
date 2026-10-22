@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     "rbac",
     "tables",
     "agents",
+    "proxies",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -79,6 +80,21 @@ DEFAULT_ORGANIZATION_NAME = "Organization"
 TELEGRAM_TRIGGER_FIELDS_PATH = BASE_DIR / "tables/utils/data/telegram_fields.json"
 
 GRAPH_WS_TICKET_TTL = 30
+
+
+# Hosts a system-key caller may name in run-session `callback_url`. Anything else is
+# refused, which keeps the sender from being pointed at internal services.
+def parse_callback_hosts(values):
+    # `env.list` returns None for the project's `none` sentinel.
+    return [host.strip().lower() for host in (values or []) if host.strip()]
+
+
+SESSION_CALLBACK_ALLOWED_HOSTS = parse_callback_hosts(
+    env.list("DJANGO_SESSION_CALLBACK_ALLOWED_HOSTS")
+)
+# Shows the `chats` resource in the permission catalog; the chat service itself is a
+# separate container behind the same flag.
+CHAT_ENABLED = env.bool("CHAT_ENABLED")
 
 SSE_TICKET_TTL = 30
 

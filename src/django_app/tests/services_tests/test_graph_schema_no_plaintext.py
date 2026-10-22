@@ -95,10 +95,11 @@ class TestGraphSchemaNeverHoldsPlaintext:
             service.redis_service.redis_client, "publish", lambda channel, message: 2
         )
 
+        start_node = StartNode.objects.get(graph=graph)
         session = service.create_session(
-            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+            graph=graph, start_node=start_node, variables={}, trigger=TriggerSpec.manual()
         )
-        session_data = service.create_session_data(session=session)
+        session_data = service.create_session_data(session=session, start_node=start_node)
 
         service.redis_service.publish_session_data(
             session_data=session_data, org_id=graph.org_id
@@ -191,10 +192,11 @@ class TestGraphSchemaNeverHoldsPlaintext:
             lambda channel, message: published.append(message) or 2,
         )
 
+        start_node = StartNode.objects.get(graph=graph)
         session = service.create_session(
-            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+            graph=graph, start_node=start_node, variables={}, trigger=TriggerSpec.manual()
         )
-        session_data = service.create_session_data(session=session)
+        session_data = service.create_session_data(session=session, start_node=start_node)
         credentials = StorageCredentials(
             access_key="AK-published-only", secret_key="SK-published-only"
         )
@@ -227,10 +229,11 @@ class TestGraphSchemaNeverHoldsPlaintext:
             lambda channel, message: published.append(message) or 2,
         )
 
+        start_node = StartNode.objects.get(graph=graph)
         session = service.create_session(
-            graph_id=graph.pk, variables={}, trigger=TriggerSpec.manual()
+            graph=graph, start_node=start_node, variables={}, trigger=TriggerSpec.manual()
         )
-        session_data = service.create_session_data(session=session)
+        session_data = service.create_session_data(session=session, start_node=start_node)
 
         service.redis_service.publish_session_data(
             session_data=session_data, org_id=graph.org_id

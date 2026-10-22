@@ -1,31 +1,22 @@
-"""CodeTaskData validation failures must not leak the constructor input.
+"""An execution sandbox_new rejects must fail the node without leaking its secrets.
 
-pydantic's ValidationError repr embeds `input_value` -- the whole dict handed
-to the model, which carries `secrets` plaintext and
-`storage_credentials.secret_key`. Neither the returned stderr nor the log line
-may contain it.
+The storage scope is validated by sandbox_new now, which answers 400 when an
+execution asks for storage it may not have. run_code() turns that rejection into
+a returncode-1 result; the stderr it returns and the line it logs both reach
+places the execution's `secrets` plaintext and `storage_credentials.secret_key`
+must never appear in.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
 
 import pytest
 from loguru import logger
 
-from services.run_python_code_service import RunPythonCodeService
-from src.shared.models import PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 
 SECRET_VALUE = "sk-live-SUPERSECRET-0123456789"
 STORAGE_SECRET_KEY = "SK-MINIO-SUPERSECRET-9876543210"
-
-
-@pytest.fixture(autouse=True)
-def _reset_singleton():
-    from utils.singleton_meta import SingletonMeta
-
-    SingletonMeta._instances.pop(RunPythonCodeService, None)
-    yield
-    SingletonMeta._instances.pop(RunPythonCodeService, None)
+REJECTION = "use_storage requires storage_credentials"
 
 
 @pytest.fixture
@@ -36,63 +27,49 @@ def captured_logs():
     logger.remove(sink_id)
 
 
-def make_invalid_python_code_data() -> PythonCodeData:
-    """use_storage=True without org_id/storage_org_prefix fails
-    CodeTaskData._validate_storage_scope."""
-    return PythonCodeData(
-        venv_name="default",
-        code="def main(**kw): return kw",
-        entrypoint="main",
-        libraries=[],
-        global_kwargs={},
-        use_storage=True,
-        storage_org_prefix=None,
-        org_id=None,
-        secrets={"MY_SECRET": SECRET_VALUE},
+@pytest.mark.asyncio
+async def test_rejected_submit_fails_the_execution_without_waiting_for_a_result(
+    run_python_code_service, sandbox, make_python_code_data
+):
+    sandbox.rejects_with = REJECTION
+
+    # No result will ever arrive for a rejected submit, so the call must return
+    # now rather than sit out settings.CODE_RESULT_TIMEOUT.
+    result = await asyncio.wait_for(
+        run_python_code_service.run_code(
+            python_code_data=make_python_code_data(use_storage=True, org_id=7),
+            inputs={},
+            storage_credentials=None,
+        ),
+        timeout=5,
     )
+
+    assert result["returncode"] == 1
+    assert result["result_data"] is None
+    assert REJECTION in result["stderr"]
+    assert result["execution_id"] == sandbox.submitted["execution_id"]
+    assert run_python_code_service._pending_results == {}
 
 
 @pytest.mark.asyncio
-async def test_invalid_storage_scope_returns_fixed_error_without_secrets(captured_logs):
-    redis = MagicMock()
-    redis.apublish = AsyncMock()
-    redis.asubscribe = AsyncMock()
-    service = RunPythonCodeService(redis_service=redis)
+async def test_rejected_submit_keeps_secrets_out_of_stderr_and_logs(
+    captured_logs, run_python_code_service, sandbox, make_python_code_data
+):
+    sandbox.rejects_with = REJECTION
 
-    result = await service.run_code(
-        python_code_data=make_invalid_python_code_data(),
-        inputs={},
+    result = await run_python_code_service.run_code(
+        python_code_data=make_python_code_data(
+            use_storage=True,
+            org_id=7,
+            secrets={"MY_SECRET": SECRET_VALUE},
+        ),
+        inputs={"input_name": "input_value"},
         storage_credentials=StorageCredentials(
             access_key="AK-PUBLIC", secret_key=STORAGE_SECRET_KEY
         ),
     )
-
-    assert result["returncode"] == 1
-    assert result["stdout"] == ""
-    assert result["stderr"] == "Invalid storage scope for code execution."
-
-    redis.apublish.assert_not_awaited()
-    redis.asubscribe.assert_not_awaited()
 
     logged = "\n".join(captured_logs)
     for forbidden in (SECRET_VALUE, STORAGE_SECRET_KEY, "MY_SECRET", "input_value"):
         assert forbidden not in result["stderr"]
         assert forbidden not in logged
-
-
-@pytest.mark.asyncio
-async def test_invalid_storage_scope_logs_execution_id(captured_logs):
-    redis = MagicMock()
-    redis.apublish = AsyncMock()
-    redis.asubscribe = AsyncMock()
-    service = RunPythonCodeService(redis_service=redis)
-
-    result = await service.run_code(
-        python_code_data=make_invalid_python_code_data(),
-        inputs={},
-        storage_credentials=StorageCredentials(
-            access_key="AK-PUBLIC", secret_key=STORAGE_SECRET_KEY
-        ),
-    )
-
-    assert result["execution_id"] in "\n".join(captured_logs)

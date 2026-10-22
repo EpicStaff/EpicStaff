@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Input, input, viewChild } from '@angular/core';
 
 import { CollapseOnOverflowDirective } from '../../../directives/collapse-on-overflow.directive';
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
@@ -25,11 +25,17 @@ export class ButtonComponent {
     @Input() mod: 'default' | 'small' = 'default';
     @Input() leftIcon?: string; // e.g., 'ui/x'
     @Input() iconSize: string = '1.1rem';
+    /** Overrides `iconSize` horizontally, for icons narrower than they are tall. */
+    @Input() iconWidth?: string;
     @Input() leftIconColor?: string;
     @Input() rightIcon?: string;
     @Input() rightIconColor?: string;
     @Input() ariaLabel?: string;
+    /** The id of what describes the button (read when it gets the focus); null for none. */
+    readonly ariaDescribedby = input<string | null>(null);
     disabled = input<boolean>(false);
+
+    private readonly button = viewChild.required<ElementRef<HTMLButtonElement>>('button');
 
     public shouldCollapseToIcon = false;
 
@@ -53,5 +59,9 @@ export class ButtonComponent {
 
     public onCollapseChange(collapsed: boolean): void {
         this.shouldCollapseToIcon = collapsed;
+    }
+
+    public focus(): void {
+        this.button().nativeElement.focus();
     }
 }

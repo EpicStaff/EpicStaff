@@ -33,6 +33,7 @@ export const NODE_TYPE_OPTIONS: AuditEnumOption[] = [
     nodeTypeOption('AUDIO_TRANSCRIPTION', NodeType.AUDIO_TO_TEXT),
     nodeTypeOption('DECISION_TABLE', NodeType.TABLE),
     nodeTypeOption('CLASSIFICATION_DECISION_TABLE', NodeType.CLASSIFICATION_TABLE),
+    nodeTypeOption('KEY_VALUE', NodeType.KEY_VALUE),
     nodeTypeOption('END', NodeType.END),
     nodeTypeOption('SCHEDULE_TRIGGER', NodeType.SCHEDULE_TRIGGER),
     nodeTypeOption('WEBHOOK_TRIGGER', NodeType.WEBHOOK_TRIGGER),
@@ -116,7 +117,7 @@ export const TOKEN_OPERATOR_LABELS: Record<string, string> = {
 export const TOKEN_STEP = 10;
 
 export const QUERY_EXAMPLES: string[] = [
-    'status in ["failed"] or node_type in ["AGENT", "PYTHON"]',
+    'status in ["failed"] and node_type in ["AGENT", "PYTHON"]',
     'name == "Session Start"',
     'error is not empty and not session_id == 66',
     'input : order1234 and output : Greetings',

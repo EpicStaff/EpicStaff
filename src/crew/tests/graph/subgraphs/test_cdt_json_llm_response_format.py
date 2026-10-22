@@ -54,7 +54,7 @@ async def run_prompt(llm: LLMData, output_schema) -> dict:
         node_data=node_data,
         graph_builder=StateGraph(State),
         stop_event=StopEvent(),
-        redis_service=MagicMock(),
+        redis_service=MagicMock(aadd_graph_message=AsyncMock()),
     ).build()
     state = {
         "state_history": [],
@@ -131,7 +131,8 @@ async def test_non_deepseek_with_schema_sends_unchanged_json_schema(mock_complet
         ("aws_sagemaker", "sagemaker/some-endpoint", "sagemaker/some-endpoint"),
         ("featherless-ai", "featherless_ai/some-model", "featherless_ai/some-model"),
         ("ollama", "ollama/mistral", "ollama/mistral"),
-        ("openai", "gpt-4o-mini", "openai/gpt-4o-mini"),
+        ("openai", "gpt-4o-mini", "gpt-4o-mini"),
+        ("openai", "my-llama", "openai/my-llama"),
         # Vendor-namespaced ids stay on the row's provider, never the vendor named in the id.
         ("groq", "openai/gpt-oss-120b", "groq/openai/gpt-oss-120b"),
         ("openrouter", "anthropic/claude-sonnet-4", "openrouter/anthropic/claude-sonnet-4"),
@@ -160,3 +161,38 @@ async def test_without_schema_sends_no_response_format_and_only_user_message(
     call_kwargs = mock_completion.call_args.kwargs
     assert call_kwargs["response_format"] is None
     assert call_kwargs["messages"] == [{"role": "user", "content": PROMPT}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "provider, model, expected_sampling",
+    [
+        # Anthropic rejects temperature together with top_p.
+        (" Anthropic ", "claude-sonnet-4-6", {"temperature": 0.5}),
+        # The rules follow the provider litellm routes to, not the row's provider.
+        ("openai", "claude-sonnet-4-6", {"temperature": 0.5}),
+        ("openai", "gpt-4o-mini", {"temperature": 0.5, "top_p": 0.9}),
+    ],
+)
+async def test_sampling_params_follow_the_routed_provider(
+    mock_completion, provider, model, expected_sampling
+):
+    llm = LLMData(provider=provider, config=LLMConfigData(model=model, temperature=0.5, top_p=0.9))
+
+    await run_prompt(llm, {})
+
+    call_kwargs = mock_completion.call_args.kwargs
+    assert {key: call_kwargs[key] for key in ("temperature", "top_p") if key in call_kwargs} == expected_sampling
+
+
+@pytest.mark.asyncio
+async def test_config_extra_headers_are_sent_to_the_provider(mock_completion):
+    headers = {"X-Gateway-Key": "gateway-token", "X-Trace": "trace-id"}
+    llm = LLMData(
+        provider="openai",
+        config=LLMConfigData(model="gpt-4o-mini", extra_headers=headers),
+    )
+
+    await run_prompt(llm, {})
+
+    assert mock_completion.call_args.kwargs["extra_headers"] == headers

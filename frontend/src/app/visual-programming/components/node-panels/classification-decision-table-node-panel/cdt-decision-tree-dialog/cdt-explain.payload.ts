@@ -15,7 +15,7 @@ import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { resolveLlmLabel } from '../cdt-llm-label.util';
 import {
     enabledRowsInOrder,
-    resolveNodeLabel,
+    resolveNodeName,
     resolveRowTargets,
     rowManipulation,
     sortRowsByOrder,
@@ -70,7 +70,6 @@ export function buildCdtExplainBlocks(input: CdtDecisionTreeInput): ReadonlyMap<
             code: input.preCode,
             input_map: input.preInputMap ?? {},
             output_variable_path: input.preOutputVariablePath,
-            libraries: input.preLibraries,
         });
     }
 
@@ -85,7 +84,6 @@ export function buildCdtExplainBlocks(input: CdtDecisionTreeInput): ReadonlyMap<
                 code: input.postCode,
                 input_map: input.postInputMap ?? {},
                 output_variable_path: input.postOutputVariablePath,
-                libraries: input.postLibraries,
             });
         }
     }
@@ -111,8 +109,8 @@ export function buildCdtExplainBlocks(input: CdtDecisionTreeInput): ReadonlyMap<
             on_match: {
                 prompt: row.prompt_id ?? null,
                 sets_variables: manipulation.length > 0,
-                // A name, not an id. Unset means the table default applies.
-                goes_to: target?.state === 'node' ? target.label : null,
+                // The plain name, not an id or the drawn "Name #N". Unset means the table default applies.
+                goes_to: target?.state === 'node' ? target.name : null,
             },
             continue_after_match: row.continue_flag ?? row.continue ?? false,
             // Only the last drawn rule falls through to the table default.
@@ -165,8 +163,8 @@ export function buildCdtExplainTable(input: CdtDecisionTreeInput): CdtExplainTab
 
     return {
         node_name: input.nodeName,
-        default_next_node: input.defaultNextNode ? resolveNodeLabel(input.defaultNextNode, input.nodes) : null,
-        error_next_node: input.errorNextNode ? resolveNodeLabel(input.errorNextNode, input.nodes) : null,
+        default_next_node: input.defaultNextNode ? resolveNodeName(input.defaultNextNode, input.nodes) : null,
+        error_next_node: input.errorNextNode ? resolveNodeName(input.errorNextNode, input.nodes) : null,
         default_model: resolveLlmLabel(input.defaultLlmConfig, input.llmConfigOptions),
         rules,
     };

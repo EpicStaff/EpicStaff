@@ -1,0 +1,4 @@
+# CHAT_ENABLED=false: /chat/ is a plain 404 instead of falling through to the SPA's location /.
+location /chat/ {
+    return 404;
+}

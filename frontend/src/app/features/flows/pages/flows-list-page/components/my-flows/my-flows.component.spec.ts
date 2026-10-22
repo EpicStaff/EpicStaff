@@ -1,9 +1,11 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AuthorshipDetailsDialogService } from '@shared/components';
-import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
+import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
+import { EXPORT_WARNING_DURATION_MS } from '@shared/constants';
+import { ActionCode, ExcludedExportEntity, ResourceCode, UserSummary } from '@shared/models';
 import { Observable, of, throwError } from 'rxjs';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
@@ -23,10 +25,14 @@ const SOURCE_FLOW: GetGraphLightRequest = { id: 7, uuid: 'uuid-7', name: 'Suppor
 describe('MyFlowsComponent copy action', () => {
     const copyFlow = vi.fn();
     const toastSuccess = vi.fn();
+    const toastError = vi.fn();
+    const getFlows = vi.fn();
 
     beforeEach(() => {
         copyFlow.mockReset().mockReturnValue(of({ name: 'Support Flow #2' }));
         toastSuccess.mockReset();
+        toastError.mockReset();
+        getFlows.mockReset().mockReturnValue(of([]));
 
         TestBed.configureTestingModule({
             providers: [
@@ -39,14 +45,15 @@ describe('MyFlowsComponent copy action', () => {
                         isFlowsLoaded: signal(false),
                         selectMode: signal(false),
                         selectedFlowIds: signal([]),
-                        getFlows: () => of([]),
+                        getFlows,
                         copyFlow,
                     },
                 },
                 { provide: LabelsStorageService, useValue: { activeLabelFilter: signal('all') } },
                 { provide: FlowsApiService, useValue: {} },
                 { provide: RunGraphService, useValue: {} },
-                { provide: ToastService, useValue: { success: toastSuccess, error: vi.fn() } },
+                { provide: ToastService, useValue: { success: toastSuccess, error: toastError } },
+                { provide: ConfirmationDialogService, useValue: {} },
                 { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
                 { provide: ImportExportService, useValue: {} },
             ],
@@ -81,6 +88,50 @@ describe('MyFlowsComponent copy action', () => {
 
         expect(copyFlow).toHaveBeenCalledWith(7, 'Support Flow');
         expect(toastSuccess).toHaveBeenCalledWith('Flow copied and saved as "Support Flow #2"');
+        expect(getFlows).toHaveBeenCalledTimes(2);
+    });
+
+    it('explains a copy refused over trigger nodes in the Use permission warning, with no toast and no reload', () => {
+        const confirm = vi.fn();
+        TestBed.overrideProvider(ConfirmationDialogService, { useValue: { confirm } });
+        copyFlow.mockReturnValue(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 403,
+                        error: {
+                            status_code: 403,
+                            code: 'flow_with_trigger_nodes_requires_use_permission',
+                            message: 'This flow contains trigger nodes.',
+                        },
+                    })
+            )
+        );
+
+        openCopyDialog('Support Flow');
+
+        expect(confirm).toHaveBeenCalledExactlyOnceWith({
+            title: 'Use permission required',
+            message: 'This flow contains trigger nodes (Webhook, Telegram, Schedule).',
+            caution: '<strong>Copying</strong> it requires the <strong>Use</strong> permission on flows.',
+            type: 'warning',
+            hideConfirm: true,
+            cancelText: 'OK',
+        });
+        expect(toastSuccess).not.toHaveBeenCalled();
+        expect(toastError).not.toHaveBeenCalled();
+        // Only the page's initial load: a successful copy would reload the list.
+        expect(getFlows).toHaveBeenCalledOnce();
+    });
+
+    it('reports a failed copy', () => {
+        copyFlow.mockReturnValue(throwError(() => new Error('offline')));
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        openCopyDialog('Support Flow');
+
+        expect(toastError).toHaveBeenCalledWith('Failed to copy flow');
+        consoleError.mockRestore();
     });
 });
 
@@ -311,5 +362,67 @@ describe('MyFlowsComponent select mode', () => {
         const checkboxColumn = flowCard.querySelector('.card-body > .selection-checkbox');
         expect(checkboxColumn?.querySelector('app-checkbox input')?.classList).toContain('secondary');
         expect(checkboxColumn?.nextElementSibling?.classList).toContain('card-content');
+    });
+});
+
+describe('MyFlowsComponent export action', () => {
+    const toastWarning = vi.fn();
+    const toastSuccess = vi.fn();
+
+    function exportFlowWith(excluded: ExcludedExportEntity[]): void {
+        toastWarning.mockReset();
+        toastSuccess.mockReset();
+        window.URL.createObjectURL = vi.fn(() => 'blob:x');
+        window.URL.revokeObjectURL = vi.fn();
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+        TestBed.configureTestingModule({
+            providers: [
+                provideRouter([]),
+                {
+                    provide: FlowsStorageService,
+                    useValue: {
+                        filteredFlows: signal([]),
+                        isFlowsLoaded: signal(false),
+                        selectMode: signal(false),
+                        selectedFlowIds: signal([]),
+                        getFlows: () => of([]),
+                    },
+                },
+                { provide: LabelsStorageService, useValue: { activeLabelFilter: signal('all') } },
+                { provide: FlowsApiService, useValue: {} },
+                { provide: RunGraphService, useValue: {} },
+                { provide: ToastService, useValue: { success: toastSuccess, warning: toastWarning, error: vi.fn() } },
+                { provide: ConfirmationDialogService, useValue: {} },
+                { provide: RecycleBinSettingsService, useValue: { retentionDays: signal(7) } },
+                {
+                    provide: ImportExportService,
+                    useValue: { exportFlow: () => of({ blob: new Blob(['{}']), excluded }) },
+                },
+            ],
+        });
+        const fixture = TestBed.createComponent(MyFlowsComponent);
+        fixture.detectChanges();
+        fixture.componentInstance.handleFlowCardAction({ action: 'export', flow: SOURCE_FLOW });
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('warns, with a long duration, about entities left out of the export', () => {
+        exportFlowWith([{ type: 'AgentDefinition', count: 2, names: ['A', 'B'] }]);
+
+        expect(toastSuccess).toHaveBeenCalledWith('Flow "Support Flow" exported successfully');
+        expect(toastWarning).toHaveBeenCalledWith(
+            expect.stringContaining('A, B'),
+            EXPORT_WARNING_DURATION_MS,
+            undefined
+        );
+    });
+
+    it('shows no warning when nothing was excluded', () => {
+        exportFlowWith([]);
+
+        expect(toastSuccess).toHaveBeenCalled();
+        expect(toastWarning).not.toHaveBeenCalled();
     });
 });

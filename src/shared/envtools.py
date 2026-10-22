@@ -26,8 +26,23 @@ def _to_json_object(value: str) -> dict:
 
 
 class Env:
-    BOOLEAN_TRUE_VALUES = frozenset({"1", "y", "yes", "true", "on"})
+    BOOLEAN_TRUE_VALUES = frozenset({"1", "t", "y", "yes", "true", "on"})
+    BOOLEAN_FALSE_VALUES = frozenset({"0", "f", "n", "no", "false", "off"})
     NONE_VALUE = "none"
+    LOG_LEVELS = ("TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL")
+    # Services that emit benchmark checkpoints (src/shared/bench_log.py) also accept BENCH (15).
+    # The rest keep LOG_LEVELS: webhook passes its level to uvicorn, which has no BENCH level,
+    # and realtime and knowledge_new are not instrumented.
+    LOG_LEVELS_WITH_BENCH = (
+        "TRACE",
+        "DEBUG",
+        "BENCH",
+        "INFO",
+        "SUCCESS",
+        "WARNING",
+        "ERROR",
+        "CRITICAL",
+    )
 
     def __init__(self):
         self._envs: dict[str, str] = {}
@@ -226,22 +241,75 @@ class Env:
         """
         return self.get_value(variable, default, float)
 
-    def bool(self, variable: str, default: bool | EllipsisType = ...) -> bool | None:
-        """Read an environment variable as a bool.
+    def bool(self, variable: str, default: bool | EllipsisType = ...) -> bool:
+        """Read an environment variable as a strict bool.
+
+        The value is compared case-insensitively after stripping whitespace and must be
+        one of ``BOOLEAN_TRUE_VALUES`` or ``BOOLEAN_FALSE_VALUES``. Anything else -- a
+        typo, an empty string, and also the ``none`` value that other readers turn into
+        None -- is rejected, so a misconfigured flag fails startup instead of silently
+        reading as False and switching off whatever it guards.
 
         Args:
             variable: Name of the environment variable to read.
-            default: Value returned when the variable is missing.
+            default: Value returned as is when the variable is missing.
+
+        Raises:
+            EnvironmentNotFoundError: The variable is missing and no ``default`` was provided.
+            ValueError: The variable is set to a value that is neither true nor false.
+        """
+        value = self._envs.get(variable)
+        if value is None:
+            if default is not ...:
+                return default
+            raise EnvironmentNotFoundError(f"Not found environment: {variable}.")
+
+        normalised = value.strip().lower()
+        if normalised in self.BOOLEAN_TRUE_VALUES:
+            return True
+        if normalised in self.BOOLEAN_FALSE_VALUES:
+            return False
+        raise ValueError(
+            f"Environment variable {variable}={value!r} is not a boolean. Use one of "
+            f"{', '.join(sorted(self.BOOLEAN_TRUE_VALUES))} for true or "
+            f"{', '.join(sorted(self.BOOLEAN_FALSE_VALUES))} for false (case-insensitive)."
+        )
+
+    def log_level(
+        self,
+        variable: str,
+        default: str | EllipsisType = ...,
+        allowed: tuple[str, ...] = LOG_LEVELS,
+    ) -> str:
+        """Read an environment variable as an upper-cased log level name.
+
+        Only the names in ``allowed`` are accepted (default: loguru's built-in levels;
+        ``LOG_LEVELS_WITH_BENCH`` adds BENCH). uvicorn knows all of them except
+        ``SUCCESS``, so a caller passing the level to uvicorn must map that one. Unlike the
+        other accessors, the ``none`` value is rejected: a sink always needs a level.
+
+        Args:
+            variable: Name of the environment variable to read.
+            default: Value returned when the variable is missing; not validated.
+            allowed: Level names accepted for a set variable.
 
         Returns:
-            True when the raw value is one of ``BOOLEAN_TRUE_VALUES``; None when the
-            variable holds the ``none`` value.
+            The upper-cased level name.
+
+        Raises:
+            EnvironmentNotFoundError: The variable is missing and no ``default`` was provided.
+            ValueError: The value is not one of ``allowed``.
         """
+        value = self._envs.get(variable)
+        if value is None:
+            return self.get_value(variable, default)
 
-        def cast(value: str) -> bool:
-            return value.lower() in self.BOOLEAN_TRUE_VALUES
-
-        return self.get_value(variable, default, cast)
+        level = value.strip().upper()
+        if level not in allowed:
+            raise ValueError(
+                f"{variable}={value!r} is not a log level; use one of {', '.join(allowed)}."
+            )
+        return level
 
     def str(self, variable: str, default: str | EllipsisType = ...) -> str | None:
         """Read an environment variable as a str.

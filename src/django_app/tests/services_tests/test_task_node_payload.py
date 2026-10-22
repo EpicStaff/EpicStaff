@@ -149,7 +149,9 @@ def task_node(graph):
 def graph_data_for_run(graph) -> GraphData:
     """The GraphData crew receives when a session of `graph` is run."""
     session = Session.objects.create(graph=graph, status=Session.SessionStatus.PENDING, variables={})
-    return SessionManagerService().create_session_data(session).graph
+    return SessionManagerService().create_session_data(
+        session, start_node=graph.start_node_list.first()
+    ).graph
 
 
 def session_folder(graph) -> str:
@@ -164,7 +166,9 @@ def graph_data_as_subflow(graph) -> GraphData:
     start_node = StartNode.objects.create(graph=parent, variables={})
     Edge.objects.create(graph=parent, start_node_id=start_node.id, end_node_id=subflow_node.id)
     session = Session.objects.create(graph=parent, status=Session.SessionStatus.PENDING, variables={})
-    (subflow,) = SessionManagerService().create_session_data(session).unique_subgraph_list
+    (subflow,) = SessionManagerService().create_session_data(
+        session, start_node=start_node
+    ).unique_subgraph_list
     return subflow.data
 
 
@@ -949,7 +953,9 @@ class TestStorageToolAllowedPathsScopedToSurface:
             graph=graph, status=Session.SessionStatus.PENDING, variables={}
         )
 
-        graph_data = SessionManagerService().create_session_data(session).graph
+        graph_data = SessionManagerService().create_session_data(
+            session, start_node=graph.start_node_list.first()
+        ).graph
 
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]

@@ -19,9 +19,7 @@ requires-python = "==3.12.10"
 dependencies = [
     "aiohttp-retry==2.9.1",
     "apscheduler==3.11.2",
-    "beautifulsoup4==4.15.0",
     "boto3==1.43.1",
-    "cachetools==5.5.2",
     "channels-redis==4.3.0",
     "channels==4.3.2",
     "cryptography==50.0.1",
@@ -34,6 +32,7 @@ dependencies = [
     "djangorestframework==3.17.2",
     "drf-spectacular==0.29.0",
     "filelock==3.32.5",
+    "foundation",
     "gunicorn==23.0.0",
     "httpx==0.28.1",
     "jsonschema==4.25.1",
@@ -42,9 +41,8 @@ dependencies = [
     "miniopy-async==1.23.5",
     "pgvector==0.3.6",
     "pillow==12.3.0",
-    "psycopg2==2.9.12",
+    "psycopg[binary,pool]==3.3.4",
     "pydantic==2.13.4",
-    "python-docx==1.1.2",
     "redis==5.3.1",
     "uvicorn==0.52.3",
     "websockets==16.0",
@@ -76,6 +74,10 @@ transitive-pins = [
 
 [tool.uv]
 package = false
+no-binary-package = ["psycopg2", "foundation"]
+
+[tool.uv.sources]
+foundation = { path = "../foundation", editable = true}
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"

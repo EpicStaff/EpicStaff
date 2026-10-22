@@ -101,8 +101,6 @@ function treeInput(overrides: Partial<CdtDecisionTreeInput> = {}): CdtDecisionTr
         postCode: '',
         preInputMap: {},
         postInputMap: {},
-        preLibraries: [],
-        postLibraries: [],
         preOutputVariablePath: null,
         postOutputVariablePath: null,
         prompts: {},
@@ -271,7 +269,7 @@ describe('buildCdtDecisionTree', () => {
             );
             const decision = tree.blocks.find((entry) => entry.id === 'row-0:decision');
 
-            expect(decision?.target).toEqual({ state: 'node', label: 'Approver' });
+            expect(decision?.target).toMatchObject({ state: 'node', label: 'Approver' });
             expect(decision?.note).toEqual({
                 tag: CDT_TREE_COPY.continueIgnoredTag,
                 tooltip: CDT_TREE_COPY.continueIgnoredTooltip,
@@ -385,5 +383,32 @@ describe('buildCdtDecisionTree', () => {
                 expect.objectContaining({ to: 'exit:route:post', kind: 'yes' })
             );
         });
+    });
+});
+
+describe('buildCdtDecisionTree node labels', () => {
+    const approvers = [
+        { id: 'n-approve', node_name: 'Approver', backendId: 2, nodeNumber: 4 },
+        { id: 'n-approve-again', node_name: 'Approver', backendId: 3, nodeNumber: 9 },
+    ];
+
+    it('names the node an exit leads to with its number, so same-named nodes are told apart', () => {
+        const tree = buildCdtDecisionTree(treeInput({ defaultNextNode: 'n-approve-again', nodes: approvers }));
+
+        expect(tree.blocks.find((entry) => entry.id === 'exit:default:terminator')?.title).toBe('Approver #9');
+    });
+
+    it('titles the diagram with the table name and its number', () => {
+        const tree = buildCdtDecisionTree(treeInput({ nodeName: 'Triage', nodeNumber: 3 }));
+
+        expect(tree.title).toBe('Triage #3');
+    });
+
+    it('falls back to the number when the node has no name', () => {
+        const tree = buildCdtDecisionTree(
+            treeInput({ defaultNextNode: 'n-approve', nodes: [{ ...approvers[0], node_name: ' ' }] })
+        );
+
+        expect(tree.blocks.find((entry) => entry.id === 'exit:default:terminator')?.title).toBe('node #4');
     });
 });

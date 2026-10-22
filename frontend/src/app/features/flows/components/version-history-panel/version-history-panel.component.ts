@@ -43,6 +43,7 @@ import { finalize, tap } from 'rxjs/operators';
 import { ToastService } from '../../../../services/notifications';
 import { GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
+import { FlowUsePermissionRefusalService } from '../../services/flow-use-permission-refusal.service';
 import { FlowsApiService } from '../../services/flows-api.service';
 
 const VERSION_BULK_DELETE_LABEL: BulkDeleteLabel = { singular: 'version', plural: 'versions' };
@@ -94,6 +95,7 @@ export class VersionHistoryPanelComponent implements OnInit {
 
     private destroyRef = inject(DestroyRef);
     private bulkDeleteService = inject(BulkDeleteService);
+    private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
 
     private readonly bulkDeleteTarget: BulkDeleteTarget = {
         previewBulkDelete: (ids) => this.flowApiService.bulkDeleteGraphVersions(ids, { dryRun: true }),
@@ -373,7 +375,8 @@ export class VersionHistoryPanelComponent implements OnInit {
         this.openMenuId = null;
         this.flowApiService
             .createGraphFromVersion(version.id)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            // A refusal over trigger nodes is explained there and emits nothing: no toast, no navigation.
+            .pipe(this.usePermissionRefusal.catchRefusal('createFromVersion'), takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (response) => {
                     this.toastService.success('New flow created');

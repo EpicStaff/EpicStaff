@@ -42,4 +42,27 @@ docker compose -f docker-compose.yaml --env-file ./.env up -d epicstaff-nginx
 Browsers will warn about the self-signed certificate; that is expected.
 
 Note that `src/.env.example` ships with `NGINX_SSL_MODE=on` (production default),
-while `python scripts/envtool.py --dev` renders `off`.
+while `python scripts/envtool.py --dev` renders `off`. With `on` and no certificate, nginx
+doesn't start: its log (`docker logs epicstaff-nginx`) names the missing file. Add the
+certificate as above, or set `NGINX_SSL_MODE=off` only if a load balancer in front of nginx
+handles TLS (see below).
+
+## HSTS
+
+`NGINX_HSTS_ENABLED` decides whether nginx sends `Strict-Transport-Security:
+max-age=31536000; includeSubDomains`. It doesn't depend on `NGINX_SSL_MODE`. It has no
+production default, so `src/.env` must set it:
+
+- `true` for any deployment users reach over HTTPS.
+- `false` if any subdomain of your domain is served only over plain HTTP. With `true`,
+  browsers refuse to open such a subdomain for a year.
+- `false` for a VPN-only instance with an internal certificate. With `true`, an expired or
+  mismatched certificate blocks the site in browsers, with no way to click through, until
+  it is replaced.
+
+## Behind a load balancer
+
+If a load balancer in front of nginx handles TLS, set `NGINX_SSL_MODE=off`. That turns off
+only TLS in nginx and its http→https redirect, which would loop behind a load balancer. HSTS
+still follows `NGINX_HSTS_ENABLED`, so set it to `true` and make sure the load balancer
+passes the `Strict-Transport-Security` header through to the browser.

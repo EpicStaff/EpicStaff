@@ -24,6 +24,9 @@
                         {{ data.knowledge_query || '—' }}
                     </span>
                 </p>
+                @if (tokenUsageLabel(); as usageLabel) {
+                    <p class="usage">{{ usageLabel }}</p>
+                }
             </div>
             <div class="meta">
                 @if (ragTypeLabel) {

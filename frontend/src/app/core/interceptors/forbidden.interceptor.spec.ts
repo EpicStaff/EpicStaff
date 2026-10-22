@@ -131,6 +131,63 @@ describe('forbiddenInterceptor', () => {
             );
         }));
 
+    const TRIGGER_NODES_REFUSAL = {
+        status_code: 403,
+        code: 'trigger_nodes_require_use_permission',
+        message: 'Trigger nodes require the Flows Use permission.',
+    };
+
+    it('passes a flow_with_trigger_nodes_requires_use_permission 403 to the caller without a refresh or toast', () =>
+        new Promise<void>((resolve, reject) => {
+            httpClient.post('/api/graphs/1/copy/', { name: 'Orders' }).subscribe({
+                next: () => reject(new Error('expected the request to error')),
+                error: (err: HttpErrorResponse) => {
+                    try {
+                        expect(err.status).toBe(403);
+                        expect(err.error.code).toBe('flow_with_trigger_nodes_requires_use_permission');
+                        expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
+                        expect(profileService.bootstrapUser).not.toHaveBeenCalled();
+                        expect(router.navigateByUrl).not.toHaveBeenCalled();
+                        expect(toastService.error).not.toHaveBeenCalled();
+                        resolve();
+                    } catch (e) {
+                        reject(e as Error);
+                    }
+                },
+            });
+
+            httpMock.expectOne('/api/graphs/1/copy/').flush(
+                {
+                    status_code: 403,
+                    code: 'flow_with_trigger_nodes_requires_use_permission',
+                    message: 'This flow contains trigger nodes.',
+                },
+                { status: 403, statusText: 'Forbidden' }
+            );
+        }));
+
+    it('refreshes permissions on a trigger_nodes_require_use_permission 403 (Use may just have been revoked)', () =>
+        new Promise<void>((resolve, reject) => {
+            httpClient.post('/api/graphs/1/save/', {}).subscribe({
+                next: () => reject(new Error('expected the request to error')),
+                error: (err: HttpErrorResponse) => {
+                    try {
+                        expect(err.status).toBe(403);
+                        expect(profileService.clearCurrentUser).toHaveBeenCalled();
+                        expect(profileService.bootstrapUser).toHaveBeenCalled();
+                        expect(toastService.error).toHaveBeenCalledWith(TRIGGER_NODES_REFUSAL.message);
+                        resolve();
+                    } catch (e) {
+                        reject(e as Error);
+                    }
+                },
+            });
+
+            httpMock
+                .expectOne('/api/graphs/1/save/')
+                .flush(TRIGGER_NODES_REFUSAL, { status: 403, statusText: 'Forbidden' });
+        }));
+
     it('still forces a session refresh for an unrelated 403 (e.g. stale permissions)', () =>
         new Promise<void>((resolve, reject) => {
             httpClient.get('/api/llm-models/1/').subscribe({

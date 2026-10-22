@@ -24,6 +24,7 @@ from tables.services.graph_bulk_save_service.saveables import (
     _EdgeSaveable,
     _NodeSaveable,
 )
+from tables.services.node_number_service import NodeNumberService
 
 
 class GraphBulkSaveService:
@@ -210,7 +211,13 @@ class GraphBulkSaveService:
                 result.errors.append(build.error)
             else:
                 result.node_saveables.append(
-                    _NodeSaveable(build.inner_saveable, temp_id or None, config.list_key, index)
+                    _NodeSaveable(
+                        build.inner_saveable,
+                        temp_id or None,
+                        config.list_key,
+                        index,
+                        config.model_class,
+                    )
                 )
                 if build.deferred_saveable is not None:
                     result.deferred_saveables.append(build.deferred_saveable)
@@ -453,6 +460,7 @@ class GraphBulkSaveService:
 
         # check if graph was changed meanwhile editing
         Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
+        self._assign_node_numbers(graph, node_saveables)
 
         temp_id_map: dict[str, int] = {}
 
@@ -467,6 +475,27 @@ class GraphBulkSaveService:
             es.resolve_and_save(temp_id_map)
 
         self._record_last_edits(graph, deleted_count)
+
+    @staticmethod
+    def _assign_node_numbers(graph: Graph, node_saveables: list[_NodeSaveable]) -> None:
+        """Give created numbered nodes one contiguous block above the counter.
+
+        The client's optimistic badge (node_number_hint) is only an ordering key: the
+        nodes are sorted by it (unhinted last, ties in registry then payload order) and
+        take the block's numbers in that order. A hint never sets a number, so numbers
+        stay contiguous from the counter and badges keep their relative order even when
+        the registry saves node types in a fixed order or the editor deleted unsaved nodes.
+        """
+        created = [
+            saveable for saveable in node_saveables if saveable.is_create and saveable.is_numbered
+        ]
+        created.sort(
+            key=lambda saveable: (saveable.node_number_hint is None, saveable.node_number_hint or 0)
+        )
+        for saveable, number in zip(
+            created, NodeNumberService().reserve(graph.id, len(created)), strict=True
+        ):
+            saveable.assigned_node_number = number
 
     def _execute_deletions(self, graph: Graph, deleted_data: dict) -> int:
         """Delete all requested entities in edges-before-nodes order; return the rows deleted."""

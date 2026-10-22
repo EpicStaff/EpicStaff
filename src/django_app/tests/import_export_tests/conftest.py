@@ -108,7 +108,6 @@ def rich_seeded_db(
     code = PythonCode.objects.create(
         code="def main(arg1, arg2): return None",
         entrypoint="main",
-        libraries="",
     )
     custom_tool = PythonCodeTool.objects.create(
         name="custom_tool1",

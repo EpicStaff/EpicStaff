@@ -17,13 +17,19 @@ from app.tools.system_registry import (
     system_tool,
 )
 from shared.models.agent_service import CollectionSpec, SearchConfigEntry, ToolResult
-from shared.models.ai_providers import EmbedderConfigData, EmbedderData
+from shared.models.ai_providers import (
+    EmbedderConfigData,
+    EmbedderData,
+    LLMConfigData,
+    LLMData,
+)
 from shared.models.knowledge import (
     GraphRagBasicSearchParams,
     GraphRagLocalSearchParams,
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
 )
+from shared.models.knowledge_new import SearchOutcome
 from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import (
     ArgsSchema,
@@ -60,8 +66,8 @@ class FakeGateway:
 
 
 class FakeKnowledgeClient:
-    async def search(self, target, query, timeout):
-        return "answer"
+    async def search_with_usage(self, target, query, timeout):
+        return SearchOutcome(result="answer")
 
 
 class RecordingSink:
@@ -141,10 +147,8 @@ def _python_tool_data(
         description="A tool.",
         args_schema=ArgsSchema(properties={}),
         python_code=PythonCodeData(
-            venv_name=f"venv_pyt_{name}",
             code="def run(): return 'ok'",
             entrypoint="run",
-            libraries=[],
             **(python_code_overrides or {}),
         ),
     )
@@ -353,3 +357,73 @@ async def test_knowledge_tool_description_tells_the_llm_when_to_use_it(entries, 
 
     (spec,) = registry.tool_specs()
     assert all(fragment in spec.description for fragment in expected_fragments)
+
+
+# ---------------------------------------------------------------------------
+# add_knowledge_tools: extra headers reach the search target
+# ---------------------------------------------------------------------------
+
+
+class _RecordingKnowledgeClient:
+    def __init__(self, targets: list):
+        self.targets = targets
+
+    async def search_with_usage(self, target, query, timeout):
+        self.targets.append(target)
+        return SearchOutcome(result=[])
+
+
+def _recording_knowledge_client(targets: list) -> _RecordingKnowledgeClient:
+    return _RecordingKnowledgeClient(targets)
+
+
+async def test_knowledge_tools_naive_target_carries_embedder_extra_headers():
+    embedder = EmbedderData(
+        provider="openai",
+        config=EmbedderConfigData(
+            model="text-embedding-3-small", extra_headers={"X-Emb": "emb-resolved"}
+        ),
+    )
+    entry = SearchConfigEntry(
+        rag_id=1, rag_type="naive", search_config=NaiveRagSearchConfig(), embedder=embedder
+    )
+    targets: list = []
+    builder = ToolRegistryBuilder(
+        _fake_sandbox(), knowledge_client=_recording_knowledge_client(targets)
+    )
+    registry = builder.add_knowledge_tools(_collection_spec(name="docs", entries=[entry])).build()
+
+    await registry.execute("search_docs_naive", {"query": "q"})
+
+    assert targets[0].embedder_extra_headers == {"X-Emb": "emb-resolved"}
+    assert targets[0].llm_extra_headers is None
+
+
+async def test_knowledge_tools_graph_target_carries_embedder_and_llm_extra_headers():
+    embedder = EmbedderData(
+        provider="openai",
+        config=EmbedderConfigData(
+            model="text-embedding-3-small", extra_headers={"X-Emb": "emb-resolved"}
+        ),
+    )
+    llm = LLMData(
+        provider="openai",
+        config=LLMConfigData(model="gpt-4o", extra_headers={"X-Llm": "llm-resolved"}),
+    )
+    entry = SearchConfigEntry(
+        rag_id=2,
+        rag_type="graph",
+        search_config=GraphRagSearchConfig(search_params=GraphRagBasicSearchParams()),
+        embedder=embedder,
+        llm=llm,
+    )
+    targets: list = []
+    builder = ToolRegistryBuilder(
+        _fake_sandbox(), knowledge_client=_recording_knowledge_client(targets)
+    )
+    registry = builder.add_knowledge_tools(_collection_spec(name="wiki", entries=[entry])).build()
+
+    await registry.execute("search_wiki_graph", {"query": "q"})
+
+    assert targets[0].embedder_extra_headers == {"X-Emb": "emb-resolved"}
+    assert targets[0].llm_extra_headers == {"X-Llm": "llm-resolved"}

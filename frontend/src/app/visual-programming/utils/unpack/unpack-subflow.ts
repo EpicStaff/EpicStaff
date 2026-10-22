@@ -2,6 +2,7 @@ import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
 import { generatePortsForNode, parsePortId } from '../../core/helpers/helpers';
+import { isNumberedNodeType } from '../../core/helpers/node-number.util';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { NodeModel } from '../../core/models/node.model';
@@ -9,7 +10,16 @@ import { CustomPortId } from '../../core/models/port.model';
 import { createFlowConnection } from '../connection.factory';
 import { getInputPortRole } from '../node-port-roles';
 
-export function unpackSubflow(parentFlow: FlowModel, subGraphNodeId: string, subflowModel: FlowModel): FlowModel {
+/**
+ * Puts the subflow's nodes in place of its subgraph node. The inlined nodes keep their names (names
+ * may repeat) and take new numbers from `nextNodeNumber`: the subflow's numbers belong to the subflow.
+ */
+export function unpackSubflow(
+    parentFlow: FlowModel,
+    subGraphNodeId: string,
+    subflowModel: FlowModel,
+    nextNodeNumber: () => number
+): FlowModel {
     const subGraphNode = parentFlow.nodes.find((node) => node.id === subGraphNodeId);
     if (!subGraphNode) {
         throw new Error(`SubGraphNode with id "${subGraphNodeId}" not found in parent flow`);
@@ -25,16 +35,12 @@ export function unpackSubflow(parentFlow: FlowModel, subGraphNodeId: string, sub
 
     const startNode = subflowModel.nodes.find((node) => node.type === NodeType.START);
 
-    const existingNames = new Set(
-        parentFlow.nodes.filter((node) => node.id !== subGraphNodeId).map((node) => node.node_name)
-    );
-
     const oldIdToNewId = buildIdMap(filteredSubflowNodes);
 
     const copiedNodes = cloneNodesWithFreshIds(
         filteredSubflowNodes,
         oldIdToNewId,
-        existingNames,
+        nextNodeNumber,
         subGraphNode.position
     );
 
@@ -79,18 +85,6 @@ function buildIdMap(nodes: NodeModel[]): Map<string, string> {
     return map;
 }
 
-function resolveUniqueName(baseName: string, existingNames: Set<string>): string {
-    if (!existingNames.has(baseName)) {
-        return baseName;
-    }
-
-    let suffix = 2;
-    while (existingNames.has(`${baseName} (${suffix})`)) {
-        suffix++;
-    }
-    return `${baseName} (${suffix})`;
-}
-
 function computeCentroid(nodes: NodeModel[]): { x: number; y: number } {
     if (nodes.length === 0) {
         return { x: 0, y: 0 };
@@ -103,7 +97,7 @@ function computeCentroid(nodes: NodeModel[]): { x: number; y: number } {
 function cloneNodesWithFreshIds(
     nodes: NodeModel[],
     oldIdToNewId: Map<string, string>,
-    existingNames: Set<string>,
+    nextNodeNumber: () => number,
     targetPosition: { x: number; y: number }
 ): NodeModel[] {
     const centroid = computeCentroid(nodes);
@@ -121,14 +115,11 @@ function cloneNodesWithFreshIds(
         const clonedInputMap = node.input_map ? JSON.parse(JSON.stringify(node.input_map)) : {};
         const newPorts = generatePortsForNode(newId, node.type, clonedData);
 
-        const resolvedName = resolveUniqueName(node.node_name, existingNames);
-        existingNames.add(resolvedName);
-
         return {
             ...node,
             id: newId,
             backendId: null,
-            node_name: resolvedName,
+            nodeNumber: isNumberedNodeType(node.type) ? nextNodeNumber() : undefined,
             data: clonedData,
             input_map: clonedInputMap,
             ports: newPorts,

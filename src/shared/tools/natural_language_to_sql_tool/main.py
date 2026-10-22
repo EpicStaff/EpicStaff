@@ -1,9 +1,13 @@
 # Natural Language To SQL Tool
 
+
+from epicstaff_common import require_setting, resolve_setting, safe_error_message
 from sqlalchemy import create_engine, event
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import create_sql_agent
 from langchain_litellm import ChatLiteLLM
+
+DEFAULT_MODEL = "gpt-4o-mini"
 
 READ_ONLY_SESSION_STATEMENTS = {
     "postgresql": "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY",
@@ -13,17 +17,10 @@ READ_ONLY_SESSION_STATEMENTS = {
 
 class NaturalLanguageToSQLTool:
     def __init__(self):
-        self.db_uri = state["variables"]["DB_URI"]
-        self.model = state["variables"].get("MODEL") or "gpt-4o-mini"
-        self.api_key = state["variables"].get("API_KEY") or state["variables"].get(
-            "OPENAI_API_KEY"
-        )
-        if not self.api_key:
-            raise RuntimeError(
-                "No API key configured. Set the 'API_KEY' domain variable "
-                "(or 'OPENAI_API_KEY' for backward compatibility)."
-            )
-        self.read_only = state["variables"]["READ_ONLY"]
+        self.db_uri = require_setting(globals(), "db_uri")
+        self.api_key = require_setting(globals(), "api_key")
+        self.model = resolve_setting(globals(), "model", DEFAULT_MODEL)
+        self.read_only = resolve_setting(globals(), "read_only", True)
 
     def _create_engine(self):
         engine = create_engine(self.db_uri)
@@ -69,6 +66,9 @@ class NaturalLanguageToSQLTool:
         return result["output"]
 
 
-def main(query_text):
-    nl2sql = NaturalLanguageToSQLTool()
-    return nl2sql.run_query(query_text)
+def main(query_text, **kwargs):
+    try:
+        nl2sql = NaturalLanguageToSQLTool()
+        return nl2sql.run_query(query_text)
+    except Exception as error:
+        return f"Error executing tool: {safe_error_message(error)}"

@@ -1,0 +1,232 @@
+<!-- The one main landmark: the open desk's toolbar with the conversations and the thread. -->
+<main class="chat-page">
+    <!-- Beneath the page header, lighter than it: what is open, and the desk's own actions. Phones: the list's nav bar. -->
+    @if (!isPhone()) {
+        <div class="desk-toolbar">
+            <div class="desk-toolbar__titles">
+                @if (title(); as text) {
+                    <h2 class="desk-toolbar__title text-h4">{{ text }}</h2>
+                }
+                <!-- Beside the title, not part of it. -->
+                @if (routeBinding(); as binding) {
+                    <app-chat-binding-status
+                        class="desk-toolbar__status"
+                        [binding]="binding"
+                    />
+                }
+            </div>
+            @if (routeBinding()) {
+                <!-- The flow editor header's buttons; the label may collapse to the icon, so each keeps an aria-label. -->
+                <div class="header-actions">
+                    <!-- Says the name visitors see now; the label alone may collapse to the icon. -->
+                    @if (canUse()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--ghost"
+                            [attr.aria-label]="myNameLabel()"
+                            [matTooltip]="myNameTooltip()"
+                            [matTooltipDisabled]="!myNameTooltip()"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            (click)="editMyAlias()"
+                        >
+                            <app-svg-icon
+                                icon="user"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">My name</span>
+                        </button>
+                    }
+                    @if (canUpdate()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--ghost"
+                            aria-label="Settings"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            (click)="openSettings()"
+                        >
+                            <app-svg-icon
+                                icon="settings"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">Settings</span>
+                        </button>
+                    }
+                    @if (canDelete()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--ghost"
+                            aria-label="Delete"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            (click)="deleteDesk()"
+                        >
+                            <app-svg-icon
+                                icon="trash"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">Delete</span>
+                        </button>
+                    }
+                    @if (canBuildDesks()) {
+                        <!-- Like the flow editor's Get cURL: copies straight to the clipboard with a toast. -->
+                        <button
+                            type="button"
+                            class="header-action header-action--outline"
+                            aria-label="Get snippet"
+                            (click)="copySnippet()"
+                        >
+                            <span class="btn-label">Get snippet</span>
+                        </button>
+                    }
+                    @if (canUpdate()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--outline"
+                            [attr.aria-label]="pauseLabel()"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            (click)="togglePause()"
+                        >
+                            <app-svg-icon
+                                [icon]="pauseIcon()"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">{{ pauseLabel() }}</span>
+                        </button>
+                    }
+                    @if (canBuildDesks()) {
+                        <button
+                            type="button"
+                            class="header-action header-action--primary"
+                            aria-label="Test"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
+                            collapseOnOverflowRequireSelector="app-svg-icon"
+                            [disabled]="!canStartTest()"
+                            (click)="startTest()"
+                        >
+                            <app-svg-icon
+                                icon="player-play-filled"
+                                size="1.25rem"
+                            />
+                            <span class="btn-label">Test</span>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <!--
+        Phones: a navigation stack. Both screens stay rendered: the thread slides over the list from the right, and
+        whichever screen is hidden is inert, so neither the focus nor a screen reader reaches it.
+    -->
+    <div
+        class="inbox"
+        [class.inbox--stack]="isPhone()"
+        [class.inbox--thread-open]="isPhone() && !!selected()"
+        [class.inbox--animated]="openConversation.isStackAnimated()"
+    >
+        <aside
+            class="inbox__sidebar"
+            [attr.inert]="isPhone() && selected() ? '' : null"
+        >
+            @if (isPhone()) {
+                <!-- The list screen's nav bar: which desk (tap to switch), its status, Test and the other actions. -->
+                <div class="phone-bar">
+                    <h2 class="phone-bar__heading">
+                        <button
+                            #deskSwitcher
+                            type="button"
+                            class="phone-bar__switcher"
+                            [attr.aria-label]="deskSwitcherLabel()"
+                            (click)="deskDrawer.open()"
+                        >
+                            <app-desk-avatar
+                                class="phone-bar__avatar"
+                                [name]="title()"
+                                [deskId]="routeBinding()?.id ?? null"
+                                [icon]="isAllBindings() ? allDesksIcon : null"
+                                [showBadge]="false"
+                            />
+                            <span class="phone-bar__desk-name text-body-medium">{{ title() }}</span>
+                            <app-svg-icon
+                                class="phone-bar__chevron"
+                                icon="chevron-down"
+                                size="1rem"
+                            />
+                        </button>
+                    </h2>
+                    @if (routeBinding(); as binding) {
+                        <app-chat-binding-status
+                            class="phone-bar__status"
+                            [binding]="binding"
+                        />
+                    }
+                    <div class="phone-bar__actions">
+                        @if (routeBinding() && canBuildDesks()) {
+                            <button
+                                type="button"
+                                class="phone-bar__icon-button phone-bar__icon-button--primary"
+                                aria-label="Test"
+                                [disabled]="!canStartTest()"
+                                (click)="startTest()"
+                            >
+                                <app-svg-icon
+                                    icon="player-play-filled"
+                                    size="1.25rem"
+                                />
+                            </button>
+                        }
+                        @if (deskMenuItems().length) {
+                            <app-chat-action-menu
+                                label="Desk actions"
+                                icon="horizontal-dots"
+                                [items]="deskMenuItems()"
+                                (chosen)="runDeskAction($event)"
+                            />
+                        }
+                    </div>
+                </div>
+            }
+            <app-conversation-list
+                [bindingId]="bindingId() ?? null"
+                [selectedId]="selectedId()"
+                (selectedChange)="selectConversation($event)"
+            />
+        </aside>
+
+        <section
+            class="inbox__thread"
+            [attr.inert]="isPhone() && !selected() ? '' : null"
+            (transitionend)="onStackTransitionEnd($event)"
+        >
+            @if (selected(); as conversation) {
+                <!-- Popped off the phone stack, it stays as it was while it slides out (see the styles). -->
+                <div
+                    class="thread-view"
+                    animate.leave="thread-view--leaving"
+                >
+                    <app-chat-thread
+                        [conversation]="conversation"
+                        [listTitle]="title()"
+                        [isAllBindings]="isAllBindings()"
+                    />
+                </div>
+            } @else {
+                <div class="inbox__placeholder">Select a conversation</div>
+            }
+        </section>
+    </div>
+</main>

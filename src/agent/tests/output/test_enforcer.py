@@ -23,6 +23,7 @@ from app.tools.registry import ToolRegistry
 from app.tools.system_tools.structured_output import ANSWER_TOOL
 from shared.models.agent_service import AgentSpec, LoopResult, TokenUsage, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.cancellation import never_cancelled
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -103,6 +104,7 @@ def _make_context() -> AgentContext:
         agent=_make_agent_spec(),
         attachments=[],
         correlation_id="test-corr",
+        is_cancelled=never_cancelled,
     )
 
 
@@ -395,3 +397,82 @@ async def test_invalid_output_schema_is_not_retried():
 
     assert not isinstance(exc_info.value, SchemaValidationError)
     assert loop.call_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: wrapped schema — missing or malformed "result" key
+# ---------------------------------------------------------------------------
+
+
+async def test_wrapped_missing_or_malformed_arguments_retry_instead_of_crashing():
+    """When wrapped=True and LLM returns dict without "result" key or non-dict,
+    enforcer should retry instead of crashing with KeyError."""
+    usage = TokenUsage()
+    loop = ScriptedLoop(
+        [
+            ({"answr": "x"}, usage),  # dict but missing "result" key → invalid
+            ({"result": "ok"}, usage),  # valid with "result" key
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(loop, max_retries=2)
+    context = _make_context()
+
+    result = await enforcer.enforce(context, STRING_SCHEMA, FakeEmitter())
+
+    assert result.parsed == "ok"
+
+
+async def test_wrapped_non_dict_arguments_retry_instead_of_crashing():
+    """When wrapped=True and LLM returns non-dict (e.g. list),
+    enforcer should retry instead of crashing."""
+    usage = TokenUsage()
+    loop = ScriptedLoop(
+        [
+            (["not", "a", "dict"], usage),  # non-dict → invalid
+            ({"result": "ok"}, usage),  # valid
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(loop, max_retries=2)
+    context = _make_context()
+
+    result = await enforcer.enforce(context, STRING_SCHEMA, FakeEmitter())
+
+    assert result.parsed == "ok"
+
+
+async def test_missing_result_key_is_not_accepted_as_a_null_answer():
+    """When wrapped=True and dict lacks "result" key, it should NOT be accepted
+    as a null answer even if the schema allows null. _MISSING is distinct from None."""
+    usage = TokenUsage()
+    nullable_schema = {"type": ["string", "null"]}
+    loop = ScriptedLoop(
+        [
+            ({}, usage),  # empty dict, no "result" key → should NOT match null
+            ({"result": "done"}, usage),  # valid
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(loop, max_retries=2)
+    context = _make_context()
+
+    result = await enforcer.enforce(context, nullable_schema, FakeEmitter())
+
+    assert result.parsed == "done"
+    assert result.iterations == 2
+
+
+async def test_missing_result_key_exhausts_retries_as_schema_validation_error():
+    """When wrapped=True and all attempts return dict without "result" key,
+    enforcer should exhaust retries and raise SchemaValidationError."""
+    usage = TokenUsage()
+    loop = ScriptedLoop(
+        [
+            ({}, usage),  # missing "result" key
+            ({}, usage),  # missing "result" key
+            ({}, usage),  # missing "result" key
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(loop, max_retries=2)
+    context = _make_context()
+
+    with pytest.raises(SchemaValidationError):
+        await enforcer.enforce(context, STRING_SCHEMA, FakeEmitter())

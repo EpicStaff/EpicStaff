@@ -111,6 +111,8 @@ class IndexingService:
             "base_rag_type_id": base_rag_type.rag_type_id,
             "embedder_api_key_secret_id": naive_rag.embedder.api_key_secret_id,
             "llm_api_key_secret_id": None,
+            "embedder_extra_headers": naive_rag.embedder.extra_headers,
+            "llm_extra_headers": None,
         }
 
     @staticmethod
@@ -191,6 +193,8 @@ class IndexingService:
             "base_rag_type_id": base_rag_type.rag_type_id,
             "embedder_api_key_secret_id": graph_rag.embedder.api_key_secret_id,
             "llm_api_key_secret_id": graph_rag.llm.api_key_secret_id,
+            "embedder_extra_headers": graph_rag.embedder.extra_headers,
+            "llm_extra_headers": graph_rag.llm.extra_headers,
         }
 
     @staticmethod

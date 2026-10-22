@@ -15,7 +15,7 @@ from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
     NodeRef,
 )
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 
 
 def _partial_client(user, org):
@@ -35,6 +35,7 @@ def _cdt_node_export(cdt_node):
             )
         ],
         org_id=cdt_node.graph.org_id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
     assert not result.has_errors, result.errors
     return result.data

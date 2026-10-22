@@ -251,6 +251,21 @@ class GraphRagService:
 
         return rag
 
+    @staticmethod
+    def validate_merged_chunk_params(index_config, overrides: dict[str, Any]) -> None:
+        """Check chunk_overlap < chunk_size on the stored config merged with `overrides`.
+
+        Raises:
+            InvalidChunkParametersException: If the merged overlap is not below the size
+        """
+        chunk_size = overrides.get("chunk_size") or index_config.chunk_size
+        chunk_overlap = overrides.get("chunk_overlap") or index_config.chunk_overlap
+        if chunk_overlap >= chunk_size:
+            reason = "'chunk_overlap' must be less than 'chunk_size'"
+            raise InvalidChunkParametersException(
+                errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
+            )
+
     @classmethod
     @transaction.atomic
     def update_index_config(
@@ -283,13 +298,7 @@ class GraphRagService:
             raise InvalidGraphRagParametersException("GraphRag has no index configuration")
         index_config = rag.index_config
 
-        chunk_size = data.get("chunk_size") or index_config.chunk_size
-        chunk_overlap = data.get("chunk_overlap") or index_config.chunk_overlap
-        if chunk_overlap >= chunk_size:
-            reason = "'chunk_overlap' must be less than 'chunk_size'"
-            raise InvalidChunkParametersException(
-                errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
-            )
+        cls.validate_merged_chunk_params(index_config, data)
 
         updated_fields = set()
         for field, value in data.items():

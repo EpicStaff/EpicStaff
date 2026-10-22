@@ -14,7 +14,7 @@ const LOADED_TOOL: GetPythonCodeToolRequest = {
         id: 70,
         code: 'def main():\n    return 1\n',
         entrypoint: 'main',
-        libraries: ['requests'],
+        venv_id: 12,
         secrets: [{ id: 4, name: 'API_TOKEN' }],
     },
     name: 'Fetch orders',
@@ -71,7 +71,7 @@ describe('toCreatePayload sent through CustomToolsService', () => {
                 description: LOADED_TOOL.description,
                 pythonCode: LOADED_TOOL.python_code.code,
                 variablesJson: JSON.stringify(LOADED_TOOL.variables),
-                libraries: LOADED_TOOL.python_code.libraries,
+                venvId: LOADED_TOOL.python_code.venv_id ?? null,
                 useStorage: LOADED_TOOL.use_storage ?? false,
             },
             toSecretIds(LOADED_TOOL.python_code.secrets),
@@ -90,7 +90,7 @@ describe('toCreatePayload sent through CustomToolsService', () => {
             python_code: {
                 code: 'def main():\n    return 1\n',
                 entrypoint: 'main',
-                libraries: ['requests'],
+                venv_id: 12,
                 global_kwargs: {},
                 secret_ids: [4],
             },
@@ -99,5 +99,97 @@ describe('toCreatePayload sent through CustomToolsService', () => {
             expect(request.request.body).not.toHaveProperty(key);
         }
         request.flush(LOADED_TOOL);
+    });
+
+    it('sends the chosen venv when a new tool is created', () => {
+        // Create and update build their body through the same toCreatePayload, so
+        // nothing but this pins the venv to the create request as well.
+        const payload = toCreatePayload(
+            {
+                name: '  Fetch orders  ',
+                description: 'Fetches the latest orders',
+                pythonCode: 'def main():\n    return 1\n',
+                variablesJson: '[]',
+                venvId: 12,
+                useStorage: false,
+            },
+            [4]
+        );
+
+        service.createPythonCodeToolV2(payload).subscribe();
+
+        const request = httpMock.expectOne('/api/python-code-tool/');
+        expect(request.request.method).toBe('POST');
+        expect(request.request.body).toEqual({
+            name: 'Fetch orders',
+            description: 'Fetches the latest orders',
+            variables: [],
+            use_storage: false,
+            python_code: {
+                code: 'def main():\n    return 1\n',
+                entrypoint: 'main',
+                venv_id: 12,
+                global_kwargs: {},
+                secret_ids: [4],
+            },
+        });
+        request.flush(LOADED_TOOL);
+    });
+
+    it('clears the venv when the tool is saved without one', () => {
+        // `null` has to travel: the backend applies the keys it is given, so an
+        // omitted venv_id would keep the venv the user just removed.
+        const payload = toCreatePayload(
+            {
+                name: LOADED_TOOL.name,
+                description: LOADED_TOOL.description,
+                pythonCode: LOADED_TOOL.python_code.code,
+                variablesJson: JSON.stringify(LOADED_TOOL.variables),
+                venvId: null,
+                useStorage: false,
+            },
+            [],
+            { entrypoint: 'main' }
+        );
+
+        service.updatePythonCodeToolV2(LOADED_TOOL.id, payload).subscribe();
+
+        const request = httpMock.expectOne('/api/python-code-tool/7/');
+        expect(request.request.body.python_code).toHaveProperty('venv_id', null);
+        request.flush(LOADED_TOOL);
+    });
+
+    it('sends the execution timeout with the code when the dialog has one', () => {
+        const payload = toCreatePayload(
+            {
+                name: 'Fetch orders',
+                description: 'Fetches the latest orders',
+                pythonCode: 'def main():\n    return 1\n',
+                variablesJson: '[]',
+                venvId: null,
+                useStorage: false,
+                executionTimeout: 300,
+            },
+            []
+        );
+
+        expect(payload.python_code.execution_timeout).toBe(300);
+    });
+
+    it('sends no execution timeout when the dialog has none, so the backend applies its own', () => {
+        const payload = toCreatePayload(
+            {
+                name: 'Fetch orders',
+                description: 'Fetches the latest orders',
+                pythonCode: 'def main():\n    return 1\n',
+                variablesJson: '[]',
+                venvId: null,
+                useStorage: false,
+                executionTimeout: undefined,
+            },
+            []
+        );
+
+        expect(payload.python_code).not.toHaveProperty('execution_timeout');
     });
 });

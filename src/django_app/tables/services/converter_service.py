@@ -1,4 +1,7 @@
+from typing import NamedTuple
+
 from django.core.exceptions import ValidationError
+from django.db.models import Prefetch
 from loguru import logger
 from src.shared.models import (
     ArgsSchema,
@@ -43,7 +46,7 @@ from storage_credentials.exceptions import (
 )
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
-from tables.models import PythonCode, PythonCodeTool
+from tables.models import PythonCode, PythonCodeTool, Secret
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
     AudioTranscriptionNode,
@@ -89,6 +92,29 @@ from utils.graph_utils import (
     NodeNameResolver,
 )
 from utils.singleton_meta import SingletonMeta
+
+
+class NodeRagCredentials(NamedTuple):
+    """Secret ids and raw extra headers of a knowledge node's RAG embedder and LLM.
+
+    Headers keep their `epicstaff_secret(<name>)` markers; SecretResolver fills them
+    on the published copy only. The LLM parts are None for naive RAGs, which have no
+    LLM, and everything is None for a node without a RAG.
+    """
+
+    embedder_api_key_secret_id: int | None = None
+    llm_api_key_secret_id: int | None = None
+    embedder_extra_headers: dict[str, str] | None = None
+    llm_extra_headers: dict[str, str] | None = None
+
+
+def secret_names_prefetch(lookup: str) -> Prefetch:
+    """Prefetch the secrets at `lookup` for `convert_python_code_to_pydantic`.
+
+    Loads names only: the payload carries secret names, and the encrypted
+    `value` has no reason to leave the database here.
+    """
+    return Prefetch(lookup, queryset=Secret.objects.only("id", "name"))
 
 
 class ConverterService(metaclass=SingletonMeta):
@@ -152,8 +178,7 @@ class ConverterService(metaclass=SingletonMeta):
         )
         all_search_configs = SearchConfigService.get_node_search_configs(knowledge_node)
         rag_search_config = self.build_rag_search_config(rag_type_id, all_search_configs)
-        embedder_api_key_secret_id = self._node_rag_embedder_secret_id(knowledge_node)
-        llm_api_key_secret_id = self._node_rag_llm_secret_id(knowledge_node)
+        rag_credentials = self._node_rag_credentials(knowledge_node)
         return KnowledgeNodeData(
             node_name=resolver(knowledge_node.id),
             collection_id=collection_id,
@@ -162,37 +187,32 @@ class ConverterService(metaclass=SingletonMeta):
             rag_search_config=rag_search_config,
             input_map=knowledge_node.input_map,
             output_variable_path=knowledge_node.output_variable_path,
-            embedder_api_key_secret_id=embedder_api_key_secret_id,
-            llm_api_key_secret_id=llm_api_key_secret_id,
+            embedder_api_key_secret_id=rag_credentials.embedder_api_key_secret_id,
+            llm_api_key_secret_id=rag_credentials.llm_api_key_secret_id,
+            embedder_extra_headers=rag_credentials.embedder_extra_headers,
+            llm_extra_headers=rag_credentials.llm_extra_headers,
         )
 
     @staticmethod
-    def _node_rag_embedder_secret_id(knowledge_node: KnowledgeNode) -> int | None:
-        """Secret id of the node's RAG embedder, resolved by the same (collection,
+    def _node_rag_credentials(knowledge_node: KnowledgeNode) -> NodeRagCredentials:
+        """Credentials of the node's RAG, resolved once by the same (collection,
         rag_id, rag_type) coordinates the knowledge service searches by."""
         if not (knowledge_node.rag_type and knowledge_node.rag_id):
-            return None
+            return NodeRagCredentials()
         rag = resolve_rag_in_collection(
             knowledge_node.rag_type,
             knowledge_node.rag_id,
             knowledge_node.source_collection,
         )
         embedder = rag.embedder
-        return embedder.api_key_secret_id if embedder else None
-
-    @staticmethod
-    def _node_rag_llm_secret_id(knowledge_node: KnowledgeNode) -> int | None:
-        """Secret id of the node's RAG LLM (graph search synthesis). Only graph
-        RAGs carry an LLM; naive RAGs have none, so this is None for them."""
-        if not (knowledge_node.rag_type and knowledge_node.rag_id):
-            return None
-        rag = resolve_rag_in_collection(
-            knowledge_node.rag_type,
-            knowledge_node.rag_id,
-            knowledge_node.source_collection,
-        )
+        # Only graph RAGs carry an LLM (graph search synthesis); naive RAGs have none.
         llm = getattr(rag, "llm", None)
-        return llm.api_key_secret_id if llm else None
+        return NodeRagCredentials(
+            embedder_api_key_secret_id=embedder.api_key_secret_id if embedder else None,
+            llm_api_key_secret_id=llm.api_key_secret_id if llm else None,
+            embedder_extra_headers=embedder.extra_headers if embedder else None,
+            llm_extra_headers=llm.extra_headers if llm else None,
+        )
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
         return list(
@@ -202,36 +222,48 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def _resolve_storage_scope(
-        self, graph_id: int | None, use_storage: bool, extra_paths: list[str]
+        self,
+        graph_id: int | None,
+        org_id: int | None,
+        use_storage: bool,
+        extra_paths: list[str],
     ) -> tuple[list[str] | None, str | None]:
         """Return `(storage_allowed_paths, storage_org_prefix)` for one code slot.
 
         Allowed paths are the graph's attached files followed by `extra_paths`, the
         folders the run itself may write to (`sessions/<id>/` in a real run). Both
         are None when the slot does not use storage or there is no graph to scope
-        it by, which tells the sandbox to mint no credentials.
+        it by, which means no storage credentials are minted for this run.
         """
         if not use_storage or graph_id is None:
             return None, None
         allowed_paths = self._resolve_allowed_paths_for_graph(graph_id) + extra_paths
-        return allowed_paths, self._resolve_org_prefix_for_graph(graph_id)
+        return allowed_paths, self.storage_prefix_for_org(org_id)
+
+    @staticmethod
+    def storage_prefix_for_org(org_id: int | None) -> str | None:
+        """Return the storage key prefix of an organization, or None without one."""
+        return org_storage_prefix(org_id) if org_id is not None else None
 
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
-        org_id = Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
-        if org_id is not None:
-            return org_storage_prefix(org_id)
-        return None
+        return self.storage_prefix_for_org(self._resolve_authoritative_org_id_for_graph(graph_id))
 
     def _resolve_authoritative_org_id_for_graph(self, graph_id: int) -> int | None:
         """Authoritative RBAC org for a graph, read directly from `Graph.org_id`.
 
-        Distinct from `_resolve_org_prefix_for_graph`, which reads the optional
-        `GraphOrganization` join table (a separate storage-prefix concept) and
-        can be None even when `Graph.org_id` is set. This resolver is the only
-        source of truth for the `X-Organization-Id` header injected into
-        sandbox callback tools -- never derive it from agent/tool config input.
+        The storage prefix (`_resolve_org_prefix_for_graph`) derives from the same
+        column. This value is the only source of truth for the `X-Organization-Id`
+        header injected into sandbox callback tools -- never derive it from
+        agent/tool config input. A caller passing `org_id` into the converters
+        instead must have read it from the Graph row itself.
         """
         return Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
+
+    def _org_id_for_graph(self, graph_id: int | None, org_id: int | None) -> int | None:
+        """Return `org_id` when the caller already has it, else read it from the graph."""
+        if org_id is None and graph_id is not None:
+            return self._resolve_authoritative_org_id_for_graph(graph_id)
+        return org_id
 
     def convert_tool_to_base_tool_pydantic(
         self,
@@ -331,6 +363,8 @@ class ConverterService(metaclass=SingletonMeta):
             rag_search_config=surface_resolution.rag_search_config,
             rag_embedder_api_key_secret_id=surface_resolution.rag_embedder_api_key_secret_id,
             rag_llm_api_key_secret_id=surface_resolution.rag_llm_api_key_secret_id,
+            rag_embedder_extra_headers=surface_resolution.rag_embedder_extra_headers,
+            rag_llm_extra_headers=surface_resolution.rag_llm_extra_headers,
             llm=self.convert_llm_config_to_pydantic(ad.llm_config),
             memory=False,
             tools=surface_resolution.tools,
@@ -400,16 +434,12 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         org_id: int | None = None,
     ):
-        libraries = python_code.get_libraries_list()
-        venv_name = str(python_code.pk)
-        if not libraries:
-            venv_name = "default"
         return PythonCodeData(
-            venv_name=venv_name,
+            venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
-            libraries=libraries,
             global_kwargs=python_code.global_kwargs,
+            execution_timeout=python_code.execution_timeout,
             use_storage=use_storage,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
@@ -420,7 +450,8 @@ class ConverterService(metaclass=SingletonMeta):
             # it. The parser is now only a validator (declaration_validator.py).
             # Names only: resolution happens in redis_service, on the copy that
             # goes to Redis -- never on the object that becomes graph_schema.
-            secret_names=list(python_code.secrets.values_list("name", flat=True)),
+            # Iterating .all() reuses a prefetch of `secrets` when the caller made one.
+            secret_names=[secret.name for secret in python_code.secrets.all()],
             org_id=org_id,
         )
 
@@ -605,6 +636,8 @@ class ConverterService(metaclass=SingletonMeta):
             api_key_secret_id=config.api_key_secret_id,
             deployment_id=config.model.deployment_id,
             extra_headers=config.extra_headers,
+            input_cost_per_token=config.input_cost_per_token,
+            output_cost_per_token=config.output_cost_per_token,
         )
 
     def convert_embedding_config_to_pydantic(
@@ -623,6 +656,7 @@ class ConverterService(metaclass=SingletonMeta):
                 model=embedding_config.model.name,
                 base_url=embedding_config.model.base_url,
                 api_key_secret_id=embedding_config.api_key_secret_id,
+                extra_headers=embedding_config.extra_headers,
             ),
         )
 
@@ -633,19 +667,18 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None,
         session_id: int | None,
         extra_storage_paths: list[str] | None,
+        org_id: int | None,
     ) -> PythonCodeData:
+        org_id = self._org_id_for_graph(graph_id, org_id)
         writable_paths = list(extra_storage_paths or [])
         if session_id is not None:
             writable_paths.append(f"sessions/{session_id}/")
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
             graph_id=graph_id,
+            org_id=org_id,
             use_storage=use_storage,
             extra_paths=writable_paths,
         )
-
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
 
         return self.convert_python_code_to_pydantic(
             python_code=python_code,
@@ -663,6 +696,7 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
         extra_storage_paths: list[str] | None = None,
+        org_id: int | None = None,
     ) -> PythonNodeData:
         """Convert a python node into the data a run sends to the sandbox.
 
@@ -671,6 +705,8 @@ class ConverterService(metaclass=SingletonMeta):
                 writable when the node uses storage.
             extra_storage_paths: Further writable folders for a run without a
                 session, such as a test-mode run's own folder.
+            org_id: `Graph.org_id` of `graph_id` when the caller already loaded
+                the graph row; read from the graph when omitted.
         """
         python_code_data = self._convert_code_slot(
             python_code=python_node.python_code,
@@ -678,6 +714,7 @@ class ConverterService(metaclass=SingletonMeta):
             graph_id=graph_id,
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
+            org_id=org_id,
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
@@ -714,6 +751,7 @@ class ConverterService(metaclass=SingletonMeta):
         resolver: NodeNameResolver,
         graph_id: int | None = None,
         session_id: int | None = None,
+        org_id: int | None = None,
     ):
         condition_groups = [
             ClassificationConditionGroupData(
@@ -750,9 +788,7 @@ class ConverterService(metaclass=SingletonMeta):
                 llm_data=llm_data,
             )
 
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+        org_id = self._org_id_for_graph(graph_id, org_id)
 
         pre_storage_allowed_paths = None
         pre_storage_org_prefix = None
@@ -760,7 +796,7 @@ class ConverterService(metaclass=SingletonMeta):
             pre_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             if session_id is not None:
                 pre_storage_allowed_paths.append(f"sessions/{session_id}/")
-            pre_storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+            pre_storage_org_prefix = self.storage_prefix_for_org(org_id)
 
         post_storage_allowed_paths = None
         post_storage_org_prefix = None
@@ -768,7 +804,7 @@ class ConverterService(metaclass=SingletonMeta):
             post_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             if session_id is not None:
                 post_storage_allowed_paths.append(f"sessions/{session_id}/")
-            post_storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+            post_storage_org_prefix = self.storage_prefix_for_org(org_id)
 
         pre_python_code_data = None
         if node.pre_python_code is not None:
@@ -856,6 +892,7 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
         extra_storage_paths: list[str] | None = None,
+        org_id: int | None = None,
     ) -> WebhookTriggerNodeData:
         """Convert a webhook trigger node into the data a run sends to the sandbox.
 
@@ -864,6 +901,8 @@ class ConverterService(metaclass=SingletonMeta):
                 writable when the node uses storage.
             extra_storage_paths: Further writable folders for a run without a
                 session, such as a test-mode run's own folder.
+            org_id: `Graph.org_id` of `graph_id` when the caller already loaded
+                the graph row; read from the graph when omitted.
         """
         python_code_data = self._convert_code_slot(
             python_code=webhook_trigger_node.python_code,
@@ -871,6 +910,7 @@ class ConverterService(metaclass=SingletonMeta):
             graph_id=graph_id,
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
+            org_id=org_id,
         )
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),
@@ -932,18 +972,16 @@ class ConverterService(metaclass=SingletonMeta):
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
         graph_id: int | None = None,
         session_id: int | None = None,
+        org_id: int | None = None,
     ) -> FileExtractorNodeData:
+        org_id = self._org_id_for_graph(graph_id, org_id)
         storage_allowed_paths = None
         storage_org_prefix = None
         if graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             if session_id is not None:
                 storage_allowed_paths.append(f"sessions/{session_id}/")
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+            storage_org_prefix = self.storage_prefix_for_org(org_id)
 
         return FileExtractorNodeData(
             node_name=resolver(file_extractor_node.id),
@@ -975,18 +1013,16 @@ class ConverterService(metaclass=SingletonMeta):
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
         graph_id: int | None = None,
         session_id: int | None = None,
+        org_id: int | None = None,
     ) -> AudioTranscriptionNodeData:
+        org_id = self._org_id_for_graph(graph_id, org_id)
         storage_allowed_paths = None
         storage_org_prefix = None
         if graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             if session_id is not None:
                 storage_allowed_paths.append(f"sessions/{session_id}/")
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-
-        org_id = None
-        if graph_id is not None:
-            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+            storage_org_prefix = self.storage_prefix_for_org(org_id)
 
         return AudioTranscriptionNodeData(
             node_name=resolver(audio_transcription_node.id),

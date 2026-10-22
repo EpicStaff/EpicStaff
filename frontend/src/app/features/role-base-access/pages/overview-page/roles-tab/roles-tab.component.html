@@ -20,7 +20,7 @@
 
 <app-table
     [columns]="columns()"
-    [data]="filteredRows()"
+    [data]="rows()"
     [selectable]="false"
     rowId="id"
     (filterChange)="onFilterChange($event)"

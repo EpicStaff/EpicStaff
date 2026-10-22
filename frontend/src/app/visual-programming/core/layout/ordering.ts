@@ -1,4 +1,4 @@
-import { byId } from './layout-graph';
+import { byId, median } from './layout-graph';
 import { LayeredGraph } from './long-edges';
 
 /**
@@ -19,13 +19,10 @@ function portFraction(offset: number, height: number): number {
     return Math.min(Math.max(offset / Math.max(height, 1), 0), MAX_PORT_FRACTION);
 }
 
-function median(values: number[]): number {
-    values.sort((a, b) => a - b);
-    const middle = Math.floor(values.length / 2);
-    return values.length % 2 === 1 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
-}
-
 // The layered graph as index arrays: node i, edge e from edgeSource[e] down to edgeTarget[e].
+// This class keeps its own index-based adjacency lists (Int32Array, number[][]) rather than using
+// buildAdjacencyLists from layout-graph.ts because this is the hot loop of crossing minimisation:
+// typed arrays and integer indices avoid Map lookups and string comparisons on every edge traversal.
 class IndexedLayers {
     readonly ids: string[]; // sorted, so an index comparison is the id tie-break
     readonly layerOf: Int32Array;

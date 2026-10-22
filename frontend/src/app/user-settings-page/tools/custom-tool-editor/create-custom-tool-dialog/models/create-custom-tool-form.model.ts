@@ -4,8 +4,10 @@ export interface CreateCustomToolFormValue {
     description: string;
     pythonCode: string;
     variablesJson: string;
-    libraries: string[];
+    venvId: number | null;
     useStorage: boolean;
+    /** Seconds one run of the code may take; undefined keeps the stored one, or gives a new tool the default. */
+    executionTimeout?: number;
 }
 
 export const DEFAULT_ENTRYPOINT = 'main';
@@ -35,9 +37,12 @@ export function toCreatePayload(
         python_code: {
             code: form.pythonCode,
             entrypoint: preserved.entrypoint?.trim() || DEFAULT_ENTRYPOINT,
-            libraries: form.libraries,
+            // Always sent, `null` included: the backend applies the keys it is given,
+            // so leaving it out would keep the old venv instead of clearing it.
+            venv_id: form.venvId,
             global_kwargs: {},
             secret_ids: secretIds,
+            ...(form.executionTimeout === undefined ? {} : { execution_timeout: form.executionTimeout }),
         },
         // The `useStorage` form control is the source of truth for new edits; it is seeded
         // from `selectedTool()?.use_storage ?? false`, so an existing tool's value is still

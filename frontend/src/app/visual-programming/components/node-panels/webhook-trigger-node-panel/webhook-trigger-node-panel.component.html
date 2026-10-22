@@ -1,6 +1,6 @@
 <ng-template #headerActionsTpl>
-    <!-- Hidden for a viewer and in a version preview: a test run needs Flows:Update and runs the live graph. -->
-    @if (!isReadOnly()) {
+    <!-- Hidden without Flows:Update or Flows:Use, and in a version preview: a test run needs both and runs the live graph. -->
+    @if (canRunNode()) {
         <app-run-test-payload-button
             [labelled]="isExpanded()"
             [disabledReason]="testPayload.runBlocker()"
@@ -80,7 +80,7 @@
                     <div class="field-isolated">
                         <app-custom-input
                             label="Node Name"
-                            tooltipText="The unique identifier used to reference this Webhook Trigger node. This name must be unique within the flow."
+                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"
@@ -132,14 +132,10 @@
                         (valueChange)="onSecretsChange($event)"
                     />
 
-                    <app-custom-input
-                        label="Libraries"
-                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                        formControlName="libraries"
-                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                        [activeColor]="activeColor"
+                    <app-execution-timeout-field
+                        [field]="executionTimeout"
                         [readonly]="isReadOnly()"
-                    ></app-custom-input>
+                    />
 
                     <app-node-storage-section
                         [readonly]="isReadOnly()"

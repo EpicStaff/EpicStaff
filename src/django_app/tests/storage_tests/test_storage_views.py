@@ -151,6 +151,39 @@ def test_move_and_copy_across_orgs_for_a_superadmin(
     assert _exists(store, default_org, "a.txt") is source_kept
 
 
+@pytest.mark.parametrize("action", ["move", "copy"])
+@pytest.mark.parametrize(
+    ("org_ids", "rejected_field"),
+    [
+        ({"source_org_id": "active"}, "destination_org_id"),
+        ({"destination_org_id": "other"}, "source_org_id"),
+        ({"source_org_id": "other", "destination_org_id": None}, "destination_org_id"),
+        ({"source_org_id": "active", "destination_org_id": "active"}, "destination_org_id"),
+        ({"source_org_id": "other", "destination_org_id": "other"}, "destination_org_id"),
+        ({"source_org_id": 0, "destination_org_id": "other"}, "source_org_id"),
+    ],
+    ids=["only-source", "only-destination", "destination-null", "same-active-org", "same-other-org", "org-id-zero"],
+)
+def test_a_transfer_naming_not_two_different_orgs_is_a_400_and_touches_nothing(
+    superadmin_client_with_org, put, store, default_org, action, org_ids, rejected_field
+):
+    other_org = Organization.objects.create(name="other-org")
+    orgs = {"active": default_org.id, "other": other_org.id}
+    put("a.txt")
+    put("a.txt", org=other_org)
+
+    resp = superadmin_client_with_org.post(
+        f"/api/storage/{action}/",
+        {"from_path": "a.txt", "to_path": "moved.txt", **{key: orgs.get(value, value) for key, value in org_ids.items()}},
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.data["message"].startswith(f"{rejected_field}: ")
+    for org in (default_org, other_org):
+        assert (_exists(store, org, "a.txt"), _exists(store, org, "moved.txt")) == (True, False)
+
+
 def test_delete_removes_the_files(auth_client, put, store, default_org):
     put("a.txt")
 

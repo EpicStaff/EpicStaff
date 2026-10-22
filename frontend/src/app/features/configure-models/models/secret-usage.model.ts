@@ -1,3 +1,4 @@
+import { FlowNodeListItem } from '@shared/components';
 import {
     NodeType,
     SecretUsageCategoryDto,
@@ -6,15 +7,18 @@ import {
     SecretUsageResourceType,
     SecretUsageResponse,
 } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 
 export type SecretUsageCategoryIcon =
     | { kind: 'entity'; value: string }
     | { kind: 'tabler'; value: string }
     | { kind: 'svg'; value: string };
 
-export interface SecretUsageFlowNode {
-    name: string;
-    nodeType: NodeType;
+/** A node row of the flow node list: `name` is its label ("Name #N"), `key` its backend id so same-named rows stay apart. */
+export interface SecretUsageFlowNode extends FlowNodeListItem {
+    /** The node's backend id; the flow page opens the node by it (`?nodeId=`). */
+    id: number;
+    key: string;
 }
 
 export interface SecretUsageFlowItem {
@@ -59,16 +63,21 @@ const CATEGORY_DISPLAY: Record<SecretUsageCategoryDto['key'], { label: string; i
 /**
  * A node with two PythonCode blocks (e.g. Classification Decision Table's pre/post computation)
  * reports one usage hit per code_field — dedupe those back into a single row per node so a secret
- * declared on both pre and post doesn't render (and count) as two separate nodes.
+ * declared on both pre and post doesn't render (and count) as two separate nodes. Names aren't unique
+ * in a flow, so the node's id tells hits apart.
  */
 function dedupeFlowNodes(nodes: SecretUsageFlowItemDto['nodes']): SecretUsageFlowNode[] {
-    const seen = new Set<string>();
+    const seen = new Set<number>();
     const result: SecretUsageFlowNode[] = [];
     for (const node of nodes) {
-        const key = `${node.name}:${node.node_type}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        result.push({ name: node.name, nodeType: node.node_type as NodeType });
+        if (seen.has(node.id)) continue;
+        seen.add(node.id);
+        result.push({
+            id: node.id,
+            key: String(node.id),
+            name: formatNodeLabel({ node_name: node.name, nodeNumber: node.node_number }),
+            nodeType: node.node_type as NodeType,
+        });
     }
     return result;
 }

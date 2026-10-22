@@ -27,6 +27,7 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, HelpTooltipComponent, ToggleSwitchComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 import { filter, Subscription } from 'rxjs';
 import { distinctUntilChanged, finalize } from 'rxjs/operators';
 
@@ -37,6 +38,13 @@ import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
 import { PickerItem } from './var-picker-flat.component';
 import { buildVariablePickerItems, isPlainEnter, VariablePathPicker, withoutUsedPaths } from './variable-path-picker';
+
+/** Keys to rename, add and remove in the visible rows, e.g. after an owner's code changed its parameter names. */
+export interface InputMapKeyChanges {
+    renamed: { from: string; to: string }[];
+    added: string[];
+    removed: string[];
+}
 
 @Component({
     selector: 'app-input-map',
@@ -533,6 +541,7 @@ export class InputMapComponent implements OnInit, OnChanges {
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
     readonly = input<boolean>(false);
+    readonly nodeNumber = input<number | undefined>();
     /** Why the owning panel cannot run the test now (e.g. its stored code is not the panel's), or null. */
     readonly runTestBlocker = input<string | null>(null);
     @Output() testModeChange = new EventEmitter<boolean>();
@@ -549,6 +558,8 @@ export class InputMapComponent implements OnInit, OnChanges {
     private readonly lastKnownKeys = new WeakMap<AbstractControl, string>();
     private readonly lastKnownTestKeys = new WeakMap<AbstractControl, string>();
     private isSyncing = false;
+    /** Per rows array, the values of the rows `applyKeyChanges` removed, by key, to give back if the key returns. */
+    private readonly removedValuesByRows = new WeakMap<FormArray, Map<string, string>>();
 
     private readonly pythonCodeRunService = inject(PythonCodeRunService);
     private readonly graphSessionService = inject(GraphSessionService);
@@ -600,7 +611,7 @@ export class InputMapComponent implements OnInit, OnChanges {
     }
 
     ngOnChanges(changes: SimpleChanges): void {
-        if (changes['pythonNodeId'] || changes['graphId'] || changes['nodeName']) {
+        if (changes['pythonNodeId'] || changes['graphId'] || changes['nodeName'] || changes['nodeNumber']) {
             this.checkSuccessfulSessions();
         }
     }
@@ -615,6 +626,25 @@ export class InputMapComponent implements OnInit, OnChanges {
 
     get testPairs(): FormArray {
         return this.parentForm.get('test_input') as FormArray;
+    }
+
+    /**
+     * Renames, adds and removes visible rows (the test values in Test mode) the way the user's own edits do, so
+     * the key mirroring between the Input List and Test mode stays in step. A renamed row keeps its value; a key
+     * removed here and later added or renamed into an untouched row gets its value back.
+     */
+    applyKeyChanges(changes: InputMapKeyChanges): void {
+        for (const { from, to } of changes.renamed) {
+            const index = this.visibleIndexOf(from);
+            if (index === -1 || this.visibleIndexOf(to) !== -1) {
+                this.removeVisibleKey(from);
+                this.addVisibleKey(to);
+            } else {
+                this.setVisibleKey(index, to);
+            }
+        }
+        changes.removed.forEach((key) => this.removeVisibleKey(key));
+        changes.added.forEach((key) => this.addVisibleKey(key));
     }
 
     hasNoMeaningfulPairs(): boolean {
@@ -861,6 +891,61 @@ export class InputMapComponent implements OnInit, OnChanges {
         return changed;
     }
 
+    private get visibleRows(): FormArray {
+        return this.testMode ? this.testPairs : this.pairs;
+    }
+
+    private visibleIndexOf(key: string): number {
+        return this.testMode ? this.findTestPairIndexByKey(key) : this.findInputPairIndexByKey(key);
+    }
+
+    private removedValues(): Map<string, string> {
+        const rows = this.visibleRows;
+        let values = this.removedValuesByRows.get(rows);
+        if (!values) {
+            values = new Map<string, string>();
+            this.removedValuesByRows.set(rows, values);
+        }
+        return values;
+    }
+
+    private removeVisibleKey(key: string): void {
+        const index = this.visibleIndexOf(key);
+        if (index === -1) return;
+        this.removedValues().set(key, (this.visibleRows.at(index).value.value as string) ?? '');
+        if (this.testMode) {
+            this.removeTestVariable(index);
+        } else {
+            this.removePair(index);
+        }
+    }
+
+    private addVisibleKey(key: string): void {
+        if (this.visibleIndexOf(key) !== -1) return;
+        let index = this.visibleRows.controls.findIndex((row) => ((row.value.key as string) ?? '').trim() === '');
+        if (index === -1) {
+            if (this.testMode) {
+                this.addTestVariable();
+            } else {
+                this.addPair();
+            }
+            index = this.visibleRows.length - 1;
+        }
+        this.setVisibleKey(index, key);
+    }
+
+    /** Through the key control, so its mirroring subscription follows; restores a removed value into an untouched row. */
+    private setVisibleKey(index: number, key: string): void {
+        const row = this.visibleRows.at(index);
+        row.get('key')?.setValue(key);
+        const removedValue = this.removedValues().get(key);
+        const value = ((row.value.value as string) ?? '').trim();
+        if (removedValue !== undefined && (value === '' || value === 'variables.')) {
+            row.get('value')?.setValue(removedValue);
+            this.removedValues().delete(key);
+        }
+    }
+
     private attachKeyMirroringToAllPairs(): void {
         for (const ctrl of this.pairs.controls) {
             if (!this.keySubs.has(ctrl)) {
@@ -1020,7 +1105,7 @@ export class InputMapComponent implements OnInit, OnChanges {
             this.hasSuccessfulSession.set(false);
             return;
         }
-        const formattedNodeName = `${this.nodeName} #${this.pythonNodeId}`;
+        const formattedNodeName = `${formatNodeLabel({ node_name: this.nodeName, nodeNumber: this.nodeNumber() })} #${this.pythonNodeId}`;
         this.graphSessionService
             .getSessionsByGraphId(this.graphId, false, 1, 0, [GraphSessionStatus.ENDED], formattedNodeName)
             .subscribe({
