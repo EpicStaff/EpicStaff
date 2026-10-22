@@ -204,7 +204,7 @@ export class LeftSidebarComponent {
                 id: 'venvs',
                 routeLink: 'venvs',
                 activePaths: ['/venvs'],
-                icon: 'brand-python',
+                icon: 'venvs',
                 label: 'Virtual Environments',
                 isPermitted: () => this.permissionService.can(ResourceCode.Venvs, ActionCode.Read),
                 showTooltip: false,
