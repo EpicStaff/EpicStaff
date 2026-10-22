@@ -231,6 +231,44 @@ def check_cdt_node_write(actor: SecretActor | None, instance, data: dict) -> Non
     _check_nested_python_code(actor, instance, data, attribute="post_python_code")
 
 
+def check_quickstart(actor: SecretActor | None, data: dict) -> None:
+    """Gate a quickstart that reuses an existing secret as the bundle's API key.
+
+    A quickstart only creates rows, so any `api_key_secret_id` is a new reference.
+    A raw `api_key` needs no secrets:USE: it becomes a new secret the caller owns.
+    The request names no destination: quickstart picks each config's model itself,
+    by the provider's fixed model name, and refuses an org model with its own
+    `base_url` (`QuickstartService._get_or_create_model`), so there is nothing to gate here.
+    """
+    secret_use_service.check_references(
+        actor,
+        field_path=("api_key_secret_id",),
+        current=None,
+        incoming=data.get("api_key_secret_id"),
+    )
+
+
+def check_config_import(
+    actor: SecretActor | None, data: dict, *, marker_fields: tuple[str, ...]
+) -> None:
+    """Gate an imported config whose header fields carry secret markers.
+
+    Import always creates the config, so every marker in it is new; a config the
+    import reuses (`find_existing`) is never written and never reaches this check.
+
+    Args:
+        marker_fields: The header dict fields of this config type whose
+            `epicstaff_secret(<name>)` markers reference secrets by name.
+    """
+    for field_name in marker_fields:
+        secret_use_service.check_markers(
+            actor,
+            field_path=(field_name,),
+            current_headers=None,
+            incoming_headers=data.get(field_name),
+        )
+
+
 def _check_nested_python_code(
     actor: SecretActor | None, instance, data: dict, *, attribute: str
 ) -> None:

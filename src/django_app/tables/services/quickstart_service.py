@@ -19,6 +19,10 @@ from tables.services.secrets import secret_service
 from utils.singleton_meta import SingletonMeta
 
 
+class QuickstartCustomModelError(Exception):
+    """Raised when quickstart would attach its secret to an org model with a custom `base_url`."""
+
+
 class QuickstartService(metaclass=SingletonMeta):
     QUICKSTART_TAG = "quickstart:latest"
 
@@ -276,26 +280,14 @@ class QuickstartService(metaclass=SingletonMeta):
         llm_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("llm_model")
         if llm_model_name is None:
             raise KeyError(f"Can not get 'llm_model' from PROVIDER_CONFIGS for {provider.name}")
-        candidates = LLMModel.objects.filter(llm_provider=provider, name=llm_model_name)
-        llm_model = (
-            candidates.filter(org_id=org_id).first()
-            or candidates.filter(org_id__isnull=True).first()
+        return self._get_or_create_model(
+            model_class=LLMModel,
+            provider_field="llm_provider",
+            provider=provider,
+            name=llm_model_name,
+            org_id=org_id,
+            author=author,
         )
-        if llm_model is None:
-            llm_model = LLMModel.objects.create(
-                llm_provider=provider,
-                name=llm_model_name,
-                org_id=org_id,
-                is_custom=True,
-                created_by=author,
-            )
-            logger.info(
-                "Created custom LLM model {} for provider {} in org {}",
-                llm_model.name,
-                provider.name,
-                org_id,
-            )
-        return llm_model
 
     def _get_or_create_embedder_model(
         self, *, provider: Provider, org_id: int, author: User | None
@@ -305,29 +297,65 @@ class QuickstartService(metaclass=SingletonMeta):
             raise KeyError(
                 f"Can not get 'embedding_model' from PROVIDER_CONFIGS for {provider.name}"
             )
-        candidates = EmbeddingModel.objects.filter(
-            embedding_provider=provider, name=embedder_model_name
+        return self._get_or_create_model(
+            model_class=EmbeddingModel,
+            provider_field="embedding_provider",
+            provider=provider,
+            name=embedder_model_name,
+            org_id=org_id,
+            author=author,
         )
-        # Own-org precedence — see _get_or_create_llm_model.
-        embedder_model = (
-            candidates.filter(org_id=org_id).first()
-            or candidates.filter(org_id__isnull=True).first()
+
+    def _get_or_create_model(
+        self,
+        *,
+        model_class: type[LLMModel] | type[EmbeddingModel],
+        provider_field: str,
+        provider: Provider,
+        name: str,
+        org_id: int,
+        author: User | None,
+    ) -> LLMModel | EmbeddingModel:
+        """Return the model quickstart attaches the bundle secret to, creating it if missing.
+
+        The built-in catalog model wins over the org's own model of the same name. A
+        custom model can point at any `base_url`, and anyone who may create models in
+        the org could make one under the catalog name ahead of a quickstart, which
+        would then send the bundle secret to that URL. So the org's model is only used
+        when there is no built-in and it has no `base_url` of its own; with one,
+        quickstart refuses rather than attach the key.
+
+        Raises:
+            QuickstartCustomModelError: No built-in exists and the org's model of
+                this name has a custom `base_url`.
+        """
+        candidates = model_class.objects.filter(**{provider_field: provider, "name": name})
+        built_in_model = candidates.filter(org_id__isnull=True).first()
+        if built_in_model is not None:
+            return built_in_model
+        own_model = candidates.filter(org_id=org_id).first()
+        if own_model is not None:
+            if own_model.base_url:
+                raise QuickstartCustomModelError(
+                    f"The organization's custom model \"{own_model.name}\" sends requests "
+                    "to a custom URL, so quickstart will not attach a key to it."
+                )
+            return own_model
+        model = model_class.objects.create(
+            **{provider_field: provider},
+            name=name,
+            org_id=org_id,
+            is_custom=True,
+            created_by=author,
         )
-        if embedder_model is None:
-            embedder_model = EmbeddingModel.objects.create(
-                embedding_provider=provider,
-                name=embedder_model_name,
-                org_id=org_id,
-                is_custom=True,
-                created_by=author,
-            )
-            logger.info(
-                "Created custom embedding model {} for provider {} in org {}",
-                embedder_model.name,
-                provider.name,
-                org_id,
-            )
-        return embedder_model
+        logger.info(
+            "Created custom {} {} for provider {} in org {}",
+            model_class.__name__,
+            model.name,
+            provider.name,
+            org_id,
+        )
+        return model
 
     def _generate_unique_quickstart_config_name(self, provider: str) -> str:
         """
