@@ -2,6 +2,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
+from src.shared.models.ai_providers import REASONING_EFFORT_VALUES
 
 from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
 from tables.models.provider import Provider
@@ -11,6 +12,7 @@ from tables.models.tag_models import (
     RealtimeConfigTag,
     RealtimeTranscriptionConfigTag,
 )
+from tables.validators.finite_number_validator import validate_finite_number
 
 
 class LLMModel(OrgScopedModel, models.Model):
@@ -61,6 +63,14 @@ class DefaultLLMConfig(DefaultBaseModel):
     seed = models.IntegerField(null=True, blank=True)
     logprobs = models.BooleanField(null=True, blank=True)
     top_logprobs = models.IntegerField(null=True, blank=True)
+    # Mirrors LLMConfig.reasoning_effort for parity; nothing reads it yet (LLMConfig
+    # never calls fill_with_defaults), so a future reader must re-validate it against the model.
+    reasoning_effort = models.CharField(
+        max_length=16,
+        choices=[(value, value) for value in REASONING_EFFORT_VALUES],
+        null=True,
+        blank=True,
+    )
     base_url = models.TextField(null=True, blank=True)
     api_version = models.TextField(null=True, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
@@ -95,6 +105,12 @@ class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableMod
     seed = models.IntegerField(null=True, blank=True)
     logprobs = models.BooleanField(null=True, blank=True)
     top_logprobs = models.IntegerField(null=True, blank=True)
+    reasoning_effort = models.CharField(
+        max_length=16,
+        choices=[(value, value) for value in REASONING_EFFORT_VALUES],
+        null=True,
+        blank=True,
+    )
     base_url = models.TextField(null=True, blank=True)
     api_version = models.TextField(null=True, blank=True)
     api_key_secret = models.ForeignKey(
@@ -106,6 +122,20 @@ class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableMod
     )
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(default=120.0, null=True, blank=True)
+    # Not on DefaultLLMConfig on purpose: fill_with_defaults only copies the default
+    # model's fields, so a price is never inherited from the platform defaults.
+    input_cost_per_token = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[validate_finite_number, MinValueValidator(0.0)],
+        help_text="USD per prompt token. Null uses litellm's price map. Set together with output_cost_per_token.",
+    )
+    output_cost_per_token = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[validate_finite_number, MinValueValidator(0.0)],
+        help_text="USD per completion token. Null uses litellm's price map. Set together with input_cost_per_token.",
+    )
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(LLMConfigTag, blank=True, related_name="llm_configs")
     # Nullable because configs created before this column existed have no known
@@ -117,6 +147,15 @@ class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableMod
             models.UniqueConstraint(
                 fields=["org", "custom_name"],
                 name="unique_llmconfig_name_per_org",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(input_cost_per_token__isnull=True, output_cost_per_token__isnull=True)
+                    | models.Q(
+                        input_cost_per_token__isnull=False, output_cost_per_token__isnull=False
+                    )
+                ),
+                name="llmconfig_token_prices_set_together",
             ),
         ]
 

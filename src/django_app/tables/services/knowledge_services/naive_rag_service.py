@@ -2,6 +2,7 @@ from typing import Any
 
 from django.db import transaction
 from loguru import logger
+from src.shared.models.knowledge_new import ChunkingConfig
 from tables.constants.knowledge_constants import (
     FILE_TYPE_SPECIFIC_STRATEGIES,
     UNIVERSAL_STRATEGIES,
@@ -551,6 +552,74 @@ class NaiveRagService:
             "failed": failed,
             "configs": total_updated_configs + total_unupdated_configs + total_failed_configs,
             "errors": errors,
+        }
+
+    @classmethod
+    def resolve_effective_document_configs(
+        cls, naive_rag_id: int, overrides: list[dict[str, Any]]
+    ) -> dict[int, ChunkingConfig]:
+        """Merge unsaved chunking settings into the stored configs without saving anything.
+
+        Applies the same rules as the bulk update: overlap must stay below size across
+        the merged values, and the strategy must suit the document's file type.
+
+        Args:
+            naive_rag_id: NaiveRag the configs must belong to. The caller has already
+                checked that it is in the active organization.
+            overrides: Items validated by `DocumentConfigEstimateOverrideSerializer`.
+
+        Returns:
+            Effective chunking settings by document config id, in the shape knowledge_new
+            expects. Nothing is saved.
+
+        Raises:
+            DocumentConfigNotFoundException: A config is missing or belongs to another RAG.
+            InvalidChunkParametersException: A merged config breaks a chunking rule; every
+                error item carries the `document_config_id` it belongs to.
+        """
+        config_ids = {item["document_config_id"] for item in overrides}
+        configs = {
+            config.naive_rag_document_id: config
+            for config in NaiveRagDocumentConfig.objects.filter(
+                naive_rag_id=naive_rag_id, naive_rag_document_id__in=config_ids
+            ).select_related("document")
+        }
+        missing_ids = config_ids - set(configs)
+        if missing_ids:
+            raise DocumentConfigNotFoundException(
+                f"Configs not found or don't belong to"
+                f" NaiveRag {naive_rag_id}: {sorted(missing_ids)}"
+            )
+
+        errors: list[dict[str, Any]] = []
+        for item in overrides:
+            config_id = item["document_config_id"]
+            fields = {key: value for key, value in item.items() if key != "document_config_id"}
+            try:
+                if not isinstance(fields.get("additional_params", {}), dict):
+                    raise InvalidChunkParametersException(
+                        errors=[
+                            {
+                                "field": "additional_params",
+                                "value": fields["additional_params"],
+                                "reason": "'additional_params' must be an object",
+                            }
+                        ],
+                    )
+                cls._update_document_config(configs[config_id], fields, commit=False)
+            except InvalidChunkParametersException as error:
+                errors += [{"document_config_id": config_id, **entry} for entry in error.errors]
+        if errors:
+            raise InvalidChunkParametersException(errors=errors)
+
+        return {
+            config_id: ChunkingConfig(
+                chunk_strategy=config.chunk_strategy,
+                chunk_size=config.chunk_size,
+                chunk_overlap=config.chunk_overlap,
+                extra=config.additional_params or {},
+            )
+            for config_id, config in configs.items()
         }
 
     @staticmethod

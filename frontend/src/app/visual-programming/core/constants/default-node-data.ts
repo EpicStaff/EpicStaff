@@ -2,6 +2,7 @@ import { NODE_COLORS, NodeType } from '@shared/models';
 
 import { AgentNodeData } from '../models/agent-node.model';
 import { KeyValueNodeData } from '../models/key-value-node.model';
+import { TelegramTriggerNodeModel } from '../models/node.model';
 import { ScheduleTriggerNodeData } from '../models/schedule-trigger.model';
 import { TaskNodeData } from '../models/task-node.model';
 
@@ -15,19 +16,7 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
     }),
     [NodeType.PYTHON]: () => ({
         name: 'Python Code Node',
-        code:
-            '# Replace this comment with your implementation.\n' +
-            '#\n' +
-            '# Purpose   : <describe the transformation or processing this node performs>\n' +
-            '# Inputs    : key = parameter name in main(), value = path to the domain variable - set via Input List\n' +
-            "# Output    : <what the returned value should contain> - written as-is to this node's Output Variable Path\n" +
-            '# Libraries : list any pip packages this code needs in the Libraries field\n' +
-            "# Secrets   : declare secrets in the Secrets field, then read them via get_secret('name')\n" +
-            '#\n' +
-            '# Required signature:\n' +
-            '#   def main(<your parameters>) -> ...:\n' +
-            '#       ...\n' +
-            "#       return ...  # written to this node's output variable\n",
+        code: 'def main():\n    return\n',
         entrypoint: 'main',
     }),
     [NodeType.TASK]: (): TaskNodeData => ({
@@ -98,8 +87,9 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         test_payload: {},
         use_storage: false,
     }),
-    [NodeType.TELEGRAM_TRIGGER]: () => ({
+    [NodeType.TELEGRAM_TRIGGER]: (): TelegramTriggerNodeModel['data'] => ({
         telegram_bot_api_key_secret_id: null,
+        webhook_trigger: null,
         fields: [],
         test_payload: {},
     }),

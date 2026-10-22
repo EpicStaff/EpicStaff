@@ -14,9 +14,11 @@ from src.shared.models.storage_scope import StorageCredentials
 from storage_credentials.services.session_credential_service import session_credential_service
 
 from rbac.models import OrganizationUser
+from rbac.models.enums import Permission, ResourceType
 from tables.models import Graph, PythonCode, PythonCodeResult, PythonNode
 from tables.models.graph_models import GraphStorageFile, StorageFile, WebhookTriggerNode
 from tables.services.secrets import secret_service
+from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 URL = "/api/run-python-code/"
@@ -356,3 +358,113 @@ class TestRequestShape:
         assert task["storage_credentials"] is None
         assert "org_id" not in task["global_kwargs"]
         assert task["func_kwargs"] == {"x": 1}
+
+
+def _plain_webhook_trigger_node(graph):
+    python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    return WebhookTriggerNode.objects.create(
+        graph=graph, node_name="webhook_entry", python_code=python_code
+    )
+
+
+def _run_code_of(client, node, named_by):
+    """Run the node's code, naming it by its target slot or by its PythonCode id."""
+    if named_by == "target":
+        target_type = "webhook_trigger_node" if isinstance(node, WebhookTriggerNode) else "python_node"
+        return _run_target(client, target_type, node.id)
+    return client.post(URL, {"python_code_id": node.python_code_id, "variables": {}}, format="json")
+
+
+NAMED_BY = ["target", "python_code_id"]
+EDITOR = Permission.READ | Permission.UPDATE
+
+
+@pytest.mark.django_db
+class TestTriggerNodeCodeNeedsRun:
+    """A trigger node's code runs need flows:use on top of flows:update, however
+    the request names the code."""
+
+    @pytest.mark.parametrize("via_api_key", [False, True], ids=["session", "user-api-key"])
+    @pytest.mark.parametrize(
+        ("flows_permissions", "expected_status"),
+        [
+            pytest.param(EDITOR, 403, id="update-without-use"),
+            pytest.param(Permission.READ | Permission.USE, 403, id="use-without-update"),
+            pytest.param(EDITOR | Permission.USE, 200, id="update-and-use"),
+        ],
+    )
+    @pytest.mark.parametrize("named_by", NAMED_BY)
+    def test_webhook_trigger_code(
+        self,
+        custom_role_client,
+        acme,
+        acme_graph,
+        redis_client_mock,
+        named_by,
+        flows_permissions,
+        expected_status,
+        via_api_key,
+    ):
+        client = custom_role_client(
+            acme, {ResourceType.FLOWS: flows_permissions}, "code-caller", via_api_key=via_api_key
+        )
+        node = _plain_webhook_trigger_node(acme_graph)
+
+        response = _run_code_of(client, node, named_by)
+
+        assert response.status_code == expected_status, response.data
+        if expected_status == 403:
+            assert response.data["code"] == "permission_denied"
+            assert not redis_client_mock.publish.call_args_list
+            assert not PythonCodeResult.objects.exists()
+        else:
+            assert len(redis_client_mock.publish.call_args_list) == 1
+            assert PythonCodeResult.objects.get(
+                execution_id=response.data["execution_id"]
+            ).python_code_id == node.python_code_id
+
+    @pytest.mark.parametrize("named_by", NAMED_BY)
+    def test_python_node_code_needs_no_use(
+        self, custom_role_client, acme, acme_graph, redis_client_mock, named_by
+    ):
+        client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-python")
+        node = _python_node(acme_graph, use_storage=False)
+
+        response = _run_code_of(client, node, named_by)
+
+        assert response.status_code == 200, response.data
+
+    @pytest.mark.parametrize("named_by", NAMED_BY)
+    def test_superadmin_needs_no_role(
+        self, org_client_as, superadmin, acme, acme_graph, redis_client_mock, named_by
+    ):
+        node = _plain_webhook_trigger_node(acme_graph)
+
+        response = _run_code_of(org_client_as(superadmin, acme), node, named_by)
+
+        assert response.status_code == 200, response.data
+
+    def test_trigger_target_without_use_is_denied_before_the_lookup(
+        self, custom_role_client, acme, redis_client_mock
+    ):
+        """The slot type alone decides the USE gate, so the 403 says nothing about the id."""
+        client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-no-use")
+
+        response = _run_target(client, "webhook_trigger_node", 999_999)
+
+        assert response.status_code == 403, response.data
+        assert response.data["code"] == "permission_denied"
+
+    def test_foreign_trigger_code_by_python_code_id_stays_not_found_without_use(
+        self, custom_role_client, acme, beta_graph, redis_client_mock
+    ):
+        """By `python_code_id` the USE gate runs after the visibility check, so another
+        org's trigger code is the endpoint's usual "does not exist", not the USE 403."""
+        client = custom_role_client(acme, {ResourceType.FLOWS: EDITOR}, "code-id-xorg")
+        node = _plain_webhook_trigger_node(beta_graph)
+
+        response = _run_code_of(client, node, "python_code_id")
+
+        assert response.status_code == 400, response.data
+        assert "does not exist" in response.data["message"]
+        assert not redis_client_mock.publish.call_args_list

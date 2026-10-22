@@ -40,6 +40,22 @@ function texts(element: HTMLElement, selector: string): string[] {
 }
 
 describe('ExtractedChunksMessageComponent', () => {
+    it('shows tokens and cost when token usage is present', () => {
+        const element = render({ token_usage: { total_tokens: 1234, total_cost_usd: 0.5 } });
+        expect(texts(element, '.usage')).toEqual(['≈ 1,234 tokens · $0.50']);
+    });
+
+    it('shows sub-cent costs with 2 significant digits', () => {
+        const element = render({ token_usage: { total_tokens: 900, total_cost_usd: 0.00123 } });
+        expect(texts(element, '.usage')).toEqual(['≈ 900 tokens · $0.0012']);
+    });
+
+    it('shows tokens only when the cost is missing or zero', () => {
+        expect(texts(render({ token_usage: { total_tokens: 1234, total_cost_usd: null } }), '.usage')).toEqual([
+            '≈ 1,234 tokens',
+        ]);
+    });
+
     it('renders naive chunks with type label, limit, retrieved, threshold, chip and source', () => {
         const element = render({
             rag_type: 'naive',

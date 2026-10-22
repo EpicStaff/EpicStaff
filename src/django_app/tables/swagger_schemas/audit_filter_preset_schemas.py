@@ -6,7 +6,10 @@ from tables.serializers.model_serializers.audit_filter_preset_serializers import
     AuditFilterPresetCopySerializer,
 )
 from tables.serializers.serializers import BulkExportSerializer
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+    UNAUTHORIZED_401_RESPONSE,
+)
 
 _PRESET_EXAMPLE = {
     "id": 1,
@@ -59,7 +62,8 @@ AUDIT_FILTER_PRESET_EXPORT_ONE = {
         "Downloads a single preset as a `.json` attachment - the bare "
         "`{id, name, filter_body}` object, matching the single-item shape "
         "`import` accepts. Same convention as Agent/Crew/Graph export. "
-        "Visibility is not exported - an import always creates private presets. "
+        "Visibility is not exported - an import reuses a preset with the same "
+        "search or creates a private one. "
         "A colleague's private preset 404s."
     ),
     "responses": {
@@ -119,10 +123,13 @@ AUDIT_FILTER_PRESET_IMPORT = {
         'produced - either the single-object shape or a `{"presets": '
         "[...]}` batch. `org`/`created_by` always come from the caller's "
         "own request, regardless of anything the imported file itself "
-        "claims. Every preset is created private (My Presets) for the caller, "
-        "even if the file carries `is_shared`; a name the caller already uses for "
-        "one of their own presets (private or shared) is auto-numbered like `copy` "
-        "(`My Filter (2)`), never reused. Colleagues' names do not count. Same raw "
+        "claims. An entry with the same search (`filters`, `query`, `match_scope`) "
+        "as one of the caller's own presets or any shared preset in the org is "
+        "not created; that preset is reported under `reused`. Otherwise the "
+        "preset is created private (My Presets) for the caller, even if the file "
+        "carries `is_shared`; a name the caller already uses for one of their own "
+        "presets (private or shared) is auto-numbered like `copy` (`My Filter (2)`). "
+        "Colleagues' names do not count. Same raw "
         "`IDMapper.get_detailed_summary()` shape `GraphViewSet.partial_import` "
         "returns, keyed by entity type (`AuditFilterPreset`, since presets "
         "are always a single-entity-type import)."
@@ -172,5 +179,7 @@ AUDIT_FILTER_PRESET_IMPORT = {
             description="Invalid file, wrong main entity, or a validation error on an item (e.g. missing `name`)."
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+        # Refused when the file carries a flow with trigger nodes and the caller lacks Use.
+        403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
     },
 }

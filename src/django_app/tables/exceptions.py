@@ -42,6 +42,36 @@ class ParentSessionNotFoundError(CustomAPIExeption):
     default_code = "parent_session_not_found"
 
 
+class TriggerNodesRequireUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on flows would create or edit a trigger node.
+
+    Trigger nodes (webhook, Telegram, schedule) start flow runs by themselves, so
+    writing one is gated on the same permission as running the flow.
+    """
+
+    status_code = 403
+    default_detail = (
+        "Trigger nodes (webhook, Telegram, schedule) start flow runs, so creating or "
+        "editing them requires the Use permission on flows."
+    )
+    default_code = "trigger_nodes_require_use_permission"
+
+
+class FlowWithTriggerNodesRequiresUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on flows would copy, import or restore trigger nodes.
+
+    Distinct from TriggerNodesRequireUsePermissionError (editing one trigger node) so a
+    client can tell a refused copy/import/restore from a refused edit.
+    """
+
+    status_code = 403
+    default_detail = (
+        "This flow contains trigger nodes (webhook, Telegram, schedule). Copying, "
+        "importing or restoring it requires the Use permission on flows."
+    )
+    default_code = "flow_with_trigger_nodes_requires_use_permission"
+
+
 class CodeRunTargetNotFoundError(Exception):
     """Raised for a test-run target that is missing, deleted, owned by another org,
     or whose code slot is empty. The caller maps it to the same error as a missing
@@ -605,6 +635,23 @@ class LLMConfigInvalidError(CustomAPIExeption):
     default_code = "flow_assistant_llm_config_invalid"
 
 
+class UnsupportedReasoningEffortError(CustomAPIExeption):
+    """Raised when an LLM config's reasoning effort is one its model cannot take.
+
+    The response carries `errors=[{"field", "value", "reason"}]` for the client to mark
+    the field. Deliberately not a ValidationError: DRF's Serializer.run_validation
+    re-raises a ValidationError from validate() as a new one, which drops `errors`.
+    """
+
+    status_code = 400
+    default_detail = "The reasoning effort is not supported."
+    default_code = "unsupported_reasoning_effort"
+
+    def __init__(self, reasoning_effort: str, reason: str):
+        self.errors = [{"field": "reasoning_effort", "value": reasoning_effort, "reason": reason}]
+        super().__init__(detail=reason)
+
+
 class ToolExecutionError(CustomAPIExeption):
     """Raised when a tool callable raises during execution."""
 
@@ -690,6 +737,13 @@ class CdtExplainLLMConfigNotFoundError(CustomAPIExeption):
             "or has no usable model.",
             code=self.default_code,
         )
+
+
+class CdtExplainLLMConfigInvalidError(CustomAPIExeption):
+    """Raised when the explain endpoint's llm_config holds a value no client can send."""
+
+    status_code = 400
+    default_code = "cdt_explain_llm_config_invalid"
 
 
 class CdtExplainUpstreamError(CustomAPIExeption):

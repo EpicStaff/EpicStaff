@@ -17,6 +17,8 @@ export interface GetPythonCodeRequest {
     entrypoint: string;
     venv_id?: number | null;
     secrets?: DeclaredSecretRef[];
+    /** Seconds one run of the code may take. Absent in flow versions saved before code had a timeout. */
+    execution_timeout?: number;
 }
 
 export interface CreatePythonCodeRequest {
@@ -40,4 +42,6 @@ export interface CustomPythonCode {
     secret_ids?: number[];
     secret_names?: string[];
     venv_id?: number | null;
+    /** Seconds one run of the code may take; absent until set, then the backend applies its default. */
+    execution_timeout?: number;
 }

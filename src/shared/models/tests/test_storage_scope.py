@@ -16,13 +16,26 @@ CODE_TASK = {
     [(StorageCredentials(access_key="secret-access-key", secret_key="secret-key-value"), "present"), (None, "none")],
 )
 def test_log_summary_names_what_a_task_carries_but_never_a_secret(credentials, credentials_shown):
-    task = CodeTaskData(**CODE_TASK, storage_credentials=credentials, secrets={"DBPASS": "very-secret-password"})
+    task = CodeTaskData(
+        **CODE_TASK,
+        storage_credentials=credentials,
+        secrets={"DBPASS": "very-secret-password"},
+        execution_timeout=42,
+    )
 
     summary = task.log_summary()
 
     assert "secret-key-value" not in summary
     assert "very-secret-password" not in summary
-    for shown in ("exec-123", "test-venv", "main", "libraries=2", "secrets=1", f"storage_credentials={credentials_shown}"):
+    for shown in (
+        "exec-123",
+        "test-venv",
+        "main",
+        "libraries=2",
+        "execution_timeout=42",
+        "secrets=1",
+        f"storage_credentials={credentials_shown}",
+    ):
         assert shown in summary
 
 

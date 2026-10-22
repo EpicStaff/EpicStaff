@@ -15,7 +15,9 @@ import {
     workspaceIndexGuard,
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
+import { HIDE_SIDENAV_ON_PHONE } from './core/services/app-navigation-drawer.service';
 import { auditTrailEnabledGuard } from './features/audit/guards/audit-trail-enabled.guard';
+import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -23,6 +25,7 @@ import { MainLayoutComponent } from './layouts/main-layout/main-layout.component
 import { RoutedAuthShellComponent } from './layouts/routed-auth-shell/routed-auth-shell.component';
 import { PermissionsService } from './services/auth/permissions.service';
 import { LastVisitedTabService } from './services/last-visited-tab.service';
+import { executionTimeoutLimitsResolver } from './visual-programming/services/execution-timeout-limits.resolver';
 
 export const routes: Routes = [
     {
@@ -192,6 +195,7 @@ export const routes: Routes = [
                             ),
                         canActivate: [permissionGuard],
                         data: { permission: [ResourceCode.Flows, ActionCode.Read] },
+                        resolve: { executionTimeoutLimits: executionTimeoutLimitsResolver },
                         canDeactivate: [UnsavedChangesGuard],
                     },
                     {
@@ -271,6 +275,39 @@ export const routes: Routes = [
                         loadComponent: () =>
                             import('./pages/chats-page/chats-page.component').then((m) => m.ChatsPageComponent),
                     },
+                    {
+                        // Not under `/chat`: nginx sends every `/chat/<anything>` to the chat service.
+                        path: 'chat-bindings',
+                        canActivate: [chatEnabledGuard, permissionGuard],
+                        // On phones the chat area takes the whole width; its desk drawer opens the app navigation.
+                        data: { permission: [ResourceCode.Chats, ActionCode.Read], [HIDE_SIDENAV_ON_PHONE]: true },
+                        // The desk rail lives here, so moving between the pages below keeps it (and its focus).
+                        loadComponent: () =>
+                            import('./features/chat/pages/desks-shell/desks-shell.component').then(
+                                (m) => m.DesksShellComponent
+                            ),
+                        children: [
+                            // The desk rail lists every desk, so the bare path opens All desks.
+                            { path: '', redirectTo: 'all', pathMatch: 'full' },
+                            {
+                                // The inbox across every binding: the workspace without a binding.
+                                path: 'all',
+                                loadComponent: () =>
+                                    import('./features/chat/pages/chat-page/chat-page.component').then(
+                                        (m) => m.ChatPageComponent
+                                    ),
+                            },
+                            {
+                                path: ':bindingId',
+                                loadComponent: () =>
+                                    import('./features/chat/pages/chat-page/chat-page.component').then(
+                                        (m) => m.ChatPageComponent
+                                    ),
+                            },
+                        ],
+                    },
+                    // The page lived here before `/chat-bindings`; `/chat` itself still reaches the SPA.
+                    { path: 'chat', redirectTo: 'chat-bindings', pathMatch: 'full' },
                     {
                         path: 'sessions',
                         loadComponent: () =>

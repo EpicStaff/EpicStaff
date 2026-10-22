@@ -16,10 +16,12 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode, WebhookTriggerModel } from '@shared/models';
 import { WebhookTriggerService } from '@shared/services';
+import { finalize } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
+import { WebhookTriggerEditPermissionService } from '../../services/webhook-trigger-edit-permission.service';
 
 @Component({
     selector: 'app-webhook-triggers-section',
@@ -42,11 +44,14 @@ export class WebhookTriggersSectionComponent implements OnInit {
     private confirmationDialogService = inject(ConfirmationDialogService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private toastService = inject(ToastService);
+    private readonly editPermission = inject(WebhookTriggerEditPermissionService);
     private destroyRef = inject(DestroyRef);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
 
     status = signal<LoadingState>(LoadingState.IDLE);
     triggers = signal<WebhookTriggerModel[]>([]);
+    /** Set while a pressed Edit checks whether the trigger may be edited, so repeated presses start no second check. */
+    protected readonly isEditCheckPending = signal(false);
 
     displayedTriggers = computed(() => this.triggers().map((t) => ({ ...t, name: this.getTriggerName(t) })));
 
@@ -102,14 +107,30 @@ export class WebhookTriggersSectionComponent implements OnInit {
     }
 
     onEdit(trigger: WebhookTriggerModel): void {
-        this.openDialog(trigger);
+        if (this.isEditCheckPending()) return;
+        if (trigger.id == null) {
+            this.openDialog(trigger);
+            return;
+        }
+        this.isEditCheckPending.set(true);
+        this.editPermission
+            .decideEdit(trigger.id)
+            .pipe(
+                finalize(() => this.isEditCheckPending.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((decision) => {
+                if (decision === 'edit') this.openDialog(trigger);
+                else if (decision === 'view') this.openDialog(trigger, true);
+                else if (decision === 'gone') this.refresh();
+            });
     }
 
-    private openDialog(trigger: WebhookTriggerModel | null): void {
+    private openDialog(trigger: WebhookTriggerModel | null, readonly = false): void {
         this.dialog
             .open<WebhookTriggerModel | null, WebhookTriggerDialogData>(WebhookTriggerDialogComponent, {
                 disableClose: true,
-                data: { trigger },
+                data: { trigger, readonly },
             })
             .closed.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((saved) => {

@@ -2,7 +2,9 @@ import sys
 import traceback
 from types import TracebackType
 
+import settings
 from loguru import logger
+from src.shared.bench_log import add_bench_sink, without_bench
 
 logger.remove()
 # `diagnose=False` matters: with loguru's default, a `logger.exception` traceback prints
@@ -12,11 +14,14 @@ logger.remove()
 logger.add(
     sys.stdout,
     format="{time} {level} {message}",
-    level="INFO",
+    level=settings.LOG_LEVEL,
+    filter=without_bench(),
     diagnose=False,
     backtrace=False,
 )
-# logger.add("logs/file.log", rotation="1 MB", compression="zip")
+# The bench sink renders checkpoint records through `bench_json` and never an
+# exception, so it needs no such guard.
+add_bench_sink(sys.stdout, settings.LOG_LEVEL)
 
 
 def log_exception(

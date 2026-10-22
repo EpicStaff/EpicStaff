@@ -7,6 +7,8 @@ export interface ComputationConfig {
     output_variable_path?: string | null;
     secret_ids?: number[];
     secret_names?: string[];
+    /** Seconds one run of the code may take; absent until set, then the backend applies its default. */
+    execution_timeout?: number;
 }
 
 export interface ClassificationDecisionTableData {

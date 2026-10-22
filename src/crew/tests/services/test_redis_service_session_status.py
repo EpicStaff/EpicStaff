@@ -21,9 +21,6 @@ def redis_service_with_fake_redis(fake_server):
     redis_service.aioredis_client = fakeredis.FakeAsyncRedis(
         server=fake_server, decode_responses=True
     )
-    redis_service.sync_redis_client = fakeredis.FakeRedis(
-        server=fake_server, decode_responses=True
-    )
     yield redis_service
     SingletonMeta._instances.pop(RedisService, None)
 
@@ -67,22 +64,6 @@ async def test_async_status_is_published_on_the_sessions_own_channel(
     }
 
 
-def test_sync_status_is_published_on_the_sessions_own_channel(
-    redis_service_with_fake_redis, subscriber
-):
-    subscriber.subscribe("session:update:7:status", "session:update:8:status")
-
-    redis_service_with_fake_redis.update_session_status(session_id=7, status="run")
-
-    messages = _published(subscriber)
-    assert [message["channel"] for message in messages] == ["session:update:7:status"]
-    assert json.loads(messages[0]["data"]) == {
-        "session_id": 7,
-        "status": "run",
-        "status_data": {},
-    }
-
-
 @pytest.mark.asyncio
 async def test_another_sessions_subscriber_receives_nothing(
     redis_service_with_fake_redis, subscriber
@@ -90,6 +71,5 @@ async def test_another_sessions_subscriber_receives_nothing(
     subscriber.subscribe("session:update:8:status")
 
     await redis_service_with_fake_redis.aupdate_session_status(session_id=7, status="end")
-    redis_service_with_fake_redis.update_session_status(session_id=7, status="end")
 
     assert _published(subscriber) == []

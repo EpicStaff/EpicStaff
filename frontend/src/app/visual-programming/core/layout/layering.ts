@@ -1,4 +1,4 @@
-import { byId, LayoutGraph } from './layout-graph';
+import { byId, edgesInComponent, LayoutGraph } from './layout-graph';
 
 /**
  * Layers of one component: longest path from the sources on the DAG left when the
@@ -10,11 +10,9 @@ import { byId, LayoutGraph } from './layout-graph';
  * Upgrade path: network simplex (Gansner) if long spans stay common.
  */
 export function assignLayers(graph: LayoutGraph, componentIds: string[], backEdges: Set<string>): Map<string, number> {
-    const members = new Set(componentIds);
     const successors = new Map<string, string[]>(componentIds.map((id) => [id, []]));
     const inDegree = new Map<string, number>(componentIds.map((id) => [id, 0]));
-    for (const edge of graph.edges) {
-        if (!members.has(edge.source) || !members.has(edge.target)) continue;
+    for (const edge of edgesInComponent(graph.edges, new Set(componentIds))) {
         const [from, to] = backEdges.has(edge.id) ? [edge.target, edge.source] : [edge.source, edge.target];
         successors.get(from)!.push(to);
         inDegree.set(to, inDegree.get(to)! + 1);

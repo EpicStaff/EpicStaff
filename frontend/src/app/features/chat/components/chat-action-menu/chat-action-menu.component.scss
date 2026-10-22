@@ -1,0 +1,54 @@
+@use '../../../../../styles/row-more-menu';
+@use '../../../../../styles/breakpoints' as bp;
+@use '../../../../../styles/touch';
+
+:host {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.chat-action-menu__trigger {
+    @include row-more-menu.trigger-button;
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+    }
+}
+
+.chat-action-menu {
+    @include row-more-menu.panel;
+    // Labels such as "My name: <alias>" grow it; the screen's edge stops it.
+    width: auto;
+    min-width: 170px;
+    max-width: min(280px, calc(100vw - 16px));
+
+    &__item {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &:focus-visible {
+            outline: 1px solid var(--accent-color);
+            outline-offset: -1px;
+        }
+    }
+}
+
+// A finger, not a pointer.
+@include bp.phone {
+    .chat-action-menu__trigger {
+        width: touch.$target-size;
+        height: touch.$target-size;
+    }
+
+    .chat-action-menu {
+        min-width: 220px;
+    }
+
+    .chat-action-menu__item {
+        min-height: touch.$target-size;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
+}

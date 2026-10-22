@@ -4,6 +4,7 @@ from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
+    "GetIndexEstimate",
     "GetMetrics",
     "RemoveRag",
     "RunIndex",
@@ -21,8 +22,12 @@ class Command:
 class RunIndex(Command):
     rag_id: int
     document_ids: frozenset[int]
-    embedding_api_key: str
-    llm_api_key: str | None = field(default=None)
+    # Provider keys stay out of repr, so logging a command never writes them in cleartext.
+    embedding_api_key: str = field(repr=False)
+    llm_api_key: str | None = field(default=None, repr=False)
+    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True)
@@ -30,8 +35,12 @@ class RunSearch(Command):
     rag_id: int
     query: str
     search_config: SearchConfig
-    embedding_api_key: str
-    llm_api_key: str | None = field(default=None)
+    # Provider keys stay out of repr, so logging a command never writes them in cleartext.
+    embedding_api_key: str = field(repr=False)
+    llm_api_key: str | None = field(default=None, repr=False)
+    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True)
@@ -49,3 +58,11 @@ class RemoveRag(Command):
 @dataclass(frozen=True)
 class GetMetrics(Command):
     rag_id: int
+
+
+@dataclass(frozen=True)
+class GetIndexEstimate(Command):
+    rag_id: int
+    document_ids: frozenset[int]
+    # Chunking settings the user has not saved yet, by document id; they replace the stored ones.
+    chunking_overrides: dict[int, ChunkingConfig] = field(default_factory=dict)

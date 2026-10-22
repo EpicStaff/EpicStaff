@@ -22,14 +22,17 @@ from src.shared.models.knowledge_new import (
     SearchConfig,
     SearchRequest,
     SearchResponse,
+    SearchUsage,
 )
 
 __all__ = [
     "CancelRequest",
     "ChunkingConfig",
     "Document",
+    "Embedding",
     "EmbeddingConfig",
     "FoundChunk",
+    "GraphPricingConfig",
     "GraphSearchConfig",
     "IndexRequest",
     "IndexedChunk",
@@ -41,6 +44,7 @@ __all__ = [
     "SearchConfig",
     "SearchRequest",
     "SearchResponse",
+    "SearchUsage",
 ]
 
 
@@ -134,4 +138,23 @@ class EmbeddingConfig(ValueObject):
 
     provider: EmbedderProviderEnum
     model: str
+    base_url: str | None = None
+    extra_headers: dict[str, str] = Field(default_factory=dict, repr=False)
     extra: dict = Field(default_factory=dict)
+
+
+class Embedding(ValueObject):
+    """An embedding vector with the provider-reported tokens the call consumed."""
+
+    vector: list[float]
+    tokens: int
+
+
+class GraphPricingConfig(ValueObject):
+    """The settings of a GraphRAG needed to price its actual LLM and embedding usage."""
+
+    embedding: EmbeddingConfig
+    llm_provider: str
+    llm_model: str
+    input_cost_per_token: float | None = None
+    output_cost_per_token: float | None = None

@@ -16,11 +16,18 @@ def whole_seconds_at_least_one(variable: str, seconds: float | None) -> int:
     return int(seconds)
 
 
+def positive_seconds(variable: str, seconds: float | None) -> float:
+    """Validate a duration that must be above zero (``None`` is the ``none`` env value)."""
+    if seconds is None or seconds <= 0:
+        raise ValueError(f"{variable} must be a duration above 0s, got {seconds!r}")
+    return seconds
+
+
 env = Env()
 if not env.bool("RUN_IN_DOCKER", False):
     env.read_env(BASE_DIR / "../.env")
 
-LOG_LEVEL = env.str("AGENT_LOG_LEVEL")
+LOG_LEVEL = env.log_level("AGENT_LOG_LEVEL", allowed=env.LOG_LEVELS_WITH_BENCH)
 
 REDIS_HOST = env.str("REDIS_HOST")
 REDIS_PORT = env.int("REDIS_PORT")
@@ -39,6 +46,17 @@ if AGENT_MAX_CONCURRENT_RUNS < 1:
     raise ValueError(
         f"AGENT_MAX_CONCURRENT_RUNS must be at least 1, got {AGENT_MAX_CONCURRENT_RUNS}"
     )
+AGENT_REDIS_READ_RETRY_INITIAL_DELAY = positive_seconds(
+    "AGENT_REDIS_READ_RETRY_INITIAL_DELAY", env.time("AGENT_REDIS_READ_RETRY_INITIAL_DELAY")
+)
+AGENT_REDIS_READ_RETRY_MAX_DELAY = positive_seconds(
+    "AGENT_REDIS_READ_RETRY_MAX_DELAY", env.time("AGENT_REDIS_READ_RETRY_MAX_DELAY")
+)
+if AGENT_REDIS_READ_RETRY_MAX_DELAY < AGENT_REDIS_READ_RETRY_INITIAL_DELAY:
+    raise ValueError(
+        "AGENT_REDIS_READ_RETRY_MAX_DELAY must be at least AGENT_REDIS_READ_RETRY_INITIAL_DELAY, "
+        f"got {AGENT_REDIS_READ_RETRY_MAX_DELAY} < {AGENT_REDIS_READ_RETRY_INITIAL_DELAY}"
+    )
 
 AGENT_DEFAULT_MAX_RETRIES = env.int("AGENT_DEFAULT_MAX_RETRIES")
 AGENT_DEFAULT_MAX_ITER = env.int("AGENT_DEFAULT_MAX_ITER")
@@ -53,6 +71,9 @@ AGENT_SANDBOX_TIMEOUT = env.time("AGENT_SANDBOX_TIMEOUT")
 
 AGENT_DROP_UNSUPPORTED_LLM_PARAMS = env.bool("AGENT_DROP_UNSUPPORTED_LLM_PARAMS")
 AGENT_CONTEXT_WARNING_RATIO = env.float("AGENT_CONTEXT_WARNING_RATIO")
+AGENT_MCP_DESCRIBE_CACHE_TTL = positive_seconds(
+    "AGENT_MCP_DESCRIBE_CACHE_TTL", env.time("AGENT_MCP_DESCRIBE_CACHE_TTL")
+)
 
 KNOWLEDGE_SEARCH_REQUEST_CHANNEL = env.str("KNOWLEDGE_SEARCH_REQUEST_CHANNEL")
 KNOWLEDGE_SEARCH_RESPONSE_CHANNEL = env.str("KNOWLEDGE_SEARCH_RESPONSE_CHANNEL")

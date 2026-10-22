@@ -214,3 +214,17 @@ async def test_the_result_subscription_is_closed_on_every_exit(sandbox_intake, s
 
     [subscription] = redis_service.subscriptions
     assert subscription.closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("execution_timeout", [42, None], ids=["tool-timeout", "sandbox-default"])
+async def test_submission_carries_the_tool_execution_timeout(
+    executor, sandbox_intake, execution_timeout
+):
+    """The code's own timeout reaches the sandbox as the intake's `timeout`; None
+    lets the sandbox apply its default."""
+    python_code_data = build_python_code_data(execution_timeout=execution_timeout)
+
+    await executor.run_code(python_code_data, inputs={})
+
+    assert submitted_task(sandbox_intake)["timeout"] == execution_timeout

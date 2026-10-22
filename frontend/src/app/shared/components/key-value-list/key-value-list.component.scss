@@ -78,34 +78,6 @@
         line-height: 1.4;
     }
 
-    &__add-btn {
-        flex-shrink: 0;
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: none;
-        border-radius: 0.5rem;
-        cursor: pointer;
-        background-color: var(--accent-color, #685fff);
-        color: var(--white);
-        transition: opacity 0.2s ease;
-
-        i {
-            font-size: 1rem;
-        }
-
-        &:hover:not(:disabled) {
-            opacity: 0.85;
-        }
-
-        &:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-    }
-
     &__remove-btn {
         flex-shrink: 0;
         width: 40px;
@@ -134,6 +106,10 @@
         &:disabled {
             opacity: 0.4;
             cursor: not-allowed;
+        }
+
+        &--hidden {
+            visibility: hidden;
         }
     }
 }

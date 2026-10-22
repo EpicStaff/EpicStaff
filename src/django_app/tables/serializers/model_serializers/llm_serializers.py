@@ -24,7 +24,11 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMModelTagSerializer,
 )
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
+from tables.utils.litellm_model_info import model_reasoning_support, validate_reasoning_effort
+from tables.validators.extra_headers_validator import validate_extra_headers
+from tables.validators.token_price_validator import validate_token_prices_set_together
 
+from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
 from ..utils.mixins import TagHandlingMixin
 from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
@@ -103,6 +107,7 @@ class RealtimeTranscriptionConfigSerializer(
 
 
 class LLMConfigSerializer(
+    LLMConfigDataFieldsValidationMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     SecretReferenceGuardMixin,
@@ -110,6 +115,7 @@ class LLMConfigSerializer(
     serializers.ModelSerializer,
 ):
     secret_reference_fields = ("api_key_secret_id",)
+    secret_marker_fields = ("extra_headers",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -136,6 +142,35 @@ class LLMConfigSerializer(
         model = LLMConfig
         exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by", "created_at"]
+        extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        # A PATCH may send one price; the other one is then the stored value.
+        validate_token_prices_set_together(
+            attrs.get("input_cost_per_token", getattr(self.instance, "input_cost_per_token", None)),
+            attrs.get(
+                "output_cost_per_token", getattr(self.instance, "output_cost_per_token", None)
+            ),
+        )
+        return self._validate_reasoning_effort(attrs)
+
+    def _validate_reasoning_effort(self, attrs):
+        """Reject a reasoning effort the effective model cannot take.
+
+        Checked only when the request touches `model` or `reasoning_effort`, so
+        editing another field of a config never fails because litellm's model map
+        changed since the config was saved.
+        """
+        if "model" not in attrs and "reasoning_effort" not in attrs:
+            return attrs
+
+        model = attrs.get("model", self.instance.model if self.instance else None)
+        reasoning_effort = attrs.get(
+            "reasoning_effort", self.instance.reasoning_effort if self.instance else None
+        )
+        validate_reasoning_effort(model, reasoning_effort)
+        return attrs
 
 
 class LLMModelSerializer(
@@ -143,6 +178,8 @@ class LLMModelSerializer(
 ):
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
+    supports_reasoning = serializers.SerializerMethodField()
+    reasoning_efforts = serializers.SerializerMethodField()
 
     class Meta:
         model = LLMModel
@@ -161,6 +198,8 @@ class LLMModelSerializer(
             "tags",
             "org",
             "created_by",
+            "supports_reasoning",
+            "reasoning_efforts",
         ]
         read_only_fields = ["org", "created_by", "is_custom", "predefined"]
         validators = [
@@ -170,3 +209,9 @@ class LLMModelSerializer(
                 message="A model with this name already exists for this provider.",
             )
         ]
+
+    def get_supports_reasoning(self, model: LLMModel) -> bool:
+        return model_reasoning_support(model).supports_reasoning
+
+    def get_reasoning_efforts(self, model: LLMModel) -> list[str]:
+        return model_reasoning_support(model).ordered_efforts()

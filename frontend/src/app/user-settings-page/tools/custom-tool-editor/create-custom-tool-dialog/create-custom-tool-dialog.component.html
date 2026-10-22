@@ -334,7 +334,15 @@
                     }
                 </div>
 
-                <div class="form-section"></div>
+                @if (executionTimeout(); as executionTimeoutField) {
+                    <div class="form-section">
+                        <app-execution-timeout-field
+                            [field]="executionTimeoutField"
+                            [readonly]="isBuiltIn()"
+                            [hint]="executionTimeoutHint"
+                        />
+                    </div>
+                }
             </section>
 
             @if (activeEditor() !== ActiveEditor.None) {

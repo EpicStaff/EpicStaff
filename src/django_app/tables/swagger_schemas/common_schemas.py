@@ -1,6 +1,11 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
+from tables.exceptions import (
+    FlowWithTriggerNodesRequiresUsePermissionError,
+    TriggerNodesRequireUsePermissionError,
+)
+
 UNAUTHORIZED_401_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.STR,
     description="Request is not authenticated — credentials are missing or invalid.",
@@ -14,6 +19,48 @@ UNAUTHORIZED_401_RESPONSE = OpenApiResponse(
             },
             response_only=True,
             status_codes=["401"],
+        ),
+    ],
+)
+
+TRIGGER_NODES_REQUIRE_USE_403_RESPONSE = OpenApiResponse(
+    response=OpenApiTypes.OBJECT,
+    description=(
+        "The request would create or edit a trigger node (webhook, Telegram, schedule) "
+        "and the caller lacks USE on flows; nothing was written. Also returned as the "
+        "standard `permission_denied` 403 when the caller lacks the endpoint's own permission."
+    ),
+    examples=[
+        OpenApiExample(
+            "Trigger nodes require Use",
+            value={
+                "status_code": 403,
+                "code": TriggerNodesRequireUsePermissionError.default_code,
+                "message": TriggerNodesRequireUsePermissionError.default_detail,
+            },
+            response_only=True,
+            status_codes=["403"],
+        ),
+    ],
+)
+
+FLOW_WITH_TRIGGER_NODES_403_RESPONSE = OpenApiResponse(
+    response=OpenApiTypes.OBJECT,
+    description=(
+        "The flow, file or snapshot holds a trigger node (webhook, Telegram, schedule) and "
+        "the caller lacks USE on flows; nothing was written. Also returned as the standard "
+        "`permission_denied` 403 when the caller lacks the endpoint's own permission."
+    ),
+    examples=[
+        OpenApiExample(
+            "Flow with trigger nodes requires Use",
+            value={
+                "status_code": 403,
+                "code": FlowWithTriggerNodesRequiresUsePermissionError.default_code,
+                "message": FlowWithTriggerNodesRequiresUsePermissionError.default_detail,
+            },
+            response_only=True,
+            status_codes=["403"],
         ),
     ],
 )

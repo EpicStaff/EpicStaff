@@ -9,6 +9,8 @@ fail to start.
 from functools import reduce
 from operator import or_
 
+from django.conf import settings
+
 from rbac.models.enums import Permission, ResourceType
 
 # Action metadata: ordered as the FE renders the matrix columns. View leads —
@@ -71,7 +73,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Flows",
         "group": "workspace",
         "description": "Workflow definitions and their nodes",
-        "applicable_actions": ["create", "read", "update", "delete", "export"],
+        "applicable_actions": ["create", "read", "update", "delete", "export", "use"],
         "platform_actions": [],
     },
     {
@@ -176,6 +178,16 @@ RESOURCE_TYPE_METADATA = [
         "group": "workspace",
         "description": "Python virtual environments that back code nodes and python tools",
         "applicable_actions": ["create", "read", "update", "delete"],
+    },
+    {
+        "code": ResourceType.CHATS.value,
+        "label": "Conversations",
+        "group": "workspace",
+        "description": "Flows exposed as chats, their conversations and the operator inbox",
+        # read: inbox and bindings. use: support work (claim, release, reply, test
+        # conversation). create/update/delete: bindings. Enforced by the chat service
+        # through the effective-permissions endpoint, not by any Django view.
+        "applicable_actions": ["create", "read", "update", "delete", "use"],
         "platform_actions": [],
     },
 ]
@@ -216,6 +228,7 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "update": (("flows", "read"), ("projects", "read"), ("llm_configs", "read")),
         "delete": (("flows", "read"),),
         "export": (("flows", "read"),),
+        "use": (("flows", "read"),),
     },
     ResourceType.AGENTS.value: {
         "read": (("surfaces", "read"), ("llm_configs", "read")),
@@ -305,13 +318,20 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "update": (("key_value_tables", "read"),),
         "delete": (("key_value_tables", "read"),),
     },
+    ResourceType.CHATS.value: {
+        # No flows:read for read: the inbox shows a run's id as text without it.
+        "use": (("chats", "read"),),
+        "create": (("chats", "read"), ("flows", "read")),
+        "update": (("chats", "read"), ("flows", "read")),
+        "delete": (("chats", "read"),),
+    },
 }
 
 
 _ACTION_BIT_BY_CODE = {entry["code"]: entry["bit"] for entry in ACTION_METADATA}
 
 # The bits a role can actually be granted, **per resource**. Grantability is a
-# per-resource property -- `use` is an action of `secrets` and of nothing else --
+# per-resource property -- `use` is an action of `secrets`, `flows` and `chats` only --
 # so a global union over ACTION_METADATA is the wrong granularity: enabling an
 # action for one resource would admit its bit on every other resource, where it
 # is neither applicable nor enforced. A code that is not a rendered action
@@ -380,11 +400,15 @@ def build_catalog() -> dict:
     """The full `GET /api/permissions/catalog/` payload.
 
     Composes recommendations into fresh per-resource dicts; RESOURCE_TYPE_METADATA
-    is module-level state read elsewhere and must not be mutated."""
+    is module-level state read elsewhere and must not be mutated. The `chats` row is
+    left out while CHAT_ENABLED is false so the matrix shows nothing chat-related;
+    the seeder still validates built-in grants against the full metadata."""
+    hidden = set() if settings.CHAT_ENABLED else {ResourceType.CHATS.value}
     return {
         "actions": ACTION_METADATA,
         "resource_types": [
             {**entry, "recommended_with": recommended_with_for(entry["code"])}
             for entry in RESOURCE_TYPE_METADATA
+            if entry["code"] not in hidden
         ],
     }

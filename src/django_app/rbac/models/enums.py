@@ -22,6 +22,7 @@ class ResourceType(models.TextChoices):
     WEBHOOKS = "webhooks", "Webhooks"
     KEY_VALUE_TABLES = "key_value_tables", "Key-Value Tables"
     VENVS = "venvs", "Venvs"
+    CHATS = "chats", "Conversations"
 
 
 class Permission(IntFlag):

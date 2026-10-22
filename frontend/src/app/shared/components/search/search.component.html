@@ -10,11 +10,13 @@
     />
 
     <input
+        #searchInput
         type="text"
         class="search__input"
         [ngClass]="'search__input--' + mod()"
         [class.search__input--with-clear]="!!searchTerm()"
         [placeholder]="placeholder()"
+        [attr.aria-label]="ariaLabel()"
         [ngModel]="searchTerm()"
         (ngModelChange)="onSearchTermChange($event)"
     />

@@ -13,6 +13,22 @@ class UnsupportedLLMProviderError(Exception):
         super().__init__(f"Unsupported LLM provider: '{provider_name}'")
 
 
+class InvalidLLMConfigError(Exception):
+    """Raised when a stored LLM config holds a value no client can send.
+
+    Saving through the API rejects these shapes; this covers rows written before
+    that validation existed.
+    """
+
+    def __init__(self, llm_config_id: int, field_names: list[str]) -> None:
+        self.llm_config_id = llm_config_id
+        self.field_names = field_names
+        super().__init__(
+            f"LLM config {llm_config_id} has an invalid value in: {', '.join(field_names)}. "
+            "Edit the config to fix it."
+        )
+
+
 @dataclass
 class ToolSpec:
     """Provider-agnostic tool declaration."""

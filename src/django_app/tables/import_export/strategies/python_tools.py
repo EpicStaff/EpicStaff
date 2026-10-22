@@ -145,9 +145,9 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return python_code_tool
 
     def find_existing(self, data, id_mapper, org_id: int | None = None):
-        # SQL narrows on stored columns: venv, entrypoint and global_kwargs exactly
-        # (create stores them so, and jsonb equality keeps true apart from 1).
-        # Only the code itself is compared in Python.
+        # SQL narrows on stored columns: venv, entrypoint, global_kwargs and
+        # execution_timeout exactly (create stores them so, and jsonb equality
+        # keeps true apart from 1). Only the code itself is compared in Python.
         filters, null_filters = create_filters(
             compared_values(PythonCodeTool, self.serializer_class, data, COMPARED_FIELDS)
         )
@@ -164,6 +164,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
                 python_code__venv_id=code_key[1],
                 python_code__entrypoint=code_key[2],
                 python_code__global_kwargs=python_code["global_kwargs"],
+                python_code__execution_timeout=python_code["execution_timeout"],
             )
             .select_related("python_code"),
             import_values(self.serializer_class, data, ("name",)).get("name"),
@@ -190,6 +191,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return {
             "global_kwargs": PythonCode._meta.get_field("global_kwargs").get_default(),
             "venv_id": None,
+            "execution_timeout": PythonCode._meta.get_field("execution_timeout").get_default(),
             **serializer.validated_data,
         }
 

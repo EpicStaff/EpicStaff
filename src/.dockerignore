@@ -11,6 +11,7 @@
 # manager/infrastructure/database/venvs)
 ENV
 */.venv
+*/.env
 **/venv
 **/*venv
 sandbox_new/venvs

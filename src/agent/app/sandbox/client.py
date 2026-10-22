@@ -8,6 +8,7 @@ import redis.asyncio as aioredis
 from loguru import logger
 
 from app.sandbox.http_client import AsyncClient
+from shared.bench_log import BENCH_LEVEL
 from shared.models.tools import CodeResultData, CodeTaskData
 
 
@@ -119,8 +120,15 @@ class SandboxClient:
                         if task.storage_credentials is not None
                         else None
                     ),
-                    "timeout": None,
+                    "timeout": task.execution_timeout,
                 },
+            )
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="sandbox_dispatched",
+                session_id=task.session_id,
+                execution_id=execution_id,
             )
 
             if timeout is not None:

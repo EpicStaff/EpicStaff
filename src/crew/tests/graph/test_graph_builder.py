@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 from fakeredis import FakeAsyncRedis
 from dotdict import DotDict
 from clients.key_value import KeyValueClient
@@ -83,7 +83,7 @@ def mock_services():
         password="redis_password",
     )
     # Decision table nodes write their messages straight to Redis; keep unit tests off a live server.
-    redis_service.add_graph_message = Mock()
+    redis_service.aadd_graph_message = AsyncMock()
     return {
         "redis_service": redis_service,
         "python_code_executor_service": FakePythonCodeExecutorService(),
@@ -228,15 +228,44 @@ NEVER_MATCHING_TABLE = DecisionTableNodeData(
 
 
 @pytest.mark.parametrize(
-    ("variables", "decision_table", "expected_end_output"),
+    ("variables", "decision_table", "expected_end_output", "expected_message_types"),
     [
-        pytest.param({"test1": 1, "test2": [2, {"test3": "secret"}]}, None, "end", id="matching-row-routes"),
-        pytest.param({"test1": 4, "test2": [999, {"test3": "secret"}]}, None, "ERROR HANDELED", id="failing-condition-routes-to-error-node"),
-        pytest.param({"test1": 1}, NEVER_MATCHING_TABLE, "end", id="no-match-routes-to-default"),
+        pytest.param(
+            {"test1": 1, "test2": [2, {"test3": "secret"}]},
+            None,
+            "end",
+            [
+                "start",
+                "condition_group",
+                "condition_group",
+                "condition_group_manipulation",
+                "finish",
+            ],
+            id="matching-row-routes",
+        ),
+        pytest.param(
+            {"test1": 4, "test2": [999, {"test3": "secret"}]},
+            None,
+            "ERROR HANDELED",
+            ["start", "condition_group", "condition_group", "error", "finish"],
+            id="failing-condition-routes-to-error-node",
+        ),
+        pytest.param(
+            {"test1": 1},
+            NEVER_MATCHING_TABLE,
+            "end",
+            ["start", "condition_group", "finish"],
+            id="no-match-routes-to-default",
+        ),
     ],
 )
 def test_compiled_graph_runs_the_flow_and_routes_through_the_decision_table(
-    mock_services, mock_session_data, variables, decision_table, expected_end_output
+    mock_services,
+    mock_session_data,
+    variables,
+    decision_table,
+    expected_end_output,
+    expected_message_types,
 ):
     if decision_table is not None:
         mock_session_data.graph.decision_table_node_list = [decision_table]
@@ -244,6 +273,12 @@ def test_compiled_graph_runs_the_flow_and_routes_through_the_decision_table(
     compiled_graph = _builder(mock_services).compile_from_schema(mock_session_data)
 
     assert _final_variables(compiled_graph, variables)["end_output"] == expected_end_output
+    # Subgraph messages bypass the parent stream; the graph message stream is their only way out.
+    published_message_types = [
+        json.loads(awaited.args[1])["message_data"]["message_type"]
+        for awaited in mock_services["redis_service"].aadd_graph_message.await_args_list
+    ]
+    assert published_message_types == expected_message_types
 
 
 def _task_node_session_data(mock_llm_data) -> SessionData:
@@ -647,3 +682,36 @@ def test_compile_refuses_a_node_whose_service_was_not_provided(
 
     with pytest.raises(RuntimeError, match=missing):
         _builder(mock_services).compile_from_schema(mock_session_data)
+
+
+def test_compile_passes_knowledge_node_extra_headers(
+    mock_services, mock_session_data, monkeypatch
+):
+    from services.graph import graph_builder
+    from src.shared.models import KnowledgeNodeData
+
+    created_nodes = []
+
+    class RecordingKnowledgeNode(graph_builder.KnowledgeNode):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            created_nodes.append(self)
+
+    monkeypatch.setattr(graph_builder, "KnowledgeNode", RecordingKnowledgeNode)
+    mock_session_data.graph.knowledge_node_list = [
+        KnowledgeNodeData(
+            node_name="knowledge_1",
+            collection_id=5,
+            rag_type_id="naive:2",
+            query="q",
+            input_map={},
+            embedder_extra_headers={"X-Emb": "emb-resolved"},
+            llm_extra_headers={"X-Llm": "llm-resolved"},
+        )
+    ]
+
+    _builder(mock_services, session_id=mock_session_data.id).compile_from_schema(mock_session_data)
+
+    assert len(created_nodes) == 1
+    assert created_nodes[0].embedder_extra_headers == {"X-Emb": "emb-resolved"}
+    assert created_nodes[0].llm_extra_headers == {"X-Llm": "llm-resolved"}

@@ -26,6 +26,8 @@ import {
     ChipsInputComponent,
     ConfirmationDialogService,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
     HelpTooltipComponent,
     JsonEditorComponent,
     JsonError,
@@ -36,6 +38,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { EnterSubmitDirective, HasPermissionDirective } from '@shared/directives';
+import { executionTimeoutMinimumRule } from '@shared/form-validators';
 import {
     ActionCode,
     CreatePythonCodeToolPayload,
@@ -44,7 +47,7 @@ import {
     toSecretIds,
     toSecretNames,
 } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
@@ -112,6 +115,8 @@ const DEFAULT_PYTHON_CODE = `# Replace this comment with your implementation.
 const BUILT_IN_SAVE_TOOLTIP =
     'Built-in tools are read-only. Create an editable copy to make changes; the original stays untouched.';
 
+const EXECUTION_TIMEOUT_HINT = 'Agents stop waiting after their own tool timeout.';
+
 const VARIABLES_SCHEMA_TOOLTIP =
     'Variables must be a JSON array. Each item defines one parameter: name, type, description, input_type, required, and default_value. input_type can be agent_input (agent supplies it), user_input (configured/default value, hidden from the agent), or mixed (agent may override configured/default value).';
 
@@ -124,6 +129,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
         ButtonComponent,
         ChipsInputComponent,
         CustomInputComponent,
+        ExecutionTimeoutFieldComponent,
         HelpTooltipComponent,
         CodeEditorComponent,
         JsonEditorComponent,
@@ -151,6 +157,7 @@ export class CreateCustomToolDialogComponent {
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly venvsApiService = inject(VenvsApiService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
     /** Rebound to the forked copy once a built-in tool is saved, so later saves update that copy. */
@@ -240,6 +247,13 @@ export class CreateCustomToolDialogComponent {
     public readonly pythonHasError = signal(false);
     public readonly isSaving = signal(false);
     public readonly isCopying = signal(false);
+    /**
+     * The code's execution timeout, once the limits it is shown and checked against are loaded. Null until then (or
+     * when they cannot be loaded): the field is not shown, and a save sends the stored timeout back, or none for a
+     * new tool, which then gets the backend default.
+     */
+    protected readonly executionTimeout = signal<ExecutionTimeoutFormField | null>(null);
+    protected readonly executionTimeoutHint = EXECUTION_TIMEOUT_HINT;
     private tableImportWasInvalid = false;
 
     private initialSnapshot = '';
@@ -274,6 +288,8 @@ export class CreateCustomToolDialogComponent {
         if (isToolJsonSchemaValid(initialJson)) {
             this.lastValidJson.set(initialJson);
         }
+
+        this.loadExecutionTimeout();
 
         this.dialogRef.disableClose = true;
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.requestClose());
@@ -604,6 +620,25 @@ export class CreateCustomToolDialogComponent {
             .subscribe();
     }
 
+    /**
+     * Builds the execution timeout field once the limits are loaded. The dialog opens from many screens (the tools
+     * list, an agent, a secret's usages), none of which resolves the limits first, so it loads them itself; they are
+     * cached for the session, so only the first dialog asks the backend.
+     */
+    private loadExecutionTimeout(): void {
+        this.executionTimeoutLimits
+            .load()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (limits) =>
+                    this.executionTimeout.set(
+                        new ExecutionTimeoutFormField(this.selectedTool()?.python_code?.execution_timeout, limits)
+                    ),
+                error: () =>
+                    this.toast.error('Could not load the execution timeout limits, so the timeout cannot be edited.'),
+            });
+    }
+
     private uniqueNameValidator(): AsyncValidatorFn {
         return (control: AbstractControl): Observable<ValidationErrors | null> => {
             const value = (control.value ?? '').trim();
@@ -655,6 +690,7 @@ export class CreateCustomToolDialogComponent {
             useStorage,
             variables: this.snapshotVariables(),
             secretIds: [...this.selectedSecretIds()].sort(),
+            executionTimeout: this.executionTimeoutSeconds() ?? null,
         });
     }
 
@@ -686,14 +722,27 @@ export class CreateCustomToolDialogComponent {
         if (this.pythonHasError()) {
             return 'Fix Python syntax errors before saving';
         }
+        // A built-in tool's save forks it unchanged: its read-only timeout is neither sent nor fixable here.
+        const executionTimeout = this.executionTimeout();
+        if (!this.isBuiltIn() && executionTimeout?.control.invalid) {
+            return `Execution timeout must be ${executionTimeoutMinimumRule(executionTimeout.limits.minSeconds)}`;
+        }
         return null;
     }
 
     private buildPayload(): CreatePythonCodeToolPayload {
         const source = this.selectedTool();
-        return toCreatePayload(this.form.getRawValue(), this.selectedSecretIds(), {
-            entrypoint: source?.python_code?.entrypoint,
-        });
+        return toCreatePayload(
+            { ...this.form.getRawValue(), executionTimeout: this.executionTimeoutSeconds() },
+            this.selectedSecretIds(),
+            { entrypoint: source?.python_code?.entrypoint }
+        );
+    }
+
+    /** The timeout the tool keeps: the edited one, else the stored one (also while the limits are loading). */
+    private executionTimeoutSeconds(): number | undefined {
+        const executionTimeout = this.executionTimeout();
+        return executionTimeout ? executionTimeout.value : this.selectedTool()?.python_code?.execution_timeout;
     }
 
     protected readonly ResourceCode = ResourceCode;

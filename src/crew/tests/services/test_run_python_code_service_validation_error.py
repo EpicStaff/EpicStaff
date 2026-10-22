@@ -7,6 +7,8 @@ places the execution's `secrets` plaintext and `storage_credentials.secret_key`
 must never appear in.
 """
 
+import asyncio
+
 import pytest
 from loguru import logger
 
@@ -27,41 +29,47 @@ def captured_logs():
 
 @pytest.mark.asyncio
 async def test_rejected_submit_fails_the_execution_without_waiting_for_a_result(
-    python_code_service, sandbox, redis, make_python_code_data
+    run_python_code_service, sandbox, make_python_code_data
 ):
     sandbox.rejects_with = REJECTION
 
-    result = await python_code_service.run_code(
-        python_code_data=make_python_code_data(use_storage=True, org_id=7),
-        inputs={},
-        storage_credentials=None,
+    # No result will ever arrive for a rejected submit, so the call must return
+    # now rather than sit out settings.CODE_RESULT_TIMEOUT.
+    result = await asyncio.wait_for(
+        run_python_code_service.run_code(
+            python_code_data=make_python_code_data(use_storage=True, org_id=7),
+            inputs={},
+            storage_credentials=None,
+        ),
+        timeout=5,
     )
 
     assert result["returncode"] == 1
     assert result["result_data"] is None
     assert REJECTION in result["stderr"]
-    assert redis.unsubscribe.call_count == 1
+    assert result["execution_id"] == sandbox.submitted["execution_id"]
+    assert run_python_code_service._pending_results == {}
 
 
 @pytest.mark.asyncio
 async def test_rejected_submit_keeps_secrets_out_of_stderr_and_logs(
-    captured_logs, python_code_service, sandbox, make_python_code_data
+    captured_logs, run_python_code_service, sandbox, make_python_code_data
 ):
     sandbox.rejects_with = REJECTION
 
-    result = await python_code_service.run_code(
+    result = await run_python_code_service.run_code(
         python_code_data=make_python_code_data(
             use_storage=True,
             org_id=7,
             secrets={"MY_SECRET": SECRET_VALUE},
         ),
-        inputs={},
+        inputs={"input_name": "input_value"},
         storage_credentials=StorageCredentials(
             access_key="AK-PUBLIC", secret_key=STORAGE_SECRET_KEY
         ),
     )
 
     logged = "\n".join(captured_logs)
-    for forbidden in (SECRET_VALUE, STORAGE_SECRET_KEY):
+    for forbidden in (SECRET_VALUE, STORAGE_SECRET_KEY, "MY_SECRET", "input_value"):
         assert forbidden not in result["stderr"]
         assert forbidden not in logged

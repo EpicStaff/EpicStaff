@@ -84,7 +84,9 @@ def test_removing_an_action_revokes_it(seeded, roles_file):
     result = BuiltInRoleSeeder(path).seed()
 
     assert _mask(BuiltInRole.MEMBER, "flows") == Permission.CREATE | Permission.READ
-    assert result.changes == ["Member.flows: create, read, update (7) -> create, read (3)"]
+    assert result.changes == [
+        "Member.flows: create, read, update, use (71) -> create, read (3)"
+    ]
 
 
 @pytest.mark.django_db
@@ -112,15 +114,33 @@ def test_granting_creates_a_row_and_widens_a_mask(seeded, roles_file):
 
 
 @pytest.mark.django_db
-def test_a_dead_bit_in_the_database_is_cleared(seeded):
+@pytest.mark.parametrize(
+    ("stored", "change"),
+    [
+        pytest.param(
+            int(Permission.READ | Permission.LIST),
+            "Viewer.flows: read (130) -> read (2)",
+            id="ungrantable-list-bit",
+        ),
+        # Legacy READ|USE, still written by an early tables migration on a fresh
+        # install. USE on flows now lets a role run flows, so the seeder resetting it
+        # is the only thing keeping Viewer read-only.
+        pytest.param(
+            int(Permission.READ | Permission.USE),
+            "Viewer.flows: read, use (66) -> read (2)",
+            id="legacy-viewer-use-would-let-viewer-run-flows",
+        ),
+    ],
+)
+def test_viewer_flows_bits_beyond_the_file_are_revoked(seeded, stored, change):
     RolePermission.objects.filter(
         role__name=BuiltInRole.VIEWER, role__is_built_in=True, resource_type="flows"
-    ).update(permissions=66)
+    ).update(permissions=stored)
 
     result = BuiltInRoleSeeder().seed()
 
     assert _mask(BuiltInRole.VIEWER, "flows") == Permission.READ
-    assert result.changes == ["Viewer.flows: read (66) -> read (2)"]
+    assert result.changes == [change]
 
 
 @pytest.mark.django_db
@@ -170,7 +190,7 @@ def test_a_duplicate_built_in_row_is_warned_about(seeded):
 
 INVALID = {
     "unknown resource": _grant(BuiltInRole.MEMBER, "widgets", ["read"]),
-    "action not applicable": _grant(BuiltInRole.VIEWER, "flows", ["read", "use"]),
+    "action not applicable": _grant(BuiltInRole.VIEWER, "agents", ["read", "use"]),
     "platform action": _grant(BuiltInRole.ORG_ADMIN, "organizations", ["read", "create"]),
     "reserved list action": _grant(BuiltInRole.VIEWER, "secrets", ["list"]),
     "empty action list": _grant(BuiltInRole.VIEWER, "flows", []),
@@ -225,13 +245,13 @@ def test_an_unreadable_file_is_rejected(roles_file, raw, message):
 def test_every_error_is_reported_at_once(roles_file):
     def edit(definition):
         definition[BuiltInRole.MEMBER]["permissions"]["widgets"] = ["read"]
-        definition[BuiltInRole.VIEWER]["permissions"]["flows"] = ["use"]
+        definition[BuiltInRole.VIEWER]["permissions"]["agents"] = ["use"]
 
     with pytest.raises(ImproperlyConfigured) as error:
         BuiltInRoleSeeder(roles_file(edit)).seed()
 
     assert "Member.widgets" in str(error.value)
-    assert "Viewer.flows" in str(error.value)
+    assert "Viewer.agents" in str(error.value)
 
 
 @pytest.mark.django_db

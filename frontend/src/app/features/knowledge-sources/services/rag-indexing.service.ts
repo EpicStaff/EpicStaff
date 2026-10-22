@@ -1,9 +1,19 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { catchError, Observable, of, timeout } from 'rxjs';
 
+import { SKIP_FORBIDDEN_RELOAD } from '../../../core/interceptors/skip-forbidden-reload.context';
 import { ConfigService } from '../../../services/config';
-import { StartIndexingDtoRequest, StartIndexingDtoResponse, StopIndexingDtoRequest } from '../models/base-rag.model';
+import {
+    IndexingEstimate,
+    StartIndexingDtoRequest,
+    StartIndexingDtoResponse,
+    StopIndexingDtoRequest,
+} from '../models/base-rag.model';
+import { EstimateDocumentConfig } from '../models/naive-rag-document.model';
+
+// The dialog no longer waits on the estimate; estimates for large selections can take several seconds.
+const ESTIMATE_TIMEOUT_MS = 30000;
 
 @Injectable({ providedIn: 'root' })
 export class RagIndexingService {
@@ -12,6 +22,29 @@ export class RagIndexingService {
 
     startIndexing(dto: StartIndexingDtoRequest): Observable<StartIndexingDtoResponse> {
         return this.http.post<StartIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/`, dto);
+    }
+
+    estimateIndexing(
+        dto: StartIndexingDtoRequest,
+        documentConfigs?: EstimateDocumentConfig[]
+    ): Observable<IndexingEstimate> {
+        const body = documentConfigs?.length ? { ...dto, document_configs: documentConfigs } : dto;
+        return this.http.post<IndexingEstimate>(`${this.configService.apiUrl}process-rag-indexing/estimate/`, body, {
+            context: new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true),
+        });
+    }
+
+    /**
+     * Informational only: a failed or slow estimate resolves to null so it can never block indexing.
+     */
+    estimateIndexingOrNull(
+        dto: StartIndexingDtoRequest,
+        documentConfigs?: EstimateDocumentConfig[]
+    ): Observable<IndexingEstimate | null> {
+        return this.estimateIndexing(dto, documentConfigs).pipe(
+            timeout(ESTIMATE_TIMEOUT_MS),
+            catchError(() => of(null))
+        );
     }
 
     stopIndexing(dto: StopIndexingDtoRequest): Observable<void> {

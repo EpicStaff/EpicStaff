@@ -1,7 +1,8 @@
 import { PercentPipe, TitleCasePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 import { RAG_TYPE_LABELS } from '@shared/constants';
+import { formatSmallCostUsd, formatTokens, toFiniteNumber } from '@shared/utils';
 
 import {
     ExtractedChunk,
@@ -19,13 +20,13 @@ import {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ExtractedChunksMessageComponent {
-    @Input() message!: GraphMessage;
+    readonly message = input.required<GraphMessage>();
 
     protected readonly isExpanded = signal(false);
 
     get data(): ExtractedChunksMessageData | null {
-        if (this.message?.message_data?.message_type === MessageType.EXTRACTED_CHUNKS) {
-            return this.message.message_data as ExtractedChunksMessageData;
+        if (this.message()?.message_data?.message_type === MessageType.EXTRACTED_CHUNKS) {
+            return this.message().message_data as ExtractedChunksMessageData;
         }
         return null;
     }
@@ -84,6 +85,15 @@ export class ExtractedChunksMessageComponent {
         if (this.ragKind !== 'graph' || !config) return null;
         return config.search_params?.max_context_tokens ?? config.max_context_tokens ?? null;
     }
+
+    protected readonly tokenUsageLabel = computed<string | null>(() => {
+        const usage = this.data?.token_usage;
+        const tokens = toFiniteNumber(usage?.total_tokens);
+        if (!tokens || tokens <= 0) return null;
+        const tokensText = `≈ ${formatTokens(tokens)} tokens`;
+        const cost = toFiniteNumber(usage?.total_cost_usd);
+        return cost && cost > 0 ? `${tokensText} · ${formatSmallCostUsd(cost)}` : tokensText;
+    });
 
     toggle(): void {
         this.isExpanded.update((expanded) => !expanded);

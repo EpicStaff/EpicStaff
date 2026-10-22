@@ -1,5 +1,7 @@
+import pytest
 from domain.enums import ChunkStrategyEnum
 from domain.models import ChunkingConfig
+from infrastructure.naive.chunkers.strategies.token_chunker import load_gpt2_tokenizer
 
 
 def make_config(
@@ -14,3 +16,11 @@ def make_config(
         chunk_overlap=chunk_overlap,
         extra=extra or {},
     )
+
+
+@pytest.fixture(autouse=True)
+def fresh_gpt2_tokenizer():
+    """The tokenizer is cached per process; tests that change TOKENIZER_PATH need a cold cache."""
+    load_gpt2_tokenizer.cache_clear()
+    yield
+    load_gpt2_tokenizer.cache_clear()

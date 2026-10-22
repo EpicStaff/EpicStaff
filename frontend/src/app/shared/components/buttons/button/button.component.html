@@ -1,4 +1,5 @@
 <button
+    #button
     [appCollapseOnOverflow]="collapseEnabled"
     [collapseOnOverflowTarget]="'.btn-content'"
     [collapseOnOverflowClass]="'btn--only-icon'"
@@ -14,6 +15,7 @@
     ]"
     [disabled]="disabled()"
     [attr.aria-label]="ariaLabel"
+    [attr.aria-describedby]="ariaDescribedby()"
     type="button"
 >
     @if (type === 'icon') {
