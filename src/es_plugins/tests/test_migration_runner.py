@@ -368,6 +368,35 @@ async def test_a_migration_that_ends_its_own_transaction_is_refused_before_its_l
     assert await owner_is_closed(desired)
 
 
+FORCED_ROWS = """
+CREATE TABLE places (org_id bigint NOT NULL, name text NOT NULL);
+INSERT INTO places VALUES (1, 'kept');
+ALTER TABLE places ENABLE ROW LEVEL SECURITY;
+ALTER TABLE places FORCE ROW LEVEL SECURITY;
+CREATE POLICY owner_rows ON places TO ${owner_role} USING (true);
+"""
+ROW_SECURITY_OFF = "DO $$ BEGIN EXECUTE format('ALTER DATABASE %I SET row_security = off', current_database()); END $$;"
+
+
+@pytest.mark.postgres
+async def test_row_security_the_owner_stored_off_does_not_fail_later_migrations_on_forced_tables(plugin_databases):
+    desired = plugin_databases()
+    first = [migration("001_places.sql", FORCED_ROWS), migration("002_row_security_off.sql", ROW_SECURITY_OFF)]
+    await provision(desired, first)
+    async with owner_session(desired) as owner:
+        stored = await fetch_all(
+            owner,
+            "SELECT setconfig FROM pg_db_role_setting WHERE setdatabase = (SELECT oid FROM pg_database WHERE datname = current_database())",
+        )
+    assert stored == [(["row_security=off"],)]
+
+    outcome = await provision(desired, [*first, migration("003_rename.sql", "UPDATE places SET name = 'renamed';")])
+
+    assert outcome.applied == 1
+    async with owner_session(desired) as owner:
+        assert await fetch_all(owner, "SELECT name FROM places") == [("renamed",)]
+
+
 @pytest.mark.postgres
 async def test_an_owner_session_opened_with_a_password_a_migration_set_is_ended_at_close(plugin_databases):
     desired = plugin_databases()

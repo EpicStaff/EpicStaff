@@ -4,8 +4,9 @@
 #   probe-a      for this machine's architecture only;
 #   probe-b      for the SDK's default platforms, x86_64 and aarch64: the node must pick the
 #                wheels that fit it from a package that also carries the other architecture's;
-#   probe-evil   probe-a plus a hostile wheel (make_evil_wheel.py): its install must fail
-#                without the agent ever running the plugin's code.
+#   probe-evil   probe-a plus the hostile wheels (make_evil_wheel.py): its install must fail
+#                without the agent ever running the plugin's code, pip's paths it overwrites
+#                included.
 set -eu
 architecture=$(uname -m)
 work=$(mktemp -d)
@@ -40,7 +41,8 @@ PY
   case "$identifier" in
     probe-a) set -- --platform "manylinux_2_28_$architecture" ;;
     probe-b) set -- ;;
-    probe-evil) set -- --platform "manylinux_2_28_$architecture" --local-wheel "$work"/evil/*.whl ;;
+    probe-evil) set -- --platform "manylinux_2_28_$architecture" \
+      --local-wheel "$work/evil/evil-1.0-py3-none-any.whl" --local-wheel "$work/evil/evil_pip-1.0-py3-none-any.whl" ;;
   esac
   epicstaff-plugin pack "$source" --spa-dir /lab/probe_spa --download-wheels "$@" \
     --local-wheel "$work"/sdk/*.whl --out "/packages/$identifier.esplugin" > /dev/null

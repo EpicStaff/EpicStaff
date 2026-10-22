@@ -2,7 +2,7 @@ import { HttpErrorResponse, HttpHeaders, HttpResponse } from '@angular/common/ht
 import { isSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogData, ConfirmationDialogService } from '@shared/components';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, of, Subject, throwError } from 'rxjs';
 import { type Mock, onTestFinished } from 'vitest';
 
 import { ToastService } from '../../../../services/notifications';
@@ -21,6 +21,27 @@ class ResizeObserverStub {
 }
 
 const RUNTIME_FILE_NAME = 'weather-development-runtime.json';
+
+/** What the server says of a port equal to the development API port's (serializers/development.py). */
+const API_PORT_REFUSAL = 'is the development API port (PLUGINS_DEV_API_PORT); use another port';
+
+/** What the server says when neither port is set. */
+const NO_PORT_REFUSAL =
+    'needs a backend port or a frontend dev server port; to route nothing, stop development instead';
+
+/** A save refused with the problems listed, as the server's InvalidDevelopmentPortsError answers it. */
+function refusedPorts(errors: { loc: string; message: string }[]): HttpErrorResponse {
+    const summary = errors.length === 1 ? errors[0].message : `${errors.length} problems found.`;
+    return new HttpErrorResponse({
+        status: 400,
+        error: {
+            status_code: 400,
+            code: 'invalid',
+            message: `The development ports are invalid. ${summary}`,
+            errors,
+        },
+    });
+}
 
 /** Replaces the browser's object URLs for one test: jsdom has none. */
 function stubObjectUrls(create: (blob: Blob) => string): {
@@ -222,23 +243,9 @@ describe('PluginDevelopmentPanelComponent', () => {
         expect(text(element)).toContain('Set at least one port, or stop development.');
     });
 
-    it("shows a refused save's errors on the port they name, the others above", async () => {
+    it("shows a refused save's error on the port it names, until that port is typed in again", async () => {
         storage.updateDevelopment.mockReturnValue(
-            throwError(
-                () =>
-                    new HttpErrorResponse({
-                        status: 400,
-                        error: {
-                            status_code: 400,
-                            code: 'invalid',
-                            message: 'Invalid request.',
-                            errors: [
-                                { loc: 'backend_port', message: 'must differ from the development API port 8082' },
-                                { loc: 'non_field_errors', message: 'set at least one port' },
-                            ],
-                        },
-                    })
-            )
+            throwError(() => refusedPorts([{ loc: 'backend_port', message: API_PORT_REFUSAL }]))
         );
         await render();
 
@@ -246,12 +253,34 @@ describe('PluginDevelopmentPanelComponent', () => {
         button('Save')!.click();
         await settle();
 
-        expect(portMessage('backend_port')).toBe('must differ from the development API port 8082');
+        expect(portMessage('backend_port')).toBe(API_PORT_REFUSAL);
+        expect(portInput('backend_port').getAttribute('aria-invalid')).toBe('true');
         expect(text(element.querySelector('.development__error > span'))).toBe('The request was not valid.');
-        expect(Array.from(element.querySelectorAll('.development__error-items li')).map((item) => text(item))).toEqual([
-            'set at least one port',
-        ]);
+        expect(element.querySelector('.development__error-items')).toBeNull();
         expect(changes).toBe(0);
+
+        await typePort('backend_port', '8083');
+
+        expect(portMessage('backend_port')).toBe('');
+        expect(portInput('backend_port').getAttribute('aria-invalid')).toBe('false');
+        expect(button('Save')!.disabled).toBe(false);
+    });
+
+    it("lists a refused save's problems that name no port above the ports", async () => {
+        storage.updateDevelopment.mockReturnValue(
+            throwError(() => refusedPorts([{ loc: 'non_field_errors', message: NO_PORT_REFUSAL }]))
+        );
+        await render();
+
+        await typePort('spa_port', '5173');
+        button('Save')!.click();
+        await settle();
+
+        expect(Array.from(element.querySelectorAll('.development__error-items li')).map((item) => text(item))).toEqual([
+            NO_PORT_REFUSAL,
+        ]);
+        expect(portMessage('backend_port')).toBe('');
+        expect(portMessage('spa_port')).toBe('');
     });
 
     it('says when the deployment turned development mode off meanwhile', async () => {
@@ -260,7 +289,11 @@ describe('PluginDevelopmentPanelComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'plugin_development_mode_off', message: 'off' },
+                        error: {
+                            status_code: 409,
+                            code: 'plugin_development_mode_off',
+                            message: 'Plugin development mode is off on this deployment.',
+                        },
                     })
             )
         );
@@ -294,6 +327,56 @@ describe('PluginDevelopmentPanelComponent', () => {
         expect(storage.clearDevelopment).toHaveBeenCalledWith('weather');
         expect(storage.getDevelopment).toHaveBeenCalledTimes(2);
         expect(changes).toBe(1);
+    });
+
+    it('keeps ports typed but not saved through a download and a failed stop, and starts over after a stop', async () => {
+        stubObjectUrls(() => 'blob:x');
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        onTestFinished(() => click.mockRestore());
+        await render(buildPluginDevelopment({ target: buildPluginDevelopmentTarget() }));
+        await typePort('backend_port', '9001');
+
+        button('Download development runtime file')!.click();
+        await settle();
+        expect(storage.getDevelopment).toHaveBeenCalledTimes(2);
+        expect(portInput('backend_port').value).toBe('9001');
+
+        storage.clearDevelopment.mockReturnValueOnce(
+            throwError(() => new HttpErrorResponse({ status: 502, statusText: 'Bad Gateway', error: '<html></html>' }))
+        );
+        button('Stop development')!.click();
+        await settle();
+        expect(toast.error).toHaveBeenCalledWith("Couldn't stop development.");
+        expect(storage.getDevelopment).toHaveBeenCalledTimes(3);
+        expect(portInput('backend_port').value).toBe('9001');
+        expect(button('Save')!.disabled).toBe(false);
+
+        storage.getDevelopment.mockReturnValue(of(buildPluginDevelopment()));
+        button('Stop development')!.click();
+        await settle();
+        expect(portInput('backend_port').value).toBe('');
+        expect(button('Save')!.disabled).toBe(true);
+    });
+
+    it('shows the spinner, not an empty panel, while Retry loads the state again', async () => {
+        const loaded = new Subject<PluginDevelopment>();
+        storage.getDevelopment.mockReturnValueOnce(
+            throwError(() => new HttpErrorResponse({ status: 502, statusText: 'Bad Gateway', error: '<html></html>' }))
+        );
+        await render();
+        expect(text(element.querySelector('app-fetch-error-state h3'))).toBe("Couldn't load the development state");
+
+        storage.getDevelopment.mockReturnValueOnce(loaded);
+        button('Retry')!.click();
+        await settle();
+        expect(element.querySelector('app-fetch-error-state')).toBeNull();
+        expect(element.querySelector('app-loading-spinner')).not.toBeNull();
+
+        loaded.next(buildPluginDevelopment());
+        loaded.complete();
+        await settle();
+        expect(element.querySelector('app-loading-spinner')).toBeNull();
+        expect(text(element.querySelector('.development__mode'))).toBe('Development mode is on');
     });
 
     it('offers Stop development while development keys are in use, even with no target', async () => {

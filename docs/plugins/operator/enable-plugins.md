@@ -136,7 +136,7 @@ a value in `src/.env` later changes nothing in the database (see
 
 | Variable | Default | What to set |
 |---|---|---|
-| `PLUGINS_DEV_MODE` | `false` | Leave `false` on every deployment other people use: with `true`, django_app and epicstaff-nginx refuse to start unless `DJANGO_DEBUG=true` and EpicStaff and `PLUGINS_BASE_DOMAIN` use `.localhost` names. The same spellings as `PLUGINS_ENABLED` are accepted. |
+| `PLUGINS_DEV_MODE` | `false` | Leave `false` on every deployment other people use: with `true`, django_app and epicstaff-nginx refuse to start unless `DJANGO_DEBUG=true`, EpicStaff and `PLUGINS_BASE_DOMAIN` use `.localhost` names, and the stack runs with `docker-compose.plugins-dev.yaml` (which alone sets `PLUGINS_DEV_LOOPBACK_ONLY`; never put it in `.env`). The same spellings as `PLUGINS_ENABLED` are accepted. |
 | `PLUGINS_DEV_API_PORT` | `8082` | The port on `127.0.0.1` where a development backend reaches EpicStaff's API. Only `docker-compose.plugins-dev.yaml` publishes it. A whole number from 1024 to 65535 (`plugins.E013`), checked only while the mode is on. |
 
 ## 4. Apply
@@ -184,7 +184,7 @@ Wrong values stop a container with a message instead of serving a broken plugin 
 | `plugins.E009` | A `PLUGINS_MAX_*` value is not a positive whole number. |
 | `plugins.E010` | The host of `DJANGO_FRONTEND_BASE_URL` is `PLUGINS_BASE_DOMAIN` or a name under it. A plugin's address could then be EpicStaff's own, and EpicStaff would refuse its own pages as a plugin's. |
 | `plugins.E011` | `PLUGINS_GRACE_PERIOD_DAYS` is not a whole number from 1 to 3650. |
-| `plugins.E012` | `PLUGINS_DEV_MODE` is true on a deployment that is not on your own machine: `DJANGO_DEBUG` is not true, `PLUGINS_BASE_DOMAIN` does not end in `.localhost`, or the host of `DJANGO_FRONTEND_BASE_URL` is neither `localhost` nor a `.localhost` name. The message names each condition that fails (see [Plugin development mode](#plugin-development-mode)). |
+| `plugins.E012` | `PLUGINS_DEV_MODE` is true on a deployment that is not on your own machine: `DJANGO_DEBUG` is not true, `PLUGINS_BASE_DOMAIN` does not end in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is neither `localhost` nor a `.localhost` name, or `PLUGINS_DEV_LOOPBACK_ONLY` is not true, which only `docker-compose.plugins-dev.yaml` sets. The message names each condition that fails (see [Plugin development mode](#plugin-development-mode)). |
 | `plugins.E013` | `PLUGINS_DEV_MODE` is true and `PLUGINS_DEV_API_PORT` is not a whole number from 1024 to 65535. |
 
 `plugins.W001` is a warning and stops nothing: plugin development mode is on, where it is allowed.
@@ -198,7 +198,8 @@ path, query or fragment is refused, as Django's `plugins.E003` does), `PLUGINS_M
 never printed), or `PLUGINS_NETWORK_SUBNET` is not an IPv4 CIDR such as `10.235.0.0/24`. It also
 exits, with plugins on, when `PLUGINS_DEV_MODE` is not a boolean, and when it is true while
 `PLUGINS_BASE_DOMAIN` does not end in `.localhost` or the host of `DJANGO_FRONTEND_BASE_URL` is
-neither `localhost` nor a `.localhost` name: nginx's own refusal of plugin development mode,
+neither `localhost` nor a `.localhost` name, or when `PLUGINS_DEV_LOOPBACK_ONLY` is not true
+(the development compose file is not in use): nginx's own refusal of plugin development mode,
 whatever Django decides. With plugins off nginx does not read the plugin values at all.
 
 **es_plugins** exits when `PLUGINS_NODE_UID_RANGE` is not a valid range, `PLUGINS_NODE_KEY` is
@@ -391,8 +392,10 @@ capabilities left in any capability set, so nothing on the node can change them 
 shell you open in the container with `docker exec` gets the container's capabilities, `NET_ADMIN`
 and `BPF` included; no plugin process does. Each plugin backend runs as its own user id from
 `PLUGINS_NODE_UID_RANGE`, without any capability, with at most 64 processes and 256 open files
-each, no POSIX message queues, no System V IPC objects and no `io_uring` (a seccomp filter refuses
-those system calls), in its own session. Its secret settings reach it only in a file that only its own user
+each, no POSIX message queues, no System V IPC objects, no `io_uring`, no `unshare`, `setns`,
+`keyctl`, `add_key`, `request_key`, `bpf`, `perf_event_open` or `userfaultfd`, and no `clone` with
+a namespace flag (a seccomp filter makes those system calls answer `EPERM`; `clone3` answers
+`ENOSYS`, and glibc falls back to `clone`), in its own session. Its secret settings reach it only in a file that only its own user
 id can read; its database URL and its proxy URL, credentials included, are in its environment,
 which only its own user id can read too.
 
@@ -412,14 +415,15 @@ permitted" to every plugin user id.
 Plugin backends and the node share the container's network namespace, and with it its local
 ports (21000–65535 for outbound connections). So that one plugin cannot use them up, or the
 connection slots of `plugins_db` and the egress proxy, each plugin backend may open at most 200
-new TCP connections a second (after a burst of 200), and have at most 512 TCP connections open at
-once, `PLUGINS_MAX_DB_CONNECTIONS` of them to `plugins_db` and 64 to the egress proxy. A
+new TCP connections a second (after a burst of 200), and have at most 512 TCP connections it opened
+itself open at once (connections it accepted on its own port are not counted),
+`PLUGINS_MAX_DB_CONNECTIONS` of them to `plugins_db` and 64 to the egress proxy. A
 connection over a limit is refused at once. The node's own connections are never limited.
 
 A socket can still take a local port without `bind()`: a `listen()` on an unbound TCP socket, or a
 UDP socket that is connected and never sends. So the node checks every plugin's sockets once a
-second, and stops a plugin whose user listens on a port of its own, or holds more than 512 network
-sockets in all. Such a plugin stays stopped, with the reason on its Runtime tab, until a SuperAdmin
+second, and stops a plugin whose user has a TCP socket in LISTEN on any port, or holds more than
+1,280 network sockets in all (TCP connections it accepted on its own port do not count). Such a plugin stays stopped, with the reason on its Runtime tab, until a SuperAdmin
 restarts it (see [When a plugin does not run](#when-a-plugin-does-not-run)). Between two checks a
 plugin can still take ports for up to a second. UNIX sockets in the abstract namespace remain
 shared: every process in the container can reach one.
@@ -517,7 +521,9 @@ A plugin backend reaches the internet only through `plugins_egress`, a Squid pro
 `plugins-network` with a network of its own to the outside (`plugins-egress-network`). The node
 gives each backend its proxy URL in `HTTPS_PROXY` (and `https_proxy`, `HTTP_PROXY`, `http_proxy`).
 The proxy allows a plugin an HTTPS tunnel (`CONNECT`) to port 443 of the hosts its package declares
-in `outbound_hosts`, which the review shows before approval, and nothing else. Writing a backend
+in `outbound_hosts`, which the review shows before approval, and nothing else. This binds the
+backend's process. Code a plugin runs through flows runs in EpicStaff's sandbox, which has its own
+network access, and the review warns about it (`flows_run_code`). Writing a backend
 for it is in [Call the internet from your backend](../how-to/outbound-hosts.md).
 
 - **One password per plugin.** The node makes a plugin's proxy password when it starts the
@@ -859,7 +865,9 @@ count too. Symlinks are counted as links and never followed. A plugin above
 `ES_PLUGINS_DISK_MB_PER_PLUGIN` or `ES_PLUGINS_FILES_PER_PLUGIN` is stopped at once and marked
 failed, without the restarts a crash gets: it would only fill its HOME again. A plugin whose use
 the node cannot measure completely (it made a directory unreadable to itself, nested directories
-more than 128 deep, or stopped the node from seeing a process's open files) is treated the same.
+more than 128 deep, or stopped the node from seeing a process's open files) is treated the same,
+and so is one whose measurement brings no result two times in a row (the node was refused or ran
+out of time): "its disk use could not be measured 2 times in a row".
 Between two measurements a plugin can write past its cap, by its write rate × 30 s.
 
 **The floor for the whole volume.** Below 2 GiB or 100,000 free inodes the node starts no
@@ -867,7 +875,9 @@ download and builds no Python environment: a plugin that needs one fails with th
 its error, and the plugins already installed keep running. A package is at most
 `PLUGINS_MAX_PACKAGE_MB` and its environment a few times that, so installing never takes the
 volume to the floor. Below 512 MiB or 20,000 free inodes, the node stops the running plugin that
-uses the most disk (or the most files) and marks it failed; it stops another only if the free
+uses the most disk (or the most files) and marks it failed. By disk, a plugin's use is its HOME
+plus its database (as last measured, every 60 s) plus its backups; by files, its HOME's files. A
+plugin that could not be measured this time ranks first. It stops another plugin only if the free
 space keeps falling (by 64 MiB or 1,000 inodes more). 512 MiB leaves the database and Docker room
 to write while you free space.
 
@@ -893,15 +903,16 @@ memory, the last error and, for a failed plugin, the end of its log.
 | `<project> <version> has no wheel for this node (its wheels are built for …)` | The package has no wheel of that project for this host's architecture. The publisher packs again for it (`epicstaff-plugin pack --download-wheels`, which by default packs for both `x86_64` and `aarch64`). |
 | `failed` after repeated restarts | The backend kept stopping: it was restarted ten times in a row without once staying healthy for a minute in between (the node waits 1 s before the first restart, doubling up to 5 minutes, so this takes at least 13.5 minutes). Read the log on the Runtime tab, fix the cause (often a setting), then press Restart. |
 | `it listened on TCP port … of its own; …` | The backend opened a server socket of its own. A plugin serves only on the socket the node hands it, so the node stopped it. The publisher must fix the backend; then press Restart. |
-| `it held … network sockets, more than the 512 a plugin may; …` | The backend kept too many sockets open, often connections it never closes, so the node stopped it. Ask the publisher to reuse connections; press Restart to start it again. |
+| `it held … network sockets, more than the 1280 a plugin may; …` | The backend kept too many sockets open, often connections it never closes, so the node stopped it. Ask the publisher to reuse connections; press Restart to start it again. |
 | The backend exits at once with `Operation not permitted` or `Address already in use` in its log | It opens a server socket itself instead of serving on the socket the node hands it (`EPICSTAFF_PLUGIN_LISTEN_FD`, which `epicstaff-plugin` uses); no plugin may bind a socket, and every port of the node's range is the node's. The publisher must fix the backend. |
 | `port … is still in use by placement …` | The plugin got a port another plugin on the node is just giving up (EpicStaff moved them). The node tries again every 30 s; it passes once the other is stopped. |
 | `port … is not one of this node's ports` | The node and django_app disagree about the port range: they are of different versions. Run the same version of both. |
 | `bin/python is not a symlink; a wheel may have replaced it` | A wheel in the package installs a program of its own over the plugin's Python. The node refuses to install the package; the publisher must remove that wheel. |
 | `uses … MB of disk, more than its limit of … MB` or `has … files, more than its limit of … files` | The plugin's own files reached `ES_PLUGINS_DISK_MB_PER_PLUGIN` or `ES_PLUGINS_FILES_PER_PLUGIN`. Free space in its HOME, or raise the cap for every plugin, then press Restart (see [Disk](#disk)). |
+| `its disk use could not be measured 2 times in a row` | Two measurements in a row brought no result, as when the node was refused or ran out of time. Press Restart; if it repeats, the publisher must look at what slows the plugin's files. |
 | `its disk use cannot be measured: …` | The plugin hid part of its files from the node (an unreadable directory, more than 128 nested directories, a process that does not let the node see its open files). The publisher must fix the backend. |
 | `the node's disk has only … MB free, and installing needs 2048 MB` | The `es_plugins_data` volume is below its install reserve. Free space on it (or give it more), then press Restart. |
-| `the node's disk is almost full (…), and this plugin uses the most of it (…)` | The volume fell below its floor and this plugin used the most of it. Free space, then press Restart; consider a file system of its own for the volume. |
+| `the node's disk is almost full (…), and this plugin uses the most of it (…)` | The volume fell below its floor and this plugin used the most of it. The parenthesis ends "(N MB, its database and backups included)", or "(its disk use could not be measured)" when it was ranked first for that. Free space, then press Restart; consider a file system of its own for the volume. |
 | Database: provisioning, with a connection error as the last error | The node cannot reach or log in to `plugins_db`, and tries again every 30 s. Check `docker compose ps plugins_db`; `PLUGINS_DB_ADMIN_PASSWORD` must be the value `plugins_db` was first started with (see [Plugin databases](#plugin-databases)). |
 | "plugins_db already has … that this plugin installation did not create" | A database or roles of that name are left from another EpicStaff database. See [Leftovers from another EpicStaff database](#leftovers-from-another-epicstaff-database). |
 | A migration's name with a line and an SQL error, or "… changed after it was applied" | A migration of the package failed and was rolled back, or differs from the one that ran. The publisher fixes the package ([Plugin database](../reference/database.md)). |
@@ -957,13 +968,17 @@ send plugin traffic to any other host.
 **Where it can run.** With `PLUGINS_DEV_MODE=true`:
 
 - django_app refuses to start (`plugins.E012`) unless `DJANGO_DEBUG=true`, `PLUGINS_BASE_DOMAIN`
-  ends in `.localhost`, and the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or ends in
-  `.localhost`;
-- epicstaff-nginx refuses to start (exit 64) unless the two names are `.localhost` names.
+  ends in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or ends in
+  `.localhost`, and `PLUGINS_DEV_LOOPBACK_ONLY` is true;
+- epicstaff-nginx refuses to start (exit 64) unless the two names are `.localhost` names and
+  `PLUGINS_DEV_LOOPBACK_ONLY` is true.
 
-Either refusal alone keeps the mode off a server: `.localhost` names reach only the loopback
-interface of the machine the browser runs on, so nobody on another machine can open such a
-deployment. Where the mode is allowed, django_app logs the warning `plugins.W001`.
+Only `src/docker-compose.plugins-dev.yaml` sets `PLUGINS_DEV_LOOPBACK_ONLY`. Never put it in `.env`:
+`docker-compose.yaml` does not pass it on, so it has no effect there, and it would only stand for
+a claim that is not true. What keeps the mode local is that file's binding of EpicStaff's ports to
+`127.0.0.1`: no other machine can reach them. The `.localhost` names only stop browsers on other
+machines from opening the deployment; a client that reaches a port can set the `Host` header by
+hand. Where the mode is allowed, django_app logs the warning `plugins.W001`.
 
 **What `docker-compose.plugins-dev.yaml` opens.** Start EpicStaff with both compose files:
 
@@ -985,7 +1000,9 @@ That file holds only what `docker-compose.yaml` must never have:
 
 It replaces the port list of `docker-compose.yaml` with Compose's `!override`, which needs Docker
 Compose 2.24.4 or later. Containers that share a network with epicstaff-nginx, other than the
-plugins network, can reach the development API listener too; it accepts only development keys.
+plugins network, can reach the development API listener too. Of the plugin credentials it accepts
+only development keys. It also serves person tokens and anonymous endpoints, which the same
+callers already reach on port 80, so there is nothing more for them to gain.
 
 **Development keys.** **Download development runtime file** gives the developer a file like the
 node's runtime file, with a new **development key** for each organization the plugin is granted

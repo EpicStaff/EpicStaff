@@ -7,8 +7,9 @@
 #   1. the plugin's Development endpoint reports the mode on, and the address django_app resolves
 #      for host.docker.internal;
 #   2. with both ports set, within 15 s the plugin's public path answers from the stand-in backend
-#      without its cookie, and its pages from the stand-in page server with the platform's
-#      frame-ancestors, while its platform config and login callback page stay the platform's;
+#      without its cookie, and its pages from the stand-in page server (which, like esbuild's,
+#      refuses any Host but localhost) with the platform's frame-ancestors, while its platform
+#      config and login callback page stay the platform's;
 #   3. the development runtime file holds a key for SMOKE_ORG_ID, which works on the development
 #      API listener (127.0.0.1:SMOKE_DEV_API_PORT) and is refused (401) through the internal
 #      listener from the plugins network; the node key is refused (401) on the development
@@ -143,15 +144,21 @@ development_listener() {
 
 header() { tr -d '\r' < "$work_dir/headers" | grep -i "^$1:" | tail -n 1 | cut -d: -f2- | sed 's/^ *//'; }
 
-# json_is EXPRESSION: true when the Python expression holds for the last body, parsed as `body`.
+# json_is CHECK: whether the Python expression CHECK is true of the last body (`body`). A check
+# may start on a line of its own: it is stripped first. One that cannot be evaluated (the body is
+# not JSON, or the check raises) is false, and leaves the reason in $work_dir/check-error.
 json_is() {
   python3 -c '
 import json, sys
 try:
     body = json.load(open(sys.argv[1], encoding="utf-8"))
-    sys.exit(0 if eval(sys.argv[2]) else 1)
-except (ValueError, KeyError, TypeError, IndexError, AttributeError):
-    sys.exit(1)' "$work_dir/body" "$1"
+except (OSError, ValueError) as error:
+    sys.exit(f"the body is not JSON: {error}")
+try:
+    result = eval(sys.argv[2].strip())
+except Exception as error:
+    sys.exit(f"the check raised {type(error).__name__}: {error}")
+sys.exit(0 if result else 1)' "$work_dir/body" "$1" 2> "$work_dir/check-error"
 }
 
 wait_for() { # seconds, then a command; returns once the command succeeds
@@ -215,7 +222,11 @@ expect() { # $1 = description, $2 = expected status, $3 = actual status, $4 = Py
   if [ "$3" != "$2" ]; then
     fail "$1: status $3, expected $2 $(head -c 200 "$work_dir/curl-error" 2> /dev/null) $(head -c 200 "$work_dir/body")"
   elif [ -n "${4-}" ] && ! json_is "$4"; then
-    fail "$1: unexpected body $(head -c 300 "$work_dir/body")"
+    if [ -s "$work_dir/check-error" ]; then
+      fail "$1: $(head -c 300 "$work_dir/check-error"); body $(head -c 300 "$work_dir/body")"
+    else
+      fail "$1: unexpected body $(head -c 300 "$work_dir/body")"
+    fi
   else
     pass "$1"
   fi
@@ -315,6 +326,13 @@ address, ports_path = sys.argv[1:]
 PAGE = b"<!doctype html><title>development-smoke</title><p>development-smoke page</p>\n"
 
 
+def is_local_host(host):
+    name, separator, port = host.rpartition(":")
+    if not separator or not port.isdigit():
+        name = host
+    return name in ("localhost", "127.0.0.1")
+
+
 class Backend(http.server.BaseHTTPRequestHandler):
     """A development backend: the same JSON for every request, and a cookie nginx must drop."""
 
@@ -334,14 +352,17 @@ class Backend(http.server.BaseHTTPRequestHandler):
 
 
 class Page(http.server.BaseHTTPRequestHandler):
-    """A frontend development server: the same page for every path."""
+    """A frontend development server: the same page for every path. Like esbuild's, it refuses
+    any Host but localhost or 127.0.0.1 (any port): nginx must not send it the plugin's host."""
 
     def do_GET(self):
-        self.send_response(200)
+        host = self.headers.get("Host", "")
+        status, body = (200, PAGE) if is_local_host(host) else (403, b"The host is not allowed.\n")
+        self.send_response(status)
         self.send_header("Content-Type", "text/html")
-        self.send_header("Content-Length", str(len(PAGE)))
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(PAGE)
+        self.wfile.write(body)
 
     def log_message(self, *arguments):
         pass

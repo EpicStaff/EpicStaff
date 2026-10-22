@@ -189,10 +189,16 @@ It is `null` for a response that passed the gateway, and for a reason this versi
 | Any response without the header (it passed the gateway), your backend's own `503` included | `available` |
 | The gateway's other refusals (`login`, `forbidden`, `not_found`, `too_large`, `rate_limited`) | Unchanged |
 
-A sign-in refused with `temporarily_unavailable` sets `maintenance` as well. Any later sign-in result clears that
-maintenance: a token, `access-denied`, `session-ended` or `failed`. A maintenance or `unavailable` the API answered
-is the API's own word: only a sign-in that gets a token, or the API's next answer, changes it. It starts as
-`available`.
+Sign-in results change it too. The API's answers stay the source: a sign-in result never ends a `maintenance` the
+API answered, except a sign-in that gets a token.
+
+| Sign-in result | `availability` |
+|---|---|
+| `temporarily_unavailable` (the `maintenance` state) | `maintenance`. When the API had answered `maintenance` already, it stays the API's |
+| A token (`signed-in`) | `available` when it was `maintenance`; `unavailable` stays |
+| `access-denied`, `session-ended` or `failed` | `available` when a sign-in had set `maintenance`; a `maintenance` the API answered, and `unavailable`, stay |
+
+It starts as `available`.
 
 **Inside EpicStaff** you need not show anything for it: on a change to `maintenance` or `unavailable` the SDK tells
 EpicStaff with the frame message [`availability.changed`](frame-protocol.md#messages), at most once every 30 seconds

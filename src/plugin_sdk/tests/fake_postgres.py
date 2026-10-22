@@ -12,6 +12,7 @@ import psycopg
 from epicstaff_plugin.cli.development_database import (
     CREATE_LEDGER,
     CURRENT_TRANSACTION,
+    EXEMPT_TABLES_QUERY,
     JOB_ROLE_QUERY,
     LOGIN_ROLE_QUERY,
     READ_LEDGER,
@@ -64,6 +65,8 @@ class FakeConnection:
         self.ledger_created = False
         self.closed = False
         self.queried_job_roles: list[str] = []
+        self.exempt_tables: list[tuple[str, str]] = []
+        """(schema, table) of the tables with row-level security the login role is exempt from."""
         self._pending_ledger: dict[str, str] = {}
         self._pending_migrations: list[str] = []
         self._transaction = 0
@@ -87,6 +90,8 @@ class FakeConnection:
             self.ledger_created = True
         elif query == READ_LEDGER:
             return _Cursor(self.ledger.items())
+        elif query == EXEMPT_TABLES_QUERY:
+            return _Cursor(self.exempt_tables)
         elif query == CURRENT_TRANSACTION:
             return _Cursor([(self._transaction,)])
         elif query == RECORD_MIGRATION:

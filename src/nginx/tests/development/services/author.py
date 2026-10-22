@@ -4,6 +4,10 @@ It answers every path with what reached it (raw path and headers), serves server
 `/sse` and a WebSocket echo on `/ws`, the two ways development servers reload a page, and sends
 every header nginx must keep from the browser: a cookie, a framing rule, a policy of its own,
 Clear-Site-Data and the gateway's marker. Its caching header must pass through.
+
+Like esbuild's server, it refuses with 403 any request whose Host is not localhost or 127.0.0.1
+(any port): Vite and webpack-dev-server refuse unknown hosts too, so the page proxy must never
+send the plugin's host.
 """
 
 import asyncio
@@ -12,6 +16,7 @@ import os
 from aiohttp import WSMsgType, web
 
 PORT = int(os.environ["PORT"])
+ALLOWED_HOST_NAMES = {"localhost", "127.0.0.1"}
 
 
 def raw_headers(request: web.Request) -> list[list[str]]:
@@ -46,7 +51,16 @@ async def websocket_echo(request: web.Request) -> web.WebSocketResponse:
     return websocket
 
 
+def host_name(host_header: str) -> str:
+    return host_header.rsplit(":", 1)[0] if host_header.count(":") == 1 else host_header
+
+
 async def handle(request: web.Request) -> web.StreamResponse:
+    host = request.headers.get("Host", "")
+    if host_name(host) not in ALLOWED_HOST_NAMES:
+        return web.Response(
+            status=403, text=f"403 - Forbidden\nThe host {host!r} is not allowed.\n"
+        )
     path = request.raw_path.split("?", 1)[0]
     if path == "/sse":
         return await server_sent_events(request)

@@ -1,10 +1,12 @@
 """`backend/requirements.lock`: the hash-pinned list of everything a plugin's backend installs.
 
 The node builds the backend's virtual environment offline with
-`pip install --no-index --require-hashes --only-binary=:all: -r backend/requirements.lock`,
+`pip install --no-index --require-hashes --only-binary=:all: --no-deps -r backend/requirements.lock`,
 from the wheels in `backend/wheels/`. So the lock may hold nothing but exact pins with
 SHA-256 hashes: no index or link options, no URLs, no editable or nested requirement files.
 `uv pip compile requirements.in --universal --generate-hashes` writes such a file.
+
+The lock may not pin pip: the node installs with its own pip, never one a package brings.
 """
 
 import re
@@ -30,6 +32,7 @@ SERVER_DISTRIBUTION = canonicalize_name("uvicorn")
 # The node runs the backend with `python -m epicstaff_plugin.serve`, which serves the app with
 # uvicorn, so a backend cannot start without both.
 REQUIRED_DISTRIBUTIONS = (SDK_DISTRIBUTION, SERVER_DISTRIBUTION)
+INSTALLER_DISTRIBUTION = canonicalize_name("pip")
 
 _HASH_OPTION = re.compile(r"^--hash=sha256:([0-9a-f]{64})$")
 # pip's rule: a '#' at the start of a line or after whitespace starts a comment.
@@ -169,6 +172,11 @@ def _parse_line(line: str, line_number: int) -> LockedRequirement:
         raise ValueError(f"{requirement_text!r} is not a requirement ({error})") from None
     if requirement.url:
         raise ValueError(f"{requirement.name} is a URL or path; pin a version from an index")
+    if canonicalize_name(requirement.name) == INSTALLER_DISTRIBUTION:
+        raise ValueError(
+            f"{requirement.name} may not be pinned: the plugin node installs a backend with its "
+            "own pip, never one from the package; remove it from the lock"
+        )
     specifiers = list(requirement.specifier)
     if (
         len(specifiers) != 1

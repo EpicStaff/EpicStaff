@@ -19,7 +19,9 @@ import argparse
 import importlib.metadata
 import ipaddress
 import os
+import shutil
 import stat
+import subprocess
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -70,6 +72,7 @@ DEFAULT_DATABASE_CONNECTIONS = 5
 APP_FACTORY = "epicstaff_plugin.serve:create_app"
 PYTHON_PATH_ENVIRONMENT_VARIABLE = "PYTHONPATH"
 EXIT_START_FAILED = 1
+GIT_TIMEOUT_SECONDS = 5
 KEEP_OUTSIDE_SOURCE = "keep it outside your plugin's source: it holds keys and secret settings"
 # Variables the backend must not inherit: `serve` would use the socket instead of binding, and
 # the database variables come only from --database-url.
@@ -105,6 +108,10 @@ class DatabaseState:
     url: DatabaseUrl
     migrations: MigrationRun | None
     """What --apply-migrations did; None without it."""
+
+    login_role: str
+    exempt_tables: tuple[str, ...]
+    """Tables whose row-level security policies the login role is exempt from here."""
 
 
 @dataclass(frozen=True)
@@ -213,6 +220,7 @@ def develop(
         port=port,
         database=database,
         lock_differences=differing,
+        unignored_in=unignored_git_work_tree(runtime_path),
     ):
         print(line)
     sys.stdout.flush()
@@ -311,9 +319,14 @@ def start_text(
     port: int,
     database: DatabaseState | None,
     lock_differences: list[LockDifference],
+    unignored_in: Path | None,
 ) -> list[str]:
     """What `dev` prints once before it starts: where to point EpicStaff, and how this differs
-    from the plugin node. Never a key, a secret setting or a database password."""
+    from the plugin node. Never a key, a secret setting or a database password.
+
+    Args:
+        unignored_in: The git work tree the runtime file is in when no ignore rule covers it.
+    """
     installed = runtime.plugin.version
     shown_host = f"[{host}]" if ":" in host else host
     epicstaff = runtime.epicstaff_public_url.rstrip("/")
@@ -349,6 +362,12 @@ def start_text(
             "note: the source's public paths differ from the installed version's; the gateway "
             "applies the installed ones"
         )
+    if database is not None and database.exempt_tables:
+        lines.append(
+            f"warning: {database.login_role} owns these tables and they do not FORCE ROW LEVEL "
+            "SECURITY, so their row-level security policies do not apply to this backend; on "
+            f"EpicStaff they do: {', '.join(database.exempt_tables)}"
+        )
     if lock_differences:
         lines.append(
             f"note: this environment differs from {BACKEND_REQUIREMENTS}: "
@@ -363,6 +382,11 @@ def start_text(
             f"on this machine; download the development runtime file from Plugins → "
             f"{manifest.name} → Development"
         )
+    if unignored_in is not None:
+        lines.append(
+            f"warning: {runtime_file} is in the git work tree {unignored_in} and no ignore rule "
+            f"covers it, so it could be committed: add it to .gitignore or {KEEP_OUTSIDE_SOURCE}"
+        )
     if os.name == "posix" and runtime_file.stat().st_mode & (stat.S_IRGRP | stat.S_IROTH):
         lines.append(
             f"warning: {runtime_file} is readable by other users of this machine; "
@@ -374,6 +398,39 @@ def start_text(
             "listen there with --host (for example --host 172.17.0.1)"
         )
     return lines
+
+
+def unignored_git_work_tree(path: Path) -> Path | None:
+    """The top of the git work tree `path` is in, when no ignore rule of it covers `path`.
+
+    None when it is in none, when an ignore rule covers it, and when git is missing or cannot
+    tell. A file git tracks is never ignored, so it counts as uncovered.
+    """
+    git = shutil.which("git")
+    if git is None:
+        return None
+    # Only reads: no fsmonitor hook of the repository's configuration runs.
+    command = [git, "-c", "core.fsmonitor=false", "-C", str(path.parent)]
+    try:
+        top = subprocess.run(
+            [*command, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if top.returncode != 0:
+            return None
+        covered = subprocess.run(
+            [*command, "check-ignore", "--quiet", "--", str(path)],
+            capture_output=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    # check-ignore: 0 when a rule covers the path, 1 when none does, 128 when it cannot tell.
+    return Path(top.stdout.strip()) if covered.returncode == 1 else None
 
 
 def _plugin_source(source_directory: Path) -> PackageSource | None:
@@ -436,9 +493,10 @@ def _prepare_database(
         run = None
         if migrations is not None:
             run = development_database.apply_migrations(connection, roles, migrations)
+        exempt = development_database.tables_exempt_from_their_policies(connection)
     finally:
         connection.close()
-    return DatabaseState(url=url, migrations=run)
+    return DatabaseState(url=url, migrations=run, login_role=roles.login_role, exempt_tables=exempt)
 
 
 def _database_line(manifest: PluginManifest, database: DatabaseState | None) -> str:

@@ -21,8 +21,9 @@ At start-up, for each plugin UID:
 - **One nftables table** in the container's network namespace:
   - at most `NEW_CONNECTIONS_PER_SECOND` new TCP connections a second, to anywhere, after a
     burst of `NEW_CONNECTIONS_BURST`;
-  - at most `TCP_CONNECTIONS_PER_PLUGIN` TCP connections open at once, to anywhere (its own
-    listener included);
+  - at most `TCP_CONNECTIONS_PER_PLUGIN` TCP connections it opened open at once, to anywhere
+    (its own port included); a connection it accepts is not counted, since its first packet
+    leaves in conntrack's reply direction;
   - at most `PLUGINS_MAX_DB_CONNECTIONS` of them to plugins_db, and
     `PROXY_CONNECTIONS_PER_PLUGIN` to the egress proxy.
 
@@ -33,8 +34,9 @@ What these cannot see is a port the kernel takes for a socket without `bind()`: 
 unbound TCP socket, and a UDP socket connected without sending. The descriptor limits do not bound
 it either (`RLIMIT_NOFILE` 256 is per process, `RLIMIT_NPROC` 64 per UID: about 16,000 sockets per
 plugin). The agent's socket watchdog (`supervisor.socket_watchdog`) stops a plugin whose UID
-listens on a port of its own or holds more than 512 inet sockets, within a second; up to one
-second of such port pressure is the risk that remains. The agent's UID is outside
+listens on a port of its own, or holds more inet sockets than twice `TCP_CONNECTIONS_PER_PLUGIN`
+plus a UDP allowance (the connections it accepted on its own port not counted), within a second;
+up to one second of such port pressure is the risk that remains. The agent's UID is outside
 `PLUGINS_NODE_UID_RANGE`, so the node's own sockets are never limited.
 
 The container's entrypoint runs `python -m es_plugins.network_limits` as root with NET_ADMIN and

@@ -11,6 +11,7 @@ import os
 import secrets
 import sys
 from contextlib import contextmanager
+from urllib.parse import quote
 
 import psycopg
 import pytest
@@ -28,6 +29,7 @@ from epicstaff_plugin.cli.development_database import (
     connect,
     role_setup_sql,
     source_migrations,
+    tables_exempt_from_their_policies,
 )
 from epicstaff_plugin.contracts.database import MIGRATION_PLACEHOLDERS
 from epicstaff_plugin.database import job_transaction, org_transaction
@@ -283,6 +285,36 @@ def test_a_failed_connection_is_reported_without_the_password(monkeypatch):
     assert "\n" not in message
 
 
+def test_a_password_key_spelled_with_percent_escapes_is_masked_and_scrubbed():
+    url = DatabaseUrl.parse("postgresql://weather_app@localhost/weather_development?sslmode=disable&pass%77ord=hunter2")
+
+    assert url.shown == "postgresql://weather_app@localhost/weather_development?sslmode=disable&pass%77ord=***"
+    assert url.scrub("refused hunter2") == "refused ***"
+
+
+@pytest.mark.parametrize("password", ["hunter  two", "hunter\ttwo", "hunter\ntwo"], ids=["two spaces", "tab", "new line"])
+def test_a_password_that_cleaning_would_change_is_scrubbed_before_the_message_is_cleaned(monkeypatch, password):
+    def refuse(conninfo, **settings):
+        raise psycopg.OperationalError(f"connection failed for password {password}")
+
+    monkeypatch.setattr(psycopg, "connect", refuse)
+    url = DatabaseUrl.parse(f"postgresql://weather_app:{quote(password, safe='')}@localhost/db")
+
+    with pytest.raises(DevelopmentDatabaseError) as raised:
+        connect(url)
+
+    message = str(raised.value)
+    assert message.endswith("connection failed for password ***")
+    assert "hunter" not in message and "two" not in message
+
+
+def test_the_tables_the_login_role_is_exempt_from_are_named_quoted_and_printable():
+    connection = FakeConnection()
+    connection.exempt_tables = [("weather", "saved_places"), ("Weather", "a\x1b[31mb")]
+
+    assert tables_exempt_from_their_policies(connection) == ("weather.saved_places", '"Weather"."a?[31mb"')
+
+
 def test_without_psycopg_the_database_work_says_what_to_install(monkeypatch):
     monkeypatch.setitem(sys.modules, "psycopg", None)
     url = DatabaseUrl.parse("postgresql://weather_app@localhost/weather_development")
@@ -406,6 +438,24 @@ async def _organizations_and_the_job_role(url):
 
 async def _count(connection, table):
     return (await (await connection.execute(f"SELECT count(*) FROM {table}")).fetchone())[0]
+
+
+@pytest.mark.postgres
+@needs_postgres
+def test_a_real_server_names_the_owned_tables_whose_policies_are_not_forced():
+    migrations = [
+        _migration(
+            "001_tables.sql",
+            "CREATE TABLE open_rows (id int);\n"
+            "CREATE TABLE guarded (id int);\nALTER TABLE guarded ENABLE ROW LEVEL SECURITY;\n"
+            "CREATE TABLE forced (id int);\nALTER TABLE forced ENABLE ROW LEVEL SECURITY;\n"
+            "ALTER TABLE forced FORCE ROW LEVEL SECURITY;\n",
+        )
+    ]
+    with _local_database() as url, _session(url) as connection:
+        apply_migrations(connection, check_roles(connection, "weather"), migrations)
+
+        assert tables_exempt_from_their_policies(connection) == ("public.guarded",)
 
 
 @pytest.mark.postgres

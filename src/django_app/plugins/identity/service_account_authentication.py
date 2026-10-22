@@ -28,9 +28,9 @@ from plugins.configuration.limits import plugin_limits
 from plugins.development.development_mode import development_mode_on
 from plugins.exceptions import InvalidOnBehalfOfError, ServiceAccountNotAuthenticatedError
 from plugins.identity.internal_listener import (
+    came_through_a_plugin_listener,
     came_through_development_listener,
     came_through_internal_listener,
-    names_development_listener,
 )
 from plugins.identity.principals import PluginServiceAccountPrincipal
 from plugins.identity.service_account_keys import hash_service_account_key
@@ -54,8 +54,8 @@ class PluginServiceAccountAuthentication(BaseAuthentication):
         scheme, _, raw_key = request.META.get("HTTP_AUTHORIZATION", "").partition(" ")
         if scheme != KEYWORD:
             return None
-        if not came_through_internal_listener(request):
-            _refuse(None, "outside_internal_listener")
+        if not came_through_a_plugin_listener(request):
+            _refuse(None, "outside_plugin_listeners")
         key = _key_by_hash(raw_key.strip())
         now = timezone.now()
         _assert_usable(key, now, request)
@@ -103,8 +103,10 @@ class PluginKeyAuthScheme(OpenApiAuthenticationExtension):
             "type": "apiKey",
             "in": "header",
             "name": "Authorization",
-            "description": "`PluginKey <key>`: a plugin backend's service-account key, accepted "
-            "only through the plugins network.",
+            "description": "`PluginKey <key>`: a plugin backend's service-account key. A node "
+            "key is accepted only through the internal listener on the plugins network; a "
+            "development key only through the development API listener on the host's "
+            "loopback, while plugin development mode is on.",
         }
 
 
@@ -154,7 +156,7 @@ def _assert_listener(key: PluginServiceAccountKey, identifier: str, request) -> 
             _refuse(identifier, "development_mode_off")
         if not came_through_development_listener(request):
             _refuse(identifier, "wrong_listener")
-    elif names_development_listener(request):
+    elif not came_through_internal_listener(request):
         _refuse(identifier, "wrong_listener")
 
 

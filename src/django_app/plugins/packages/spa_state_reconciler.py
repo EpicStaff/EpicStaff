@@ -4,7 +4,9 @@ The flag nginx reads for the maintenance page, and the `current` link it serves,
 after a transaction commits (`SpaPublisher`); a write that fails there is logged and left. This
 repairs both from the plugins' rows: the flag exists exactly for plugins in maintenance, and a
 running (or failed) plugin with a frontend serves its current version once that version's
-files are there. It never removes a directory.
+files are there. It never removes a directory, and never waits for a plugin another
+transaction holds (an approval writes its files under the plugin's lock): that plugin is left
+to the next pass.
 """
 
 from django.conf import settings
@@ -27,8 +29,9 @@ class SpaStateReconciler:
         """Repair every plugin whose flag or `current` is wrong; returns how many repairs.
 
         One query, whatever the number of plugins, plus one for each plugin whose files do not
-        match it. A plugin whose files cannot be repaired is logged and the others go on.
-        Nothing happens while the SPA volume is not mounted.
+        match it. A plugin whose files cannot be repaired is logged and the others go on; one
+        another transaction holds is skipped. Nothing happens while the SPA volume is not
+        mounted.
         """
         if not settings.PLUGINS_SPA_ROOT.is_dir():
             return 0
@@ -53,10 +56,12 @@ class SpaStateReconciler:
         A lifecycle change writes the flag and `current` only after its transaction commits.
         Holding the plugin's lock while reading the row and writing the files means no change
         commits in between: one that committed before is read here, and one that commits after
-        writes its own files last. Either way the files end as the latest state says.
+        writes its own files last. Either way the files end as the latest state says. A plugin
+        whose lock another transaction holds is skipped, not waited for: this runs in the
+        retention loop, which an approval writing files under that lock must not hold up.
         """
         with transaction.atomic():
-            plugin = lock_plugin(identifier)
+            plugin = lock_plugin(identifier, skip_locked=True)
             if plugin is None:
                 return 0
             return self._repair(plugin)

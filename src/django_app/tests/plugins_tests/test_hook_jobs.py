@@ -471,10 +471,11 @@ def test_a_resume_locks_the_plugin_and_the_grant_before_its_service_account(job,
     ]
 
 
-def test_minting_keys_locks_the_service_accounts_before_their_keys(job, hooked_weather):
+def test_minting_keys_locks_the_grants_then_the_service_accounts_before_their_keys(job, hooked_weather):
     # The keys are changed by UPDATEs once the accounts are locked, as `_revoke_keys` does
-    # after it locks the account: both take the account first, so neither waits on the other.
-    assert _locks_of(lambda: ServiceAccountKeyService().mint_for_plugin(hooked_weather)) == ["account"]
+    # after a suspension locks the grant and the account: both take the grant, then the
+    # account, so neither waits on the other.
+    assert _locks_of(lambda: ServiceAccountKeyService().mint_for_plugin(hooked_weather)) == ["grant", "account"]
 
 
 # ---- many pending jobs ----

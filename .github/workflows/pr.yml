@@ -8,6 +8,11 @@ concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# Read-only by default; a job that needs more says so itself. The build job's reusable workflow
+# (compose-build.yml) asks for contents: read too.
+permissions:
+  contents: read
+
 jobs:
   # Path gating lives in this job rather than in a workflow-level `paths:` filter.
   # A workflow that `paths:` filters out never reports its checks at all, so a
@@ -180,6 +185,10 @@ jobs:
   # unsigned contributor or a pasted CDN link turns up.
   check-cla:
     runs-on: ubuntu-latest
+    # cla_check.py reads the head commit's statuses for the one cla.yml sets.
+    permissions:
+      contents: read
+      statuses: read
     steps:
       - name: Checkout
         # Toggle: set repo variable CLA_ENFORCED=true to enforce. Unset/anything else = gate skipped, build runs.

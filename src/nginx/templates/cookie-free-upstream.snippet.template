@@ -1,13 +1,19 @@
-# Included in every location of EpicStaff's server that proxies anywhere but Django: the frontend,
-# webhooks, realtime, the auditor and the chat service, which may run outside this stack.
+# Included in every location of EpicStaff's server that proxies anywhere but Django (the frontend,
+# webhooks, realtime, the auditor and the chat service, which may run outside this stack), and in
+# every location of the plugin hosts' server that proxies to anyone, Django included: a plugin's
+# backend, a frontend development server and the platform config. tests/check_templates.sh fails
+# for a new one without it.
 #
-# Only Django reads and sets cookies. On HTTPS the refresh cookie has Path=/, so the browser sends
-# it with every request to this host: it stops here. Nothing these services answer may set,
-# overwrite or clear a cookie on EpicStaff's host either, such as a planted __Host-auth.refresh,
-# or Clear-Site-Data: "cookies", which would sign everyone out of EpicStaff.
+# Only Django reads and sets cookies, and only on EpicStaff's host. On HTTPS the refresh cookie has
+# Path=/, so the browser sends it with every request to that host: it stops here. Nothing proxied
+# may set, overwrite or clear a cookie either: on EpicStaff's host, such as a planted
+# __Host-auth.refresh, or on a plugin host, whose cookie could be scoped to the parent domain. And
+# Clear-Site-Data: "cookies", from any host of the site, clears the cookies of the whole
+# registrable domain, EpicStaff's host included: it would sign everyone out of EpicStaff.
 proxy_set_header Cookie "";
 proxy_hide_header Set-Cookie;
 proxy_hide_header Clear-Site-Data;
 # A location that hides any header itself inherits none of the server's proxy_hide_header lines,
-# so the server's is repeated: nginx's own X-Frame-Options stays the only one.
+# so the server's is repeated: nginx's own X-Frame-Options stays the only one. On a plugin host,
+# frame-ancestors in the security headers decides who frames the page.
 proxy_hide_header X-Frame-Options;

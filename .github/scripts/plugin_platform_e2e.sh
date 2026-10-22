@@ -4,7 +4,8 @@
 # stops it:
 #   1. environment: a throwaway env file from scripts/envtool.py --dev with the run's settings and
 #      random secrets; it refuses to start while another EpicStaff stack's containers exist, since
-#      src/docker-compose.yaml fixes their names;
+#      src/docker-compose.yaml fixes their names, and while the run's Compose project already has
+#      containers, volumes or networks, which are not this run's to use or remove;
 #   2. names: EpicStaff's and the plugin's host names resolve to 127.0.0.1;
 #   3. stack: the services listed in the stage, built with the run's own image tag;
 #   4. package: the JS SDK, the sample page, the SDK wheel, and Weather packed for this machine's
@@ -23,10 +24,11 @@
 #                      named after the run in TMPDIR, printed at the end)
 #   E2E_KEEP_STACK     true: leave the stack running at the end, and print its env file and how
 #                      to remove it (default false)
-#   E2E_PROJECT        the Compose project (default epicstaff-plugin-e2e)
+#   E2E_PROJECT        the Compose project (default epicstaff-plugin-e2e); one that has no
+#                      containers, volumes or networks yet
 #   Any variable of src/env.yaml overrides the env file, the run's settings below included,
-#   except IMAGE_TAG, COMPOSE_PROFILES, PLUGINS_NETWORK_SUBNET and the secrets, which every run
-#   sets itself.
+#   except IMAGE_TAG, COMPOSE_PROFILES, PLUGINS_NETWORK_SUBNET, PLUGINS_DEV_MODE and the secrets,
+#   which every run sets itself.
 #
 # Needs Docker with Compose 2.24.4 or later, python3 with PyYAML, uv, Node 24.15 or later with
 # npm, and curl, plus network access for images, packages and browsers. Nothing it makes outlives
@@ -123,13 +125,19 @@ remember_secret() {
 random_secret() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
 
 # stack_value PATH: one value of the stack file the seed wrote, by its dotted path
-# (people.ada.email). Printed for a caller to capture, never to the log.
+# (people.ada.email). Printed for a caller to capture, never to the log. A value that is missing,
+# or still null (the seed writes the file early and fills it in as it goes), fails with the reason.
 stack_value() {
   python3 -c '
 import json, sys
 value = json.load(open(sys.argv[1], encoding="utf-8"))
 for part in sys.argv[2].split("."):
-    value = value[part]
+    value = value.get(part) if isinstance(value, dict) else None
+if value is None:
+    sys.exit(
+        f"ERROR: the stack file {sys.argv[1]} has no {sys.argv[2]}: the seed did not finish. "
+        "Run it again: npm --prefix plugin-sdk/test-browser run e2e:seed"
+    )
 print(value)' "$work/stack.json" "$1"
 }
 
@@ -253,14 +261,24 @@ collect_artifacts() {
   echo "the browser report, traces and container logs are in $artifacts"
 }
 
+# The teardown: every profile (es_plugins, plugins_egress and plugins_db are in one) and every
+# compose file the run used, the development one once the development leg added it. remove_stack
+# runs it; a kept stack prints it.
+teardown_command() {
+  teardown=(docker compose -p "$project" "${compose_files[@]}" --env-file "$work/e2e.env"
+    --profile '*' down -v --remove-orphans)
+}
+project_containers() { docker ps -a -q --filter "label=com.docker.compose.project=$project"; }
+
 remove_stack() {
-  local images image
+  local images image teardown
   images=$(compose config --format json 2> /dev/null | python3 -c '
 import json, sys
 services = json.load(sys.stdin)["services"]
 for name in sys.argv[1:]:
     print(services[name].get("image", ""))' "${built_services[@]}" 2> /dev/null || true)
-  compose down -v --remove-orphans > "$work/down.log" 2>&1 || cat "$work/down.log"
+  teardown_command
+  "${teardown[@]}" > "$work/down.log" 2>&1 || cat "$work/down.log"
   # Only the images this run built: each carries the run's own tag.
   for image in $images; do
     case "$image" in
@@ -280,9 +298,12 @@ finish() {
   fi
   echo
   echo "## teardown"
-  if [ "$stack_started" = 1 ] && [ "$keep_stack" = 1 ]; then
+  # Only containers this run made: the environment stage refuses a project that has any.
+  if [ "$stack_started" = 1 ] && [ "$keep_stack" = 1 ] && [ -n "$(project_containers)" ]; then
+    local teardown
+    teardown_command
     echo "the stack keeps running as Compose project $project; its env file is $work/e2e.env and its stack file $work/stack.json"
-    echo "remove it with: docker compose -p $project ${compose_files[*]} --env-file $work/e2e.env down -v, then rm -rf $work"
+    echo "remove it with: $(printf '%q ' "${teardown[@]}")&& rm -rf $(printf '%q' "$work")"
   else
     if [ "$stack_started" = 1 ]; then
       remove_stack
@@ -330,24 +351,25 @@ node -e 'const [major, minor] = process.versions.node.split(".").map(Number); pr
 unset COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PATH_SEPARATOR COMPOSE_ENV_FILES COMPOSE_PROFILES
 python3 "$repository/scripts/envtool.py" --dev --env-file "$work/e2e.env" > /dev/null
 
-# The run's settings: the local development names, plugins on, development mode off until the
-# development leg, and the raised login and refresh rates the browser suite needs. The shell's
-# values win.
+# The run's settings: the local development names, plugins on, and the raised login and refresh
+# rates the browser suite needs. The shell's values win.
 export PLUGINS_ENABLED=${PLUGINS_ENABLED:-true}
 export NGINX_SERVER_NAME=${NGINX_SERVER_NAME:-epicstaff.localhost}
 export NGINX_SSL_MODE=${NGINX_SSL_MODE:-off}
 export DJANGO_FRONTEND_BASE_URL=${DJANGO_FRONTEND_BASE_URL:-http://epicstaff.localhost}
 export PLUGINS_BASE_DOMAIN=${PLUGINS_BASE_DOMAIN:-plugins.epicstaff.localhost}
 export DJANGO_REFRESH_COOKIE_SECURE=${DJANGO_REFRESH_COOKIE_SECURE:-false}
-export PLUGINS_DEV_MODE=${PLUGINS_DEV_MODE:-false}
 export PLUGINS_DEV_API_PORT=${PLUGINS_DEV_API_PORT:-8082}
 export DJANGO_LOGIN_THROTTLE_RATE=${DJANGO_LOGIN_THROTTLE_RATE:-100/min}
 export DJANGO_LOGIN_IP_THROTTLE_RATE=${DJANGO_LOGIN_IP_THROTTLE_RATE:-300/min}
 export DJANGO_TOKEN_REFRESH_THROTTLE_RATE=${DJANGO_TOKEN_REFRESH_THROTTLE_RATE:-600/min}
 export PLUGINS_MAX_PACKAGE_MB=${PLUGINS_MAX_PACKAGE_MB:-300}
 # Set by the run whatever the shell holds: images under the run's own tag (never :latest), only
-# the plugins profile, and a plugins subnet apart from a developer's stack and the labs.
-export IMAGE_TAG="e2e-$run_id" COMPOSE_PROFILES=plugins PLUGINS_NETWORK_SUBNET=10.235.252.0/24
+# the plugins profile, a plugins subnet apart from a developer's stack and the labs, and
+# development mode off until the development leg, which adds the development compose file that
+# mode needs (nginx and django_app refuse it without that file).
+export IMAGE_TAG="e2e-$run_id" COMPOSE_PROFILES=plugins PLUGINS_NETWORK_SUBNET=10.235.252.0/24 \
+  PLUGINS_DEV_MODE=false
 # Random for every run, and never printed.
 for name in PLUGINS_GATEWAY_SECRET PLUGINS_NODE_KEY PLUGINS_DB_SUPERUSER_PASSWORD \
   PLUGINS_DB_ADMIN_PASSWORD PLUGINS_DB_BACKUP_PASSWORD; do
@@ -368,6 +390,26 @@ plugin_url="${epicstaff_url%%://*}://$plugin.$PLUGINS_BASE_DOMAIN"
 PLUGINS_TRUSTED_SIGNING_KEYS=$(sed -n 's/^PLUGINS_TRUSTED_SIGNING_KEYS entry: //p' "$work/keygen.out")
 [ -n "$PLUGINS_TRUSTED_SIGNING_KEYS" ] || fail_run "epicstaff-plugin keygen printed no trusted key entry"
 export PLUGINS_TRUSTED_SIGNING_KEYS
+
+# The run's project must be new: its teardown runs `down -v`, which would remove the volumes of a
+# project that is not this run's (E2E_PROJECT=src: a developer's src_* volumes), and a killed
+# run's leftovers would break this one. Nothing is removed here.
+project_filter="label=com.docker.compose.project=$project"
+project_leftovers=$(
+  docker ps -a --filter "$project_filter" --format 'container {{.Names}}'
+  docker volume ls --filter "$project_filter" --format 'volume {{.Name}}'
+  docker network ls --filter "$project_filter" --format 'network {{.Name}}'
+)
+if [ -n "$project_leftovers" ]; then
+  echo "Compose project $project already has:" >&2
+  while read -r leftover; do
+    echo "  $leftover" >&2
+  done <<< "$project_leftovers"
+  echo "Run with another E2E_PROJECT. If these are left over from an earlier run of this script, remove them first with" >&2
+  echo "  docker compose -p $(printf '%q' "$project") down -v" >&2
+  echo "which deletes the project's volumes and their data. This script never removes them." >&2
+  fail_run "Compose project $project is not new"
+fi
 
 # src/docker-compose.yaml fixes container names, so a second stack cannot start next to one that
 # exists, running or stopped. This script never stops or removes another stack.

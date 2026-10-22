@@ -282,10 +282,12 @@ def _messages():
 def development_platform(valid_platform):
     """A local development deployment with development mode on: only the warning is given.
 
-    DEBUG is set explicitly, because the test runner forces it off.
+    DEBUG is set explicitly, because the test runner forces it off. The loopback marker is
+    what docker-compose.plugins-dev.yaml sets.
     """
     valid_platform.PLUGINS_DEV_MODE = True
     valid_platform.PLUGINS_DEV_API_PORT = "8082"
+    valid_platform.PLUGINS_DEV_LOOPBACK_ONLY = True
     valid_platform.DEBUG = True
     return valid_platform
 
@@ -334,16 +336,43 @@ def test_e012_an_epicstaff_host_outside_localhost(development_platform):
     assert "DJANGO_FRONTEND_BASE_URL ('epicstaff.example.com')" in messages["plugins.E012"]
 
 
+def test_e012_development_mode_without_the_development_compose_file(development_platform):
+    development_platform.PLUGINS_DEV_LOOPBACK_ONLY = False
+
+    messages = _messages()
+
+    assert list(messages) == ["plugins.E012"]
+    assert messages["plugins.E012"] == (
+        "PLUGINS_DEV_MODE is true, but this is not a local development deployment: "
+        "PLUGINS_DEV_LOOPBACK_ONLY is not true, so the stack was not started with "
+        "docker-compose.plugins-dev.yaml and EpicStaff's ports may be reachable from other machines."
+    )
+
+
+def test_e012_without_the_development_compose_file_stops_management_commands(development_platform):
+    development_platform.PLUGINS_DEV_LOOPBACK_ONLY = False
+
+    with pytest.raises(SystemCheckError, match="plugins.E012"):
+        call_command("check")
+
+
+def test_the_loopback_marker_alone_neither_turns_development_mode_on_nor_is_checked(valid_platform):
+    valid_platform.PLUGINS_DEV_LOOPBACK_ONLY = True
+
+    assert _ids() == []
+
+
 def test_e012_names_every_failing_condition(development_platform):
     development_platform.DEBUG = False
     development_platform.REFRESH_COOKIE_SECURE = True
     development_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
     development_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
+    development_platform.PLUGINS_DEV_LOOPBACK_ONLY = False
 
     message = _messages()["plugins.E012"]
 
     assert "DJANGO_DEBUG" in message and "PLUGINS_BASE_DOMAIN" in message
-    assert "DJANGO_FRONTEND_BASE_URL" in message
+    assert "DJANGO_FRONTEND_BASE_URL" in message and "PLUGINS_DEV_LOOPBACK_ONLY" in message
 
 
 def test_e012_stops_management_commands(development_platform):

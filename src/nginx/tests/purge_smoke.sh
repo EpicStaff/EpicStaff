@@ -128,24 +128,36 @@ fetch() {
     ${curl_options[@]+"${curl_options[@]}"} "$1" 2> /dev/null || echo 000
 }
 
-# json PYTHON-EXPRESSION: prints the expression's value for the last body, parsed as `body`.
+# json PYTHON-EXPRESSION: prints the expression's value for the last body, parsed as `body`, as
+# JSON for a dict or a list. The expression is stripped first, so it may start on a line of its
+# own. When the body is not JSON or the expression raises, prints nothing, gives the reason on
+# standard error and fails.
 json() {
   python3 -c '
 import json, sys
 try:
     body = json.load(open(sys.argv[1], encoding="utf-8"))
-    value = eval(sys.argv[2])
-except (ValueError, KeyError, TypeError, IndexError, AttributeError, StopIteration):
-    sys.exit(1)
+except (OSError, ValueError) as error:
+    sys.exit(f"the body is not JSON: {error}")
+try:
+    value = eval(sys.argv[2].strip())
+except Exception as error:
+    sys.exit(f"the check raised {type(error).__name__}: {error}")
 print(value if not isinstance(value, (dict, list)) else json.dumps(value))' "$work_dir/body" "$1"
 }
-json_is() { [ "$(json "$1" 2> /dev/null)" = True ]; }
+# json_is CHECK: whether CHECK is True of the last body. One that cannot be evaluated is false,
+# and leaves the reason in $work_dir/check-error.
+json_is() { [ "$(json "$1" 2> "$work_dir/check-error")" = True ]; }
 
 expect() { # $1 = description, $2 = expected status, $3 = actual status, $4 = Python check of the body
   if [ "$3" != "$2" ]; then
     fail "$1: status $3, expected $2 $(head -c 200 "$work_dir/curl-error" 2> /dev/null) $(head -c 200 "$work_dir/body")"
   elif [ -n "${4-}" ] && ! json_is "$4"; then
-    fail "$1: unexpected body $(head -c 300 "$work_dir/body")"
+    if [ -s "$work_dir/check-error" ]; then
+      fail "$1: $(head -c 300 "$work_dir/check-error"); body $(head -c 300 "$work_dir/body")"
+    else
+      fail "$1: unexpected body $(head -c 300 "$work_dir/body")"
+    fi
   else
     pass "$1"
   fi

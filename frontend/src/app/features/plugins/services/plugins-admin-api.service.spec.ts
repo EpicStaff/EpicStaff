@@ -339,7 +339,7 @@ describe('PluginsAdminApiService', () => {
         const body = {
             status_code: 409,
             code: 'plugin_development_mode_off',
-            message: 'Plugin development mode is off.',
+            message: 'Plugin development mode is off on this deployment.',
         };
         http.expectOne('/api/admin/plugins/weather/development/runtime-file/').flush(
             new Blob([JSON.stringify(body)], { type: 'application/json' }),

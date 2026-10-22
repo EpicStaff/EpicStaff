@@ -118,11 +118,11 @@ node limits each backend, by its Unix user:
 | Limit | Value | Over it |
 |---|---|---|
 | New TCP connections, to anywhere | 200 a second, after a burst of 200 | Refused at once (a TCP reset) |
-| TCP connections open at once, to anywhere | 512 | Refused at once |
+| TCP connections the plugin opened, open at once, to anywhere (connections it accepted on its own port do not count) | 512 | Refused at once |
 | Connections open to the database server | `PLUGINS_MAX_DB_CONNECTIONS` (20) | Refused at once |
 | Connections open to the egress proxy | 64 | Refused at once |
-| Network sockets held, TCP and UDP together | 512 | The plugin is stopped, within a second, until a SuperAdmin restarts it |
-| Listening on a port of its own | Not allowed: `bind()` is refused, and a `listen()` without it is caught | The plugin is stopped, within a second, until a SuperAdmin restarts it |
+| Network sockets held, TCP and UDP together (TCP connections it accepted on its own port do not count) | 1,280 | The plugin is stopped, within a second, until a SuperAdmin restarts it |
+| A TCP socket in LISTEN on any port | Not allowed: `bind()` is refused, and a `listen()` without it is caught | The plugin is stopped, within a second, until a SuperAdmin restarts it |
 
 Closed connections stop counting at once. Reuse connections (an HTTP client with a connection
 pool, a database pool) rather than opening one per request. The node's own connections are not

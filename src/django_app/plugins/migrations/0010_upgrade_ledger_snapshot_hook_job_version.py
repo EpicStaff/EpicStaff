@@ -1,22 +1,9 @@
 from django.db import migrations, models
-from django.db.models import OuterRef, Subquery
-
-
-def copy_claimed_package_versions(apps, schema_editor):
-    """A job claimed before this migration gets its package's version, while the package is there."""
-    PluginHookJob = apps.get_model("plugins", "PluginHookJob")
-    PluginPackage = apps.get_model("plugins", "PluginPackage")
-    PluginHookJob.objects.filter(claimed_at__isnull=False, package__isnull=False).update(
-        package_version=Subquery(
-            PluginPackage.objects.filter(pk=OuterRef("package_id")).values("version")[:1]
-        )
-    )
 
 
 class Migration(migrations.Migration):
     """The upgrade's ledger snapshot, the hook job's version as text, the version a backup was
-    taken for, the restore's pre-restore file name, and a narrower backup retention index. Upgrades opened before this migration keep a null snapshot, and
-    `database_changed` falls back to comparing with the version they upgrade from."""
+    taken for, the restore's pre-restore file name, and a narrower backup retention index."""
 
     dependencies = [
         ("plugins", "0009_development_mode"),
@@ -33,7 +20,6 @@ class Migration(migrations.Migration):
             name="package_version",
             field=models.CharField(blank=True, max_length=64, null=True),
         ),
-        migrations.RunPython(copy_claimed_package_versions, migrations.RunPython.noop),
         migrations.AddField(
             model_name="plugindatabasebackup",
             name="taken_for_version",

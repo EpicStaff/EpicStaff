@@ -2,9 +2,12 @@
 
 A deployment may run in development mode only when it is a local development deployment:
 `DJANGO_DEBUG` is true (the project's "never in production" switch), `PLUGINS_BASE_DOMAIN`
-ends in `.localhost`, and the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or ends in
-`.localhost`. Browsers resolve `.localhost` names only to the loopback interface of their own
-machine (RFC 6761). The plugins.E012 start-up check refuses the mode anywhere else.
+ends in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or ends in
+`.localhost`, and the stack runs with `docker-compose.plugins-dev.yaml`, which sets
+`PLUGINS_DEV_LOOPBACK_ONLY`. That file is what keeps other machines out: it publishes
+EpicStaff's ports on 127.0.0.1 only. The `.localhost` names are not a control, since any client
+that reaches a port can send any `Host`. The plugins.E012 start-up check refuses the mode
+anywhere else.
 
 Every development code path calls `development_mode_on()` when it runs, never a cached
 value, so turning the flag off makes every stored development target and every development
@@ -40,6 +43,12 @@ def development_mode_problems() -> list[str]:
         problems.append(
             f"the host of DJANGO_FRONTEND_BASE_URL ({host!r}) is neither localhost nor a "
             ".localhost name"
+        )
+    if not settings.PLUGINS_DEV_LOOPBACK_ONLY:
+        problems.append(
+            "PLUGINS_DEV_LOOPBACK_ONLY is not true, so the stack was not started with "
+            "docker-compose.plugins-dev.yaml and EpicStaff's ports may be reachable from other "
+            "machines"
         )
     return problems
 

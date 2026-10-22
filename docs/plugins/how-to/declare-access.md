@@ -43,7 +43,13 @@ Each call needs the action its endpoint needs from a person:
 | Create an LLM configuration; list the LLM models | `llm_configs: create`; `llm_configs: read` |
 
 Writing trigger nodes needs `flows: use` because a trigger starts runs by itself; the review warns
-when `flows` has `create` or `update` without `use`. Secrets have no `update`: replace one by
+when `flows` has `create` or `update` without `use`: a flow the plugin writes still runs, with its
+code, when someone in the organization runs it.
+
+`flows` with `create`, `update` or `use` also lets the plugin run code in EpicStaff's sandbox,
+through the flows it writes or runs. The sandbox has its own network access, and your
+`outbound_hosts` do not apply to that code. The review warns about it, so ask for these actions
+only when the plugin needs them. Secrets have no `update`: replace one by
 creating a new secret and deleting the old (`secrets: delete`).
 
 ## What the declaration does not give

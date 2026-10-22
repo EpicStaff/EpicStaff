@@ -39,6 +39,9 @@ interface BackupRow {
  * database it holds, its size and time, and Restore… for those the server says are restorable (else why not). The list
  * is loaded again whenever `refreshKey` changes (on every runtime poll, and when the open upgrade moves) and after a
  * restore was asked for.
+ *
+ * A failed load shows an alert with Retry. A poll that fails again leaves that alert as it is, so it is not announced
+ * anew every few seconds and Retry keeps its focus; it goes once a list arrives, or at once on Retry.
  */
 @Component({
     selector: 'app-plugin-backups',
@@ -87,7 +90,9 @@ export class PluginBackupsComponent {
     constructor() {
         toObservable(this.request)
             .pipe(
-                tap(() => this.loadError.set(null)),
+                tap(() => {
+                    if (this.list() === null && this.loadError() === null) this.isLoading.set(true);
+                }),
                 switchMap(({ identifier }) =>
                     this.storage.listBackups(identifier).pipe(
                         catchError((error: unknown) => {
@@ -100,12 +105,16 @@ export class PluginBackupsComponent {
                 takeUntilDestroyed()
             )
             .subscribe((list) => {
-                if (list) this.list.set(list);
+                if (!list) return;
+                this.list.set(list);
+                this.loadError.set(null);
             });
     }
 
-    protected reload(): void {
-        this.reloads.update((count) => count + 1);
+    /** Retry: the alert and its button go, so the heading takes the focus. */
+    protected retry(): void {
+        this.heading()?.nativeElement.focus({ preventScroll: true });
+        this.reload();
     }
 
     protected openRestore(row: BackupRow): void {
@@ -128,6 +137,12 @@ export class PluginBackupsComponent {
                 this.restoreRequested.emit(restore);
                 this.reload();
             });
+    }
+
+    /** A load someone asked for starts without the last failure's alert. */
+    private reload(): void {
+        this.loadError.set(null);
+        this.reloads.update((count) => count + 1);
     }
 }
 

@@ -10,9 +10,12 @@ two:
   node grants it: the app role may switch to it, and never gets its policies or privileges
   otherwise.
 
-Neither may be a superuser or bypass row-level security, so the plugin's policies apply as they
-do on EpicStaff. The one difference: the login role also owns the tables, so the backend could
-change them while it runs.
+Neither may be a superuser or bypass row-level security. What differs from EpicStaff is that the
+login role also owns the tables: the backend could change them while it runs, and a table's
+policies do not apply to it unless the table has FORCE ROW LEVEL SECURITY, since PostgreSQL
+exempts a table's owner otherwise. On EpicStaff the app role owns no table, so they always apply
+to it. They apply to the job role here as there. `dev` names the tables this concerns
+(`tables_exempt_from_their_policies`).
 
 The migrations are applied as the node applies them (`epicstaff_plugin.contracts.database`): in
 name order, each file whole and in one transaction together with its ledger row, with
@@ -28,7 +31,7 @@ import contextlib
 import hashlib
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any, Protocol
@@ -57,7 +60,7 @@ _IN_TRANSACTION = 2
 _MAX_ERROR_TEXT = 500
 _BYTE_ORDER_MARK = "﻿"
 _UNQUOTED_IDENTIFIER = re.compile(r"[a-z_][a-z0-9_]*")
-_QUERY_PASSWORD = re.compile(r"(^|&)password=([^&]*)")
+_PASSWORD_PARAMETER = "password"
 
 
 def quote_identifier(name: str) -> str:
@@ -76,6 +79,14 @@ RECORD_MIGRATION = f"INSERT INTO {LEDGER} (name, sha256) VALUES (%s, %s)"
 CURRENT_TRANSACTION = "SELECT pg_catalog.pg_current_xact_id()::text::bigint"
 LOGIN_ROLE_QUERY = (
     "SELECT rolname, rolsuper, rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user"
+)
+# Tables with row-level security whose policies the session's role is exempt from: it owns them
+# (or is a member of their owner), and they are not forced.
+EXEMPT_TABLES_QUERY = (
+    "SELECT n.nspname, c.relname FROM pg_catalog.pg_class c "
+    "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE c.relkind IN ('r', 'p') AND c.relrowsecurity AND NOT c.relforcerowsecurity "
+    "AND pg_catalog.pg_has_role(current_user, c.relowner, 'USAGE') ORDER BY 1, 2"
 )
 JOB_ROLE_QUERY = (
     "SELECT rolsuper, rolbypassrls, pg_catalog.pg_has_role(current_user, oid, 'SET'), "
@@ -131,10 +142,7 @@ class DatabaseUrl:
             raise ValueError("--database-url is not a valid postgresql:// URL") from None
         if parts.scheme not in DATABASE_URL_SCHEMES:
             raise ValueError("--database-url must be a postgresql:// URL")
-        spelled = [
-            _userinfo_password(parts),
-            *(password for _, password in _QUERY_PASSWORD.findall(parts.query)),
-        ]
+        spelled = [_userinfo_password(parts), *_query_passwords(parts.query)]
         hidden = {
             text for password in spelled if password for text in (password, unquote(password))
         }
@@ -158,12 +166,26 @@ def _userinfo_password(parts: SplitResult) -> str | None:
     return userinfo.partition(":")[2]
 
 
+def _is_password_parameter(pair: str) -> bool:
+    # libpq decodes a parameter's name too: `pass%77ord=` is a password.
+    name, separator, _ = pair.partition("=")
+    return bool(separator) and unquote(name) == _PASSWORD_PARAMETER
+
+
+def _query_passwords(query: str) -> list[str]:
+    """The values of the query's `password` parameters, as the URL spells them."""
+    return [pair.partition("=")[2] for pair in query.split("&") if _is_password_parameter(pair)]
+
+
 def _masked(parts: SplitResult) -> str:
     userinfo, separator, host = parts.netloc.rpartition("@")
     netloc = parts.netloc
     if separator and ":" in userinfo:
         netloc = f"{userinfo.partition(':')[0]}:{MASK}@{host}"
-    query = _QUERY_PASSWORD.sub(rf"\1password={MASK}", parts.query)
+    query = "&".join(
+        f"{pair.partition('=')[0]}={MASK}" if _is_password_parameter(pair) else pair
+        for pair in parts.query.split("&")
+    )
     return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
 
 
@@ -218,7 +240,7 @@ def connect(url: DatabaseUrl) -> DevelopmentConnection:
         return psycopg.connect(url.value, autocommit=True, connect_timeout=CONNECT_TIMEOUT_SECONDS)
     except psycopg.Error as error:
         raise DevelopmentDatabaseError(
-            f"cannot connect to {url.shown}: {url.scrub(describe_error(error))}"
+            f"cannot connect to {url.shown}: {describe_error(error, scrub=url.scrub)}"
         ) from None
 
 
@@ -269,6 +291,33 @@ def check_roles(connection: DevelopmentConnection, plugin_identifier: str) -> Da
             name,
         )
     return DatabaseRoles(login_role=login_role, job_role=job_role)
+
+
+def tables_exempt_from_their_policies(connection: DevelopmentConnection) -> tuple[str, ...]:
+    """The tables with row-level security whose policies do not apply to the login role here.
+
+    It owns them, and they lack FORCE ROW LEVEL SECURITY; on EpicStaff the app role owns none,
+    so their policies apply to it there. Each is `schema.table`, quoted where SQL needs it and
+    with control characters shown as `?`.
+
+    Raises:
+        DevelopmentDatabaseError: The catalog could not be read.
+    """
+    psycopg = _psycopg()
+    try:
+        rows = connection.execute(EXEMPT_TABLES_QUERY).fetchall()
+    except psycopg.Error as error:
+        raise DevelopmentDatabaseError(
+            f"cannot read which tables have row-level security: {describe_error(error)}"
+        ) from None
+    return tuple(f"{_shown_name(schema)}.{_shown_name(table)}" for schema, table in rows)
+
+
+def _shown_name(name: str) -> str:
+    printable = "".join(
+        "?" if unicodedata.category(character) in ("Cc", "Cs") else character for character in name
+    )
+    return _shown_identifier(printable)
 
 
 def role_setup_sql(name: str) -> str:
@@ -426,16 +475,19 @@ def _line_of(text: str, error: Exception) -> str:
     return f" line {line}"
 
 
-def describe_error(error: Exception) -> str:
+def describe_error(error: Exception, *, scrub: Callable[[str], str] | None = None) -> str:
     """`[SQLSTATE] message` of an error the server sent, or psycopg's own message, on one line.
 
     Control characters become spaces and runs of spaces one, so a message a migration chose can
-    never start a line of its own.
+    never start a line of its own. `scrub` takes secrets out of the text first: cleaning or
+    cutting it could split one so that it no longer matches.
     """
     if error.sqlstate:
         text = f"[{error.sqlstate}] {error.diag.message_primary or ''}"
     else:
         text = str(error)
+    if scrub is not None:
+        text = scrub(text)
     spaced = "".join(
         " " if unicodedata.category(character) in ("Cc", "Cs") else character for character in text
     )

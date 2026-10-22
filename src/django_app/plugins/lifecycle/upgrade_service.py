@@ -293,13 +293,16 @@ class PluginUpgradeService:
 
     # ---- the node's requests ----
 
-    def advance(self, node: PluginNode, upgrade_id: int, body: bytes) -> None:
-        """Take an upgrade of `node`'s to the stage its node asks for in `body` (the request's
-        JSON), in one transaction.
+    def advance(
+        self, node: PluginNode, upgrade_id: int, read_request: Callable[[], UpgradeAdvance]
+    ) -> None:
+        """Take an upgrade of `node`'s to the stage its node asks for, in one transaction.
 
-        Asking for the stage the upgrade is in already changes nothing. Otherwise the upgrade
-        must be open, not failed, and in the stage before. The upgrade is looked up before the
-        body is read, so an unknown one answers 404 and a closed one 409 whatever the body.
+        `read_request` reads the request the view received (`parse_upgrade_advance` of its
+        body). Asking for the stage the upgrade is in already changes nothing. Otherwise the
+        upgrade must be open, not failed, and in the stage before. `read_request` is called
+        only once the upgrade is found and current, so an unknown one answers 404 and a closed
+        one 409 whatever the body.
 
         Raises:
             UpgradeNotFoundError: No such upgrade on a placement of this node.
@@ -321,7 +324,7 @@ class PluginUpgradeService:
             upgrade = open_upgrade_of(plugin, lock=True) if plugin is not None else None
             if upgrade is None or upgrade.pk != upgrade_id:
                 raise UpgradeNotCurrentError()
-            request = parse_upgrade_advance(body)
+            request = read_request()
             if request.to == "maintenance":
                 self._advance_to_maintenance(plugin, upgrade, request)
             else:
@@ -344,12 +347,13 @@ class PluginUpgradeService:
         upgrade.save(update_fields=["stage", "maintenance_started_at", "updated_at"])
         plugin.state = PluginState.MAINTENANCE
         plugin.save(update_fields=["state", "updated_at"])
-        active = [grant.pk for grant in lock_grants_of(plugin) if grant.state == GrantState.ACTIVE]
-        # `settle_grant` makes every active grant of a plugin in maintenance `upgrading`, with
-        # nothing else to change: one UPDATE, the rows locked above in ascending pk.
-        offline = PluginGrant.objects.filter(pk__in=active).update(
-            state=GrantState.UPGRADING, updated_at=now
-        )
+        active = [grant for grant in lock_grants_of(plugin) if grant.state == GrantState.ACTIVE]
+        # The plugin is in maintenance now, so `settle_grant` makes each of them `upgrading`
+        # without a query; one UPDATE saves them all, whatever their number.
+        for grant in active:
+            settle_grant(grant)
+        _save_settled(active, now)
+        offline = len(active)
         ActivityRecorder().plugin_maintenance_started(
             plugin.identifier, upgrade.to_version, offline
         )

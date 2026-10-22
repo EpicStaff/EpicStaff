@@ -1,4 +1,5 @@
 import errno
+import os
 import socket
 
 import pytest
@@ -135,3 +136,88 @@ def test_closing_frees_every_port(reservation):
     held.close()
 
     assert [bind_error(port) for port in ports] == [None, None]
+
+
+@pytest.fixture
+def elsewhere():
+    """A listener a plugin could connect its fd 3 to."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(8)
+        yield listener.getsockname()
+
+
+def as_a_plugin(descriptor: int) -> socket.socket:
+    """The reservation socket as a plugin process holds it: the same socket, another descriptor."""
+    return socket.socket(fileno=os.dup(descriptor))
+
+
+def connected_elsewhere(descriptor: int, address, *, listening: bool = True) -> None:
+    """What a plugin may do with its fd 3: stop it listening and connect it somewhere, then exit."""
+    with as_a_plugin(descriptor) as plugin_side:
+        if listening:
+            plugin_side.shutdown(socket.SHUT_RDWR)
+        plugin_side.connect(address)
+
+
+def serves(port: int) -> bool:
+    return connection_error(port) is None
+
+
+@pytest.mark.linux
+def test_a_socket_a_plugin_connected_elsewhere_is_replaced_when_given_back(reservation, elsewhere):
+    held, (port, _) = reservation
+    descriptor = held.take(port, placement_id=7)
+    connected_elsewhere(descriptor, elsewhere)
+
+    held.give_back(port, placement_id=7)
+
+    # Held again, by a socket of its own: nothing else can bind it, and it does not listen.
+    assert bind_error(port) == errno.EADDRINUSE
+    assert connection_error(port) == errno.ECONNREFUSED
+    held.take(port, placement_id=8)
+    assert serves(port)
+
+
+@pytest.mark.linux
+def test_a_socket_changed_after_it_was_given_back_is_replaced_when_taken(reservation, elsewhere):
+    held, (port, _) = reservation
+    descriptor = held.take(port, placement_id=7)
+    held.give_back(port, placement_id=7)
+    connected_elsewhere(descriptor, elsewhere, listening=False)
+
+    fresh = held.take(port, placement_id=8)
+
+    assert serves(port)
+    with socket.socket(fileno=os.dup(fresh)) as taken:
+        assert taken.getsockname() == ("0.0.0.0", port)
+        with pytest.raises(OSError) as unconnected:
+            taken.getpeername()
+        assert unconnected.value.errno == errno.ENOTCONN
+
+
+@pytest.mark.linux
+def test_while_a_plugin_process_still_holds_the_changed_socket_the_port_is_retried(reservation, elsewhere):
+    held, (port, _) = reservation
+    descriptor = held.take(port, placement_id=7)
+    plugin_side = as_a_plugin(descriptor)
+    plugin_side.shutdown(socket.SHUT_RDWR)
+    plugin_side.connect(elsewhere)
+
+    held.give_back(port, placement_id=7)
+    with pytest.raises(PortUnavailableError, match=f"port {port} could not be bound again"):
+        held.take(port, placement_id=8)
+
+    plugin_side.close()
+    held.take(port, placement_id=8)
+    assert serves(port)
+
+
+@pytest.mark.linux
+def test_an_unchanged_socket_is_kept_across_give_back_and_take(reservation):
+    held, (port, _) = reservation
+    descriptor = held.take(port, placement_id=7)
+
+    held.give_back(port, placement_id=7)
+
+    assert held.take(port, placement_id=8) == descriptor

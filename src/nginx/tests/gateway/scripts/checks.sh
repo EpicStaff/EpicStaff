@@ -275,11 +275,12 @@ else
   fail "the check's Host: $(echo "$seen" | jq -c '[.headers[] | select(.[0] == "Host")]')"
 fi
 request "$alpha" /api/public/echo
-if [ -z "$(header Set-Cookie)" ] && [ -z "$(header X-Frame-Options)" ] \
-  && [ -z "$(header X-EpicStaff-Gateway-Deny)" ]; then
-  pass "the plugin's Set-Cookie, X-Frame-Options and X-EpicStaff-Gateway-Deny never reach the browser"
+if [ "$status" = 200 ] && [ "$(jq -r .backend "$work/body" 2> /dev/null)" = alpha ] \
+  && [ -z "$(header Set-Cookie)" ] && [ -z "$(header Clear-Site-Data)" ] \
+  && [ -z "$(header X-Frame-Options)" ] && [ -z "$(header X-EpicStaff-Gateway-Deny)" ]; then
+  pass "the plugin's Set-Cookie, Clear-Site-Data, X-Frame-Options and X-EpicStaff-Gateway-Deny never reach the browser"
 else
-  fail "plugin response headers leaked: Set-Cookie [$(header Set-Cookie)] X-Frame-Options [$(header X-Frame-Options)] X-EpicStaff-Gateway-Deny [$(header X-EpicStaff-Gateway-Deny)]"
+  fail "plugin response headers leaked ($status): Set-Cookie [$(header Set-Cookie)] Clear-Site-Data [$(header Clear-Site-Data)] X-Frame-Options [$(header X-Frame-Options)] X-EpicStaff-Gateway-Deny [$(header X-EpicStaff-Gateway-Deny)]"
 fi
 # The plugin's own 401, dressed as the gateway's: it reaches the page as the plugin's, unmarked.
 request "$alpha" /api/public/denied

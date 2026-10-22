@@ -24,9 +24,10 @@
 # Arguments: extra curl options for the request to SMOKE_BASE_URL, e.g. --cacert <file> (or -k)
 # for a local CA, or --connect-to ::127.0.0.1: to reach nginx without DNS entries.
 #
-# Needs Docker (it reads the runtime file as root in the node's container and runs curl in a
-# container of src/docker-compose.yaml's pinned curl image) and python3. The key is never printed
-# and never on a command line: it goes to curl as a header file or on its standard input.
+# Needs Docker (it reads the runtime file in the node's container as the file's owner, the
+# plugin's user id, and runs curl in a container of src/docker-compose.yaml's pinned curl image)
+# and python3. The key is never printed and never on a command line: it goes to curl as a header
+# file or on its standard input.
 #
 # Usage:
 #   SMOKE_BASE_URL=http://epicstaff.localhost SMOKE_PLUGIN=weather SMOKE_ORG_ID=3 \
@@ -92,9 +93,17 @@ bail_out() {
 
 echo "# the service account's key, from the runtime file of $plugin"
 
-if ! docker exec -u root "$node" cat "/run/es_plugins/$plugin/runtime.json" > "$work_dir/runtime.json" \
+# The file is 0400 and owned by the plugin's user id, and the node's container keeps no capability
+# that lets root read another user's file (no CAP_DAC_OVERRIDE), so it is read as its owner. Root
+# may still look up the owner: the plugin's run directory is root's own.
+runtime_file="/run/es_plugins/$plugin/runtime.json"
+if ! owner=$(docker exec -u root "$node" stat -c %u "$runtime_file" 2> "$work_dir/docker-error") \
+  || ! printf '%s\n' "$owner" | grep -Eqx '[1-9][0-9]*'; then
+  bail_out "cannot find the owner of the runtime file of $plugin in $node: $(head -c 200 "$work_dir/docker-error")"
+fi
+if ! docker exec -u "$owner:$owner" "$node" cat "$runtime_file" > "$work_dir/runtime.json" \
   2> "$work_dir/docker-error"; then
-  bail_out "cannot read the runtime file of $plugin in $node: $(head -c 200 "$work_dir/docker-error")"
+  bail_out "cannot read the runtime file of $plugin in $node as its owner $owner: $(head -c 200 "$work_dir/docker-error")"
 fi
 # Writes the curl header line with the organization's key, and prints the internal API URL.
 # Prints nothing of the key, also when it fails.
@@ -148,22 +157,32 @@ internal() {
   fi
 }
 
-# json_is EXPRESSION: true when the Python expression holds for the last body, parsed as `body`.
+# json_is CHECK: whether the Python expression CHECK is true of the last body (`body`). A check
+# may start on a line of its own: it is stripped first. One that cannot be evaluated (the body is
+# not JSON, or the check raises) is false, and leaves the reason in $work_dir/check-error.
 json_is() {
   python3 -c '
 import json, sys
 try:
     body = json.load(open(sys.argv[1], encoding="utf-8"))
-except ValueError:
-    sys.exit(1)
-sys.exit(0 if eval(sys.argv[2]) else 1)' "$work_dir/body" "$1"
+except (OSError, ValueError) as error:
+    sys.exit(f"the body is not JSON: {error}")
+try:
+    result = eval(sys.argv[2].strip())
+except Exception as error:
+    sys.exit(f"the check raised {type(error).__name__}: {error}")
+sys.exit(0 if result else 1)' "$work_dir/body" "$1" 2> "$work_dir/check-error"
 }
 
 expect() { # $1 = description, $2 = expected status, $3 = actual status, $4 = Python check of the body
   if [ "$3" != "$2" ]; then
     fail "$1: status $3, expected $2 $(head -c 200 "$work_dir/curl-error" 2> /dev/null) $(head -c 200 "$work_dir/body")"
   elif [ -n "${4-}" ] && ! json_is "$4"; then
-    fail "$1: unexpected body $(head -c 300 "$work_dir/body")"
+    if [ -s "$work_dir/check-error" ]; then
+      fail "$1: $(head -c 300 "$work_dir/check-error"); body $(head -c 300 "$work_dir/body")"
+    else
+      fail "$1: unexpected body $(head -c 300 "$work_dir/body")"
+    fi
   else
     pass "$1"
   fi

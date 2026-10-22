@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
-import { Observable, of } from 'rxjs';
+import { Observable, of, switchMap, throwError, timer } from 'rxjs';
 import { type Mock, onTestFinished } from 'vitest';
 
 import { ToastService } from '../../../../services/notifications';
@@ -536,6 +536,49 @@ describe('PluginRuntimePanelComponent', () => {
 
             Array.from(element.querySelectorAll<HTMLButtonElement>('.backups__error button'))[0].click();
             fixture.detectChanges();
+
+            expect(element.querySelector('.backups__error')).toBeNull();
+            expect(backupRows()).toHaveLength(2);
+            // The alert took Retry with it: the focus is on the list's heading, not lost.
+            expect(document.activeElement?.textContent?.trim()).toBe('Backups');
+        });
+
+        it('keeps one alert, and the focus on Retry, while the polls keep failing', () => {
+            // As over the network: the failure comes a while after the request, and the panel renders in between.
+            const failureDelayMs = 1_000;
+            const failLater = (): void => {
+                vi.advanceTimersByTime(failureDelayMs);
+                fixture.detectChanges();
+            };
+            storage.listBackups.mockReturnValue(
+                timer(failureDelayMs).pipe(switchMap(() => throwError(() => new Error('offline'))))
+            );
+            render();
+            failLater();
+            const alert = element.querySelector('.backups__error');
+            const retry = alert?.querySelector<HTMLButtonElement>('button');
+            expect(text(alert)).toContain("Couldn't load the backups.");
+            retry!.focus();
+
+            poll();
+            failLater();
+            poll();
+            failLater();
+
+            expect(storage.listBackups).toHaveBeenCalledTimes(3);
+            expect(element.querySelectorAll('.backups__error')).toHaveLength(1);
+            expect(element.querySelector('.backups__error')).toBe(alert);
+            expect(document.activeElement).toBe(retry);
+        });
+
+        it('drops the alert once a poll brings the list', () => {
+            storage.listBackups.mockReturnValueOnce(
+                new Observable<PluginBackupList>((subscriber) => subscriber.error(new Error('offline')))
+            );
+            render();
+            expect(element.querySelector('.backups__error')).not.toBeNull();
+
+            poll();
 
             expect(element.querySelector('.backups__error')).toBeNull();
             expect(backupRows()).toHaveLength(2);

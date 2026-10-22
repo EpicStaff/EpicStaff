@@ -2,15 +2,17 @@
 the number of grants: maintenance, completion (an upgrade hook job per grant) and cancel."""
 
 import json
+from collections.abc import Callable
+from functools import partial
 
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
-from plugins.lifecycle.upgrade_service import PluginUpgradeService
+from plugins.lifecycle.upgrade_service import PluginUpgradeService, parse_upgrade_advance
 from plugins.models import GrantState, HookJobKind, HookJobState, Plugin, PluginGrant, PluginHookJob
 from rbac.models import Organization
-from src.shared.models.plugin_nodes import PlacementReport
+from src.shared.models.plugin_nodes import PlacementReport, UpgradeAdvance
 
 from tests.plugins_tests.conftest import mark_running
 from tests.plugins_tests.upgrade_fixtures import (
@@ -32,8 +34,9 @@ def _queries(run) -> int:
     return len(captured.captured_queries)
 
 
-def _advance(to: str, backup: dict | None = None) -> bytes:
-    return json.dumps({"to": to, **({"backup": backup} if backup else {})}).encode()
+def _advance(to: str, backup: dict | None = None) -> Callable[[], UpgradeAdvance]:
+    body = json.dumps({"to": to, **({"backup": backup} if backup else {})}).encode()
+    return partial(parse_upgrade_advance, body)
 
 
 @pytest.fixture

@@ -289,7 +289,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
         SocketWatchdog(reconciler.supervisors),
         DiskWatchdog(
             launcher,
-            reconciler.supervisors,
+            reconciler.controllers,
             node_disk,
             max_megabytes=settings.disk_megabytes_per_plugin,
             max_files=settings.files_per_plugin,

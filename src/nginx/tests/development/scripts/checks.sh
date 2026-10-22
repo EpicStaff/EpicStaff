@@ -78,6 +78,14 @@ outside)
   fi
 
   echo "# page decision 403 with X-Plugin-Spa-Upstream: the development server"
+  # The stand-in refuses the plugin's host, as esbuild does: the lab tests the page proxy against
+  # a development server nobody configured.
+  request http://author:5173/ -H "Host: $plugin_host"
+  if [ "$status" = 403 ] && grep -qF 'is not allowed' "$work/body"; then
+    pass "the stand-in development server refuses the plugin's host (403), as esbuild does"
+  else
+    fail "the stand-in development server, asked for the plugin's host directly: $status $(head -c 120 "$work/body")"
+  fi
   set_decision '{"answer": "development", "port": 5173}'
   request "$gateway/some/route?x=1&y=two" -H "Host: $plugin_host"
   if [ "$status" = 200 ] && [ "$(jq -r '.author' "$work/body" 2> /dev/null)" = true ] \
@@ -115,12 +123,12 @@ outside)
     -H 'X-EpicStaff-Plugin-Context: forged' -H 'X_EpicStaff_Plugin_Context: forged' \
     -H 'X-EpicStaff_Plugin-Context: forged' -H 'X_Forwarded_For: 203.0.113.9'
   leaked=$(echoed_names | grep -xE 'cookie|authorization|x-api-key|x-epicstaff-plugin-context' | sort -u | paste -sd ' ' -)
-  if [ "$status" = 200 ] && [ -z "$leaked" ] && [ "$(echoed_values host)" = "$plugin_host" ] \
+  if [ "$status" = 200 ] && [ -z "$leaked" ] && [ "$(echoed_values host)" = localhost:5173 ] \
     && [ "$(echoed_values x-forwarded-host)" = "$plugin_host" ] \
     && ! echoed_values x-forwarded-for | grep -q 203.0.113.9; then
-    pass "a browser's Cookie, Authorization, API key and plugin context never reach the development server, in any spelling; it gets the plugin's host"
+    pass "a browser's Cookie, Authorization, API key and plugin context never reach the development server, in any spelling; it is asked for localhost:5173, with the plugin's host in X-Forwarded-Host"
   else
-    fail "what reached the development server: status $status, leaked [$leaked], Host [$(echoed_values host)], X-Forwarded-For [$(echoed_values x-forwarded-for)]"
+    fail "what reached the development server: status $status, leaked [$leaked], Host [$(echoed_values host)], X-Forwarded-Host [$(echoed_values x-forwarded-host)], X-Forwarded-For [$(echoed_values x-forwarded-for)]"
   fi
 
   if python3 /lab/scripts/stream_clients.py; then

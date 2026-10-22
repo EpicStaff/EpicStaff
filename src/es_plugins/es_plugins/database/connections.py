@@ -68,10 +68,13 @@ OWNER_SESSION_SETTINGS = {
     "lock_timeout": "60000",
     # A library that does not exist would refuse the login itself; a tablespace that does not
     # exist would fail every CREATE; `exit_on_error` would end the session at a migration's
-    # first error, before the ledger is read again.
+    # first error, before the ledger is read again; `row_security=off` would fail every
+    # statement a FORCE ROW LEVEL SECURITY policy applies to. pg_restore sets its own
+    # `row_security` for the restore's data.
     "local_preload_libraries": "",
     "default_tablespace": "",
     "exit_on_error": "off",
+    "row_security": "on",
 }
 """What an owner session (a migration run, a restore) forces over the plugin's stored settings."""
 

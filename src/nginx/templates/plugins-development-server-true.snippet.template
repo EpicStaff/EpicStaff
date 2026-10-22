@@ -1,8 +1,8 @@
 # PLUGINS_DEV_MODE=true: the plugin server's parts for a frontend development server on the
 # developer's machine, included at server level. The SPA locations use them through
-# plugins-development-page-true.snippet. The plugin's address does not change: the development
-# server answers on the plugin's own host, so sign-in, the frame and its checks work as with the
-# published page.
+# plugins-development-page-true.snippet. The plugin's address does not change: the browser still
+# loads the page from the plugin's own host, so sign-in, the frame and its checks work as with the
+# published page. The development server itself is asked for localhost (see below).
 
 # The page decision, django_app's answer for one SPA request. `internal`, so only auth_request
 # reaches it. Built like /_plugin_gateway_check: Django gets only what is set here, never the
@@ -48,7 +48,9 @@ location @plugin_development_page {
     # frame-ancestors in the security headers decides who frames the page.
     include /etc/nginx/conf.d/cookie-free-upstream.snippet;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    # localhost:<its port>, the one name every development server accepts without configuration
+    # (plugins-development-page-host-true.snippet); the plugin's host is X-Forwarded-Host.
+    proxy_set_header Host $plugin_spa_host;
     # Live reload: a WebSocket ("upgrade") or a long-lived event stream, never keep-alive.
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;

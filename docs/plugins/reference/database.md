@@ -166,7 +166,7 @@ alone.
 - **The node's own sessions name how they behave.** Its sessions as the owner, for migrations and
   restores, and its backup sessions set the role, the transaction defaults and the timeouts
   themselves, with `local_preload_libraries` empty and `exit_on_error` off; owner sessions also
-  leave `default_tablespace` empty. So no setting stored for your database can keep a later
+  leave `default_tablespace` empty and force `row_security` on. So no setting stored for your database can keep a later
   migration, backup or restore from running; any other setting stored for it applies to your
   migrations.
 

@@ -9,8 +9,8 @@ settings and limits the SuperAdmin edits) comes from it.
 from plugins.models import Plugin, PluginDatabase, PluginPackage, PluginUpgrade
 from plugins.models.upgrade import OPEN_UPGRADE_STAGES, TARGET_STAGES
 
-# The package being upgraded from is read only for `database_changed`'s fallback, which loads
-# its migration files when it needs them.
+# The package being upgraded from is read only by `database_changed`, for an upgrade without a
+# ledger snapshot, which loads its migration files when it needs them.
 _COLUMNS_NOT_READ = (
     "to_package__icon_bytes",
     "from_package__icon_bytes",
@@ -64,16 +64,19 @@ def database_changed(upgrade: PluginUpgrade, database: PluginDatabase | None) ->
     ledger lists a file, or a file with another sha256, that it did not list when the node
     first asked to run the migrations (`ledger_at_migrations`): a file an earlier version
     dropped but the database still lists counts as no change.
+
+    An upgrade that adds a backend has no snapshot: it starts in `migrating` and the node never
+    asks to run its migrations. Its ledger is compared with the migration files of the version
+    it upgrades from instead, a version without a backend and so without a database: every
+    file the new database lists is a change.
     """
     if database is None or upgrade.migrations_started_at is None:
         return False
     if upgrade.ledger_at_migrations is not None:
         known = {(entry["name"], entry["sha256"]) for entry in upgrade.ledger_at_migrations}
     else:
-        # Opened before the snapshot was kept: compared with the files of the version being
-        # upgraded from, which counts a file that version dropped as a change. A missing
-        # `from_package` counts every entry as one, so nothing is cancelled on a ledger it
-        # cannot be compared with.
+        # An upgrade that adds a backend. A missing `from_package` counts every entry as a
+        # change too, so nothing is cancelled on a ledger it cannot be compared with.
         source = upgrade.from_package
         known = {
             (file["name"], file["sha256"])

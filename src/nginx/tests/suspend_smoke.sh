@@ -35,8 +35,9 @@
 # starts one session of the flow (step 7: it runs, with whatever the flow does, and is stopped at
 # the end), and logs both accounts out at the end, also when it stops early.
 #
-# Needs Docker (it reads the runtime file as root in the node's container and runs curl in a
-# container of src/docker-compose.yaml's pinned curl image) and python3. A key is never printed and
+# Needs Docker (it reads the runtime file in the node's container as the file's owner, the
+# plugin's user id, and runs curl in a container of src/docker-compose.yaml's pinned curl image)
+# and python3. A key is never printed and
 # never on a command line: it goes to curl as a header file or on its standard input, and the
 # script compares sha256 digests of keys. Passwords and tokens go to curl in files.
 #
@@ -118,15 +119,21 @@ api() {
   echo "$status"
 }
 
-# json_is EXPRESSION: true when the Python expression holds for the last body, parsed as `body`.
+# json_is CHECK: whether the Python expression CHECK is true of the last body (`body`). A check
+# may start on a line of its own: it is stripped first. One that cannot be evaluated (the body is
+# not JSON, or the check raises) is false, and leaves the reason in $work_dir/check-error.
 json_is() {
   python3 -c '
 import json, sys
 try:
     body = json.load(open(sys.argv[1], encoding="utf-8"))
-    sys.exit(0 if eval(sys.argv[2]) else 1)
-except (ValueError, KeyError, TypeError, IndexError, AttributeError):
-    sys.exit(1)' "$work_dir/body" "$1"
+except (OSError, ValueError) as error:
+    sys.exit(f"the body is not JSON: {error}")
+try:
+    result = eval(sys.argv[2].strip())
+except Exception as error:
+    sys.exit(f"the check raised {type(error).__name__}: {error}")
+sys.exit(0 if result else 1)' "$work_dir/body" "$1" 2> "$work_dir/check-error"
 }
 
 logout_quietly() {
@@ -168,7 +175,11 @@ expect() { # $1 = description, $2 = expected status, $3 = actual status, $4 = Py
   if [ "$3" != "$2" ]; then
     fail "$1: status $3, expected $2 $(head -c 200 "$work_dir/curl-error" 2> /dev/null) $(head -c 200 "$work_dir/body")"
   elif [ -n "${4-}" ] && ! json_is "$4"; then
-    fail "$1: unexpected body $(head -c 300 "$work_dir/body")"
+    if [ -s "$work_dir/check-error" ]; then
+      fail "$1: $(head -c 300 "$work_dir/check-error"); body $(head -c 300 "$work_dir/body")"
+    else
+      fail "$1: unexpected body $(head -c 300 "$work_dir/body")"
+    fi
   else
     pass "$1"
   fi
@@ -209,15 +220,24 @@ PYTHON
   : > "$work_dir/body"
 }
 
-# read_key FILE: reads the organization's entry of the plugin's runtime file, as root in the node's
-# container. Writes the curl header line with the key to FILE (replacing it), prints the key's
-# sha256 digest and the internal API URL, one per line. Never prints the key. Exits 3 when the
-# organization has no entry, 1 when the file cannot be read or is not a runtime file.
+# read_key FILE: reads the organization's entry of the plugin's runtime file in the node's
+# container, as the file's owner. Writes the curl header line with the key to FILE (replacing it),
+# prints the key's sha256 digest and the internal API URL, one per line. Never prints the key.
+# Exits 3 when the organization has no entry, 1 when the file cannot be read or is not a runtime
+# file.
 read_key() {
-  local header_file=$1
-  docker exec -u root "$node" cat "/run/es_plugins/$plugin/runtime.json" > "$work_dir/runtime.json" \
+  local header_file=$1 runtime_file="/run/es_plugins/$plugin/runtime.json" owner
+  # The file is 0400 and owned by the plugin's user id, and the node's container keeps no
+  # capability that lets root read another user's file (no CAP_DAC_OVERRIDE). Root may still look
+  # up the owner: the plugin's run directory is root's own.
+  if ! owner=$(docker exec -u root "$node" stat -c %u "$runtime_file" 2> "$work_dir/docker-error") \
+    || ! printf '%s\n' "$owner" | grep -Eqx '[1-9][0-9]*'; then
+    echo "cannot find the owner of the runtime file of $plugin in $node: $(head -c 200 "$work_dir/docker-error")" >&2
+    return 1
+  fi
+  docker exec -u "$owner:$owner" "$node" cat "$runtime_file" > "$work_dir/runtime.json" \
     2> "$work_dir/docker-error" || {
-    echo "cannot read the runtime file of $plugin in $node: $(head -c 200 "$work_dir/docker-error")" >&2
+    echo "cannot read the runtime file of $plugin in $node as its owner $owner: $(head -c 200 "$work_dir/docker-error")" >&2
     return 1
   }
   python3 - "$work_dir/runtime.json" "$org_id" "$header_file" << 'PYTHON'

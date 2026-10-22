@@ -63,9 +63,11 @@ async def handle(request: web.Request) -> web.StreamResponse:
         {"backend": NAME, "method": request.method, "raw_path": raw_path, "body_bytes": len(body),
          "headers": raw_headers(request)}
     )
-    # None may reach the browser: a cookie for the parent domain, a framing rule, and the
-    # gateway's refusal marker.
+    # None may reach the browser: a cookie for the parent domain, an order to clear every cookie
+    # of the site (EpicStaff's refresh cookie included), a framing rule, and the gateway's
+    # refusal marker.
     response.headers["Set-Cookie"] = "tossed=1; Domain=epicstaff.test; Path=/"
+    response.headers["Clear-Site-Data"] = '"cookies"'
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-EpicStaff-Gateway-Deny"] = "forbidden"
     return response

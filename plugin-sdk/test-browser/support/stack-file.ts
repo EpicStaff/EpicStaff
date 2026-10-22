@@ -11,13 +11,16 @@
  *     "superadmin": { "id", "email", "password" },
  *     "people": { "ada" | "olga" | "vic" | "bob": { "id", "email", "password" } },
  *     "organizations": { "a" | "b" | "c": { "id", "name" } },
- *     "flow_id": <the plugin's "Weather forecast" flow in organization A>
+ *     "flow_id": <the plugin's "Weather forecast" flow in organization A>, or null
  *   }
+ *
+ * The seed writes it as soon as the people exist, with `flow_id` null, and again once it has found the flow: a seed
+ * that stopped in between leaves a file whose passwords the next run reuses, and whose `flow_id` is still null.
  *
  * The people: Ada is a Member of A and C, Olga the Org Admin of A, Vic a Viewer of A (no View on Weather), Bob the
  * Org Admin of B.
  */
-import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -51,7 +54,8 @@ export interface StackFile {
     superadmin: StackAccount;
     people: Record<PersonKey, StackAccount>;
     organizations: Record<OrganizationKey, StackOrganization>;
-    flow_id: number;
+    /** `null` until the seed has found the flow: it stopped before that. */
+    flow_id: number | null;
 }
 
 const SUITE_DIRECTORY = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -72,10 +76,14 @@ export function readStackFile(path = stackFilePath()): StackFile | null {
     return parsed;
 }
 
-/** Writes the stack file whole (through a temporary file), readable by its owner only. */
+/**
+ * Writes the stack file whole, readable by its owner only: into a temporary file made new (never one that was there,
+ * nor where a link there points), then renamed over the old one.
+ */
 export function writeStackFile(stack: StackFile, path = stackFilePath()): void {
     const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(stack, null, 4)}\n`, { mode: 0o600 });
+    rmSync(temporary, { force: true });
+    writeFileSync(temporary, `${JSON.stringify(stack, null, 4)}\n`, { mode: 0o600, flag: 'wx' });
     chmodSync(temporary, 0o600);
     renameSync(temporary, path);
 }
@@ -110,6 +118,6 @@ function isStackFile(value: unknown): value is StackFile {
         PERSON_KEYS.every((key) => isAccount(people[key])) &&
         isRecord(organizations) &&
         ORGANIZATION_KEYS.every((key) => isOrganization(organizations[key])) &&
-        Number.isInteger(value['flow_id'])
+        (value['flow_id'] === null || Number.isInteger(value['flow_id']))
     );
 }

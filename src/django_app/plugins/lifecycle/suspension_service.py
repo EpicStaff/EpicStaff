@@ -13,7 +13,7 @@ takes the same steps first when the grant is not suspended yet (`withdraw_access
 
 Lock order (`lifecycle_locks`): the plugin, then the grant, then its hook jobs. Keys are
 locked through their service account: grant, then account, then keys, the order
-`ServiceAccountKeyService.mint_for_plugin` takes the account and its keys in.
+`ServiceAccountKeyService.mint_for_plugin` takes the grants, their accounts and keys in.
 """
 
 from datetime import datetime

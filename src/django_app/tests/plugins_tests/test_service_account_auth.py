@@ -75,8 +75,10 @@ def test_a_valid_key_authenticates_through_the_internal_listener(acme_key, acme)
 
 
 @pytest.mark.parametrize("network_secret", [None, "", "wrong", GATEWAY_SECRET[:-1]], ids=["missing", "empty", "wrong", "prefix"])
-def test_a_key_from_outside_the_internal_listener_is_refused(acme_key, acme, network_secret):
+def test_a_key_from_outside_the_plugin_listeners_is_refused(acme_key, acme, network_secret, log_messages):
     _refused(service_account_client(acme_key, acme, network_secret=network_secret).get(ME_URL))
+
+    assert _refusals(log_messages) == ["plugins.service_account.refused plugin=- reason=outside_plugin_listeners"]
 
 
 def test_no_key_authenticates_while_the_gateway_secret_is_unconfigured(acme_key, acme, settings):
@@ -195,7 +197,7 @@ def test_minting_gives_each_key_holding_organization_one_key_in_a_fixed_number_o
     PluginGrant.objects.filter(org=organizations[3]).update(state=GrantState.INSTALL_FAILED)
     ServiceAccountKeyService().mint_for_plugin(weather)
 
-    with django_assert_num_queries(4 + 2):  # four, inside a savepoint pair
+    with django_assert_num_queries(5 + 2):  # five, inside a savepoint pair
         minted = ServiceAccountKeyService().mint_for_plugin(weather)
 
     assert sorted(key.service_account.grant.org_id for key in minted) == sorted(org.pk for org in organizations[:3])
@@ -304,6 +306,12 @@ def _development_key(plugin, organization) -> str:
     return next(key.raw_key for key in minted if key.service_account.grant.org_id == organization.pk)
 
 
+def test_a_minted_key_never_shows_its_raw_key_in_its_repr(weather, acme_key):
+    minted = ServiceAccountKeyService().mint_for_plugin(weather)
+
+    assert minted and all(key.raw_key not in repr(key) and "esp-" not in repr(key) for key in minted)
+
+
 def _through_development_listener(raw_key, organization, value="1"):
     return service_account_client(raw_key, organization, development_listener=value)
 
@@ -369,12 +377,13 @@ def test_a_node_purpose_key_is_refused_on_the_development_listener(acme_key, acm
 
 
 @pytest.mark.usefixtures("development_mode")
-def test_a_node_key_is_refused_on_the_development_listener(plugin_node, service_account_platform):
+@pytest.mark.parametrize("value", ["1", "0", ""])
+def test_a_node_key_is_refused_with_any_development_listener_header(plugin_node, service_account_platform, value):
     client = APIClient()
     client.credentials(
         HTTP_AUTHORIZATION=f"PluginNodeKey {NODE_KEY}",
         HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET,
-        HTTP_X_PLUGIN_DEVELOPMENT_LISTENER="1",
+        HTTP_X_PLUGIN_DEVELOPMENT_LISTENER=value,
     )
 
     response = client.get(DESIRED_STATE_URL)
@@ -441,7 +450,7 @@ def test_development_keys_are_minted_for_key_holding_grants_in_a_fixed_number_of
     PluginGrant.objects.filter(org=organizations[3]).update(state=GrantState.SUSPENDED)
     ServiceAccountKeyService().mint_development_keys(weather)
 
-    with django_assert_num_queries(4 + 2):  # four, inside a savepoint pair
+    with django_assert_num_queries(5 + 2):  # five, inside a savepoint pair
         minted = ServiceAccountKeyService().mint_development_keys(weather)
 
     assert sorted(key.service_account.grant.org_id for key in minted) == sorted(org.pk for org in organizations[:3])

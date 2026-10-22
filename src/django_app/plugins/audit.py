@@ -232,7 +232,7 @@ def log_service_account_keys_minted(identifier: str, org_ids: list[int]) -> None
 def log_service_account_refused(*, identifier: str | None, reason: str) -> None:
     """Log a refused service-account key; `identifier` is None when the key named no plugin.
 
-    `reason` is `outside_internal_listener`, `unknown_key`, `revoked`, `superseded`,
+    `reason` is `outside_plugin_listeners`, `unknown_key`, `revoked`, `superseded`,
     `development_mode_off`, `wrong_listener`, `grant_state`, `org_inactive` or `no_backend`.
     """
     logger.info(

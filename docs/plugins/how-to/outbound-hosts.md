@@ -89,6 +89,9 @@ within about 30 seconds.
   what travels inside the TLS connection. A host on a content delivery network that serves many
   sites can be asked, inside TLS, for another of those sites. So `outbound_hosts` limits which
   servers your backend connects to, not which sites those servers answer for.
+- **Flows run code elsewhere.** A plugin whose `access` includes `flows` `create`, `update` or
+  `use` can, through flows, run code in EpicStaff's sandbox. That sandbox has its own network
+  access, and `outbound_hosts` do not apply to that code.
 - **Wildcards widen it.** `*.example-cdn.com` allows every name below it, including ones made
   later by whoever controls the domain. Prefer exact names, and keep wildcards to domains you
   trust.

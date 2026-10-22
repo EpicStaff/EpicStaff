@@ -16,13 +16,15 @@ writes the file, `pg_restore` reads the archive from its standard input. So the 
 a path of the node's.
 
 A run that fails raises `PostgresToolError` with the tool's last error lines and its first
-line. Lines that can carry a row's contents (`DETAIL:`, `CONTEXT:`, `Command was:` and every
-line of the statement after it, up to the tool's next line) are left out, and control
-characters become spaces, since object names and messages in them are the plugin's.
+line. Lines that can carry a row's contents are left out: `DETAIL:`, `CONTEXT:`, and everything
+from the first `Command was:` on, the failed statement and every later error, but for
+`pg_restore`'s final count of the errors it ignored. Control characters become spaces, since
+object names and messages in them are the plugin's.
 """
 
 import asyncio
 import contextlib
+import re
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -203,23 +205,23 @@ class _ErrorLines:
     """A tool's standard error as it arrives: its first line, and the last lines worth keeping."""
 
     def __init__(self, tool: PostgresTool):
-        self._own_prefix = f"{tool}:"
+        self._summary = re.compile(rf"{re.escape(tool)}: warning: errors ignored on restore: \d+")
         self.first: str | None = None
         self.kept: deque[str] = deque(maxlen=ERROR_LINES_KEPT)
-        self._in_statement = False
+        self._after_statement = False
 
     def add(self, line: str) -> None:
         if not line:
             return
         if self.first is None:
             self.first = line
-        if line.startswith(self._own_prefix):
-            self._in_statement = False
-        elif self._in_statement:
-            # The rest of the statement `Command was:` began: the plugin's SQL, maybe its rows.
+        if self._after_statement:
+            # Past the first failed statement, any line may quote the plugin's SQL or rows.
+            if self._summary.fullmatch(line):
+                self.kept.append(line)
             return
         if line.startswith(_STATEMENT_PREFIX):
-            self._in_statement = True
+            self._after_statement = True
             return
         if not line.startswith(_ROW_BEARING_PREFIXES) and ": detail:" not in line:
             self.kept.append(line)

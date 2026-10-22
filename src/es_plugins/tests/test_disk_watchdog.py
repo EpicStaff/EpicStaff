@@ -13,7 +13,11 @@ from es_plugins.node_disk import (
     NodeDisk,
     NodeDiskFullError,
 )
-from es_plugins.supervisor.disk_watchdog import FURTHER_FALL_BYTES, DiskWatchdog
+from es_plugins.supervisor.disk_watchdog import (
+    FURTHER_FALL_BYTES,
+    MISSED_MEASUREMENTS_BEFORE_FAILING,
+    DiskWatchdog,
+)
 
 MIB = 1024 * 1024
 PLENTY = 100 * 1024 * MIB
@@ -49,6 +53,17 @@ class RecordingSupervisor:
         self.watching = False
 
 
+class RecordingPlacement:
+    """A placement as the watchdog sees it: its supervisor, and what it keeps outside its HOME."""
+
+    def __init__(self, supervisor, outside_home_bytes=0):
+        self.supervisor = supervisor
+        self.outside_home_bytes = outside_home_bytes
+
+    def bytes_outside_home(self):
+        return self.outside_home_bytes
+
+
 class MeasuringLauncher:
     """Answers each measurement with a pipe carrying the usage the test set for that UID."""
 
@@ -67,10 +82,12 @@ class MeasuringLauncher:
         return read_end
 
 
-def watchdog_for(supervisors, launcher, volume=None):
+def watchdog_for(supervisors, launcher, volume=None, outside_home=None):
+    """A watchdog over `supervisors`; `outside_home` maps a plugin to its database and backups bytes."""
+    placements = [RecordingPlacement(supervisor, (outside_home or {}).get(supervisor.plugin, 0)) for supervisor in supervisors]
     return DiskWatchdog(
         launcher,
-        lambda: supervisors,
+        lambda: placements,
         NodeDisk("/var/lib/es_plugins", statvfs=volume or Volume()),
         max_megabytes=64,
         max_files=1000,
@@ -110,13 +127,58 @@ async def test_a_plugin_whose_disk_use_cannot_be_measured_is_failed():
     assert weather.failed_for == ["its disk use cannot be measured: hidden cannot be read"]
 
 
-@pytest.mark.parametrize("answer", [b"", b"not json", LauncherError("the launcher refused")])
-async def test_a_measurement_that_brings_no_result_fails_nobody(answer):
+NO_RESULT = [b"", b"not json", LauncherError("the launcher refused")]
+
+
+@pytest.mark.parametrize("answer", NO_RESULT)
+async def test_a_measurement_that_brings_no_result_fails_nobody_the_first_time(answer):
     weather = RecordingSupervisor("weather", 20001)
     launcher = MeasuringLauncher()
     launcher.usage = {20001: answer}
 
     assert await watchdog_for([weather], launcher).check_once() == []
+    assert weather.failed_for == []
+
+
+@pytest.mark.parametrize("answer", NO_RESULT)
+async def test_measurements_that_bring_no_result_twice_in_a_row_fail_the_plugin(answer):
+    weather = RecordingSupervisor("weather", 20001)
+    launcher = MeasuringLauncher()
+    launcher.usage = {20001: answer}
+    watchdog = watchdog_for([weather], launcher)
+
+    await watchdog.check_once()
+    failed = await watchdog.check_once()
+
+    assert MISSED_MEASUREMENTS_BEFORE_FAILING == 2
+    assert failed == [weather]
+    assert weather.failed_for == ["its disk use could not be measured 2 times in a row"]
+
+
+async def test_a_measurement_in_between_starts_the_count_again():
+    weather = RecordingSupervisor("weather", 20001)
+    launcher = MeasuringLauncher()
+    watchdog = watchdog_for([weather], launcher)
+
+    for answer in (b"", DiskUsage(MIB, 3), b"", DiskUsage(MIB, 3), b""):
+        launcher.usage = {20001: answer}
+        await watchdog.check_once()
+
+    assert weather.failed_for == []
+
+
+async def test_a_plugin_restarted_after_a_miss_starts_with_no_misses():
+    weather = RecordingSupervisor("weather", 20001)
+    launcher = MeasuringLauncher()
+    launcher.usage = {20001: b""}
+    watchdog = watchdog_for([weather], launcher)
+    await watchdog.check_once()
+
+    weather.watching = False
+    await watchdog.check_once()
+    weather.watching = True
+    await watchdog.check_once()
+
     assert weather.failed_for == []
 
 
@@ -139,7 +201,7 @@ async def test_below_the_floor_the_plugin_using_the_most_disk_is_stopped_while_s
     await watchdog.check_once()
     assert len(large.failed_for) == 1
     assert large.failed_for[0].startswith("the node's disk is almost full (only 511 MB free)")
-    assert large.failed_for[0].endswith("this plugin uses the most of it (50 MB)")
+    assert large.failed_for[0].endswith("this plugin uses the most of it (50 MB, its database and backups included)")
 
     # Stopping a plugin frees nothing: with the space no lower, nobody else is stopped.
     await watchdog.check_once()
@@ -149,6 +211,35 @@ async def test_below_the_floor_the_plugin_using_the_most_disk_is_stopped_while_s
     await watchdog.check_once()
     assert len(small.failed_for) == 1
     assert len(large.failed_for) == 1
+
+
+async def test_below_the_floor_a_plugin_ranks_by_its_home_database_and_backups_together():
+    home_heavy, database_heavy = RecordingSupervisor("notes", 20001), RecordingSupervisor("weather", 20002)
+    launcher = MeasuringLauncher()
+    launcher.usage = {20001: DiskUsage(60 * MIB, 10), 20002: DiskUsage(MIB, 10)}
+    volume = Volume(free_bytes=FLOOR_BYTES - MIB)
+    watchdog = watchdog_for([home_heavy, database_heavy], launcher, volume, outside_home={"weather": 900 * MIB})
+
+    await watchdog.check_once()
+
+    assert home_heavy.failed_for == []
+    assert database_heavy.failed_for == [
+        "the node's disk is almost full (only 511 MB free), and this plugin uses the most of it "
+        "(901 MB, its database and backups included)"
+    ]
+
+
+@pytest.mark.parametrize("volume", [Volume(free_bytes=FLOOR_BYTES - MIB), Volume(free_files=FLOOR_FILES - 1)])
+async def test_below_the_floor_a_plugin_whose_measurement_brought_no_result_ranks_as_the_largest(volume):
+    large, unmeasured = RecordingSupervisor("large", 20001), RecordingSupervisor("hidden", 20002)
+    launcher = MeasuringLauncher()
+    launcher.usage = {20001: DiskUsage(60 * MIB, 900), 20002: b""}
+
+    await watchdog_for([large, unmeasured], launcher, volume, outside_home={"large": 500 * MIB}).check_once()
+
+    assert large.failed_for == []
+    assert len(unmeasured.failed_for) == 1
+    assert unmeasured.failed_for[0].endswith("this plugin uses the most of it (its disk use could not be measured)")
 
 
 async def test_below_the_inode_floor_the_plugin_with_the_most_files_is_stopped():

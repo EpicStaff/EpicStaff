@@ -3,6 +3,8 @@
 import json
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from epicstaff_plugin.contracts.runtime import RuntimeFile
 from plugins.identity.service_account_keys import ServiceAccountKeyService
 from plugins.lifecycle.suspension_service import PluginSuspensionService
@@ -14,6 +16,7 @@ from plugins.models import (
     PluginServiceAccountKey,
     ServiceAccountKeyPurpose,
 )
+from rbac.models import Organization
 
 from tests.plugins_tests.conftest import (
     DEVELOPMENT_API_PORT,
@@ -23,6 +26,7 @@ from tests.plugins_tests.conftest import (
     upload_file,
 )
 from tests.plugins_tests.package_builder import backend_manifest, build_package, sample_files
+from tests.plugins_tests.upgrade_fixtures import active_grant
 
 pytestmark = [
     pytest.mark.django_db,
@@ -427,6 +431,25 @@ def test_a_runtime_file_that_cannot_be_built_mints_nothing(granted_weather, supe
 
     assert service_account_client(earlier, acme, development_listener="1").get(ME_URL).status_code == 200
     assert PluginServiceAccountKey.objects.filter(purpose=ServiceAccountKeyPurpose.DEVELOPMENT).count() == 1
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_download_costs_the_same_number_of_queries_whatever_the_number_of_grants(
+    backend_plugin, superadmin, superadmin_client
+):
+    def queries_of_a_download(identifier: str, grants: int) -> int:
+        plugin = mark_running(backend_plugin(id=identifier))
+        for index in range(grants):
+            active_grant(plugin, Organization.objects.create(name=f"{identifier} {index}"), superadmin)
+        with CaptureQueriesContext(connection) as captured:
+            response = _download(superadmin_client, identifier)
+        assert response.status_code == 200, response.content
+        assert len(response.json()["service_accounts"]) == grants
+        return len(captured.captured_queries)
+
+    one, ten, fifty = queries_of_a_download("one", 1), queries_of_a_download("ten", 10), queries_of_a_download("fifty", 50)
+
+    assert one == ten == fifty, (one, ten, fifty)
 
 
 def _development_key(plugin, organization) -> str:

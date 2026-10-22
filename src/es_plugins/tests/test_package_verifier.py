@@ -6,7 +6,7 @@ from epicstaff_plugin.signing import generate_secret_key
 
 from es_plugins.packages.package_unpacker import unpack_backend
 from es_plugins.packages.package_verifier import PackageVerificationError, verify_package
-from tests.helpers import backend_wheels, manifest, package_files, placement, write_package
+from tests.helpers import backend_wheels, make_wheel, manifest, package_files, placement, write_package
 
 
 def verify(path, desired):
@@ -49,6 +49,14 @@ def test_a_file_whose_digest_differs_from_contents_json_is_refused(tmp_path, fil
     package = write_package(tmp_path / "tampered.esplugin", files, contents=tampered)
 
     with pytest.raises(PackageVerificationError, match="sha256"):
+        verify(package, placement(package.read_bytes()))
+
+
+def test_a_package_whose_lock_pins_pip_is_refused(tmp_path):
+    wheels = [*backend_wheels(tmp_path / "wheels"), make_wheel(tmp_path / "wheels", "pip", "26.0.1")]
+    package = write_package(tmp_path / "weather.esplugin", package_files(wheels))
+
+    with pytest.raises(PackageVerificationError, match="pip may not be pinned"):
         verify(package, placement(package.read_bytes()))
 
 

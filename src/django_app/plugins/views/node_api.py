@@ -5,6 +5,8 @@ key only (`PluginNodeAuthentication`); each node sees only its own placements an
 packages, and anything else answers 404.
 """
 
+from functools import partial
+
 from django.db.models import Exists, OuterRef
 from django.http import FileResponse, HttpResponse
 from drf_spectacular.utils import extend_schema
@@ -13,7 +15,7 @@ from rest_framework.views import APIView
 
 from plugins.exceptions import PluginPackageNotFoundError
 from plugins.lifecycle.hook_job_service import HookJobService, parse_hook_result
-from plugins.lifecycle.upgrade_service import PluginUpgradeService
+from plugins.lifecycle.upgrade_service import PluginUpgradeService, parse_upgrade_advance
 from plugins.models import Plugin, PluginPackage, PluginUpgrade
 from plugins.models.upgrade import OPEN_UPGRADE_STAGES
 from plugins.nodes.desired_state_builder import DesiredStateBuilder, placements_to_run
@@ -117,5 +119,7 @@ class UpgradeAdvanceView(PluginNodeView):
     @extend_schema(request=None, responses={204: None})
     def post(self, request, upgrade_id: int):
         # The service reads the body once it has found the upgrade: 404, then 409, then 400.
-        PluginUpgradeService().advance(request.auth, upgrade_id, request.body)
+        PluginUpgradeService().advance(
+            request.auth, upgrade_id, partial(parse_upgrade_advance, request.body)
+        )
         return HttpResponse(status=status.HTTP_204_NO_CONTENT)

@@ -28,6 +28,14 @@ export const UNTRUSTED_PACKAGE_WARNING =
 export const OUTBOUND_HOSTS_NOTE =
     'Reached over HTTPS on port 443 only, through the egress proxy. Every other host is refused.';
 
+/** The Database section of a package that brings its database. */
+const DATABASE_SET_UP = "Gets its own database on this deployment's plugin database server, set up when you approve.";
+
+/** The Database section of an upgrade that keeps the database the plugin has. */
+const DATABASE_KEPT = "Keeps its database on this deployment's plugin database server.";
+
+const DATABASE_ACCESS = "Only this plugin's backend can connect to it.";
+
 /** The only icon sources a review may carry; anything else is not shown. */
 const ICON_DATA_URL_PREFIXES = ['data:image/svg+xml;base64,', 'data:image/png;base64,'];
 
@@ -115,16 +123,24 @@ export class PluginReviewPanelComponent {
             methodsLabel: publicPath.methods.join(', '),
         }))
     );
-    /** What approving sets up for a package with a database; `null` without one. */
+    /**
+     * What approving sets up for a package with a database; `null` without one. An upgrade runs only the migrations its
+     * database has not applied, which the server lists, so it counts those rather than every file in the package.
+     */
     protected readonly databaseText = computed(() => {
-        const contents = this.review().contents;
+        const { contents, upgrade } = this.review();
         if (!contents.has_database) return null;
-        const count = contents.migration_count;
-        const migrations = count === 1 ? '1 migration runs' : `${count} migrations run`;
-        return (
-            "Gets its own database on this deployment's plugin database server, set up when you approve. " +
-            `${migrations} before the backend first starts. Only this plugin's backend can connect to it.`
-        );
+        if (!upgrade) {
+            const migrations = migrationsRun(contents.migration_count, null);
+            return `${DATABASE_SET_UP} ${migrations} before the backend first starts. ${DATABASE_ACCESS}`;
+        }
+        const count = upgrade.migrations_added.length;
+        if (upgrade.database === 'added') {
+            return `${DATABASE_SET_UP} ${migrationsRun(count, null)} before the new version starts. ${DATABASE_ACCESS}`;
+        }
+        const migrations =
+            count === 0 ? 'No new migrations run.' : `${migrationsRun(count, 'new')} before the new version starts.`;
+        return `${DATABASE_KEPT} ${migrations} ${DATABASE_ACCESS}`;
     });
     protected readonly hooksLabel = computed(() => {
         const hooks = this.review().hooks;
@@ -198,4 +214,10 @@ export class PluginReviewPanelComponent {
         if (values && Object.keys(values).length > 0) request.settings = values;
         return request;
     }
+}
+
+/** "1 migration runs", "3 new migrations run". */
+function migrationsRun(count: number, adjective: 'new' | null): string {
+    const migration = adjective ? `${adjective} migration` : 'migration';
+    return count === 1 ? `1 ${migration} runs` : `${count} ${migration}s run`;
 }

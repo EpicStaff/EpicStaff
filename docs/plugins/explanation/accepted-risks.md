@@ -32,10 +32,11 @@ Two things they still share:
 - **The node's ephemeral ports.** Every plugin on the node shares its ephemeral ports, 21000 to
   65535, about 44,500 of them. A plugin cannot `bind()` a socket, TCP or UDP, and its new TCP
   connections are capped and rate-limited. The node stops a plugin, and keeps it stopped until a
-  SuperAdmin restarts it, when the plugin's user listens on a port of its own (`listen()` without
-  `bind()`) or holds more than 512 network sockets in all, UDP sockets that are connected and
-  never send included. The node checks once a second, so a plugin can press on the ports for up
-  to a second before it is stopped ([Runtime](../reference/runtime.md#how-the-backend-is-started)).
+  SuperAdmin restarts it, when the plugin's user has a TCP socket listening on any port (a
+  `listen()` without `bind()`) or holds more than 1,280 network sockets in all, UDP sockets that
+  are connected and never send included. TCP connections it accepted on its own port do not
+  count. The node checks once a second, so a plugin can press on the ports for up to a second
+  before it is stopped ([Runtime](../reference/runtime.md#how-the-backend-is-started)).
 
 ## Keeping organizations apart inside a plugin is the plugin's job
 
@@ -59,6 +60,17 @@ who may use the plugin in the organization. It does not check that the person as
 A backend reaches only the hosts its manifest declares, over HTTPS on port 443. A change to that
 list takes effect within about 30 seconds. A declared host that serves many sites behind one
 name lets the plugin reach all of them.
+
+## Flows run code outside the outbound hosts
+
+A plugin whose access includes `create`, `update` or `use` on flows can, through flows, run code
+in EpicStaff's sandbox: by writing a flow that holds code, or by running one. The sandbox has its
+own network access, and the plugin's outbound hosts do not apply to that code. So the list a
+SuperAdmin approves bounds the plugin's backend, not what its flows can reach. A flow a plugin
+writes also runs, with its code, whenever someone in the organization runs it, even when the
+plugin may not run flows itself. The review warns about this
+([review warnings](../reference/manifest.md#review-warnings)). Grant `flows` `create`, `update`
+or `use` only to a plugin you would trust with that network access.
 
 ## Soft limits
 

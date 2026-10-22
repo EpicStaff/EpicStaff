@@ -8,13 +8,17 @@ on the same node can and cannot see of it. The [Python SDK](python-sdk.md) reads
 ## How the backend is started
 
 The node builds a virtual environment for each version of the plugin with the Python the
-manifest names (`backend.python`, CPython 3.12 or 3.13), offline, from the package:
+manifest names (`backend.python`, CPython 3.12 or 3.13), offline, from the package. The
+environment is made without pip and holds none. The node installs the backend with the pip that
+ships with the plugin's interpreter, run from outside the environment, so nothing in your package
+can replace the installer:
 
 ```
-pip install --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock
+pip install --isolated --prefix <venv> --ignore-installed --no-deps --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock
 ```
 
-It puts `backend/src` on the environment's import path, and starts:
+Scripts that wheels put in the environment's `bin/` start the environment's own Python. A build
+that fails leaves no environment behind. The node puts `backend/src` on the environment's import path, and starts:
 
 ```
 <venv>/bin/python -I -m epicstaff_plugin.serve
@@ -27,7 +31,8 @@ the entrypoint module registers your [hook](hook-api.md) handlers. In front of y
 three things you cannot turn off, in this order:
 
 1. `GET /_epicstaff/health` answers `200 {"status":"ok"}`. The node calls it every 15 s;
-   three failures in a row restart the process.
+   three failures in a row restart the process. The node reads only the status line, and the
+   whole exchange, connecting included, has one deadline of 3 s.
 2. `POST` on the hook paths (`/_epicstaff/hooks/…`) runs your hook handler, once the call's
    [hook assertion](hook-api.md#verification) verifies; these calls never reach your app.
 3. Every other request needs a valid [gateway context](gateway-context.md); without one it is
@@ -45,14 +50,17 @@ Outgoing connections are not affected, within the [connection limits](limits.md#
 
 **The node watches every plugin's sockets**, once a second. A `listen()` on a socket the
 plugin did not bind still takes a port, and so does a UDP socket that is connected and never
-sends. So the node stops a plugin whose user listens on a TCP port of its own, or holds more
-than 512 network sockets, TCP and UDP together. The plugin's Runtime tab then gives the reason,
-"it listened on TCP port … of its own; …" or "it held … network sockets, more than the 512 a
+sends. So the node stops a plugin whose user has a TCP socket in LISTEN on any port, or holds
+more than 1,280 network sockets, TCP and UDP together. TCP connections the plugin accepted on its
+own port do not count. The plugin's Runtime tab then gives the reason,
+"it listened on TCP port … of its own; …" or "it held … network sockets, more than the 1280 a
 plugin may; …", and the plugin stays stopped until a SuperAdmin restarts it.
 
 `io_uring` is not available: `io_uring_setup`, `io_uring_enter` and `io_uring_register` answer
 `EPERM`, as do the System V IPC calls `shmget`, `msgget` and `semget`, and every system call
-made through a 32-bit ABI.
+made through a 32-bit ABI. So do `unshare`, `setns`, `keyctl`, `add_key`, `request_key`, `bpf`,
+`perf_event_open` and `userfaultfd`, and `clone` with any namespace flag. `clone3` answers
+`ENOSYS`, and glibc then falls back to `clone`, so threads and child processes work.
 
 So your lock must pin `uvicorn` and `epicstaff-plugin` (upload refuses a lock without them), and
 your app must be an ASGI app: FastAPI, Starlette, Litestar, Django's ASGI handler and so on.
@@ -189,10 +197,13 @@ plugin, and shows the last 200 lines on the Runtime tab when the plugin fails.
 ## Network
 
 The backend reaches EpicStaff's API at `epicstaff_api_url`, its own database when it has one,
-and the egress proxy, and nothing else. There is no route to the internet but through the proxy,
+and the egress proxy, and nothing else. The backend's process has no route to the internet but
+through the proxy,
 which lets through HTTPS on port 443 to the hosts in the manifest's `outbound_hosts`, and
 outside names do not resolve
-([Call the internet from your backend](../how-to/outbound-hosts.md)).
+([Call the internet from your backend](../how-to/outbound-hosts.md)). Code that runs in
+EpicStaff's sandbox through flows is not the backend's process: it has the sandbox's own network
+access, which `outbound_hosts` do not bound.
 
 ## Other plugins on the same node
 

@@ -136,9 +136,9 @@ async def test_a_failure_keeps_the_tools_own_lines_and_never_a_rows_contents(tmp
         "echo 'pg_restore: error: could not execute query: ERROR:  duplicate key value' >&2\n"
         "echo 'DETAIL:  Key (name)=(secret row value) already exists.' >&2\n"
         "echo 'CONTEXT:  COPY places, line 3: \"secret row value\"' >&2\n"
-        "echo 'Command was: COPY app.places FROM stdin;' >&2\n"
-        "printf 'pg_restore: error: an object\\tnamed \\033[31mred\\033[0m\\n' >&2\n"
         "echo 'pg_dump: detail: Query was: COPY app.places TO stdout;' >&2\n"
+        "printf 'pg_restore: error: an object\\tnamed \\033[31mred\\033[0m\\n' >&2\n"
+        "echo 'Command was: COPY app.places FROM stdin;' >&2\n"
         "exit 3\n",
     )
 
@@ -153,7 +153,7 @@ async def test_a_failure_keeps_the_tools_own_lines_and_never_a_rows_contents(tmp
     assert failed.value.error_lines[-1] == "pg_restore: error: an object named [31mred [0m"
 
 
-async def test_every_line_of_a_failed_statement_is_left_out_until_the_tools_next_line(tmp_path):
+async def test_nothing_after_the_first_failed_statement_is_kept_but_the_count_of_ignored_errors(tmp_path):
     tool(
         tmp_path,
         "pg_restore",
@@ -161,7 +161,9 @@ async def test_every_line_of_a_failed_statement_is_left_out_until_the_tools_next
         "echo 'Command was: CREATE FUNCTION app.f() RETURNS text' >&2\n"
         "echo \"    AS \\$\\$ SELECT 'secret row value' \\$\\$\" >&2\n"
         "echo '    LANGUAGE sql;' >&2\n"
-        "echo 'pg_restore: warning: errors ignored on restore: 1' >&2\n"
+        "echo 'pg_restore: error: could not execute query: ERROR:  invalid input syntax for type integer: \"secret value two\"' >&2\n"
+        "echo 'Command was: COPY app.places FROM stdin;' >&2\n"
+        "echo 'pg_restore: warning: errors ignored on restore: 2' >&2\n"
         "exit 1\n",
     )
 
@@ -170,9 +172,10 @@ async def test_every_line_of_a_failed_statement_is_left_out_until_the_tools_next
 
     assert failed.value.error_lines == (
         "pg_restore: error: could not execute query: ERROR: syntax error",
-        "pg_restore: warning: errors ignored on restore: 1",
+        "pg_restore: warning: errors ignored on restore: 2",
     )
-    assert "secret row value" not in str(failed.value) and "LANGUAGE" not in str(failed.value)
+    message = str(failed.value)
+    assert "secret row value" not in message and "LANGUAGE" not in message and "secret value two" not in message
 
 
 async def test_a_failure_keeps_the_tools_first_line_whatever_follows(tmp_path):

@@ -339,6 +339,44 @@ else
   fail "probe-a after a restart: $(placement 1 '[.observed_state, .last_error] | tostring')"
 fi
 
+echo "# a busy plugin: the connections it accepts on its own port are its own, and not counted"
+
+# Workers of probe-a accept on its socket while the tools container holds 640 connections to it:
+# more than the old cap of 512 inet sockets, each owned by probe-a's UID.
+a_pid=$(placement 1 .pid)
+stops_before=$(docker logs "$node" 2>&1 | grep -c 'plugins.socket_watchdog.stopped plugin=probe-a' || true)
+# They accept for 15 s, fewer than three health checks: one that reaches a worker gets no answer.
+call probe-a 20001 /api/accept "acceptors=3&per=220&accept=15&hold=40" > "$work/acceptors.json"
+in_tools python -c '
+import socket, sys, time
+held = [socket.create_connection(("es_plugins", 20001), timeout=5) for _ in range(int(sys.argv[1]))]
+print(len(held), flush=True)
+time.sleep(float(sys.argv[2]))
+' 640 25 > "$work/inbound.out" 2>&1 &
+inbound=$!
+all_connected() { [ "$(head -n 1 "$work/inbound.out")" = 640 ]; }
+wait_for 30 all_connected || true
+# The rows the socket watchdog reads: probe-a's UID, local port 20001 (4E21), established.
+accepted_rows() {
+  as_root python -c "
+rows = [line.split() for name in ('tcp', 'tcp6') for line in open(f'/proc/net/{name}').readlines()[1:]]
+print(sum(1 for row in rows if row[7] == '20001' and row[1].endswith(':4E21') and row[3] == '01'))
+"
+}
+more_than_512_accepted() { [ "$(accepted_rows)" -gt 512 ]; }
+wait_for 10 more_than_512_accepted || true
+accepted=$(accepted_rows)
+# At least three checks of the socket watchdog, once a second, with them all held.
+sleep 4
+stops_after=$(docker logs "$node" 2>&1 | grep -c 'plugins.socket_watchdog.stopped plugin=probe-a' || true)
+busy_state=$(placement 1 '.observed_state + " " + (.pid | tostring)')
+busy_detail=$(placement 1 '[.restarts, .rss_mb, .last_error] | tostring')
+wait "$inbound" || true
+check "probe-a holding $accepted accepted connections on its own port (tools opened $(head -c 20 "$work/inbound.out" | tr -d '\n'); $(jq -c . "$work/acceptors.json" 2> /dev/null | head -c 80)) is not stopped by the socket watchdog: $busy_state $busy_detail" \
+  sh -c "[ '$accepted' -gt 512 ] && [ '$stops_after' = '$stops_before' ] && [ '$busy_state' = 'running $a_pid' ]"
+# The acceptors end on their own; the next checks need probe-a's processes back to one.
+sleep 15
+
 echo "# connection limits: each plugin UID's open connections and new ones a second"
 
 check "the entrypoint set the limits before the launcher started" \
@@ -483,8 +521,21 @@ if wait_for 120 field_is 3 .observed_state failed; then
   evil_error=$(placement 3 .last_error)
   check "a package whose wheel replaces the venv's python is refused at install ($evil_error)" \
     contains "$evil_error" "is not a symlink"
-  markers=$(as_root find /var/lib/es_plugins /run /dev/shm \( -name 'pth-ran-as-*' -o -name 'replaced-python-ran-as-*' \) -print 2> /dev/null || true)
-  check "neither its .pth file nor its replacement python ever ran, as the agent or anyone ($markers)" test -z "$markers"
+  markers=$(as_root find /var/lib/es_plugins /run /dev/shm \( -name 'pth-ran-as-*' -o -name 'replaced-python-ran-as-*' -o -name 'pip-ran-as-*' \) -print 2> /dev/null || true)
+  check "neither its .pth file, its replacement python nor its files at pip's own paths ever ran, as the agent or anyone ($markers)" test -z "$markers"
+  # Inside a plugin's venvs as the agent's UID, which owns them: root here cannot enter them, and
+  # only root may list the venvs root.
+  as_agent() { docker exec --user 10000:10000 "$node" "$@"; }
+  check "its failed build left no venv behind" \
+    sh -c "docker exec --user 10000:10000 $node test -d /var/lib/es_plugins/venvs/probe-evil && ! docker exec --user 10000:10000 $node test -e /var/lib/es_plugins/venvs/probe-evil/1.0.0"
+  venvs_seen=0
+  venv_pips=""
+  for plugin in $(as_root ls /var/lib/es_plugins/venvs); do
+    venvs_seen=$((venvs_seen + $(as_agent find "/var/lib/es_plugins/venvs/$plugin" -mindepth 1 -maxdepth 1 -type d | wc -l)))
+    venv_pips="$venv_pips$(as_agent find "/var/lib/es_plugins/venvs/$plugin" -path '*/site-packages/pip' -print 2>&1 || true)"
+  done
+  check "no plugin venv holds a pip: the node installs with the interpreter's own ($venvs_seen venvs; $venv_pips)" \
+    sh -c "[ '$venvs_seen' -ge 1 ] && [ -z '$venv_pips' ]"
   check "no process was started for it" test "$(placement 3 .pid)" = null
 else
   fail "the hostile package: $(placement 3 '[.observed_state, .last_error] | tostring')"

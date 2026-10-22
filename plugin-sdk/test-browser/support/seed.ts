@@ -1,7 +1,8 @@
 /**
  * `npm run e2e:seed`: makes a running EpicStaff ready for the browser checks and the stack smokes, and writes the
  * stack file (support/stack-file.ts). It uses EpicStaff's HTTP API only: no shell, no database writes. It runs again
- * safely: what exists is reused, by name or email.
+ * safely: what exists is reused, by name or email, and the stack file is written as soon as the people exist, so a run
+ * that stops later leaves their passwords for the next one.
  *
  * Settings, from the environment:
  *   E2E_EPICSTAFF_URL        EpicStaff's origin, default http://epicstaff.localhost
@@ -13,23 +14,31 @@
  *   E2E_STACK_FILE           where the stack file goes, default .stack.json in this suite
  * On a local HTTPS stack, point NODE_EXTRA_CA_CERTS at the CA that signed its certificate.
  *
- * The calls, in order:
- *   1. GET /api/auth/first-setup/. When it needs setup, POST /api/auth/first-setup/ makes the SuperAdmin; else
- *      POST /api/auth/login/ signs the SuperAdmin in.
- *   2. GET /api/admin/organizations/?search= for "E2E Acme" (A), "E2E Bravo" (B) and "E2E Cobalt" (C);
- *      POST /api/admin/organizations/ for one that is missing.
- *   3. GET /api/admin/roles/?org_ids= for the built-in Org Admin, Member and Viewer.
- *   4. GET /api/admin/users/?search= for Ada (Member of A and C), Olga (Org Admin of A), Vic (Viewer of A) and Bob
- *      (Org Admin of B). POST /api/admin/users/ makes a missing one, with a random password and the first membership;
+ * Every setting is checked before the first write, and everything that can stop the seed before the people exist is
+ * checked by reading only. The calls, in order:
+ *   1. GET /api/auth/first-setup/. When it needs setup, a deployment with no plugin yet: E2E_PACKAGE is checked, then
+ *      POST /api/auth/first-setup/ makes the SuperAdmin. Else POST /api/auth/login/ signs the SuperAdmin in.
+ *   2. The checks, reading only:
+ *      - GET /api/admin/plugins/{plugin}/: a missing plugin needs E2E_PACKAGE; one in a state the seed cannot take
+ *        further stops it;
+ *      - GET /api/admin/organizations/?search= for "E2E Acme" (A), "E2E Bravo" (B) and "E2E Cobalt" (C): a deactivated
+ *        one stops it;
+ *      - GET /api/admin/roles/ for the built-in Org Admin, Member and Viewer (its `built_in_roles`);
+ *      - GET /api/admin/users/?search= for Ada (Member of A and C), Olga (Org Admin of A), Vic (Viewer of A), Bob (Org
+ *        Admin of B) and the SuperAdmin: a person who exists without a password in the stack file, or who belongs to
+ *        a seeded organization the checks need them not to, stops it.
+ *   3. POST /api/admin/organizations/ for an organization that is missing.
+ *   4. POST /api/admin/users/ makes a missing person, with a random password and the first membership;
  *      POST /api/admin/memberships/ adds a missing membership, PATCH /api/admin/memberships/{id}/ corrects a role.
- *   5. GET /api/admin/plugins/{plugin}/. When the plugin is missing, POST /api/admin/plugins/packages/ uploads
- *      E2E_PACKAGE and POST /api/admin/plugins/packages/{id}/approve/ approves it, acknowledging Untrusted only for an
- *      untrusted package (an uploaded package waiting for review is approved the same way, after
+ *      Then the stack file is written, with `flow_id` null.
+ *   5. When the plugin is missing, POST /api/admin/plugins/packages/ uploads E2E_PACKAGE and
+ *      POST /api/admin/plugins/packages/{id}/approve/ approves it, acknowledging Untrusted only for an untrusted package
+ *      (an uploaded package waiting for review is approved the same way, after
  *      GET /api/admin/plugins/packages/{id}/review/). Then it waits until the plugin is running (5 minutes at most).
  *   6. GET /api/admin/plugins/{plugin}/grants/; POST /api/admin/plugins/{plugin}/grants/ grants A and C where they
  *      are missing. It waits until both grants are active (5 minutes at most).
  *   7. Signed in as Olga (POST /api/auth/login/), GET /api/graph-light/?search= in A finds the flow the plugin's
- *      install hook made, by the tag in its description.
+ *      install hook made, by the tag in its description. Then the stack file is written again, with `flow_id`.
  *
  * A person who exists already keeps the password the stack file holds for them; without one the seed stops, since it
  * never changes a password. It never prints a password.
@@ -104,6 +113,11 @@ interface Role {
     is_built_in: boolean;
 }
 
+/** `GET /api/admin/roles/`: `results` pages the custom roles only; the built-in ones come whole, beside them. */
+interface RoleList extends Page<Role> {
+    built_in_roles: Role[];
+}
+
 interface User {
     id: number;
     email: string;
@@ -133,6 +147,25 @@ interface Flow {
     id: number;
     name: string;
     description: string | null;
+}
+
+/** The plugin as the checks found it: installed, or missing with the package that installs it. */
+type PluginFound = { installed: PluginDetail } | { installed: null; packagePath: string };
+
+/** A person as the checks found them, with the password the stack file gets for them. */
+interface PersonFound {
+    /** `null`: the seed makes the account. */
+    user: User | null;
+    password: string;
+}
+
+/** What the checks found before the first write; nothing in it was changed. */
+interface Survey {
+    plugin: PluginFound;
+    organizations: Record<OrganizationKey, Organization | null>;
+    roles: Record<BuiltInRole, number>;
+    people: Record<PersonKey, PersonFound>;
+    superAdminId: number;
 }
 
 class SeedError extends Error {}
@@ -262,15 +295,18 @@ function log(line: string): void {
     console.log(line);
 }
 
-/** First setup on a fresh deployment, else the SuperAdmin's sign-in. */
-async function signInSuperAdmin(epicstaffUrl: string, account: { email: string; password: string }) {
-    const setup = await fetch(`${epicstaffUrl}/api/auth/first-setup/`);
-    const { needs_setup: needsSetup } = (await setup.json()) as { needs_setup?: boolean };
-    if (!needsSetup) {
-        const session = await EpicStaffSession.signIn(epicstaffUrl, account);
-        log(`SuperAdmin: signed in as ${account.email}`);
-        return session;
-    }
+/** Whether the deployment is fresh: it has no SuperAdmin until first setup makes one. */
+async function needsFirstSetup(epicstaffUrl: string): Promise<boolean> {
+    const response = await fetch(`${epicstaffUrl}/api/auth/first-setup/`);
+    if (!response.ok) throw new SeedError(`GET /api/auth/first-setup/: ${await describeRefusal(response)}`);
+    const { needs_setup: needsSetup } = (await response.json()) as { needs_setup?: boolean };
+    return needsSetup === true;
+}
+
+async function firstSetup(
+    epicstaffUrl: string,
+    account: { email: string; password: string }
+): Promise<EpicStaffSession> {
     const response = await fetch(`${epicstaffUrl}/api/auth/first-setup/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -282,26 +318,48 @@ async function signInSuperAdmin(epicstaffUrl: string, account: { email: string; 
     return new EpicStaffSession(epicstaffUrl, account, body.access);
 }
 
-async function ensureOrganizations(admin: EpicStaffSession): Promise<Record<OrganizationKey, StackOrganization>> {
-    const organizations = {} as Record<OrganizationKey, StackOrganization>;
+/** E2E_PACKAGE, once it names a file. */
+function packageToInstall(): string {
+    const packagePath = requiredSetting('E2E_PACKAGE');
+    if (!existsSync(packagePath)) throw new SeedError(`E2E_PACKAGE: there is no file ${packagePath}.`);
+    return packagePath;
+}
+
+function pluginPath(plugin: string): string {
+    return `admin/plugins/${encodeURIComponent(plugin)}/`;
+}
+
+/** The plugin as installed, or the package that installs it; a plugin in a state the seed cannot take further stops it. */
+async function findPlugin(admin: EpicStaffSession, plugin: string): Promise<PluginFound> {
+    const installed = await admin.find<PluginDetail>(pluginPath(plugin));
+    if (installed === null) return { installed: null, packagePath: packageToInstall() };
+    const awaitsApproval = installed.state === 'uploaded' && installed.pending_package !== null;
+    if (!awaitsApproval && installed.state !== 'running' && installed.state !== 'provisioning') {
+        throw new SeedError(
+            `${plugin} is ${installed.state}: the seed installs a plugin only once, on a fresh deployment.`
+        );
+    }
+    return { installed };
+}
+
+async function findOrganizations(admin: EpicStaffSession): Promise<Record<OrganizationKey, Organization | null>> {
+    const organizations = {} as Record<OrganizationKey, Organization | null>;
     for (const key of ORGANIZATION_KEYS) {
         const name = ORGANIZATION_NAMES[key];
         const page = await admin.get<Page<Organization>>(
             `admin/organizations/?search=${encodeURIComponent(name)}&page_size=200`
         );
-        let organization = page.results.find((candidate) => candidate.name === name) ?? null;
+        const organization = page.results.find((candidate) => candidate.name === name) ?? null;
         if (organization && !organization.is_active) throw new SeedError(`${name} is deactivated: reactivate it.`);
-        if (!organization) organization = await admin.post<Organization>('admin/organizations/', { name });
-        organizations[key] = { id: organization.id, name: organization.name };
-        log(`Organization ${key.toUpperCase()}: ${organization.name} (${organization.id})`);
+        organizations[key] = organization;
     }
     return organizations;
 }
 
-async function builtInRoles(admin: EpicStaffSession, organizationId: number): Promise<Record<BuiltInRole, number>> {
-    const page = await admin.get<Page<Role>>(`admin/roles/?org_ids=${organizationId}&page_size=200`);
+async function builtInRoles(admin: EpicStaffSession): Promise<Record<BuiltInRole, number>> {
+    const { built_in_roles: builtIn } = await admin.get<RoleList>('admin/roles/');
     const roleId = (name: BuiltInRole): number => {
-        const role = page.results.find((candidate) => candidate.is_built_in && candidate.name === name);
+        const role = builtIn.find((candidate) => candidate.is_built_in && candidate.name === name);
         if (!role) throw new SeedError(`No built-in role "${name}".`);
         return role.id;
     };
@@ -313,31 +371,95 @@ async function findUser(admin: EpicStaffSession, email: string): Promise<User | 
     return page.results.find((candidate) => candidate.email.toLowerCase() === email.toLowerCase()) ?? null;
 }
 
+/**
+ * Every person, with the password the stack file gets: the one it holds for a person who exists, a new random one for
+ * a person to make. Stops at a person who exists without a password in the stack file, or who belongs to a seeded
+ * organization the checks need them not to.
+ */
+async function findPeople(
+    admin: EpicStaffSession,
+    organizations: Record<OrganizationKey, Organization | null>,
+    previous: StackFile | null
+): Promise<Record<PersonKey, PersonFound>> {
+    const people = {} as Record<PersonKey, PersonFound>;
+    const idOf = (key: OrganizationKey): number[] => {
+        const organization = organizations[key];
+        return organization ? [organization.id] : [];
+    };
+    const seededOrganizationIds = new Set(ORGANIZATION_KEYS.flatMap(idOf));
+    for (const key of PERSON_KEYS) {
+        const person = PEOPLE[key];
+        const user = await findUser(admin, person.email);
+        if (!user) {
+            people[key] = { user: null, password: randomPassword() };
+            continue;
+        }
+        const known = previous?.people[key];
+        if (!known || known.email.toLowerCase() !== person.email.toLowerCase()) {
+            throw new SeedError(
+                `${person.email} exists, but the stack file holds no password for it. Point E2E_STACK_FILE at the ` +
+                    'file that seeded this deployment, or seed a fresh one.'
+            );
+        }
+        const wanted = new Set(person.memberships.flatMap(([organization]) => idOf(organization)));
+        const unwanted = user.memberships.find(
+            (membership) =>
+                seededOrganizationIds.has(membership.organization.id) && !wanted.has(membership.organization.id)
+        );
+        if (unwanted) {
+            throw new SeedError(
+                `${person.email} belongs to organization ${unwanted.organization.id}, which the checks need it not to.`
+            );
+        }
+        people[key] = { user, password: known.password };
+    }
+    return people;
+}
+
+/** Every check that can stop the seed before the people exist, by reading only. */
+async function survey(
+    admin: EpicStaffSession,
+    plugin: string,
+    superAdminEmail: string,
+    previous: StackFile | null
+): Promise<Survey> {
+    const found = await findPlugin(admin, plugin);
+    const organizations = await findOrganizations(admin);
+    const roles = await builtInRoles(admin);
+    const people = await findPeople(admin, organizations, previous);
+    const superAdmin = await findUser(admin, superAdminEmail);
+    if (!superAdmin) throw new SeedError(`${superAdminEmail} cannot be found.`);
+    return { plugin: found, organizations, roles, people, superAdminId: superAdmin.id };
+}
+
+async function ensureOrganizations(
+    admin: EpicStaffSession,
+    found: Record<OrganizationKey, Organization | null>
+): Promise<Record<OrganizationKey, StackOrganization>> {
+    const organizations = {} as Record<OrganizationKey, StackOrganization>;
+    for (const key of ORGANIZATION_KEYS) {
+        const name = ORGANIZATION_NAMES[key];
+        const organization = found[key] ?? (await admin.post<Organization>('admin/organizations/', { name }));
+        organizations[key] = { id: organization.id, name: organization.name };
+        log(`Organization ${key.toUpperCase()}: ${organization.name} (${organization.id})`);
+    }
+    return organizations;
+}
+
 async function ensurePeople(
     admin: EpicStaffSession,
     organizations: Record<OrganizationKey, StackOrganization>,
     roles: Record<BuiltInRole, number>,
-    previous: StackFile | null
+    found: Record<PersonKey, PersonFound>
 ): Promise<Record<PersonKey, StackAccount>> {
     const people = {} as Record<PersonKey, StackAccount>;
-    const seededOrganizationIds = new Set(ORGANIZATION_KEYS.map((key) => organizations[key].id));
     for (const key of PERSON_KEYS) {
         const person = PEOPLE[key];
-        const [first, ...others] = person.memberships;
+        const { password } = found[key];
+        const [first] = person.memberships;
         if (!first) throw new SeedError(`${key} has no membership.`);
-        let user = await findUser(admin, person.email);
-        let password: string;
-        if (user) {
-            const known = previous?.people[key];
-            if (!known || known.email.toLowerCase() !== person.email.toLowerCase()) {
-                throw new SeedError(
-                    `${person.email} exists, but the stack file holds no password for it. Point E2E_STACK_FILE at the ` +
-                        'file that seeded this deployment, or seed a fresh one.'
-                );
-            }
-            password = known.password;
-        } else {
-            password = randomPassword();
+        let user = found[key].user;
+        if (!user) {
             await admin.post<User>('admin/users/', {
                 email: person.email,
                 password,
@@ -351,27 +473,20 @@ async function ensurePeople(
         const wanted = new Map(
             person.memberships.map(([organization, role]) => [organizations[organization].id, role])
         );
+        // Memberships elsewhere stay; one in a seeded organization the checks need it not to stopped the checks.
         for (const membership of user.memberships) {
-            const organizationId = membership.organization.id;
-            const role = wanted.get(organizationId);
-            if (role === undefined) {
-                if (seededOrganizationIds.has(organizationId)) {
-                    throw new SeedError(
-                        `${person.email} belongs to organization ${organizationId}, which the checks need it not to.`
-                    );
-                }
-                continue;
-            }
+            const role = wanted.get(membership.organization.id);
+            if (role === undefined) continue;
             if (membership.role.id !== roles[role]) {
                 await admin.patch(`admin/memberships/${membership.id}/`, { role_id: roles[role] });
             }
-            wanted.delete(organizationId);
+            wanted.delete(membership.organization.id);
         }
         for (const [organizationId, role] of wanted) {
             await admin.post('admin/memberships/', { org_id: organizationId, user_id: user.id, role_id: roles[role] });
         }
         people[key] = { id: user.id, email: user.email, password };
-        const where = [first, ...others].map(([organization, role]) => `${role} of ${organization.toUpperCase()}`);
+        const where = person.memberships.map(([organization, role]) => `${role} of ${organization.toUpperCase()}`);
         log(`Person ${key}: ${user.email} (${user.id}), ${where.join(' and ')}`);
     }
     return people;
@@ -383,13 +498,10 @@ async function approve(admin: EpicStaffSession, review: PackageReview): Promise<
     log(`Plugin: approved ${review.plugin_identifier} ${review.version} (${review.trust})`);
 }
 
-async function ensurePluginRunning(admin: EpicStaffSession, plugin: string): Promise<void> {
-    const pluginPath = `admin/plugins/${encodeURIComponent(plugin)}/`;
-    const installed = await admin.find<PluginDetail>(pluginPath);
+async function ensurePluginRunning(admin: EpicStaffSession, plugin: string, found: PluginFound): Promise<void> {
+    const { installed } = found;
     if (installed === null) {
-        const packagePath = requiredSetting('E2E_PACKAGE');
-        if (!existsSync(packagePath)) throw new SeedError(`E2E_PACKAGE: there is no file ${packagePath}.`);
-        const review = await admin.upload<PackageReview>('admin/plugins/packages/', packagePath);
+        const review = await admin.upload<PackageReview>('admin/plugins/packages/', found.packagePath);
         if (review.plugin_identifier !== plugin) {
             throw new SeedError(`E2E_PACKAGE is ${review.plugin_identifier}, not ${plugin}.`);
         }
@@ -402,13 +514,9 @@ async function ensurePluginRunning(admin: EpicStaffSession, plugin: string): Pro
         );
     } else if (installed.state === 'running') {
         log(`Plugin: ${plugin} ${installed.current_version ?? ''} is installed already`);
-    } else if (installed.state !== 'provisioning') {
-        throw new SeedError(
-            `${plugin} is ${installed.state}: the seed installs a plugin only once, on a fresh deployment.`
-        );
     }
     await waitFor(`${plugin} to run`, async () => {
-        const detail = await admin.get<PluginDetail>(pluginPath);
+        const detail = await admin.get<PluginDetail>(pluginPath(plugin));
         if (detail.state === 'failed') throw new SeedError(`${plugin} failed to start: see its Runtime tab.`);
         return detail.state === 'running' ? detail : null;
     });
@@ -420,7 +528,7 @@ async function ensureGrants(
     plugin: string,
     organizations: readonly StackOrganization[]
 ): Promise<void> {
-    const grantsPath = `admin/plugins/${encodeURIComponent(plugin)}/grants/`;
+    const grantsPath = `${pluginPath(plugin)}grants/`;
     const grantsOf = async (): Promise<Grant[]> =>
         (await admin.get<Page<Grant>>(`${grantsPath}?page=1&page_size=100`)).results;
     const existing = await grantsOf();
@@ -466,30 +574,39 @@ async function seed(): Promise<void> {
     const path = stackFilePath();
     const previous = readStackFile(path);
 
-    const admin = await signInSuperAdmin(epicstaffUrl, superAdminAccount);
-    const organizations = await ensureOrganizations(admin);
-    const roles = await builtInRoles(admin, organizations.a.id);
-    const people = await ensurePeople(admin, organizations, roles, previous);
-    await ensurePluginRunning(admin, plugin);
+    let admin: EpicStaffSession;
+    if (await needsFirstSetup(epicstaffUrl)) {
+        // A deployment without its SuperAdmin has no plugin installed either: the package is needed.
+        packageToInstall();
+        admin = await firstSetup(epicstaffUrl, superAdminAccount);
+    } else {
+        admin = await EpicStaffSession.signIn(epicstaffUrl, superAdminAccount);
+        log(`SuperAdmin: signed in as ${superAdminAccount.email}`);
+    }
+    const found = await survey(admin, plugin, superAdminAccount.email, previous);
+
+    const organizations = await ensureOrganizations(admin, found.organizations);
+    const people = await ensurePeople(admin, organizations, found.roles, found.people);
+    const stack: StackFile = {
+        format: STACK_FILE_FORMAT,
+        epicstaff_url: epicstaffUrl,
+        plugin,
+        plugin_url: pluginUrl,
+        superadmin: { id: found.superAdminId, ...superAdminAccount },
+        people,
+        organizations,
+        flow_id: null,
+    };
+    // Before the slow steps: a run that stops in them leaves the people's passwords for the next one.
+    writeStackFile(stack, path);
+    log(`Wrote ${path} without the flow yet (readable by you only; it holds passwords)`);
+
+    await ensurePluginRunning(admin, plugin, found.plugin);
     await ensureGrants(admin, plugin, [organizations.a, organizations.c]);
     const flow = await findSampleFlow(epicstaffUrl, people.olga, organizations.a);
-    const superAdmin = await findUser(admin, superAdminAccount.email);
-    if (!superAdmin) throw new SeedError(`${superAdminAccount.email} cannot be found.`);
 
-    writeStackFile(
-        {
-            format: STACK_FILE_FORMAT,
-            epicstaff_url: epicstaffUrl,
-            plugin,
-            plugin_url: pluginUrl,
-            superadmin: { id: superAdmin.id, ...superAdminAccount },
-            people,
-            organizations,
-            flow_id: flow.id,
-        },
-        path
-    );
-    log(`Wrote ${path} (readable by you only; it holds passwords)`);
+    writeStackFile({ ...stack, flow_id: flow.id }, path);
+    log(`Wrote ${path} with the flow`);
 }
 
 try {

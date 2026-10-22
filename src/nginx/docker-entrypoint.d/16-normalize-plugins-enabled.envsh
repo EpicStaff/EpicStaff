@@ -144,9 +144,12 @@ if env_bool PLUGINS_ENABLED; then
 
   # Plugin development mode serves plugin pages and API requests from ports on this machine
   # (plugins-development-*-true.snippet). Only for a deployment on the developer's own machine:
-  # .localhost names resolve only to the loopback interface of the machine the browser runs on, so
-  # nobody else can use such a deployment. django_app refuses the same deployments at start-up,
-  # and requires DJANGO_DEBUG as well; either refusal alone keeps the mode off a shared server.
+  # EpicStaff and the plugin domain must use .localhost names, and the stack must run with
+  # docker-compose.plugins-dev.yaml. That file is what keeps other machines out: it publishes
+  # ports 80 and 443 on 127.0.0.1 only, and it alone sets PLUGINS_DEV_LOOPBACK_ONLY (never .env,
+  # and absent means false). The .localhost names are no control, since a client that reaches a
+  # port can send any Host. django_app refuses the same deployments at start-up, and requires
+  # DJANGO_DEBUG as well; either refusal alone keeps the mode off a shared server.
   # The base domain is already lower case; the EpicStaff host is compared in any case, as Django
   # compares host names. Neither holds a ":", so the pair splits unambiguously.
   if env_bool PLUGINS_DEV_MODE; then
@@ -159,6 +162,10 @@ if env_bool PLUGINS_ENABLED; then
         exit 64
         ;;
     esac
+    if ! env_bool PLUGINS_DEV_LOOPBACK_ONLY false; then
+      echo "ERROR: PLUGINS_DEV_MODE is true, but EpicStaff was not started with the development compose file, which publishes its ports on 127.0.0.1 only. Without it, ports 80 and 443 are open on every network interface, and other machines could reach the development servers on yours. Start EpicStaff with -f src/docker-compose.plugins-dev.yaml after -f src/docker-compose.yaml, or set PLUGINS_DEV_MODE=false." >&2
+      exit 64
+    fi
     export PLUGINS_DEV_MODE=true
   else
     export PLUGINS_DEV_MODE=false

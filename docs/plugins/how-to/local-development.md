@@ -97,9 +97,12 @@ later.
 
 **Plugin development mode** lets a SuperAdmin serve an installed plugin's backend and page from ports on your machine.
 It runs only on a deployment on your own machine: with `PLUGINS_DEV_MODE=true`, django_app refuses to start unless
-`DJANGO_DEBUG=true`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or a `.localhost` name and
-`PLUGINS_BASE_DOMAIN` is a `.localhost` name, and epicstaff-nginx refuses on the two names too. `.localhost` names only
-ever reach the machine the browser runs on.
+`DJANGO_DEBUG=true`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or a `.localhost` name,
+`PLUGINS_BASE_DOMAIN` is a `.localhost` name, and the stack runs with `docker-compose.plugins-dev.yaml` (which alone
+sets `PLUGINS_DEV_LOOPBACK_ONLY`; never put that in `.env`). epicstaff-nginx refuses the same way. What keeps the mode
+local is that file's binding of EpicStaff's ports to `127.0.0.1`. The `.localhost` names only stop browsers on other
+machines: a client that reaches a port can set the `Host` header by hand. Without the file, django_app and epicstaff-nginx
+refuse to start in this mode.
 [Plugin development mode](../operator/enable-plugins.md#plugin-development-mode) says exactly what it opens. Turn it
 off again with `PLUGINS_DEV_MODE=false`, starting with `docker-compose.yaml` alone: what was routed to your machine is
 then ignored, and its keys are refused.
@@ -116,7 +119,7 @@ npm --prefix plugin-sdk ci && npm --prefix plugin-sdk run build
 npm --prefix plugin-samples/weather/spa ci && npm --prefix plugin-samples/weather/spa run build
 ```
 
-then pack it as [Sign and package a plugin](sign-and-package.md) describes, upload it under **Workspace → Plugins**,
+then pack it as [Sign and package a plugin](sign-and-package.md) describes, upload it with **Upload plugin** under **Workspace → Plugins**,
 approve it, and grant it to an organization: step 6 of [the tutorial](../tutorial/build-your-first-plugin.md#6-pack-approve-grant)
 does it for Weather.
 
@@ -171,14 +174,16 @@ under `backend/src`. [`epicstaff-plugin dev`](../reference/cli.md#epicstaff-plug
 
 ### 4. Point the plugin at it
 
-On the Development tab, set **Backend port** to `8001` and save. Within about 10 seconds every request to the plugin's
+On the Development tab, set **Backend port** to `8001` and choose **Save**. Within about 10 seconds every request to the plugin's
 `/api/` goes to your backend, with the same checks and the same signed gateway contexts as on the plugin node. People
 who open the plugin see a banner saying it is served from a developer's machine, and the plugins list marks it
 "Development". Calls your backend makes to EpicStaff appear in the organization's Plugin activity, marked
 "Development".
 
 **Stop development** on the same tab sends the plugin's requests to the installed backend again, and revokes the keys
-of the runtime file.
+of the runtime file. It asks you to confirm first, as **Download development runtime file** does, and so does
+**Restart** on the Runtime tab. Ports you typed but did not save stay in the fields through a download and through a
+stop that failed; a save or a stop that worked puts the stored ports back.
 
 ### What differs from the plugin node
 
@@ -217,8 +222,9 @@ Any development server works if it:
 
 - **listens where Docker can reach it**: on macOS `127.0.0.1` will do; on Linux, the address the Development tab shows,
   with your firewall accepting connections from Docker's networks;
-- **accepts the plugin's host name**, `<id>.plugins.epicstaff.localhost`: EpicStaff passes it on as `Host`, and servers
-  that check the host name must allow it;
+- **accepts `localhost` as its host**: EpicStaff sends `Host: localhost:<port>`, which esbuild, Vite and webpack's
+  development servers accept without any setting, and passes the plugin's host name on as `X-Forwarded-Host`. The
+  browser's `Origin` stays the plugin's origin;
 - **keeps live reload on the page's own host and port**, connecting to the address the page was loaded from, never to
   `localhost:<port>` directly. WebSocket and server-sent events pass through;
 - **answers every client route with the page**, as the published page does, and uses relative paths.
@@ -229,8 +235,9 @@ gateway context. From its answers it drops `Set-Cookie`, `Clear-Site-Data`, `X-F
 cannot be reached, the page says "The development server for this plugin cannot be reached.", and while the plugin is
 being upgraded it shows the maintenance page instead.
 
-Anyone who can reach this EpicStaff can reach the development server through the plugin's address. On `.localhost`
-names that is only you. [Frontend in the frame](frontend-in-the-frame.md) covers how the page's own code behaves
+Anyone who can reach this EpicStaff can reach the development server through the plugin's address. With the
+development compose file, EpicStaff's ports are bound to `127.0.0.1`, so that is only you; the `.localhost` names alone
+would not stop another machine that reaches the port. [Frontend in the frame](frontend-in-the-frame.md) covers how the page's own code behaves
 behind a development server.
 
 ## A database for the development backend
@@ -262,7 +269,9 @@ CREATE DATABASE weather_development OWNER weather_app;
 ```
 
 Then pass `--database-url postgresql://weather_app:choose-a-password@127.0.0.1:5433/weather_development` and
-`--apply-migrations` to `epicstaff-plugin dev`, as in [Run the backend](#3-run-the-backend).
+`--apply-migrations` to `epicstaff-plugin dev`, as in [Run the backend](#3-run-the-backend). The URL may leave the
+password out, `postgresql://weather_app@127.0.0.1:5433/weather_development`: libpq then reads it from `PGPASSWORD` or
+`~/.pgpass`, which keeps it out of `ps` and your shell history.
 
 `--apply-migrations` applies the files of `database/migrations/` the database's ledger does not list yet, as the node
 does ([`epicstaff-plugin dev`](../reference/cli.md#a-local-database)). Unlike on the node, the login role owns the
@@ -270,11 +279,16 @@ tables, so it can do what only the owner can there: test your grants against the
 ([Write database migrations](database-migrations.md#test-your-migrations-before-you-upload)). The data is yours alone:
 the development backend does not see the installed plugin's rows, and the installed plugin does not see yours.
 
+`dev` warns about two more things here. When tables the login role owns do not FORCE ROW LEVEL SECURITY, their policies
+do not apply to your backend locally, though they do on EpicStaff, where the app role owns no table: add `ALTER TABLE …
+FORCE ROW LEVEL SECURITY` to your migrations, or test against the node's roles. And when the runtime file is inside a
+git work tree that no ignore rule covers, it warns that the file, which holds keys, could be committed.
+
 ## Ship a change
 
 1. Raise `version` in the manifest, and add a migration file for every schema change.
 2. Pack and sign the new version ([Sign and package a plugin](sign-and-package.md)).
-3. Upload it on the plugin's page and upgrade to it ([Bring organizations to a new version](upgrade-hook.md),
+3. Upload it with **Upload plugin** on the Plugins list and upgrade to it ([Bring organizations to a new version](upgrade-hook.md),
    [the plugin lifecycle](../explanation/lifecycle.md#upgrades)).
 4. Choose **Stop development** on the Development tab, so the plugin is served from its new package again.
 
@@ -302,11 +316,16 @@ E2E_PACKAGE=/path/to/weather-0.7.0.esplugin E2E_SUPERADMIN_EMAIL=you@example.com
 npm --prefix plugin-sdk/test-browser run e2e
 ```
 
-The seed uses EpicStaff's HTTP API only. It runs first setup on a fresh deployment, or signs the SuperAdmin in. It
-creates the organizations "E2E Acme", "E2E Bravo" and "E2E Cobalt" and their people, or reuses them, installs Weather
-when it is not installed yet, and grants it to Acme and Cobalt. It writes what the tests need to a stack file, readable
-by you only, and never prints a password. Run it again at any time: it reuses what exists. It never changes a password,
-so it stops when one of its people exists but the stack file has no password for them.
+The seed uses EpicStaff's HTTP API only. It runs first setup on a fresh deployment, or signs the SuperAdmin in. Before
+it writes anything it checks `E2E_PACKAGE` and everything else that can stop it: a plugin it cannot take further, a
+deactivated organization, a person who exists but has no password in the stack file. Then it creates the organizations
+"E2E Acme", "E2E Bravo" and "E2E Cobalt" and their people, or reuses them, installs Weather when it is not installed
+yet, and grants it to Acme and Cobalt. It writes what the tests need to a stack file, readable by you only, and never
+prints a password. It writes the file as soon as the people exist, and again once it has found the flow.
+
+A stack file with `"flow_id": null` means the seed stopped after the people. Run it again: it reuses their passwords.
+Run it again at any time: it reuses what exists. It never changes a password, so it stops when one of its people
+exists but the stack file has no password for them.
 
 | Variable | Default |
 |---|---|

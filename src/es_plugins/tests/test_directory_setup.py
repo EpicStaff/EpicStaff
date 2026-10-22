@@ -1,7 +1,9 @@
 import json
 import os
 import stat
+import sys
 import threading
+import traceback
 
 import pytest
 
@@ -424,3 +426,84 @@ def test_pruning_refuses_a_version_that_is_not_one_path_segment(layout, unprivil
     with pytest.raises(ValueError):
         unprivileged_setup.prune_code(PLUGIN, version)
 
+
+
+def nested_tree(root, depth: int, name: str) -> int:
+    """Make `depth` nested directories below `root`, relative to each open level, with a file in
+    each; return the path's length in bytes."""
+    current = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for level in range(depth):
+            os.mkdir(name, dir_fd=current)
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY, dir_fd=current)
+            os.close(current)
+            current = child
+            descriptor = os.open(f"file-{level}", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=current)
+            os.close(descriptor)
+    finally:
+        os.close(current)
+    return len(os.fsencode(root)) + depth * (len(name) + 1)
+
+
+def test_emptying_a_home_removes_a_tree_deeper_and_longer_than_paths_allow(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    path_length = nested_tree(home, 300, "d" * 20)
+    (home / "top.txt").write_text("x")
+    # Fewer frames than levels: a walk that recursed per level would stop half way.
+    limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(len(traceback.extract_stack()) + 100)
+    try:
+        directory_setup._remove_contents(home)
+    finally:
+        sys.setrecursionlimit(limit)
+
+    assert path_length > 4096
+    assert os.listdir(home) == []
+
+
+def test_emptying_a_home_removes_directories_the_plugin_closed_to_itself(tmp_path):
+    home = tmp_path / "home"
+    for name, mode in (("unreadable", 0o000), ("read_only", 0o500), ("write_only", 0o300)):
+        directory = home / name / "inside"
+        directory.mkdir(parents=True)
+        (directory / "data.db").write_text("x")
+        (home / name / "file").write_text("x")
+        os.chmod(directory, mode)
+        os.chmod(home / name, mode)
+
+    directory_setup._remove_contents(home)
+
+    assert os.listdir(home) == []
+
+
+def test_emptying_a_home_deletes_a_link_and_never_follows_it(tmp_path):
+    home = tmp_path / "home"
+    (home / "nested").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("not the plugin's")
+    (home / "link").symlink_to(outside)
+    (home / "nested" / "file-link").symlink_to(outside / "keep.txt")
+
+    directory_setup._remove_contents(home)
+
+    assert os.listdir(home) == []
+    assert (outside / "keep.txt").read_text() == "not the plugin's"
+
+
+@pytest.mark.root
+def test_purging_removes_a_home_whose_paths_are_longer_than_path_max(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    setup.prepare_plugin(PLUGIN, PLUGIN_UID)
+    home = layout.plugin_home(PLUGIN)
+
+    def make_tree():
+        nested_tree(home, 300, "d" * 20)
+
+    assert directory_setup.run_as_user(PLUGIN_UID, make_tree)
+
+    setup.purge_plugin_data(PLUGIN, PLUGIN_UID)
+
+    assert not home.exists()

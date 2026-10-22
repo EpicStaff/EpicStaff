@@ -237,8 +237,9 @@ section.
 
 ### backend/requirements.lock
 
-The node installs a backend offline, from the package alone:
-`pip install --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock`.
+The node installs a backend offline, from the package alone, with the pip that ships with the
+plugin's own interpreter, run from outside the virtual environment (which has no pip of its own):
+`pip install --isolated --prefix <venv> --ignore-installed --no-deps --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock`.
 So the lock is a pip requirements file that holds nothing but exact pins with hashes:
 
 - every requirement is `name==version`, optionally with extras and an environment marker
@@ -247,6 +248,10 @@ So the lock is a pip requirements file that holds nothing but exact pins with ha
   requirement;
 - it pins `uvicorn` and `epicstaff-plugin`, which run every backend
   ([Runtime](runtime.md#how-the-backend-is-started));
+- it does not pin `pip`: the node installs a backend with its own pip, never one from the package.
+  The error reads `line N: pip may not be pinned: the plugin node installs a backend with its own
+  pip, never one from the package; remove it from the lock`. It applies at `validate`, `pack`,
+  upload and on the node;
 - every file in `backend/wheels/` is a wheel whose name and version the lock pins.
 
 `uv pip compile requirements.in --universal --generate-hashes` writes such a lock; [Sign and
@@ -354,5 +359,6 @@ The SuperAdmin's review shows these next to the package:
 | Code | When |
 |---|---|
 | `untrusted_package` | The package is not signed by a key the deployment trusts |
-| `flows_use_missing` | `access` gives `flows` `create` or `update` but not `use` |
+| `flows_run_code` | `access` gives `flows` `create`, `update` or `use`: through flows, the plugin can run code in EpicStaff's sandbox, which has its own network access, and the plugin's outbound hosts do not apply to that code |
+| `flows_use_missing` | `access` gives `flows` `create` or `update` but not `use`: the plugin cannot run a flow itself or write schedule, webhook or Telegram trigger nodes, but a flow it writes still runs, with its code, when someone in the organization runs it |
 | `wildcard_outbound_host` | An outbound host starts with `*.`; one warning per such host |

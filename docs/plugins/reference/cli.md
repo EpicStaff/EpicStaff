@@ -262,9 +262,13 @@ How this backend differs from the plugin node:
 
 When they apply, it adds a note under `Installed in EpicStaff` when the source's version is not
 the installed one, and at the end: a note when the source's public paths differ from the installed
-version's, or the environment's packages from the lock's; a warning when the runtime file's
-EpicStaff API address is not on this machine, or when the file can be read by other users; and,
-on Linux, that the backend must listen on the Docker bridge address with `--host`. Then uvicorn's
+version's, or the environment's packages from the lock's; a warning when the login role owns
+tables that do not FORCE ROW LEVEL SECURITY, so their policies do not apply to this backend
+though they do on EpicStaff (it names the tables); a warning when the runtime file's EpicStaff
+API address is not on this machine; a warning when the runtime file is in a git work tree and no
+ignore rule covers it, so it could be committed (add it to `.gitignore` or keep it outside the
+source); a warning when the file can be read by other users; and, on Linux, that the backend must
+listen on the Docker bridge address with `--host`. Then uvicorn's
 own log follows.
 
 It never prints or logs a key, a secret setting or the runtime file, and shows a database URL with
@@ -283,7 +287,9 @@ plugin node sets one up, with two roles:
 
 `dev` refuses a database whose roles are set up otherwise, and a login role that is a superuser
 or may bypass row-level security ("row-level security would not apply as on EpicStaff"), and
-prints the SQL that creates suitable roles and the database. [A database for the development
+prints the SQL that creates suitable roles and the database. A database URL without a password
+works: libpq then reads `PGPASSWORD` or `~/.pgpass`, which keeps the password out of `ps` and your
+shell history. [A database for the development
 backend](../how-to/local-development.md#a-database-for-the-development-backend) shows it.
 
 With `--apply-migrations`, it applies the files of `<source>/database/migrations/` as the node

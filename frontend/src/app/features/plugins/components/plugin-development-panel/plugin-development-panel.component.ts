@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
     ButtonComponent,
@@ -62,8 +62,9 @@ interface PortField {
  * for a plugin with a backend, the development runtime file and the command that runs the backend with it.
  *
  * Every choice follows the server: which ports are offered, whether the mode is on, when the file was issued. Save
- * sends both ports; Stop development and the download ask for confirmation first. The downloaded file is handed to the
- * browser as the server sent it: the panel never reads, keeps or logs it.
+ * sends both ports; Stop development and the download ask for confirmation first. Ports typed but not saved stay
+ * through a download and a failed stop; only a save or a stop that worked, or another plugin, starts them over. The
+ * downloaded file is handed to the browser as the server sent it: the panel never reads, keeps or logs it.
  */
 @Component({
     selector: 'app-plugin-development-panel',
@@ -88,11 +89,21 @@ export class PluginDevelopmentPanelComponent {
     protected readonly isLoading = signal(true);
     protected readonly loadError = signal<PluginErrorView | null>(null);
     protected readonly busyAction = signal<DevelopmentAction | null>(null);
-    protected readonly saveError = signal<PluginErrorView | null>(null);
-    /** The server's message per port, from the last refused save. */
-    protected readonly fieldErrors = signal<Readonly<Partial<Record<PortKey, string>>>>({});
-    /** Port inputs the SuperAdmin touched; `null` = no port. */
-    protected readonly drafts = signal<Readonly<Partial<Record<PortKey, number | null>>>>({});
+    /** The last refused save, of this plugin. */
+    protected readonly saveError = linkedSignal<string, PluginErrorView | null>({
+        source: this.identifier,
+        computation: () => null,
+    });
+    /** The server's message per port, from the last refused save, until that port is typed in again. */
+    protected readonly fieldErrors = linkedSignal<string, Readonly<Partial<Record<PortKey, string>>>>({
+        source: this.identifier,
+        computation: () => ({}),
+    });
+    /** Port inputs the SuperAdmin touched and has not saved, of this plugin; `null` = no port. */
+    protected readonly drafts = linkedSignal<string, Readonly<Partial<Record<PortKey, number | null>>>>({
+        source: this.identifier,
+        computation: () => ({}),
+    });
     protected readonly isBusy = computed(() => this.busyAction() !== null);
     /** The ports the current package can use, in display order. */
     protected readonly fields = computed<PortField[]>(() => {
@@ -171,7 +182,11 @@ export class PluginDevelopmentPanelComponent {
     constructor() {
         toObservable(this.request)
             .pipe(
-                tap(() => this.loadError.set(null)),
+                tap(() => {
+                    this.loadError.set(null);
+                    // A Retry after a failed first load shows the spinner, not an empty panel.
+                    if (this.development() === null) this.isLoading.set(true);
+                }),
                 switchMap(({ identifier }) =>
                     this.storage.getDevelopment(identifier).pipe(
                         catchError((error: unknown) => {
@@ -184,7 +199,7 @@ export class PluginDevelopmentPanelComponent {
                 takeUntilDestroyed()
             )
             .subscribe((development) => {
-                if (development) this.show(development);
+                if (development) this.development.set(development);
             });
     }
 
@@ -192,8 +207,14 @@ export class PluginDevelopmentPanelComponent {
         this.reloads.update((count) => count + 1);
     }
 
+    /** The server's word on this port was about the value it refused, so it goes with that value. */
     protected setDraft(key: PortKey, value: number | null): void {
         this.drafts.update((drafts) => ({ ...drafts, [key]: value }));
+        this.fieldErrors.update((errors) => {
+            const remaining: Partial<Record<PortKey, string>> = { ...errors };
+            delete remaining[key];
+            return remaining;
+        });
     }
 
     protected save(): void {
@@ -209,7 +230,8 @@ export class PluginDevelopmentPanelComponent {
         this.fieldErrors.set({});
         this.run('save', this.storage.updateDevelopment(this.identifier(), update)).subscribe({
             next: (saved) => {
-                this.show(saved);
+                this.development.set(saved);
+                this.startEditsOver();
                 this.toast.success('Development target saved. Requests follow it within about 10 seconds.');
                 this.changed.emit();
             },
@@ -233,6 +255,7 @@ export class PluginDevelopmentPanelComponent {
             .pipe(switchMap(() => this.run('stop', this.storage.clearDevelopment(identifier))))
             .subscribe({
                 next: () => {
+                    this.startEditsOver();
                     this.toast.success(`Development of ${name} stopped.`);
                     this.reload();
                     this.changed.emit();
@@ -296,10 +319,11 @@ export class PluginDevelopmentPanelComponent {
         );
     }
 
-    private show(development: PluginDevelopment): void {
-        this.development.set(development);
+    /** After a save or a stop that worked: the ports shown are the stored ones again. */
+    private startEditsOver(): void {
         this.drafts.set({});
         this.fieldErrors.set({});
+        this.saveError.set(null);
     }
 }
 

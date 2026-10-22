@@ -764,6 +764,53 @@ async def test_a_restart_of_an_unchanged_database_does_not_provision_it_again(da
     assert len(desired.provisioner.calls) == 1
 
 
+async def backed_up(reconciler, desired, upgrade_ids):
+    """Backups of the running placement's database, as the node takes them before upgrades."""
+    from es_plugins.database.backup_service import BackupRequest
+
+    database = reconciler.controllers()[0].desired.database
+    return [
+        await desired.backups.backup(
+            BackupRequest(plugin="weather", database=database, upgrade_id=upgrade_id, reason="pre_upgrade", version="0.2.0")
+        )
+        for upgrade_id in upgrade_ids
+    ]
+
+
+async def test_the_disk_a_placement_uses_outside_its_home_is_its_database_and_its_backups(database_node):
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+    stored = await backed_up(reconciler, desired, [5, 6])
+
+    [controller] = reconciler.controllers()
+
+    assert controller.bytes_outside_home() == 8192 + sum(backup.metadata.size_bytes for backup in stored)
+
+
+async def test_a_backup_that_cannot_be_reported_withholds_the_whole_inventory(database_node, monkeypatch):
+    from es_plugins.database.backup_store import StoredBackup
+    from src.shared.models.plugin_nodes import BackupFileReport
+
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+    reportable, unreportable = await backed_up(reconciler, desired, [5, 6])
+    assert [backup.file_name for backup in reconciler.reports()[0].backups] == [unreportable.file_name, reportable.file_name]
+    real_report = StoredBackup.report
+
+    def report(backup):
+        if backup.file_name == unreportable.file_name:
+            BackupFileReport.model_validate({})
+        return real_report(backup)
+
+    monkeypatch.setattr(StoredBackup, "report", report)
+
+    # A whole inventory without it would have EpicStaff mark it deleted while its file stays.
+    assert reconciler.reports()[0].backups is None
+    assert unreportable.path.exists()
+
+
 async def test_a_changed_host_list_rewrites_the_policy_without_a_restart(node, layout):
     reconciler, django, launcher, _, desired = node
     await reconciler.apply(desired())

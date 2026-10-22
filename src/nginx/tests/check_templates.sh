@@ -7,11 +7,13 @@
 #     self-signed certificates; with the plugins flag off nothing plugin-related may be rendered;
 #   - with plugins on, PLUGINS_DEV_MODE false and true: off, no page decision, no development
 #     server location and nothing on 8082; on, both SPA locations ask the page decision, the
-#     development server's location hides its cookies, framing rule and policy and gets no
-#     login, key or context, and the development API listener refuses the plugins subnet;
+#     development server's location hides its cookies, framing rule and policy, asks for
+#     localhost and the server's port, and gets no login, key or context, and the development API
+#     listener refuses the plugins subnet;
 #   - in each, that every location of EpicStaff's own server that proxies anywhere but Django
 #     drops the Cookie header and the upstream's Set-Cookie and Clear-Site-Data, and that nginx's
 #     X-Frame-Options is the only one (read from the rendered configuration, includes expanded);
+#     and that every location of the plugin hosts that proxies, to Django too, does the same;
 #   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse;
 #   - the maintenance answers: the flag test in both SPA locations and the page's named location
 #     with its headers, the gateway's maintenance refusal (its map entries and JSON), no
@@ -23,8 +25,9 @@
 #     itself: none on 8081, 1 on 8082), that every other location that passes a caller's headers
 #     on to Django blanks all three in every spelling, and that the internal checks nginx makes
 #     before an upload, a plugin request or a plugin page apply no body limit;
-#   - the development mode values the start script must refuse: a non-boolean, an unset one, and
-#     a base domain or EpicStaff host that is not a .localhost name;
+#   - the development mode values the start script must refuse: a non-boolean, an unset one, a
+#     base domain or EpicStaff host that is not a .localhost name, and no PLUGINS_DEV_LOOPBACK_ONLY
+#     (the stack was started without src/docker-compose.plugins-dev.yaml, which alone sets it);
 #   - live, inside the container: which upstreams receive the browser's cookies and may set
 #     one, the package upload route (with a 1 MiB and a 300 MiB package limit), the login callback
 #     pages a plugin host serves from src/nginx/plugin-platform, which listener answers a caller
@@ -66,6 +69,10 @@ make_certificate() { # $1 = file name prefix, $2 = common name
 }
 make_certificate "" epicstaff.test
 make_certificate plugins- "*.plugins.epicstaff.test"
+
+# What src/docker-compose.plugins-dev.yaml adds to epicstaff-nginx's environment. Development mode
+# needs it: src/docker-compose.yaml never sets it, so set_docker_arguments leaves it out.
+loopback_marker=PLUGINS_DEV_LOOPBACK_ONLY=true
 
 # A value of the shape `openssl rand -hex 32` gives; the rendered check location must carry it.
 gateway_secret=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
@@ -320,6 +327,87 @@ expect_only_django_cookies() {
     fail "$1: found no proxied location in EpicStaff's server ($elsewhere elsewhere, $django to Django)"
   else
     pass "$1 ($elsewhere locations proxy elsewhere without cookies either way, $django proxy to Django)"
+  fi
+}
+
+# Reads the flattened configuration twice (the file name, twice) and checks every location of the
+# plugin hosts' server (the one whose server_name captures plugin_identifier) that proxies and
+# answers the browser (an `internal` one answers an auth_request subrequest only, whose headers
+# never reach it): one line "<location> -> <proxy_pass target>: <problem>" per broken rule, then
+# "checked <n>". On a plugin host nothing proxied may get the browser's cookies, or set or clear
+# one, Django included: Clear-Site-Data from a plugin host clears the cookies of the whole
+# registrable domain, EpicStaff's refresh cookie among them. Every one also hides the upstream's
+# X-Frame-Options. A location with proxy_pass_request_headers off passes no Cookie on either.
+# Inheritance as in the main server's check.
+read -r -d '' plugin_hosts_check_program << 'AWK' || :
+BEGIN { FS = "\t" }
+NR == FNR {
+  if ($3 ~ /^server_name "~\^\(\?<plugin_identifier>/) plugin_server = $1
+  next
+}
+$1 != plugin_server { next }
+{
+  location = $2
+  split($3, word, " ")
+  if (!(location in seen)) { seen[location] = 1; order[++count] = location }
+  if (word[1] == "internal") internal[location] = 1
+  if (word[1] == "proxy_pass") target[location] = word[2]
+  if (word[1] == "proxy_pass_request_headers" && word[2] == "off") no_request_headers[location] = 1
+  if (word[1] == "proxy_set_header") {
+    sets_headers[location] = 1
+    if (tolower(word[2]) == "cookie" && (word[3] == "\"\"" || word[3] == "''")) clears[location] = 1
+  }
+  if (word[1] == "proxy_hide_header") {
+    hides_headers[location] = 1
+    hidden[location, tolower(word[2])] = 1
+  }
+}
+
+function hides(location, name) {
+  if (!(location in hides_headers)) location = ""
+  return ((location, name) in hidden)
+}
+
+function passes_no_cookie(location) {
+  if (location in no_request_headers) return 1
+  if (!(location in sets_headers)) location = ""
+  return (location in clears)
+}
+
+END {
+  for (i = 1; i <= count; i++) {
+    location = order[i]
+    if (location == "" || !(location in target) || (location in internal)) continue
+    checked++
+    label = location " -> " target[location]
+    if (!passes_no_cookie(location)) print label ": passes the browser's Cookie on"
+    if (!hides(location, "set-cookie")) print label ": passes Set-Cookie through"
+    if (!hides(location, "clear-site-data")) print label ": passes Clear-Site-Data through"
+    if (!hides(location, "x-frame-options")) print label ": passes X-Frame-Options through"
+  }
+  print "checked " checked + 0
+}
+AWK
+
+# $1 = a file of `nginx -T` output; prints the plugin hosts' check's problems, sorted.
+plugin_hosts_violations() {
+  flatten_configuration "$1" > "$work_dir/flat"
+  awk "$plugin_hosts_check_program" "$work_dir/flat" "$work_dir/flat" | { grep -v '^checked ' || true; } \
+    | LC_ALL=C sort
+}
+
+# $1 = description, $2 = how many proxied locations the plugin hosts' server must have. Checks the
+# last rendered configuration (plugins on).
+expect_plugin_hosts_cookie_free() {
+  local problems checked
+  problems=$(plugin_hosts_violations "$work_dir/out")
+  checked=$(awk "$plugin_hosts_check_program" "$work_dir/flat" "$work_dir/flat" | sed -n 's/^checked //p')
+  if [ -n "$problems" ]; then
+    fail "$1: $(printf '%s\n' "$problems" | paste -sd ';' -)"
+  elif [ "$checked" != "$2" ]; then
+    fail "$1: found $checked proxied location(s) on the plugin hosts, not $2"
+  else
+    pass "$1 ($checked proxied locations, none passes a cookie either way, Clear-Site-Data or X-Frame-Options)"
   fi
 }
 
@@ -613,7 +701,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       plugin_network_caller 10.235.0.0/24 /.well-known/epicstaff/callback \
       /usr/share/nginx/plugin-platform X-EpicStaff-Gateway-Deny @plugin_maintenance_page \
       maintenance.html plugin_maintenance /_plugin_development_page_check @plugin_development \
-      plugin_spa_upstream '$plugin_development_listener' "listen 8082"; do
+      plugin_spa_upstream plugin_spa_host '$plugin_development_listener' "listen 8082"; do
       if has_directive "$text"; then
         leaked="$leaked [$text]"
       fi
@@ -628,6 +716,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
   if expect_valid "nginx -t: PLUGINS_ENABLED=true $flags" \
     PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled; then
     expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
+    expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config and /api/) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 2
     expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals"
     expected_tls="include /etc/nginx/conf.d/plugins-ssl-off.snippet;"
     if [ "$ssl_mode" = on ]; then
@@ -745,7 +834,8 @@ for chat_enabled in false true; do for ssl_mode in off on; do
     expect_django_headers_blanked "PLUGINS_ENABLED=true $flags: no caller of a public server can send Django the internal listener's headers" 8
     leaked=""
     for text in /_plugin_development_page_check @plugin_development plugin_spa_upstream \
-      /api/plugin-gateway/development-spa/ "listen 8082" "set \$plugin_development_listener 1"; do
+      plugin_spa_host /api/plugin-gateway/development-spa/ "listen 8082" \
+      "set \$plugin_development_listener 1"; do
       if has_directive "$text"; then
         leaked="$leaked [$text]"
       fi
@@ -805,8 +895,9 @@ for chat_enabled in false true; do for ssl_mode in off on; do
   fi
   if expect_valid "nginx -t: PLUGINS_ENABLED=true $flags" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true \
     NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
-    "DJANGO_FRONTEND_BASE_URL=$scheme://epicstaff.localhost"; then
+    "DJANGO_FRONTEND_BASE_URL=$scheme://epicstaff.localhost" "$loopback_marker"; then
     expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
+    expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config, /api/ and the development server's page) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 3
     expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals, and never the development server's page"
     expect_internal_headers "PLUGINS_ENABLED=true $flags: both listeners' /api/ set the network secret (from the environment) and the on-behalf-of header, and only the development listener says it is" true
     expect_django_headers_blanked "PLUGINS_ENABLED=true $flags: no caller of a public server can send Django the listeners' headers" 8
@@ -839,7 +930,8 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       "error_page 502 504 = @plugin_development_unreachable" "proxy_hide_header Set-Cookie" \
       "proxy_hide_header Clear-Site-Data" "proxy_hide_header X-Frame-Options" \
       "proxy_hide_header Content-Security-Policy" "proxy_hide_header X-EpicStaff-Gateway-Deny" \
-      "proxy_ignore_headers X-Accel-Redirect" "proxy_set_header Host \$host" \
+      "proxy_ignore_headers X-Accel-Redirect" "proxy_set_header Host \$plugin_spa_host" \
+      "proxy_set_header X-Forwarded-Host \$host" \
       "proxy_set_header Upgrade \$http_upgrade" "proxy_set_header Connection \$connection_upgrade" \
       "proxy_buffering off" "proxy_read_timeout 1h" \
       "add_header Content-Security-Policy \"frame-ancestors 'self' $scheme://epicstaff.localhost\" always" \
@@ -849,6 +941,11 @@ for chat_enabled in false true; do for ssl_mode in off on; do
     done
     expect_location_blanks "PLUGINS_ENABLED=true $flags: the development server gets no cookie, login, API key or plugin context, in any spelling" \
       "@plugin_development_page" Cookie Authorization X-API-Key X-EpicStaff-Plugin-Context
+    # Map entries are printed outside any server and location.
+    expect_location_directive "PLUGINS_ENABLED=true $flags: the development server is asked for localhost and its own port" \
+      "" '"~:(?<plugin_spa_port>[0-9]+)$" localhost:$plugin_spa_port'
+    expect_location_directive "PLUGINS_ENABLED=true $flags: the development server is asked for localhost when the decision names no port" \
+      "" "default localhost"
     for directive in "return 503 \"The development server for this plugin cannot be reached.\\n\"" \
       "default_type text/html" "add_header Cache-Control no-store always" \
       "add_header X-EpicStaff-Gateway-Deny unavailable always" \
@@ -900,7 +997,7 @@ fi
 # and the header must never come from the caller, and nothing else may fill the variable.
 if expect_valid "nginx -t: PLUGINS_DEV_MODE=true, for the internal header check's self-test" \
   PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
-  DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost; then
+  DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost "$loopback_marker"; then
   expect_internal_header_break "the development listener's value taken from the caller" \
     "\$plugin_development_listener is \$http_x_plugin_development_listener on 8082" \
     'in_snippet && /^ *set \$plugin_development_listener / { print "    set $plugin_development_listener $http_x_plugin_development_listener;"; next } { print }' \
@@ -1013,6 +1110,47 @@ if expect_valid "nginx -t: CHAT_ENABLED=true PLUGINS_ENABLED=true, for the cooki
   fi
 fi
 
+# The plugin hosts' check itself, with development mode on (all three proxied locations):
+#   - every Cookie, Set-Cookie and Clear-Site-Data rule deleted: it names exactly those three
+#     locations, and not the platform config's Cookie (it passes no request header on);
+#   - only the Clear-Site-Data line of cookie-free-upstream.snippet deleted: all three pass a
+#     plugin's or a development server's Clear-Site-Data through, so each takes it from the snippet.
+# Update the list when a location of the plugin hosts that proxies is added or removed.
+plugin_hosts_locations=(
+  '= /.well-known/epicstaff/config.json -> http://backend_server/api/plugin-public/$plugin_identifier/config/'
+  '^~ /api/ -> http://$plugin_upstream'
+  '@plugin_development_page -> http://$plugin_spa_upstream'
+)
+if expect_valid "nginx -t: PLUGINS_DEV_MODE=true, for the plugin hosts' check's self-test" \
+  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+  DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost "$loopback_marker"; then
+  grep -vF -e 'proxy_set_header Cookie "";' -e 'proxy_hide_header Set-Cookie;' \
+    -e 'proxy_hide_header Clear-Site-Data;' "$work_dir/out" > "$work_dir/out-without-cookie-rules"
+  found=$(plugin_hosts_violations "$work_dir/out-without-cookie-rules")
+  expected=$(for location in "${plugin_hosts_locations[@]}"; do
+    printf '%s\n' "$location: passes Set-Cookie through" "$location: passes Clear-Site-Data through"
+    # The platform config passes no request header on, so no Cookie either.
+    if [ "${location#= /.well-known/}" = "$location" ]; then
+      printf '%s\n' "$location: passes the browser's Cookie on"
+    fi
+  done | LC_ALL=C sort)
+  if [ "$found" = "$expected" ]; then
+    pass "the plugin hosts' check finds every location of the plugin hosts that proxies"
+  else
+    fail "the plugin hosts' check, with every cookie rule deleted, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+  awk '/^# configuration file / { in_snippet = ($0 ~ /cookie-free-upstream\.snippet:$/) }
+       !(in_snippet && /proxy_hide_header Clear-Site-Data;/)' "$work_dir/out" \
+    > "$work_dir/out-without-snippet-clear-site-data"
+  found=$(plugin_hosts_violations "$work_dir/out-without-snippet-clear-site-data")
+  expected=$(printf '%s: passes Clear-Site-Data through\n' "${plugin_hosts_locations[@]}" | LC_ALL=C sort)
+  if [ "$found" = "$expected" ]; then
+    pass "every proxied location of the plugin hosts hides Clear-Site-Data through cookie-free-upstream.snippet"
+  else
+    fail "the plugin hosts' check, without the snippet's Clear-Site-Data rule, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+fi
+
 # The gateway deny check itself: with every X-EpicStaff-Gateway-Deny line deleted it must name
 # exactly the four locations that answer for the gateway, and /api/.
 if expect_valid "nginx -t: PLUGINS_ENABLED=true, for the gateway deny check's self-test" \
@@ -1065,7 +1203,7 @@ expect_refused "PLUGINS_ENABLED=maybe is refused" "PLUGINS_ENABLED='maybe' is no
 # deployment whose plugin domain or EpicStaff host is not a .localhost name.
 local_names=(PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost)
 if expect_valid "PLUGINS_DEV_MODE=Yes is accepted with .localhost names" PLUGINS_ENABLED=true \
-  PLUGINS_DEV_MODE=Yes "${local_names[@]}"; then
+  PLUGINS_DEV_MODE=Yes "${local_names[@]}" "$loopback_marker"; then
   expect_directives "PLUGINS_DEV_MODE=Yes is read as true" "listen 8082;"
 fi
 expect_refused "PLUGINS_DEV_MODE=maybe is refused" "PLUGINS_DEV_MODE='maybe' is not a boolean" \
@@ -1091,13 +1229,43 @@ for names in "plugins.epicstaff.test http://epicstaff.localhost" \
   read -r base_domain frontend_url <<< "$names"
   expect_refused "PLUGINS_DEV_MODE=true with PLUGINS_BASE_DOMAIN=$base_domain and DJANGO_FRONTEND_BASE_URL=$frontend_url is refused" \
     "$development_refusal" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true \
-    "PLUGINS_BASE_DOMAIN=$base_domain" "DJANGO_FRONTEND_BASE_URL=$frontend_url"
+    "PLUGINS_BASE_DOMAIN=$base_domain" "DJANGO_FRONTEND_BASE_URL=$frontend_url" "$loopback_marker"
 done
 for frontend_url in http://localhost:4200 http://EpicStaff.LocalHost https://epicstaff.localhost:8443/; do
   expect_valid "PLUGINS_DEV_MODE=true with DJANGO_FRONTEND_BASE_URL=$frontend_url is accepted" \
     PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
-    "DJANGO_FRONTEND_BASE_URL=$frontend_url" || :
+    "DJANGO_FRONTEND_BASE_URL=$frontend_url" "$loopback_marker" || :
 done
+
+# PLUGINS_DEV_LOOPBACK_ONLY, which only src/docker-compose.plugins-dev.yaml sets: development mode
+# is refused without it, as Django refuses it, since without that file 80 and 443 are open on
+# every interface. Read like every other boolean; absent means false.
+loopback_refusal="Start EpicStaff with -f src/docker-compose.plugins-dev.yaml after -f src/docker-compose.yaml"
+expect_refused "PLUGINS_DEV_MODE=true without PLUGINS_DEV_LOOPBACK_ONLY (no development compose file) is refused" \
+  "$loopback_refusal" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true "${local_names[@]}"
+expect_refused "PLUGINS_DEV_MODE=true with PLUGINS_DEV_LOOPBACK_ONLY=false is refused" \
+  "$loopback_refusal" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true "${local_names[@]}" PLUGINS_DEV_LOOPBACK_ONLY=false
+expect_refused "PLUGINS_DEV_LOOPBACK_ONLY=maybe is refused" "PLUGINS_DEV_LOOPBACK_ONLY='maybe' is not a boolean" \
+  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true "${local_names[@]}" PLUGINS_DEV_LOOPBACK_ONLY=maybe
+if expect_valid "PLUGINS_DEV_MODE=false with the development compose file's marker is accepted" \
+  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=false "${local_names[@]}" "$loopback_marker"; then
+  if has_directive 'listen 8082'; then
+    fail "PLUGINS_DEV_MODE=false with the marker renders the development API listener"
+  fi
+fi
+# The compose files as committed: the development one sets the marker to "true" on both services
+# that check it, and the main one never names it, so .env cannot reach either container with it.
+dev_compose_file="$nginx_dir/../docker-compose.plugins-dev.yaml"
+marked_services=$(awk '/^  [A-Za-z0-9_-]+:$/ { service = substr($1, 1, length($1) - 1) }
+  /^      PLUGINS_DEV_LOOPBACK_ONLY: "true"$/ { print service }' "$dev_compose_file" \
+  | LC_ALL=C sort | paste -sd ' ' -)
+if [ "$marked_services" != "django_app epicstaff-nginx" ]; then
+  fail "docker-compose.plugins-dev.yaml sets PLUGINS_DEV_LOOPBACK_ONLY: \"true\" for [$marked_services], not django_app and epicstaff-nginx"
+elif grep -v '^[[:space:]]*#' "$compose_file" | grep -q PLUGINS_DEV_LOOPBACK_ONLY; then
+  fail "docker-compose.yaml names PLUGINS_DEV_LOOPBACK_ONLY: only docker-compose.plugins-dev.yaml may set it"
+else
+  pass "only docker-compose.plugins-dev.yaml sets PLUGINS_DEV_LOOPBACK_ONLY, to true, for django_app and epicstaff-nginx"
+fi
 
 # With the flag off the plugin values are never read, so they cannot stop nginx.
 expect_valid "PLUGINS_ENABLED=false ignores malformed plugin values" PLUGINS_ENABLED=false \

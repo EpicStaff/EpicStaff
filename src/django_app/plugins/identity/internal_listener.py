@@ -33,20 +33,28 @@ def holds_gateway_secret(presented: str) -> bool:
     return hmac.compare_digest(presented.encode("utf-8"), configured.encode("utf-8"))
 
 
-def came_through_internal_listener(request) -> bool:
-    """Whether the request came through one of the two listeners (it holds the network secret)."""
+def came_through_a_plugin_listener(request) -> bool:
+    """Whether the request came through either listener: it holds the network secret."""
     return holds_gateway_secret(request.META.get(NETWORK_SECRET_META_KEY, ""))
 
 
-def came_through_development_listener(request) -> bool:
-    """Whether a request that holds the network secret came through the development listener."""
-    return request.META.get(DEVELOPMENT_LISTENER_META_KEY) == DEVELOPMENT_LISTENER_VALUE
+def came_through_internal_listener(request) -> bool:
+    """Whether the request came through the internal listener: it holds the network secret and
+    carries no development listener header, with any value.
 
-
-def names_development_listener(request) -> bool:
-    """Whether the request carries the development listener's header at all, with any value.
-
-    Node credentials are refused on any such request, so a value other than the listener's
-    own never lets one through.
+    Node credentials are accepted only here, so a development listener header with a value
+    other than the listener's own never lets one through either.
     """
-    return DEVELOPMENT_LISTENER_META_KEY in request.META
+    return (
+        came_through_a_plugin_listener(request)
+        and DEVELOPMENT_LISTENER_META_KEY not in request.META
+    )
+
+
+def came_through_development_listener(request) -> bool:
+    """Whether the request came through the development listener: it holds the network secret
+    and the development listener's header with the listener's own value."""
+    return (
+        came_through_a_plugin_listener(request)
+        and request.META.get(DEVELOPMENT_LISTENER_META_KEY) == DEVELOPMENT_LISTENER_VALUE
+    )

@@ -1,6 +1,8 @@
 """The page decision nginx asks for each plugin page request in plugin development mode."""
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from plugins.development.development_targets import DevelopmentPageDecisionService
 from plugins.models import Plugin, PluginDevelopmentTarget, PluginState
 
@@ -141,6 +143,17 @@ def test_a_repeated_decision_is_answered_from_the_cache(weather, anonymous_clien
 
     with django_assert_num_queries(0):
         assert _answer(_ask(anonymous_client))[0] == 403
+
+
+@pytest.mark.usefixtures("development_mode", "development_host_resolves")
+def test_a_decision_reads_one_row_without_the_package_s_large_columns(weather, anonymous_client):
+    PluginDevelopmentTarget.objects.create(plugin=weather, spa_port=5173)
+
+    with CaptureQueriesContext(connection) as captured:
+        assert _answer(_ask(anonymous_client)) == (403, f"{DEVELOPMENT_HOST_ADDRESS}:5173")
+
+    [query] = [query["sql"] for query in captured.captured_queries]
+    assert "migration_files" not in query and "icon_bytes" not in query
 
 
 @pytest.mark.usefixtures("development_mode", "development_host_resolves")

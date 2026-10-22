@@ -15,7 +15,7 @@ class AvailablePlugin:
     `availability` is `maintenance` while the plugin is stopped for an upgrade, or the
     organization's upgrade has not finished; the plugin's page then says it is being updated.
     `development` is true while development mode serves some part of it from a developer's
-    machine; a member never sees where.
+    machine, never while it is in maintenance; a member never sees where.
     """
 
     plugin: Plugin
@@ -39,15 +39,15 @@ def plugins_available_to(user, org_id: int) -> list[AvailablePlugin]:
         .listed()
         .select_related("plugin__development_target"),
     )
-    return [
-        AvailablePlugin(
-            plugin=access.grant.plugin,
-            permissions=access.actions,
-            availability=MAINTENANCE
-            if access.grant.state == GrantState.UPGRADING
-            or access.grant.plugin.state == PluginState.MAINTENANCE
-            else READY,
-            development=served_from_development(access.grant.plugin),
-        )
-        for access in accesses
-    ]
+    return [_available(access.grant, access.actions) for access in accesses]
+
+
+def _available(grant: PluginGrant, permissions: list[str]) -> AvailablePlugin:
+    plugin = grant.plugin
+    in_maintenance = grant.state == GrantState.UPGRADING or plugin.state == PluginState.MAINTENANCE
+    return AvailablePlugin(
+        plugin=plugin,
+        permissions=permissions,
+        availability=MAINTENANCE if in_maintenance else READY,
+        development=not in_maintenance and served_from_development(plugin),
+    )

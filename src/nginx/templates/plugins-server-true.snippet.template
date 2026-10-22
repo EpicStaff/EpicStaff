@@ -63,6 +63,10 @@ geo $plugin_network_caller {
     ${PLUGINS_NETWORK_SUBNET}  1;
 }
 
+# PLUGINS_DEV_MODE (16-normalize-plugins-enabled.envsh): the Host header a frontend development
+# server gets, or nothing.
+include /etc/nginx/conf.d/plugins-development-page-host-${PLUGINS_DEV_MODE}.snippet;
+
 server {
     include /etc/nginx/conf.d/plugins-ssl-${NGINX_SSL_MODE}.snippet;
 
@@ -97,11 +101,10 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        # A cookie set from a plugin host could be scoped to the parent domain and reach
-        # EpicStaff or the other plugins. Django's X-Frame-Options: DENY would stop EpicStaff
-        # from framing the response; frame-ancestors in the security headers decides that here.
-        proxy_hide_header Set-Cookie;
-        proxy_hide_header X-Frame-Options;
+        # No Set-Cookie or Clear-Site-Data from a plugin host, even Django's, and no
+        # X-Frame-Options: Django's DENY would stop EpicStaff from framing the response. The
+        # snippet's Cookie line changes nothing here: no request header is passed on.
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
     }
 
     # The login callback pages, the same files on every plugin host (src/nginx/plugin-platform,
@@ -193,8 +196,10 @@ server {
         # "upgrade" for WebSocket, "close" otherwise; never '' (keep-alive): a proxy_pass through
         # a variable has no connection pool, so nginx would close every connection itself.
         proxy_set_header Connection $connection_upgrade;
-        # Plugins use tokens, never cookies: EpicStaff's cookies must not reach them.
-        proxy_set_header Cookie "";
+        # Plugins use tokens, never cookies: EpicStaff's cookies must not reach them, and a plugin
+        # must not set a cookie for the parent domain, clear EpicStaff's (Clear-Site-Data) or
+        # forbid its framing.
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         # EpicStaff's API key is for EpicStaff's API, never a plugin (the underscore spelling
         # too, since underscores_in_headers is on at http level).
         proxy_set_header X-API-Key "";
@@ -208,10 +213,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
         # A plugin must not route nginx internally (into /_plugin_gateway_check, which would hand
-        # it the gateway's headers), set cookies for the parent domain, or forbid its framing.
+        # it the gateway's headers).
         proxy_ignore_headers X-Accel-Redirect;
-        proxy_hide_header Set-Cookie;
-        proxy_hide_header X-Frame-Options;
         # Only the gateway's own refusals carry it, so a page can trust it.
         proxy_hide_header X-EpicStaff-Gateway-Deny;
         proxy_connect_timeout 5s;

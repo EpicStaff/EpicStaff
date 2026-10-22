@@ -65,6 +65,13 @@ RUN apt-get update \
 
 COPY --from=plugin-python-3-13 /usr/local/ /opt/plugin-python/3.13/
 COPY --from=plugin-python-3-12 /usr/local/ /opt/plugin-python/3.12/
+# The agent installs a plugin's wheels with the pip wheel that interpreter's standard library
+# ships for ensurepip, never with a pip inside the venv (es_plugins.packages.venv_builder): each
+# interpreter must ship exactly one.
+RUN for version in 3.12 3.13; do \
+        test "$(find /opt/plugin-python/$version/lib/python$version/ensurepip/_bundled -name 'pip-*.whl' | wc -l)" -eq 1 \
+        || { echo "plugin Python $version ships no single ensurepip pip wheel" >&2; exit 1; }; \
+    done
 COPY --from=postgres-client /opt/postgresql-client/ /opt/postgresql-client/
 COPY --from=builder /app /app
 

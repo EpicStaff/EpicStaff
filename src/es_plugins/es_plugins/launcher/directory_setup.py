@@ -448,13 +448,83 @@ def _remove_tree_if_present(parent: int, name: str) -> None:
 
 
 def _remove_contents(directory: Path) -> None:
-    """Delete everything inside `directory`, as its owner (run in the plugin's helper)."""
-    for entry in os.scandir(directory):
-        path = Path(entry.path)
-        if entry.is_dir(follow_symlinks=False):
-            # A plugin may have made one of its own directories unreadable.
-            os.chmod(path, 0o700)
-            _remove_contents(path)
-            os.rmdir(path)
+    """Delete everything inside `directory`, as its owner (run in the plugin's helper).
+
+    Iterative, and every step relative to an open directory: neither the depth of the tree nor
+    the length of a path (past `PATH_MAX`, 4096 bytes) stops it, and one descriptor is open at a
+    time. A link is deleted, never followed. A directory the plugin made unreadable or
+    unwritable is given 0700 first; the helper runs as its owner.
+
+    Raises:
+        OSError: An entry could not be deleted, or the tree changed while it was walked.
+    """
+    current = _open_for_removal(str(directory), None)
+    # One entry per open level below `directory`: its identity, its name in the level above,
+    # and its subdirectories still to go.
+    levels: list[tuple[tuple[int, int], str | None, list[str]]] = [
+        (_identity(os.fstat(current)), None, [])
+    ]
+    try:
+        levels[-1][2].extend(_delete_files_in(current))
+        while True:
+            _, _, pending = levels[-1]
+            if pending:
+                name = pending.pop()
+                child = _open_for_removal(name, current)
+                os.close(current)
+                current = child
+                levels.append((_identity(os.fstat(current)), name, _delete_files_in(current)))
+                continue
+            if len(levels) == 1:
+                return
+            _, name, _ = levels.pop()
+            parent = os.open("..", _DIRECTORY_FLAGS, dir_fd=current)
+            os.close(current)
+            current = parent
+            if _identity(os.fstat(current)) != levels[-1][0]:
+                raise OSError(errno.ESTALE, f"{directory} changed while it was emptied")
+            os.rmdir(name, dir_fd=current)
+    finally:
+        os.close(current)
+
+
+def _open_for_removal(name: str, parent: int | None) -> int:
+    """Open a directory, without following a link, and make it 0700 so its entries can go.
+
+    One the plugin left without read permission cannot be opened at all: it is given 0700 by
+    name first, then opened and checked to be the directory the name led to.
+    """
+    try:
+        descriptor = os.open(name, _DIRECTORY_FLAGS, dir_fd=parent)
+    except PermissionError:
+        seen = os.lstat(name, dir_fd=parent)
+        if not stat.S_ISDIR(seen.st_mode):
+            raise
+        os.chmod(name, 0o700, dir_fd=parent)
+        descriptor = os.open(name, _DIRECTORY_FLAGS, dir_fd=parent)
+        if _identity(os.fstat(descriptor)) != _identity(seen):
+            os.close(descriptor)
+            raise OSError(errno.ESTALE, f"{name} changed while it was emptied") from None
+    try:
+        os.fchmod(descriptor, 0o700)
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor
+
+
+def _delete_files_in(directory: int) -> list[str]:
+    """Delete every entry of `directory` but its subdirectories; return their names."""
+    subdirectories = []
+    with os.scandir(directory) as entries:
+        listed = [(entry.name, entry.is_dir(follow_symlinks=False)) for entry in entries]
+    for name, is_directory in listed:
+        if is_directory:
+            subdirectories.append(name)
         else:
-            os.unlink(path)
+            os.unlink(name, dir_fd=directory)
+    return subdirectories
+
+
+def _identity(info: os.stat_result) -> tuple[int, int]:
+    return info.st_dev, info.st_ino

@@ -61,7 +61,7 @@ class PluginUpgrade(models.Model):
     started_at = models.DateTimeField(default=timezone.now)
     maintenance_started_at = models.DateTimeField(null=True, blank=True)
     migrations_started_at = models.DateTimeField(null=True, blank=True)
-    # None until the first `advance` to migrations, and for upgrades opened before it was kept.
+    # None until the first `advance` to migrations, and always for an upgrade that adds a backend.
     ledger_at_migrations = models.JSONField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)

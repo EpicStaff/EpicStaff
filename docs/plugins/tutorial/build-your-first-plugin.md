@@ -32,6 +32,8 @@ Read the sample's files alongside: each part explains them in the order they mat
   and [Enable the plugin platform](../operator/enable-plugins.md), including the plugin database
   server and the egress proxy, and a Docker host that reaches the internet (for part 3).
 - Python 3.13 and [uv](https://docs.astral.sh/uv/) for the backend, Node.js 24.15 or later for the page.
+- EpicStaff's crew service running: the forecast flow runs in it, so without it a forecast never finishes
+  (part 1, step 7).
 - A SuperAdmin account, and an organization with an Org Admin and a Member.
 
 ## The files
@@ -156,8 +158,9 @@ The parts this tutorial uses:
 
 ### 1. The install hook
 
-When a SuperAdmin grants Weather to an organization, the grant starts as "Installing…", and the
-plugin node calls Weather's install hook. `install_hook.py` registers it with the SDK:
+When a SuperAdmin grants Weather to an organization, the plugin node calls Weather's install
+hook. Until the plugin picks the hook up, the grant row reads "Waiting for the plugin to start".
+`install_hook.py` registers it with the SDK:
 
 ```python
 @hook_registry.on_install
@@ -213,8 +216,10 @@ final variables once it ended (`OrgClient.session` does this), and answers only 
 started the run. Which person started which run is kept in Weather's database (part 2), so a run
 started before a restart is still found after it.
 
-The flow's Python node runs inside EpicStaff, in its sandbox, so its calls to Open-Meteo are
-EpicStaff's, not the plugin's: they need no outbound host (part 3).
+The flow's Python node runs inside EpicStaff, in its sandbox, so its calls to Open-Meteo go out
+from the sandbox, which has its own network access. The plugin's outbound hosts do not cover them
+(part 3), and they would not limit them either: that is why the review warns about `flows` access
+(see [Accepted risks](../explanation/accepted-risks.md#flows-run-code-outside-the-outbound-hosts)).
 
 ### 3. Settings for admins, and the person's own rights
 
@@ -258,9 +263,12 @@ when `GET /api/whoami` lists `delete` among the person's permissions, and otherw
 need the Delete permission on Weather". [Frontend in the frame](../how-to/frontend-in-the-frame.md)
 explains the frame and the login.
 
-Build it:
+The page uses the JS SDK from the repository, so build that first, from the root of the EpicStaff
+repository, then the page:
 
 ```
+npm --prefix plugin-sdk ci
+npm --prefix plugin-sdk run build
 npm --prefix plugin-samples/weather/spa ci
 npm --prefix plugin-samples/weather/spa run build
 ```
@@ -271,9 +279,10 @@ The SDK's test helpers stand in for EpicStaff: `ContextSigner` signs gateway con
 `HookSigner` signs hook calls, `write_runtime_file` writes a runtime file with a service-account
 key, and an `httpx.MockTransport` answers for EpicStaff's API. The sample's tests, in the
 EpicStaff repository, run the install hook twice and check that it created one flow and one
-readme, and check every route above:
+readme, and check every route above. Install the SDK's test environment once first:
 
 ```
+make uv-sync svc=plugin_sdk
 make plugin_sdk-tests ARGS="tests/test_weather_sample_backend.py"
 ```
 
@@ -291,12 +300,15 @@ uv run --frozen --project src/plugin_sdk epicstaff-plugin validate weather-0.7.0
 [Sign and package a plugin](../how-to/sign-and-package.md) adds a signature. Then, as the
 SuperAdmin, in EpicStaff's Plugins page: upload `weather-0.7.0.esplugin`, read the review (the
 declared access with its reasons, the hooks, the database and the outbound hosts), approve it, and grant it
-to your organization. The grant shows "Installing…", then "Active", with the service account and
-"Owned resources: 2".
+to your organization. The grant row reads "Waiting for the plugin to start" until the plugin picks up
+its install hook, then "Installing…" while the hook runs (which for Weather can be too short to
+see), then "Active", with the service account and "Owned resources: 2".
 
 ### 7. Use it
 
-- As the Member, open Weather, go to Forecast, enter "Paris" and ask for the forecast.
+- As the Member, open Weather, go to Forecast, enter "Paris" and ask for the forecast. The flow runs
+  in EpicStaff's crew service: with that service stopped, the forecast stays pending until the page
+  gives up after 2 minutes.
 - As the Org Admin, open the flow "Weather forecast" in EpicStaff, and `weather/README.md` in
   Storage. Open Weather's Organization settings, pick a model, enter a key; the Secret and the
   LLM config appear in EpicStaff's settings.
@@ -457,9 +469,9 @@ make plugin_sdk-tests ARGS="-m postgres tests/test_weather_sample_database.py"
 
 ### 9. Use it
 
-- As the Member, open Weather, go to Places, search for "Lisbon" (part 3) and add "Lisbon,
-  Portugal". The page leaves out the region when it repeats the place's name. The Org Admin sees
-  the place too.
+- As the Member, open Weather, go to Places, search for "Lisbon" (part 3) and add the first
+  match, which the page shows as "Lisbon, Lisbon District, Portugal". It leaves out the region only
+  when the region repeats the place's name. The Org Admin sees the place too.
 - "Forecast" next to a place opens the Forecast page with its name in the city field.
 - Someone whose role gives Weather View only sees the list, without the search, Add or Remove.
 - In another organization, the list is empty, and the places added there are not in yours.
@@ -583,8 +595,8 @@ organization's rows are gone from every table, and another organization's are al
 - As the SuperAdmin, open Weather → Organizations, and choose "Delete data…" for your
   organization. The dialog lists what Weather owns there and the flows that use it, and asks you
   to type the confirmation it shows.
-- The organization's row shows "Deleting data…", then goes. The Activity tab shows the hook's
-  success.
+- The organization's row shows "Deleting data…", then goes. Deleting takes about a minute. The
+  Activity tab shows the hook's success.
 - In the plugin database, `select org_id, name from weather.saved_places` no longer lists your
   organization's places. Another organization's places are still there.
 
@@ -731,10 +743,11 @@ printf 'ALTER TABLE weather.saved_places ADD COLUMN note text;\n' > /tmp/weather
 uv run --frozen --project src/plugin_sdk epicstaff-plugin pack /tmp/weather-0.7.1 --spa-dir plugin-samples/weather/spa/dist --download-wheels --local-wheel dist/epicstaff_plugin-0.1.0-py3-none-any.whl --out weather-0.7.1.esplugin
 ```
 
-As the SuperAdmin, upload `weather-0.7.1.esplugin` on Weather's page. It waits for review, and
-Weather keeps running 0.7.0. The review says "Upgrade from 0.7.0", lists
-"Migrations: 004_place_notes.sql", says that the database is backed up first and how many
-organizations go offline. Unsigned, it is also Untrusted, which you acknowledge as at the first
+As the SuperAdmin, choose "Upload plugin" on the Plugins list (not on Weather's page) and pick
+`weather-0.7.1.esplugin`. The review opens by itself, and Weather keeps running 0.7.0. The review
+says "Upgrade from 0.7.0", lists "Migrations: 004_place_notes.sql", says "1 new migration runs
+before the new version starts", that the database is backed up first and how many organizations go
+offline. Unsigned, it is also Untrusted, which you acknowledge as at the first
 install. Then choose "Upgrade to 0.7.1".
 
 On a stack that runs Weather 0.6.0, upload `weather-0.7.0.esplugin` from part 1 instead. Its
@@ -745,7 +758,8 @@ until you tick "I approve the new access".
 
 - The banner says "Preparing 0.7.1 — Weather keeps running" while the node gets the new
   version ready, then "Upgrading to 0.7.1 — Weather is offline" while it backs up, migrates and
-  starts it. Weather then runs 0.7.1.
+  starts it. Weather then runs 0.7.1. On a small database the offline banner may last only a
+  second.
 - While it is offline, people who open Weather see that it is being updated, and runs of the
   "Weather forecast" flow are refused.
 - The Runtime tab lists the backup, "Before upgrade to 0.7.1", and the migrations that ran.

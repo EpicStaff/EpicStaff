@@ -9,6 +9,8 @@ import importlib.metadata
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -552,6 +554,57 @@ def test_nothing_secret_is_printed_on_a_full_start(source, runtime_file, databas
     captured = capsys.readouterr()
     assert "Database: postgresql://weather_app:***@localhost:5432/weather_development" in captured.out
     _assert_no_secret(captured)
+
+
+def test_owned_tables_whose_policies_do_not_apply_here_are_warned_about(source, runtime_file, database, served, capsys):
+    database.exempt_tables = [("weather", "saved_places"), ("weather", "popup_results")]
+
+    assert _dev(source, runtime_file, "--database-url", DATABASE_URL, "--apply-migrations") == 0
+
+    assert (
+        "warning: weather_app owns these tables and they do not FORCE ROW LEVEL SECURITY, so their row-level "
+        "security policies do not apply to this backend; on EpicStaff they do: weather.saved_places, "
+        "weather.popup_results"
+    ) in capsys.readouterr().out
+
+
+def test_without_such_tables_there_is_no_row_level_security_warning(source, runtime_file, database, served, capsys):
+    assert _dev(source, runtime_file, "--database-url", DATABASE_URL) == 0
+
+    assert "FORCE ROW LEVEL SECURITY" not in capsys.readouterr().out
+
+
+needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+
+
+def git(directory, *arguments):
+    subprocess.run(["git", "-C", str(directory), *arguments], check=True, capture_output=True)
+
+
+@needs_git
+def test_a_runtime_file_in_a_git_work_tree_that_does_not_ignore_it_is_warned_about_once(tmp_path, source, runtime_file, served, capsys):
+    git(tmp_path, "init", "--quiet")
+
+    assert _dev(source, runtime_file) == 0
+
+    output = capsys.readouterr().out
+    warning = f"warning: {runtime_file.resolve()} is in the git work tree {tmp_path.resolve()} and no ignore rule covers it"
+    assert output.count(warning) == 1
+
+
+@needs_git
+def test_a_runtime_file_a_git_ignore_rule_covers_is_not_warned_about(tmp_path, source, runtime_file, served, capsys):
+    git(tmp_path, "init", "--quiet")
+    (tmp_path / ".gitignore").write_text("downloads/\n")
+
+    assert _dev(source, runtime_file) == 0
+
+    assert "git work tree" not in capsys.readouterr().out
+
+
+@needs_git
+def test_a_runtime_file_outside_any_git_work_tree_is_not_warned_about(runtime_file):
+    assert development.unignored_git_work_tree(runtime_file.resolve()) is None
 
 
 def test_a_host_given_as_an_ipv6_address_is_shown_in_brackets(source, runtime_file, served, capsys):

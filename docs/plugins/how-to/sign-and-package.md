@@ -269,7 +269,7 @@ and approves it. Each new upload of the same plugin, until it is approved, repla
 one.
 
 To ship a new version of an installed plugin, raise `version` in the manifest, pack and sign it
-as above, and have a SuperAdmin upload it on the plugin's page. Its review shows what changed
+as above, and have a SuperAdmin upload it with **Upload plugin** on the Plugins list, as for a first install. Its review shows what changed
 against the installed version, and approving it upgrades the plugin. A version that is not newer
 than the installed one is refused. [Compatibility and versioning](../reference/compatibility-and-versioning.md)
 says what a new version may change, and [Write an upgrade hook](upgrade-hook.md) how to bring each

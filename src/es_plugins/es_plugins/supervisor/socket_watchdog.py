@@ -11,12 +11,21 @@ the agent unable to reach django_app or plugins_db.
 Every second the watchdog reads `/proc/net/{tcp,tcp6,udp,udp6}` of the node's network namespace,
 which the plugins share with the agent, and counts each running plugin's sockets by the `uid`
 column. A plugin breaches when its UID owns a TCP socket in LISTEN, or more than
-`MAX_INET_SOCKETS` inet sockets in all. The socket a plugin serves on is not its own: the agent
-made it (`PortReservation`), so it is listed under the agent's UID, and so is every connection
-it accepts. A breach kills the plugin's UID and leaves the plugin `failed` with the reason in
-the node's report (`ProcessSupervisor.fail_for`), until EpicStaff restarts it or installs another
-version: a restart with backoff, as for memory, would only take the ports again. Between two
-checks a plugin can still take ports for up to a second.
+`MAX_INET_SOCKETS` inet sockets in all, not counting the TCP connections it accepted.
+
+The socket a plugin serves on is not its own: the agent made it (`PortReservation`), so its
+LISTEN row has the agent's UID. A connection the plugin accepts from it is the plugin's, though:
+`accept()` gives the new socket the accepting process's UID. Such a socket has the plugin's own
+port as its local port and takes no ephemeral port, so a TCP row of the plugin's UID on that port
+is left out of the count; a busy plugin may hold as many as its descriptors allow. A LISTEN row of
+its UID breaches on any port. The rest, the connections it opens and its UDP sockets, is bounded
+by `MAX_INET_SOCKETS`, set above what the connection limits already let a plugin hold
+(`network_limits`).
+
+A breach kills the plugin's UID and leaves the plugin `failed` with the reason in the node's
+report (`ProcessSupervisor.fail_for`), until EpicStaff restarts it or installs another version: a
+restart with backoff, as for memory, would only take the ports again. Between two checks a plugin
+can still take ports for up to a second.
 
 The work per check is bounded: each table is read up to `MAX_LINES_PER_TABLE` lines, in a thread,
 a line that does not parse is skipped, and a table that cannot be read is logged (once until it
@@ -33,12 +42,17 @@ from pathlib import Path
 
 from loguru import logger
 
+from es_plugins.network_limits import TCP_CONNECTIONS_PER_PLUGIN
 from es_plugins.supervisor.process_supervisor import ProcessSupervisor
 
 POLL_INTERVAL_SECONDS = 1.0
-# Far above what a plugin's process uses (its database pool, its proxy connections, name
-# lookups), far below what exhausts the namespace's ephemeral ports.
-MAX_INET_SOCKETS = 512
+# UDP sockets a plugin may hold besides its TCP connections: name lookups, each one socket while
+# it waits for its answer.
+UDP_SOCKETS_ALLOWANCE = 256
+# Twice the TCP connections the connection limits let a plugin open: a socket still holds its
+# port for a while after conntrack stopped counting its connection (closing, or waiting for the
+# plugin to close it). Far below what exhausts the namespace's ephemeral ports.
+MAX_INET_SOCKETS = 2 * TCP_CONNECTIONS_PER_PLUGIN + UDP_SOCKETS_ALLOWANCE
 # Every port of the namespace's range, twice over: a table longer than this is cut, and a plugin
 # that fills it is past its cap long before.
 MAX_LINES_PER_TABLE = 100_000
@@ -77,7 +91,8 @@ def parse_socket_line(line: str) -> SocketEntry | None:
 
 @dataclass
 class SocketUse:
-    """Each watched UID's inet sockets, and a TCP port it listens on (the first found)."""
+    """Each watched UID's inet sockets but the connections it accepted, and a TCP port it listens
+    on (the first found)."""
 
     sockets: Counter = field(default_factory=Counter)
     listening: dict[int, int] = field(default_factory=dict)
@@ -90,8 +105,12 @@ class SocketTables:
         self._root = root
         self._unreadable: set[str] = set()
 
-    def use_of(self, uids: set[int]) -> SocketUse:
-        """The socket use of `uids`, from every table that can be read now."""
+    def use_of(self, ports: dict[int, int]) -> SocketUse:
+        """The socket use of each UID of `ports`, from every table that can be read now.
+
+        Args:
+            ports: Each watched UID and the port its plugin serves on.
+        """
         use = SocketUse()
         for name, is_tcp in _TABLES:
             try:
@@ -99,11 +118,14 @@ class SocketTables:
                     # The first line is the header.
                     for line in itertools.islice(table, 1, MAX_LINES_PER_TABLE + 1):
                         entry = parse_socket_line(line)
-                        if entry is None or entry.uid not in uids:
+                        if entry is None or entry.uid not in ports:
                             continue
-                        use.sockets[entry.uid] += 1
                         if is_tcp and entry.state == TCP_LISTEN:
                             use.listening.setdefault(entry.uid, entry.local_port)
+                        elif is_tcp and entry.local_port == ports[entry.uid]:
+                            # A connection it accepted: it takes no ephemeral port.
+                            continue
+                        use.sockets[entry.uid] += 1
             except OSError as error:
                 if name not in self._unreadable:
                     self._unreadable.add(name)
@@ -127,7 +149,7 @@ class SocketWatchdog:
 
     async def check_once(self) -> list[ProcessSupervisor]:
         """Stop every running plugin whose UID listens on a port of its own or holds more than
-        `MAX_INET_SOCKETS` inet sockets.
+        `MAX_INET_SOCKETS` inet sockets, the connections it accepted not counted.
 
         Returns:
             The supervisors stopped by this check.
@@ -137,7 +159,8 @@ class SocketWatchdog:
         }
         if not watched:
             return []
-        use = await asyncio.to_thread(self._tables.use_of, set(watched))
+        ports = {uid: supervisor.spec.port for uid, supervisor in watched.items()}
+        use = await asyncio.to_thread(self._tables.use_of, ports)
         stopped = []
         for uid, supervisor in watched.items():
             reason = _breach(use, uid)

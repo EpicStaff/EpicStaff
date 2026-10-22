@@ -1,10 +1,11 @@
 # The plugin development lab: EpicStaff's real nginx templates and entrypoint scripts in the nginx
 # image pinned in src/docker-compose.yaml (run.sh reads the pin), rendered with plugin development
 # mode on (nginx) and off (nginx-off), against a stand-in django_app that answers both checks, a
-# stand-in frontend development server, and a plugin backend. Run with run.sh, which gives every
-# run a project name of its own and removes everything afterwards. No host ports. The plugins
-# network's subnet is fixed, apart from the stack's and the gateway lab's, so two runs of this lab
-# at once would collide on it.
+# stand-in frontend development server, and a plugin backend. nginx-unmarked has development mode
+# on without src/docker-compose.plugins-dev.yaml's marker, and must refuse to start. Run with
+# run.sh, which gives every run a project name of its own and removes everything afterwards. No
+# host ports. The plugins network's subnet is fixed, apart from the stack's and the gateway
+# lab's, so two runs of this lab at once would collide on it.
 name: es-development-lab
 
 x-lab-secret: &lab-secret
@@ -63,9 +64,13 @@ x-nginx: &nginx
   depends_on: [decision, author, plugin_alpha]
 
 services:
-  # Development mode on. The public networks, and plugins-network as epicstaff-api, as in the stack.
+  # Development mode on, with what src/docker-compose.plugins-dev.yaml adds. The public networks,
+  # and plugins-network as epicstaff-api, as in the stack.
   nginx:
     <<: *nginx
+    environment:
+      <<: *nginx-environment
+      PLUGINS_DEV_LOOPBACK_ONLY: "true"
     networks:
       public: {}
       backend: {}
@@ -73,13 +78,21 @@ services:
         aliases:
           - epicstaff-api
 
-  # The same templates with development mode off: no page decision and nothing on 8082.
+  # The same templates with development mode off: no page decision and nothing on 8082. Without
+  # the development compose file's marker, which development mode off does not need.
   nginx-off:
     <<: *nginx
     environment:
       <<: *nginx-environment
       PLUGINS_DEV_MODE: "false"
     networks: [public, backend, plugins]
+
+  # Development mode on, started without the development compose file (no marker): its start
+  # script must stop it with 64. Run once by run.sh (`compose run`), never by `up`.
+  nginx-unmarked:
+    <<: *nginx
+    profiles: [refusal]
+    network_mode: none
 
   decision:
     <<: *lab-service
@@ -93,7 +106,8 @@ services:
     networks: [backend, public]
 
   # The developer's frontend development server. nginx reaches it as it reaches the Docker host,
-  # by an address outside every network of the stack's own services.
+  # by an address outside every network of the stack's own services. Like esbuild's, it refuses
+  # any Host but localhost and 127.0.0.1.
   author:
     <<: *lab-service
     command: ["python", "-u", "/lab/services/author.py"]

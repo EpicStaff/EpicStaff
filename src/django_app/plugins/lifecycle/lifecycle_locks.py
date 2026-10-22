@@ -2,13 +2,23 @@
 
 Every lifecycle action locks the plugin first, then its open upgrade, then that upgrade's
 restore, then the placement, then the plugin's database record, then its grants (in ascending
-pk), then hook jobs, then backups, then ownership rows. Package rows are locked only under the
+pk), then hook jobs, then the grants' service accounts (in organization order), then those
+accounts' keys, then backups, then ownership rows. Keys are locked only through their
+account: an UPDATE of them once the account is locked. Package rows are locked only under the
 plugin's lock. A per-grant action (suspend, resume, retry a hook, delete a grant's data)
 therefore never races an uninstall, an upgrade or a plugin's deletion, and none of them can
-deadlock another. Paths that keep an order of their own: the node's claim and result lock a
-job's grant, then the job, never the plugin; a node report locks placements, then database
-records, then backups, and takes the plugin only in its follow-up transaction, which locks
-nothing before it; an organization's deletion locks organizations, then their grants.
+deadlock another.
+
+Paths that keep an order of their own:
+
+- the node's claim and result lock a job's grant, then the job, never the plugin;
+- the node's credentials fetch locks the plugin's grants, then their service accounts, then
+  their keys (`ServiceAccountKeyService.mint_for_plugin`), never the plugin;
+- a node report locks placements, then database records, then backups, then the restore a
+  pre-restore backup belongs to (`BackupRecorder`), and takes the plugin only in its
+  follow-up transaction, which locks nothing before it;
+- an organization's deletion locks organizations, then their grants, then deletes the
+  grants' service accounts and keys with them.
 
 Every row that new rows point at is locked `FOR NO KEY UPDATE`, never `FOR UPDATE`: the
 plugin (an organization's deletion inserts hook jobs that point at it), the open upgrade, the
@@ -19,6 +29,17 @@ this transaction while this one waits on a row the inserting one holds. No path 
 column of these rows; one that did would need `FOR UPDATE`. Deleting a plugin (its removal, or
 the rejection of its first package) takes `FOR UPDATE` by itself, once nothing inserts rows
 that point at it any more.
+
+Grants are the exception: they are locked `FOR UPDATE` although service accounts, hook jobs,
+role actions and ownership rows point at them. The lifecycle inserts such rows only for a
+grant it holds already (an approval's service accounts, `settle_grant`'s upgrade jobs, an
+organization's deletion's organization removed jobs). The other inserters, a role save
+writing a role's plugin actions under the role's lock and a plugin's API request recording
+what it created, hold no row a lifecycle action locks after a grant, so a grant's holder never
+waits on them while they wait on it. An organization's deletion is the one holder that goes
+on to such a row (it deletes the organization's roles); it deletes the grants as well, so no
+weaker lock would let the insert through, and Postgres rolls one of the two back if a role
+save meets it.
 """
 
 from plugins.exceptions import GrantNotFoundError, PluginNotFoundError
@@ -72,7 +93,11 @@ def lock_grant(identifier: str, grant_id: int) -> PluginGrant:
 
 
 def lock_grants_of(plugin: Plugin) -> list[PluginGrant]:
-    """Lock every grant of `plugin` (locked already), in ascending pk, each with its organization."""
+    """Lock every grant of `plugin`, in ascending pk, each with its organization.
+
+    A lifecycle action locks the plugin first; the node's credentials fetch locks the grants
+    without it (see the module's lock order).
+    """
     grants = list(
         PluginGrant.objects.select_for_update(of=("self",))
         .select_related("org")

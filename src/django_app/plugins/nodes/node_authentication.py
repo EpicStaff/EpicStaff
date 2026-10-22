@@ -14,10 +14,7 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.permissions import BasePermission
 
 from plugins.exceptions import NodeNotAuthenticatedError
-from plugins.identity.internal_listener import (
-    came_through_internal_listener,
-    names_development_listener,
-)
+from plugins.identity.internal_listener import came_through_internal_listener
 from plugins.models import PluginNode
 
 KEYWORD = "PluginNodeKey"
@@ -42,7 +39,7 @@ class PluginNodeAuthentication(BaseAuthentication):
     through the internal listener, is 401 `node_not_authenticated`."""
 
     def authenticate(self, request):
-        if not came_through_internal_listener(request) or names_development_listener(request):
+        if not came_through_internal_listener(request):
             raise NodeNotAuthenticatedError()
         scheme, _, key = request.META.get("HTTP_AUTHORIZATION", "").partition(" ")
         if scheme != KEYWORD or not key:

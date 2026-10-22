@@ -4,14 +4,15 @@ Two fixed targets, the backend and the page; nothing else can be rerouted. A tar
 deployment-wide and only a SuperAdmin sets it. It is inert while `PLUGINS_DEV_MODE` is off:
 every reader asks `development_mode_on()` itself.
 
-Writes lock the plugin row first, then its service accounts, then their keys (the order of
-`plugins.lifecycle.lifecycle_locks` and of the key mints). Once a write commits, this
-process's gateway snapshots and page decisions are dropped; other processes follow within
-`SNAPSHOT_CACHE_SECONDS` and `PAGE_DECISION_CACHE_SECONDS`.
+Writes lock the plugin row first, then its grants, then their service accounts, then their
+keys (the order of `plugins.lifecycle.lifecycle_locks` and of the key mints). Once a write
+commits, this process's gateway snapshots and page decisions are dropped; other processes
+follow within `SNAPSHOT_CACHE_SECONDS` and `PAGE_DECISION_CACHE_SECONDS`.
 """
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -27,7 +28,6 @@ from plugins.development.development_mode import (
     development_mode_on,
 )
 from plugins.exceptions import (
-    InvalidDevelopmentPortsError,
     PluginDevelopmentModeOffError,
     PluginNotFoundError,
     PluginNotRunningError,
@@ -46,7 +46,6 @@ from plugins.identity.service_account_keys import (
 from plugins.lifecycle.lifecycle_locks import lock_existing_plugin, lock_plugin
 from plugins.models import Plugin, PluginDevelopmentTarget, PluginPackage, PluginState
 from plugins.models.development import development_target_of
-from plugins.serializers.development import PluginDevelopmentUpdateSerializer
 
 PAGE_DECISION_CACHE_SECONDS = 10
 # Requests for many made-up plugin hosts must not grow one process's memory without bound.
@@ -67,6 +66,24 @@ class PluginDevelopmentState:
     runtime_file_issued_at: datetime | None
 
 
+@dataclass(frozen=True)
+class DevelopmentPortRules:
+    """What a plugin's ports are checked against: the parts its current package has, and the
+    development API listener's port, which no target may take."""
+
+    api_port: int
+    can_use_backend: bool
+    can_use_spa: bool
+
+
+@dataclass(frozen=True)
+class DevelopmentPorts:
+    """The ports a target stores; at least one is set."""
+
+    backend_port: int | None
+    spa_port: int | None
+
+
 def routed_ports(plugin: Plugin) -> dict | None:
     """The stored ports while development mode is on, for the SuperAdmin; else None."""
     target = development_target_of(plugin) if development_mode_on() else None
@@ -78,12 +95,13 @@ def routed_ports(plugin: Plugin) -> dict | None:
 def served_from_development(plugin: Plugin) -> bool:
     """Whether development mode reroutes some part of the plugin now.
 
-    True only while the mode is on and a stored port is one the current package can use: a
-    backend port with a backend, a page port with a page. So a member's banner never claims
-    a rerouting that does not happen, as after an upgrade that dropped the page.
+    True only while the mode is on, the plugin is running, and a stored port is one the
+    current package can use: a backend port with a backend, a page port with a page. So a
+    member's banner never claims a rerouting that does not happen, as while the plugin is
+    stopped for an upgrade, or after an upgrade that dropped the page.
     """
     target = development_target_of(plugin) if development_mode_on() else None
-    if target is None or plugin.current_package is None:
+    if target is None or plugin.state != PluginState.RUNNING or plugin.current_package is None:
         return False
     manifest = plugin.current_package.parsed_manifest
     return (target.backend_port is not None and manifest.backend is not None) or (
@@ -114,11 +132,17 @@ class DevelopmentTargetService:
             raise PluginNotFoundError()
         return _state(plugin, development_target_of(plugin))
 
-    def set_ports(self, identifier: str, data, actor) -> PluginDevelopmentState:
+    def set_ports(
+        self,
+        identifier: str,
+        validate_ports: Callable[[DevelopmentPortRules], DevelopmentPorts],
+        actor,
+    ) -> PluginDevelopmentState:
         """Store where the plugin's backend and page are served from; issues no key.
 
-        `data` is the request body (`PluginDevelopmentUpdateSerializer`), validated here, after
-        the plugin is known to be running, so the answer is 404, then 409, then 400.
+        `validate_ports` checks the request body against the plugin's rules and returns the
+        ports, or raises `InvalidDevelopmentPortsError`. It is called only once the plugin is
+        known to be running, so the answer is 404, then 409, then 400.
 
         Raises:
             PluginNotFoundError: No such plugin.
@@ -133,38 +157,32 @@ class DevelopmentTargetService:
             if plugin.state != PluginState.RUNNING:
                 raise PluginNotRunningError()
             backend, spa = _parts(plugin.current_package)
-            body = PluginDevelopmentUpdateSerializer(
-                data=data,
-                context={
-                    "api_port": development_api_port(),
-                    "can_use_backend": backend,
-                    "can_use_spa": spa,
-                },
+            ports = validate_ports(
+                DevelopmentPortRules(
+                    api_port=development_api_port(), can_use_backend=backend, can_use_spa=spa
+                )
             )
-            if not body.is_valid():
-                raise InvalidDevelopmentPortsError(body.problems())
-            ports = body.validated_data
             target = PluginDevelopmentTarget.objects.filter(plugin=plugin).first()
             changed = target is None or (target.backend_port, target.spa_port) != (
-                ports["backend_port"],
-                ports["spa_port"],
+                ports.backend_port,
+                ports.spa_port,
             )
             if target is None:
                 target = PluginDevelopmentTarget(plugin=plugin)
-            target.backend_port = ports["backend_port"]
-            target.spa_port = ports["spa_port"]
+            target.backend_port = ports.backend_port
+            target.spa_port = ports.spa_port
             target.updated_by = actor
             target.save()
             if changed:
                 ActivityRecorder().development_target_set(
-                    actor, plugin.identifier, ports["backend_port"], ports["spa_port"]
+                    actor, plugin.identifier, ports.backend_port, ports.spa_port
                 )
                 transaction.on_commit(
                     lambda: log_development_target_set(
                         actor,
                         identifier=plugin.identifier,
-                        backend_port=ports["backend_port"],
-                        spa_port=ports["spa_port"],
+                        backend_port=ports.backend_port,
+                        spa_port=ports.spa_port,
                     )
                 )
             transaction.on_commit(clear_development_caches)
@@ -281,7 +299,7 @@ class DevelopmentPageDecisionService:
 def _load_page_facts(identifier: str) -> _PageFacts | None:
     plugin = (
         Plugin.objects.select_related("current_package", "development_target")
-        .defer("current_package__icon_bytes")
+        .defer("current_package__icon_bytes", "current_package__migration_files")
         .filter(identifier=identifier)
         .first()
     )

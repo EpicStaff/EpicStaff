@@ -3,6 +3,20 @@
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
+from django.utils import timezone
+
+
+def revoke_development_keys(apps, schema_editor):
+    """Revoke every development key that still works, before `purpose` is dropped.
+
+    Unapplying brings back the constraint of one current key per account, and an account
+    holding a current node key and a current development key would break it. Revoked keys
+    never authenticate, so nothing that works is lost but the development keys themselves.
+    """
+    PluginServiceAccountKey = apps.get_model("plugins", "PluginServiceAccountKey")
+    PluginServiceAccountKey.objects.filter(
+        purpose="development", revoked_at__isnull=True
+    ).update(revoked_at=timezone.now())
 
 
 class Migration(migrations.Migration):
@@ -32,6 +46,8 @@ class Migration(migrations.Migration):
             name='purpose',
             field=models.CharField(choices=[('node', 'Node'), ('development', 'Development')], default='node', max_length=16),
         ),
+        # Runs only when unapplying, while `purpose` still exists.
+        migrations.RunPython(migrations.RunPython.noop, revoke_development_keys),
         migrations.AlterField(
             model_name='pluginactivityevent',
             name='action',

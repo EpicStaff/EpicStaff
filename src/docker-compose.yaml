@@ -172,8 +172,9 @@ services:
       PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE: ${PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE:?}
       PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
       # Plugin development mode, for a deployment on your own machine only (django_app refuses to
-      # start with it elsewhere). The address development backends use is published only by
-      # docker-compose.plugins-dev.yaml.
+      # start with it elsewhere, and without docker-compose.plugins-dev.yaml, which alone sets
+      # PLUGINS_DEV_LOOPBACK_ONLY). The address development backends use is published only by
+      # that file.
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
       PLUGINS_DEV_API_PORT: ${PLUGINS_DEV_API_PORT:?}
     volumes:
@@ -564,7 +565,8 @@ services:
       DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}
       # Plugin development mode: the plugin pages' development servers and the development API
       # listener (8082). nginx refuses to start with it unless EpicStaff and the plugin domain use
-      # .localhost names. This file never publishes 8082; docker-compose.plugins-dev.yaml does.
+      # .localhost names and docker-compose.plugins-dev.yaml is in the command: that file publishes
+      # 80 and 443 on 127.0.0.1 only, publishes 8082, and alone sets PLUGINS_DEV_LOOPBACK_ONLY.
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro

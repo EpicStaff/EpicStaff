@@ -38,6 +38,10 @@ PLUGINS_MAX_REQUEST_BODY_MB = env.str("PLUGINS_MAX_REQUEST_BODY_MB")
 # this machine's ports. Only for a deployment on the developer's own machine: the
 # plugins.E012 start-up check refuses it anywhere else. Read when used, never cached.
 PLUGINS_DEV_MODE = env.bool("PLUGINS_DEV_MODE")
+# Set to true only by docker-compose.plugins-dev.yaml, which publishes EpicStaff's ports on
+# 127.0.0.1 alone; never by an operator, so it is not in env.yaml, and absent means false. The
+# plugins.E012 start-up check refuses development mode without it.
+PLUGINS_DEV_LOOPBACK_ONLY = env.bool("PLUGINS_DEV_LOOPBACK_ONLY", False)
 # Port on 127.0.0.1 where a development backend reaches EpicStaff's API. Read as text: the
 # plugins.E013 start-up check reports a bad value while development mode is on, so nothing
 # else ever fails on one.

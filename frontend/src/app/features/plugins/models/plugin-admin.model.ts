@@ -42,7 +42,15 @@ export type PluginGrantState =
 
 export type PluginSignatureStatus = 'valid' | 'absent' | 'unknown_key';
 
-export type PluginReviewWarningCode = 'untrusted_package' | 'flows_use_missing' | 'wildcard_outbound_host';
+/**
+ * The review warnings, in the order the server sends them. `flows_run_code`: through flows, the plugin can run code in
+ * EpicStaff's sandbox, whose network its outbound hosts do not bound.
+ */
+export type PluginReviewWarningCode =
+    | 'untrusted_package'
+    | 'flows_run_code'
+    | 'flows_use_missing'
+    | 'wildcard_outbound_host';
 
 export interface PluginUserRef {
     id: number;

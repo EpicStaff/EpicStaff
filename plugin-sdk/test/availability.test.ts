@@ -289,6 +289,30 @@ describe('signing in while the plugin is being updated in the organization', () 
         assert.equal(login.availability, 'maintenance');
     });
 
+    test('a maintenance the API answered stays through a sign-in refused for it, then a failed one', async () => {
+        const { win, server, login, changes, reports } = await signedIn();
+        server.apiResponder = () => gateway503('maintenance');
+        await login.fetch('/api/places');
+
+        const held = login.renew();
+        await answerSilently(win, { error: 'temporarily_unavailable' });
+        assert.equal(await held, 'maintenance');
+        assert.equal(login.availability, 'maintenance');
+
+        server.tokenResponder = () => json(400, { status_code: 400, code: 'invalid_grant', message: '' });
+        const failed = login.renew();
+        await answerSilently(win, { code: CODE });
+
+        assert.equal(await failed, 'failed');
+        assert.equal(login.availability, 'maintenance', 'only the API, or a sign-in that gets a token, ends it');
+        assert.deepEqual(changes, ['maintenance']);
+        assert.deepEqual(reports, ['maintenance']);
+
+        server.apiResponder = () => json(200, {});
+        await login.fetch('/api/places');
+        assert.equal(login.availability, 'available', 'the API says it is back');
+    });
+
     test('a refused sign-in leaves an unavailable API as it is', async () => {
         const { win, server, login } = await signedIn();
         server.apiResponder = () => gateway503('unavailable');

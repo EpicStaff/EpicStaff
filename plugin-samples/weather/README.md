@@ -22,7 +22,7 @@ uv run --frozen --project src/plugin_sdk epicstaff-plugin validate weather-0.7.0
 
 Add `--key <your secret key>` to `pack` to sign it
 ([Sign and package a plugin](../../docs/plugins/how-to/sign-and-package.md)). As a SuperAdmin,
-upload `weather-0.7.0.esplugin` under **Workspace → Plugins**, approve it and grant it to an
+choose **Upload plugin** under **Workspace → Plugins** and pick `weather-0.7.0.esplugin`, approve it and grant it to an
 organization.
 
 ## Develop it
@@ -68,7 +68,10 @@ creates. `.gitignore` keeps `.venv/` and development runtime files out of versio
   organization's saved places, their temperatures, forecast runs and popup results from
   Weather's database, in one transaction. It never calls EpicStaff, which deletes the flow, the readme, the Secret and the
   LLM config itself. Running it again deletes nothing more.
-- **Forecast** (`/api/forecast`). Runs that flow for a city, on behalf of the person asking.
+- **Forecast** (`/api/forecast`). Runs that flow for a city, on behalf of the person asking. The
+  flow's Python node runs in EpicStaff's sandbox, which has its own network access: its calls to
+  Open-Meteo go out from there, and the plugin's outbound hosts do not cover them. The flow needs
+  EpicStaff's crew service running.
 - **Organization settings** (`/api/org-settings`). For people with Weather's Delete permission:
   stores an LLM key as the Secret "Weather · LLM key" and creates the LLM config
   "Weather summaries", on behalf of the admin.

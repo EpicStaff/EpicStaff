@@ -15,6 +15,8 @@ import resource
 import signal
 import socket
 import stat
+import subprocess
+import sys
 import threading
 import time
 from urllib.parse import parse_qs
@@ -345,6 +347,43 @@ def open_connections(host: str, port: int, count: int, hold_seconds: float) -> d
     return {"opened": len(opened), "refused": refused}
 
 
+# A worker of `hold_accepted`: its own small interpreter, so the UID's memory stays far below its
+# cap (forks of this process would count its pages again, each).
+ACCEPTOR = """
+import socket, sys, time
+listen_fd, per_acceptor, accept_seconds, hold_seconds = int(sys.argv[1]), int(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4])
+listener = socket.socket(fileno=listen_fd)
+accept_until = time.monotonic() + accept_seconds
+held = []
+while len(held) < per_acceptor and time.monotonic() < accept_until:
+    listener.settimeout(max(0.05, accept_until - time.monotonic()))
+    try:
+        held.append(listener.accept()[0])
+    except OSError:
+        time.sleep(0.01)
+listener.detach()
+time.sleep(max(0.0, hold_seconds - accept_seconds))
+"""
+ACCEPTORS = []
+
+
+def hold_accepted(
+    acceptors: int, per_acceptor: int, accept_seconds: float, hold_seconds: float
+) -> dict:
+    """Start `acceptors` processes that accept connections on the plugin's own socket for
+    `accept_seconds`, up to `per_acceptor` each, and hold them until `hold_seconds`: a busy
+    server's workers. Past the accepting time the health checks reach uvicorn again."""
+    listen_fd = int(os.environ["EPICSTAFF_PLUGIN_LISTEN_FD"])
+    arguments = [str(listen_fd), str(per_acceptor), str(accept_seconds), str(hold_seconds)]
+    for _ in range(acceptors):
+        process = subprocess.Popen(
+            [sys.executable, "-I", "-c", ACCEPTOR, *arguments], pass_fds=(listen_fd,)
+        )
+        ACCEPTORS.append(process)
+        threading.Thread(target=process.wait, daemon=True).start()
+    return {"acceptors": [process.pid for process in ACCEPTORS[-acceptors:]]}
+
+
 def churn(host: str, port: int, count: int) -> dict:
     """Open and close `count` connections to host:port as fast as it can."""
     opened = refused = 0
@@ -425,6 +464,10 @@ async def app(scope, receive, send):
     elif path == "/api/connect":
         body = open_connections(
             query["host"], int(query["port"]), int(query["count"]), float(query.get("hold", "20"))
+        )
+    elif path == "/api/accept":
+        body = hold_accepted(
+            int(query["acceptors"]), int(query["per"]), float(query["accept"]), float(query["hold"])
         )
     elif path == "/api/churn":
         body = churn(query["host"], int(query["port"]), int(query["count"]))

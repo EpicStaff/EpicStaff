@@ -261,19 +261,23 @@ class BackupService:
 
         digest = hashlib.sha256()
         size = 0
+        # The chunk a thread is writing, if any: the caller closes the descriptor once this
+        # returns or raises, so that never happens while a write to it is under way.
+        writing: asyncio.Future | None = None
 
         async def write(chunk: bytes) -> bool:
-            nonlocal size
+            nonlocal size, writing
             if size + len(chunk) > room:
                 raise BackupError(
                     "disk",
                     "not enough disk space for the database backup: the dump grew past the "
                     f"{max(room, 0) // _MIB} MB that were free",
                 )
-            # Written here, not in a thread: a cancel can then never close the descriptor while
-            # a write to it is still under way. A chunk is at most a MiB.
-            _write_all(descriptor, chunk)
-            digest.update(chunk)
+            writing = asyncio.ensure_future(
+                asyncio.to_thread(_write_and_hash, descriptor, chunk, digest)
+            )
+            # A cancel ends this wait, not the thread's write.
+            await asyncio.shield(writing)
             size += len(chunk)
             return True
 
@@ -292,6 +296,9 @@ class BackupService:
                     f"data in bytea columns instead ({text})",
                 ) from None
             raise BackupError("dump", text) from None
+        finally:
+            if writing is not None:
+                await _until_done(writing)
         return size, digest.hexdigest()
 
     async def _verify(self, dump_path, *, ledger_required: bool) -> None:
@@ -327,10 +334,30 @@ def _metadata(**fields) -> BackupMetadata:
         ) from None
 
 
-def _write_all(descriptor: int, chunk: bytes) -> None:
+def _write_and_hash(descriptor: int, chunk: bytes, digest) -> None:
     view = memoryview(chunk)
     while view:
         view = view[os.write(descriptor, view) :]
+    digest.update(chunk)
+
+
+async def _until_done(work: asyncio.Future) -> None:
+    """Wait until `work` is done, whatever cancels arrive meanwhile, then pass a cancel on.
+
+    Its outcome is not raised here: a write that failed while it was awaited has failed the
+    dump already, and one that failed after a cancel matters no more.
+    """
+    cancelled = False
+    while not work.done():
+        try:
+            await asyncio.wait({work})
+        except asyncio.CancelledError:
+            cancelled = True
+    if not work.cancelled():
+        # Read, so that asyncio does not log it as never retrieved.
+        work.exception()
+    if cancelled:
+        raise asyncio.CancelledError
 
 
 def _sync_and_close(descriptor: int) -> None:

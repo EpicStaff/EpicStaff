@@ -41,7 +41,7 @@ placement's package is the target and the start above runs its migrations. A des
 replaces the database and starts nothing. With no upgrade open, every version but the desired
 one is deleted once it is installed. The desired placement's `backups_to_delete` are deleted
 (`BackupStore`), and the report lists every complete backup (none at all, rather than an empty
-list, when the backups cannot be read).
+list, when the backups cannot be read or one of them cannot be reported).
 
 A placement in the desired state's `removals` has its controller closed first, like any placement
 that left `placements`; `PlacementRemover` then drops its database and deletes everything the node
@@ -314,6 +314,17 @@ class PlacementController:
             restore=self._restore.report(desired),
             backups=self._backup_reports(),
         )
+
+    def bytes_outside_home(self) -> int:
+        """What the plugin keeps outside its HOME: its database, as last measured, and the
+        backups the node holds of it. For the disk watchdog's ranking below the floor."""
+        database = self._database.size_bytes if self._database is not None else None
+        try:
+            stored = self._services.backup_store.inventory(self._desired.plugin_identifier)
+        except OSError:
+            # The report says the backups cannot be listed; the ranking goes by the rest.
+            stored = ()
+        return (database or 0) + sum(backup.metadata.size_bytes for backup in stored)
 
     async def fail_database(self, error: str) -> None:
         """The database's permissions changed outside EpicStaff: stop the plugin, fail it.
@@ -731,9 +742,9 @@ class PlacementController:
             )
 
     def _backup_reports(self) -> list[BackupFileReport] | None:
-        """Every complete backup of the plugin, the whole inventory; one that cannot be
-        reported is left out. None when they cannot be listed: EpicStaff then marks none of
-        the recorded ones deleted."""
+        """Every complete backup of the plugin, the whole inventory. None when they cannot be
+        listed, or one of them cannot be reported: EpicStaff then marks none of the recorded ones
+        deleted, rather than one whose file is still here."""
         try:
             stored = self._services.backup_store.inventory(self._desired.plugin_identifier)
         except OSError as error:
@@ -745,6 +756,7 @@ class PlacementController:
                 reports.append(backup.report())
             except ValidationError:
                 self._log_unreportable_backups(f"backup {backup.file_name} cannot be reported")
+                return None
         return reports
 
     def _log_unreportable_backups(self, message: str) -> None:
@@ -875,6 +887,10 @@ class Reconciler:
 
     def supervisors(self) -> list[ProcessSupervisor]:
         return [controller.supervisor for controller in self._controllers.values()]
+
+    def controllers(self) -> list[PlacementController]:
+        """Every placement's controller, for the disk watchdog."""
+        return list(self._controllers.values())
 
     def watched_databases(self) -> list[PlacementController]:
         """The controllers whose placement has a database, for the limits watchdog."""

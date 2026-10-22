@@ -5,6 +5,8 @@ issues anything while `PLUGINS_DEV_MODE` is off, except stopping development, wh
 removes state.
 """
 
+from functools import partial
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
@@ -12,7 +14,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from plugins.development.development_runtime import DevelopmentRuntimeFileService
-from plugins.development.development_targets import DevelopmentTargetService
+from plugins.development.development_targets import (
+    DevelopmentPortRules,
+    DevelopmentPorts,
+    DevelopmentTargetService,
+)
+from plugins.exceptions import InvalidDevelopmentPortsError
 from plugins.serializers.development import (
     PluginDevelopmentSerializer,
     PluginDevelopmentUpdateSerializer,
@@ -31,7 +38,9 @@ class PluginDevelopmentView(APIView):
 
     @extend_schema(request=PluginDevelopmentUpdateSerializer, responses=PluginDevelopmentSerializer)
     def put(self, request, identifier: str):
-        state = self._service.set_ports(identifier, request.data, request.user)
+        state = self._service.set_ports(
+            identifier, partial(_validated_ports, request.data), request.user
+        )
         return Response(PluginDevelopmentSerializer(state).data)
 
     @extend_schema(responses={204: None})
@@ -40,6 +49,20 @@ class PluginDevelopmentView(APIView):
         keys stop working."""
         self._service.clear(identifier, request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _validated_ports(data, rules: DevelopmentPortRules) -> DevelopmentPorts:
+    body = PluginDevelopmentUpdateSerializer(
+        data=data,
+        context={
+            "api_port": rules.api_port,
+            "can_use_backend": rules.can_use_backend,
+            "can_use_spa": rules.can_use_spa,
+        },
+    )
+    if not body.is_valid():
+        raise InvalidDevelopmentPortsError(body.problems())
+    return DevelopmentPorts(**body.validated_data)
 
 
 class PluginDevelopmentRuntimeFileView(APIView):

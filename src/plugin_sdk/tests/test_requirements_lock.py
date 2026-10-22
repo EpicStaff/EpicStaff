@@ -56,6 +56,8 @@ def test_a_lock_written_by_uv_is_read():
         ("-r other.txt", "the lock may only pin requirements"),
         (f"uvicorn @ https://example.com/uvicorn.whl --hash=sha256:{HASH_A}", "is a URL or path"),
         (f"not a requirement --hash=sha256:{HASH_A}", "is not a requirement"),
+        (f"pip==26.0.1 --hash=sha256:{HASH_A}", "pip may not be pinned: the plugin node installs a backend with its own pip"),
+        (f"PIP==26.0.1 ; python_version >= '3.12' --hash=sha256:{HASH_A}", "PIP may not be pinned"),
     ],
 )
 def test_a_lock_line_that_is_not_an_exact_hashed_pin_is_refused(line, message):

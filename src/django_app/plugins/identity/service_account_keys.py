@@ -5,13 +5,17 @@ every runtime-credentials call; development keys only when a SuperAdmin download
 development runtime file. Each kind of minting touches only its own purpose, so neither
 supersedes nor revokes the other's keys.
 
-Lock order: the plugin's service accounts, in organization order, then their keys. Suspend
-and resume lock one account, then its keys.
+Lock order (`plugins.lifecycle.lifecycle_locks`): the plugin's grants, in ascending pk, then
+their service accounts, in organization order, then the accounts' keys. Suspend and resume
+lock one grant, then its account, then its keys. The grants come first because an
+organization's deletion locks its grants and then deletes their accounts and keys: an account
+locked before its grant would deadlock with it, and a key inserted for an account the deletion
+then removes would fail the deletion.
 """
 
 import hashlib
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from django.db import transaction
@@ -19,6 +23,7 @@ from django.db.models import Max
 from django.utils import timezone
 
 from plugins.audit import log_service_account_keys_minted
+from plugins.lifecycle.lifecycle_locks import lock_grants_of
 from plugins.models import (
     Plugin,
     PluginServiceAccount,
@@ -44,7 +49,7 @@ class MintedKey:
     """A key minted for one service account; `raw_key` exists only in this object."""
 
     service_account: PluginServiceAccount
-    raw_key: str
+    raw_key: str = field(repr=False)
 
 
 class ServiceAccountKeyService:
@@ -56,20 +61,17 @@ class ServiceAccountKeyService:
         For each account, the previous current node key keeps working for ten more minutes
         and every node key superseded before it is revoked now, so at most two node keys of an
         account are ever valid. Development keys are left as they are. Runs in one transaction
-        with four queries, however many organizations the plugin is granted to: the call
+        with five queries, however many organizations the plugin is granted to: the call
         either mints every key or none. Called inside a caller's transaction it is a
         savepoint, and the caller's rollback undoes it too; the `keys_minted` log line is
         written only once the mint is committed. Each account comes with its grant and
         organization.
+
+        The node's credentials fetch calls it without the plugin's lock: it locks the grants
+        first (the module's lock order), so `plugin` need not be locked.
         """
         with transaction.atomic():
-            accounts = list(
-                PluginServiceAccount.objects.key_holding()
-                .filter(grant__plugin=plugin)
-                .select_related("grant__org")
-                .select_for_update(of=("self",))
-                .order_by("grant__org_id")
-            )
+            accounts = list(_locked_accounts(plugin).key_holding().select_related("grant__org"))
             if not accounts:
                 return []
             # Read once the accounts are locked: a mint that waited for another one still
@@ -96,12 +98,12 @@ class ServiceAccountKeyService:
         """Replace every development key of `plugin` with one new key per key-holding account.
 
         Every development key of the plugin's accounts stops at once, with no overlap: a new
-        download replaces the previous file. Node keys are left as they are. Four queries,
+        download replaces the previous file. Node keys are left as they are. Five queries,
         however many organizations the plugin is granted to; inside a caller's transaction
         it is a savepoint. Each account comes with its grant and organization.
         """
         with transaction.atomic():
-            account_ids = _lock_accounts(plugin)
+            account_ids = _lock_account_ids(plugin)
             _revoke_development_keys(account_ids, timezone.now())
             holding = list(
                 PluginServiceAccount.objects.key_holding()
@@ -114,10 +116,11 @@ class ServiceAccountKeyService:
     def revoke_development_keys(self, plugin: Plugin) -> int:
         """Revoke every development key of `plugin` that still works; return how many.
 
-        Two queries: the accounts are locked first, as every mint locks them.
+        Three queries: the grants, then the accounts, are locked first, as every mint locks
+        them.
         """
         with transaction.atomic():
-            return _revoke_development_keys(_lock_accounts(plugin), timezone.now())
+            return _revoke_development_keys(_lock_account_ids(plugin), timezone.now())
 
 
 def development_keys_issued_at(plugin: Plugin) -> datetime | None:
@@ -129,14 +132,20 @@ def development_keys_issued_at(plugin: Plugin) -> datetime | None:
     ).aggregate(issued_at=Max("created_at"))["issued_at"]
 
 
-def _lock_accounts(plugin: Plugin) -> list[int]:
-    """Lock every service account of the plugin, in the order the mints lock them."""
-    return list(
-        PluginServiceAccount.objects.select_for_update()
-        .filter(grant__plugin=plugin)
+def _locked_accounts(plugin: Plugin):
+    """Lock every grant of the plugin, then return its service accounts, to be locked in
+    organization order when evaluated; only the accounts' rows, never their grants again."""
+    grant_ids = [grant.pk for grant in lock_grants_of(plugin)]
+    return (
+        PluginServiceAccount.objects.filter(grant_id__in=grant_ids)
+        .select_for_update(of=("self",))
         .order_by("grant__org_id")
-        .values_list("pk", flat=True)
     )
+
+
+def _lock_account_ids(plugin: Plugin) -> list[int]:
+    """Lock every grant of the plugin, then every service account of it; return the accounts."""
+    return list(_locked_accounts(plugin).values_list("pk", flat=True))
 
 
 def _revoke_development_keys(account_ids: list[int], now: datetime) -> int:

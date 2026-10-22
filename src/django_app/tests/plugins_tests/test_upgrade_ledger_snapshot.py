@@ -5,6 +5,7 @@ database still lists is no change."""
 import pytest
 from plugins.models import PluginDatabase, PluginUpgrade
 
+from tests.plugins_tests.package_builder import sample_files
 from tests.plugins_tests.upgrade_fixtures import (  # noqa: F401 (fixtures)
     advance_url,
     backup_body,
@@ -12,8 +13,11 @@ from tests.plugins_tests.upgrade_fixtures import (  # noqa: F401 (fixtures)
     digest,
     ledger_of,
     newer,
+    start_upgrade,
     upgrade_of,
+    upload,
     weather,
+    weather_manifest,
 )
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
@@ -80,12 +84,36 @@ def test_a_migration_of_the_new_version_in_the_ledger_is_a_change(
     assert superadmin_client.post(f"{PLUGIN_URL}upgrade/cancel/").json()["code"] == "upgrade_not_cancellable"
 
 
-def test_an_upgrade_opened_before_the_snapshot_was_kept_is_compared_with_the_version_it_upgrades_from(
-    failed_first_migration, superadmin_client
+@pytest.fixture
+def failed_upgrade_adding_a_backend(
+    running_plugin, installation, superadmin, plugin_node, plugin_database_server, django_capture_on_commit_callbacks
 ):
-    PluginUpgrade.objects.filter(pk=failed_first_migration.pk).update(ledger_at_migrations=None)
+    """A frontend-only Weather 0.6.0 whose upgrade to 0.7.0, adding a backend and a database, failed."""
+    running_plugin(version="0.6.0")
+    manifest = weather_manifest("0.7.0")
+    upgrade = start_upgrade(
+        installation, superadmin, upload(installation, superadmin, manifest, sample_files(manifest)), django_capture_on_commit_callbacks
+    )
+    PluginUpgrade.objects.filter(pk=upgrade.pk).update(failed_at=upgrade.started_at, step="migrate")
+    upgrade.refresh_from_db()
+    return upgrade
 
-    # The dropped file is not in 0.6.0's package: counted as a change, as before the snapshot.
+
+def test_an_upgrade_adding_a_backend_keeps_no_snapshot_and_its_empty_database_is_no_change(
+    failed_upgrade_adding_a_backend, superadmin_client
+):
+    upgrade = failed_upgrade_adding_a_backend
+
+    assert (upgrade.adds_backend, upgrade.stage, upgrade.ledger_at_migrations) == (True, "migrating", None)
+    assert _detail(superadmin_client)["open_upgrade"]["database_changed"] is False
+
+
+def test_a_migration_in_the_new_database_of_an_upgrade_adding_a_backend_is_a_change(
+    failed_upgrade_adding_a_backend, superadmin_client
+):
+    upgrade = failed_upgrade_adding_a_backend
+    PluginDatabase.objects.filter(plugin=upgrade.plugin).update(ledger=ledger_of(upgrade.to_package))
+
     assert _detail(superadmin_client)["open_upgrade"]["database_changed"] is True
 
 

@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { of } from 'rxjs';
 
-import { PackageReview, PluginApproveRequest } from '../../models/plugin-admin.model';
+import { PackageReview, PluginApproveRequest, PluginReviewWarning } from '../../models/plugin-admin.model';
 import {
     buildAccessGrowth,
     buildPackageReview,
@@ -15,6 +15,25 @@ import {
     PluginReviewPanelComponent,
     UNTRUSTED_PACKAGE_WARNING,
 } from './plugin-review-panel.component';
+
+/** The review warnings as the server words them (packages/review.py). */
+const FLOWS_RUN_CODE_WARNING: PluginReviewWarning = {
+    code: 'flows_run_code',
+    message:
+        "Through flows, the plugin can run code in EpicStaff's sandbox, which has its own network access. The " +
+        "plugin's outbound hosts do not apply to that code.",
+};
+const FLOWS_USE_MISSING_WARNING: PluginReviewWarning = {
+    code: 'flows_use_missing',
+    message:
+        'The plugin may create or edit flows but not use them: it cannot run a flow itself or write schedule, ' +
+        'webhook or Telegram trigger nodes. A flow it writes still runs, with its code, when someone in the ' +
+        'organization runs it.',
+};
+const WILDCARD_OUTBOUND_HOST_WARNING: PluginReviewWarning = {
+    code: 'wildcard_outbound_host',
+    message: 'The plugin may call every subdomain of open-meteo.com.',
+};
 
 describe('PluginReviewPanelComponent', () => {
     let fixture: ComponentFixture<PluginReviewPanelComponent>;
@@ -47,6 +66,12 @@ describe('PluginReviewPanelComponent', () => {
             .slice(1)
             .map((child) => child.textContent?.replace(/\s+/g, ' ').trim() ?? '')
             .join(' ');
+    }
+
+    function warnings(): string[] {
+        return Array.from(element.querySelectorAll('.review__warnings li')).map(
+            (item) => item.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+        );
     }
 
     function acknowledgement(): HTMLInputElement | null {
@@ -89,10 +114,8 @@ describe('PluginReviewPanelComponent', () => {
                     // As the backend sends them: its untrusted warning is the banner's own sentence.
                     warnings: [
                         { code: 'untrusted_package', message: UNTRUSTED_PACKAGE_WARNING },
-                        {
-                            code: 'flows_use_missing',
-                            message: 'The plugin can create flows but not run them.',
-                        },
+                        FLOWS_RUN_CODE_WARNING,
+                        FLOWS_USE_MISSING_WARNING,
                     ],
                 })
             )
@@ -101,9 +124,7 @@ describe('PluginReviewPanelComponent', () => {
         it('shows the Untrusted banner once, the other warnings, and marks the publisher as claimed', () => {
             expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe(UNTRUSTED_PACKAGE_WARNING);
             expect(element.textContent?.split(UNTRUSTED_PACKAGE_WARNING)).toHaveLength(2);
-            expect(element.querySelector('.review__warnings')?.textContent).toContain(
-                'The plugin can create flows but not run them.'
-            );
+            expect(warnings()).toEqual([FLOWS_RUN_CODE_WARNING.message, FLOWS_USE_MISSING_WARNING.message]);
             expect(element.querySelector('.review__claimed')).not.toBeNull();
         });
 
@@ -133,6 +154,17 @@ describe('PluginReviewPanelComponent', () => {
 
     describe('a trusted package', () => {
         beforeEach(() => render(buildPackageReview()));
+
+        it('lists no warning when the server sends none', () => {
+            expect(element.querySelector('.review__warnings')).toBeNull();
+        });
+
+        it("warns that flows run the plugin's code in the sandbox, which its outbound hosts do not bound", () => {
+            render(buildPackageReview({ warnings: [FLOWS_RUN_CODE_WARNING, WILDCARD_OUTBOUND_HOST_WARNING] }));
+
+            expect(element.querySelector('[role="alert"]')).toBeNull();
+            expect(warnings()).toEqual([FLOWS_RUN_CODE_WARNING.message, WILDCARD_OUTBOUND_HOST_WARNING.message]);
+        });
 
         it('shows no banner and no acknowledgement, and approves without one', () => {
             expect(element.querySelector('[role="alert"]')).toBeNull();
@@ -200,6 +232,39 @@ describe('PluginReviewPanelComponent', () => {
             expect(section('Database')).toContain('1 migration runs before the backend first starts.');
         });
 
+        it('counts only the new migrations of an upgrade, not every one in the package', () => {
+            const upgrade = buildUpgradePackageReview();
+            render(
+                buildUpgradePackageReview({
+                    contents: { ...upgrade.contents, migration_count: 4 },
+                    upgrade: buildUpgradeReview({ migrations_added: ['004_notes.sql'] }),
+                })
+            );
+
+            expect(section('Database')).toBe(
+                "Keeps its database on this deployment's plugin database server. 1 new migration runs before the new " +
+                    "version starts. Only this plugin's backend can connect to it."
+            );
+        });
+
+        it('says when an upgrade runs no new migration, and how many run when it adds the database', () => {
+            render(buildUpgradePackageReview({ upgrade: buildUpgradeReview({ migrations_added: [] }) }));
+            expect(section('Database')).toContain('No new migrations run.');
+
+            render(
+                buildUpgradePackageReview({
+                    upgrade: buildUpgradeReview({
+                        database: 'added',
+                        migrations_added: ['001_places.sql', '002_forecasts.sql', '003_place_conditions.sql'],
+                    }),
+                })
+            );
+            expect(section('Database')).toBe(
+                "Gets its own database on this deployment's plugin database server, set up when you approve. " +
+                    "3 migrations run before the new version starts. Only this plugin's backend can connect to it."
+            );
+        });
+
         it('says None for a package without a database', () => {
             render(buildPackageReview());
 
@@ -252,6 +317,12 @@ describe('PluginReviewPanelComponent', () => {
             fixture.detectChanges();
             await fixture.whenStable();
         }
+
+        it("warns on the new version's review too that flows run the plugin's code in the sandbox", () => {
+            render(buildUpgradePackageReview({ warnings: [FLOWS_RUN_CODE_WARNING] }));
+
+            expect(warnings()).toEqual([FLOWS_RUN_CODE_WARNING.message]);
+        });
 
         it('says where it upgrades from, the new access, the changes, the backup and who goes offline', () => {
             render(buildUpgradePackageReview());

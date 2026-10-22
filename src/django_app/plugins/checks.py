@@ -43,7 +43,6 @@ DEVELOPMENT_MODE_WARNING_ID = "plugins.W001"
 MIN_SHARED_SECRET_LENGTH = 32
 UNCONFIGURED = "none"
 
-LOCAL_DEVELOPMENT_SUFFIX = LOCALHOST_SUFFIX
 PLACEHOLDER_SUFFIX = ".invalid"
 _DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _MAX_DNS_NAME_LENGTH = 253
@@ -103,8 +102,9 @@ def _development_mode_messages() -> list[checks.CheckMessage]:
                 + "; ".join(problems)
                 + ".",
                 hint=(
-                    "Plugin development mode is only for a deployment on your own machine "
-                    "(DJANGO_DEBUG=true and .localhost host names). Set PLUGINS_DEV_MODE=false."
+                    "Plugin development mode is only for a deployment on your own machine: "
+                    "DJANGO_DEBUG=true, .localhost host names, and docker-compose.plugins-dev.yaml "
+                    "added to the docker compose command. Otherwise set PLUGINS_DEV_MODE=false."
                 ),
                 id=DEVELOPMENT_MODE_CHECK_ID,
             )
@@ -133,7 +133,7 @@ def _development_mode_messages() -> list[checks.CheckMessage]:
 
 
 def _is_local_development(host: str | None) -> bool:
-    return bool(host) and host.endswith(LOCAL_DEVELOPMENT_SUFFIX)
+    return bool(host) and host.endswith(LOCALHOST_SUFFIX)
 
 
 def _https_errors() -> list[checks.Error]:

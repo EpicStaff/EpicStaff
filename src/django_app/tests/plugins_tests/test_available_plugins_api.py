@@ -325,6 +325,41 @@ def test_a_port_for_a_part_the_package_lacks_is_not_development(client_as, membe
     assert _development_of(client_as, member_only, acme) == [False]
 
 
+def test_a_plugin_stopped_for_an_upgrade_is_not_in_development(client_as, member_only, acme, weather_in_acme, settings):
+    settings.PLUGINS_DEV_MODE = True
+    PluginDevelopmentTarget.objects.create(plugin=weather_in_acme, spa_port=5173)
+    Plugin.objects.filter(pk=weather_in_acme.pk).update(state=PluginState.MAINTENANCE)
+
+    listed = _available(client_as, member_only, acme).json()
+
+    assert [(plugin["availability"], plugin["development"]) for plugin in listed] == [("maintenance", False)]
+
+
+def test_a_plugin_whose_organization_still_upgrades_is_not_in_development(
+    client_as, member_only, acme, weather_in_acme, settings
+):
+    settings.PLUGINS_DEV_MODE = True
+    PluginDevelopmentTarget.objects.create(plugin=weather_in_acme, spa_port=5173)
+    PluginGrant.objects.filter(plugin=weather_in_acme, org=acme).update(state=GrantState.UPGRADING)
+
+    listed = _available(client_as, member_only, acme).json()
+
+    assert [(plugin["availability"], plugin["development"]) for plugin in listed] == [("maintenance", False)]
+
+
+@pytest.mark.parametrize("state", [PluginState.PROVISIONING, PluginState.FAILED, PluginState.MAINTENANCE])
+def test_a_plugin_that_is_not_running_is_never_served_from_development(weather_in_acme, settings, state):
+    from plugins.development.development_targets import served_from_development
+
+    settings.PLUGINS_DEV_MODE = True
+    PluginDevelopmentTarget.objects.create(plugin=weather_in_acme, spa_port=5173)
+    plugin = Plugin.objects.select_related("current_package", "development_target").get(pk=weather_in_acme.pk)
+    running = served_from_development(plugin)
+    plugin.state = state
+
+    assert (running, served_from_development(plugin)) == (True, False)
+
+
 def test_a_member_never_sees_the_ports(client_as, member_only, acme, weather_in_acme, settings):
     settings.PLUGINS_DEV_MODE = True
     PluginDevelopmentTarget.objects.create(plugin=weather_in_acme, spa_port=5173)

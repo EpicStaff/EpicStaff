@@ -85,8 +85,9 @@ export interface PluginLogin {
     /**
      * Whether the plugin's own API can be reached, from the last answer {@link fetch} got from it: `maintenance` or
      * `unavailable` after the gateway answered `503` with that reason, `available` again after any answer that passed
-     * the gateway. A sign-in refused for maintenance sets `maintenance`; one that succeeds clears it. `available` until
-     * then.
+     * the gateway. A sign-in refused for maintenance sets `maintenance`, unless the API's answer set it already; a later
+     * sign-in that is denied, ended or failed ends only a maintenance a sign-in set, and one that succeeds ends either.
+     * `available` until then.
      */
     readonly availability: PluginAvailability;
     /** Calls `listener` on every state change and every renewed token. Returns the function that stops it. */
@@ -199,7 +200,10 @@ class BrowserPluginLogin implements PluginLogin {
     private currentSession: PluginSession | null = null;
     private currentError: PluginLoginError | null = null;
     private currentAvailability: PluginAvailability = 'available';
-    /** The maintenance came from a sign-in EpicStaff refused for an update, not from the API's own answer. */
+    /**
+     * The maintenance came from a sign-in EpicStaff refused for an update, not from the API's own answer. Never set
+     * over a maintenance the API answered, so a later sign-in result cannot end that one.
+     */
     private maintenanceFromSignIn = false;
     /** Kept only here, never in any storage. */
     private token: string | null = null;
@@ -518,8 +522,11 @@ class BrowserPluginLogin implements PluginLogin {
     private holdForMaintenance(): LoginState {
         this.dropToken();
         this.currentError = null;
-        this.setAvailability('maintenance');
-        this.maintenanceFromSignIn = true;
+        // A maintenance the API answered stays the API's: only the API, or a sign-in that gets a token, ends it.
+        if (this.currentAvailability !== 'maintenance') {
+            this.maintenanceFromSignIn = true;
+            this.setAvailability('maintenance');
+        }
         this.setState('maintenance');
         return this.currentState;
     }
@@ -546,7 +553,8 @@ class BrowserPluginLogin implements PluginLogin {
      * A sign-in answered something other than maintenance (denied, ended or failed): EpicStaff no longer refuses
      * sign-in for an update, so a maintenance that sign-in reported is over. Otherwise a page would show "being
      * updated" for good after an upgrade that failed for the organization. A maintenance or `unavailable` the API
-     * answered is the API's own state: only the API says it is back.
+     * answered is the API's own state, a sign-in refused for maintenance after it included: only the API says it is
+     * back.
      */
     private endSignInMaintenance(): void {
         if (!this.maintenanceFromSignIn) return;

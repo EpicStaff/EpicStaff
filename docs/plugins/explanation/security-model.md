@@ -26,6 +26,7 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
 - **More access takes another approval.** A new version that declares more access, a new outbound host or a wider
   public path cannot be installed until a SuperAdmin approves that new access
   ([Compatibility and versioning](../reference/compatibility-and-versioning.md#what-needs-the-superadmins-approval)).
+  Approving the outbound hosts does not limit what code run through flows can reach.
 - **Installing a plugin means trusting its code**, whichever label it has
   ([Accepted risks](accepted-risks.md#installing-a-plugin-means-trusting-its-code)).
 
@@ -41,7 +42,7 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
   ([Runtime](../reference/runtime.md#other-plugins-on-the-same-node),
   [Gateway context](../reference/gateway-context.md#verification)).
 - **Shared ports, watched.** The plugins share the node's ports. A plugin cannot bind one, its connections are capped,
-  and the node stops a plugin that listens on a port of its own or holds more than 512 network sockets, within a
+  and the node stops a plugin that has a TCP socket listening on any port or holds more than 1,280 network sockets, within a
   second, until a SuperAdmin restarts it ([Runtime](../reference/runtime.md#how-the-backend-is-started),
   [Accepted risks](accepted-risks.md#what-co-located-plugins-can-see-of-each-other)).
 - **The separation is the operating system's.** Every backend of a node runs in one container, separated by process
@@ -98,9 +99,12 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
 
 - **Without sign-in, only declared public paths** reach the backend, each within its body cap and rate limit
   ([Serve public paths](../how-to/public-paths.md)).
-- **Outbound, only to declared hosts**, over HTTPS on port 443, through the egress proxy. There is no other route out,
-  and a change to the list applies within about 30 seconds
-  ([Call the internet from your backend](../how-to/outbound-hosts.md)).
+- **Outbound, only to declared hosts**, over HTTPS on port 443, through the egress proxy, and a change to the list
+  applies within about 30 seconds ([Call the internet from your backend](../how-to/outbound-hosts.md)). The backend's
+  own process has no other route out. Code that a plugin gets run through flows is the exception: see the next item.
+- **Flows run code.** A plugin whose access includes `create`, `update` or `use` on flows can, through flows, run code
+  in EpicStaff's sandbox. The sandbox has its own network access, and the plugin's outbound hosts do not apply to that
+  code ([Accepted risks](accepted-risks.md#flows-run-code-outside-the-outbound-hosts)).
 - **A declared host can carry more than its name.** A host on a shared content delivery network, or a `*.` wildcard,
   reaches more sites than its name says ([What an allow-list does not
   stop](../how-to/outbound-hosts.md#what-an-allow-list-does-not-stop)).
@@ -136,13 +140,15 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
 ## Development mode
 
 - **Only on your own machine.** With plugin development mode on, django_app refuses to start unless
-  `DJANGO_DEBUG=true`, EpicStaff's host is `localhost` or a `.localhost` name, and the plugin base domain is a
-  `.localhost` name; epicstaff-nginx refuses on the two names by itself. `.localhost` names only ever reach the machine
-  the browser runs on, and either refusal is enough on its own
-  ([Plugin development mode](../operator/enable-plugins.md#plugin-development-mode)).
+  `DJANGO_DEBUG=true`, EpicStaff's host is `localhost` or a `.localhost` name, the plugin base domain is a
+  `.localhost` name, and the stack runs with `src/docker-compose.plugins-dev.yaml`; epicstaff-nginx refuses the same
+  way (exit 64). What keeps the mode local is that file's binding of EpicStaff's ports to `127.0.0.1`. The
+  `.localhost` names only stop browsers on other machines: a client that reaches a port can set the `Host` header by
+  hand ([Plugin development mode](../operator/enable-plugins.md#plugin-development-mode)).
 - **What it opens:** EpicStaff's development API listener, published only on that machine's `127.0.0.1`. It refuses
-  callers from the plugin network; other containers that share a network with epicstaff-nginx can reach it, but it
-  accepts only development keys. It also gives django_app the name `host.docker.internal`, and publishes EpicStaff's
+  callers from the plugin network; other containers that share a network with epicstaff-nginx can reach it. The
+  only plugin credential it accepts is a development key. It also serves person tokens and anonymous endpoints,
+  which the same callers already reach on port 80, so it gives them nothing more. The file also gives django_app the name `host.docker.internal`, and publishes EpicStaff's
   ports 80 and 443 on `127.0.0.1` only, so nobody else on the network reaches a plugin address that serves the
   machine's ports ([Plugin development mode](../operator/enable-plugins.md#plugin-development-mode)).
 - **Only ports, only on that machine.** A SuperAdmin enters only ports: plugin traffic goes only to
