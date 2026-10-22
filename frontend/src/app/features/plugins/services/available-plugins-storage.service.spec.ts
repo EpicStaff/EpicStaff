@@ -1,9 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { AppStorageService } from '@shared/services';
+import { ActivePermissions } from '@shared/models';
+import { APP_STORAGE, AppStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ConfigService } from '../../../services/config';
 import { AvailablePlugin } from '../models/available-plugin.model';
 import { providePluginsStorages } from '../plugins.providers';
@@ -22,9 +25,14 @@ function plugin(identifier: string, name: string): AvailablePlugin {
     };
 }
 
+function permissionsIn(orgId: number): ActivePermissions {
+    return { org_id: orgId, is_superadmin: false, role: { id: 1, name: 'Member' }, permissions: '*' };
+}
+
 describe('AvailablePluginsStorageService', () => {
     let responses: Subject<AvailablePlugin[]>[];
-    let config: { isPluginsEnabled: boolean };
+    /** What `ConfigService.isPluginsEnabled` reads: a signal that is `false` until the config loads, as in the app. */
+    let isPluginsEnabled: WritableSignal<boolean>;
     const api = {
         list: vi.fn(() => {
             const response = new Subject<AvailablePlugin[]>();
@@ -33,16 +41,38 @@ describe('AvailablePluginsStorageService', () => {
         }),
     };
 
-    function setup(isPluginsEnabled = true, orgId: number | null = 1): AvailablePluginsStorageService {
-        config = { isPluginsEnabled };
+    /** The storages registered as `app.config.ts` does, before the config has loaded and before anyone signed in. */
+    function configure(): void {
+        isPluginsEnabled = signal(false);
         TestBed.configureTestingModule({
             providers: [
+                { provide: APP_STORAGE, useExisting: ActiveOrgService, multi: true },
+                { provide: APP_STORAGE, useExisting: PermissionsService, multi: true },
                 providePluginsStorages(),
                 { provide: AvailablePluginsApiService, useValue: api },
-                { provide: ConfigService, useValue: config },
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get isPluginsEnabled(): boolean {
+                            return isPluginsEnabled();
+                        },
+                    },
+                },
             ],
         });
+    }
+
+    /** What `ProfileService.bootstrapUser` does for the signed-in user: settle the active org, then load the user's permissions in it. */
+    function signIn(orgId: number | null): void {
         TestBed.inject(ActiveOrgService).set(orgId);
+        TestBed.inject(PermissionsService).setActivePermissions(orgId === null ? null : permissionsIn(orgId));
+    }
+
+    /** A user signed in to `orgId`, with the config loaded. */
+    function setup(pluginsEnabled = true, orgId: number | null = 1): AvailablePluginsStorageService {
+        configure();
+        isPluginsEnabled.set(pluginsEnabled);
+        signIn(orgId);
         const storage = TestBed.inject(AvailablePluginsStorageService);
         TestBed.tick();
         return storage;
@@ -67,12 +97,48 @@ describe('AvailablePluginsStorageService', () => {
         expect(storage.plugins().map(({ identifier }) => identifier)).toEqual(['atlas', 'weather']);
     });
 
+    it('loads after a page reload, where the organization is restored before the config and the session', () => {
+        // A reload restores the active organization from localStorage while the storages are created, before
+        // /config.json, the token refresh and the profile have loaded.
+        configure();
+        TestBed.inject(ActiveOrgService).set(1);
+        const storage = TestBed.inject(AvailablePluginsStorageService);
+        TestBed.tick();
+
+        isPluginsEnabled.set(true);
+        TestBed.tick();
+        // No session yet: a request now would go out without a token.
+        expect(api.list).not.toHaveBeenCalled();
+
+        signIn(1);
+        TestBed.tick();
+
+        expect(api.list).toHaveBeenCalledTimes(1);
+        responses[0].next([plugin('atlas', 'Atlas')]);
+        expect(storage.plugins().map(({ identifier }) => identifier)).toEqual(['atlas']);
+    });
+
+    it('asks only for the organization the session settles on when the restored one is no longer the user’s', () => {
+        configure();
+        isPluginsEnabled.set(true);
+        TestBed.inject(ActiveOrgService).set(1);
+        const storage = TestBed.inject(AvailablePluginsStorageService);
+        TestBed.tick();
+
+        signIn(2);
+        TestBed.tick();
+
+        expect(api.list).toHaveBeenCalledTimes(1);
+        responses[0].next([plugin('atlas', 'Atlas')]);
+        expect(storage.plugins().map(({ identifier }) => identifier)).toEqual(['atlas']);
+    });
+
     it('drops a response that lands after an org switch cleared the storage through APP_STORAGE', () => {
         const storage = setup();
         const guardResults: AvailablePlugin[][] = [];
         storage.loadForActiveOrg().subscribe((plugins) => guardResults.push(plugins));
 
-        // What ProfileService.switchOrg does: clear every storage, then set the new org.
+        // What ProfileService.switchOrg does: clear every storage, set the new org, then load its permissions.
         TestBed.inject(AppStorageService).clearAll();
         TestBed.inject(ActiveOrgService).set(2);
         responses[0].next([plugin('weather', 'Weather')]);
@@ -80,6 +146,7 @@ describe('AvailablePluginsStorageService', () => {
         expect(storage.plugins()).toEqual([]);
         expect(guardResults).toEqual([[]]);
 
+        TestBed.inject(PermissionsService).setActivePermissions(permissionsIn(2));
         TestBed.tick();
         expect(api.list).toHaveBeenCalledTimes(2);
         responses[1].next([plugin('atlas', 'Atlas')]);

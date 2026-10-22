@@ -1,9 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { effect, inject, Injectable, signal, untracked } from '@angular/core';
+import { computed, effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { StorageService } from '@shared/services';
 import { catchError, defer, finalize, map, Observable, of, retry, shareReplay, throwError, timer } from 'rxjs';
 
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ConfigService } from '../../../services/config';
 import { AvailablePlugin } from '../models/available-plugin.model';
 import { AvailablePluginsApiService } from './available-plugins-api.service';
@@ -21,9 +22,9 @@ interface PendingLoad {
  * The plugins the signed-in user may open in the active organization: the left bar and the plugin page guard read
  * them. Empty while the plugin platform is off.
  *
- * Reloads whenever the active organization changes; a network failure or server error is retried once. Registered in
- * `APP_STORAGE`, so `clear()` runs on org switch and logout; a response that lands after it (it belongs to the previous
- * organization) is dropped, never shown.
+ * Loads as soon as the list can be asked for (see {@link loadableOrgId}) and again whenever the active organization
+ * changes; a network failure or server error is retried once. Registered in `APP_STORAGE`, so `clear()` runs on org
+ * switch and logout; a response that lands after it (it belongs to the previous organization) is dropped, never shown.
  */
 @Injectable({ providedIn: 'root' })
 export class AvailablePluginsStorageService implements StorageService {
@@ -31,10 +32,25 @@ export class AvailablePluginsStorageService implements StorageService {
     /** Sorted by name. */
     public readonly plugins = this.pluginsSignal.asReadonly();
 
-    private readonly activeOrgEffect = effect(() => {
+    /**
+     * The organization the list may be asked for: the active one, once the signed-in user's permissions in it are known
+     * and the plugin platform is on; else `null`. The active organization alone is not enough: a page reload restores it
+     * from localStorage when this storage is created, before the config, the session and the profile have loaded, and
+     * it does not change once they have.
+     */
+    private readonly loadableOrgId = computed(() => {
         const orgId = this.activeOrgService.activeOrgId();
+        const canLoad =
+            orgId !== null &&
+            this.permissionsService.isActivePermissionsLoaded() &&
+            this.configService.isPluginsEnabled;
+        return canLoad ? orgId : null;
+    });
+
+    private readonly loadableOrgEffect = effect(() => {
+        const orgId = this.loadableOrgId();
         untracked(() => {
-            if (orgId === null || !this.configService.isPluginsEnabled) {
+            if (orgId === null) {
                 this.reset();
                 return;
             }
@@ -45,17 +61,19 @@ export class AvailablePluginsStorageService implements StorageService {
     private readonly api = inject(AvailablePluginsApiService);
     private readonly activeOrgService = inject(ActiveOrgService);
     private readonly configService = inject(ConfigService);
+    private readonly permissionsService = inject(PermissionsService);
     /** The organization {@link plugins} belongs to; `null` until a list landed. */
     private loadedOrgId: number | null = null;
     private pendingLoad: PendingLoad | null = null;
 
     /**
      * The list for the active organization: the one held when it belongs to that organization, else a fresh load
-     * (shared with a load already under way for it). Never fails: a failed load gives `[]`.
+     * (shared with a load already under way for it). Never fails: a failed load gives `[]`, and so does a call before
+     * {@link loadableOrgId} allows one (the plugin page guard runs after the bootstrap guard, so it never makes one).
      */
     loadForActiveOrg(): Observable<AvailablePlugin[]> {
-        const orgId = this.activeOrgService.activeOrgId();
-        if (orgId === null || !this.configService.isPluginsEnabled) return of([]);
+        const orgId = this.loadableOrgId();
+        if (orgId === null) return of([]);
         if (this.loadedOrgId === orgId) return of(this.pluginsSignal());
         if (this.pendingLoad?.orgId === orgId) return this.pendingLoad.response;
         return this.startLoad(orgId);
@@ -63,8 +81,8 @@ export class AvailablePluginsStorageService implements StorageService {
 
     /** Loads the active organization's list again, even when one is held; the held list stays until the new one lands. */
     refresh(): Observable<AvailablePlugin[]> {
-        const orgId = this.activeOrgService.activeOrgId();
-        if (orgId === null || !this.configService.isPluginsEnabled) return of([]);
+        const orgId = this.loadableOrgId();
+        if (orgId === null) return of([]);
         // A load under way is fresh already; replacing it would hand its waiting callers an empty list.
         if (this.pendingLoad?.orgId === orgId) return this.pendingLoad.response;
         return this.startLoad(orgId);

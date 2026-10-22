@@ -1,6 +1,6 @@
 // src/app/services/config.service.ts
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 import { catchError, firstValueFrom, of } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
@@ -19,12 +19,16 @@ export interface AppConfig {
 
 @Injectable({ providedIn: 'root' })
 export class ConfigService {
-    private config: AppConfig | null = null;
+    /**
+     * `null` until {@link loadConfig} has run. A signal, so an effect or `computed()` made before then picks the loaded
+     * values up: the storages are created while the app initializer is still loading the config.
+     */
+    private readonly configSignal = signal<AppConfig | null>(null);
     private readonly http = inject(HttpClient);
 
     async loadConfig(): Promise<void> {
         if (!environment.production) {
-            this.config = {
+            this.configSignal.set({
                 type: 'fallback',
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
@@ -33,7 +37,7 @@ export class ConfigService {
                 chatApiUrl: environment.chatApiUrl,
                 isAuditTrailEnabled: environment.isAuditTrailEnabled ?? false,
                 isPluginsEnabled: environment.isPluginsEnabled ?? false,
-            };
+            });
             return;
         }
         try {
@@ -57,10 +61,10 @@ export class ConfigService {
                 )
             );
 
-            this.config = config;
+            this.configSignal.set(config);
         } catch (error) {
             console.error('Error loading configuration:', error);
-            this.config = {
+            this.configSignal.set({
                 type: 'fallback',
                 apiUrl: environment.apiUrl,
                 realtimeApiUrl: environment.realtimeApiUrl,
@@ -68,55 +72,59 @@ export class ConfigService {
                 isChatEnabled: false,
                 isAuditTrailEnabled: false,
                 isPluginsEnabled: false,
-            };
+            });
         }
     }
 
     getConfig(): AppConfig | null {
-        return this.config;
+        return this.configSignal();
     }
 
     get apiUrl(): string {
-        if (!this.config) {
+        const config = this.configSignal();
+        if (!config) {
             console.warn('Config not loaded, using fallback API URL');
             return environment.apiUrl;
         }
-        return this.config.apiUrl;
+        return config.apiUrl;
     }
 
     get realtimeApiUrl(): string {
-        if (!this.config || !this.config.realtimeApiUrl) {
+        const realtimeApiUrl = this.configSignal()?.realtimeApiUrl;
+        if (!realtimeApiUrl) {
             console.warn('Realtime API URL not available, using fallback');
             return environment.realtimeApiUrl || '';
         }
-        return this.config.realtimeApiUrl;
+        return realtimeApiUrl;
     }
 
     get auditorUrl(): string {
-        if (!this.config || !this.config.auditorUrl) {
+        const auditorUrl = this.configSignal()?.auditorUrl;
+        if (!auditorUrl) {
             console.warn('Auditor URL not available, using fallback');
             return environment.auditorUrl || '';
         }
-        return this.config.auditorUrl;
+        return auditorUrl;
     }
 
     get isAuditTrailEnabled(): boolean {
-        return this.config?.isAuditTrailEnabled ?? false;
+        return this.configSignal()?.isAuditTrailEnabled ?? false;
     }
 
     get isPluginsEnabled(): boolean {
-        return this.config?.isPluginsEnabled === true;
+        return this.configSignal()?.isPluginsEnabled === true;
     }
 
     get isChatEnabled(): boolean {
-        return this.config?.isChatEnabled ?? false;
+        return this.configSignal()?.isChatEnabled ?? false;
     }
 
     get chatApiUrl(): string {
-        if (!this.config?.chatApiUrl) {
+        const chatApiUrl = this.configSignal()?.chatApiUrl;
+        if (!chatApiUrl) {
             console.warn('Chat API URL not available, using fallback');
             return environment.chatApiUrl || '/chat/';
         }
-        return this.config.chatApiUrl;
+        return chatApiUrl;
     }
 }
