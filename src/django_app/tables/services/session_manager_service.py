@@ -56,7 +56,6 @@ from tables.services.secrets import (
     secret_declaration_validator,
     secret_encryption,
 )
-from tables.services.secrets.injection_guard import secret_injection_guard
 from tables.services.session_callbacks.service import SessionCallbackService
 from tables.services.surface_knowledge_warning_service import (
     SurfaceKnowledgeWarningService,
@@ -225,11 +224,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         self.subgraph_validator.validate(session.graph)
 
         unique_subgraphs: dict[int, SubGraphData] = {}
-        # Many nodes share a config; its injection check runs once per build.
-        with secret_injection_guard.batch():
-            graph_data = self._build_graph_data(
-                session.graph, unique_subgraphs, session, start_node=start_node
-            )
+        graph_data = self._build_graph_data(
+            session.graph, unique_subgraphs, session, start_node=start_node
+        )
 
         initial_state = dict(session.variables)
         if token_budget is not None:

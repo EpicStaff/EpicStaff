@@ -2,8 +2,7 @@ from django.db.models import Q
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES, without_internal_rows
-from tables.serializers.utils.persisted_value import PersistedValueMixin
-from tables.services.secrets.linked_ids import linked_ids
+from tables.services.secrets.reference_guard import secret_reference_guard
 
 
 class ExcludeSoftDeleteFieldsMixin:
@@ -40,10 +39,9 @@ class KeptLinkPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
     other filter on the given queryset is dropped too, but the model's `internal_rows`
     (Secret's system rows) are always left out, kept or not.
 
-    "What the row links to now" is asked of the serializer holding the field, through
-    `PersistedValueMixin.persisted_value` -- the same answer the secret reference guard
-    compares against -- so that serializer must mix it in. Works as a single FK and as
-    the child of `many=True`.
+    "What the row links to now" comes from the secret reference guard's lookup, so a nested
+    serializer resolves through the same hooks (`parent_attribute`,
+    `get_current_secret_reference`). Works as a single FK and as the child of `many=True`.
     """
 
     def __init__(self, *args, queryset=None, **kwargs):
@@ -54,7 +52,11 @@ class KeptLinkPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
     def get_queryset(self):
         queryset = super().get_queryset()
         owner, source = self._owner()
-        kept_ids = linked_ids(owner.persisted_value(source)) if owner is not None else frozenset()
+        kept_ids = (
+            secret_reference_guard.current_ids(serializer=owner, source=source)
+            if owner is not None
+            else frozenset()
+        )
         return queryset.filter(Q(active=True) | Q(pk__in=kept_ids))
 
     def _owner(self):
@@ -65,12 +67,5 @@ class KeptLinkPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
         """
         parent = self.parent
         if isinstance(parent, serializers.ManyRelatedField):
-            owner, source = parent.parent, parent.source
-        else:
-            owner, source = parent, self.source
-        if owner is not None and not isinstance(owner, PersistedValueMixin):
-            raise TypeError(
-                f"{type(owner).__name__} declares a KeptLinkPrimaryKeyRelatedField but does "
-                "not mix in PersistedValueMixin, so the link it already holds is unknown."
-            )
-        return owner, source
+            return parent.parent, parent.source
+        return parent, self.source

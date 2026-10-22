@@ -39,8 +39,8 @@ from tables.services.llm_clients import (
     ToolResultEvent,
     UnsupportedLLMProviderError,
     get_llm_client,
-    resolve_llm_api_key,
 )
+from tables.services.secrets import secret_resolver
 from utils.logger import logger
 
 from . import partial_json as _partial_json
@@ -246,10 +246,11 @@ class FlowAssistantService:
                 f"FlowAssistant for graph {flow_assistant.graph_id} has no llm_config set."
             )
 
-        # sync_to_async: stream_reply is an async generator, so the injection check and
-        # the secret lookup cannot run inline.
-        api_key = await sync_to_async(resolve_llm_api_key)(
-            flow_assistant.llm_config, context="FlowAssistant.llm_config.api_key"
+        # sync_to_async: stream_reply is an async generator, so the ORM lookup cannot run inline.
+        api_key = await sync_to_async(secret_resolver.resolve)(
+            secret_id=flow_assistant.llm_config.api_key_secret_id,
+            org_id=flow_assistant.llm_config.org_id,
+            context="FlowAssistant.llm_config.api_key",
         )
 
         try:

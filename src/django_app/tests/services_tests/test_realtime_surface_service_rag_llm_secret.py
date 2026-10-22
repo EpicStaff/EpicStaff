@@ -27,8 +27,7 @@ from tables.models.knowledge_models.collection_models import (
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.llm_models import LLMConfig, LLMModel
-from django.contrib.auth import get_user_model
-from rbac.models import Organization, OrganizationUser, Role
+from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import secret_service
@@ -62,39 +61,17 @@ def _resolve_for_realtime(org, collection, rag_type):
     return RealtimeSurfaceService(converter_service=ConverterService()).resolve(agent)
 
 
-def _approver(org):
-    """An Org Admin (holds secrets:USE) of `org`, who approved the configs' secret binding.
-
-    The models below belong to the org, so they are custom destinations: their configs'
-    keys are injected only with such an approver.
-    """
-    user, created = get_user_model().objects.get_or_create(email=f"approver-{org.pk}@example.com")
-    if created:
-        OrganizationUser.objects.create(
-            user=user, org=org, role=Role.objects.get(name="Org Admin", is_built_in=True, org__isnull=True)
-        )
-    return user
-
-
 def _embedder(*, org, secret=None):
     model = EmbeddingModel.objects.create(name="embedder-model", org=org)
     return EmbeddingConfig.objects.create(
-        custom_name="embedder-cfg",
-        model=model,
-        api_key_secret=secret,
-        org=org,
-        secret_binding_approved_by=_approver(org),
+        custom_name="embedder-cfg", model=model, api_key_secret=secret, org=org
     )
 
 
 def _llm_config(*, org, secret=None):
     model = LLMModel.objects.create(name="llm-model", org=org)
     return LLMConfig.objects.create(
-        custom_name="llm-cfg",
-        model=model,
-        api_key_secret=secret,
-        org=org,
-        secret_binding_approved_by=_approver(org),
+        custom_name="llm-cfg", model=model, api_key_secret=secret, org=org
     )
 
 

@@ -2,7 +2,6 @@ from copy import deepcopy
 
 from django.db.models import Q
 from rbac.authorship import resolve_author
-from rest_framework import serializers
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -28,15 +27,8 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
-from tables.services.secrets.exceptions import SecretUseDeniedError
-from tables.services.secrets.policies import LLM_CONFIG_SECRET_POLICY, RowWrite
-from tables.services.secrets.reference_guard import SecretActor, secret_reference_guard
+from tables.services.secrets.reference_guard import secret_reference_guard
 from tables.services.secrets.secret_resolver import extract_secret_marker_names
-
-_IMPORT_DENIED = (
-    'Importing secret references requires the "Use" permission on Secrets. '
-    "Nothing was imported. Ask an organization admin to grant it."
-)
 
 
 class BaseConfigStrategy(EntityImportExportStrategy):
@@ -87,13 +79,8 @@ class BaseConfigStrategy(EntityImportExportStrategy):
             return Q()
         return Q(org_id=org_id)
 
-    def secret_binding_approval(self, data: dict, **kwargs) -> dict:
-        """Gate the imported row's secrets and return who approves its binding; none by default."""
-        return {}
-
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
         org_id = kwargs.get("org_id")
-        approval = self.secret_binding_approval(data, **kwargs)
         if "custom_name" in data:
             existing_names = self.config_model.objects.filter(org_id=org_id).values_list(
                 "custom_name", flat=True
@@ -116,7 +103,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         )
         serializer.is_valid(raise_exception=True)
         self._assert_markers_permitted(serializer, user=kwargs.get("user"), org_id=org_id)
-        return serializer.save(created_by=resolve_author(kwargs.get("user")), **approval)
+        return serializer.save(created_by=resolve_author(kwargs.get("user")))
 
     def _assert_markers_permitted(self, serializer, *, user, org_id) -> None:
         """Require secrets:USE to create a config whose headers carry secret markers.
@@ -213,22 +200,6 @@ class LLMConfigStrategy(BaseConfigStrategy):
     tag_entity = EntityType.LLM_CONFIG_TAG
     config_model = LLMConfig
     serializer_class = LLMConfigImportSerializer
-
-    def secret_binding_approval(self, data: dict, **kwargs) -> dict:
-        # Secret FKs never travel in a file, but header markers do, and they resolve
-        # by name against the importing org's secrets -- so a file written elsewhere
-        # must not attach this org's secrets for a caller without USE. A reused config
-        # (find_existing) changes nothing and never reaches this.
-        user = kwargs.get("user")
-        actor = SecretActor(user=user, org_id=kwargs.get("org_id")) if user is not None else None
-        try:
-            return secret_reference_guard.authorize_write(
-                policy=LLM_CONFIG_SECRET_POLICY,
-                write=RowWrite.for_new_row(data),
-                resolve_actor=lambda: actor,
-            )
-        except SecretUseDeniedError as denial:
-            raise serializers.ValidationError({denial.field_name: _IMPORT_DENIED}) from denial
 
 
 class EmbeddingConfigStrategy(BaseConfigStrategy):

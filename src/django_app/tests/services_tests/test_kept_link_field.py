@@ -1,74 +1,52 @@
-"""What a row links to now, binned rows included: the persisted value both the secret
-reference guard and KeptLinkPrimaryKeyRelatedField compare against."""
+"""What a row links to now, binned rows included: the secret reference guard's lookup,
+shared by the guard and KeptLinkPrimaryKeyRelatedField."""
+
+from types import SimpleNamespace
 
 import pytest
-from rest_framework import serializers
-from rest_framework.test import APIRequestFactory
 from tables.models import Graph, PythonCode, Secret, WebhookTrigger
 from tables.models.graph_models import WebhookTriggerNode
 from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
     WebhookTriggerNodeSerializer,
 )
-from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
-from tables.services.secrets import linked_ids
 from tables.services.secrets.declaration_validator import describe_unreadable_secrets
+from tables.services.secrets.reference_guard import secret_reference_guard
 from tables.services.secrets.secret_service import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 pytestmark = pytest.mark.django_db
 
 
-def test_linked_ids_include_a_binned_secret_in_a_many_to_many(acme):
+def test_current_ids_include_a_binned_secret_in_a_many_to_many(acme):
     live = secret_service.create(text="live-value", org=acme, name="live")
     binned = secret_service.create(text="binned-value", org=acme, name="binned")
     python_code = PythonCode.objects.create(code="def main(**kwargs): ...")
     python_code.secrets.set([live, binned])
     binned.delete()
 
-    assert linked_ids(python_code.secrets) == {live.pk, binned.pk}
+    current = secret_reference_guard.current_ids(
+        serializer=SimpleNamespace(instance=python_code), source="secrets"
+    )
+
+    assert current == {live.pk, binned.pk}
     assert not Secret.all_objects.get(pk=binned.pk).active
 
 
-@pytest.mark.parametrize(
-    "value,expected",
-    [(None, set()), (7, {7}), ([3, 4], {3, 4}), ((), set())],
-)
-def test_linked_ids_of_plain_values(value, expected):
-    assert linked_ids(value) == expected
-
-
-def test_only_the_binned_trigger_already_linked_is_offered(acme, admin_acme):
-    linked = WebhookTrigger.objects.create(org=acme, path="orders", provider_type="ngrok")
-    unlinked = WebhookTrigger.objects.create(org=acme, path="refunds", provider_type="ngrok")
-    live = WebhookTrigger.objects.create(org=acme, path="live", provider_type="ngrok")
+def test_current_ids_of_a_single_link_include_a_binned_row(acme):
+    trigger = WebhookTrigger.objects.create(org=acme, path="orders", provider_type="ngrok")
     node = WebhookTriggerNode.objects.create(
         graph=Graph.objects.create(name="Flow", org=acme),
         node_name="Hook",
         python_code=PythonCode.objects.create(code="def main(**kwargs): ..."),
-        webhook_trigger=linked,
+        webhook_trigger=trigger,
     )
-    linked.delete()
-    unlinked.delete()
-    request = APIRequestFactory().patch("/")
-    request.user = admin_acme
-    request.META["HTTP_X_ORGANIZATION_ID"] = str(acme.id)
+    trigger.delete()
 
-    field = WebhookTriggerNodeSerializer(instance=node, context={"request": request}).fields[
-        "webhook_trigger"
-    ]
+    current = secret_reference_guard.current_ids(
+        serializer=WebhookTriggerNodeSerializer(instance=node), source="webhook_trigger"
+    )
 
-    assert set(field.get_queryset().values_list("pk", flat=True)) == {linked.pk, live.pk}
-
-
-class _OwnerWithoutPersistedValue(serializers.Serializer):
-    webhook_trigger = KeptLinkPrimaryKeyRelatedField(queryset=WebhookTrigger.all_objects.all())
-
-
-def test_an_owner_that_cannot_say_what_it_links_to_is_a_programming_error():
-    field = _OwnerWithoutPersistedValue().fields["webhook_trigger"]
-
-    with pytest.raises(TypeError, match="PersistedValueMixin"):
-        field.get_queryset()
+    assert current == {trigger.pk}
 
 
 def test_unreadable_secrets_name_the_binned_ones_apart_from_the_undeclared():

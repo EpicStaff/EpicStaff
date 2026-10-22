@@ -29,7 +29,6 @@ from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.python_models import PythonCodeTool
 from tables.services.rag_lookup_service import RagLookupService
-from tables.services.secrets.injection_guard import secret_injection_guard
 
 if TYPE_CHECKING:
     from tables.services.converter_service import ConverterService
@@ -232,9 +231,7 @@ class RealtimeSurfaceService:
     def _resolve_naive_rag(
         self, collection_id: int, naive_config: dict
     ) -> RealtimeKnowledgeResolution:
-        naive_rag = RagLookupService.latest_rag(
-            NaiveRag, collection_id, pk_field="naive_rag_id", select_related=("embedder__model",)
-        )
+        naive_rag = RagLookupService.latest_rag(NaiveRag, collection_id, pk_field="naive_rag_id")
         is_valid = self._rag_lookup_latest(
             naive_rag, NaiveRag, NaiveRag.NaiveRagStatus, collection_id
         )
@@ -246,7 +243,7 @@ class RealtimeSurfaceService:
             search_limit=naive_config["search_limit"],
             similarity_threshold=float(naive_config["similarity_threshold"]),
         )
-        embedder_secret_id = secret_injection_guard.injectable_api_key_secret_id(naive_rag.embedder)
+        embedder_secret_id = naive_rag.embedder.api_key_secret_id if naive_rag.embedder else None
         # Naive RAG has no LLM call (no completion-model synthesis step) —
         # only graph RAG carries an `llm` FK. Leave the LLM secret id unset.
         return RealtimeKnowledgeResolution(
@@ -263,12 +260,7 @@ class RealtimeSurfaceService:
     def _resolve_graph_rag(
         self, collection_id: int, knowledge: dict
     ) -> RealtimeKnowledgeResolution:
-        graph_rag = RagLookupService.latest_rag(
-            GraphRag,
-            collection_id,
-            pk_field="graph_rag_id",
-            select_related=("embedder__model", "llm__model"),
-        )
+        graph_rag = RagLookupService.latest_rag(GraphRag, collection_id, pk_field="graph_rag_id")
         is_valid = self._rag_lookup_latest(
             graph_rag, GraphRag, GraphRag.GraphRagStatus, collection_id
         )
@@ -285,8 +277,8 @@ class RealtimeSurfaceService:
                 break
 
         rag_search_config = GraphRagSearchConfig(search_params=search_params)
-        embedder_secret_id = secret_injection_guard.injectable_api_key_secret_id(graph_rag.embedder)
-        llm_secret_id = secret_injection_guard.injectable_api_key_secret_id(graph_rag.llm)
+        embedder_secret_id = graph_rag.embedder.api_key_secret_id if graph_rag.embedder else None
+        llm_secret_id = graph_rag.llm.api_key_secret_id if graph_rag.llm else None
         return RealtimeKnowledgeResolution(
             collection_id,
             rag_type_id,

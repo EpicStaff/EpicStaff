@@ -22,22 +22,12 @@ from tables.serializers.model_serializers.tag_serializers import (
 from tables.serializers.utils.mixins import TagHandlingMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
-from tables.services.secrets.policies import (
-    EMBEDDING_CONFIG_SECRET_POLICY,
-    EMBEDDING_MODEL_SECRET_POLICY,
-)
 from tables.validators.extra_headers_validator import validate_extra_headers
-from tables.validators.model_name_validator import reject_url_in_model_name
 
 
 class EmbeddingModelSerializer(
-    AuthorSummarySerializerMixin,
-    SecretReferenceGuardMixin,
-    TagHandlingMixin,
-    serializers.ModelSerializer,
+    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
 ):
-    secret_policy = EMBEDDING_MODEL_SECRET_POLICY
-
     tags = EmbeddingTagSerializer(many=True, required=False)
     tag_model = EmbeddingModelTag
 
@@ -57,7 +47,6 @@ class EmbeddingModelSerializer(
             "created_by",
         ]
         read_only_fields = ["org", "created_by", "is_custom", "predefined"]
-        extra_kwargs = {"name": {"validators": [reject_url_in_model_name]}}
         validators = [
             OrgScopedUniqueTogetherValidator(
                 queryset=EmbeddingModel.objects.all(),
@@ -74,7 +63,7 @@ class EmbeddingConfigSerializer(
     TagHandlingMixin,
     serializers.ModelSerializer,
 ):
-    secret_policy = EMBEDDING_CONFIG_SECRET_POLICY
+    secret_reference_fields = ("api_key_secret_id",)
     secret_marker_fields = ("extra_headers",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
@@ -100,6 +89,6 @@ class EmbeddingConfigSerializer(
 
     class Meta:
         model = EmbeddingConfig
-        exclude = ["api_key_secret", "secret_binding_approved_by"]
+        exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by", "created_at"]
         extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}

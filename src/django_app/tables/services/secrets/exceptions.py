@@ -41,33 +41,3 @@ class UndeclaredSecretError(CustomAPIExeption):
     status_code = 400
     default_detail = "Code reads a secret that was not declared for it."
     default_code = "undeclared_secret"
-
-
-class SecretUseDeniedError(Exception):
-    """Raised by SecretReferenceGuard when a write changes which secrets reach where without secrets:USE.
-
-    A domain error, not an API one: each writer phrases it for its own caller. The
-    serializer adapter turns it into a 400 keyed by `field_name`; an import reports
-    that nothing was imported.
-    """
-
-    def __init__(self, *, field_name: str, message: str):
-        super().__init__(message)
-        self.field_name = field_name
-        self.message = message
-
-
-class SecretInjectionDeniedError(CustomAPIExeption):
-    """Raised building a payload whose config sends its secret to an unapproved custom destination.
-
-    Approved means the config's `secret_binding_approved_by` still holds secrets:USE
-    in its org; a NULL approver fails closed. This catches an approver who has since
-    lost USE, left the org or been deleted, and a binding no USE holder ever approved.
-    It does not detect a direct database edit of the destination: such an edit leaves
-    the approver in place. A caller fix rather than an infrastructure fault -- hence
-    400. Names the config, never a secret value.
-    """
-
-    status_code = 400
-    default_detail = "A config may not send its secret to its custom destination."
-    default_code = "secret_injection_denied"

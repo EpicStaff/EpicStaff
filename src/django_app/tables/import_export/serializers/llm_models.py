@@ -9,7 +9,6 @@ from tables.models import (
     RealtimeModel,
     RealtimeTranscriptionModel,
 )
-from tables.validators.model_name_validator import reject_url_in_model_name
 
 
 class BaseModelImportSerializer(serializers.ModelSerializer):
@@ -42,7 +41,6 @@ class LLMModelImportSerializer(BaseModelImportSerializer):
     class Meta:
         model = LLMModel
         exclude = ["llm_provider", "created_by"]
-        extra_kwargs = {"name": {"validators": [reject_url_in_model_name]}}
 
 
 class EmbeddingModelImportSerializer(BaseModelImportSerializer):
@@ -57,7 +55,6 @@ class EmbeddingModelImportSerializer(BaseModelImportSerializer):
     class Meta:
         model = EmbeddingModel
         exclude = ["embedding_provider", "created_by"]
-        extra_kwargs = {"name": {"validators": [reject_url_in_model_name]}}
 
 
 class RealtimeModelImportSerializer(BaseModelImportSerializer):

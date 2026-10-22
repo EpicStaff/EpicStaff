@@ -24,15 +24,8 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMModelTagSerializer,
 )
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
-from tables.services.secrets.policies import (
-    LLM_CONFIG_SECRET_POLICY,
-    LLM_MODEL_SECRET_POLICY,
-    REALTIME_CONFIG_SECRET_POLICY,
-    REALTIME_TRANSCRIPTION_CONFIG_SECRET_POLICY,
-)
 from tables.utils.litellm_model_info import model_reasoning_support, validate_reasoning_effort
 from tables.validators.extra_headers_validator import validate_extra_headers
-from tables.validators.model_name_validator import reject_url_in_model_name
 from tables.validators.token_price_validator import validate_token_prices_set_together
 
 from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
@@ -57,7 +50,7 @@ class RealtimeModelSerializer(AuthorSummarySerializerMixin, serializers.ModelSer
 class RealtimeConfigSerializer(
     AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
 ):
-    secret_policy = REALTIME_CONFIG_SECRET_POLICY
+    secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -94,7 +87,7 @@ class RealtimeTranscriptionModelSerializer(
 class RealtimeTranscriptionConfigSerializer(
     AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
 ):
-    secret_policy = REALTIME_TRANSCRIPTION_CONFIG_SECRET_POLICY
+    secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -121,7 +114,7 @@ class LLMConfigSerializer(
     TagHandlingMixin,
     serializers.ModelSerializer,
 ):
-    secret_policy = LLM_CONFIG_SECRET_POLICY
+    secret_reference_fields = ("api_key_secret_id",)
     secret_marker_fields = ("extra_headers",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
@@ -147,7 +140,7 @@ class LLMConfigSerializer(
 
     class Meta:
         model = LLMConfig
-        exclude = ["api_key_secret", "secret_binding_approved_by"]
+        exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by", "created_at"]
         extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}
 
@@ -181,13 +174,8 @@ class LLMConfigSerializer(
 
 
 class LLMModelSerializer(
-    AuthorSummarySerializerMixin,
-    SecretReferenceGuardMixin,
-    TagHandlingMixin,
-    serializers.ModelSerializer,
+    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
 ):
-    secret_policy = LLM_MODEL_SECRET_POLICY
-
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
     supports_reasoning = serializers.SerializerMethodField()
@@ -214,7 +202,6 @@ class LLMModelSerializer(
             "reasoning_efforts",
         ]
         read_only_fields = ["org", "created_by", "is_custom", "predefined"]
-        extra_kwargs = {"name": {"validators": [reject_url_in_model_name]}}
         validators = [
             OrgScopedUniqueTogetherValidator(
                 queryset=LLMModel.objects.all(),

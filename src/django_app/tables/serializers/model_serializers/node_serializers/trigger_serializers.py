@@ -24,11 +24,9 @@ from tables.serializers.base_serializer import (
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
-from tables.serializers.utils.persisted_value import PersistedValueMixin
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 from tables.services.schedule_trigger_service import ScheduleTriggerService
-from tables.services.secrets.policies import TELEGRAM_TRIGGER_NODE_SECRET_POLICY
 from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerInputParser,
     ScheduleTriggerValidator,
@@ -80,7 +78,6 @@ class WebhookTriggerNodeSerializer(
     LastEditFieldsSerializerMixin,
     BaseGraphEntityMixin,
     NestedPythonCodeMixin,
-    PersistedValueMixin,
     serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
@@ -136,7 +133,7 @@ class TelegramTriggerNodeSerializer(
     ContentHashWritableMixin,
     serializers.ModelSerializer,
 ):
-    secret_policy = TELEGRAM_TRIGGER_NODE_SECRET_POLICY
+    secret_reference_fields = ("telegram_bot_api_key_secret_id",)
 
     telegram_bot_api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),

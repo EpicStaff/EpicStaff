@@ -432,10 +432,7 @@ class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
                 "is_visible",
             ]
 
-    # `model` is selected because every update compares the persisted model's base_url
-    # (LLMConfigSecretPolicy.destination); without the join each update costs
-    # one more query.
-    queryset = LLMConfig.objects.select_related("api_key_secret", "model").prefetch_related(
+    queryset = LLMConfig.objects.select_related("api_key_secret").prefetch_related(
         *authorship_prefetches()
     )
     serializer_class = LLMConfigSerializer
@@ -514,9 +511,7 @@ class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
                 "is_visible",
             ]
 
-    # `model` is selected because every update compares the persisted model's base_url
-    # (EmbeddingConfigSecretPolicy.destination).
-    queryset = EmbeddingConfig.objects.select_related("api_key_secret", "model").prefetch_related(
+    queryset = EmbeddingConfig.objects.select_related("api_key_secret").prefetch_related(
         *authorship_prefetches()
     )
     serializer_class = EmbeddingConfigSerializer

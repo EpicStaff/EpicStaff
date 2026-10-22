@@ -27,9 +27,7 @@ RAG_TYPE_REGISTRY: dict[str, RagTypeDescriptor] = {
 }
 
 
-def resolve_rag_in_collection(
-    rag_type: str, rag_id: int, source_collection, *, select_related: tuple = ()
-):
+def resolve_rag_in_collection(rag_type: str, rag_id: int, source_collection):
     """Return the RAG impl identified by rag_id inside source_collection.
 
     Raises UnknownRagTypeException for an unregistered type and
@@ -40,7 +38,7 @@ def resolve_rag_in_collection(
         raise UnknownRagTypeException(rag_type)
 
     rag = (
-        descriptor.model.objects.select_related("base_rag_type", *select_related)
+        descriptor.model.objects.select_related("base_rag_type")
         .filter(
             **{descriptor.id_field: rag_id},
             base_rag_type__source_collection=source_collection,

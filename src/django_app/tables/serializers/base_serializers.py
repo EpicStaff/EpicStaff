@@ -18,16 +18,13 @@ from tables.serializers.utils.secret_reference_guard_mixin import (
     SecretReferenceGuardMixin,
 )
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
-from tables.services.secrets.policies import (
-    NGROK_WEBHOOK_CONFIG_SECRET_POLICY,
-    WEBHOOK_TRIGGER_SECRET_POLICY,
-)
 from tables.services.webhook_trigger_service import validate_path_uniqueness
 from utils.logger import logger
 
 
 class NgrokConfigInlineSerializer(SecretReferenceGuardMixin, serializers.Serializer):
-    secret_policy = NGROK_WEBHOOK_CONFIG_SECRET_POLICY
+    secret_reference_fields = ("auth_token_secret_id",)
+    parent_attribute = "ngrok"
 
     name = serializers.CharField(max_length=50)
     auth_token_secret_id = KeptLinkPrimaryKeyRelatedField(
@@ -44,11 +41,6 @@ class NgrokConfigInlineSerializer(SecretReferenceGuardMixin, serializers.Seriali
         default=NgrokWebhookConfig.Region.EU,
     )
 
-    def persisted_value(self, source):
-        """Read the parent trigger's ngrok row: nested, this serializer has no instance of its own."""
-        parent_instance = getattr(self.parent, "instance", None)
-        return getattr(getattr(parent_instance, "ngrok", None), source, None)
-
 
 class LocalhostConfigInlineSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=50)
@@ -63,7 +55,7 @@ class WebhookTriggerNestedSerializer(
     SecretReferenceGuardMixin,
     serializers.ModelSerializer,
 ):
-    secret_policy = WEBHOOK_TRIGGER_SECRET_POLICY
+    secret_reference_fields = ("auth_secret_id",)
 
     provider_type = serializers.ChoiceField(
         choices=ProviderType.choices, required=False, allow_null=True
@@ -270,14 +262,9 @@ class WebhookTriggerNestedSerializer(
 
         return rep
 
-    def persisted_value(self, source):
-        """`auth_secret_id` reads the secret on this trigger's user-settable auth row.
-
-        It is not an attribute of WebhookTrigger: the secret lives one hop away, on the
-        WebhookTriggerAuth OneToOne row.
-        """
-        if source != "auth_secret_id":
-            return super().persisted_value(source)
+    def get_current_secret_reference(self, source):
+        """The persisted secret on this trigger's user-settable auth row, for the one field this hook supports."""
+        assert source == "auth_secret_id", f"unexpected guarded field source: {source!r}"
         existing = getattr(self.instance, "auth", None)
         return existing.secret if existing is not None else None
 

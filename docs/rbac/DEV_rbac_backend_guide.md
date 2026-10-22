@@ -105,7 +105,7 @@ class Permission(IntFlag):
     UPDATE = 4
     DELETE = 8
     EXPORT = 16  # 32 retired (was DOWNLOAD, folded into EXPORT)
-    USE = 64  # catalog action of `secrets` only; enforced by SecretReferenceGuard and SecretInjectionGuard
+    USE = 64  # catalog action of `secrets` only; enforced by SecretReferenceGuard
     LIST = 128  # reserved — not in the catalog, checked nowhere
     RUN = 256  # catalog action of `flows` only; start/stop runs and write trigger nodes
 ```
@@ -440,209 +440,45 @@ invariant.
 
 ---
 
-### 5.6 `secrets:USE` on secret references — write time and injection time
+### 5.6 Serializer-level guards — `secrets:USE` on secret references
 
-One check lives in neither the view nor a service the view calls: whether the caller may
-change **which Secret a resource references, or where it sends it**. It is enforced on
-every write path (API serializers, import), and re-checked when a session payload is
-built. The pieces:
+One check lives in neither the view nor the service: whether the caller may change
+**which Secret a resource references**. It is enforced in the serializer layer, and
+the reason is worth understanding before you move it.
 
-| Piece | Where | What it does |
-|---|---|---|
-| `SecretReferenceGuard` | `tables/services/secrets/reference_guard.py` | Pure service. `assert_permitted(actor=SecretActor(user, org_id), changes=[...])` raises `SecretUseDeniedError(field_name, message)` (a plain domain exception) for the first change that changes something, unless the actor holds `secrets:USE`. Never sees a serializer or a request. |
-| `SecretPolicy` subclasses | `tables/services/secrets/policies/` | Per entity: which fields are guarded and where a secret goes. Run without DRF, so import/restore/copy can use them. Registered in `SECRET_POLICIES`. |
-| `SecretReferenceGuardMixin` | `tables/serializers/utils/secret_reference_guard_mixin.py` | Thin adapter: builds a `RowWrite` from the serializer, asks its `secret_policy` for the changes, builds the actor from the request, turns `SecretUseDeniedError` into `ValidationError({field_name: message})`. |
-| `PersistedValueMixin.persisted_value(source)` | `tables/serializers/utils/persisted_value.py` | The one extension point for "what does the saved row hold here". Shared by the guard mixin and `KeptLinkPrimaryKeyRelatedField`. |
-| `SecretInjectionGuard` | `tables/services/secrets/injection_guard.py` | Injection-time re-check in the payload builder (below). |
+`SecretReferenceGuardMixin` (`tables/serializers/utils/secret_reference_guard_mixin.py`)
+declares the guarded fields and hooks `validate()`; the decision lives in
+`SecretReferenceGuard` (`tables/services/secrets/reference_guard.py`):
 
 ```python
-MCP_TOOL_SECRET_POLICY = SecretPolicy(reference_fields=("auth_secret_id",))
-
-
 class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
-    secret_policy = MCP_TOOL_SECRET_POLICY
+    secret_reference_fields = ("auth_secret_id",)
 ```
-
-A policy that only lists fields is a plain `SecretPolicy` instance; one that decides a
-destination or records an approver is a subclass (`LLMConfigSecretPolicy`). Every policy
-instance is registered in `SECRET_POLICIES`, and the adapter makes a single call,
-`SecretReferenceGuard.authorize_write(policy=..., write=..., resolve_actor=...)`, which
-raises `SecretUseDeniedError` or returns the approval attrs the write earns (below).
 
 **The delta rule.** A secret reference is *state, not an operation*. Omitted from the
-payload → no change; present but equal to the persisted value → no change; different →
-`secrets:USE` required. This is what makes the guard usable from `graph/{id}/save`, which
-submits the whole graph on every save and would otherwise demand `USE` from anyone editing
-an unrelated node. The policy describes every guarded field the write sets (a
-`SecretReferenceChange(field_name, incoming, current)`); the guard decides what counts as
-a change. Linked rows compare by pk through `linked_ids(value)` (`tables.services.secrets`),
-which reads a related manager through `all_objects`, so a link to a binned row still counts
-as "what the row links to now". A field the writer does not expose as writable is skipped,
-so one policy serves a serializer and its narrower variants.
+payload → skip; present but equal to the persisted value → skip; different → require
+`secrets:USE`. This is what makes the guard usable from `graph/{id}/save`, which
+submits the whole graph on every save and would otherwise demand `USE` from anyone
+editing an unrelated node.
 
-**No request, no permission.** The adapter passes no actor when there is no `request` in
-serializer context, and the guard denies a missing actor (with a warning log) — fail-safe,
-not fail-open. Any service that drives these serializers must thread the request through
-(`GraphBulkSaveService` does). The adapter builds the actor only when something changed:
-resolving the active org costs a query and fails outright on a request without the header,
-and an unchanged write must need neither (`SecretReferenceGuard.requires_use`).
+`_assert_may_use` denies when there is no `request` in serializer context, because the
+active org cannot be resolved without one — fail-safe, not fail-open. Any service that
+drives these serializers must thread the request through (`GraphBulkSaveService` does).
 
-**Header markers.** A secret can also be referenced *by name*: `SecretResolver` replaces
-every `epicstaff_secret(<name>)` marker in an `extra_headers` value with the plaintext of the
-org's secret of that name when it resolves a session payload. Such a field is listed in the
-policy's `header_fields`, and the same delta rule applies to the **set of marker names**
-(`extract_secret_marker_names`, shared with the resolver, so both read the same regex). Editing
-a header's other text, adding a header without a marker, or resending the same markers
-needs nothing; adding, renaming or removing a marker needs `USE`. On create the persisted
-set is empty, so any marker needs `USE`.
+**Diverging one request path.** `secret_reference_fields` is read through
+`get_secret_reference_fields()`, so a subclass may differ from the class its siblings
+share — e.g. a `*BulkSerializer` (graph save subclasses the node serializers) or an
+endpoint-specific variant:
 
 ```python
-class LLMConfigSecretPolicy(SecretPolicy):
-    reference_fields = ("api_key_secret_id",)
-    header_fields = ("extra_headers",)
-    approval_model = LLMConfig
-    approval_label = "LLM config"
+class McpToolBulkSerializer(McpToolSerializer):
+    def get_secret_reference_fields(self):
+        """Guard nothing on this path."""
+        return ()
 ```
 
-**Destination changes.** Holding a reference is only half of it; the other half is where the
-request carrying it goes. A policy whose row decides that overrides two methods, both taking
-a `RowWrite` (the persisted row, the incoming attrs, the writable `{field name: source}` map
-and a `persisted_value` reader — plain data, no serializer): `destination(write)` returns
-`{field name: value}` once the write is saved, and `carries_secret(write)` says whether a
-secret travels there. `write.value_after_save(source, persisted_attribute=...)` and
-`write.writable_values_after_save(exclude=...)` are the helpers for writing them. On
-**update**, when a destination value changes and a secret travels, the guard requires `USE`
-(`SecretDestinationChange`) and names the changed field. `carries_secret` runs only for a
-destination that actually moved, so its queries cost nothing on an ordinary edit. Create is
-not checked: a new row reaches a secret only through a reference, which the rules above
-already gate.
-
-**The destination of a model-backed config is the model's identity, not its `base_url`.**
-Routing depends on more than the base URL: litellm also routes on the model name (a Hugging
-Face model named `https://…` becomes the endpoint when no base URL is set), the provider,
-`api_version` and the deployment, and its rules change between versions. So
-`model_destination(model)` (`tables.services.secrets.policies`) trusts only the superadmin
-catalog: every built-in model (`is_custom=False`, no org) — and no model at all — is the one
-destination `CATALOG_DESTINATION`; a custom model is its own destination, its pk. Switching
-a secret-bearing config among catalog models needs nothing; pointing it at any custom model,
-or moving it between custom models (or off one), needs `USE`. Changes inside a custom model
-are gated on the model row itself: its destination is **every writable field except an
-explicit cosmetic list** (`LLM_MODEL_NON_ROUTING_FIELDS`, `EMBEDDING_MODEL_NON_ROUTING_FIELDS`;
-blank compared as null), so a field added later is gated until someone decides it does not
-route.
-
-| Policy (serializer) | Destination | Carries a secret when |
-|---|---|---|
-| `LLMConfigSecretPolicy` (`LLMConfigSerializer`) | `model` → `model_destination`; `base_url` → the config's own, read by nothing today but gated so wiring it up later is not a bypass | `api_key_secret` is set or `extra_headers` holds a marker, after the change |
-| `LLMModelSecretPolicy` (`LLMModelSerializer`) | `name`, `llm_provider`, `deployment_id`, `api_version`, `base_url` (all writable fields except `description`, `is_visible`, `capabilities`, `tags`) — everything `ConverterService` and the knowledge service send on | any `LLMConfig` using the model carries one (update only; an `exists()` on the key first, then the headers) |
-| `EmbeddingConfigSecretPolicy` (`EmbeddingConfigSerializer`) | `model` → `model_destination` | `api_key_secret` is set, after the change |
-| `EmbeddingModelSecretPolicy` (`EmbeddingModelSerializer`) | `name`, `embedding_provider`, `deployment`, `base_url` (all writable fields except `is_visible`, `tags`) | any `EmbeddingConfig` using the model has `api_key_secret` (one `exists()`, update only) |
-| `OpenAIRealtimeConfigSecretPolicy` (`OpenAIRealtimeConfigSerializer`) | `base_url` (its own; the realtime clients connect to `{base_url}?model=…`, so `model_name` sits in the query string and cannot move the host) | `api_key_secret` or `transcription_api_key_secret` is set, after the change |
-
-Gemini, ElevenLabs and the deprecated `RealtimeConfig` / `RealtimeTranscriptionConfig`
-have no `base_url`, so their policies declare no destination. Creating a model or config
-with any field values does not need `USE`. The config viewsets `select_related("model")`
-because every update reads the persisted model.
-
-**Second layer: no URL in a model name.** `reject_url_in_model_name`
-(`tables/validators/model_name_validator.py`) rejects an `LLMModel` or `EmbeddingModel`
-name containing `://` on create and update, through the API serializers and the import
-serializers alike. No catalog name contains one.
-
-**Import.** Secret FKs never travel in an export file, but header markers do, and they
-resolve by name in the importing org. `LLMConfigStrategy.secret_binding_approval` passes
-`RowWrite.for_new_row(data)` and `LLM_CONFIG_SECRET_POLICY` to
-`SecretReferenceGuard.authorize_write` with the importing user and org as the actor, turns
-`SecretUseDeniedError` into a `ValidationError` saying nothing was imported, and hands the
-returned approval to the create (`BaseConfigStrategy.create_entity` saves it with the row). A newly created config with markers needs
-`USE`; a reused equivalent config changes nothing and is not checked. The import serializer
-is listed in `HEADER_EXEMPT` in `test_secret_reference_coverage.py` for that reason.
-
-**Diverging one request path.** A subclass that must guard differently — a `*BulkSerializer`
-(graph save subclasses the node serializers) or an endpoint-specific variant — sets its own
-`secret_policy`, leaving the class its siblings share unchanged. Narrowing a path's
-protection must be justified in `EXEMPT` in the coverage test.
-
-**Nested serializers.** A nested serializer has no instance of its own, so it overrides
-`persisted_value`: `NgrokConfigInlineSerializer` reads the parent trigger's `ngrok` row,
-`PythonCodeSerializer` reads the parent's `python_code`, and `WebhookTriggerNestedSerializer`
-reads `auth_secret_id` one hop away on its `WebhookTriggerAuth` row.
-
-**Injection time (defence in depth).** The write rules make pointing a secret-bearing config
-at a custom destination require `USE`. Before a secret id leaves Django, the payload builder
-also checks that a person who still holds `USE` approved the row's secret binding. This
-catches an approver who has since lost `USE`, left the org or been deleted, and a binding no
-`USE` holder ever approved (NULL fails closed). It does **not** detect a direct database edit
-of the destination: such an edit leaves the approver in place.
-`SecretInjectionGuard.assert_injection_permitted(config)` runs in
-`ConverterService.convert_llm_config_data`, `convert_embedding_config_to_pydantic`,
-`convert_rt_agent_definition_chat_to_pydantic` (OpenAI realtime), wherever a RAG embedder or
-LLM secret id is emitted (`injectable_api_key_secret_id`: the converter's knowledge nodes,
-`RealtimeSurfaceService`, `IndexingService`), and in `llm_clients.resolve_llm_api_key`, the
-one way a direct LLM call (Flow Assistant, CDT explain) gets its key -- async callers run it
-in `sync_to_async`, because the check queries. `get_llm_client` converts with the
-check-free `ConverterService.build_llm_config_data`. The configs checked are those whose
-policy has an `approval_model`. The rule:
-
-- The config's policy decides (`SecretPolicy.sends_secret_to_custom_destination`): a
-  destination whose values are all empty or `CATALOG_DESTINATION`, or a config carrying no
-  secret, is **not checked** and costs no query.
-- Otherwise the config's **approver** (`secret_binding_approved_by`, from
-  `SecretBindingApprovedModel` on `LLMConfig`, `EmbeddingConfig` and `OpenAIRealtimeConfig`)
-  must still hold `secrets:USE` in the config's org, judged through the same
-  `SecretReferenceGuard` / `PermissionResolver` path (`SecretReferenceGuard.may_use`).
-- It **fails closed**: no approver (never approved, or the user was deleted), an approver
-  who left the org, or one who lost `USE` → `SecretInjectionDeniedError` (400), naming the
-  config and asking an admin with `secrets:USE` to re-save it. Never a secret value.
-- In a session run the error ends the session in `ERROR` with that reason and nothing is
-  published, like `UndeclaredSecretError`.
-- `SessionManagerService.create_session_data` wraps the build in
-  `secret_injection_guard.batch()`, so each config and each (approver, org) pair is looked up
-  once per build however many nodes share it.
-
-**Who becomes the approver.** Decided in one place, `SecretReferenceGuard`, for every writer
-(serializer adapter, import, quickstart); the policy only says whether a row records one
-(`approval_model`) and what to stamp (`SecretPolicy.binding_approval(actor)`):
-
-- `authorize_write`: a change that needed `USE` and was permitted — attaching or changing a
-  secret, a header marker or a secret-bearing destination, including creating a row that
-  carries a secret — makes its actor the approver. An actor that is not a person (the system
-  API-key principal) records NULL here: it changed the binding, and no person approved it.
-- `authorize_write`, on a save of a persisted row whose secret goes somewhere custom with no
-  gated change: a **person** holding `USE` re-approves it (this is how an admin restores
-  delivery by re-saving). Anyone else — a member without `USE` changing the temperature, or
-  the system API-key principal — leaves the approver untouched (`approval_by_use_holder`).
-- Import: `LLMConfigStrategy` passes the importing user's approval into the create.
-- Quickstart: `QuickstartService.quickstart` stamps the requesting user on the configs it
-  creates (LLM, embedding, OpenAI realtime) only if they are a person holding `USE`
-  (`approval_by_use_holder`); otherwise they stay NULL, and a bundle on a custom model is not
-  delivered until an admin re-saves it.
-
-The field is never writable by a client and is not in API or export payloads. Configs are
-not copied as standalone entities, and a restore keeps the row, so neither path changes the
-approver.
-
-Migration `0273_secret_binding_approved_by` backfills existing rows that send a secret
-somewhere custom: the approver becomes the last editor (or the creator when no editor is
-recorded — no last edit, or one whose editor is NULL), only if that user holds `secrets:USE` in the row's org at migration time; otherwise
-it stays NULL and the row's secret is not delivered until an admin re-saves it.
-
-**Adding a guarded entity:** declare its policy in the matching `policies/` module — a
-`SecretPolicy(reference_fields=..., header_fields=...)` instance, or a subclass instance when
-it decides a destination — add it to `SECRET_POLICIES`, and set
-`secret_policy = <THE_POLICY>` on each serializer that writes the entity. If its row routes a
-secret somewhere custom, override `destination` and `carries_secret`, add a row to the table
-above, add API tests next to `test_secret_use_llm_headers_and_destination.py`, and — if a
-payload builder injects it — mix `SecretBindingApprovedModel` into the model, set
-`approval_model`/`approval_label` on the policy (that registers it with
-`SecretInjectionGuard`) and call the guard where its secret id is emitted. `test_secret_reference_coverage.py` fails for a Secret field no policy
-guards, a writable header or `base_url` field without a policy that covers it (or an
-`*_EXEMPT` entry with a reason), a policy missing from `SECRET_POLICIES` or used by no
-serializer, a policy field name that is not a writable field of any serializer using it,
-and a serializer whose `validate()` never reaches the guard. An FK-shaped destination is
-pinned by name in `FK_DESTINATION_SERIALIZERS`, and the model policies' routing-field sets
-are pinned in `test_model_serializers_treat_every_routing_field_as_destination`.
-
+The coverage checks ask instances, not classes, so an override stays inside the
+guarantee.
 
 ---
 

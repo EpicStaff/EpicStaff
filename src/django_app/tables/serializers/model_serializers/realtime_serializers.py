@@ -35,12 +35,6 @@ from tables.serializers.utils.soft_delete_fields import (
     KeptLinkPrimaryKeyRelatedField,
 )
 from tables.services.secrets import secret_resolver
-from tables.services.secrets.policies import (
-    ELEVENLABS_REALTIME_CONFIG_SECRET_POLICY,
-    GEMINI_REALTIME_CONFIG_SECRET_POLICY,
-    OPENAI_REALTIME_CONFIG_SECRET_POLICY,
-    TWILIO_CHANNEL_SECRET_POLICY,
-)
 
 
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
@@ -137,7 +131,7 @@ class OpenAIRealtimeConfigSerializer(
     SecretReferenceGuardMixin,
     serializers.ModelSerializer,
 ):
-    secret_policy = OPENAI_REALTIME_CONFIG_SECRET_POLICY
+    secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -176,7 +170,7 @@ class ElevenLabsRealtimeConfigSerializer(
     SecretReferenceGuardMixin,
     serializers.ModelSerializer,
 ):
-    secret_policy = ELEVENLABS_REALTIME_CONFIG_SECRET_POLICY
+    secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -206,7 +200,7 @@ class GeminiRealtimeConfigSerializer(
     SecretReferenceGuardMixin,
     serializers.ModelSerializer,
 ):
-    secret_policy = GEMINI_REALTIME_CONFIG_SECRET_POLICY
+    secret_reference_fields = ("api_key_secret_id",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -240,7 +234,7 @@ class TwilioAuthTokenSecretSerializer(serializers.Serializer):
 
 
 class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
-    secret_policy = TWILIO_CHANNEL_SECRET_POLICY
+    secret_reference_fields = ("auth_token_secret_id",)
 
     webhook_trigger = KeptLinkPrimaryKeyRelatedField(
         queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True

@@ -19,13 +19,14 @@ from tables.exceptions import (
 )
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.models.llm_models import LLMConfig
-from tables.services.llm_clients import get_llm_client, resolve_llm_api_key
+from tables.services.llm_clients import get_llm_client
 from tables.services.llm_clients.base import (
     DoneEvent,
     InvalidLLMConfigError,
     TokenEvent,
     UnsupportedLLMProviderError,
 )
+from tables.services.secrets import secret_resolver
 
 from .context import render_user_message
 from .output_schema import CDT_EXPLAIN_OUTPUT_SCHEMA
@@ -58,7 +59,11 @@ class CdtExplainService:
         self._assert_node_visible(pk, org_id)
         llm_config = self._get_llm_config_or_404(llm_config_id, org_id)
 
-        api_key = resolve_llm_api_key(llm_config, context="CdtExplain.llm_config.api_key")
+        api_key = secret_resolver.resolve(
+            secret_id=llm_config.api_key_secret_id,
+            org_id=llm_config.org_id,
+            context="CdtExplain.llm_config.api_key",
+        )
         try:
             client = get_llm_client(
                 llm_config, output_schema=CDT_EXPLAIN_OUTPUT_SCHEMA, api_key=api_key

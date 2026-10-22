@@ -4,11 +4,7 @@ from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 from src.shared.models.ai_providers import REASONING_EFFORT_VALUES
 
-from tables.models.base_models import (
-    AbstractDefaultFillableModel,
-    DefaultBaseModel,
-    SecretBindingApprovedModel,
-)
+from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
 from tables.models.provider import Provider
 from tables.models.tag_models import (
     LLMConfigTag,
@@ -82,9 +78,7 @@ class DefaultLLMConfig(DefaultBaseModel):
     is_visible = models.BooleanField(default=True)
 
 
-class LLMConfig(
-    OrgScopedModel, LastEditTrackedModel, SecretBindingApprovedModel, AbstractDefaultFillableModel
-):
+class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableModel):
     custom_name = models.TextField()
     model = models.ForeignKey(LLMModel, on_delete=models.CASCADE, null=True)
     temperature = models.FloatField(

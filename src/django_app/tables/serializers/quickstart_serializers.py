@@ -9,11 +9,10 @@ from tables.serializers.model_serializers.llm_serializers import (
     LLMConfigSerializer,
 )
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
-from tables.services.secrets.policies import QUICKSTART_SECRET_POLICY
 
 
 class QuickstartSerializer(SecretReferenceGuardMixin, serializers.Serializer):
-    secret_policy = QUICKSTART_SECRET_POLICY
+    secret_reference_fields = ("api_key_secret_id",)
 
     provider = serializers.CharField()
     # Exactly one credential form. `api_key` is the cold start (no secrets exist
