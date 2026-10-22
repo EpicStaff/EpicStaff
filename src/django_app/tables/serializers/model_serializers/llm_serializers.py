@@ -110,13 +110,9 @@ class LLMConfigSerializer(
     LLMConfigDataFieldsValidationMixin,
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
-    SecretReferenceGuardMixin,
     TagHandlingMixin,
     serializers.ModelSerializer,
 ):
-    secret_reference_fields = ("api_key_secret_id",)
-    secret_marker_fields = ("extra_headers",)
-
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",

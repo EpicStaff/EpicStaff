@@ -277,6 +277,12 @@ from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
+from tables.services.secrets.secret_use_checks import (
+    check_embedding_config_write,
+    check_embedding_model_write,
+    check_llm_config_write,
+    check_llm_model_write,
+)
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
     get_mcp_tool_usage_detail,
@@ -352,6 +358,7 @@ from tables.views.mixins import (
     TriggerNodeUsePermissionMixin,
 )
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
+from tables.views.secret_use import SecretUseCheckedViewSetMixin
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -414,10 +421,13 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
         instance.delete()
 
 
-class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
+class LLMConfigReadWriteViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_llm_config_write
 
     class LLMConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -454,13 +464,19 @@ class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
 
 
 class LLMModelReadWriteViewSet(
-    OrgScopedHybridViewSetMixin,
+    # Built-in protection runs before the secret check: a built-in model is
+    # immutable (403) whatever the caller holds, and the secret check counts the
+    # configs of every org that uses it. Neither mixin defines get_queryset or
+    # perform_create, so the org mixin still wraps the concrete viewset.
     BuiltInWriteProtectedMixin,
+    SecretUseCheckedViewSetMixin,
+    OrgScopedHybridViewSetMixin,
     BasePredefinedRestrictedViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_llm_model_write
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -474,13 +490,19 @@ class LLMModelReadWriteViewSet(
 
 
 class EmbeddingModelReadWriteViewSet(
-    OrgScopedHybridViewSetMixin,
+    # Built-in protection runs before the secret check: a built-in model is
+    # immutable (403) whatever the caller holds, and the secret check counts the
+    # configs of every org that uses it. Neither mixin defines get_queryset or
+    # perform_create, so the org mixin still wraps the concrete viewset.
     BuiltInWriteProtectedMixin,
+    SecretUseCheckedViewSetMixin,
+    OrgScopedHybridViewSetMixin,
     BasePredefinedRestrictedViewSet,
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_embedding_model_write
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -493,10 +515,13 @@ class EmbeddingModelReadWriteViewSet(
     filterset_class = EmbeddingModelFilter
 
 
-class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
+class EmbeddingConfigReadWriteViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_embedding_config_write
 
     class EmbeddingConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
