@@ -5,6 +5,7 @@ from tables.models import (
     PythonCodeTool,
     PythonCodeToolConfig,
 )
+from tables.serializers.utils.description_sanitizer import validate_tool_description
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.validators.execution_timeout_validator import normalize_imported_execution_timeout
 from tables.validators.python_libraries_validator import validate_python_library_spec
@@ -75,6 +76,10 @@ class PythonCodeToolImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.M
             "created_at",
             "updated_at",
         ]
+
+    def validate_description(self, value: str) -> str:
+        """See validate_tool_description: this text reaches the LLM tool schema verbatim."""
+        return validate_tool_description(value)
 
     def get_python_code_tool_config(self, instance: PythonCodeTool) -> list[dict]:
         """Serialize only the exporting organization's configs of this tool.
