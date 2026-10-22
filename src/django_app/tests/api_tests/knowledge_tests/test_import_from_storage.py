@@ -286,8 +286,9 @@ class TestImportFromStorage:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    # delete() depends on settings.SOFT_DELETE, so each mode is exercised explicitly.
-    @pytest.mark.parametrize("delete_mode", ["soft", "hard"])
+    # A binned collection keeps its row with active=False; a purged one has no
+    # row. Both must give the same generic 404.
+    @pytest.mark.parametrize("delete_mode", ["binned", "purged"])
     def test_collection_deleted_mid_request_is_404(
         self, auth_client, default_org, empty_collection, delete_mode
     ):
@@ -295,10 +296,9 @@ class TestImportFromStorage:
             if SourceCollection.objects.filter(
                 collection_id=empty_collection.collection_id
             ).exists():
-                if delete_mode == "soft":
-                    empty_collection.soft_delete()
-                else:
-                    empty_collection.hard_delete()
+                empty_collection.delete()
+                if delete_mode == "purged":
+                    SourceCollection.all_objects.get(pk=empty_collection.pk).purge()
 
         manager = StorageManager(_BackendWithDownloadHook(delete_collection_before_write))
         stored = _store(manager, default_org, "late.txt", b"late")

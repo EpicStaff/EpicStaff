@@ -73,11 +73,14 @@ class _CountingSizeLookups(InMemoryStorageBackend):
 
 
 def _delete_collection(collection, delete_mode: str) -> None:
-    """Delete explicitly in one mode: `delete()` depends on settings.SOFT_DELETE."""
-    if delete_mode == "soft":
-        collection.soft_delete()
-    else:
-        collection.hard_delete()
+    """Move the collection to the recycle bin and, for "purged", remove it for good.
+
+    A binned collection keeps its row with active=False; a purged one has no row.
+    An import must treat both as not found.
+    """
+    collection.delete()
+    if delete_mode == "purged":
+        SourceCollection.all_objects.get(pk=collection.pk).purge()
 
 
 @pytest.fixture
@@ -543,7 +546,7 @@ class TestRecheckAtWriteTime:
         assert _document_names(collection) == ["race.txt"]
         assert not collection.last_edits.exists()
 
-    @pytest.mark.parametrize("delete_mode", ["soft", "hard"])
+    @pytest.mark.parametrize("delete_mode", ["binned", "purged"])
     def test_collection_deleted_before_the_write_is_not_found(
         self, acme, collection, delete_mode
     ):
@@ -696,7 +699,7 @@ class TestUploadNewFilesBatch:
         assert duplicates == [existing_duplicate, in_batch_duplicate]
         assert _document_names(collection) == ["new.txt", "old.txt"]
 
-    @pytest.mark.parametrize("delete_mode", ["soft", "hard"])
+    @pytest.mark.parametrize("delete_mode", ["binned", "purged"])
     def test_deleted_collection_raises_not_found(self, collection, delete_mode):
         _delete_collection(collection, delete_mode)
 
