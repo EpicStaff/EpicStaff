@@ -205,15 +205,11 @@ class TestBulkSaveUnderTheGuard:
         )
         assert response.status_code == 200, response.json()
 
-    # Intentional precedence: `PythonCodeSerializer.validate()` calls
-    # `super().validate()` as its first line, which is where the guard runs, and
-    # only afterwards runs its own allow-list check later in the same method body.
-    # So when both would independently reject a payload, the guard raises first and
-    # the allow-list code never executes. This is deliberate — authorization is
-    # decided before content validation is even attempted — and does not depend on
-    # `SecretReferenceGuardMixin`'s position in the base list, since
-    # `PythonCodeSerializer` defines its own `validate()` as the actual entry point.
-    def test_permission_error_wins_when_both_checks_would_fail(
+    # Precedence: the serializer validates the payload's shape, including that the
+    # code reads only declared secrets, before the secret Use check runs at the
+    # write point. So when both would reject a payload, the caller sees the
+    # undeclared-secret error.
+    def test_undeclared_secret_error_wins_when_both_checks_would_fail(
         self, no_use_client, graph, python_node, other_secret
     ):
         payload = _payload(graph, python_node, secret_ids=[other_secret.id])
@@ -229,8 +225,8 @@ class TestBulkSaveUnderTheGuard:
         message = response.json()["errors"]["python_node_list"][0]["errors"][
             "python_code"
         ]["secret_ids"][0]
-        assert "Use" in message and "permission" in message
-        assert "get_secret" not in message
+        assert 'get_secret("SOMETHING_UNDECLARED")' in message
+        assert "permission" not in message
 
 
 @pytest.fixture

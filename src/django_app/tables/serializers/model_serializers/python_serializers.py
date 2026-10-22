@@ -31,7 +31,6 @@ from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
 )
-from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.serializers.utils.soft_delete_fields import (
     ExcludeSoftDeleteFieldsMixin,
     KeptLinkPrimaryKeyRelatedField,
@@ -48,11 +47,7 @@ from tables.validators.python_code_tool_config_validator import (
 from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
-class PythonCodeSerializer(
-    SecretReferenceGuardMixin, ContentHashWritableMixin, serializers.ModelSerializer
-):
-    secret_reference_fields = ("secret_ids",)
-
+class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     libraries = serializers.ListField(
         child=serializers.CharField(validators=[validate_python_library_spec]),
         write_only=False,
@@ -123,7 +118,11 @@ class PythonCodeSerializer(
         return getattr(parent_instance, self.field_name, None)
 
     def get_current_secret_reference(self, source):
-        """The persisted secrets for this field, resolved through the parent when nested."""
+        """The persisted secrets for the `secret_ids` kept-link field, resolved through the parent when nested.
+
+        Nested under a parent, this serializer has no instance of its own, so the
+        kept-link field cannot read what the PythonCode links to now by its source.
+        """
         python_code = self._current_python_code()
         return getattr(python_code, source, None) if python_code is not None else None
 

@@ -6,7 +6,13 @@ from rest_framework.test import APIClient
 from rbac.models import Organization
 from tables.models import EmbeddingConfig, LLMConfig
 from tables.models.embedding_models import EmbeddingModel
-from tables.models.graph_models import Graph, TelegramTriggerNode
+from tables.models.graph_models import (
+    ClassificationDecisionTableNode,
+    Graph,
+    PythonNode,
+    TelegramTriggerNode,
+    WebhookTriggerNode,
+)
 from tables.models.llm_models import (
     LLMModel,
     RealtimeConfig,
@@ -661,3 +667,206 @@ def test_use_holder_can_create_a_tool_with_the_m2m_secret(use_client_6b, secret_
     assert response.status_code == 201, response.json()
     tool = PythonCodeTool.objects.get(name="fkuse-create-tool-permitted")
     assert list(tool.python_code.secrets.values_list("id", flat=True)) == [secret_a.id]
+
+
+# ---------------------------------------------------------------------------
+# PythonCode.secret_ids under every parent that nests a PythonCode. Only the
+# declaration needs secrets:USE; editing the code of a PythonCode that already
+# declares secrets is free, even when the new code reads them.
+# ---------------------------------------------------------------------------
+
+_PYTHON_CODE_TEXT = "def main(**kwargs):\n    return 1\n"
+
+
+def _python_code_declaring(secret) -> PythonCode:
+    python_code = PythonCode.objects.create(code=_PYTHON_CODE_TEXT, entrypoint="main")
+    python_code.secrets.set([secret])
+    return python_code
+
+
+def _python_code_payload(*, code=_PYTHON_CODE_TEXT, secret_ids=None) -> dict:
+    """A full nested `python_code` block; `secret_ids` is left out when None."""
+    payload = {"code": code, "entrypoint": "main", "libraries": [], "global_kwargs": {}}
+    if secret_ids is not None:
+        payload["secret_ids"] = secret_ids
+    return payload
+
+
+@pytest.fixture
+def python_code_parent_graph(default_org) -> Graph:
+    return Graph.objects.create(name="fkuse-python-code-graph", org=default_org)
+
+
+@pytest.fixture
+def python_node_declaring_secret_a(python_code_parent_graph, secret_a) -> PythonNode:
+    return PythonNode.objects.create(
+        graph=python_code_parent_graph,
+        node_name="fkuse-python-node",
+        python_code=_python_code_declaring(secret_a),
+    )
+
+
+@pytest.fixture
+def webhook_trigger_node_declaring_secret_a(
+    python_code_parent_graph, secret_a
+) -> WebhookTriggerNode:
+    return WebhookTriggerNode.objects.create(
+        graph=python_code_parent_graph,
+        node_name="fkuse-webhook-node",
+        python_code=_python_code_declaring(secret_a),
+    )
+
+
+@pytest.fixture
+def cdt_node_declaring_secret_a(
+    python_code_parent_graph, secret_a
+) -> ClassificationDecisionTableNode:
+    return ClassificationDecisionTableNode.objects.create(
+        graph=python_code_parent_graph,
+        node_name="fkuse-cdt-node",
+        pre_python_code=_python_code_declaring(secret_a),
+        post_python_code=_python_code_declaring(secret_a),
+    )
+
+
+#: (endpoint prefix, attribute nesting the PythonCode, fixture building a parent
+#: whose PythonCode declares `secret_a`).
+PYTHON_CODE_PARENTS = [
+    ("/api/pythonnodes/", "python_code", "python_node_declaring_secret_a"),
+    ("/api/webhook-trigger-nodes/", "python_code", "webhook_trigger_node_declaring_secret_a"),
+    (
+        "/api/classification-decision-table-node/",
+        "pre_python_code",
+        "cdt_node_declaring_secret_a",
+    ),
+    (
+        "/api/classification-decision-table-node/",
+        "post_python_code",
+        "cdt_node_declaring_secret_a",
+    ),
+    ("/api/python-code-tool/", "python_code", "python_code_tool_pointing_at_secret_a"),
+]
+
+
+def _declared_ids(parent, attribute) -> list[int]:
+    python_code = getattr(parent, attribute)
+    return list(python_code.secrets.values_list("id", flat=True))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("endpoint,attribute,fixture_name", PYTHON_CODE_PARENTS)
+class TestPythonCodeDeclarationIsGatedInEveryParent:
+    def test_changing_the_declaration_without_use_is_rejected(
+        self, request, no_use_client_6b, endpoint, attribute, fixture_name, secret_a, secret_b
+    ):
+        parent = request.getfixturevalue(fixture_name)
+
+        response = no_use_client_6b.patch(
+            f"{endpoint}{parent.pk}/",
+            {attribute: _python_code_payload(secret_ids=[secret_b.id])},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        message = response.json()["message"]
+        assert f"{attribute}: secret_ids:" in message
+        assert '"Use" permission on Secrets' in message
+        parent.refresh_from_db()
+        assert _declared_ids(parent, attribute) == [secret_a.id]
+
+    def test_use_holder_can_change_the_declaration(
+        self, request, use_client_6b, endpoint, attribute, fixture_name, secret_b
+    ):
+        parent = request.getfixturevalue(fixture_name)
+
+        response = use_client_6b.patch(
+            f"{endpoint}{parent.pk}/",
+            {attribute: _python_code_payload(secret_ids=[secret_b.id])},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        parent.refresh_from_db()
+        assert _declared_ids(parent, attribute) == [secret_b.id]
+
+    def test_editing_code_of_python_code_with_secrets_is_free(
+        self, request, no_use_client_6b, endpoint, attribute, fixture_name, secret_a
+    ):
+        parent = request.getfixturevalue(fixture_name)
+        code_reading_the_secret = 'def main(**kwargs):\n    return get_secret("FKUSE_SECRET_A")\n'
+
+        response = no_use_client_6b.patch(
+            f"{endpoint}{parent.pk}/",
+            {attribute: _python_code_payload(code=code_reading_the_secret)},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        parent.refresh_from_db()
+        python_code = getattr(parent, attribute)
+        python_code.refresh_from_db()
+        assert python_code.code == code_reading_the_secret
+        assert _declared_ids(parent, attribute) == [secret_a.id]
+
+
+#: (bulk-save list key, attribute nesting the PythonCode, fixture building a node
+#: whose PythonCode declares `secret_a`).
+PYTHON_CODE_BULK_NODES = [
+    ("python_node_list", "python_code", "python_node_declaring_secret_a"),
+    ("webhook_trigger_node_list", "python_code", "webhook_trigger_node_declaring_secret_a"),
+    (
+        "classification_decision_table_node_list",
+        "pre_python_code",
+        "cdt_node_declaring_secret_a",
+    ),
+    (
+        "classification_decision_table_node_list",
+        "post_python_code",
+        "cdt_node_declaring_secret_a",
+    ),
+]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("list_key,attribute,fixture_name", PYTHON_CODE_BULK_NODES)
+def test_bulk_save_declaration_change_without_use_is_rejected_per_node(
+    request,
+    no_use_client_6b,
+    python_code_parent_graph,
+    list_key,
+    attribute,
+    fixture_name,
+    secret_a,
+    secret_b,
+):
+    node = request.getfixturevalue(fixture_name)
+    graph = python_code_parent_graph
+    graph.refresh_from_db()
+    before = graph.save_version
+
+    response = no_use_client_6b.post(
+        f"/api/graphs/{graph.id}/save/",
+        {
+            "save_version": graph.save_version,
+            list_key: [
+                {
+                    "id": node.id,
+                    "graph": graph.id,
+                    "node_name": node.node_name,
+                    "metadata": {},
+                    attribute: _python_code_payload(secret_ids=[secret_b.id]),
+                }
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    [item] = response.json()["errors"][list_key]
+    assert item["index"] == 0
+    [message] = item["errors"][attribute]["secret_ids"]
+    assert '"Use" permission on Secrets' in message
+    graph.refresh_from_db()
+    node.refresh_from_db()
+    assert graph.save_version == before
+    assert _declared_ids(node, attribute) == [secret_a.id]

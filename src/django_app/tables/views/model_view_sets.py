@@ -286,10 +286,13 @@ from tables.services.secrets.secret_use_checks import (
     check_llm_model_write,
     check_mcp_tool_write,
     check_openai_realtime_config_write,
+    check_python_code_tool_write,
+    check_python_node_write,
     check_realtime_config_write,
     check_realtime_transcription_config_write,
     check_telegram_trigger_node_write,
     check_twilio_channel_write,
+    check_webhook_trigger_node_write,
     check_webhook_trigger_write,
 )
 from tables.services.telegram_trigger_service import TelegramTriggerService
@@ -573,6 +576,7 @@ class ContentHashPreconditionMixin:
     list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
 )
 class PythonCodeToolViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedHybridViewSetMixin,
     CopyActionMixin,
     InspectActionMixin,
@@ -614,6 +618,7 @@ class PythonCodeToolViewSet(
         .prefetch_related(linked_secrets_prefetch("python_code"), *authorship_prefetches())
     )
     serializer_class = PythonCodeToolSerializer
+    secret_use_check = check_python_code_tool_write
     filter_backends = [DjangoFilterBackend]
     filterset_class = PythonCodeToolFilter
 
@@ -1344,6 +1349,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
 
 
 class PythonNodeViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
     ContentHashPreconditionMixin,
@@ -1354,6 +1360,7 @@ class PythonNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = PythonNode.objects.prefetch_related(*authorship_prefetches())
     serializer_class = PythonNodeSerializer
+    secret_use_check = check_python_node_write
 
 
 class FileExtractorNodeViewSet(
@@ -2491,6 +2498,7 @@ class GraphOrganizationUserViewSet(OrgScopedChildViewSetMixin, viewsets.ReadOnly
     partial_update=extend_schema(**WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE),
 )
 class WebhookTriggerNodeViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
@@ -2508,6 +2516,7 @@ class WebhookTriggerNodeViewSet(
         *authorship_prefetches("webhook_trigger"),
     )
     serializer_class = WebhookTriggerNodeSerializer
+    secret_use_check = check_webhook_trigger_node_write
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph", "node_name", "webhook_trigger__path"]
 

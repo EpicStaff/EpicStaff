@@ -46,7 +46,10 @@ from tables.services.graph_bulk_save_service.factories import (
 )
 from tables.services.secrets.secret_use_checks import (
     SecretUseCheck,
+    check_cdt_node_write,
+    check_python_node_write,
     check_telegram_trigger_node_write,
+    check_webhook_trigger_node_write,
 )
 
 # Singletons — factories are stateless.
@@ -103,6 +106,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "python_node_ids",
         PythonNode,
         PythonNodeBulkSerializer,
+        secret_use_check=check_python_node_write,
     ),
     NodeTypeConfig(
         "file_extractor_node_list",
@@ -146,6 +150,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         ClassificationDecisionTableNode,
         ClassificationDecisionTableNodeBulkSerializer,
         saveable_factory=_CLASSIFICATION_DT_FACTORY,
+        secret_use_check=check_cdt_node_write,
     ),
     NodeTypeConfig(
         "decision_table_node_list",
@@ -173,6 +178,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         WebhookTriggerNode,
         WebhookTriggerNodeBulkSerializer,
         starts_runs=True,
+        secret_use_check=check_webhook_trigger_node_write,
     ),
     NodeTypeConfig(
         "telegram_trigger_node_list",

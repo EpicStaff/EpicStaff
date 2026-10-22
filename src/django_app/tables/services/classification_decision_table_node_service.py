@@ -26,6 +26,9 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
+from tables.services.secrets import SecretUseDeniedError
+from tables.services.secrets.request_actor import actor_from_request
+from tables.services.secrets.secret_use_checks import check_cdt_node_write
 from tables.utils.helpers import generate_file_name
 
 
@@ -88,6 +91,13 @@ class ClassificationDecisionTableNodeService:
             raw=raw_condition_groups,
             request=request,
         )
+
+        # After every validation, so a malformed payload reports its own errors first.
+        try:
+            check_cdt_node_write(actor_from_request(request), instance, serializer.validated_data)
+        except SecretUseDeniedError as denial:
+            # Reported like the serializer errors above, which the view already returns as 400.
+            raise DRFValidationError(denial.field_errors()) from denial
 
         node = serializer.save()
 
