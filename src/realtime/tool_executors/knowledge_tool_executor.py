@@ -10,7 +10,7 @@ from src.shared.models import (
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
-from utils.public_error import (
+from src.shared.public_error import (
     PublicErrorMessage,
     build_public_error_message,
     new_error_correlation_id,

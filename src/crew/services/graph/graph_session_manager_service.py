@@ -32,6 +32,11 @@ from src.crew.services.graph.session_audit_provider import (
 )
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import SessionData, StopSessionMessage
+from src.shared.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 from utils.singleton_meta import SingletonMeta
 
 # Reserved key smuggled through SessionData.initial_state (a pre-existing
@@ -371,7 +376,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             clear_session_flow_name(session_id)
 
         except Exception as e:
-            logger.exception(f"Failed to start session: {e}")
+            correlation_id = new_error_correlation_id()
+            logger.opt(exception=e).error(
+                "Failed to start session {session_id}: {error} (correlation_id={correlation_id})",
+                session_id=session_id,
+                error=str(e),
+                correlation_id=correlation_id,
+            )
             logger.log(
                 BENCH_LEVEL,
                 "bench {checkpoint}",
@@ -381,11 +392,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 reason=type(e).__name__,
             )
 
+            public_error = build_public_error_message(
+                PublicErrorMessage.SESSION_EXECUTION_FAILED, correlation_id
+            )
             await self.redis_service.aupdate_session_status(
-                session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
+                session_id=session_id, status="error", error=public_error
             )
             org_id = get_session_org(session_id)
-            failure_details = {"error": str(e)}
+            failure_details = {"error": public_error}
             if org_id is not None:
                 _dispatch_session_audit(
                     lambda: get_session_audit_writer().add_session_end(
