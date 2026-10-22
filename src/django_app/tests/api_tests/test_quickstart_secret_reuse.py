@@ -7,6 +7,8 @@ unbounded across runs, because _attach_api_key_secret ran once per config.
 """
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -379,3 +381,30 @@ def test_quickstart_uses_custom_model_without_base_url_when_no_built_in(
     assert resp.status_code == 200, resp.content
     assert config_class.objects.get(custom_name="quickstart_openai").model_id == own_model.id
     assert model_class.objects.filter(name=model_name).count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("model_class, provider_field, model_name, config_class", MODEL_KINDS)
+def test_quickstart_locks_reused_org_model(
+    client_a, org, quickstart_url, model_class, provider_field, model_name, config_class,
+):
+    # Locked so a concurrent edit of the model's base_url either lands before the
+    # base_url check reads it, or waits until the bundle's config is committed and
+    # then counts it.
+    provider = Provider.objects.create(name="openai")
+    _seed_built_in_models_except(provider, model_class)
+    model_class.objects.create(
+        name=model_name, org=org, is_custom=True, **{provider_field: provider}
+    )
+
+    with CaptureQueriesContext(connection) as captured:
+        resp = client_a.post(
+            quickstart_url, {"provider": "openai", "api_key": "sk-cold-start"}, format="json"
+        )
+
+    assert resp.status_code == 200, resp.content
+    table = model_class._meta.db_table
+    assert any(
+        "FOR UPDATE" in query["sql"] and f'FROM "{table}"' in query["sql"]
+        for query in captured.captured_queries
+    )

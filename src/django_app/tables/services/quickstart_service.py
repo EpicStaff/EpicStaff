@@ -333,7 +333,12 @@ class QuickstartService(metaclass=SingletonMeta):
         built_in_model = candidates.filter(org_id__isnull=True).first()
         if built_in_model is not None:
             return built_in_model
-        own_model = candidates.filter(org_id=org_id).first()
+        # Locked until the quickstart's transaction commits, and `base_url` read from
+        # the locked row: a concurrent edit of this model's `base_url` locks it too
+        # (check_llm_model_write / check_embedding_model_write), so it either lands
+        # first and is refused below, or waits and then counts the config attached here.
+        # Built-in models are immutable and need no lock.
+        own_model = candidates.filter(org_id=org_id).select_for_update().first()
         if own_model is not None:
             if own_model.base_url:
                 raise QuickstartCustomModelError(

@@ -438,6 +438,8 @@ class LLMConfigReadWriteViewSet(SecretUseCheckedViewSetMixin, OrgScopedViewSetMi
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
     secret_use_check = check_llm_config_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
 
     class LLMConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -488,6 +490,8 @@ class LLMModelReadWriteViewSet(
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
     secret_use_check = check_llm_model_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -515,6 +519,8 @@ class EmbeddingModelReadWriteViewSet(
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
     secret_use_check = check_embedding_model_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
     global_visibility_q = Q(is_custom=False)
     # force created rows into the org's custom, non-predefined subset (also
     # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
@@ -534,6 +540,8 @@ class EmbeddingConfigReadWriteViewSet(
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
     secret_use_check = check_embedding_config_write
+    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
+    secret_use_check_locks_rows = True
 
     class EmbeddingConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(

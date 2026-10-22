@@ -488,6 +488,15 @@ stored is not denied.
 No actor (no user to resolve), or an actor that is not a member of the org, is denied when a
 change needs `USE` — fail-safe, not fail-open.
 
+**Concurrent writes.** Rules 3 (model switch) and 4 read another row, so they lock the model
+row (`select_for_update`, two models in ascending pk order) and read `base_url` from the
+locked row; rule 4 locks before it counts configs. The LLM / embedding config and model
+viewsets set `secret_use_check_locks_rows = True`, which makes `SecretUseCheckedViewSetMixin` run the
+check and the save in one `transaction.atomic()`, so a concurrent model edit and config
+switch cannot both pass. Quickstart locks a reused org model the same way. Not covered: an
+admin adding a secret to a config while someone edits its (unchanged) model's `base_url` —
+the config write locks no model.
+
 **Write points.** Every place that saves a secret-bearing entity runs its check:
 
 | Write point | How |

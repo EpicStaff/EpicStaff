@@ -4,13 +4,16 @@
 validated data, keyed by model attribute names; a key absent from it is unchanged,
 so the persisted value stands in for it. Each check raises SecretUseDeniedError
 when the write needs secrets:USE and `actor` lacks it.
+
+The LLM and embedding config and model checks lock the model row they read
+(`select_for_update`), so they must run inside the transaction that saves the write.
 """
 
 from collections.abc import Callable
 
 from django.db import models
-from tables.models.embedding_models import EmbeddingConfig
-from tables.models.llm_models import LLMConfig
+from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from tables.models.llm_models import LLMConfig, LLMModel
 from tables.services.secrets.secret_resolver import extract_secret_marker_names
 from tables.services.secrets.secret_use_service import SecretActor, secret_use_service
 
@@ -36,25 +39,31 @@ def check_llm_config_write(actor: SecretActor | None, instance, data: dict) -> N
         current=current_base_url,
         incoming=data.get("base_url", current_base_url),
     )
-    _check_model_switch(actor, instance, data, carries_secret=carries_secret)
+    _check_model_switch(actor, instance, data, carries_secret=carries_secret, model_class=LLMModel)
 
 
 def check_embedding_config_write(actor: SecretActor | None, instance, data: dict) -> None:
     """Gate an EmbeddingConfig write: its API-key secret, its header markers, and its model's `base_url`."""
     _check_api_key_and_header_markers(actor, instance, data)
     _check_model_switch(
-        actor, instance, data, carries_secret=_config_carries_secret_after_write(instance, data)
+        actor,
+        instance,
+        data,
+        carries_secret=_config_carries_secret_after_write(instance, data),
+        model_class=EmbeddingModel,
     )
 
 
 def check_llm_model_write(actor: SecretActor | None, instance, data: dict) -> None:
     """Gate a change of an LLMModel's `base_url` while a config of it carries a secret."""
-    _check_model_base_url(actor, instance, data, config_class=LLMConfig)
+    _check_model_base_url(actor, instance, data, model_class=LLMModel, config_class=LLMConfig)
 
 
 def check_embedding_model_write(actor: SecretActor | None, instance, data: dict) -> None:
     """Gate a change of an EmbeddingModel's `base_url` while a config of it carries a secret."""
-    _check_model_base_url(actor, instance, data, config_class=EmbeddingConfig)
+    _check_model_base_url(
+        actor, instance, data, model_class=EmbeddingModel, config_class=EmbeddingConfig
+    )
 
 
 def check_realtime_config_write(actor: SecretActor | None, instance, data: dict) -> None:
@@ -282,33 +291,66 @@ def _check_api_key_and_header_markers(actor: SecretActor | None, instance, data:
 
 
 def _check_model_switch(
-    actor: SecretActor | None, instance, data: dict, *, carries_secret: bool
+    actor: SecretActor | None,
+    instance,
+    data: dict,
+    *,
+    carries_secret: bool,
+    model_class: type[models.Model],
 ) -> None:
-    """A config sends its requests to its model's `base_url`, so switching models can move them."""
+    """A config sends its requests to its model's `base_url`, so switching models can move them.
+
+    Both models' `base_url` are read from their rows locked FOR UPDATE, not from the
+    validated objects: a concurrent edit of either model's `base_url` locks the same
+    row (`_check_model_base_url`), so whichever write runs second sees what the first
+    committed instead of both passing on stale reads.
+    """
     # Before either model is read: a config without a secret may switch freely, and
-    # loading a model costs a query on every config update.
-    if not carries_secret:
+    # locking a model costs a query.
+    if not carries_secret or "model" not in data:
         return
-    current_model = _persisted_value(instance, "model")
+    current_model_id = _persisted_value(instance, "model_id")
+    incoming_model = data["model"]
+    incoming_model_id = incoming_model.pk if incoming_model is not None else None
+    if incoming_model_id == current_model_id:
+        return
+    base_url_by_model_id = _lock_models_and_read_base_urls(
+        model_class, (current_model_id, incoming_model_id)
+    )
     secret_use_service.check_destination(
         actor,
         field_path=("model",),
         carries_secret=carries_secret,
-        current=_model_base_url(current_model),
-        incoming=_model_base_url(data.get("model", current_model)),
+        current=base_url_by_model_id.get(current_model_id),
+        incoming=base_url_by_model_id.get(incoming_model_id),
     )
 
 
 def _check_model_base_url(
-    actor: SecretActor | None, instance, data: dict, *, config_class: type[models.Model]
+    actor: SecretActor | None,
+    instance,
+    data: dict,
+    *,
+    model_class: type[models.Model],
+    config_class: type[models.Model],
 ) -> None:
     # No config can use a model that is only being created.
     if instance is None:
         return
-    current_base_url = instance.base_url
-    incoming_base_url = data.get("base_url", current_base_url)
-    # Skips the config query on the usual edit; the service still treats None and ""
-    # as the same destination when they differ here.
+    incoming_base_url = data.get("base_url", instance.base_url)
+    # Skips the lock and the config query on the usual edit; the service still treats
+    # None and "" as the same destination when they differ here.
+    if incoming_base_url == instance.base_url:
+        return
+    # Locked before the configs are counted: a config switching to this model in a
+    # concurrent request locks this row too, so it has either committed (and is
+    # counted) or waits and then reads the new `base_url`. Not covered: a config that
+    # already uses this model gaining a secret concurrently, as that write locks no model.
+    current_base_url = (
+        model_class.objects.select_for_update()
+        .values_list("base_url", flat=True)
+        .get(pk=instance.pk)
+    )
     if incoming_base_url == current_base_url:
         return
     secret_use_service.check_destination(
@@ -317,6 +359,21 @@ def _check_model_base_url(
         carries_secret=_any_config_of_model_carries_secret(config_class, instance),
         current=current_base_url,
         incoming=incoming_base_url,
+    )
+
+
+def _lock_models_and_read_base_urls(
+    model_class: type[models.Model], model_ids: tuple[int | None, ...]
+) -> dict[int, str | None]:
+    # Locked in ascending pk order, so two configs switching between the same two
+    # models in opposite directions take the locks in the same order and cannot
+    # deadlock. A model deleted meanwhile is missing here and reads as no `base_url`:
+    # a save that still points the config at it fails on the foreign key.
+    return dict(
+        model_class.objects.select_for_update()
+        .filter(pk__in=[model_id for model_id in model_ids if model_id is not None])
+        .order_by("pk")
+        .values_list("pk", "base_url")
     )
 
 
@@ -359,10 +416,6 @@ def _references_secret_after_write(instance, data: dict, attribute: str) -> bool
     if attribute in data:
         return data[attribute] is not None
     return _persisted_value(instance, f"{attribute}_id") is not None
-
-
-def _model_base_url(model_row) -> str | None:
-    return model_row.base_url if model_row is not None else None
 
 
 def _persisted_value(instance, attribute: str):
