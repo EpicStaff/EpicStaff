@@ -56,6 +56,8 @@ class LLMConfig(BaseModel):
     seed = Column(Integer, nullable=True)
     extra_headers = Column(JSON, nullable=True, default=dict)
     timeout = Column(Float, nullable=True)
+    input_cost_per_token = Column(Float, nullable=True)
+    output_cost_per_token = Column(Float, nullable=True)
     reasoning_effort = Column(Text, nullable=True)
     is_visible = Column(Boolean, default=True)
 
@@ -100,6 +102,7 @@ class GraphRag(BaseModel):
     error_message = Column(Text, nullable=True)
     outdated_reasons = Column(JSON, nullable=False, default=dict)
     indexing_document_config_ids = Column(ARRAY(Integer), nullable=False, server_default="{}")
+    indexing_usage = Column(JSON, nullable=False, server_default="{}")
     slot = Column(String(1), server_default="a")
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

@@ -9,6 +9,7 @@ import {
     SelectItem,
 } from '@shared/components';
 import { NodeType } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
@@ -61,7 +62,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
             )
             .map((node) => ({
                 value: node.id,
-                name: node.node_name || node.id,
+                name: node.node_name ? formatNodeLabel(node) : node.id,
             }));
 
         return [{ name: 'Unselected', value: '' }, ...nodeItems];

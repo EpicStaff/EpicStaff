@@ -4,6 +4,7 @@ import { RouteTab, RouteTabsComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { QUICK_START_TOUR_ANCHORS } from '../../../quick-start-tour/quick-start-tour-anchors';
 
 @Component({
     selector: 'app-settings-page',
@@ -17,6 +18,7 @@ export class SettingsPageComponent {
             routerLink: 'quickstart',
             icon: 'bolt',
             label: 'Quickstart',
+            tourAnchor: QUICK_START_TOUR_ANCHORS.quickstartTab,
             isPermitted: () => this.permissionsService.can(ResourceCode.LlmConfigs, ActionCode.Create),
         },
         {

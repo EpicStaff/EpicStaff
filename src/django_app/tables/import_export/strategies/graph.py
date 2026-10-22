@@ -1,4 +1,3 @@
-import re
 import uuid
 from collections import defaultdict
 from copy import deepcopy
@@ -39,6 +38,7 @@ from tables.models import (
 )
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.models.label_models import Label
+from tables.services.node_number_service import NodeNumberService, source_order_key
 
 # Every reverse relation on Graph that holds its content (nodes, notes, edges).
 GRAPH_CHILD_RELATIONS = (*NODE_RELATIONS.values(), "edge_list")
@@ -261,7 +261,8 @@ class GraphStrategy(EntityImportExportStrategy):
         # The import carries no expected save_version, so bump unconditionally: an
         # editor still holding the old content then gets a conflict on its next save.
         Graph.objects.filter(pk=graph.pk).update(save_version=F("save_version") + 1)
-        # The serializer's full save() would otherwise write the stale counter back.
+        # The serializer saves this same instance next; its full save() would otherwise
+        # write the old save_version back.
         graph.refresh_from_db()
         GraphVersioningService().save_version(
             graph=graph,
@@ -274,6 +275,9 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
         self.wipe_graph_children(graph)
+        # The imported nodes are numbered in source order right above the numbers the
+        # wipe left behind (legacy CrewNodes), so 1..K when nothing survives.
+        NodeNumberService().rewind_to_surviving_nodes(graph.id)
         return replaced_telegram_keys
 
     def _restore_telegram_bot_keys(
@@ -337,6 +341,7 @@ class GraphStrategy(EntityImportExportStrategy):
         user=None,
         *,
         keep_node_uuids: bool,
+        preserve_node_numbers: bool = False,
     ) -> IDMapper:
         """Create a graph's nodes and edges from exported data.
 
@@ -346,13 +351,13 @@ class GraphStrategy(EntityImportExportStrategy):
         so nodes get no author and no last edit.
 
         Args:
-            user: The acting user, handed to every node strategy so references that
-                need a permission check (e.g. a key-value table) can gate on it.
-                `None` means there is no acting user.
             keep_node_uuids: Give each node the uuid it carries in `data` (restore,
                 in-place replace). When false, every node gets a new uuid, so the
                 same data can be added to a graph twice. See `KeptNodeUuids` for
                 the uuids that are not kept.
+            preserve_node_numbers: Keep each node's stored number (version restore).
+                When false, the nodes are numbered from the graph's counter in
+                source order. See `_create_nodes` for the numbers that cannot be kept.
         """
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
@@ -368,6 +373,7 @@ class GraphStrategy(EntityImportExportStrategy):
             old_graph_id,
             user,
             keep_node_uuids=keep_node_uuids,
+            preserve_node_numbers=preserve_node_numbers,
         )
 
         # Pass 2: create edges with remapped node IDs,
@@ -406,45 +412,36 @@ class GraphStrategy(EntityImportExportStrategy):
         user=None,
         *,
         keep_node_uuids: bool,
+        preserve_node_numbers: bool = False,
     ) -> list:
-        # Mirror the frontend's node numbering: a single graph-wide counter that
-        # starts above the highest metadata["nodeNumber"] already present in the
-        # graph, so imported nodes count up from the top instead of filling gaps
-        # (which could reuse an existing number). Each numbered node also gets its
-        # assigned number written back into metadata["nodeNumber"].
-        counter = self._max_node_number(graph)
+        supported_nodes = self._supported_nodes(
+            sorted(
+                nodes_data,
+                key=lambda node_data: source_order_key(
+                    node_data.get("node_number"), node_data.get("id")
+                ),
+            )
+        )
+        stored_numbers = [node_data.pop("node_number", None) for _, node_data in supported_nodes]
+        if preserve_node_numbers:
+            kept_numbers = NodeNumberService().keepable_numbers(graph.id, stored_numbers)
+        else:
+            kept_numbers = [None] * len(supported_nodes)
+        # A node without a kept number is numbered from the graph's counter as it is
+        # saved, and a kept number raises the counter. Creating the kept ones first and
+        # then the rest in source order puts every counter number above all kept ones,
+        # and renumbers #1, #4, #5 to the next three numbers in that order.
+        nodes_to_create = sorted(
+            zip(supported_nodes, kept_numbers, strict=True), key=lambda pair: pair[1] is None
+        )
         kept_uuids = KeptNodeUuids(graph) if keep_node_uuids else None
         created_nodes = []
 
-        for node_data in nodes_data:
-            node_type = node_data.pop("node_type")
-            # Backwards compat: old exports used "NoteNode"
-            if node_type == "NoteNode":
-                node_type = "GraphNote"
+        for (entity_type, node_data), node_number in nodes_to_create:
             old_id = node_data.get("id")
             # Taken out even when it is not kept, so a node serializer that one day
             # accepts `uuid` cannot write it behind keep_node_uuids=False.
             node_uuid = node_data.pop("uuid", None)
-
-            # Old archives contain node types that no longer exist, and a type can
-            # still be mapped while its strategy is gone — hence both checks.
-            # The edge passes below drop anything that pointed at them.
-            entity_type = NODE_TYPE_TO_ENTITY_TYPE.get(node_type)
-            if entity_type is None or not entity_registry.has_strategy(entity_type):
-                logger.warning(
-                    "Skipping node id={} of unsupported node_type={} during import "
-                    "(no longer supported)",
-                    old_id,
-                    node_type,
-                )
-                continue
-
-            if node_data.get("node_name"):
-                counter += 1
-                node_data["node_name"] = self._with_node_number(node_data["node_name"], counter)
-                metadata = node_data.get("metadata") or {}
-                metadata["nodeNumber"] = counter
-                node_data["metadata"] = metadata
 
             # Node strategies resolve their parent graph via
             # id_mapper.get_or_none(GRAPH, node_data["graph"]). For a full-graph
@@ -459,7 +456,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 id_mapper.map(EntityType.GRAPH, node_data["graph"], graph.id, was_created=False)
 
             strategy = entity_registry.get_strategy(entity_type)
-            node = strategy.create_entity(node_data, id_mapper, user=user)
+            node = strategy.create_entity(node_data, id_mapper, user=user, node_number=node_number)
             if node:
                 created_nodes.append(node)
 
@@ -473,34 +470,29 @@ class GraphStrategy(EntityImportExportStrategy):
 
         return created_nodes
 
-    def _with_node_number(self, name: str, number: int) -> str:
-        """Strip any trailing "#N" / "# N" suffix and append " #{number}"."""
-        base = re.sub(r"\s*#\s*\d+$", "", name).strip()
-        return f"{base} #{number}"
+    @staticmethod
+    def _supported_nodes(nodes_data: list) -> list[tuple[EntityType, dict]]:
+        supported_nodes = []
+        for node_data in nodes_data:
+            node_type = node_data.pop("node_type")
+            # Backwards compat: old exports used "NoteNode"
+            if node_type == "NoteNode":
+                node_type = "GraphNote"
 
-    def _max_node_number(self, graph: Graph) -> int:
-        """Return the highest ``metadata["nodeNumber"]`` across all of the
-        graph's nodes (0 if none)."""
-        max_num = 0
-        for relation in NODE_RELATIONS.values():
-            if not hasattr(graph, relation):
+            # Old archives contain node types that no longer exist, and a type can
+            # still be mapped while its strategy is gone — hence both checks.
+            # The edge passes drop anything that pointed at them.
+            entity_type = NODE_TYPE_TO_ENTITY_TYPE.get(node_type)
+            if entity_type is None or not entity_registry.has_strategy(entity_type):
+                logger.warning(
+                    "Skipping node id={} of unsupported node_type={} during import "
+                    "(no longer supported)",
+                    node_data.get("id"),
+                    node_type,
+                )
                 continue
-            qs = getattr(graph, relation)
-            if not hasattr(qs, "values_list"):
-                continue
-            model = qs.model
-            if not any(
-                f.name == "metadata" for f in model._meta.get_fields() if hasattr(f, "column")
-            ):
-                continue
-            for metadata in qs.values_list("metadata", flat=True):
-                if isinstance(metadata, dict):
-                    number = metadata.get("nodeNumber")
-                    # Exact type match: excludes bool (a subclass of int) without
-                    # a separate isinstance(number, bool) guard.
-                    if type(number) is int:
-                        max_num = max(max_num, number)
-        return max_num
+            supported_nodes.append((entity_type, node_data))
+        return supported_nodes
 
     def _create_edges(self, edges_data: list, graph: Graph, id_mapper: IDMapper):
         for edge_data in edges_data:

@@ -79,7 +79,7 @@ describe('extractToSubflow', () => {
             connections: [startToA, aToB],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'subgraph-1', 42);
+        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'subgraph-1', 42, 1);
 
         // Subflow should have: Start + 2 cloned nodes
         expect(result.subflowModel.nodes).toHaveLength(3);
@@ -131,7 +131,7 @@ describe('extractToSubflow', () => {
             connections: [startToOutside, outsideToSelected],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['selected']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['selected']), 'sg-1', 10, 1);
 
         // The inbound edge should be reconnected to the SubGraphNode's input port
         const parentConnections = result.parentModel.connections;
@@ -160,7 +160,7 @@ describe('extractToSubflow', () => {
             connections: [startToSelected, selectedToOutside],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['selected']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['selected']), 'sg-1', 10, 1);
 
         // Outbound edge (selected→outside) should not exist in parent
         const outboundEdge = result.parentModel.connections.find(
@@ -181,7 +181,7 @@ describe('extractToSubflow', () => {
         };
 
         // Include start-1 in selection — it should be excluded
-        const result = extractToSubflow(parentFlow, new Set(['start-1', 'a']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['start-1', 'a']), 'sg-1', 10, 1);
 
         // Start node stays in parent
         const parentStart = result.parentModel.nodes.find((n) => n.type === NodeType.START);
@@ -205,7 +205,7 @@ describe('extractToSubflow', () => {
             connections: [startToA],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10, 1);
 
         // Subflow: Start + 1 cloned node
         expect(result.subflowModel.nodes).toHaveLength(2);
@@ -233,7 +233,7 @@ describe('extractToSubflow', () => {
             connections: [startToA],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10, 1);
 
         // Key should be 'number' (from the variable path), not 'num' (the node alias)
         expect(result.subGraphNodeInputMap).toEqual({ number: 'variables.number' });
@@ -261,7 +261,7 @@ describe('extractToSubflow', () => {
             connections: [makeConnection('start-1', 'a', 'start-start', 'task-in')],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10, 1);
 
         // 'result' is produced by A and not in start vars — excluded
         expect(result.subGraphNodeInputMap).toEqual({
@@ -285,7 +285,7 @@ describe('extractToSubflow', () => {
             connections: [makeConnection('start-1', 'a', 'start-start', 'task-in')],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10, 1);
 
         // 'counter' is produced by A but exists in start vars — kept
         expect(result.subGraphNodeInputMap).toEqual({
@@ -310,7 +310,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10, 1);
 
         // Both reference 'variables.shared_var' → one entry keyed by 'shared_var'
         expect(result.subGraphNodeInputMap).toEqual({ shared_var: 'variables.shared_var' });
@@ -327,7 +327,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10, 1);
 
         const subflowStart = result.subflowModel.nodes.find((n) => n.type === NodeType.START)!;
         const startConnections = result.subflowModel.connections.filter((c) => c.sourceNodeId === subflowStart.id);
@@ -346,7 +346,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10, 1);
 
         const subGraphNode = result.parentModel.nodes.find((n) => n.type === NodeType.SUBGRAPH) as SubGraphNodeModel;
         expect(subGraphNode.position.x).toBe(200);
@@ -368,7 +368,7 @@ describe('extractToSubflow', () => {
         };
 
         // Only select A — b→c is external
-        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10, 1);
 
         const externalEdge = result.parentModel.connections.find(
             (c) => c.sourceNodeId === 'b' && c.targetNodeId === 'c'
@@ -385,7 +385,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10, 1);
 
         for (const node of result.subflowModel.nodes) {
             expect(node.ports).toBeTruthy();
@@ -406,7 +406,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10, 1);
 
         const subGraphNode = result.parentModel.nodes.find((n) => n.type === NodeType.SUBGRAPH) as SubGraphNodeModel;
         expect(subGraphNode.ports).toBeTruthy();
@@ -443,7 +443,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['dt', 'target-1', 'target-2']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['dt', 'target-1', 'target-2']), 'sg-1', 10, 1);
 
         const subflowDt = result.subflowModel.nodes.find((n) => n.type === NodeType.TABLE)!;
         const table = (
@@ -499,7 +499,7 @@ describe('extractToSubflow', () => {
         };
 
         // Extract only the target node — CDT stays in parent
-        const result = extractToSubflow(parentFlow, new Set(['extracted-node']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['extracted-node']), 'sg-1', 10, 1);
 
         const parentCdt = result.parentModel.nodes.find((n) => n.type === NodeType.CLASSIFICATION_TABLE)!;
         const table = (
@@ -537,7 +537,7 @@ describe('extractToSubflow', () => {
         };
 
         // Only extract dt, not outside-node
-        const result = extractToSubflow(parentFlow, new Set(['dt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['dt']), 'sg-1', 10, 1);
 
         const subflowDt = result.subflowModel.nodes.find((n) => n.type === NodeType.TABLE)!;
         const table = (subflowDt.data as { table: { default_next_node: string | null } }).table;
@@ -574,7 +574,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         // All external variables from expressions/manipulations should appear
         expect(result.subGraphNodeInputMap['status']).toBe('variables.status');
@@ -613,7 +613,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         expect(result.subGraphNodeInputMap['age']).toBe('variables.age');
         expect(result.subGraphNodeInputMap['name']).toBe('variables.name');
@@ -641,7 +641,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         expect(result.subGraphNodeInputMap['user_id']).toBe('variables.user_id');
         expect(result.subGraphNodeInputMap['final_score']).toBe('variables.final_score');
@@ -676,7 +676,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         expect(result.subGraphNodeInputMap['user_id']).toBe('variables.user_id');
         expect(result.subGraphNodeInputMap['final_score']).toBe('variables.final_score');
@@ -720,7 +720,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         // pre_result and post_result are produced by the CDT's own computations — excluded
         expect(result.subGraphNodeInputMap['pre_result']).toBeUndefined();
@@ -762,7 +762,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['producer', 'cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['producer', 'cdt']), 'sg-1', 10, 1);
 
         // internal_result is produced by 'producer' and not in start vars — excluded
         expect(result.subGraphNodeInputMap['internal_result']).toBeUndefined();
@@ -798,7 +798,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         // bare identifier `triage_result` should be detected and included
         expect(result.subGraphNodeInputMap['triage_result']).toBe('variables.triage_result');
@@ -832,7 +832,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         // `items` is a plausible variable — should be collected
         expect(result.subGraphNodeInputMap['items']).toBe('variables.items');
@@ -870,7 +870,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         // Only the root identifier should appear, not the property after the dot
         expect(result.subGraphNodeInputMap['trigger_payload']).toBe('variables.trigger_payload');
@@ -905,7 +905,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         expect(result.subGraphNodeInputMap['trigger_payload']).toBe('variables.trigger_payload');
         expect(result.subGraphNodeInputMap['items']).toBeUndefined();
@@ -940,7 +940,7 @@ describe('extractToSubflow', () => {
             connections: [],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['cdt']), 'sg-1', 10, 1);
 
         expect(result.subGraphNodeInputMap['trigger_payload']).toBe('variables.trigger_payload');
         expect(result.subGraphNodeInputMap['status']).toBe('variables.status');
@@ -966,7 +966,7 @@ describe('extractToSubflow', () => {
             connections: [startToA],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10, 1);
 
         // All four entries collapse to one top-level variable entry
         expect(result.subGraphNodeInputMap).toEqual({
@@ -996,7 +996,7 @@ describe('extractToSubflow', () => {
             connections: [startToA],
         };
 
-        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10);
+        const result = extractToSubflow(parentFlow, new Set(['a']), 'sg-1', 10, 1);
 
         expect(result.subGraphNodeInputMap).toEqual({
             foo: 'variables.foo',
@@ -1008,5 +1008,22 @@ describe('extractToSubflow', () => {
             foo: 'variables.foo',
             baz: 'variables.baz',
         });
+    });
+
+    it('gives the new subgraph node the number it is handed; the moved nodes keep theirs', () => {
+        const start = makeStartNode('start-1');
+        const nodeA = makeNode('a', NodeType.TASK, { node_name: 'Fetch', nodeNumber: 3 });
+        const nodeB = makeNode('b', NodeType.TASK, { node_name: 'Fetch', nodeNumber: 7 });
+        const parentFlow: FlowModel = { nodes: [start, nodeA, nodeB], connections: [] };
+
+        const result = extractToSubflow(parentFlow, new Set(['a', 'b']), 'sg-1', 10, 8);
+
+        const subGraphNode = result.parentModel.nodes.find((node) => node.id === 'sg-1');
+        expect(subGraphNode?.nodeNumber).toBe(8);
+        const movedNodes = result.subflowModel.nodes.filter((node) => node.type === NodeType.TASK);
+        expect(movedNodes.map((node) => [node.node_name, node.nodeNumber])).toEqual([
+            ['Fetch', 3],
+            ['Fetch', 7],
+        ]);
     });
 });

@@ -68,6 +68,11 @@ export interface CreatePythonCodeBody {
     libraries: string[];
     global_kwargs: Record<string, unknown>;
     secret_ids?: number[];
+    /**
+     * Seconds one run of the code may take. Omitted, a new tool gets the backend default and an existing one keeps
+     * its own; below the minimum is refused, above the maximum is saved as the maximum.
+     */
+    execution_timeout?: number;
 }
 
 /**

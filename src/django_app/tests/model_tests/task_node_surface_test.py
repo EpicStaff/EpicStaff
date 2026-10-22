@@ -134,21 +134,6 @@ def test_update_replaces_keeps_or_rejects_the_surface_set(
 
 
 @pytest.mark.django_db
-def test_posting_the_same_node_again_replaces_its_surface_set(client, graph, surfaces):
-    """Same (graph, node_name) POSTed again updates instead of creating (IdempotentNodeCreateMixin)."""
-    for surface_key, status in (("shared", 201), ("shared_b", 200)):
-        response = client.post(
-            "/api/tasknodes/",
-            {"graph": graph.pk, "node_name": "task-idempotent", "surface_list": [surfaces[surface_key].pk]},
-            format="json",
-        )
-        assert response.status_code == status, response.data
-
-    (node,) = TaskNode.objects.filter(graph=graph, node_name="task-idempotent")
-    assert _stored(node) == {surfaces["shared_b"].pk}
-
-
-@pytest.mark.django_db
 def test_content_hash_unchanged_by_surface_edit(graph, surfaces):
     """ContentHashMixin.generate_hash iterates _meta.fields only — M2M excluded."""
     node = TaskNode.objects.create(graph=graph, node_name="task-hash")

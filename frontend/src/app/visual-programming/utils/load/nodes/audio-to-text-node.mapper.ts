@@ -13,7 +13,7 @@ export function mapAudioToTextNodeToModel(n: GetAudioToTextNodeRequest): AudioTo
         nodeUuid: n.uuid,
         type: NodeType.AUDIO_TO_TEXT,
         node_name: n.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: n.node_number ?? undefined,
         data: undefined,
         position: ui.position,
         ports: null,

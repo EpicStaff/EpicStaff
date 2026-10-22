@@ -57,6 +57,11 @@ export interface GraphDto extends GetGraphLightRequest {
     last_edited_by: UserSummary | null;
     last_edited_at: string | null;
     save_version: number;
+    /**
+     * Read-only: the highest node number the graph has issued. Never lowered, so a deleted node's
+     * number is not given out again (only rebuilding the whole graph content restarts it).
+     */
+    node_number_seq: number;
     start_node_list: StartNode[];
     python_node_list: PythonNode[];
     task_node_list: TaskNode[];

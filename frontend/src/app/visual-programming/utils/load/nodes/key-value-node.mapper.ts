@@ -17,7 +17,7 @@ export function mapKeyValueNodeToModel(dto: GetKeyValueNodeRequest): KeyValueNod
         nodeUuid: dto.uuid,
         type: NodeType.KEY_VALUE,
         node_name: dto.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: dto.node_number ?? undefined,
         data: {
             key_value_table: dto.key_value_table,
             mode: dto.mode,

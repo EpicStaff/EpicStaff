@@ -1,6 +1,7 @@
 import { AuthorshipFields, KeyValueMode } from '@shared/models';
 
 import { NodeIdentityDto } from './node-identity.model';
+import { NumberedNodeDto } from './numbered-node-dto.model';
 
 // Shared with the session card, which colours its stripe by mode too.
 export type { KeyValueMode };
@@ -27,7 +28,7 @@ export interface KeyValueNodeData {
     entries: KeyValueEntry[];
 }
 
-export interface GetKeyValueNodeRequest extends KeyValueNodeData, AuthorshipFields, NodeIdentityDto {
+export interface GetKeyValueNodeRequest extends KeyValueNodeData, AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
     id: number;
     created_at: string;
     graph: number;

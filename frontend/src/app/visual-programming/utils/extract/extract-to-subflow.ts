@@ -18,11 +18,16 @@ export interface ExtractionResult {
 
 const START_NODE_HORIZONTAL_OFFSET = 200;
 
+/**
+ * Moves the selection into a new subflow behind a subgraph node numbered `subGraphNodeNumber`. The moved
+ * nodes send their old numbers as ordering hints; the new subflow numbers them 1..K in that order.
+ */
 export function extractToSubflow(
     parentFlow: FlowModel,
     selectedNodeIds: Set<string>,
     subGraphNodeId: string,
-    subflowGraphId: number
+    subflowGraphId: number,
+    subGraphNodeNumber: number
 ): ExtractionResult {
     const effectiveSelection = new Set(selectedNodeIds);
     for (const node of parentFlow.nodes) {
@@ -59,7 +64,13 @@ export function extractToSubflow(
 
     const subGraphNodeInputMap = buildSubGraphNodeInputMap(selectedNodes, unselectedNodes, parentFlow.nodes);
 
-    const subGraphNode = createSubGraphNode(subGraphNodeId, subflowGraphId, selectedNodes, subGraphNodeInputMap);
+    const subGraphNode = createSubGraphNode(
+        subGraphNodeId,
+        subGraphNodeNumber,
+        subflowGraphId,
+        selectedNodes,
+        subGraphNodeInputMap
+    );
 
     const reconnectedInboundConnections = reconnectInboundEdges(inbound, subGraphNode);
 
@@ -571,6 +582,7 @@ function buildSubGraphNodeInputMap(
 
 function createSubGraphNode(
     nodeId: string,
+    nodeNumber: number,
     subflowGraphId: number,
     selectedNodes: NodeModel[],
     inputMap: Record<string, unknown>
@@ -586,6 +598,7 @@ function createSubGraphNode(
         nodeUuid: generateUuid(),
         type: NodeType.SUBGRAPH,
         node_name: '',
+        nodeNumber,
         data: {
             id: subflowGraphId,
             uuid: '',

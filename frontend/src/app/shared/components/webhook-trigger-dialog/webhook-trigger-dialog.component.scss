@@ -17,6 +17,24 @@
         flex-shrink: 0;
     }
 
+    // The confirmation dialog's warning caution block, filled with the warning colour.
+    &__readonly-banner {
+        margin: 0;
+        padding: 8px 12px;
+        border-left: 3px solid var(--color-ks-status-warning);
+        border-radius: 10px;
+        background-color: var(--yellow-alpha-8);
+        color: var(--color-ks-status-warning);
+        font-size: var(--text-body-size);
+        // Looser than the body style, to match the confirmation dialog's caution block.
+        line-height: 1.5;
+
+        strong {
+            color: var(--white);
+            font-weight: 500;
+        }
+    }
+
     &__error-message {
         background-color: var(--red-450-alpha-10);
         color: var(--color-error, #ff4d4f);

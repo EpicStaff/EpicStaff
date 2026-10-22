@@ -1,6 +1,7 @@
 import { AuthorshipFields } from '@shared/models';
 
 import { NodeIdentityDto } from './node-identity.model';
+import { NumberedNodeDto } from './numbered-node-dto.model';
 
 export interface TelegramTriggerField {
     field_name: string;
@@ -83,7 +84,7 @@ export interface TelegramRegistrationBlocker {
     message: string;
 }
 
-export interface GetTelegramTriggerNodeRequest extends AuthorshipFields, NodeIdentityDto {
+export interface GetTelegramTriggerNodeRequest extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
     id: number;
     created_at: string;
     node_name: string;

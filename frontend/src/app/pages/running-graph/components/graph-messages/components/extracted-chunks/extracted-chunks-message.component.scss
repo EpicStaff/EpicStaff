@@ -56,6 +56,14 @@
     font-size: 0.85rem;
 }
 
+.usage {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+}
+
 .query {
     color: var(--gray-50);
     font-weight: 500;

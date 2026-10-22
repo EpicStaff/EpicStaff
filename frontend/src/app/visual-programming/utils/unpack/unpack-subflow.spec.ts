@@ -1,10 +1,18 @@
+import { TestBed } from '@angular/core/testing';
 import { NodeType } from '@shared/models';
 
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { EndNodeModel, NodeModel, StartNodeModel, SubGraphNodeModel } from '../../core/models/node.model';
 import { CustomPortId } from '../../core/models/port.model';
+import { FlowService } from '../../services/flow.service';
 import { unpackSubflow } from './unpack-subflow';
+
+/** Issues numbers after `last`, as the editor's counter would. */
+function numbersAfter(last: number): () => number {
+    let current = last;
+    return () => ++current;
+}
 
 function makeNode(id: string, type: NodeType, overrides: Partial<NodeModel> = {}): NodeModel {
     return {
@@ -127,7 +135,7 @@ describe('unpackSubflow', () => {
             connections: [startToA, aToB, bToEnd],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         // SubGraphNode should be removed
         expect(result.nodes.find((node) => node.id === 'sg-1')).toBeUndefined();
@@ -161,7 +169,7 @@ describe('unpackSubflow', () => {
             connections: [startToA, aToEnd],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         // No Start or End from the subflow should appear
         const startNodes = result.nodes.filter((node) => node.type === NodeType.START);
@@ -170,35 +178,6 @@ describe('unpackSubflow', () => {
 
         const endNodes = result.nodes.filter((node) => node.type === NodeType.END);
         expect(endNodes).toHaveLength(0);
-    });
-
-    it('resolves name conflicts by appending (2), (3), etc.', () => {
-        const parentStart = makeStartNode('parent-start');
-        const existingTask = makeNode('existing', NodeType.TASK, { node_name: 'My Task' });
-        const subGraphNode = makeSubGraphNode('sg-1');
-
-        const parentFlow: FlowModel = {
-            nodes: [parentStart, existingTask, subGraphNode],
-            connections: [],
-        };
-
-        const subStart = makeStartNode('sub-start');
-        const conflictingTask = makeNode('conflict-task', NodeType.TASK, {
-            node_name: 'My Task',
-            position: { x: 100, y: 0 },
-        });
-        const startToConflict = makeConnection('sub-start', 'conflict-task', 'start-start', 'task-in');
-
-        const subflowModel: FlowModel = {
-            nodes: [subStart, conflictingTask],
-            connections: [startToConflict],
-        };
-
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
-
-        const taskNames = result.nodes.filter((node) => node.type === NodeType.TASK).map((node) => node.node_name);
-        expect(taskNames).toContain('My Task');
-        expect(taskNames).toContain('My Task (2)');
     });
 
     it('rewires inbound edges to entry-point nodes', () => {
@@ -222,7 +201,7 @@ describe('unpackSubflow', () => {
             connections: [startToA],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         // The edge from outside should now point to the inlined task node
         const inlinedTask = result.nodes.find((node) => node.type === NodeType.TASK && node.id !== 'existing')!;
@@ -263,7 +242,7 @@ describe('unpackSubflow', () => {
             connections: [startToA],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const inlinedTask = result.nodes.find((node) => node.type === NodeType.TASK)!;
         // parentKey should be merged in
@@ -298,7 +277,7 @@ describe('unpackSubflow', () => {
             connections: [startToA],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const inlinedTask = result.nodes.find((node) => node.type === NodeType.TASK)!;
         // Node already maps 'variables.number' under alias 'num' — should NOT add 'number' key
@@ -327,7 +306,7 @@ describe('unpackSubflow', () => {
             connections: [startToNested],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const subgraphNodes = result.nodes.filter((node) => node.type === NodeType.SUBGRAPH);
         // The original sg-1 is removed, but the nested one should be inlined (with new ID)
@@ -362,7 +341,7 @@ describe('unpackSubflow', () => {
             connections: [startToA],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const inlinedNodes = result.nodes.filter((node) => node.type === NodeType.TASK);
         expect(inlinedNodes).toHaveLength(2);
@@ -400,7 +379,7 @@ describe('unpackSubflow', () => {
             connections: [startToA, startToB],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         // The single inbound edge should fan out to both entry-point nodes
         const rewiredEdges = result.connections.filter((connection) => connection.sourceNodeId === 'outside');
@@ -434,7 +413,7 @@ describe('unpackSubflow', () => {
             connections: [startToA],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         // The outbound edge (sg-1 -> downstream) should be removed entirely
         const edgesToDownstream = result.connections.filter((connection) => connection.targetNodeId === 'downstream');
@@ -452,7 +431,9 @@ describe('unpackSubflow', () => {
 
         const subflowModel: FlowModel = { nodes: [], connections: [] };
 
-        expect(() => unpackSubflow(parentFlow, 'nonexistent', subflowModel)).toThrow(/not found in parent flow/);
+        expect(() => unpackSubflow(parentFlow, 'nonexistent', subflowModel, numbersAfter(0))).toThrow(
+            /not found in parent flow/
+        );
     });
 
     it('generates ports on all inlined nodes', () => {
@@ -473,7 +454,7 @@ describe('unpackSubflow', () => {
             connections: [startToA],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const inlinedTask = result.nodes.find((node) => node.type === NodeType.TASK)!;
         expect(inlinedTask.ports).toBeTruthy();
@@ -504,7 +485,7 @@ describe('unpackSubflow', () => {
             connections: [startToA, aToB],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const inlinedTasks = result.nodes.filter((node) => node.type === NodeType.TASK);
         expect(inlinedTasks).toHaveLength(2);
@@ -558,7 +539,7 @@ describe('unpackSubflow', () => {
             connections: [startToA],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const updatedCdt = result.nodes.find((node) => node.id === 'cdt-1')!;
         const table = (updatedCdt.data as Record<string, unknown>)['table'] as Record<string, unknown>;
@@ -598,7 +579,7 @@ describe('unpackSubflow', () => {
             connections: [],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const updatedDt = result.nodes.find((node) => node.id === 'dt-1')!;
         const table = (updatedDt.data as Record<string, unknown>)['table'] as Record<string, unknown>;
@@ -626,7 +607,7 @@ describe('unpackSubflow', () => {
             connections: [startToA, aToB],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const inlinedNodes = result.nodes.filter((node) => node.type === NodeType.TASK);
         expect(inlinedNodes).toHaveLength(2);
@@ -659,7 +640,7 @@ describe('unpackSubflow', () => {
             connections: [],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const inlinedNodes = result.nodes.filter(
             (node) => node.type === NodeType.TASK || node.type === NodeType.PYTHON
@@ -694,40 +675,47 @@ describe('unpackSubflow', () => {
             connections: [startToA],
         };
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, numbersAfter(0));
 
         const inlinedTask = result.nodes.find((node) => node.type === NodeType.TASK)!;
         // Single node centroid = its own position, so it lands exactly at SubGraphNode position
         expect(inlinedTask.position).toEqual({ x: 500, y: 250 });
     });
 
-    it('handles name conflicts with incrementing suffixes', () => {
-        const parentStart = makeStartNode('parent-start');
-        const existingTask1 = makeNode('existing-1', NodeType.TASK, { node_name: 'Duplicate' });
-        const existingTask2 = makeNode('existing-2', NodeType.PYTHON, { node_name: 'Duplicate (2)' });
-        const subGraphNode = makeSubGraphNode('sg-1');
+    describe('names and numbers of the inlined nodes', () => {
+        function unpackInto(parentNodes: NodeModel[], subflowNodes: NodeModel[]): NodeModel[] {
+            const flowService = TestBed.inject(FlowService);
+            const parentFlow: FlowModel = { nodes: [...parentNodes, makeSubGraphNode('sg-1')], connections: [] };
+            flowService.setFlow(parentFlow);
+            const subflowModel: FlowModel = { nodes: [makeStartNode('sub-start'), ...subflowNodes], connections: [] };
 
-        const parentFlow: FlowModel = {
-            nodes: [parentStart, existingTask1, existingTask2, subGraphNode],
-            connections: [],
-        };
+            const result = unpackSubflow(parentFlow, 'sg-1', subflowModel, () => flowService.getNextNodeNumber());
 
-        const subStart = makeStartNode('sub-start');
-        const conflictTask = makeNode('conflict', NodeType.TASK, {
-            node_name: 'Duplicate',
-            position: { x: 100, y: 0 },
+            const parentIds = new Set(parentNodes.map((node) => node.id));
+            return result.nodes.filter((node) => !parentIds.has(node.id));
+        }
+
+        it('keeps each name, even one a parent node already has, and numbers the nodes after the canvas', () => {
+            const parentTask = makeNode('parent-task', NodeType.TASK, { node_name: 'Fetch', nodeNumber: 5 });
+            const innerTask = makeNode('inner-task', NodeType.TASK, { node_name: 'Fetch', nodeNumber: 1 });
+            const innerPython = makeNode('inner-python', NodeType.PYTHON, { node_name: 'Parse', nodeNumber: 2 });
+
+            const inlined = unpackInto([parentTask], [innerTask, innerPython]);
+
+            expect(inlined.map((node) => [node.node_name, node.nodeNumber])).toEqual([
+                ['Fetch', 6],
+                ['Parse', 7],
+            ]);
         });
-        const startToConflict = makeConnection('sub-start', 'conflict', 'start-start', 'task-in');
 
-        const subflowModel: FlowModel = {
-            nodes: [subStart, conflictTask],
-            connections: [startToConflict],
-        };
+        it('gives an inlined note no number and does not use one up', () => {
+            const parentTask = makeNode('parent-task', NodeType.TASK, { nodeNumber: 5 });
+            const innerNote = makeNode('inner-note', NodeType.NOTE, { node_name: 'Read me' });
+            const innerTask = makeNode('inner-task', NodeType.TASK, { nodeNumber: 1 });
 
-        const result = unpackSubflow(parentFlow, 'sg-1', subflowModel);
+            const inlined = unpackInto([parentTask], [innerNote, innerTask]);
 
-        const inlinedTask = result.nodes.find((node) => node.type === NodeType.TASK && node.id !== 'existing-1')!;
-        // "Duplicate" and "Duplicate (2)" are taken, so it should get "Duplicate (3)"
-        expect(inlinedTask.node_name).toBe('Duplicate (3)');
+            expect(inlined.map((node) => node.nodeNumber)).toEqual([undefined, 6]);
+        });
     });
 });

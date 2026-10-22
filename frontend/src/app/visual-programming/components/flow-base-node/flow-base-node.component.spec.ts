@@ -8,7 +8,9 @@ import { AgentDefinitionsApiService } from '../../../features/agent-definitions/
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
 import { NodeModel } from '../../core/models/node.model';
+import { FlowService } from '../../services/flow.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
+import { FlowSettingsService } from '../../services/flow-settings.service';
 import { mapKeyValueNodeToModel } from '../../utils/load/nodes/key-value-node.mapper';
 import { mapStartNodeToModel } from '../../utils/load/nodes/start-node.mapper';
 import { FlowBaseNodeComponent } from './flow-base-node.component';
@@ -18,7 +20,8 @@ const KEY_VALUE_NODE = {
         id: 12,
         uuid: '00000000-0000-4000-8000-000000000012',
         graph: 1,
-        node_name: 'Key-Value #1',
+        node_number: 1,
+        node_name: 'Key-Value',
         key_value_table: 3,
         mode: 'write',
         entries: [
@@ -39,7 +42,7 @@ const KEY_VALUE_NODE = {
 describe('FlowBaseNodeComponent key-value summary', () => {
     let fixture: ComponentFixture<FlowBaseNodeComponent>;
 
-    const summaryTab = (): HTMLElement | null => fixture.nativeElement.querySelector('.node-number-badge.has-summary');
+    const summaryTab = (): HTMLElement | null => fixture.nativeElement.querySelector('.key-value-summary-tab');
     const summaryParts = (): string[] =>
         Array.from<HTMLElement>(summaryTab()!.querySelectorAll('.summary > span:not(.summary-separator)')).map((part) =>
             part.textContent!.trim()
@@ -73,12 +76,12 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         fixture.detectChanges();
     }
 
-    it('sums up mode, table and keys after the node number, the table name cut short, in full on hover', () => {
+    it('sums up mode, table and keys in the tab without the node number, the table name cut short, in full on hover', () => {
         render(KEY_VALUE_NODE);
 
-        expect(summaryTab()!.querySelector('.node-number')!.textContent!.trim()).toBe('#1');
         expect(summaryParts()).toEqual(['Write', 'Very very long tabl…', '2 keys']);
-        expect(separators()).toEqual(['-', '/', '/']);
+        expect(separators()).toEqual(['/', '/']);
+        expect(summaryTab()!.textContent).not.toContain('#');
         expect(summaryTab()!.title).toBe('Write / Very very long table name / 2 keys');
     });
 
@@ -86,7 +89,6 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         render(KEY_VALUE_NODE);
 
         expect(summaryTab()!.querySelector('.summary')!.getAttribute('aria-hidden')).toBe('true');
-        expect(summaryTab()!.querySelector('.node-number')!.closest('[aria-hidden]')).toBeNull();
         expect(fixture.nativeElement.querySelector('.icon-wrapper [role="img"]').getAttribute('aria-label')).toBe(
             'Write / Very very long table name / 2 keys'
         );
@@ -152,5 +154,158 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         });
 
         expect(summaryTab()).toBeNull();
+    });
+});
+
+describe('FlowBaseNodeComponent node number', () => {
+    let fixture: ComponentFixture<FlowBaseNodeComponent>;
+    let settings: FlowSettingsService;
+
+    const element = (selector: string): HTMLElement | null => fixture.nativeElement.querySelector(selector);
+    const text = (selector: string): string | undefined => element(selector)?.textContent?.trim();
+    const numberLine = (): string | undefined => text('.title-column .node-number-line');
+    const titleColumnClasses = (): DOMTokenList => element('.title-column')!.classList;
+
+    function render(node: NodeModel, { alwaysShow = false, otherNodes = [] as NodeModel[] } = {}): void {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(false) } },
+                { provide: AgentDefinitionsApiService, useValue: { definitions: signal([]) } },
+                {
+                    provide: LlmConfigStorageService,
+                    useValue: { isConfigsLoaded: signal(false), configs: signal([]), getAllConfigs: () => of([]) },
+                },
+                {
+                    provide: KeyValueTablesStorageService,
+                    useValue: { tables: signal([]), loadTables: () => of([]) },
+                },
+            ],
+        });
+        settings = TestBed.inject(FlowSettingsService);
+        settings.alwaysShowNodeNumbers.set(alwaysShow);
+        TestBed.inject(FlowService).setFlow({ nodes: [node, ...otherNodes], connections: [] });
+        fixture = TestBed.createComponent(FlowBaseNodeComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+    }
+
+    const pythonNode = { id: 'fetch', type: NodeType.PYTHON, node_name: 'Fetch', nodeNumber: 3 } as NodeModel;
+
+    const tableLikeNode = (type: NodeType, overrides: Record<string, unknown> = {}): NodeModel =>
+        ({
+            id: 'table',
+            backendId: null,
+            type,
+            node_name: 'Route',
+            nodeNumber: 3,
+            data: { name: 'Route', table: { default_next_node: null, next_error_node: null, condition_groups: [] } },
+            position: { x: 0, y: 0 },
+            ports: [],
+            color: '',
+            icon: '',
+            size: { width: 300, height: 200 },
+            input_map: {},
+            output_variable_path: null,
+            ...overrides,
+        }) as unknown as NodeModel;
+
+    const NODE_TITLE = '.interactive-node-body .title';
+    const TABLE_TITLE = '.decision-table__header .title';
+
+    beforeEach(() => localStorage.clear());
+
+    // Hover and the name's glide are CSS (:hover, transform), which jsdom does not apply: these tests pin
+    // the DOM and the classes the styles key on — `has-node-number` (lifts on hover) and `is-number-pinned`.
+    describe.each([
+        { kind: 'a Python node', node: pythonNode, titleSelector: NODE_TITLE, name: 'Fetch' },
+        {
+            kind: 'a Key-Value node',
+            node: { ...KEY_VALUE_NODE, nodeNumber: 3 },
+            titleSelector: NODE_TITLE,
+            name: 'Key-Value',
+        },
+        { kind: 'a decision table', node: tableLikeNode(NodeType.TABLE), titleSelector: TABLE_TITLE, name: 'Route' },
+        {
+            kind: 'a classification table',
+            node: tableLikeNode(NodeType.CLASSIFICATION_TABLE),
+            titleSelector: TABLE_TITLE,
+            name: 'Route',
+        },
+    ])('on $kind', ({ node, titleSelector, name }) => {
+        it.each([false, true])(
+            'titles the node with its name only and puts "#N" under it (always shown: %s)',
+            (alwaysShow) => {
+                render(node, { alwaysShow });
+
+                expect(text(titleSelector)).toBe(name);
+                expect(numberLine()).toBe('#3');
+            }
+        );
+
+        // Only the pin is checkable here: showing the number on hover is a CSS :hover rule, which jsdom does not apply.
+        it('pins the number while the setting is on, and unpins it when the setting goes off', () => {
+            render(node);
+            expect(titleColumnClasses()).toContain('has-node-number');
+            expect(titleColumnClasses()).not.toContain('is-number-pinned');
+
+            settings.alwaysShowNodeNumbers.set(true);
+            fixture.detectChanges();
+            expect(titleColumnClasses()).toContain('is-number-pinned');
+
+            settings.alwaysShowNodeNumbers.set(false);
+            fixture.detectChanges();
+            expect(titleColumnClasses()).not.toContain('is-number-pinned');
+        });
+
+        it('has no number in the bar above the node, and keeps its delete chip there', () => {
+            render(node, { alwaysShow: true });
+
+            expect(text('.node-action-bar')).not.toContain('#');
+            expect(element('.node-action-bar .delete-button')).not.toBeNull();
+        });
+    });
+
+    it.each([
+        { kind: 'a node without a number', node: { ...pythonNode, nodeNumber: undefined } },
+        { kind: 'the End node', node: { id: 'end', type: NodeType.END, node_name: 'End', nodeNumber: 5 } as NodeModel },
+        { kind: 'a table without a number', node: tableLikeNode(NodeType.TABLE, { nodeNumber: undefined }) },
+    ])('shows no number on $kind, and its name stays centred alone', ({ node }) => {
+        render(node, { alwaysShow: true });
+
+        expect(numberLine()).toBeUndefined();
+        expect(titleColumnClasses()).not.toContain('has-node-number');
+        expect(titleColumnClasses()).not.toContain('is-number-pinned');
+    });
+
+    it.each([
+        { type: NodeType.TABLE, fallback: 'Decision Table' },
+        { type: NodeType.CLASSIFICATION_TABLE, fallback: 'Classification Table' },
+    ])('titles a $type node without a name with its default title, and still shows "#N"', ({ type, fallback }) => {
+        render(tableLikeNode(type, { node_name: '' }), { alwaysShow: true });
+
+        expect(text(TABLE_TITLE)).toBe(fallback);
+        expect(numberLine()).toBe('#3');
+    });
+
+    // The node body squares the corner the tab sits on, so only a node with a tab may be marked.
+    it.each([
+        { kind: 'a Key-Value node', node: KEY_VALUE_NODE, hasTab: true },
+        { kind: 'a Python node', node: pythonNode, hasTab: false },
+    ])('draws the tab above the node only for $kind with a summary', ({ node, hasTab }) => {
+        render(node);
+
+        expect(element('.key-value-summary-tab') !== null).toBe(hasTab);
+        expect(element('.interactive-node-body')!.classList.contains('has-summary-tab')).toBe(hasTab);
+    });
+
+    it('names the next node of a decision table with its number, so same-named nodes are told apart', () => {
+        const fetchNode = { id: 'fetch', type: NodeType.PYTHON, node_name: 'Fetch', nodeNumber: 4 } as NodeModel;
+        const tableNode = tableLikeNode(NodeType.TABLE, {
+            data: { name: 'Route', table: { default_next_node: 'fetch', next_error_node: null, condition_groups: [] } },
+        });
+
+        render(tableNode, { otherNodes: [fetchNode, { ...fetchNode, id: 'fetch-again', nodeNumber: 9 }] });
+
+        expect(text('.decision-table__group .group-status')).toBe('(Fetch #4)');
     });
 });

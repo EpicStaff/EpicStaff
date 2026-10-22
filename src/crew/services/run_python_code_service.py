@@ -8,6 +8,7 @@ from models.state import State
 from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.redis_keys import crew_code_result_channel
@@ -99,6 +100,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 secrets=python_code_data.secrets,
                 org_id=python_code_data.org_id,
                 storage_credentials=storage_credentials,
+                execution_timeout=python_code_data.execution_timeout,
                 reply_to_crew_channel=True,
             )
         except ValidationError:
@@ -120,6 +122,13 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         try:
             await self.redis_service.apublish(
                 settings.CODE_EXEC_CHANNEL, code_task_data.model_dump_json()
+            )
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="sandbox_dispatched",
+                session_id=code_task_data.session_id,
+                execution_id=unique_task_id,
             )
             logger.debug("Waiting for code result {}", unique_task_id)
             return await self._await_result(unique_task_id, result_future, stop_event)

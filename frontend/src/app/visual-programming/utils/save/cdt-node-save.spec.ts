@@ -19,6 +19,7 @@ const DTO: GetClassificationDecisionTableNodeRequest = {
     last_edited_at: null,
     id: 21,
     graph: 1,
+    node_number: 1,
     node_name: 'Triage',
     pre_python_code: null,
     pre_input_map: {},

@@ -290,59 +290,6 @@ def test_created_by_in_update_body_cannot_replace_author(
     assert _author_id(GraphNote, note.pk) == regular_user.id
 
 
-# ---- idempotent create ----
-
-
-@pytest.mark.django_db
-def test_idempotent_create_on_unauthored_node_leaves_it_unauthored(
-    editor_client, graph, python_code
-):
-    node = _python_node(graph, python_code)
-
-    response = editor_client.post(
-        _list_url("pythonnode"),
-        {"graph": graph.id, "node_name": node.node_name, "python_code": _PYTHON_CODE_DATA},
-        format="json",
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert response.data["id"] == node.pk
-    assert _author_id(PythonNode, node.pk) is None
-
-
-@pytest.mark.django_db
-def test_idempotent_create_on_authored_node_keeps_author(
-    editor_client, regular_user, graph, python_code
-):
-    node = _python_node(graph, python_code)
-    PythonNode.objects.filter(pk=node.pk).update(created_by=regular_user)
-
-    response = editor_client.post(
-        _list_url("pythonnode"),
-        {"graph": graph.id, "node_name": node.node_name, "python_code": _PYTHON_CODE_DATA},
-        format="json",
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(PythonNode, node.pk) == regular_user.id
-
-
-@pytest.mark.django_db
-def test_idempotent_decision_table_create_on_unauthored_node_leaves_it_unauthored(
-    editor_client, graph
-):
-    node = DecisionTableNode.objects.create(graph=graph, node_name="decide")
-
-    response = editor_client.post(
-        _list_url("decisiontablenode"),
-        {"graph": graph.id, "node_name": "decide", "condition_groups": []},
-        format="json",
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    assert _author_id(DecisionTableNode, node.pk) is None
-
-
 # ---- graph bulk save ----
 
 

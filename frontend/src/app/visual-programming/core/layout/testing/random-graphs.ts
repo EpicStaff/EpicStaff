@@ -6,10 +6,15 @@ import { NodeModel } from '../../models/node.model';
 import { connect, FlowFixture, makeNode, port, tableNode, tableRowRole } from './fixtures';
 
 /**
- * Seeded random flow for the quality corpus; the same seed gives the same graph. Every node gets
- * real ports (plain nodes `input`/`out0`/`out1`, tables `table-in` + rows) and tables their visual
- * height. Some connections point at ports that don't exist (`bogus-role`, a table's `input`) and
- * stay stale on purpose.
+ * Generates a seeded random flow for the quality corpus. The same seed always produces the same
+ * graph (deterministic LCG PRNG). Every node gets real ports (plain nodes: `input`/`out0`/`out1`;
+ * tables: `table-in` + per-row outputs) and tables get their visual height. Some connections
+ * intentionally point at ports that don't exist (`bogus-role`, a table's `input`) to test
+ * resilience to stale port references.
+ *
+ * @param seed - Integer seed for the LCG random number generator. Same seed = same graph.
+ * @param options.withTables - When true, ~30% of generated nodes are decision/classification
+ *   tables with 0-5 rows. When false, only plain nodes (agent, python, end) are created.
  */
 export function randomGraph(seed: number, options: { withTables: boolean }): FlowFixture {
     let state = seed;
@@ -93,10 +98,15 @@ const SCATTER_X_JITTERS = [0, 20, 40];
 const SCATTER_VERTICAL_GAPS = [20, 40, 60, 80, 120, 200];
 
 /**
- * A hand-made-looking layout for `nodes`: random columns on a 600-px pitch with a small x jitter,
- * each column stacked top to bottom in random order with random gaps (20 to 200 px). Everything is
- * on the 20-px grid and nothing overlaps, but wires run backwards and between stacked nodes, which
- * an arranged layout never produces (stacked-gap cases). Same seed, same positions.
+ * Produces a hand-made-looking layout for `nodes` by distributing them into random columns on a
+ * 600-px pitch with a small x jitter, stacking each column top-to-bottom in random order with
+ * random vertical gaps (20-200 px). Everything stays on the 20-px grid and nothing overlaps,
+ * but wires may run backwards and between stacked nodes — scenarios an auto-arranged layout
+ * never produces (stacked-gap cases). Same seed always gives the same positions.
+ *
+ * @param nodes - The nodes to scatter. Each node's `size.height` determines vertical spacing.
+ * @param seed - Integer seed for the LCG random number generator.
+ * @returns A map from node id to the assigned position.
  */
 export function scatteredPositions(nodes: NodeModel[], seed: number): Map<string, IPoint> {
     let state = seed;
@@ -123,7 +133,13 @@ export function scatteredPositions(nodes: NodeModel[], seed: number): Map<string
     return positions;
 }
 
-/** Deterministic Fisher–Yates on the same LCG, for the shuffle-invariance checks. */
+/**
+ * Deterministic Fisher-Yates shuffle using the same LCG as `randomGraph`, for shuffle-invariance
+ * checks (verifying that layout results are independent of input order).
+ *
+ * @param items - The array to shuffle. Not mutated; returns a new array.
+ * @param seed - Integer seed for the LCG random number generator.
+ */
 export function shuffled<T>(items: T[], seed: number): T[] {
     const copy = [...items];
     let state = seed;

@@ -1,4 +1,5 @@
 import { ActionCode, NodeType } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 
 import { KeyValueEntryLookup } from '../../../features/key-value-tables/models/key-value-table.model';
 import { KeyValueEntry, KeyValueMode, KeyValueNodeData } from '../models/key-value-node.model';
@@ -269,7 +270,7 @@ export function invalidKeyValueNodeMessages(nodes: NodeModel[]): string[] {
     return nodes
         .filter((node): node is KeyValueNodeModel => node.type === NodeType.KEY_VALUE)
         .filter((node) => !hasValidKeyValueEntries(node.data))
-        .map((node) => `"${node.node_name}" has invalid keys or variable paths`);
+        .map((node) => `"${formatNodeLabel(node)}" has invalid keys or variable paths`);
 }
 
 /**

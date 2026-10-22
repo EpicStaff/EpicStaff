@@ -142,48 +142,6 @@ export function resolveOverlapsForNode(anchorId: string, allNodes: NodeModel[]):
     return movedNodes;
 }
 
-// TODO candidate to remove if nobody works on it
-
-// export function resolveDraggedNodePositions(
-//     allNodes: NodeModel[],
-//     draggedNodeIds: Set<string>,
-//     runtimePositions: Map<string, IPoint>
-// ): NodeModel[] {
-//     const updatedNodesById = new Map<string, NodeModel>();
-//     const workingNodes = allNodes.map((node) => {
-//         const runtimePosition = runtimePositions.get(node.id);
-//         if (!runtimePosition || !draggedNodeIds.has(node.id)) {
-//             return node;
-//         }
-
-//         const updatedNode = { ...node, position: runtimePosition };
-//         updatedNodesById.set(node.id, updatedNode);
-//         return updatedNode;
-//     });
-
-//     for (const id of draggedNodeIds) {
-//         const current = workingNodes.find((node) => node.id === id);
-//         if (!current) continue;
-
-//         const freePos = findNearestFreePosition(
-//             current.position,
-//             getCollisionBounds(current),
-//             workingNodes.filter((node) => node.id !== id)
-//         );
-
-//         if (freePos.x !== current.position.x || freePos.y !== current.position.y) {
-//             const updatedNode = { ...current, position: freePos };
-//             const index = workingNodes.findIndex((node) => node.id === id);
-//             if (index >= 0) {
-//                 workingNodes[index] = updatedNode;
-//             }
-//             updatedNodesById.set(id, updatedNode);
-//         }
-//     }
-
-//     return Array.from(updatedNodesById.values());
-// }
-
 function rectOverlaps(aPos: IPoint, aBounds: CollisionBounds, bPos: IPoint, bBounds: CollisionBounds): boolean {
     const aLeft = aPos.x + aBounds.offsetX;
     const aTop = aPos.y + aBounds.offsetY;

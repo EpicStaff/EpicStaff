@@ -15,8 +15,9 @@ from tables.models.base_models import (
     BaseGlobalNode,
     BaseGraphEntity,
     ContentHashMixin,
-    NodeIdentityMixin,
     GraphAuthorModel,
+    NodeIdentityMixin,
+    NumberedNode,
     SoftDeleteFields,
     SoftDeleteMixin,
     TestPayloadMixin,
@@ -77,6 +78,32 @@ class Graph(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixi
         default=False, help_text="If 'True' -> flow is connected to EpicChat widget."
     )
     save_version = models.BigIntegerField(default=1)
+    # High-water mark of issued node badge numbers. Written only by NodeNumberService,
+    # and lowered only when an import replaces the graph's content (rewind_to_surviving_nodes).
+    # A version restore keeps it.
+    node_number_seq = models.IntegerField(default=0, editable=False)
+
+    def save(self, *args, **kwargs):
+        """Save the graph, never writing `node_number_seq` on an update.
+
+        The counter moves only through NodeNumberService's UPDATEs. A full save of an
+        instance loaded before a number was issued would otherwise write its stale value
+        back and lower the counter, and the next number issued would repeat one that a
+        live node holds. An insert still writes the default.
+        """
+        if not self._state.adding and self.pk is not None and not kwargs.get("force_insert"):
+            update_fields = kwargs.get("update_fields")
+            if update_fields is None:
+                deferred_fields = self.get_deferred_fields()
+                update_fields = [
+                    field.name
+                    for field in self._meta.concrete_fields
+                    if not field.primary_key and field.attname not in deferred_fields
+                ]
+            kwargs["update_fields"] = [
+                field_name for field_name in update_fields if field_name != "node_number_seq"
+            ]
+        super().save(*args, **kwargs)
 
     @classmethod
     def increment_version_if_current(cls, pk: int, expected: int) -> int:
@@ -108,7 +135,7 @@ class Graph(OrgScopedModel, LastEditTrackedModel, TimestampMixin, SoftDeleteMixi
         ]
 
 
-class BaseNode(BaseGraphEntity, BaseGlobalNode):
+class BaseNode(BaseGraphEntity, BaseGlobalNode, NumberedNode):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE)
     node_name = models.CharField(max_length=255, blank=True)
     input_map = models.JSONField(default=dict)
@@ -169,6 +196,7 @@ class PythonNode(GraphAuthorModel, BaseNode, NodeIdentityMixin, SoftDeleteFields
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
             "python_code",
             "test_input",
         ]
@@ -397,7 +425,12 @@ class StartNode(
 
 
 class DecisionTableNode(
-    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields
+    GraphAuthorModel,
+    BaseGraphEntity,
+    BaseGlobalNode,
+    NumberedNode,
+    NodeIdentityMixin,
+    SoftDeleteFields,
 ):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="decision_table_node_list"
@@ -423,6 +456,7 @@ class DecisionTableNode(
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
         ]
         data = {
             f.name: str(getattr(self, f.name))
@@ -598,6 +632,7 @@ class WebhookTriggerNode(
     BaseGraphEntity,
     TestPayloadMixin,
     BaseGlobalNode,
+    NumberedNode,
     NodeIdentityMixin,
     SoftDeleteFields,
 ):
@@ -635,6 +670,7 @@ class WebhookTriggerNode(
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
             "python_code",
             "test_payload",
         ]
@@ -657,6 +693,7 @@ class TelegramTriggerNode(
     BaseGraphEntity,
     TestPayloadMixin,
     BaseGlobalNode,
+    NumberedNode,
     NodeIdentityMixin,
     SoftDeleteFields,
 ):
@@ -695,6 +732,7 @@ class TelegramTriggerNode(
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
             "test_payload",
         ]
         data = {
@@ -730,7 +768,12 @@ class TelegramTriggerNodeField(ContentHashMixin, SoftDeleteFields):
 
 
 class ScheduleTriggerNode(
-    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields
+    GraphAuthorModel,
+    BaseGraphEntity,
+    BaseGlobalNode,
+    NumberedNode,
+    NodeIdentityMixin,
+    SoftDeleteFields,
 ):
     class RunMode(models.TextChoices):
         ONCE = "once", "Once"
@@ -785,6 +828,7 @@ class ScheduleTriggerNode(
             "content_hash",
             "metadata",
             "created_by",
+            "node_number",
             "current_runs",
             "next_run_date_time",
         ]
@@ -798,7 +842,12 @@ class ScheduleTriggerNode(
 
 
 class ClassificationDecisionTableNode(
-    GraphAuthorModel, BaseGraphEntity, BaseGlobalNode, NodeIdentityMixin, SoftDeleteFields
+    GraphAuthorModel,
+    BaseGraphEntity,
+    BaseGlobalNode,
+    NumberedNode,
+    NodeIdentityMixin,
+    SoftDeleteFields,
 ):
     graph = models.ForeignKey(
         "Graph",
@@ -866,10 +915,6 @@ class ClassificationDecisionTableNode(
         constraints = [
             soft_delete_consistency_constraint(),
             node_uuid_unique_constraint(),
-            models.UniqueConstraint(
-                fields=["graph", "node_name"],
-                name="unique_graph_node_name_for_classification_dt_node",
-            ),
         ]
 
 

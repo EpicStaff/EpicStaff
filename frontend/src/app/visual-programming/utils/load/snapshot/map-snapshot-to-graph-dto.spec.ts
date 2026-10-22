@@ -3,13 +3,17 @@ import { NodeType } from '@shared/models';
 import { GraphVersionSnapshot } from '../../../../features/flows/models/graph-version-preview.model';
 import { FlowModel } from '../../../core/models/flow.model';
 import { GetKnowledgeRetrieverNodeRequest } from '../../../core/models/knowledge-retriever-node.model';
-import { KeyValueNodeModel, NodeModel } from '../../../core/models/node.model';
+import { KeyValueNodeModel, NodeModel, PythonNodeModel } from '../../../core/models/node.model';
 import {
     LIVE_AUTHORSHIP,
     LIVE_NODE_ID as ID,
     LIVE_WEBHOOK_TRIGGER_ID,
+    liveAgent,
     liveGraph,
     liveKeyValue,
+    liveNote,
+    livePython,
+    liveStart,
     liveSubgraph,
     liveTask,
     liveTelegram,
@@ -204,6 +208,26 @@ describe('buildPreviewFlowModel', () => {
         }
     });
 
+    it('keeps the execution timeout of python code, and leaves it out for versions saved without one', () => {
+        const timed: GraphVersionSnapshot = {
+            nodes: [
+                exported('PythonNode', {
+                    ...livePython,
+                    python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '', execution_timeout: 90 },
+                }),
+            ],
+        };
+        const pythonCodeOf = (version: GraphVersionSnapshot): PythonNodeModel['data'] =>
+            (
+                buildPreviewFlowModel(version, secretsByName, availableFlows).flow.nodes.find(
+                    (node) => node.type === NodeType.PYTHON
+                ) as PythonNodeModel
+            ).data;
+
+        expect(pythonCodeOf(timed).execution_timeout).toBe(90);
+        expect((byId(ID.python) as PythonNodeModel).data.execution_timeout).toBeUndefined();
+    });
+
     it('keeps the webhook storage flag and turns it off for versions saved without one', () => {
         const withStorage: GraphVersionSnapshot = {
             nodes: [
@@ -263,6 +287,72 @@ describe('mapNodeAuthorshipToCanvas', () => {
         expect(mapNodeAuthorshipToCanvas({ '2': withExtra }, snapshotIdToCanvasId).get('python-canvas-id')).toEqual(
             recorded
         );
+    });
+});
+
+describe('buildPreviewFlowModel (node numbers)', () => {
+    // A version keeps the numbers its nodes had in the source graph, gaps included, and restoring
+    // it keeps them too, so the preview shows the stored numbers as they are.
+    const version: GraphVersionSnapshot = {
+        nodes: [
+            exported('StartNode', liveStart),
+            exported('PythonNode', {
+                ...livePython,
+                node_number: 5,
+                python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
+            }),
+            exported('TaskNode', { ...liveTask, node_number: 1, inline_surface: null }),
+            exported('AgentNode', { ...liveAgent, node_number: 4 }),
+            exported('GraphNote', liveNote),
+        ],
+    };
+    const numberOf = (snapshot: GraphVersionSnapshot, id: number): number | undefined => {
+        const { flow, snapshotIdToCanvasId } = buildPreviewFlowModel(snapshot, secretsByName, availableFlows);
+        return nodeWithSnapshotId(flow, snapshotIdToCanvasId, id).nodeNumber;
+    };
+
+    it('keeps the stored numbers #1, #4 and #5, gaps included', () => {
+        expect(numberOf(version, ID.task)).toBe(1);
+        expect(numberOf(version, ID.agent)).toBe(4);
+        expect(numberOf(version, ID.python)).toBe(5);
+    });
+
+    it('leaves Start and Note unnumbered', () => {
+        expect(numberOf(version, ID.start)).toBeUndefined();
+        expect(numberOf(version, ID.note)).toBeUndefined();
+    });
+
+    it.each([1, 1_000_000])('shows the boundary number %s as stored', (stored) => {
+        const boundary: GraphVersionSnapshot = {
+            nodes: [exported('TaskNode', { ...liveTask, node_number: stored, inline_surface: null })],
+        };
+
+        expect(numberOf(boundary, ID.task)).toBe(stored);
+    });
+
+    it.each([0, -1, 1_000_001, 4.5, null])('does not show the unusable stored number %s as stored', (stored) => {
+        const unusable: GraphVersionSnapshot = {
+            nodes: [exported('TaskNode', { ...liveTask, node_number: stored, inline_surface: null })],
+        };
+        const [adaptedTask] = mapSnapshotToGraphDto(unusable, secretsByName).task_node_list ?? [];
+
+        expect(adaptedTask.node_number).toBeNull();
+        expect(numberOf(unusable, ID.task)).not.toBe(stored);
+    });
+
+    it('sets the counter floor to the highest usable stored number', () => {
+        expect(mapSnapshotToGraphDto(version, secretsByName).node_number_seq).toBe(5);
+    });
+
+    it('ignores an unusable stored number when setting the counter floor', () => {
+        const withUnusable: GraphVersionSnapshot = {
+            nodes: [
+                exported('TaskNode', { ...liveTask, node_number: 2, inline_surface: null }),
+                exported('AgentNode', { ...liveAgent, node_number: 1_000_001 }),
+            ],
+        };
+
+        expect(mapSnapshotToGraphDto(withUnusable, secretsByName).node_number_seq).toBe(2);
     });
 });
 

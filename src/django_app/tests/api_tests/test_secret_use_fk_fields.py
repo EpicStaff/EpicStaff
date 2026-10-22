@@ -215,6 +215,64 @@ class TestFkFieldsAreGated:
 # tables/views/model_view_sets.py.
 # ---------------------------------------------------------------------------
 
+_FULL_CRUD = int(
+    Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
+)
+# Editing a Telegram trigger node also needs flows:use (a trigger node starts runs).
+_FLOWS_FULL = _FULL_CRUD | int(Permission.USE)
+
+
+def _client_with_grants(
+    *, org: Organization, django_user_model, email: str, resource_permissions: dict
+):
+    """An APIClient for a user whose custom role holds the given per-resource permission bitmasks."""
+    role = Role.objects.create(name=f"role-{email}", org=org, is_built_in=False)
+    for resource_type, bitmask in resource_permissions.items():
+        RolePermission.objects.create(
+            role=role, resource_type=resource_type, permissions=bitmask
+        )
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    return client
+
+
+@pytest.fixture
+def no_use_client_6b(db, django_user_model, default_org):
+    """Holds READ (not USE) on secrets, plus full CRUD on the resources 6b's five viewsets gate on."""
+    return _client_with_grants(
+        org=default_org,
+        django_user_model=django_user_model,
+        email="fkuse6b_nouse@example.com",
+        resource_permissions={
+            ResourceType.SECRETS.value: int(Permission.READ),
+            ResourceType.LLM_CONFIGS.value: _FULL_CRUD,
+            ResourceType.VOICE.value: _FULL_CRUD,
+            ResourceType.TOOLS.value: _FULL_CRUD,
+            ResourceType.FLOWS.value: _FLOWS_FULL,
+        },
+    )
+
+
+@pytest.fixture
+def use_client_6b(db, django_user_model, default_org):
+    """Holds READ + USE on secrets, plus full CRUD on the resources 6b's five viewsets gate on."""
+    return _client_with_grants(
+        org=default_org,
+        django_user_model=django_user_model,
+        email="fkuse6b_use@example.com",
+        resource_permissions={
+            ResourceType.SECRETS.value: int(Permission.READ | Permission.USE),
+            ResourceType.LLM_CONFIGS.value: _FULL_CRUD,
+            ResourceType.VOICE.value: _FULL_CRUD,
+            ResourceType.TOOLS.value: _FULL_CRUD,
+            ResourceType.FLOWS.value: _FLOWS_FULL,
+        },
+    )
+
+
 @pytest.fixture
 def mcp_tool_pointing_at_secret_a(default_org, secret_a) -> McpTool:
     return McpTool.objects.create(

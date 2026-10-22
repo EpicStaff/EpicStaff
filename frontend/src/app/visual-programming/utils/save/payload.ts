@@ -1,5 +1,6 @@
 import { DEFAULT_KEY_VALUE_MODE, MISSING_END_OUTPUT_MAP } from '../../core/constants/default-node-data';
 import { slugifyPortName } from '../../core/helpers/helpers';
+import { isNumberedNodeType } from '../../core/helpers/node-number.util';
 import { AgentNodeTaskUi, AgentNodeTaskWrite } from '../../core/models/agent-node.model';
 import { CdtSection, normalizeCdtSectionColor } from '../../core/models/cdt-section.model';
 import {
@@ -19,9 +20,10 @@ import {
     ScheduleTriggerNodeModel,
 } from '../../core/models/node.model';
 import { toStoredCdtExplanations } from '../cdt-explanations';
+import { isPythonCodeBlockSaved } from './cdt-python-code-block';
 import { hasPersistedWaypoints, mergeWaypointsIntoMetadata } from './edge-waypoints.helpers';
 import { toNodeMetadata } from './metadata';
-import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
+import { ConnectionDiff, CreatedNodeItemKeys, NodeDiff, NodeDiffByType } from './types';
 
 function resolveNodeRef(
     uuid: string | null,
@@ -201,29 +203,29 @@ function buildCdtNodePayload(
     return {
         graph: graphId,
         node_name: node.node_name,
-        pre_python_code:
-            preCodeValue.trim() === '' && !preSecretIds.length
-                ? null
-                : {
-                      code: preCodeValue,
-                      libraries: preComp?.libraries ?? [],
-                      entrypoint: 'main',
-                      global_kwargs: {},
-                      secret_ids: preSecretIds,
-                  },
+        pre_python_code: isPythonCodeBlockSaved(preCodeValue, preSecretIds)
+            ? {
+                  code: preCodeValue,
+                  libraries: preComp?.libraries ?? [],
+                  entrypoint: 'main',
+                  global_kwargs: {},
+                  secret_ids: preSecretIds,
+                  execution_timeout: preComp?.execution_timeout,
+              }
+            : null,
         pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
         pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
         pre_use_storage: tableData.pre_use_storage ?? false,
-        post_python_code:
-            postCodeValue.trim() === '' && !postSecretIds.length
-                ? null
-                : {
-                      code: postCodeValue,
-                      libraries: postComp?.libraries ?? [],
-                      entrypoint: 'main',
-                      global_kwargs: {},
-                      secret_ids: postSecretIds,
-                  },
+        post_python_code: isPythonCodeBlockSaved(postCodeValue, postSecretIds)
+            ? {
+                  code: postCodeValue,
+                  libraries: postComp?.libraries ?? [],
+                  entrypoint: 'main',
+                  global_kwargs: {},
+                  secret_ids: postSecretIds,
+                  execution_timeout: postComp?.execution_timeout,
+              }
+            : null,
         post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
         post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
         post_use_storage: tableData.post_use_storage ?? false,
@@ -290,6 +292,17 @@ function buildAgentTasksPayload(tasks: AgentNodeTaskUi[]): AgentNodeTaskWrite[] 
     });
 }
 
+// The node uuid is sent on create only: the backend keeps it immutable and rejects a changed one on update.
+function createdNodeItemKeys(node: NodeModel): CreatedNodeItemKeys {
+    const hint = isNumberedNodeType(node.type) ? node.nodeNumber : undefined;
+    return {
+        id: null,
+        temp_id: node.id,
+        ...(node.nodeUuid != null ? { uuid: node.nodeUuid } : {}),
+        ...(hint != null ? { node_number_hint: hint } : {}),
+    };
+}
+
 export function buildBulkSavePayload(
     graphId: number,
     nodeDiff: NodeDiffByType,
@@ -298,17 +311,8 @@ export function buildBulkSavePayload(
     idMap: Map<string, number>,
     saveVersion: number
 ): Record<string, unknown> {
-    // The node uuid is sent on create only: the backend keeps it immutable and rejects a changed one on update.
-    const nodeItems = <T extends { id: string; backendId: number | null; nodeUuid: string | null }>(
-        diff: NodeDiff<T>,
-        mapPayload: (node: T) => Record<string, unknown>
-    ) => [
-        ...diff.toCreate.map((node) => ({
-            id: null,
-            temp_id: node.id,
-            ...(node.nodeUuid !== null ? { uuid: node.nodeUuid } : {}),
-            ...mapPayload(node),
-        })),
+    const nodeItems = <T extends NodeModel>(diff: NodeDiff<T>, mapPayload: (node: T) => Record<string, unknown>) => [
+        ...diff.toCreate.map((node) => ({ ...createdNodeItemKeys(node), ...mapPayload(node) })),
         ...diff.toUpdate.map(({ current: node }) => ({ id: node.backendId, ...mapPayload(node) })),
     ];
 

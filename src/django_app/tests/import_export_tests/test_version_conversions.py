@@ -1,6 +1,6 @@
 """
-Tests for v1→v2 and v2→v3 import/export version conversion, and the shared
-variable_conversion helper.
+Tests for v1→v2, v2→v3 and v3→v4 import/export version conversion, and the
+shared variable_conversion helper.
 
 These tests are pure dict-transform tests — no DB access required.
 """
@@ -14,7 +14,13 @@ from src.shared.models.variable_conversion import (
     json_schema_node_to_nested_variable,
     args_schema_to_variables,
 )
-from tables.import_export.version_conversions.convertions import v1_to_v2, v2_to_v3
+from tables.import_export.version_conversions.base import VersionConverter
+from tables.import_export.version_conversions.convertions import (
+    v1_to_v2,
+    v2_to_v3,
+    v3_to_v4,
+)
+from tables.utils.legacy_node_number import split_legacy_node_name
 
 
 # ──────────────────────────────────────────
@@ -730,3 +736,91 @@ class TestV2ToV3:
         result = v2_to_v3(data)
 
         assert result == expected
+
+
+# ──────────────────────────────────────────
+# v3_to_v4 converter — badge number moves into node_number
+# ──────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("node_name", "metadata_number", "expected"),
+    [
+        ("Python-Node #3", 3, ("Python-Node", 3)),
+        ("Step #2", 5, ("Step #2", 5)),
+        ("Agent #4", None, ("Agent", 4)),
+        ("Plain", None, ("Plain", None)),
+        ("Plain", 6, ("Plain", 6)),
+        ("#7", None, ("#7", 7)),
+        ("Agent # 4 ", 4, ("Agent", 4)),
+        ("Agent #4", True, ("Agent", 4)),
+        ("Agent #4", "4", ("Agent", 4)),
+        ("Agent #4", 0, ("Agent", 4)),
+        ("Agent #1000000", None, ("Agent", 1_000_000)),
+        ("Agent #1000001", None, ("Agent #1000001", None)),
+        ("Plain", 1_000_001, ("Plain", None)),
+        ("Order #20240101123456", None, ("Order #20240101123456", None)),
+        ("Order #20240101123456", 3, ("Order #20240101123456", 3)),
+        ("", None, ("", None)),
+    ],
+)
+def test_split_legacy_node_name(node_name, metadata_number, expected):
+    assert split_legacy_node_name(node_name, metadata_number) == expected
+
+
+def _v3_bundle(*nodes):
+    return {"version": 3, "main_entity": "Flow", "Flow": [{"id": 10, "nodes": list(nodes)}]}
+
+
+class TestV3ToV4:
+    def test_badge_moves_from_name_and_metadata_into_node_number(self):
+        bundle = _v3_bundle(
+            {
+                "id": 1,
+                "node_type": "AgentNode",
+                "node_name": "Agent #4",
+                "metadata": {"nodeNumber": 4, "position": {"x": 1, "y": 2}},
+            }
+        )
+
+        node = v3_to_v4(bundle)["Flow"][0]["nodes"][0]
+
+        assert node["node_name"] == "Agent"
+        assert node["node_number"] == 4
+        assert node["metadata"] == {"position": {"x": 1, "y": 2}}
+
+    def test_name_suffix_that_is_not_the_badge_is_kept(self):
+        bundle = _v3_bundle(
+            {"id": 1, "node_type": "PythonNode", "node_name": "Step #2", "metadata": {"nodeNumber": 5}}
+        )
+
+        node = v3_to_v4(bundle)["Flow"][0]["nodes"][0]
+
+        assert (node["node_name"], node["node_number"], node["metadata"]) == ("Step #2", 5, {})
+
+    def test_node_that_already_has_node_number_is_left_untouched(self):
+        # Snapshots rewritten by the backfill migration are clean but still say version 3.
+        node = {"id": 1, "node_type": "PythonNode", "node_name": "Step #2", "node_number": 5}
+        bundle = _v3_bundle(copy.deepcopy(node))
+
+        assert v3_to_v4(bundle)["Flow"][0]["nodes"][0] == node
+
+    def test_node_without_a_name_is_left_untouched(self):
+        node = {"id": 2, "node_type": "StartNode", "metadata": {"nodeNumber": 1}}
+        bundle = _v3_bundle(copy.deepcopy(node))
+
+        assert v3_to_v4(bundle)["Flow"][0]["nodes"][0] == node
+
+    def test_bundle_without_flow_key_passes_through(self):
+        bundle = {"version": 3, "LLMConfig": [{"id": 1}]}
+
+        assert v3_to_v4(copy.deepcopy(bundle)) == bundle
+
+    def test_version_converter_brings_a_v3_file_to_v4(self):
+        bundle = _v3_bundle({"id": 1, "node_type": "AgentNode", "node_name": "Agent #4"})
+
+        converted = VersionConverter.convert(bundle)
+
+        assert converted["version"] == 4
+        node = converted["Flow"][0]["nodes"][0]
+        assert (node["node_name"], node["node_number"]) == ("Agent", 4)

@@ -27,12 +27,18 @@ class BulkSaveEntityMixin:
     id: optional/nullable, absent or null for new entities.
     temp_id: wire-only UUID, FE assigns to new nodes so edges can reference them
     before real DB ids are known. Never persisted
+    node_number_hint: wire-only, the "#N" badge the editor showed for a new node.
+    Only orders the nodes created in one save; the number comes from the counter.
+    Ignored on update. Never persisted
     """
 
     def get_fields(self):
         fields = super().get_fields()
         fields["id"] = serializers.IntegerField(required=False, allow_null=True)
         fields["temp_id"] = serializers.UUIDField(required=False, allow_null=True, default=None)
+        fields["node_number_hint"] = serializers.IntegerField(
+            required=False, min_value=1, write_only=True
+        )
         return fields
 
 
@@ -103,16 +109,7 @@ class AgentNodeBulkSerializer(BulkSaveNodeMixin, AgentNodeSerializer):
 class ClassificationDecisionTableNodeBulkSerializer(
     BulkSaveNodeMixin, ClassificationDecisionTableNodeSerializer
 ):
-    def get_validators(self):
-        # The UniqueTogetherValidator for (graph, node_name) fires during Pass 1
-        # (validation), before deletions run. If a node with the same name is being
-        # deleted and re-created in the same bulk-save request, the old record is
-        # still in the DB at validation time, causing a false positive error.
-        # The DB-level constraint still enforces correctness: deletions always
-        # precede inserts inside the atomic _execute_writes transaction.
-        from rest_framework.validators import UniqueTogetherValidator
-
-        return [v for v in super().get_validators() if not isinstance(v, UniqueTogetherValidator)]
+    pass
 
 
 class DecisionTableNodeBulkSerializer(BulkSaveNodeMixin, DecisionTableNodeSerializer):

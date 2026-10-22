@@ -15,6 +15,7 @@ import {
     BulkDeleteNaiveRagDocumentDtoResponse,
     BulkUpdateNaiveRagDocumentsRequest,
     BulkUpdateNaiveRagDocumentsResponse,
+    EstimateDocumentConfig,
     NaiveRagDocumentConfig,
     RunNaiveRagDocumentChunkingRequest,
     UpdateNaiveRagDocumentConfigError,
@@ -169,6 +170,17 @@ export class NaiveRagDocumentsStorageService implements StorageService {
     public bulkPartialUpdate(ragId: number, docIds: number[]): Observable<BulkUpdateNaiveRagDocumentsResponse> {
         if (!docIds.length) return EMPTY;
 
+        const configs = this.buildPendingBulkConfigs(docIds);
+
+        if (!configs.length) return EMPTY;
+
+        return this.naiveRagService.bulkUpdateDocumentConfigs(ragId, configs).pipe(
+            tap((response) => this.handleBulkPartialUpdate(response)),
+            catchError((err) => throwError(() => err))
+        );
+    }
+
+    private buildPendingBulkConfigs(docIds: number[]): BulkUpdateNaiveRagDocumentsRequest[] {
         const pendingMap = this.pendingEdits.pending();
         const effective = this.documents();
         const configs: BulkUpdateNaiveRagDocumentsRequest[] = [];
@@ -184,13 +196,14 @@ export class NaiveRagDocumentsStorageService implements StorageService {
                 additional_params: doc.additional_params,
             });
         }
+        return configs;
+    }
 
-        if (!configs.length) return EMPTY;
-
-        return this.naiveRagService.bulkUpdateDocumentConfigs(ragId, configs).pipe(
-            tap((response) => this.handleBulkPartialUpdate(response)),
-            catchError((err) => throwError(() => err))
-        );
+    public buildPendingEstimateConfigs(docIds: number[]): EstimateDocumentConfig[] {
+        return this.buildPendingBulkConfigs(docIds).map(({ id, ...settings }) => ({
+            document_config_id: id,
+            ...settings,
+        }));
     }
 
     public toggleAll(all: boolean, ids?: number[]) {

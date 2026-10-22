@@ -1,9 +1,10 @@
 import sys
 
+import settings
 from loguru import logger
 
 logger.remove()
-logger.add(sys.stdout, format="{time} {level} {message}", level="INFO")
+logger.add(sys.stdout, format="{time} {level} {message}", level=settings.LOG_LEVEL)
 
 
 def log_exception(exc_type, exc_value, exc_traceback):

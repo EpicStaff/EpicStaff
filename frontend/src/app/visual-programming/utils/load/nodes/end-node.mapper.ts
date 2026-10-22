@@ -13,7 +13,6 @@ export function mapEndNodeToModel(en: EndNode): EndNodeModel {
         nodeUuid: en.uuid,
         type: NodeType.END,
         node_name: en.node_name ?? '__end_node__',
-        nodeNumber: ui.nodeNumber,
         data: { output_map: en.output_map ?? {} },
         position: ui.position,
         ports: null,

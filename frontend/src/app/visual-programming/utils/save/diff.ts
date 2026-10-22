@@ -366,6 +366,8 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
         post_libraries: tableData?.post_computation?.libraries || [],
         pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
         post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),
+        pre_execution_timeout: tableData?.pre_computation?.execution_timeout,
+        post_execution_timeout: tableData?.post_computation?.execution_timeout,
         sections: ((tableData?.sections || []) as CdtSection[])
             .slice()
             .sort((a, b) => a.id.localeCompare(b.id))

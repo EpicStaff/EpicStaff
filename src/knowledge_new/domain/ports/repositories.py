@@ -10,10 +10,12 @@ from domain.models import (
     Document,
     EmbeddingConfig,
     FoundChunk,
+    GraphPricingConfig,
     IndexedChunk,
     PreviewChunk,
     Rag,
 )
+from domain.usage import IndexingRunUsage
 
 if TYPE_CHECKING:
     from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -37,6 +39,15 @@ class AbstractNaiveRagRepository(abc.ABC):
 
         Args:
             rag: The `Rag` aggregate.
+        """
+
+    @abc.abstractmethod
+    async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage):
+        """Record `run` as the RAG's last run and add it to the RAG's total usage.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+            run: What the finished, failed or cancelled index run consumed.
         """
 
     @abc.abstractmethod
@@ -163,6 +174,15 @@ class AbstractGraphRagRepository(abc.ABC):
         """
 
     @abc.abstractmethod
+    async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage):
+        """Record `run` as the RAG's last run and add it to the RAG's total usage.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+            run: What the finished, failed or cancelled index run consumed.
+        """
+
+    @abc.abstractmethod
     async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list["TextDocument"]:
         """Return `TextDocument` objects for the given `ids` within `rag_id`, with text extracted from raw content.
 
@@ -190,6 +210,14 @@ class AbstractGraphRagRepository(abc.ABC):
         Args:
             rag_id: Primary key of the GraphRAG collection.
             slot: Optional slot override; when None the active slot from the DB row is used.
+        """
+
+    @abc.abstractmethod
+    async def get_pricing_config(self, rag_id: int) -> GraphPricingConfig | None:
+        """Return the settings that price the actual usage of `rag_id`, or `None` if unset.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
         """
 
     @abc.abstractmethod

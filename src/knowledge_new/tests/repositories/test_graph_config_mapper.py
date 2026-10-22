@@ -9,7 +9,10 @@ pytest.importorskip(
 )
 
 from domain.enums import SlotEnum  # noqa: E402
-from infrastructure.database.mappers.graph import graph_rag_orm_to_graphrag_config  # noqa: E402
+from infrastructure.database.mappers.graph import (  # noqa: E402
+    graph_rag_orm_to_graphrag_config,
+    graph_rag_orm_to_pricing_config,
+)
 
 
 def _make_fake_rag(
@@ -18,6 +21,7 @@ def _make_fake_rag(
     slot: SlotEnum = SlotEnum.A,
     provider_name: str = "openai",
     model_name: str = "gpt-4o",
+    without_index_config: bool = False,
     **llm_config_fields,
 ) -> types.SimpleNamespace:
     """Build a minimal fake GraphRag ORM row with the fields _to_graph_rag_config reads."""
@@ -42,6 +46,8 @@ def _make_fake_rag(
             "timeout": None,
             "reasoning_effort": None,
             "api_key": "sk-test",
+            "input_cost_per_token": 0.000002,
+            "output_cost_per_token": 0.00001,
             "model": llm_model,
             **llm_config_fields,
         }
@@ -72,7 +78,7 @@ def _make_fake_rag(
         slot=slot,
         llm=llm_config,
         embedder=embedding_config,
-        index_config=index_config,
+        index_config=None if without_index_config else index_config,
     )
 
 
@@ -97,6 +103,19 @@ def test_config_points_at_the_requested_slot_of_this_rag(
     assert expected_lancedb_subdir in config.vector_store.db_uri
     # graphrag's validator fills the schema; without it indexing fails with a KeyError.
     assert "entity_description" in config.vector_store.index_schema
+
+
+def test_pricing_is_built_for_a_rag_without_index_config():
+    """Pricing only needs the llm and embedder; an unset index config must not hide it."""
+    rag = _make_fake_rag(without_index_config=True)
+
+    pricing = graph_rag_orm_to_pricing_config(rag)
+
+    assert pricing.llm_provider == "openai"
+    assert pricing.llm_model == "gpt-4o"
+    assert pricing.input_cost_per_token == 0.000002
+    assert pricing.output_cost_per_token == 0.00001
+    assert pricing.embedding.model == "text-embedding-ada-002"
 
 
 def _completion_call_args(**llm_config_fields) -> dict:

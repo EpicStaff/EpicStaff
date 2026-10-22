@@ -27,6 +27,8 @@ import {
     ConfirmationDialogService,
     createColumnWidthState,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
     HelpTooltipComponent,
     JsonEditorComponent,
     LlmModelSelectorComponent,
@@ -35,8 +37,8 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
-import { FullLLMConfigService, SecretsStorageService } from '@shared/services';
-import { getProviderIconPath } from '@shared/utils';
+import { ExecutionTimeoutLimitsStorageService, FullLLMConfigService, SecretsStorageService } from '@shared/services';
+import { downloadBlob, formatNodeLabel, getProviderIconPath } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -108,6 +110,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         JsonEditorComponent,
         HasPermissionDirective,
         IfFlowEditableDirective,
+        ExecutionTimeoutFieldComponent,
         MatTooltipModule,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
@@ -128,7 +131,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return match?.[1] ?? '0';
     })();
 
-    // Stable storage key: graphId + nodeNumber (nodeNumber is in metadata, survives save/delete cycles)
+    // Storage key: graphId + the number the server gave the node (its node_number). A save that gives a
+    // new table another number than it showed carries the stored layout to the new key.
     readonly gridStorageId = computed(() => {
         const nodeNum = this.node().nodeNumber ?? this.node().backendId ?? 0;
         return `${this.graphIdFromUrl}_${nodeNum}`;
@@ -186,6 +190,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    protected preExecutionTimeout!: ExecutionTimeoutFormField;
+    protected postExecutionTimeout!: ExecutionTimeoutFormField;
     public preUseStorage = signal(false);
     public postUseStorage = signal(false);
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
@@ -229,6 +235,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly dialog = inject(Dialog);
     private readonly injector = inject(Injector);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly explanationStore = inject(CdtExplanationStoreService);
 
@@ -345,7 +352,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             )
             .map((node) => ({
                 value: node.id,
-                name: node.node_name || node.id,
+                name: node.node_name ? formatNodeLabel(node) : node.id,
             }));
 
         return [{ name: 'Unselected', value: '' }, ...nodeItems];
@@ -403,6 +410,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
         this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
+        const executionTimeoutLimits = this.executionTimeoutLimits.limits();
+        this.preExecutionTimeout = new ExecutionTimeoutFormField(preComp.execution_timeout, executionTimeoutLimits);
+        this.postExecutionTimeout = new ExecutionTimeoutFormField(postComp.execution_timeout, executionTimeoutLimits);
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
             pre_computation_code: [this.preCode],
@@ -416,6 +426,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             default_next_node: [defaultNext],
             next_error_node: [errorNext],
             default_llm_config: [tableData.default_llm_config || null],
+            pre_execution_timeout: this.preExecutionTimeout.control,
+            post_execution_timeout: this.postExecutionTimeout.control,
         });
 
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
@@ -498,6 +510,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 libraries: this.parseLibraries(this.form.value.pre_libraries),
                 secret_ids: this.preSelectedSecretIds(),
                 secret_names: this.preSecretNames(),
+                execution_timeout: this.preExecutionTimeout.value,
             },
             post_computation: {
                 code: this.postCode,
@@ -506,6 +519,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 libraries: this.parseLibraries(this.form.value.post_libraries),
                 secret_ids: this.postSelectedSecretIds(),
                 secret_names: this.postSecretNames(),
+                execution_timeout: this.postExecutionTimeout.value,
             },
             condition_groups: conditionGroups,
             sections: this.cloneSections(this.sections() || []),
@@ -891,7 +905,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .cdtExport(backendId, 'json')
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (blob) => this.downloadBlob(blob, this.buildFileName('json')),
+                next: (blob) => downloadBlob(blob, this.buildFileName('json')),
                 error: () => this.toastService.error('Export failed.'),
             });
     }
@@ -905,11 +919,13 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodeName: this.form.value.node_name ?? '',
             preCode: this.preCode,
             preLibraries: this.parseLibraries(this.form.value.pre_libraries),
+            preExecutionTimeout: this.preExecutionTimeout.value,
             preInputMap: this.serializeInputMap('pre_input_map'),
             preOutputVariablePath: this.form.value.pre_output_variable_path || null,
             preUseStorage: this.preUseStorage(),
             postCode: this.postCode,
             postLibraries: this.parseLibraries(this.form.value.post_libraries),
+            postExecutionTimeout: this.postExecutionTimeout.value,
             postInputMap: this.serializeInputMap('post_input_map'),
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
             postUseStorage: this.postUseStorage(),
@@ -964,6 +980,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodeId: this.node().id,
             backendId: this.node().backendId,
             nodeName: this.form.value.node_name ?? this.node().node_name ?? '',
+            nodeNumber: this.node().nodeNumber,
             preCode: this.preCode,
             postCode: this.postCode,
             preInputMap: this.serializeInputMap('pre_input_map'),
@@ -985,17 +1002,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             llmConfigOptions: this.llmConfigOptions(),
             readOnly: this.isReadOnly(),
         };
-    }
-
-    private downloadBlob(blob: Blob, filename: string): void {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
     }
 
     private buildFileName(extension: string): string {

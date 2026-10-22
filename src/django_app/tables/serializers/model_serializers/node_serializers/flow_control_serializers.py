@@ -254,6 +254,7 @@ class ClassificationDecisionTableNodeSerializer(
             "uuid",
             "graph",
             "node_name",
+            "node_number",
             "pre_python_code",
             "pre_input_map",
             "pre_output_variable_path",
@@ -273,6 +274,7 @@ class ClassificationDecisionTableNodeSerializer(
             "sections",
             "prompt_configs",
         ]
+        read_only_fields = ["node_number"]
 
     def validate(self, attrs):
         graph = attrs.get("graph") or getattr(self.instance, "graph", None)
