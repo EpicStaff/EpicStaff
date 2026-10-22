@@ -11,6 +11,8 @@ from src.shared.models import (
     GraphRagBasicSearchParams,
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
+    SearchOutcome,
+    SearchUsage,
 )
 
 
@@ -30,8 +32,10 @@ class FakeKnowledgeClient:
     def __exit__(self, *exc_info):
         pass
 
-    def search(self, **kwargs):
-        return self.search_result
+    search_usage: SearchUsage = SearchUsage()
+
+    def search_with_usage(self, **kwargs):
+        return SearchOutcome(result=self.search_result, usage=self.search_usage)
 
 
 def make_node(
@@ -120,3 +124,106 @@ def test_execute_emits_graph_extracted_chunks_message_shape(monkeypatch, answer)
         "answer": answer,
         "token_usage": {},
     }
+
+
+def test_execute_forwards_extra_headers_to_the_search(monkeypatch):
+    received = {}
+
+    class CapturingKnowledgeClient(FakeKnowledgeClient):
+        def search_with_usage(self, **kwargs):
+            received.update(kwargs)
+            return SearchOutcome(result=[])
+
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", CapturingKnowledgeClient
+    )
+    node = KnowledgeNode(
+        session_id=1,
+        node_name="knowledge_1",
+        stop_event=StopEvent(),
+        input_map={},
+        output_variable_path=None,
+        collection_id=5,
+        rag_type_id="graph:7",
+        query="hello world",
+        rag_search_config=GraphRagSearchConfig(search_params=GraphRagBasicSearchParams()),
+        knowledge_search_service=KnowledgeSearchService(redis_service=MagicMock()),
+        embedder_extra_headers={"X-Emb": "emb-resolved"},
+        llm_extra_headers={"X-Llm": "llm-resolved"},
+    )
+
+    asyncio.run(node.execute(state={}, writer=MagicMock(), execution_order=1, input_={}))
+
+    assert received["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
+    assert received["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+
+
+def test_execute_adds_search_embedding_usage_to_the_message_token_usage(monkeypatch):
+    monkeypatch.setattr(
+        FakeKnowledgeClient,
+        "search_usage",
+        SearchUsage(embedding_tokens=12, embedding_cost_usd=0.0002),
+    )
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
+    )
+    writer = MagicMock()
+
+    asyncio.run(
+        make_node(KnowledgeSearchService(redis_service=MagicMock())).execute(
+            state={}, writer=writer, execution_order=3, input_={}
+        )
+    )
+
+    message_data = writer.call_args[0][0].message_data
+    assert message_data["token_usage"] == {
+        "prompt_tokens": 12,
+        "completion_tokens": 0,
+        "total_tokens": 12,
+        "total_cost_usd": 0.0002,
+    }
+
+
+def test_execute_adds_graph_search_llm_usage_to_the_message_token_usage(monkeypatch):
+    monkeypatch.setattr(
+        FakeKnowledgeClient,
+        "search_usage",
+        SearchUsage(
+            embedding_tokens=10,
+            embedding_cost_usd=0.0001,
+            llm_input_tokens=100,
+            llm_output_tokens=20,
+            llm_cost_usd=0.003,
+        ),
+    )
+    monkeypatch.setattr(
+        "services.knowledge_search_service.KnowledgeClient", FakeKnowledgeClient
+    )
+    writer = MagicMock()
+
+    asyncio.run(
+        make_node(KnowledgeSearchService(redis_service=MagicMock())).execute(
+            state={}, writer=writer, execution_order=3, input_={}
+        )
+    )
+
+    token_usage = writer.call_args[0][0].message_data["token_usage"]
+    assert token_usage["prompt_tokens"] == 110
+    assert token_usage["completion_tokens"] == 20
+    assert token_usage["total_tokens"] == 130
+    assert token_usage["total_cost_usd"] == 0.0031
+
+
+def test_search_usage_with_unknown_llm_cost_counts_it_as_zero():
+    usage = SearchUsage(llm_input_tokens=5, llm_output_tokens=3, llm_cost_usd=None)
+
+    assert usage.to_token_usage() == {
+        "prompt_tokens": 5,
+        "completion_tokens": 3,
+        "total_tokens": 8,
+        "total_cost_usd": 0.0,
+    }
+
+
+def test_empty_search_usage_has_no_token_usage():
+    assert SearchUsage().to_token_usage() == {}

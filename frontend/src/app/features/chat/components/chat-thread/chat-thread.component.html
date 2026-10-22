@@ -114,9 +114,9 @@
 } @else if (canUse()) {
     <app-chat-thread-composer
         [conversation]="conversation()"
-        [visitorToken]="visitorTokens.tokens()[conversation().id] ?? null"
+        [visitorToken]="visitorTokens.tokens()[conversation().id]"
         [visitorTokenPending]="visitorTokens.pendingFor() === conversation().id"
-        [visitorTokenError]="visitorTokens.errors()[conversation().id] ?? null"
+        [visitorTokenError]="visitorTokens.errors()[conversation().id]"
         [isClaimedByMe]="isClaimedByMe()"
         [isActionPending]="isActionPending()"
         [visibleName]="myNameOnConversationDesk()"

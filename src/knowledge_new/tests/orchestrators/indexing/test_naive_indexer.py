@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from application.commands import RunIndex
+from application.orchestrators.indexing.strategies import naive_indexer
 from application.orchestrators.indexing.strategies.naive_indexer import NaiveIndexOrchestrator
 from domain.enums import (
     ChunkStrategyEnum,
@@ -19,6 +20,7 @@ from domain.models import (
     PreviewChunk,
     Rag,
 )
+from domain.usage import IndexingRunUsage
 from infrastructure.naive.embedders.strategies import litellm_embedder
 
 VECTOR = [0.1, 0.2]
@@ -47,6 +49,10 @@ class FakeNaiveRagRepo:
         self.doc_status_log: list[DocumentStatusEnum] = []
         self.rag_status_log: list[IndexStatusEnum] = []
         self.saved_indexed_chunks: list[tuple[int, list[IndexedChunk]]] = []
+        self.usage_runs: list[IndexingRunUsage] = []
+
+    async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage) -> None:
+        self.usage_runs.append(run)
 
     async def get_embedding_config(self, rag_id: int) -> EmbeddingConfig | None:
         return self._embedding_config
@@ -95,11 +101,15 @@ class FakeUoW:
         pass
 
 
+def _provider_response(prompt_tokens: int | None = None):
+    usage = None if prompt_tokens is None else type("Usage", (), {"prompt_tokens": prompt_tokens})()
+    return type("Resp", (), {"data": [{"embedding": VECTOR}], "usage": usage})()
+
+
 @pytest.fixture
 def embedding_api():
     """litellm's embedding call, the boundary to the provider's HTTP API."""
-    response = type("Resp", (), {"data": [{"embedding": VECTOR}]})()
-    mock = AsyncMock(return_value=response)
+    mock = AsyncMock(return_value=_provider_response())
     with patch.object(litellm_embedder.litellm, "aembedding", mock):
         yield mock
 
@@ -146,9 +156,14 @@ def _new_rag(**overrides) -> Rag:
     )
 
 
-async def _index(repo: FakeNaiveRagRepo, *document_ids: int):
+async def _index(
+    repo: FakeNaiveRagRepo, *document_ids: int, embedding_extra_headers: dict[str, str] | None = None
+):
     request = RunIndex(
-        rag_id=1, document_ids=frozenset(document_ids), embedding_api_key="sk-test"
+        rag_id=1,
+        document_ids=frozenset(document_ids),
+        embedding_api_key="sk-test",
+        embedding_extra_headers=embedding_extra_headers or {},
     )
     await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
 
@@ -383,3 +398,67 @@ async def test_outdated_reasons_are_kept_only_while_an_outdated_document_remains
 
     assert rag.outdated_reasons == expected_reasons
     assert repo.rag_status_log[-1] == expected_status
+
+
+async def test_embedding_extra_headers_reach_the_embedding_provider(embedding_api, monkeypatch):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
+
+    await _index(repo, 7, embedding_extra_headers={"X-Gateway-Key": "resolved-value"})
+
+    assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "resolved-value"}
+
+
+async def test_run_records_embedding_tokens_and_priced_cost(embedding_api, monkeypatch):
+    embedding_api.return_value = _provider_response(prompt_tokens=10)
+    monkeypatch.setattr(naive_indexer, "embedding_cost", lambda model, tokens: tokens * 1e-7)
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
+
+    await _index(repo, 7)
+
+    (run,) = repo.usage_runs
+    assert run.embedding_tokens == 20  # two chunks, 10 tokens each
+    assert run.llm_input_tokens is None
+    assert run.llm_output_tokens is None
+    assert run.cost_usd == 20 * 1e-7
+
+
+async def test_run_records_null_cost_for_unpriced_embedding_model(embedding_api):
+    embedding_api.return_value = _provider_response(prompt_tokens=10)
+    unpriced = DEFAULT_EMBEDDING_CONFIG.model_copy(update={"model": "no-such-embedding-model"})
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag(), embedding_config=unpriced)
+
+    await _index(repo, 7)
+
+    (run,) = repo.usage_runs
+    assert run.embedding_tokens == 20
+    assert run.cost_usd is None
+
+
+async def test_run_records_tokens_consumed_before_a_chunk_fails(embedding_api):
+    embedding_api.side_effect = [_provider_response(prompt_tokens=10), RuntimeError("provider down")]
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
+
+    await _index(repo, 7)
+
+    (run,) = repo.usage_runs
+    assert run.embedding_tokens == 10
+
+
+async def test_run_that_consumed_nothing_records_no_usage(embedding_api):
+    document = _document(status=DocumentStatusEnum.COMPLETED, last_indexing_config=PARAGRAPH_CONFIG)
+    repo = FakeNaiveRagRepo(documents=[document], rag=_new_rag())
+
+    await _index(repo, 7)
+
+    assert repo.usage_runs == []
+
+
+async def test_cancelled_run_records_tokens_consumed_so_far(embedding_api):
+    embedding_api.side_effect = [_provider_response(prompt_tokens=10), asyncio.CancelledError()]
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
+
+    await _index(repo, 7)
+
+    (run,) = repo.usage_runs
+    assert run.embedding_tokens == 10

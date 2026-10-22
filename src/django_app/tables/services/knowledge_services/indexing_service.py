@@ -114,6 +114,8 @@ class IndexingService:
                 naive_rag.embedder
             ),
             "llm_api_key_secret_id": None,
+            "embedder_extra_headers": naive_rag.embedder.extra_headers,
+            "llm_extra_headers": None,
         }
 
     @staticmethod
@@ -198,6 +200,8 @@ class IndexingService:
             "llm_api_key_secret_id": secret_injection_guard.injectable_api_key_secret_id(
                 graph_rag.llm
             ),
+            "embedder_extra_headers": graph_rag.embedder.extra_headers,
+            "llm_extra_headers": graph_rag.llm.extra_headers,
         }
 
     @staticmethod

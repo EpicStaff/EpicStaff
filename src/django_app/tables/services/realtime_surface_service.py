@@ -43,6 +43,8 @@ class RealtimeAgentSurfaceResolution:
     rag_search_config: RagSearchConfig | None
     rag_embedder_api_key_secret_id: int | None = None
     rag_llm_api_key_secret_id: int | None = None
+    rag_embedder_extra_headers: dict[str, str] | None = None
+    rag_llm_extra_headers: dict[str, str] | None = None
 
 
 @dataclass
@@ -52,6 +54,8 @@ class RealtimeKnowledgeResolution:
     rag_search_config: RagSearchConfig | None = None
     rag_embedder_api_key_secret_id: int | None = None
     rag_llm_api_key_secret_id: int | None = None
+    rag_embedder_extra_headers: dict[str, str] | None = None
+    rag_llm_extra_headers: dict[str, str] | None = None
 
 
 GRAPH_SEARCH_CONFIG_FIELDS: tuple[tuple[str, type], ...] = (
@@ -246,7 +250,14 @@ class RealtimeSurfaceService:
         # Naive RAG has no LLM call (no completion-model synthesis step) —
         # only graph RAG carries an `llm` FK. Leave the LLM secret id unset.
         return RealtimeKnowledgeResolution(
-            collection_id, rag_type_id, rag_search_config, embedder_secret_id, None
+            collection_id,
+            rag_type_id,
+            rag_search_config,
+            embedder_secret_id,
+            None,
+            rag_embedder_extra_headers=(
+                naive_rag.embedder.extra_headers if naive_rag.embedder else None
+            ),
         )
 
     def _resolve_graph_rag(
@@ -282,4 +293,8 @@ class RealtimeSurfaceService:
             rag_search_config,
             embedder_secret_id,
             llm_secret_id,
+            rag_embedder_extra_headers=(
+                graph_rag.embedder.extra_headers if graph_rag.embedder else None
+            ),
+            rag_llm_extra_headers=graph_rag.llm.extra_headers if graph_rag.llm else None,
         )

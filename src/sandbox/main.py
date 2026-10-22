@@ -10,6 +10,7 @@ from dynamic_venv_executor_chain import SANDBOX_UID, DynamicVenvExecutorChain
 from network_policy import NetworkPolicy, decide_network_policy
 from services.redis_service import RedisService
 from signal_isolation_policy import SignalIsolationPolicy, decide_signal_isolation_policy
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, CodeTaskData
 from src.shared.redis_keys import crew_code_result_channel
 from utils.logger import logger
@@ -221,6 +222,13 @@ async def run(code_task_data: CodeTaskData):
     Run the dynamic virtual environment execution chain.
     """
     execution_dir = settings.OUTPUT_PATH / code_task_data.execution_id
+    logger.log(
+        BENCH_LEVEL,
+        "bench {checkpoint}",
+        checkpoint="exec_start",
+        session_id=code_task_data.session_id,
+        execution_id=code_task_data.execution_id,
+    )
     try:
         try:
             result = await executor_chain.run(
@@ -236,6 +244,7 @@ async def run(code_task_data: CodeTaskData):
                 storage_org_prefix=code_task_data.storage_org_prefix,
                 storage_credentials=code_task_data.storage_credentials,
                 secrets=code_task_data.secrets,
+                execution_timeout=code_task_data.execution_timeout,
             )
         except asyncio.CancelledError:
             # A temporary storage credential may already have been minted for
@@ -282,6 +291,14 @@ async def run(code_task_data: CodeTaskData):
             )
             return
 
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_end",
+            session_id=code_task_data.session_id,
+            execution_id=code_task_data.execution_id,
+            returncode=result.returncode,
+        )
         if code_task_data.use_storage and code_task_data.storage_org_prefix:
             try:
                 mutations_path = (

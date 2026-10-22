@@ -31,3 +31,5 @@ class KnowledgeSearchTarget(BaseModel):
     search_config: RagSearchConfig
     embedder_api_key: str | None = None
     llm_api_key: str | None = None
+    embedder_extra_headers: dict[str, str] | None = None
+    llm_extra_headers: dict[str, str] | None = None

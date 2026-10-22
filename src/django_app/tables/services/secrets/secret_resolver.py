@@ -16,28 +16,26 @@ _SECRET_ID_SUFFIX = "_secret_id"
 _NAMED_NAMES_FIELD = "secret_names"
 _NAMED_VALUES_FIELD = "secrets"
 
-# Third convention: `epicstaff_secret(<name>)` markers embedded in header
-# string values.
-_HEADER_FIELDS = frozenset({"extra_headers"})
+# Third convention: `epicstaff_secret(<name>)` markers embedded in the string
+# values of any header dict whose field name ends with "extra_headers"
+# (`extra_headers`, `embedder_extra_headers`, `rag_llm_extra_headers`, ...).
+_HEADER_FIELD_SUFFIX = "extra_headers"
 _SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
 
 
-def secret_names_in_headers(headers: dict | None) -> frozenset[str]:
-    """Return the secret names that `epicstaff_secret(<name>)` markers in `headers` reference.
+def extract_secret_marker_names(headers: dict | None) -> set[str]:
+    """Return the secret names `epicstaff_secret(<name>)` markers in `headers` refer to.
 
-    These are exactly the names `SecretResolver` turns into plaintext when it resolves
-    a payload, so a write guard comparing two of these sets sees the same secrets a
-    request would carry. Non-string header values hold no markers, and a value that is
-    not a dict at all (an unvalidated import file, a legacy row) holds none either --
-    rejecting its shape is the serializer's job, not this function's.
+    Anything but a dict yields no names: rows stored before header validation existed
+    may hold another JSON shape, and reading them must not fail.
     """
     if not isinstance(headers, dict):
-        return frozenset()
+        return set()
     names: set[str] = set()
     for value in headers.values():
         if isinstance(value, str):
             names.update(_SECRET_MARKER_RE.findall(value))
-    return frozenset(names)
+    return names
 
 
 class SecretResolver:
@@ -130,7 +128,7 @@ class SecretResolver:
                 self._fill_named(model=model, org_id=org_id)
                 continue
 
-            if field_name in _HEADER_FIELDS:
+            if field_name.endswith(_HEADER_FIELD_SUFFIX):
                 self._fill_header_markers(model=model, field_name=field_name, org_id=org_id)
                 continue
 
@@ -181,14 +179,24 @@ class SecretResolver:
             ),
         )
 
-    def _fill_header_markers(self, *, model: BaseModel, field_name: str, org_id: int) -> None:
-        """Replace `epicstaff_secret(<name>)` markers in a header dict with plaintext."""
-        headers = getattr(model, field_name)
-        names = secret_names_in_headers(headers)
-        if not names:
-            return
+    def resolve_header_markers(
+        self, *, headers: dict[str, str] | None, org_id: int, context: str = ""
+    ) -> dict[str, str] | None:
+        """Return `headers` with `epicstaff_secret(<name>)` markers replaced by plaintext.
 
-        context = f"{type(model).__name__}.{field_name}"
+        All marker names resolve in one query against `org_id`'s secrets. Returns a
+        new dict; the input is never modified, so a persisted copy keeps its markers.
+
+        Raises:
+            SecretResolutionError: A marker names a secret `org_id` does not have.
+        """
+        if not headers:
+            return headers
+
+        names = extract_secret_marker_names(headers)
+        if not names:
+            return dict(headers)
+
         resolved = self.resolve_named(names=sorted(names), org_id=org_id, context=context)
 
         missing = names - resolved.keys()
@@ -200,17 +208,29 @@ class SecretResolver:
                 )
             )
 
+        return {
+            key: (
+                _SECRET_MARKER_RE.sub(lambda m: resolved[m.group(1)], value)
+                if isinstance(value, str)
+                else value
+            )
+            for key, value in headers.items()
+        }
+
+    def _fill_header_markers(self, *, model: BaseModel, field_name: str, org_id: int) -> None:
+        """Replace `epicstaff_secret(<name>)` markers in a header dict with plaintext."""
+        headers = getattr(model, field_name)
+        if not headers:
+            return
+
         setattr(
             model,
             field_name,
-            {
-                key: (
-                    _SECRET_MARKER_RE.sub(lambda m: resolved[m.group(1)], value)
-                    if isinstance(value, str)
-                    else value
-                )
-                for key, value in headers.items()
-            },
+            self.resolve_header_markers(
+                headers=headers,
+                org_id=org_id,
+                context=f"{type(model).__name__}.{field_name}",
+            ),
         )
 
     def _message(self, *, context: str, secret_id: int, reason: str) -> str:

@@ -59,20 +59,29 @@
     }
 }
 
+// The page header box: 80px including its 1px bottom line, so the line sits at 79-80px and meets the one under the
+// sidebar logo. 28px above the title, 60px right, 24px left; the title is centred in what is left between the paddings.
+$page-header-height: 80px;
+$page-header-padding: 1.75rem 3.75rem 1rem 1.5rem;
+// The left edge of everything that lines up under the page title: the tabs or toolbar row below the header. Trees
+// (a folder or explorer column) keep their own inset.
+$page-inset-left: 1.5rem;
+
 // The 80px header box of a top-level page, copied as is from the Agents page: an `h1.title` with an inline
 // `.subtitle-inline` that `appHideInlineSubtitleOnOverflow` hides when it does not fit. Include it on the page's
 // `.header`, nested in the block that includes `headerLayout()`, as Agents does, so both cascade as they do there:
 // `headerLayout()`'s more specific `.header .header-titles .title` rule (ellipsis) wins over the title's three overflow
 // lines below, and `.header-titles`' `min-width: 50px` wins over its `min-width: 0`. One deliberate difference: the
 // subtitle uses the semantic `--color-text-secondary`, the same colour in the dark theme as Agents' legacy
-// `--text-secondary-60`. Older pages (Agents, flows, tools, files) still carry their own copy.
+// `--text-secondary-60`. Older pages (Agents, flows, tools, files, recycle bin, workspace, profile, chats, settings)
+// still carry their own copy, sized with the variables above.
 @mixin pageHeader() {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    height: 80px;
-    padding: 1.75rem 3.75rem 1rem 2.5rem;
+    height: $page-header-height;
+    padding: $page-header-padding;
     border-bottom: 1px solid var(--color-divider-subtle);
     background-color: var(--color-background-body);
 

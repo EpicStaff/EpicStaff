@@ -23,6 +23,7 @@ from app.tools.registry import ToolRegistry
 from app.tools.system_tools.structured_output import ANSWER_TOOL
 from shared.models.agent_service import AgentSpec, LoopResult, TokenUsage, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.cancellation import never_cancelled
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -103,6 +104,7 @@ def _make_context() -> AgentContext:
         agent=_make_agent_spec(),
         attachments=[],
         correlation_id="test-corr",
+        is_cancelled=never_cancelled,
     )
 
 

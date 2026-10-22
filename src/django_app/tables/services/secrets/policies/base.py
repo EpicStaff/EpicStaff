@@ -9,7 +9,7 @@ from tables.services.secrets.reference_guard import (
     SecretDestinationChange,
     SecretReferenceChange,
 )
-from tables.services.secrets.secret_resolver import secret_names_in_headers
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 
 #: The destination of a config whose model is a built-in catalog row, or that has none.
 #: The catalog is superadmin-managed, so moving between its rows is not gated.
@@ -210,8 +210,8 @@ class SecretPolicy:
             changes.append(
                 SecretReferenceChange(
                     field_name=field_name,
-                    incoming=secret_names_in_headers(write.attrs[source]),
-                    current=secret_names_in_headers(write.persisted_value(source)),
+                    incoming=frozenset(extract_secret_marker_names(write.attrs[source])),
+                    current=frozenset(extract_secret_marker_names(write.persisted_value(source))),
                 )
             )
         if write.instance is not None:

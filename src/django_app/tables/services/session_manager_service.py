@@ -3,6 +3,7 @@ from dataclasses import replace
 from django.db import transaction
 from django.utils import timezone
 from rbac.identity.api_keys.principals import SystemServicePrincipal
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import (
     AgentNodeData,
     EdgeData,
@@ -66,7 +67,12 @@ from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
-from utils.graph_utils import NodeNameResolver, generate_node_name, resolve_node_names
+from utils.graph_utils import (
+    NodeNameResolver,
+    generate_node_name,
+    resolve_node_names,
+    runtime_node_name,
+)
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -174,7 +180,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
         # node id, so generate_node_name returns None and an explicitly passed
         # entrypoint wins.
-        entrypoint = generate_node_name(trigger.node_id, trigger.node_name) or entrypoint
+        entrypoint = (
+            generate_node_name(trigger.node_id, trigger.node_name, trigger.node_number)
+            or entrypoint
+        )
 
         with transaction.atomic():
             # Passing the instance caches it on session.graph for create_session_data.
@@ -200,6 +209,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                     url=callback_url,
                     encrypted_secret=secret_encryption.encrypt(text=callback_secret).encryptedtext,
                 )
+        logger.log(
+            BENCH_LEVEL, "bench {checkpoint}", checkpoint="session_created", session_id=session.pk
+        )
         return session
 
     def create_session_data(
@@ -332,6 +344,13 @@ class SessionManagerService(metaclass=SingletonMeta):
                 session_data=session_data,
                 org_id=graph.org_id,
                 storage_credentials=storage_credentials,
+            )
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="published",
+                session_id=session.pk,
+                received_n=received_n,
             )
             if received_n == 0:
                 logger.error(
@@ -557,8 +576,10 @@ class SessionManagerService(metaclass=SingletonMeta):
             task_node_list,
             agent_node_list,
         ):
-            for n in node_list:
-                name_cache[n.id] = f"{n.node_name} #{n.id}"
+            for node in node_list:
+                name_cache[node.id] = runtime_node_name(
+                    node_name=node.node_name, node_number=node.node_number, node_id=node.id
+                )
 
         # IDs only referenced by edges/conditions (not node instances)
         # need to be resolved from DB — collect any that are missing

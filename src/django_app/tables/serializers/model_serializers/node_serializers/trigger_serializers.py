@@ -94,6 +94,7 @@ class WebhookTriggerNodeSerializer(
         fields = [
             "id",
             "node_name",
+            "node_number",
             "graph",
             "python_code",
             "webhook_trigger",
@@ -102,6 +103,7 @@ class WebhookTriggerNodeSerializer(
             "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
+        read_only_fields = ["node_number"]
         extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}
 
     def validate(self, attrs):
@@ -153,6 +155,7 @@ class TelegramTriggerNodeSerializer(
         fields = [
             "id",
             "node_name",
+            "node_number",
             "telegram_bot_api_key_secret_id",
             "graph",
             "fields",
@@ -161,6 +164,7 @@ class TelegramTriggerNodeSerializer(
             "test_payload",
             *BaseGraphEntityMixin.Meta.common_fields,
         ]
+        read_only_fields = ["node_number"]
         extra_kwargs = {"test_payload": {"validators": [validate_trigger_payload]}}
 
     def validate(self, attrs):
@@ -301,6 +305,7 @@ class ScheduleTriggerNodeSerializer(
     id = serializers.IntegerField(read_only=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     node_name = serializers.CharField(max_length=255)
+    node_number = serializers.IntegerField(read_only=True)
     is_active = serializers.BooleanField(required=False)
     metadata = serializers.JSONField(required=False)
     content_hash = serializers.CharField(required=False, allow_null=True)

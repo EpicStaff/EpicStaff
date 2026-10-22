@@ -25,6 +25,16 @@ export class SavedFlowStateService {
         this.savedFlowSignal.set(flow);
     }
 
+    /** Puts `update(node)` in place of the saved node with this id; nothing when that node was never saved. */
+    public updateNode(nodeId: string, update: (savedNode: NodeModel) => NodeModel): void {
+        const flow = this.savedFlowSignal();
+        if (!flow.nodes.some((node) => node.id === nodeId)) return;
+        this.savedFlowSignal.set({
+            ...flow,
+            nodes: flow.nodes.map((node) => (node.id === nodeId ? update(node) : node)),
+        });
+    }
+
     public reset(): void {
         this.savedFlowSignal.set(EMPTY_FLOW);
     }

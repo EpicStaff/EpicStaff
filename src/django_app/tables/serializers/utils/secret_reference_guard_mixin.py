@@ -17,6 +17,8 @@ class SecretReferenceGuardMixin(PersistedValueMixin):
     """
 
     secret_policy: SecretPolicy
+    # Header dicts whose `epicstaff_secret(<name>)` markers reference secrets by name.
+    secret_marker_fields: tuple[str, ...] = ()
 
     def validate(self, attrs):
         """Run the parent validation, then let SecretReferenceGuard gate the write.
@@ -39,6 +41,9 @@ class SecretReferenceGuardMixin(PersistedValueMixin):
             )
         except SecretUseDeniedError as denial:
             raise serializers.ValidationError({denial.field_name: denial.message}) from denial
+        secret_reference_guard.assert_no_new_markers_or_permitted(
+            serializer=self, attrs=attrs, fields=self.secret_marker_fields
+        )
         return {**attrs, **approval}
 
     def _secret_actor(self) -> SecretActor | None:

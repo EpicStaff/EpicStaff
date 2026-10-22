@@ -26,6 +26,7 @@ from tables.services.secrets.policies import (
     EMBEDDING_CONFIG_SECRET_POLICY,
     EMBEDDING_MODEL_SECRET_POLICY,
 )
+from tables.validators.extra_headers_validator import validate_extra_headers
 from tables.validators.model_name_validator import reject_url_in_model_name
 
 
@@ -74,6 +75,7 @@ class EmbeddingConfigSerializer(
     serializers.ModelSerializer,
 ):
     secret_policy = EMBEDDING_CONFIG_SECRET_POLICY
+    secret_marker_fields = ("extra_headers",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -100,3 +102,4 @@ class EmbeddingConfigSerializer(
         model = EmbeddingConfig
         exclude = ["api_key_secret", "secret_binding_approved_by"]
         read_only_fields = ["org", "created_by", "created_at"]
+        extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}

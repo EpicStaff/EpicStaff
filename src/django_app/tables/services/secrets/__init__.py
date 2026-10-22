@@ -24,7 +24,7 @@ from tables.services.secrets.parse_code import (
 )
 from tables.services.secrets.secret_resolver import (
     SecretResolver,
-    secret_names_in_headers,
+    extract_secret_marker_names,
     secret_resolver,
 )
 from tables.services.secrets.secret_service import SecretService, secret_service
@@ -51,11 +51,11 @@ __all__ = [
     "UndeclaredSecretError",
     "UsageCounts",
     "assert_tool_secrets_declared",
+    "extract_secret_marker_names",
     "linked_ids",
     "parse_secret_names",
     "secret_declaration_validator",
     "secret_encryption",
-    "secret_names_in_headers",
     "secret_resolver",
     "secret_service",
     "secret_usage_service",

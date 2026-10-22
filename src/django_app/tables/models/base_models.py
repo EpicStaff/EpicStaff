@@ -386,7 +386,14 @@ class ContentHashMixin(models.Model):
         Generates a SHA-256 hash.
         """
 
-        excluded_fields = ["id", "created_at", "updated_at", "metadata", "created_by"]
+        excluded_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "metadata",
+            "created_by",
+            "node_number",
+        ]
 
         data = {
             f.name: str(getattr(self, f.name))
@@ -460,6 +467,34 @@ class NextVal(Func):
 
     function = "nextval"
     template = "%(function)s(%(expressions)s)"
+
+
+class NumberedNode(models.Model):
+    """A node that shows a graph-scoped "#N" badge.
+
+    The number is part of the node's runtime name ("Name #N #id", see
+    `utils.graph_utils.runtime_node_name`), which is the LangGraph node key, the
+    edge and decision-table route key, `Session.entrypoint` and the key the
+    last-input lookup searches session messages by. It must not change after the
+    node is created.
+    """
+
+    node_number = models.IntegerField(null=True, blank=True, db_index=True, editable=False)
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        # Only inserts touch the counter; an update never changes a node's number.
+        if self._state.adding:
+            # Local import: the service imports the models.
+            from tables.services.node_number_service import NodeNumberService
+
+            if self.node_number is None:
+                self.node_number = NodeNumberService().reserve(self.graph_id)[0]
+            else:
+                NodeNumberService().raise_to(self.graph_id, self.node_number)
+        super().save(*args, **kwargs)
 
 
 class BaseGlobalNode(models.Model):

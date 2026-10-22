@@ -20,6 +20,8 @@ from tables.serializers.utils.llm_config_data_validation import (
     LLMConfigDataFieldsValidationMixin,
 )
 from tables.utils.litellm_model_info import validate_reasoning_effort
+from tables.validators.extra_headers_validator import validate_extra_headers
+from tables.validators.token_price_validator import validate_token_prices_set_together
 
 
 class BaseConfigImportSerializer(serializers.ModelSerializer):
@@ -27,6 +29,8 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
     provider_field = None
     config_model = None
     model_fk_field = None
+    # Header dicts whose `epicstaff_secret(<name>)` markers reference secrets by name.
+    secret_marker_fields: tuple[str, ...] = ()
 
     class Meta:
         abstract = True
@@ -49,6 +53,7 @@ class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigIm
     provider_field = "llm_provider"
     model_fk_field = "model"
     config_model = LLMConfig
+    secret_marker_fields = ("extra_headers",)
 
     model = serializers.PrimaryKeyRelatedField(read_only=True)
 
@@ -62,9 +67,13 @@ class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigIm
             "created_at",
             "secret_binding_approved_by",
         ]
+        extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        validate_token_prices_set_together(
+            attrs.get("input_cost_per_token"), attrs.get("output_cost_per_token")
+        )
         validate_reasoning_effort(attrs.get("model"), attrs.get("reasoning_effort"))
         return attrs
 
@@ -74,6 +83,7 @@ class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):
     provider_field = "embedding_provider"
     model_fk_field = "model"
     config_model = EmbeddingConfig
+    secret_marker_fields = ("extra_headers",)
 
     embedding_model = serializers.PrimaryKeyRelatedField(read_only=True)
 
@@ -87,6 +97,7 @@ class EmbeddingConfigImportSerializer(BaseConfigImportSerializer):
             "created_at",
             "secret_binding_approved_by",
         ]
+        extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}
 
 
 class RealtimeConfigImportSerializer(BaseConfigImportSerializer):

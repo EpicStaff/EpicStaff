@@ -9,9 +9,12 @@
 # of re-triggering nltk's blocked finder.
 import defusedxml.ElementTree  # noqa: F401
 import regex  # noqa: F401
+import os
+
+# litellm fetches its price map from GitHub on import unless told to use the bundled copy.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 import asyncio
-import os
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 

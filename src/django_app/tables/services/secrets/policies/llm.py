@@ -1,6 +1,6 @@
 from tables.models.llm_models import LLMConfig
 from tables.services.secrets.policies.base import RowWrite, SecretPolicy, model_destination
-from tables.services.secrets.secret_resolver import secret_names_in_headers
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 
 #: LLMModel fields that never affect where a request goes. Every other writable field
 #: is part of the model's destination, so a field added later is gated by default.
@@ -30,7 +30,7 @@ class LLMConfigSecretPolicy(SecretPolicy):
             "api_key_secret", persisted_attribute="api_key_secret_id"
         )
         return api_key_secret is not None or bool(
-            secret_names_in_headers(write.value_after_save("extra_headers"))
+            extract_secret_marker_names(write.value_after_save("extra_headers"))
         )
 
 
@@ -50,7 +50,7 @@ class LLMModelSecretPolicy(SecretPolicy):
         if dependents.filter(api_key_secret__isnull=False).exists():
             return True
         return any(
-            secret_names_in_headers(extra_headers)
+            extract_secret_marker_names(extra_headers)
             for extra_headers in dependents.values_list("extra_headers", flat=True)
         )
 
