@@ -1,3 +1,5 @@
+@use '../../../../../styles/header-layout' as header;
+
 :host {
     display: block;
     height: 100%;
@@ -15,10 +17,12 @@
     flex-shrink: 0;
 }
 
+// 80px with its line, like the other page headers, so the line meets the one under the sidebar logo.
 .settings-page__title-row {
     display: flex;
     align-items: center;
-    padding: 32px 60px 20px 40px;
+    height: header.$page-header-height;
+    padding: header.$page-header-padding;
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
@@ -37,7 +41,7 @@
 }
 
 .settings-page__tabs {
-    padding: 4px 60px 0 40px;
+    padding: 4px 60px 0 header.$page-inset-left;
 }
 
 .settings-page__content {
@@ -45,5 +49,5 @@
     flex-direction: column;
     flex: 1;
     overflow: auto;
-    padding: 20px 40px;
+    padding: 20px 40px 20px header.$page-inset-left;
 }
