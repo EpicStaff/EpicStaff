@@ -53,6 +53,9 @@ production default, so `src/.env` must set it:
 - `true` for any deployment users reach over HTTPS.
 - `false` if any subdomain of your domain is served only over plain HTTP. With `true`,
   browsers refuse to open such a subdomain for a year.
+- `false` for a VPN-only instance with an internal certificate. With `true`, an expired or
+  mismatched certificate blocks the site in browsers, with no way to click through, until
+  it is replaced.
 
 ## Behind a load balancer
 
