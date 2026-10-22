@@ -31,7 +31,7 @@ from tables.models.graph_models import GraphNote
 from tables.models.label_models import Label
 from tables.models.webhook_models import WebhookTriggerAuth, WebhookTriggerAuthKind
 from tables.services.secrets import secret_service
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
@@ -42,7 +42,11 @@ def _flow(org, name):
 
 
 def _export(graph):
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _flow_edited_after_export(org, name="My Flow"):
@@ -383,16 +387,18 @@ class TestReplaceKeepsTriggerSetup:
     ):
         holder, triggers, bot_keys = _flow_with_telegram_bots(acme, ("Telegram Bot #7", "acme-bot"))
         trigger, bot_key = triggers["acme-bot"], bot_keys["Telegram Bot #7"]
+        export_data = _export(holder)
+        # A new name in the file proves the key follows the trigger, not the node name.
+        for node_data in export_data[EntityType.GRAPH][0]["nodes"]:
+            if node_data["node_type"] == NodeType.TELEGRAM_TRIGGER_NODE:
+                node_data["node_name"] = "Renamed bot"
 
         with django_capture_on_commit_callbacks(execute=True):
-            response = _import(
-                client_as(admin_acme), acme, _export(holder), replace_existing=True
-            )
+            response = _import(client_as(admin_acme), acme, export_data, replace_existing=True)
 
         assert response.status_code == 200
         node = holder.telegram_trigger_node_list.get()
-        # Recreated nodes are renumbered; the key follows the trigger, not the name.
-        assert node.node_name != "Telegram Bot #7"
+        assert node.node_name == "Renamed bot"
         assert node.webhook_trigger_id == trigger.id
         assert node.telegram_bot_api_key_secret_id == bot_key.id
         registered_nodes = [

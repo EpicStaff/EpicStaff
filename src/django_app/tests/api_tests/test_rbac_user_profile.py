@@ -1,13 +1,15 @@
-"""/api/profile/: the signed-in user's own profile, avatar and password change."""
+"""/api/profile/: the signed-in user's own profile, avatar, password change and quick start tour."""
 
 import io
 import json
+from datetime import timedelta
 from unittest.mock import ANY
 
 import pytest
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -23,6 +25,7 @@ PROFILE_URL = "/api/profile/"
 AVATAR_URL = "/api/profile/avatar/"
 REQUEST_URL = "/api/profile/password-change/request/"
 CONFIRM_URL = "/api/profile/password-change/confirm/"
+QUICKSTART_TOUR_URL = "/api/profile/quickstart-tour/complete/"
 
 
 @pytest.fixture
@@ -83,8 +86,17 @@ def _png_upload(name="a.png", content=None):
         ("delete", AVATAR_URL, None, None),
         ("post", REQUEST_URL, {"current_password": "x"}, "json"),
         ("post", CONFIRM_URL, {"ticket": "x", "new_password": "y"}, "json"),
+        ("post", QUICKSTART_TOUR_URL, None, None),
     ],
-    ids=["get", "patch", "upload-avatar", "delete-avatar", "password-change-request", "password-change-confirm"],
+    ids=[
+        "get",
+        "patch",
+        "upload-avatar",
+        "delete-avatar",
+        "password-change-request",
+        "password-change-confirm",
+        "complete-quickstart-tour",
+    ],
 )
 def test_an_env_api_key_has_no_profile(issue_api_key, tmp_media_root, method, url, body, format_name):
     """An env-seeded key belongs to no user, so there is no profile to read or change."""
@@ -99,8 +111,9 @@ def test_an_env_api_key_has_no_profile(issue_api_key, tmp_media_root, method, ur
 
 
 @pytest.mark.django_db
-def test_profile_needs_authentication():
-    assert APIClient().get(PROFILE_URL).status_code == status.HTTP_401_UNAUTHORIZED
+@pytest.mark.parametrize(("method", "url"), [("get", PROFILE_URL), ("post", QUICKSTART_TOUR_URL)])
+def test_profile_needs_authentication(method, url):
+    assert getattr(APIClient(), method)(url).status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.django_db
@@ -751,3 +764,77 @@ def test_password_change_confirm_rejects_a_weak_password_without_echoing_it(memb
     assert all(error["value"] == "***" for error in password_errors)
     member_acme.refresh_from_db()
     assert member_acme.check_password("StrongPass123!")
+
+
+# ---- Quick start tour ----
+
+
+@pytest.mark.django_db
+def test_a_fresh_user_has_not_completed_the_quickstart_tour(member_acme):
+    assert client_for(member_acme).get(PROFILE_URL).json()["quickstart_tour_completed"] is False
+
+
+@pytest.mark.django_db
+def test_completing_the_quickstart_tour_marks_only_the_caller_and_returns_the_profile(member_acme, orphan_user):
+    client = client_for(member_acme)
+    updated_at_before = member_acme.updated_at
+
+    response = client.post(QUICKSTART_TOUR_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert (response.json()["id"], response.json()["quickstart_tour_completed"]) == (member_acme.id, True)
+    assert client.get(PROFILE_URL).json()["quickstart_tour_completed"] is True
+    member_acme.refresh_from_db()
+    orphan_user.refresh_from_db()
+    assert member_acme.quickstart_tour_completed_at is not None
+    # Finishing a tour is not a profile edit.
+    assert member_acme.updated_at == updated_at_before
+    assert orphan_user.quickstart_tour_completed_at is None
+
+
+@pytest.mark.django_db
+def test_completing_the_quickstart_tour_again_keeps_the_first_timestamp(member_acme):
+    earlier = timezone.now() - timedelta(days=30)
+    member_acme.quickstart_tour_completed_at = earlier
+    member_acme.save(update_fields=["quickstart_tour_completed_at"])
+
+    response = client_for(member_acme).post(QUICKSTART_TOUR_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["quickstart_tour_completed"] is True
+    member_acme.refresh_from_db()
+    assert member_acme.quickstart_tour_completed_at == earlier
+
+
+@pytest.mark.django_db
+def test_a_user_api_key_completes_the_quickstart_tour_for_its_owner(member_acme, issue_api_key):
+    raw, _ = issue_api_key(user=member_acme)
+    client = APIClient()
+    client.credentials(HTTP_X_API_KEY=raw)
+
+    response = client.post(QUICKSTART_TOUR_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["id"] == member_acme.id
+    member_acme.refresh_from_db()
+    assert member_acme.quickstart_tour_completed_at is not None
+
+
+@pytest.mark.django_db
+def test_completing_the_quickstart_tour_is_post_only(member_acme):
+    assert client_for(member_acme).get(QUICKSTART_TOUR_URL).status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+
+@pytest.mark.django_db
+def test_completing_the_quickstart_tour_keeps_the_active_org_context(api_client, jwt_tokens, default_org):
+    # The frontend replaces its cached profile with this response, so it must
+    # carry the same active-org data as GET /api/profile/.
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
+
+    response = api_client.post(QUICKSTART_TOUR_URL, HTTP_X_ORGANIZATION_ID=str(default_org.id))
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["quickstart_tour_completed"] is True
+    assert body["active_organization_id"] == default_org.id
+    assert body["active_permissions"]["role"]["name"] == "Org Admin"

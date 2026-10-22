@@ -9,6 +9,7 @@ import { of } from 'rxjs';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { provideLoadedExecutionTimeoutLimits } from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import {
     EndNodeModel,
     NodeModel,
@@ -50,6 +51,7 @@ const endNode: EndNodeModel = {
 async function mount(isPreview: boolean): Promise<ComponentFixture<NodePanelShellComponent>> {
     TestBed.configureTestingModule({
         providers: [
+            provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
             // A user who may edit flows: read-only below comes from the preview alone.
             { provide: PermissionsService, useValue: { can: () => true } },
@@ -458,6 +460,7 @@ describe('NodePanelShellComponent', () => {
         const shellFor = (type: NodeType): NodePanelShellComponent => {
             TestBed.configureTestingModule({
                 providers: [
+                    provideLoadedExecutionTimeoutLimits(),
                     {
                         provide: SidePanelService,
                         useValue: {
@@ -533,6 +536,7 @@ describe('NodePanelShellComponent', () => {
             const open = vi.fn();
             TestBed.configureTestingModule({
                 providers: [
+                    provideLoadedExecutionTimeoutLimits(),
                     { provide: FLOW_EDITOR_PREVIEW, useValue: options.isPreview ?? false },
                     {
                         provide: PermissionsService,
@@ -628,6 +632,30 @@ describe('NodePanelShellComponent', () => {
             detailsButton(fixture)!.click();
 
             expect(open).toHaveBeenCalledWith('Node Details', recorded, detailsButton(fixture));
+        });
+
+        const headerText = (fixture: { nativeElement: HTMLElement }, selector: string): string | undefined =>
+            fixture.nativeElement.querySelector(`.dialog-header ${selector}`)?.textContent?.trim();
+
+        it('heads the panel with the node name and its number beside it, so same-named nodes are told apart', async () => {
+            const { fixture } = await mountDetails({ ...savedPythonNode, node_name: 'Fetch', nodeNumber: 4 });
+
+            expect(headerText(fixture, '.title')).toBe('Fetch');
+            expect(headerText(fixture, '.node-number')).toBe('#4');
+        });
+
+        it('shows no lone number in the header while the node has no name', async () => {
+            const { fixture } = await mountDetails({ ...savedPythonNode, node_name: '', nodeNumber: 4 });
+
+            expect(headerText(fixture, '.title')).toBe('');
+            expect(headerText(fixture, '.node-number')).toBeUndefined();
+        });
+
+        it('heads an End node panel with its fixed name and no number', async () => {
+            const { fixture } = await mountDetails({ ...endNode, backendId: liveEnd.id });
+
+            expect(headerText(fixture, '.title')).toBe('End');
+            expect(headerText(fixture, '.node-number')).toBeUndefined();
         });
 
         it('shows no author for a node that is not saved yet', async () => {

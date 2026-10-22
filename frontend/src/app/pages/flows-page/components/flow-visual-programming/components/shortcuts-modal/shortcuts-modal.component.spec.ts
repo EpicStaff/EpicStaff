@@ -25,6 +25,7 @@ const BASE_USER: GetMeResponse = {
     active_organization_id: 3,
     active_permissions: null,
     avatar_url: null,
+    quickstart_tour_completed: true,
     custom_shortcuts: { overrides: {}, custom: [] },
 };
 

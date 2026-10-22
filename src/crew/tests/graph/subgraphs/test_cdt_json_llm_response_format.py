@@ -183,3 +183,16 @@ async def test_sampling_params_follow_the_routed_provider(
 
     call_kwargs = mock_completion.call_args.kwargs
     assert {key: call_kwargs[key] for key in ("temperature", "top_p") if key in call_kwargs} == expected_sampling
+
+
+@pytest.mark.asyncio
+async def test_config_extra_headers_are_sent_to_the_provider(mock_completion):
+    headers = {"X-Gateway-Key": "gateway-token", "X-Trace": "trace-id"}
+    llm = LLMData(
+        provider="openai",
+        config=LLMConfigData(model="gpt-4o-mini", extra_headers=headers),
+    )
+
+    await run_prompt(llm, {})
+
+    assert mock_completion.call_args.kwargs["extra_headers"] == headers

@@ -104,7 +104,7 @@ export class RolesTabComponent {
             filterServerSide: true,
             defaultValues: this.activeOrgDefault(),
         },
-        { key: 'members', label: 'MEMBERS', width: 'minmax(90px, 0.8fr)', align: 'center' },
+        { key: 'members', label: 'MEMBERS', width: 'minmax(90px, 0.8fr)' },
         { key: 'actions', label: 'ACTIONS', width: '160px', align: 'end' },
     ]);
 

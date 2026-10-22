@@ -1,6 +1,7 @@
 @use '@fontsource/inter/400.css' as inter-400;
 @use '@fontsource/inter/500.css' as inter-500;
 @use '@fontsource/inter/700.css' as inter-700;
+@use '@fontsource/inter/800.css' as inter-800;
 @use './styles/_reset.scss';
 @use './styles/_collapsible';
 @use './styles/json-viewer.scss';
@@ -18,3 +19,4 @@
 @use './styles/_resizable-handle';
 @use './styles/_autofill';
 @use './styles/_waypoint-tooltip';
+@use './styles/_quick-start-tour';

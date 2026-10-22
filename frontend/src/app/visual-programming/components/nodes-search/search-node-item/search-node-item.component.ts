@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 
 import {
     AgentNodeModel,
@@ -33,7 +34,7 @@ import {
                 <div class="node-details">
                     @if (node.node_name) {
                         <div class="node-description">
-                            {{ node.node_name }}
+                            {{ nodeLabel() }}
                         </div>
                     }
                 </div>
@@ -187,6 +188,11 @@ export class SearchNodeItemComponent {
             default:
                 return this.node.node_name;
         }
+    }
+
+    /** The node's name with its number, so same-named nodes are told apart. */
+    protected nodeLabel(): string {
+        return formatNodeLabel(this.node);
     }
 
     public onNodeClick(): void {

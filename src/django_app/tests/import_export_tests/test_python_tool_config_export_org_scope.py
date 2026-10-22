@@ -17,6 +17,7 @@ from tables.import_export.registry import entity_registry
 from tables.models import AgentNode, Graph, StartNode
 from tables.models.python_models import PythonCode, PythonCodeTool, PythonCodeToolConfig
 
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 ACME_SECRET = "sk-acme-own-key"
@@ -125,8 +126,11 @@ class TestBuiltInToolConfigExportIsOrgScoped:
         self, export_service, acme, builtin_tool, acme_agent_using_builtin_tool
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [acme_agent_using_builtin_tool.id], org_id=acme.id
-        )
+            EntityType.AGENT_DEFINITION,
+            [acme_agent_using_builtin_tool.id],
+            org_id=acme.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         _assert_only_acme_config(export_data, builtin_tool.id)
 
@@ -134,8 +138,11 @@ class TestBuiltInToolConfigExportIsOrgScoped:
         self, export_service, acme, builtin_tool, acme_agent_node
     ):
         export_data = export_service.export_entities(
-            EntityType.GRAPH, [acme_agent_node.graph_id], org_id=acme.id
-        )
+            EntityType.GRAPH,
+            [acme_agent_node.graph_id],
+            org_id=acme.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         _assert_only_acme_config(export_data, builtin_tool.id)
 
@@ -153,8 +160,10 @@ class TestBuiltInToolConfigExportIsOrgScoped:
 
     def test_export_without_org_carries_no_config(self, export_service, builtin_tool):
         export_data = export_service.export_entities(
-            EntityType.PYTHON_CODE_TOOL, [builtin_tool.id]
-        )
+            EntityType.PYTHON_CODE_TOOL,
+            [builtin_tool.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         strategy_data = entity_registry.get_strategy(
             EntityType.PYTHON_CODE_TOOL
         ).export_entity(builtin_tool)
@@ -228,8 +237,11 @@ def test_custom_tool_config_imported_by_another_org_lands_in_that_org(
     export_service, import_service, acme, beta, acme_custom_tool_with_config
 ):
     export_data = export_service.export_entities(
-        EntityType.PYTHON_CODE_TOOL, [acme_custom_tool_with_config.id], org_id=acme.id
-    )
+        EntityType.PYTHON_CODE_TOOL,
+        [acme_custom_tool_with_config.id],
+        org_id=acme.id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
+    ).data
 
     import_service.import_data(export_data, EntityType.PYTHON_CODE_TOOL, org_id=beta.id)
 

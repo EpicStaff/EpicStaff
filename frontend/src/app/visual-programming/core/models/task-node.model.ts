@@ -6,6 +6,7 @@ import {
     SurfacePythonTool,
     SurfaceStorageItem,
 } from '../../../features/agent-definitions/models/surface.model';
+import { NumberedNodeDto } from './numbered-node-dto.model';
 
 /**
  * Write-shape entries used by `InlineSurface`'s tool/storage/knowledge lists.
@@ -42,7 +43,7 @@ export interface InlineSurface {
     updated_at?: string;
 }
 
-export interface TaskNode extends AuthorshipFields {
+export interface TaskNode extends AuthorshipFields, NumberedNodeDto {
     id: number;
     created_at: string;
     updated_at: string;

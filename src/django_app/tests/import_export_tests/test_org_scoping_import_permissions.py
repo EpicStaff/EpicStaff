@@ -15,7 +15,7 @@ from rbac.access.effective import EffectivePermissions
 from rbac.models.enums import Permission, ResourceType
 from rbac.models import OrganizationUser, Role
 from rbac.models.role import RolePermission
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 
 
 def _ep(by_resource, is_superadmin=False):
@@ -28,7 +28,9 @@ def _graph_export_forcing_config_create(export_service, graph):
     # Tweaking the embedded LLM config's custom_name makes find_existing miss,
     # so the import must CREATE a new LLMConfig (find_existing is global, not
     # org-scoped, so an untouched config would otherwise be reused).
-    export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+    export_data = export_service.export_entities(
+        EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
     export_data[EntityType.LLM_CONFIG][0]["custom_name"] = "Unique Import Config ZZZ"
     return export_data
 
@@ -94,8 +96,10 @@ class TestImportPermissionEnforcement:
         # No tweak: the embedded LLM config is reused (found globally), so only
         # the main flow is created. Caller has FLOWS create but not LLM_CONFIGS.
         export_data = export_service.export_entities(
-            EntityType.GRAPH, [exportable_graph_with_agent_node.id]
-        )
+            EntityType.GRAPH,
+            [exportable_graph_with_agent_node.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         ep = _ep({ResourceType.FLOWS: int(Permission.CREATE | Permission.READ)})
 
         graphs_before = Graph.objects.count()
@@ -154,8 +158,14 @@ class TestImportPermissionEndpoint:
         )
         OrganizationUser.objects.create(user=user, org=default_org, role=role)
 
-        export_data = ExportService(entity_registry).export_entities(
-            EntityType.GRAPH, [exportable_graph_with_agent_node.id]
+        export_data = (
+            ExportService(entity_registry)
+            .export_entities(
+                EntityType.GRAPH,
+                [exportable_graph_with_agent_node.id],
+                policy=UNRESTRICTED_EXPORT_POLICY,
+            )
+            .data
         )
         export_data[EntityType.LLM_CONFIG][0]["custom_name"] = "Unique Import ZZZ"
         file = data_to_json_file(data=export_data, filename="flow.json")
@@ -173,8 +183,14 @@ class TestImportPermissionEndpoint:
     def test_superadmin_import_succeeds(
         self, exportable_graph_with_agent_node, default_org, superadmin_user
     ):
-        export_data = ExportService(entity_registry).export_entities(
-            EntityType.GRAPH, [exportable_graph_with_agent_node.id]
+        export_data = (
+            ExportService(entity_registry)
+            .export_entities(
+                EntityType.GRAPH,
+                [exportable_graph_with_agent_node.id],
+                policy=UNRESTRICTED_EXPORT_POLICY,
+            )
+            .data
         )
         export_data[EntityType.LLM_CONFIG][0]["custom_name"] = "Unique Import SU"
         file = data_to_json_file(data=export_data, filename="flow.json")

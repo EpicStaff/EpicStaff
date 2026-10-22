@@ -46,6 +46,9 @@ class EmbeddingConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
         on_delete=models.SET_NULL,
         related_name="embedding_configs",
     )
+    # db_default lets a writer that predates this column (an old pod mid-deploy, a
+    # historical migration model) still insert rows; default fills it in the ORM.
+    extra_headers = models.JSONField(default=dict, db_default={}, blank=True)
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(EmbeddingConfigTag, blank=True, related_name="embedding_configs")
     # Nullable because configs created before this column existed have no known

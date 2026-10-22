@@ -24,22 +24,23 @@ from utils.graph_utils import NodeNameResolver, resolve_node_names
 FOREIGN_NAME = "foreign-org-private-name"
 
 
-def _python_node(graph: Graph, node_name: str) -> PythonNode:
+def _python_node(graph: Graph, node_name: str, node_number: int) -> PythonNode:
     return PythonNode.objects.create(
         graph=graph,
         node_name=node_name,
+        node_number=node_number,
         python_code=PythonCode.objects.create(code="def main(): return 1"),
     )
 
 
 @pytest.fixture
 def foreign_node(beta) -> PythonNode:  # noqa: F811
-    return _python_node(Graph.objects.create(name="beta graph", org=beta), FOREIGN_NAME)
+    return _python_node(Graph.objects.create(name="beta graph", org=beta), FOREIGN_NAME, node_number=9)
 
 
 @pytest.fixture
 def local_node(graph) -> PythonNode:
-    return _python_node(graph, "local")
+    return _python_node(graph, "local", node_number=3)
 
 
 @pytest.mark.django_db
@@ -47,7 +48,7 @@ def test_resolve_node_names_hides_nodes_outside_the_graphs(graph, local_node, fo
     names = resolve_node_names([local_node.id, foreign_node.id], graph_ids=[graph.id])
 
     assert names == {
-        local_node.id: f"local #{local_node.id}",
+        local_node.id: f"local #3 #{local_node.id}",
         foreign_node.id: f"unknown node #{foreign_node.id}",
     }
 
@@ -56,7 +57,7 @@ def test_resolve_node_names_hides_nodes_outside_the_graphs(graph, local_node, fo
 def test_graph_scoped_resolver_fallback_hides_foreign_node(graph, local_node, foreign_node):
     resolver = NodeNameResolver(graph_id=graph.id)
 
-    assert resolver(local_node.id) == f"local #{local_node.id}"
+    assert resolver(local_node.id) == f"local #3 #{local_node.id}"
     assert resolver(foreign_node.id) == f"unknown node #{foreign_node.id}"
 
 
@@ -96,7 +97,7 @@ def test_graph_scoped_resolver_memoizes_a_cache_miss(
     first = resolver(local_node.id)
 
     with django_assert_num_queries(0):
-        assert resolver(local_node.id) == first == f"local #{local_node.id}"
+        assert resolver(local_node.id) == first == f"local #3 #{local_node.id}"
 
 
 @pytest.mark.parametrize(

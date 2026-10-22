@@ -57,6 +57,7 @@ class PythonCodeToolExecutor:
                 org_id=python_code.org_id,
                 secrets=python_code.secrets,
                 storage_credentials=self._storage_credentials,
+                execution_timeout=python_code.execution_timeout,
             )
         except ValidationError:
             # Never log or return `error` itself: ValidationError's repr embeds

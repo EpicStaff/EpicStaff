@@ -19,6 +19,7 @@ from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.models import Graph
 from tables.models.graph_models import AgentNode, GraphNote, StartNode
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 RECORDED_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
@@ -82,7 +83,11 @@ def test_save_version_records_author_and_created_at_of_every_node(
 def test_graph_export_carries_no_node_authorship(service, flow, member_agent_node):
     service.save_version(flow, name="v1")
 
-    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [flow.id])
+    export_data = (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [flow.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
     assert "node_authorship" not in json.dumps(export_data, default=str)
 

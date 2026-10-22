@@ -6,7 +6,12 @@ SECRET_USAGE_GET = {
     "description": (
         "Every resource in the active organization that references this secret. "
         "A category is present only when it has items, so an unused secret returns "
-        "an empty list. Flow entries group their secret-using nodes; `node_type` "
+        "an empty list. Flow entries group their secret-using nodes, one entry per "
+        "code block that uses the secret (`code_field`, null for a node that "
+        "references the secret by field rather than in code), so a decision table "
+        "using it in both blocks appears twice with the same node `id`. A node's `id` is "
+        "its identity — names repeat within a flow — and `node_number` is its "
+        "display-only badge number, which may be null. `node_type` "
         "values are the frontend node-type identifiers. Items in the other "
         "categories carry a `type` naming which model they are, because a category "
         "can hold several — `llm_configs` folds four and `tools` folds two, and two "
@@ -36,23 +41,31 @@ SECRET_USAGE_GET = {
                                         "name": "Payments flow",
                                         "nodes": [
                                             {
+                                                "id": 101,
+                                                "node_number": 1,
                                                 "name": "charge_card",
                                                 "node_type": "python",
                                                 "code_field": "python_code",
                                             },
                                             {
+                                                "id": 102,
+                                                "node_number": 2,
                                                 "name": "classify_tier",
                                                 "node_type": ("classification-decision-table"),
                                                 "code_field": "post_python_code",
                                             },
                                             {
+                                                "id": 102,
+                                                "node_number": 2,
                                                 "name": "classify_tier",
                                                 "node_type": ("classification-decision-table"),
                                                 "code_field": "pre_python_code",
                                             },
                                             {
-                                                "name": "route_by_tier",
-                                                "node_type": "edge",
+                                                "id": 107,
+                                                "node_number": 5,
+                                                "name": "stripe_webhook",
+                                                "node_type": "webhook-trigger",
                                                 "code_field": "python_code",
                                             },
                                         ],
@@ -62,6 +75,8 @@ SECRET_USAGE_GET = {
                                         "name": "Refunds",
                                         "nodes": [
                                             {
+                                                "id": 240,
+                                                "node_number": 3,
                                                 "name": "notify",
                                                 "node_type": "telegram-trigger",
                                                 "code_field": None,

@@ -1,0 +1,114 @@
+import { NodeType } from '@shared/models';
+
+import { GraphDto } from '../../../features/flows/models/graph.model';
+import { FlowModel } from '../../core/models/flow.model';
+import { LIVE_NODE_ID as ID, liveGraph, livePython, liveTask } from '../testing/live-graph.fixture';
+import { mapGraphDtoToFlowModel } from './map-graph-dto-to-flow-model';
+
+/** Every node's badge number, keyed by its backend id. */
+function numbersByBackendId(flow: FlowModel): Map<number | null, number | undefined> {
+    return new Map(flow.nodes.map((node) => [node.backendId, node.nodeNumber]));
+}
+
+/** `liveGraph` with every node carrying a stale `metadata.nodeNumber`, as rows saved before numbers moved off metadata did. */
+function withStaleMetadataNumbers(graph: GraphDto): GraphDto {
+    const stale = Object.fromEntries(
+        Object.entries(graph).map(([key, value]) => [
+            key,
+            key.endsWith('_list') && key !== 'edge_list'
+                ? (value as { metadata: object }[]).map((node) => ({
+                      ...node,
+                      metadata: { ...node.metadata, nodeNumber: 99 },
+                  }))
+                : value,
+        ])
+    );
+    return stale as unknown as GraphDto;
+}
+
+describe('mapGraphDtoToFlowModel node numbers', () => {
+    let warn: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        warn.mockRestore();
+    });
+
+    it.each([
+        ['python_node_list', ID.python, 1],
+        ['task_node_list', ID.task, 2],
+        ['agent_node_list', ID.agent, 3],
+        ['file_extractor_node_list', ID.fileExtractor, 4],
+        ['audio_transcription_node_list', ID.audio, 5],
+        ['subgraph_node_list', ID.subgraph, 6],
+        ['webhook_trigger_node_list', ID.webhook, 7],
+        ['telegram_trigger_node_list', ID.telegram, 8],
+        ['schedule_trigger_node_list', ID.schedule, 9],
+        ['decision_table_node_list', ID.decisionTable, 10],
+        ['classification_decision_table_node_list', ID.classificationTable, 11],
+        ['knowledge_node_list', ID.knowledge, 12],
+        ['key_value_node_list', ID.keyValue, 13],
+    ])('takes the %s badge from node_number, not from a stale metadata.nodeNumber', (_list, backendId, expected) => {
+        const flow = mapGraphDtoToFlowModel(withStaleMetadataNumbers(liveGraph));
+
+        expect(numbersByBackendId(flow).get(backendId)).toBe(expected);
+    });
+
+    it('reads node_number 7 even when metadata still says nodeNumber 2', () => {
+        const graph: GraphDto = {
+            ...liveGraph,
+            python_node_list: [{ ...livePython, node_number: 7, metadata: { nodeNumber: 2 } }],
+        };
+
+        expect(numbersByBackendId(mapGraphDtoToFlowModel(graph)).get(ID.python)).toBe(7);
+    });
+
+    it.each([
+        ['Start', ID.start],
+        ['End', ID.end],
+        ['Note', ID.note],
+    ])('leaves the %s node without a number', (_type, backendId) => {
+        const flow = mapGraphDtoToFlowModel(withStaleMetadataNumbers(liveGraph));
+
+        const numbers = numbersByBackendId(flow);
+        expect(numbers.has(backendId)).toBe(true);
+        expect(numbers.get(backendId)).toBeUndefined();
+    });
+
+    it('keeps unique numbers as they are and warns about nothing', () => {
+        const flow = mapGraphDtoToFlowModel(liveGraph);
+
+        const numbered = flow.nodes.filter((node) => node.nodeNumber !== undefined);
+        expect(numbered.map((node) => node.nodeNumber).sort((a, b) => a! - b!)).toEqual([
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+        ]);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('gives a duplicate number the next free one, keeps the first holder, and warns', () => {
+        const graph: GraphDto = {
+            ...liveGraph,
+            python_node_list: [{ ...livePython, node_number: 2 }],
+            task_node_list: [{ ...liveTask, node_number: 2 }],
+        };
+
+        const numbers = numbersByBackendId(mapGraphDtoToFlowModel(graph));
+
+        expect(numbers.get(ID.python)).toBe(2);
+        expect(numbers.get(ID.task)).toBe(14);
+        expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('numbers a numbered node the backend sent without a number, and warns', () => {
+        const graph: GraphDto = { ...liveGraph, python_node_list: [{ ...livePython, node_number: null }] };
+
+        const flow = mapGraphDtoToFlowModel(graph);
+
+        expect(numbersByBackendId(flow).get(ID.python)).toBe(14);
+        expect(flow.nodes.find((node) => node.type === NodeType.START)?.nodeNumber).toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+    });
+});

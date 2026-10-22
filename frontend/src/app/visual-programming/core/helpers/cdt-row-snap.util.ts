@@ -43,8 +43,9 @@ export function getVisibleRouteGroups(tableNode: RowBasedTableNodeModel): Condit
 export function resolveRowIndex(tableNode: RowBasedTableNodeModel, portRole: string): number | null {
     const routeGroups = getVisibleRouteGroups(tableNode);
 
-    if (portRole === 'decision-default') return routeGroups.length;
-    if (portRole === 'decision-error') return routeGroups.length + 1;
+    const defaultOffset = Math.max(routeGroups.length, 1);
+    if (portRole === 'decision-default') return defaultOffset;
+    if (portRole === 'decision-error') return defaultOffset + 1;
 
     if (tableNode.type === NodeType.CLASSIFICATION_TABLE) {
         const match = /^decision-route-(.+)$/.exec(portRole);

@@ -42,7 +42,7 @@ from tables.models.graph_models import (
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.services.copy_services.graph_copy_service import GraphCopyService
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 AUTHOR_KEY = "created_by"
@@ -120,7 +120,11 @@ def _keys_named(value, key: str) -> list[str]:
 
 
 def _export(graph: Graph) -> dict:
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _import_flow(client, org, export_data):
@@ -183,7 +187,9 @@ def test_partial_export_carries_no_author_anywhere(source_flow):
     ]
 
     result = GraphPartialExportService(entity_registry).export(
-        node_refs, org_id=source_flow.org_id
+        node_refs,
+        org_id=source_flow.org_id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
 
     assert not result.has_errors, result.errors
@@ -270,7 +276,7 @@ def test_partial_import_authors_every_new_node_with_importer(
     ]
     export_data = (
         GraphPartialExportService(entity_registry)
-        .export(node_refs, org_id=source_flow.org_id)
+        .export(node_refs, org_id=source_flow.org_id, policy=UNRESTRICTED_EXPORT_POLICY)
         .data
     )
     existing_node_keys = set(_node_authors(source_flow))

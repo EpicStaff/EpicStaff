@@ -1,10 +1,13 @@
 import { TestBed } from '@angular/core/testing';
+import { NodeType } from '@shared/models';
 
+import { NodeModel } from '../../core/models/node.model';
 import { NodesSearchComponent } from './nodes-search.component';
 
 describe('NodesSearchComponent', () => {
-    function openSearch() {
+    function openSearch(nodes: NodeModel[] = []) {
         const fixture = TestBed.createComponent(NodesSearchComponent);
+        fixture.componentRef.setInput('nodes', nodes);
         fixture.detectChanges();
         fixture.componentInstance.toggleSearchInput();
         fixture.detectChanges();
@@ -27,6 +30,31 @@ describe('NodesSearchComponent', () => {
 
         expect(fixture.componentInstance.isSearchVisible()).toBe(true);
         fixture.nativeElement.remove();
+    });
+
+    describe('with two nodes of the same name', () => {
+        const fetchNode = (id: string, nodeNumber: number) =>
+            ({ id, type: NodeType.PYTHON, node_name: 'Fetch', nodeNumber, data: {} }) as unknown as NodeModel;
+        const nodes = [fetchNode('a', 4), fetchNode('b', 7)];
+        const labels = (fixture: ReturnType<typeof openSearch>): string[] =>
+            Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.node-description')).map((label) =>
+                label.textContent!.trim()
+            );
+
+        it('lists each with its number', () => {
+            expect(labels(openSearch(nodes))).toEqual(['Fetch #4', 'Fetch #7']);
+        });
+
+        it('finds one by its number', () => {
+            const fixture = openSearch(nodes);
+
+            const input: HTMLInputElement = fixture.nativeElement.querySelector('.search-input');
+            input.value = '#7';
+            input.dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+
+            expect(labels(fixture)).toEqual(['Fetch #7']);
+        });
     });
 
     it('opens and closes on Ctrl+F on a Cyrillic layout, where the key reads "а"', () => {

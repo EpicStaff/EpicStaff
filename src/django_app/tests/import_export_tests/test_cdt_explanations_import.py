@@ -13,6 +13,7 @@ from tables.import_export.services.partial_export_service import (
 )
 from tables.import_export.services.partial_import_service import PartialImportService
 from tables.models.graph_models import ClassificationDecisionTableNode, Graph
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 def _explanation(text="Checks the score."):
@@ -56,7 +57,9 @@ def test_graph_import_stores_only_storable_explanations(
     default_org, export_service, import_service, exported, imported
 ):
     source = _source_node(default_org, exported)
-    export_data = export_service.export_entities(EntityType.GRAPH, [source.graph_id])
+    export_data = export_service.export_entities(
+        EntityType.GRAPH, [source.graph_id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
 
     id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)
 
@@ -73,6 +76,7 @@ def test_partial_import_stores_only_storable_explanations(default_org, exported,
     export = GraphPartialExportService(entity_registry).export(
         [NodeRef(entity_type=EntityType.CLASSIFICATION_DECISION_TABLE_NODE, node_id=source.id)],
         org_id=default_org.id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
     assert not export.has_errors, export.errors
     target = Graph.objects.create(name="cdt-explanations-target", org=default_org)

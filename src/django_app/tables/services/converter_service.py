@@ -1,3 +1,5 @@
+from typing import NamedTuple
+
 from django.core.exceptions import ValidationError
 from django.db.models import Prefetch
 from loguru import logger
@@ -92,6 +94,20 @@ from utils.graph_utils import (
 from utils.singleton_meta import SingletonMeta
 
 
+class NodeRagCredentials(NamedTuple):
+    """Secret ids and raw extra headers of a knowledge node's RAG embedder and LLM.
+
+    Headers keep their `epicstaff_secret(<name>)` markers; SecretResolver fills them
+    on the published copy only. The LLM parts are None for naive RAGs, which have no
+    LLM, and everything is None for a node without a RAG.
+    """
+
+    embedder_api_key_secret_id: int | None = None
+    llm_api_key_secret_id: int | None = None
+    embedder_extra_headers: dict[str, str] | None = None
+    llm_extra_headers: dict[str, str] | None = None
+
+
 def secret_names_prefetch(lookup: str) -> Prefetch:
     """Prefetch the secrets at `lookup` for `convert_python_code_to_pydantic`.
 
@@ -162,8 +178,7 @@ class ConverterService(metaclass=SingletonMeta):
         )
         all_search_configs = SearchConfigService.get_node_search_configs(knowledge_node)
         rag_search_config = self.build_rag_search_config(rag_type_id, all_search_configs)
-        embedder_api_key_secret_id = self._node_rag_embedder_secret_id(knowledge_node)
-        llm_api_key_secret_id = self._node_rag_llm_secret_id(knowledge_node)
+        rag_credentials = self._node_rag_credentials(knowledge_node)
         return KnowledgeNodeData(
             node_name=resolver(knowledge_node.id),
             collection_id=collection_id,
@@ -172,37 +187,32 @@ class ConverterService(metaclass=SingletonMeta):
             rag_search_config=rag_search_config,
             input_map=knowledge_node.input_map,
             output_variable_path=knowledge_node.output_variable_path,
-            embedder_api_key_secret_id=embedder_api_key_secret_id,
-            llm_api_key_secret_id=llm_api_key_secret_id,
+            embedder_api_key_secret_id=rag_credentials.embedder_api_key_secret_id,
+            llm_api_key_secret_id=rag_credentials.llm_api_key_secret_id,
+            embedder_extra_headers=rag_credentials.embedder_extra_headers,
+            llm_extra_headers=rag_credentials.llm_extra_headers,
         )
 
     @staticmethod
-    def _node_rag_embedder_secret_id(knowledge_node: KnowledgeNode) -> int | None:
-        """Secret id of the node's RAG embedder, resolved by the same (collection,
+    def _node_rag_credentials(knowledge_node: KnowledgeNode) -> NodeRagCredentials:
+        """Credentials of the node's RAG, resolved once by the same (collection,
         rag_id, rag_type) coordinates the knowledge service searches by."""
         if not (knowledge_node.rag_type and knowledge_node.rag_id):
-            return None
+            return NodeRagCredentials()
         rag = resolve_rag_in_collection(
             knowledge_node.rag_type,
             knowledge_node.rag_id,
             knowledge_node.source_collection,
         )
         embedder = rag.embedder
-        return embedder.api_key_secret_id if embedder else None
-
-    @staticmethod
-    def _node_rag_llm_secret_id(knowledge_node: KnowledgeNode) -> int | None:
-        """Secret id of the node's RAG LLM (graph search synthesis). Only graph
-        RAGs carry an LLM; naive RAGs have none, so this is None for them."""
-        if not (knowledge_node.rag_type and knowledge_node.rag_id):
-            return None
-        rag = resolve_rag_in_collection(
-            knowledge_node.rag_type,
-            knowledge_node.rag_id,
-            knowledge_node.source_collection,
-        )
+        # Only graph RAGs carry an LLM (graph search synthesis); naive RAGs have none.
         llm = getattr(rag, "llm", None)
-        return llm.api_key_secret_id if llm else None
+        return NodeRagCredentials(
+            embedder_api_key_secret_id=embedder.api_key_secret_id if embedder else None,
+            llm_api_key_secret_id=llm.api_key_secret_id if llm else None,
+            embedder_extra_headers=embedder.extra_headers if embedder else None,
+            llm_extra_headers=llm.extra_headers if llm else None,
+        )
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
         return list(
@@ -353,6 +363,8 @@ class ConverterService(metaclass=SingletonMeta):
             rag_search_config=surface_resolution.rag_search_config,
             rag_embedder_api_key_secret_id=surface_resolution.rag_embedder_api_key_secret_id,
             rag_llm_api_key_secret_id=surface_resolution.rag_llm_api_key_secret_id,
+            rag_embedder_extra_headers=surface_resolution.rag_embedder_extra_headers,
+            rag_llm_extra_headers=surface_resolution.rag_llm_extra_headers,
             llm=self.convert_llm_config_to_pydantic(ad.llm_config),
             memory=False,
             tools=surface_resolution.tools,
@@ -432,6 +444,7 @@ class ConverterService(metaclass=SingletonMeta):
             entrypoint=python_code.entrypoint,
             libraries=libraries,
             global_kwargs=python_code.global_kwargs,
+            execution_timeout=python_code.execution_timeout,
             use_storage=use_storage,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
@@ -628,6 +641,8 @@ class ConverterService(metaclass=SingletonMeta):
             api_key_secret_id=config.api_key_secret_id,
             deployment_id=config.model.deployment_id,
             extra_headers=config.extra_headers,
+            input_cost_per_token=config.input_cost_per_token,
+            output_cost_per_token=config.output_cost_per_token,
         )
 
     def convert_embedding_config_to_pydantic(
@@ -646,6 +661,7 @@ class ConverterService(metaclass=SingletonMeta):
                 model=embedding_config.model.name,
                 base_url=embedding_config.model.base_url,
                 api_key_secret_id=embedding_config.api_key_secret_id,
+                extra_headers=embedding_config.extra_headers,
             ),
         )
 

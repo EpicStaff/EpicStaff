@@ -35,7 +35,9 @@ def _llm_config_label(config: LLMConfig | None) -> str:
 
 
 def _node_labels(node_ids: Iterable[int | None], graph_id: int) -> dict[int, str]:
-    """Label each referenced node by its plain name, in one batched lookup.
+    """Label each referenced node as the editor shows it ("Name #N"), in one batched lookup.
+
+    The label is the runtime name without its trailing " #<id>".
 
     Only nodes of ``graph_id`` resolve. Any other id, including a reference stored
     before same-graph validation that points into another organization, prints

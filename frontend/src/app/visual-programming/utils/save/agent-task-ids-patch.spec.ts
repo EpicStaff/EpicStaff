@@ -18,6 +18,7 @@ const SAVED_AGENT: AgentNode = {
     last_edited_at: null,
     id: 50,
     metadata: {},
+    node_number: 1,
     node_name: 'Agent #1',
     input_map: {},
     output_variable_path: null,
