@@ -44,6 +44,7 @@ import litellm
 from apscheduler.schedulers.background import BackgroundScheduler
 from filelock import FileLock, Timeout
 from loguru import logger
+from src.shared.litellm_model_names import litellm_lookup_name
 from src.shared.models.ai_providers import REASONING_EFFORT_VALUES
 from tables.exceptions import UnsupportedReasoningEffortError
 
@@ -54,15 +55,6 @@ litellm.set_verbose = False
 litellm.suppress_debug_info = True
 
 FALLBACK_CONTEXT_WINDOW = 16_000
-
-# Provider rows whose name is not a litellm provider, mapped to the litellm provider their
-# stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
-PROVIDER_ALIASES = {
-    "google_ai": "gemini",
-    "novita_ai": "novita",
-    "aws_sagemaker": "sagemaker",
-    "featherless-ai": "featherless_ai",
-}
 
 LITELLM_MODEL_PRICES_URL = (
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
@@ -181,22 +173,6 @@ def resolve_context_window(
         ),
         False,
     )
-
-
-def litellm_lookup_name(provider_name: str | None, model_name: str) -> str:
-    """Return the `<provider>/<model>` key litellm's model map knows this model by.
-
-    Azure rows are looked up by the model name, never the deployment id: a deployment
-    is a user-chosen label litellm has no metadata for.
-    """
-    model_name = model_name.strip()
-    provider = (provider_name or "").lower().strip()
-    if not provider:
-        return model_name
-    provider = PROVIDER_ALIASES.get(provider, provider)
-    if model_name.startswith(f"{provider}/"):
-        return model_name
-    return f"{provider}/{model_name}"
 
 
 # Providers for which litellm 1.100.x answers capability questions over HTTP:
