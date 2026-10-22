@@ -508,7 +508,9 @@ and the write point lets it propagate (rolling back any open transaction).
 of `denial.field_errors()`, nested along `field_path`: the usual 400 envelope with the field
 named in `message`, e.g. `("python_code", "secret_ids")` →
 `{"python_code": {"secret_ids": [...]}}`. Graph bulk save catches it and reports it per node, as
-`{"errors": {"<list_key>": [{"index", "errors": {...}}]}}`. Because the check runs after
+`{"errors": {"<list_key>": [{"index", "errors": {...}}]}}`. The config import strategy also
+catches it and raises the same `ValidationError`, like every other rejection in that strategy
+(its callers and unit tests handle one kind of error). Because the check runs after
 validation, a shape error (an undeclared `get_secret`) wins over a `USE` denial.
 
 **Adding a secret-referencing field.**
