@@ -289,6 +289,7 @@ from tables.services.secrets.secret_use_checks import (
     check_realtime_config_write,
     check_realtime_transcription_config_write,
     check_twilio_channel_write,
+    check_webhook_trigger_write,
 )
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
@@ -2520,7 +2521,12 @@ class WebhookTriggerNodeViewSet(
     update=extend_schema(**WEBHOOK_TRIGGER_UPDATE),
     partial_update=extend_schema(**WEBHOOK_TRIGGER_PARTIAL_UPDATE),
 )
-class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
+class WebhookTriggerViewSet(
+    SecretUseCheckedViewSetMixin,
+    OrgScopedViewSetMixin,
+    RecycleBinActionsMixin,
+    viewsets.ModelViewSet,
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
     rbac_action_map = {**DEFAULT_ACTION_MAP, "flows_using_trigger": Permission.READ, **RECYCLE_BIN_ACTION_MAP}
@@ -2529,6 +2535,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
         "ngrok", "localhost", "auth", "auth__secret"
     ).prefetch_related(*authorship_prefetches())
     serializer_class = WebhookTriggerNestedSerializer
+    secret_use_check = check_webhook_trigger_write
     filter_backends = [DjangoFilterBackend]
     filterset_class = WebhookTriggerFilter
     # The flows action names at most this many flows; `flow_count` is always the total.
@@ -2541,7 +2548,11 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
         elif trigger.provider_type == ProviderType.LOCALHOST:
             service.wait_for_localhost_tunnel_url(trigger)
 
+    # Both overrides save without calling super(): the serializer stamps the org and
+    # author itself, so the secret Use check is run here rather than by the mixin's
+    # perform_create / perform_update.
     def perform_create(self, serializer):
+        self.run_secret_use_check(None, serializer.validated_data)
         trigger = serializer.save()
         self._wait_for_tunnel_url(trigger)
 
@@ -2569,6 +2580,7 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
         return super().update(request, *args, **kwargs)
 
     def perform_update(self, serializer):
+        self.run_secret_use_check(serializer.instance, serializer.validated_data)
         trigger = serializer.save()
         self._wait_for_tunnel_url(trigger)
 

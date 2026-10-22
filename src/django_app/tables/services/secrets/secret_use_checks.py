@@ -127,6 +127,37 @@ def check_mcp_tool_write(actor: SecretActor | None, instance, data: dict) -> Non
     )
 
 
+def check_webhook_trigger_write(actor: SecretActor | None, instance, data: dict) -> None:
+    """Gate a WebhookTrigger write: its auth secret and its nested ngrok auth token.
+
+    Both live on one-to-one rows of the trigger (`auth`, `ngrok`), which a trigger
+    may not have yet; a missing row links to no secret. An omitted `ngrok_config`,
+    or one sent as null, leaves the token as it is.
+    """
+    current_auth = _one_to_one_row(instance, "auth")
+    current_auth_secret_id = current_auth.secret_id if current_auth is not None else None
+    secret_use_service.check_references(
+        actor,
+        field_path=("auth_secret_id",),
+        current=current_auth_secret_id,
+        incoming=data.get("auth_secret_id", current_auth_secret_id),
+    )
+
+    ngrok_data = data.get("ngrok_config")
+    if not ngrok_data:
+        return
+    current_ngrok = _one_to_one_row(instance, "ngrok")
+    current_token_secret_id = (
+        current_ngrok.auth_token_secret_id if current_ngrok is not None else None
+    )
+    secret_use_service.check_references(
+        actor,
+        field_path=("ngrok_config", "auth_token_secret_id"),
+        current=current_token_secret_id,
+        incoming=ngrok_data.get("auth_token_secret", current_token_secret_id),
+    )
+
+
 def _check_api_key_and_header_markers(actor: SecretActor | None, instance, data: dict) -> None:
     _check_secret_reference(actor, instance, data, attribute="api_key_secret")
     current_headers = _persisted_value(instance, "extra_headers")
@@ -221,3 +252,10 @@ def _model_base_url(model_row) -> str | None:
 
 def _persisted_value(instance, attribute: str):
     return getattr(instance, attribute) if instance is not None else None
+
+
+def _one_to_one_row(instance, related_name: str):
+    # A missing reverse one-to-one row raises RelatedObjectDoesNotExist, an
+    # AttributeError, which the getattr default turns into None, as it does for a
+    # None instance on create.
+    return getattr(instance, related_name, None)
