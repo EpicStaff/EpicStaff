@@ -1,7 +1,7 @@
 import re
 
 # Mirrors the MCP description sanitization in
-# src/agent/app/tools/mcp/gateway.py (_C0_CONTROL_CHARS_RE / _MAX_MCP_DESCRIPTION_CHARS).
+# src/agent/app/tools/mcp/schema_sanitizer.py (C0_CONTROL_CHARS_RE / MAX_TEXT_CHARS).
 # Kept in sync by convention rather than a shared import: django_app and the
 # agent service are deployed independently and do not share a dependency tree.
 MAX_DESCRIPTION_CHARS = 1024
