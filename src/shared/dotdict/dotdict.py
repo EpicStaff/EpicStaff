@@ -36,8 +36,9 @@ class DotDict(dict):
         properties = dictionary.pop("__properties__", None)
         setters = dictionary.pop("__setters__", None)
 
-        for key, value in dictionary.items():
-            self._set_wrapped(key, value)
+        # Properties and setters are only registered below, so the values go in as one bulk
+        # update without the per-key setter/property bookkeeping that __setitem__ does.
+        super().update({key: _wrap(value) for key, value in dictionary.items()})
 
         if properties:
             for k, v in properties.items():
@@ -46,19 +47,12 @@ class DotDict(dict):
             for k, v in setters.items():
                 self.add_setter(k, v)
 
-    def _set_wrapped(self, key, value):
-        """Store `value` aliasing any already-wrapped DotDict/DotList inside it.
-
-        Construction-only path: the values come from the dict literal being wrapped,
-        so nothing outside this instance can still be holding them.
-        """
+    def __setitem__(self, key, value):
+        value = _copy_wrap(value)
         if key in self._setters:
             value = self._setters[key](value)
         super().__setitem__(key, _wrap(value))
         self._update_properties()
-
-    def __setitem__(self, key, value):
-        self._set_wrapped(key, _copy_wrap(value))
 
     def __getattr__(self, key):
         try:
@@ -153,10 +147,7 @@ class DotDict(dict):
 
 class DotList(list):
     def __init__(self, iterable=None):
-        super().__init__()
-        if iterable:
-            for item in iterable:
-                super().append(_wrap(item))
+        super().__init__(map(_wrap, iterable) if iterable else ())
 
     def append(self, item):
         super().append(_copy_wrap(item))
@@ -209,6 +200,12 @@ class DotList(list):
         return handler(core_schema.list_schema(items_schema=core_schema.any_schema()))
 
 
+# Exact leaf types JSON decodes to. Wrapping checks them by identity first: an isinstance
+# check against the Mapping ABC is several times slower and dominated the cost of wrapping
+# large payloads such as a message history. Subclasses take the generic isinstance path.
+_SCALAR_TYPES = frozenset({str, int, float, bool, type(None)})
+
+
 def _wrap(data):
     """Already-wrapped DotDict/DotList is returned as-is (same instance, not copied) to avoid
     exponential re-wrapping cost on deep nesting; caller and result then share mutations.
@@ -216,6 +213,13 @@ def _wrap(data):
     Only safe where the caller cannot keep a reference to `data` — i.e. inside
     DotDict/DotList construction. External mutations use `_copy_wrap`.
     """
+    data_type = type(data)
+    if data_type in _SCALAR_TYPES or data_type is DotDict or data_type is DotList:
+        return data
+    if data_type is dict:
+        return DotDict(data)
+    if data_type is list:
+        return DotList(data)
     if isinstance(data, (DotDict, DotList)):
         return data
     if isinstance(data, Mapping):
@@ -235,7 +239,12 @@ def _copy_wrap(data):
 
     Computed properties and setters of a copied DotDict are not carried over.
     """
-    if isinstance(data, Mapping):
+    data_type = type(data)
+    if data_type in _SCALAR_TYPES:
+        return data
+    if data_type is list or data_type is DotList:
+        return DotList([_copy_wrap(item) for item in data])
+    if data_type is dict or data_type is DotDict or isinstance(data, Mapping):
         return DotDict({key: _copy_wrap(value) for key, value in data.items()})
     if isinstance(data, (list, tuple, set)):
         return DotList([_copy_wrap(item) for item in data])

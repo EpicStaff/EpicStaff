@@ -1,4 +1,5 @@
 import json
+from types import MappingProxyType
 
 import pytest
 from pydantic import BaseModel
@@ -87,6 +88,7 @@ def test_an_already_built_container_is_reused_not_copied_on_construction(existin
 
     assert DotObject(existing) is existing
     assert outer.nested is existing
+    assert DotList([existing])[0] is existing
 
 
 ASSIGNMENTS = {
@@ -161,3 +163,91 @@ def test_assigning_a_plain_object_keeps_its_identity():
 
     assert d.obj is sentinel
     assert d.wrapper.inner is sentinel
+
+
+@pytest.mark.parametrize(
+    ("wrap_in_plain_container", "unwrap"),
+    [
+        (lambda variable: {"inner": variable}, lambda assigned: assigned.inner),
+        (lambda variable: [variable], lambda assigned: assigned[0]),
+        (lambda variable: (variable,), lambda assigned: assigned[0]),
+    ],
+    ids=["dict", "list", "tuple"],
+)
+def test_assigning_a_plain_container_holding_a_variable_copies_the_variable(
+    wrap_in_plain_container, unwrap
+):
+    variables = DotDict({"other": {"value": 0}})
+    variables["snapshot"] = wrap_in_plain_container(variables.other)
+    snapshot_of_other = unwrap(variables.snapshot)
+
+    variables.other.value = 1
+    snapshot_of_other.extra = 2
+
+    assert snapshot_of_other is not variables.other
+    assert snapshot_of_other.deep_dump() == {"value": 0, "extra": 2}
+    assert variables.other.deep_dump() == {"value": 1}
+
+
+def _stored_by_construction(value):
+    return DotDict({"nested": value}).nested
+
+
+def _stored_by_key_assignment(value):
+    variables = DotDict()
+    variables["nested"] = value
+    return variables.nested
+
+
+def _stored_by_list_append(value):
+    rows = DotList()
+    rows.append(value)
+    return rows[0]
+
+
+STORE_PATHS = pytest.mark.parametrize(
+    "store",
+    [_stored_by_construction, _stored_by_key_assignment, _stored_by_list_append],
+    ids=["construction", "key-assignment", "list-append"],
+)
+
+
+@STORE_PATHS
+def test_tuples_and_sets_become_dot_lists_and_keep_their_leaf_values(store):
+    leaf = object()
+
+    from_tuple = store((leaf, {"a": 1}))
+    from_set = store({"only"})
+
+    assert isinstance(from_tuple, DotList)
+    assert from_tuple[0] is leaf
+    assert from_tuple[1].a == 1
+    assert isinstance(from_set, DotList)
+    assert list(from_set) == ["only"]
+
+
+class _PlainDictSubclass(dict):
+    pass
+
+
+@pytest.mark.parametrize(
+    "mapping",
+    [_PlainDictSubclass({"a": {"b": 1}}), MappingProxyType({"a": {"b": 1}})],
+    ids=["dict-subclass", "read-only-mapping"],
+)
+@STORE_PATHS
+def test_other_mapping_types_are_wrapped_like_dicts(store, mapping):
+    wrapped = store(mapping)
+
+    assert isinstance(wrapped, DotDict)
+    assert wrapped.a.b == 1
+
+
+@pytest.mark.parametrize("reserved_key", ["__properties__", "__setters__"])
+@STORE_PATHS
+def test_reserved_keys_of_a_nested_plain_dict_are_consumed_not_stored(store, reserved_key):
+    """Crew compiles these keys (the chat API rejects them for that reason), so a nested
+    dict carrying one must keep being treated as a definition, not as data."""
+    assert dict(store({reserved_key: {}, "kept": 1})) == {"kept": 1}
+    with pytest.raises(ValueError, match="Invalid expression"):
+        store({"deeper": {reserved_key: {"name": "1 +"}}})
