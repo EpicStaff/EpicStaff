@@ -25,6 +25,7 @@ import {
     AppIncludeExcludeDialogData,
     AppIncludeExcludeDialogResult,
     AppSvgIconComponent,
+    BulkSelectDropdownComponent,
     ButtonComponent,
     IncludeExcludeTab,
     LabelSidebarComponent,
@@ -101,6 +102,7 @@ import { flowsBulkDeleteGroup } from '../../utils/flows-bulk-delete.util';
         RouterLink,
         RouterLinkActive,
         ButtonComponent,
+        BulkSelectDropdownComponent,
         TabButtonComponent,
         FormsModule,
         AppSvgIconComponent,
@@ -156,10 +158,6 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
     public isDeleting = this.flowStorageService.isDeleting;
 
-    public readonly deleteButtonLabel = computed(() => {
-        const count = this.selectedFlowIds().length;
-        return `Delete ${count} ${count === 1 ? 'flow' : 'flows'}`;
-    });
     public readonly filterState = this.flowStorageService.filter;
 
     public readonly hasActiveFilter = computed(() => {

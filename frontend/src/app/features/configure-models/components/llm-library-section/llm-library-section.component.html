@@ -12,6 +12,20 @@
                 (searchTermChange)="onSearchChange($event)"
             />
 
+            <!-- One condition for both modes: entering select mode must not recreate it (and close its menu). -->
+            @if (selectMode() || !hasNoConfigs()) {
+                <app-bulk-select-dropdown
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                    [selectMode]="selectMode()"
+                    [selectedCount]="selectedCount()"
+                    [allSelected]="allVisibleSelected()"
+                    [disabled]="isDeleting()"
+                    (selectModeEntered)="enterSelectMode()"
+                    (selectAllToggled)="toggleSelectAll()"
+                    (cleared)="exitSelectMode()"
+                />
+            }
+
             <div class="filter">
                 <app-select
                     [items]="capabilities()"
@@ -20,7 +34,17 @@
                 />
             </div>
 
-            @if (!selectMode()) {
+            @if (selectMode()) {
+                <app-button
+                    type="danger"
+                    leftIcon="trash"
+                    iconSize="14px"
+                    [disabled]="selectedCount() === 0 || isDeleting()"
+                    (click)="deleteSelected()"
+                >
+                    Delete
+                </app-button>
+            } @else {
                 <app-button
                     class="add-btn"
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
@@ -28,37 +52,6 @@
                     leftIcon="plus"
                 >
                     Add Configuration
-                </app-button>
-                @if (!hasNoConfigs()) {
-                    <app-button
-                        type="ghost"
-                        *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
-                        (click)="enterSelectMode()"
-                    >
-                        Select
-                    </app-button>
-                }
-            } @else {
-                <app-button
-                    type="ghost"
-                    [disabled]="isDeleting()"
-                    (click)="exitSelectMode()"
-                >
-                    Cancel
-                </app-button>
-                <app-button
-                    type="ghost"
-                    [disabled]="isDeleting()"
-                    (click)="toggleSelectAll()"
-                >
-                    {{ allVisibleSelected() ? 'Deselect all' : 'Select all' }}
-                </app-button>
-                <app-button
-                    type="secondary"
-                    [disabled]="selectedCount() === 0 || isDeleting()"
-                    (click)="deleteSelected()"
-                >
-                    Delete {{ selectedCount() }}
                 </app-button>
             }
         </div>
@@ -140,6 +133,7 @@
                                             (click)="$event.stopPropagation()"
                                         >
                                             <app-checkbox
+                                                color="secondary"
                                                 [checked]="isVoiceSelected(provider, c)"
                                                 [disabled]="isDeleting()"
                                                 (changed)="onVoiceSelectedChange(provider, c)"

@@ -21,6 +21,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import {
     AppSvgIconComponent,
+    BulkSelectDropdownComponent,
     ButtonComponent,
     CheckboxComponent,
     IconButtonComponent,
@@ -60,6 +61,7 @@ const RENAME_DOUBLE_CLICK_WINDOW_MS = 250;
         MatTooltipModule,
         OverlayModule,
         ButtonComponent,
+        BulkSelectDropdownComponent,
         CheckboxComponent,
         HasPermissionDirective,
         TooltipOnOverflowDirective,
@@ -87,10 +89,6 @@ export class VersionHistoryPanelComponent implements OnInit {
     public readonly selectedVersionIds = signal<ReadonlySet<number>>(new Set());
     public readonly isDeleting = signal(false);
     public readonly selectedCount = computed(() => this.selectedVersionIds().size);
-    public readonly deleteButtonLabel = computed(() => {
-        const count = this.selectedCount();
-        return `Delete ${count} ${count === 1 ? 'version' : 'versions'}`;
-    });
 
     @ViewChild('versionEditInput') editInput?: ElementRef<HTMLInputElement>;
 
@@ -202,6 +200,19 @@ export class VersionHistoryPanelComponent implements OnInit {
 
     public isVersionSelected(id: number): boolean {
         return this.selectedVersionIds().has(id);
+    }
+
+    public areAllVersionsSelected(): boolean {
+        const selectedIds = this.selectedVersionIds();
+        return this.versionsList.length > 0 && this.versionsList.every((version) => selectedIds.has(version.id));
+    }
+
+    public toggleSelectAll(): void {
+        if (this.isDeleting()) return;
+
+        this.selectedVersionIds.set(
+            this.areAllVersionsSelected() ? new Set() : new Set(this.versionsList.map((version) => version.id))
+        );
     }
 
     public toggleVersionSelection(id: number): void {

@@ -2,16 +2,17 @@
     <div class="panel-header">
         <p class="panel-header__title">Version History</p>
         <div class="panel-header__actions">
-            @if (!selectMode()) {
-                <app-button
-                    *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
-                    type="ghost"
-                    mod="small"
-                    (click)="enterSelectMode()"
-                >
-                    Select
-                </app-button>
-            }
+            <app-bulk-select-dropdown
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                mod="small"
+                [selectMode]="selectMode()"
+                [selectedCount]="selectedCount()"
+                [allSelected]="areAllVersionsSelected()"
+                [disabled]="isDeleting()"
+                (selectModeEntered)="enterSelectMode()"
+                (selectAllToggled)="toggleSelectAll()"
+                (cleared)="cancelSelectMode()"
+            />
             <button
                 (click)="closed.emit()"
                 matTooltip="Close"
@@ -56,6 +57,7 @@
                         (click)="$event.stopPropagation()"
                     >
                         <app-checkbox
+                            color="secondary"
                             [checked]="isVersionSelected(version.id)"
                             [disabled]="isDeleting()"
                             (changed)="toggleVersionSelection(version.id)"
@@ -182,22 +184,19 @@
     </div>
     <div class="dialog-footer">
         @if (selectMode()) {
-            <div class="footer-select-actions">
-                <app-button
-                    type="ghost"
-                    [disabled]="isDeleting()"
-                    (click)="cancelSelectMode()"
-                >
-                    Cancel
-                </app-button>
-                <app-button
-                    type="secondary"
-                    [disabled]="selectedCount() === 0 || isDeleting()"
-                    (click)="deleteSelectedVersions()"
-                >
-                    {{ deleteButtonLabel() }}
-                </app-button>
-            </div>
+            <!-- Icon projected, not `leftIcon`: on a full-width button that one pins to the far left edge. -->
+            <app-button
+                class="footer-delete-button"
+                type="danger"
+                [disabled]="selectedCount() === 0 || isDeleting()"
+                (click)="deleteSelectedVersions()"
+            >
+                <app-svg-icon
+                    icon="trash"
+                    size="14px"
+                />
+                Delete
+            </app-button>
         } @else {
             <button
                 class="restore-version-btn"

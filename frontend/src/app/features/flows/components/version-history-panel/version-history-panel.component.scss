@@ -87,6 +87,8 @@
     align-items: center;
     flex-shrink: 0;
     padding-top: 0.125rem;
+    // With the card's 8px gap: 12px to the title. The ⋮ menu never shows next to it, so its gap stays 8px.
+    margin-right: 4px;
 }
 
 .version-info {
@@ -155,13 +157,8 @@
     flex-shrink: 0;
 }
 
-.footer-select-actions {
-    display: flex;
-    gap: 0.5rem;
-
-    app-button {
-        flex: 1;
-    }
+.footer-delete-button {
+    width: 100%;
 }
 
 .restore-version-btn {

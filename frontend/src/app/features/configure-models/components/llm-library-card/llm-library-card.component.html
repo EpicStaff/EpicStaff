@@ -12,6 +12,7 @@
                 (click)="$event.stopPropagation()"
             >
                 <app-checkbox
+                    color="secondary"
                     [checked]="selected()"
                     [disabled]="isDeleting()"
                     (changed)="onCardClick()"

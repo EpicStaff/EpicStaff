@@ -26,114 +26,81 @@
 
     <div class="dialog-body">
         @if (isSingleItemNoUsage) {
-            <p class="hint-message">{{ summaryText }}</p>
+            <p class="summary-message">{{ summaryText }}</p>
         } @else {
             @if (!isEmpty) {
-                <p class="hint-message">{{ summaryText }}</p>
+                <p class="summary-message">{{ summaryText }}</p>
             }
-            @for (group of groups; track $index; let groupIndex = $index) {
-                <div class="group">
-                    <h3 class="group-heading">
-                        {{ groupHeading(group) }}
-                        <span class="group-count">· {{ groupItemCount(group) }}</span>
-                    </h3>
-
-                    @if (group.deletable.length > 0 || group.blocked.length > 0) {
-                        <ul class="item-list">
-                            @for (item of visibleDeletable(group, groupIndex); track item.id) {
-                                <li
-                                    class="item"
-                                    [class.item--in-use]="item.usage.length > 0"
-                                >
-                                    <span class="item-name">{{ item.name }}</span>
-                                    @if (item.usage.length > 0) {
-                                        <ul class="usage-list">
-                                            @for (line of item.usage; track $index) {
-                                                <li class="usage-line">{{ usageLineText(line) }}</li>
-                                            }
-                                        </ul>
-                                    }
-                                </li>
-                            }
-                            @if (hiddenDeletableCount(group) > 0) {
-                                <li>
-                                    <button
-                                        type="button"
-                                        class="show-more-button"
-                                        [class.show-more-button--expanded]="isExpanded('deletable', groupIndex)"
-                                        [attr.aria-expanded]="isExpanded('deletable', groupIndex)"
-                                        (click)="toggleList('deletable', groupIndex)"
-                                    >
-                                        <app-svg-icon
-                                            icon="chevron-down"
-                                            size="0.875rem"
-                                            class="show-more-icon"
-                                        />
-                                        {{ toggleLabel('deletable', groupIndex, hiddenDeletableCount(group)) }}
-                                    </button>
-                                </li>
-                            }
-                            @for (item of group.blocked; track item.id) {
-                                <li class="item item--blocked">
-                                    <span class="item-name-row">
-                                        <app-svg-icon
-                                            icon="lock"
-                                            size="0.875rem"
-                                            class="blocked-icon"
-                                        />
-                                        <span class="item-name">{{ item.name }}</span>
-                                    </span>
-                                    <p class="blocked-reason">
-                                        <span class="blocked-label">Can't be deleted.</span>
-                                        Used somewhere you don't have access to.
-                                    </p>
-                                </li>
-                            }
-                        </ul>
-                    }
-
-                    @if (groupHasUsage(group)) {
-                        <p class="caution-message">
-                            <app-svg-icon
-                                icon="warning"
-                                size="0.875rem"
-                            />
-                            Where these are used, the reference will be removed.
-                        </p>
-                    }
-
-                    @if (group.notFound.length > 0) {
-                        <div class="sub-section">
-                            <h4 class="sub-heading">Already deleted</h4>
-                            <ul class="item-list">
-                                @for (item of visibleNotFound(group, groupIndex); track item.id) {
-                                    <li class="item">
-                                        <span class="item-name">{{ item.name }}</span>
-                                    </li>
-                                }
-                                @if (hiddenNotFoundCount(group) > 0) {
-                                    <li>
-                                        <button
-                                            type="button"
-                                            class="show-more-button"
-                                            [class.show-more-button--expanded]="isExpanded('not-found', groupIndex)"
-                                            [attr.aria-expanded]="isExpanded('not-found', groupIndex)"
-                                            (click)="toggleList('not-found', groupIndex)"
+            @if (hasItemInUse) {
+                <app-hint-message
+                    class="usage-banner"
+                    tone="warning"
+                >
+                    Where these are used, the reference will be removed.
+                </app-hint-message>
+            }
+            @for (section of sections; track section.id) {
+                <section
+                    class="breakdown"
+                    [class.breakdown--neutral]="section.kind === 'not-found'"
+                >
+                    <button
+                        type="button"
+                        class="breakdown-header"
+                        [attr.aria-expanded]="isSectionOpen(section)"
+                        [attr.aria-controls]="section.id"
+                        (click)="toggleSection(section)"
+                    >
+                        <app-icon
+                            icon="ui/chevron-down"
+                            size="0.85rem"
+                            class="breakdown-chevron"
+                            [class.collapsed]="!isSectionOpen(section)"
+                        />
+                        <span class="breakdown-title">{{ section.title }}</span>
+                        <span class="breakdown-total">{{ section.count }}</span>
+                    </button>
+                    <div
+                        class="grid-collapsible"
+                        [class.expanded]="isSectionOpen(section)"
+                    >
+                        <div>
+                            <ul
+                                class="breakdown-list"
+                                [id]="section.id"
+                            >
+                                @for (row of section.rows; track row.id) {
+                                    <!-- Plain rows skip the tooltip directive: a list can hold hundreds of them. -->
+                                    @if (row.tooltip) {
+                                        <li
+                                            class="item"
+                                            [class.item--blocked]="row.kind === 'blocked'"
+                                            [class.item--in-use]="row.kind === 'in-use'"
                                         >
-                                            <app-svg-icon
-                                                icon="chevron-down"
-                                                size="0.875rem"
-                                                class="show-more-icon"
-                                            />
-                                            {{ toggleLabel('not-found', groupIndex, hiddenNotFoundCount(group)) }}
-                                        </button>
-                                    </li>
+                                            <span class="item-name">{{ row.name }}</span>
+                                            <!-- The tooltip sits on the label, so it centres over it. -->
+                                            <span
+                                                class="item-label"
+                                                tabindex="0"
+                                                matTooltipPosition="above"
+                                                matTooltipClass="multiline-tooltip"
+                                                [matTooltip]="row.tooltip"
+                                                >{{ row.label }}</span
+                                            >
+                                        </li>
+                                    } @else {
+                                        <li class="item">
+                                            <span class="item-name">{{ row.name }}</span>
+                                        </li>
+                                    }
                                 }
                             </ul>
-                            <p class="sub-note">These no longer exist and were removed from the list.</p>
                         </div>
+                    </div>
+                    @if (section.kind === 'not-found') {
+                        <p class="section-note">These no longer exist and were removed from the list.</p>
                     }
-                </div>
+                </section>
             }
         }
     </div>
@@ -155,13 +122,13 @@
             >
                 Cancel
             </button>
-            <button
-                type="button"
-                class="button confirm-button"
+            <app-button
+                class="confirm-button"
+                type="danger"
                 (click)="onConfirm()"
             >
-                {{ confirmText }}
-            </button>
+                Delete
+            </app-button>
         }
     </div>
 </div>

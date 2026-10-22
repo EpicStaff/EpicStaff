@@ -1,0 +1,72 @@
+<div
+    class="bulk-select"
+    [class.bulk-select--small]="isSmall()"
+    [class.bulk-select--outline]="isOutline()"
+    [class.bulk-select--selected]="showsSelection()"
+    [class.bulk-select--disabled]="disabled()"
+>
+    <button
+        type="button"
+        class="bulk-select__main"
+        [class.bulk-select__main--open]="isMenuOpen()"
+        [cdkMenuTriggerFor]="menu"
+        [cdkMenuPosition]="menuPositions"
+        [disabled]="disabled()"
+        (cdkMenuOpened)="onMenuOpened()"
+        (cdkMenuClosed)="onMenuClosed()"
+    >
+        @if (showsSelection()) {
+            <span class="bulk-select__label">
+                Selected <span class="bulk-select__count">({{ selectedCount() }})</span>
+            </span>
+        } @else {
+            <span class="bulk-select__label">Select</span>
+        }
+        <app-svg-icon
+            icon="chevron-down"
+            class="bulk-select__chevron"
+            [size]="chevronIconSize()"
+            [class.bulk-select__chevron--open]="isMenuOpen()"
+        />
+    </button>
+    @if (showsSelection()) {
+        <span
+            class="bulk-select__divider"
+            aria-hidden="true"
+        ></span>
+        <button
+            type="button"
+            class="bulk-select__clear"
+            aria-label="Clear selection"
+            matTooltip="Clear selection"
+            matTooltipPosition="above"
+            [disabled]="disabled()"
+            (click)="onClear()"
+        >
+            <app-svg-icon
+                icon="x"
+                [size]="clearIconSize()"
+            />
+        </button>
+    }
+</div>
+
+<ng-template #menu>
+    <div
+        cdkMenu
+        class="bulk-select-menu"
+        [class.bulk-select-menu--small]="isSmall()"
+        [class.bulk-select-menu--outline]="isOutline()"
+    >
+        <!-- (keydown.escape): see onMenuItemEscape(). -->
+        <button
+            cdkMenuItem
+            type="button"
+            class="bulk-select-menu__item"
+            (cdkMenuItemTriggered)="selectAllToggled.emit()"
+            (keydown.escape)="onMenuItemEscape($event)"
+        >
+            {{ menuItemLabel() }}
+        </button>
+    </div>
+</ng-template>

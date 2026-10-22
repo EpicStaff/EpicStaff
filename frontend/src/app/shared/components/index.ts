@@ -12,6 +12,7 @@ export * from './avatar-upload/avatar-upload.component';
 export * from './binned-secret-note/binned-secret-note.component';
 export * from './blob-preview/blob-preview.component';
 export * from './bulk-delete-dialog/bulk-delete-dialog.component';
+export * from './bulk-select-dropdown/bulk-select-dropdown.component';
 export * from './button-round/button-round.component';
 export * from './buttons';
 export * from './checkbox/checkbox.component';

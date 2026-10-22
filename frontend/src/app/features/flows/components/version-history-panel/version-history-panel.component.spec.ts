@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
-import { BulkDeleteGroup, BulkDeleteResponse } from '@shared/models';
+import { ActionCode, BulkDeleteGroup, BulkDeleteResponse, ResourceCode } from '@shared/models';
 import { BulkDeleteService } from '@shared/services';
 import { map, of, Subject } from 'rxjs';
 
@@ -45,8 +45,11 @@ describe('VersionHistoryPanelComponent', () => {
     };
     let previewed: GraphVersionDto[];
     let deleted: GraphVersionDto[];
+    /** Read when a panel is created; every other action is always granted. */
+    let isDeleteGranted: boolean;
 
     beforeEach(() => {
+        isDeleteGranted = true;
         // The card's overflow tooltips observe their size; jsdom has no ResizeObserver.
         vi.stubGlobal(
             'ResizeObserver',
@@ -78,7 +81,12 @@ describe('VersionHistoryPanelComponent', () => {
                 { provide: BulkDeleteService, useValue: bulkDelete as unknown as BulkDeleteService },
                 {
                     provide: PermissionsService,
-                    useValue: { can: () => true, canAny: () => true } as unknown as PermissionsService,
+                    useValue: {
+                        can: (_resource: ResourceCode, action: ActionCode) =>
+                            action !== ActionCode.Delete || isDeleteGranted,
+                        canAny: (_resource: ResourceCode, actions: ActionCode[]) =>
+                            actions.some((action) => action !== ActionCode.Delete || isDeleteGranted),
+                    } as unknown as PermissionsService,
                 },
                 { provide: ToastService, useValue: toast as unknown as ToastService },
                 { provide: Router, useValue: { navigate: vi.fn() } as unknown as Router },
@@ -262,6 +270,98 @@ describe('VersionHistoryPanelComponent', () => {
         expect(previewed).toEqual([]);
         expect(component.isVersionSelected(1)).toBe(true);
         expect(cards()[0].getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('gives each row a secondary (light box, dark tick) selection checkbox', () => {
+        component.enterSelectMode();
+        fixture.detectChanges();
+
+        const checkboxes = cards().map((card) => card.querySelector('.version-checkbox app-checkbox input'));
+        expect(checkboxes).toHaveLength(VERSIONS.length);
+        checkboxes.forEach((checkbox) => expect(checkbox?.classList).toContain('secondary'));
+    });
+
+    describe('select dropdown', () => {
+        function selectButton(): HTMLButtonElement {
+            return fixture.nativeElement.querySelector('app-bulk-select-dropdown .bulk-select__main');
+        }
+
+        function selectAllItem(): HTMLButtonElement {
+            return document.querySelector<HTMLButtonElement>('.bulk-select-menu__item')!;
+        }
+
+        function footerDelete(): HTMLButtonElement {
+            return fixture.nativeElement.querySelector('.footer-delete-button button');
+        }
+
+        it('enters select mode from the header and selects every version with "Select All"', () => {
+            selectButton().click();
+            fixture.detectChanges();
+            expect(component.selectMode()).toBe(true);
+            expect(footerDelete().disabled).toBe(true);
+
+            selectAllItem().click();
+            fixture.detectChanges();
+
+            expect(component.isVersionSelected(1)).toBe(true);
+            expect(component.isVersionSelected(2)).toBe(true);
+            expect(footerDelete().textContent?.trim()).toBe('Delete');
+            expect(footerDelete().classList).toContain('btn-danger');
+            expect(footerDelete().disabled).toBe(false);
+        });
+
+        it('puts the trash icon inside the Delete label, next to the text', () => {
+            selectButton().click();
+            fixture.detectChanges();
+
+            const icon = footerDelete().querySelector('.btn-content app-svg-icon use');
+            expect(icon?.getAttribute('href')).toBe('#icon-trash');
+            expect(footerDelete().querySelector('.btn-icon')).toBeNull();
+        });
+
+        it('offers "Deselect All" once every version is selected, and it clears the selection', () => {
+            selectButton().click();
+            fixture.detectChanges();
+            selectAllItem().click();
+            fixture.detectChanges();
+
+            selectButton().click();
+            fixture.detectChanges();
+            expect(selectAllItem().textContent?.trim()).toBe('Deselect All');
+            selectAllItem().click();
+            fixture.detectChanges();
+
+            expect(component.selectedCount()).toBe(0);
+            expect(component.selectMode()).toBe(true);
+        });
+
+        it('leaves select mode and clears the selection with the ×', () => {
+            selectButton().click();
+            fixture.detectChanges();
+            click(cards()[0]);
+            fixture.detectChanges();
+
+            fixture.nativeElement.querySelector('.bulk-select__clear').click();
+            fixture.detectChanges();
+
+            expect(component.selectMode()).toBe(false);
+            expect(component.selectedCount()).toBe(0);
+            expect(fixture.nativeElement.querySelector('.restore-version-btn')).not.toBeNull();
+        });
+
+        it('offers neither the select dropdown nor any Delete without the delete permission', () => {
+            isDeleteGranted = false;
+            fixture = TestBed.createComponent(VersionHistoryPanelComponent);
+            component = fixture.componentInstance;
+            fixture.componentRef.setInput('graphId', 7);
+            fixture.detectChanges();
+
+            expect(fixture.nativeElement.querySelector('app-bulk-select-dropdown')).toBeNull();
+            expect(fixture.nativeElement.querySelector('.footer-delete-button')).toBeNull();
+            openMenu(0);
+            expect(menuItemLabels()).toContain('Restore');
+            expect(menuItemLabels()).not.toContain('Delete');
+        });
     });
 
     it('treats a double-click as a single toggle while selecting', () => {
