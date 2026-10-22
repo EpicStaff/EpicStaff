@@ -115,6 +115,24 @@ class GraphStrategy(EntityImportExportStrategy):
             )
         )
 
+        # Every environment the flow's own code runs in. Collected here rather than
+        # from the node strategies: a full export walks this method, not theirs.
+        deps[EntityType.VENV] = (
+            set(instance.python_node_list.values_list("python_code__venv_id", flat=True))
+            | set(instance.webhook_trigger_node_list.values_list("python_code__venv_id", flat=True))
+            | set(
+                instance.classification_decision_table_node_list.values_list(
+                    "pre_python_code__venv_id", flat=True
+                )
+            )
+            | set(
+                instance.classification_decision_table_node_list.values_list(
+                    "post_python_code__venv_id", flat=True
+                )
+            )
+        )
+        deps[EntityType.VENV].discard(None)
+
         return deps
 
     def export_entity(self, instance: Graph) -> dict:

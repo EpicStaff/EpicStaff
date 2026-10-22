@@ -101,8 +101,6 @@ function treeInput(overrides: Partial<CdtDecisionTreeInput> = {}): CdtDecisionTr
         postCode: '',
         preInputMap: {},
         postInputMap: {},
-        preLibraries: [],
-        postLibraries: [],
         preOutputVariablePath: null,
         postOutputVariablePath: null,
         prompts: {},

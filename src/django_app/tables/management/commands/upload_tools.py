@@ -93,9 +93,7 @@ def create_or_update_python_tool(
     python_tool_obj = PythonCodeTool.objects.filter(name=name).first()
 
     if python_tool_obj is None:
-        python_code_obj = PythonCode.objects.create(
-            code=code, entrypoint=entrypoint, libraries=requirements
-        )
+        python_code_obj = PythonCode.objects.create(code=code, entrypoint=entrypoint)
         python_tool_obj = PythonCodeTool.objects.create(
             name=name,
             python_code=python_code_obj,
@@ -109,7 +107,6 @@ def create_or_update_python_tool(
         python_code_obj: PythonCode = python_tool_obj.python_code
         python_code_obj.code = code
         python_code_obj.entrypoint = entrypoint
-        python_code_obj.libraries = requirements
         python_tool_obj.description = description
         python_tool_obj.variables = variables
         python_tool_obj.use_storage = use_storage
