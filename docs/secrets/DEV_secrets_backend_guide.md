@@ -8,8 +8,10 @@ Related focused docs: [secrets_endpoints.md](secrets_endpoints.md),
 [sandbox_secrets.md](sandbox_secrets.md), [secret_usage.md](secret_usage.md).
 
 Who may **change** which secret a resource references is a separate, RBAC-side concern —
-`secrets:USE`, enforced by `SecretReferenceGuardMixin` and documented in
-[../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6. Everything in
+`secrets:USE`, enforced by `SecretUseService` at each write point and documented in
+[../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6. The same
+section covers the destination rule: a secret-bearing row may not be pointed at a new
+`base_url` / MCP `transport` without `USE`. Everything in
 *this* guide is about storing, resolving and delivering the value once a reference exists.
 
 ---
@@ -353,12 +355,13 @@ Consequences worth knowing:
 4. If the value must reach another service, add the pydantic carrier pair
    (`<field>_secret_id` with `Field(exclude=True)`, plus the plaintext `<field>` slot) and
    let `resolve_payload` fill it. Do not decrypt at the call site.
-5. **Add the write field to the owning serializer's `secret_reference_fields`**, so changing
-   the reference requires `secrets:USE`. The serializer must carry
-   `SecretReferenceGuardMixin`, and if it defines its own `validate()` it **must** call
-   `super().validate(attrs)` — four serializers have silently bypassed the guard exactly that
-   way. `tests/services_tests/test_secret_reference_coverage.py` fails until the field is
-   registered or explicitly exempted with a written reason; see
+5. **Gate the field with a secret Use check**, so changing the reference requires
+   `secrets:USE`. The serializer does not check it: add or extend the entity's
+   `check_<entity>_write` in `tables/services/secrets/secret_use_checks.py`, call it at every
+   write point that saves the entity, and map the serializer in
+   `tests/services_tests/test_secret_reference_coverage.py`, which fails until the field is
+   mapped or explicitly exempted with a written reason. If the field also decides where the
+   secret is sent (a URL), add a destination check. See
    [../rbac/DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6.
 6. Register a usage source so deletion safety still tells the truth — see
    [secret_usage.md](secret_usage.md) §7 "Adding a source". Note that source needs an
@@ -413,9 +416,10 @@ All paths are relative to `src/django_app/` unless stated otherwise.
 | Usage sources and payload | `tests/services_tests/test_secret_usage_sources.py`, `test_secret_usage_service.py`, `test_secret_usage_source_coverage.py` |
 | Usage endpoints, query cost | `tests/api_tests/test_secret_usage_api.py`, `test_graph_list_cdt_secrets_query_count.py` |
 | Usage visibility per role (readable/hidden) | `tests/services_tests/test_secret_usage_permission_filtering.py`, `tests/api_tests/test_secret_usage_permission_visibility.py` |
-| `secrets:USE` guard: delta rule, fail-safe | `tests/services_tests/test_secret_reference_guard.py` |
-| `secrets:USE` coverage — every field gated, guard actually reached | `tests/services_tests/test_secret_reference_coverage.py` |
-| `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py` |
+| `secrets:USE` service: delta, marker and destination rules, fail-safe | `tests/services_tests/test_secret_use_service.py`, `test_secret_use_view_glue.py` |
+| `secrets:USE` coverage — every Secret field mapped to a write-point check | `tests/services_tests/test_secret_reference_coverage.py` |
+| `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py`, `test_config_extra_headers_secret_use.py`, `tests/import_export_tests/test_config_marker_import_secret_use.py` |
+| `secrets:USE` destination (`base_url`, model switch, MCP `transport`) | `tests/api_tests/test_secret_use_destination.py` |
 | Version round trip | `tests/graph_versioning_tests/test_secret_declarations.py`, `tests/api_tests/test_graph_version_secret_declarations.py` |
 | Sandbox delivery and scrubbing | `src/sandbox/tests/chain_tests/test_execute_code_handler_env.py`, `test_secret_scrubber.py` |
 

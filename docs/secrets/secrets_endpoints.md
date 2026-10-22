@@ -278,8 +278,14 @@ unchanged and needs nothing. Refusals come back as a normal DRF field error:
 { "auth_secret_id": ["Changing the secrets referenced here requires the \"Use\" permission on Secrets. The existing selection was left unchanged. Ask an organization admin to grant it."] }
 ```
 
-Enforcement lives in `SecretReferenceGuardMixin` — mechanism, coverage guarantees, and how to
-diverge one request path are in
+Pointing a resource that carries a secret at a new destination needs `secrets:USE` the same
+way: an LLM or embedding config's `base_url` (or a `model` switch to one with another
+`base_url`), an OpenAI realtime config's `base_url`, an MCP tool's `transport`, and a custom
+model's `base_url` while a secret-bearing config uses it. `null` and `""` are the same
+destination. Those refusals name the field too.
+
+Enforcement lives in `SecretUseService`, called at each write point after validation —
+mechanism, write points and coverage guarantees are in
 [DEV_rbac_backend_guide.md](../rbac/DEV_rbac_backend_guide.md) §5.6.
 
 ---
