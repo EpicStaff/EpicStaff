@@ -99,6 +99,8 @@ class StorageDocumentImportService:
         org_id: int,
         collection_id: int,
         storage_file_ids: list[int],
+        *,
+        user: object | None,
     ) -> StorageImportResult:
         """Copy the selected storage files into a collection as new documents.
 
@@ -120,6 +122,9 @@ class StorageDocumentImportService:
             collection_id: Target collection. The caller must already have
                 verified it belongs to ``org_id``.
             storage_file_ids: Ids of files and/or folders.
+            user: The requesting user, recorded as the collection's last editor
+                when any document is created, as for a direct upload. Has no
+                default so a caller cannot omit it unnoticed; None records no edit.
 
         Raises:
             StorageFilesNotFoundException: An id is missing, in another org, or a
@@ -148,7 +153,7 @@ class StorageDocumentImportService:
         downloads = self._download_all(org_id, importable, limits)
 
         documents, duplicate_files = DocumentManagementService.upload_new_files_batch(
-            collection_id=collection_id, uploaded_files=list(downloads)
+            collection_id=collection_id, uploaded_files=list(downloads), user=user
         )
         # Another import may have added the same files since the first check.
         skipped.extend(

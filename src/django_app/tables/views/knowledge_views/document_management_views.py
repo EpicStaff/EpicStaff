@@ -185,6 +185,7 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
         try:
             result = StorageDocumentImportService(get_storage_manager()).import_files(
                 actor=_audit_actor(request),
+                user=request.user,
                 org_id=org_id,
                 collection_id=collection_id,
                 storage_file_ids=serializer.validated_data["storage_file_ids"],

@@ -145,7 +145,7 @@ class TestImportFiles:
         readme = _store(storage_manager, acme, "docs/readme.md", b"# Readme")
 
         result = import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [notes.id, readme.id]
+            _ACTOR, acme.id, collection.collection_id, [notes.id, readme.id], user=None
         )
 
         assert result.skipped == []
@@ -164,7 +164,7 @@ class TestImportFiles:
         _store(storage_manager, acme, "docs-archive/c.txt", b"ccc")
 
         result = import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [_folder(acme, "docs/").id]
+            _ACTOR, acme.id, collection.collection_id, [_folder(acme, "docs/").id], user=None
         )
 
         assert sorted(document.file_name for document in result.documents) == ["a.txt", "b.md"]
@@ -176,7 +176,7 @@ class TestImportFiles:
         _store(storage_manager, beta, "docs/x.txt", b"theirs")
 
         result = import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [_folder(acme, "docs/").id]
+            _ACTOR, acme.id, collection.collection_id, [_folder(acme, "docs/").id], user=None
         )
 
         assert [document.file_name for document in result.documents] == ["mine.txt"]
@@ -188,7 +188,11 @@ class TestImportFiles:
         inner = _store(storage_manager, acme, "docs/a.txt", b"a")
 
         result = import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [_folder(acme, "docs/").id, inner.id]
+            _ACTOR,
+            acme.id,
+            collection.collection_id,
+            [_folder(acme, "docs/").id, inner.id],
+            user=None,
         )
 
         assert [document.file_name for document in result.documents] == ["a.txt"]
@@ -202,7 +206,7 @@ class TestImportFiles:
         StorageFile.objects.filter(id=system_file.id).update(is_system=True)
 
         result = import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [_folder(acme, "out/").id]
+            _ACTOR, acme.id, collection.collection_id, [_folder(acme, "out/").id], user=None
         )
 
         assert [document.file_name for document in result.documents] == ["user.txt"]
@@ -224,6 +228,7 @@ class TestImportFiles:
             _ACTOR, acme.id,
             collection.collection_id,
             [good.id, sheet.id, big.id, already.id, same_name_other_size.id],
+            user=None,
         )
 
         assert sorted(document.file_name for document in result.documents) == [
@@ -243,7 +248,7 @@ class TestImportFiles:
         second = _store(storage_manager, acme, "b/report.txt", b"same")
 
         result = import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [first.id, second.id]
+            _ACTOR, acme.id, collection.collection_id, [first.id, second.id], user=None
         )
 
         assert [document.file_name for document in result.documents] == ["report.txt"]
@@ -257,7 +262,9 @@ class TestImportFiles:
         sheet = _store(storage_manager, acme, "sheet.xlsx", b"xl")
 
         with pytest.raises(NothingToImportException) as raised:
-            import_service.import_files(_ACTOR, acme.id, collection.collection_id, [sheet.id])
+            import_service.import_files(
+                _ACTOR, acme.id, collection.collection_id, [sheet.id], user=None
+            )
 
         assert raised.value.skipped == [
             SkippedStorageFile(sheet.id, "sheet.xlsx", SkipReason.UNSUPPORTED_TYPE)
@@ -271,7 +278,9 @@ class TestImportFiles:
         StorageFile.objects.filter(id=system_file.id).update(is_system=True)
 
         with pytest.raises(StorageFilesNotFoundException):
-            import_service.import_files(_ACTOR, acme.id, collection.collection_id, [system_file.id])
+            import_service.import_files(
+                _ACTOR, acme.id, collection.collection_id, [system_file.id], user=None
+            )
 
     def test_other_org_file_is_not_found_and_nothing_is_created(
         self, import_service, storage_manager, acme, beta, collection
@@ -281,7 +290,7 @@ class TestImportFiles:
 
         with pytest.raises(StorageFilesNotFoundException):
             import_service.import_files(
-                _ACTOR, acme.id, collection.collection_id, [mine.id, theirs.id]
+                _ACTOR, acme.id, collection.collection_id, [mine.id, theirs.id], user=None
             )
 
         assert _document_names(collection) == []
@@ -293,14 +302,16 @@ class TestImportFiles:
 
         with pytest.raises(StorageFilesNotFoundException):
             import_service.import_files(
-                _ACTOR, acme.id, collection.collection_id, [_folder(beta, "shared/").id]
+                _ACTOR, acme.id, collection.collection_id, [_folder(beta, "shared/").id], user=None
             )
 
     def test_missing_object_is_not_found(self, import_service, acme, collection):
         orphan = _index_only(acme, "orphan.txt", size=4)
 
         with pytest.raises(StorageFilesNotFoundException):
-            import_service.import_files(_ACTOR, acme.id, collection.collection_id, [orphan.id])
+            import_service.import_files(
+                _ACTOR, acme.id, collection.collection_id, [orphan.id], user=None
+            )
 
         assert _document_names(collection) == []
 
@@ -317,7 +328,7 @@ class TestUnknownIndexSize:
         copied_big = _store_without_size(storage_manager, acme, "copied/big.txt", b"x" * 11)
 
         result = import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [good.id, copied_big.id]
+            _ACTOR, acme.id, collection.collection_id, [good.id, copied_big.id], user=None
         )
 
         assert [document.file_name for document in result.documents] == ["good.txt"]
@@ -332,7 +343,9 @@ class TestUnknownIndexSize:
         _existing_document(collection, "seen.txt", b"seen")
 
         with pytest.raises(NothingToImportException) as raised:
-            import_service.import_files(_ACTOR, acme.id, collection.collection_id, [copied.id])
+            import_service.import_files(
+                _ACTOR, acme.id, collection.collection_id, [copied.id], user=None
+            )
 
         assert raised.value.skipped == [
             SkippedStorageFile(copied.id, "copied/seen.txt", SkipReason.DUPLICATE)
@@ -350,7 +363,7 @@ class TestUnknownIndexSize:
 
         with pytest.raises(StorageImportLimitExceededException, match="Total import size"):
             import_service.import_files(
-                _ACTOR, acme.id, collection.collection_id, [row.id for row in rows]
+                _ACTOR, acme.id, collection.collection_id, [row.id for row in rows], user=None
             )
 
     def test_unsupported_type_is_skipped_without_a_size_lookup(self, acme, collection):
@@ -360,7 +373,7 @@ class TestUnknownIndexSize:
         good = _store_without_size(storage_manager, acme, "copied/good.txt", b"fine")
 
         result = StorageDocumentImportService(storage_manager).import_files(
-            _ACTOR, acme.id, collection.collection_id, [sheet.id, good.id]
+            _ACTOR, acme.id, collection.collection_id, [sheet.id, good.id], user=None
         )
 
         assert backend.info_paths == [f"org_{acme.id}/copied/good.txt"]
@@ -380,7 +393,7 @@ class TestUnknownIndexSize:
 
         with pytest.raises(StorageImportLimitExceededException, match="limit is 1"):
             StorageDocumentImportService(storage_manager).import_files(
-                _ACTOR, acme.id, collection.collection_id, [row.id for row in rows]
+                _ACTOR, acme.id, collection.collection_id, [row.id for row in rows], user=None
             )
 
         assert backend.info_paths == []
@@ -391,7 +404,9 @@ class TestUnknownIndexSize:
         orphan = _index_only(acme, "copied/orphan.txt", size=None)
 
         with pytest.raises(StorageFilesNotFoundException):
-            import_service.import_files(_ACTOR, acme.id, collection.collection_id, [orphan.id])
+            import_service.import_files(
+                _ACTOR, acme.id, collection.collection_id, [orphan.id], user=None
+            )
 
 
 class TestLimits:
@@ -404,7 +419,7 @@ class TestLimits:
 
         with pytest.raises(StorageImportLimitExceededException, match="limit is 2"):
             import_service.import_files(
-                _ACTOR, acme.id, collection.collection_id, [row.id for row in rows]
+                _ACTOR, acme.id, collection.collection_id, [row.id for row in rows], user=None
             )
 
     @override_settings(MAX_UPLOAD_TOTAL_SIZE=10)
@@ -413,7 +428,7 @@ class TestLimits:
 
         with pytest.raises(StorageImportLimitExceededException, match="Total import size"):
             import_service.import_files(
-                _ACTOR, acme.id, collection.collection_id, [row.id for row in rows]
+                _ACTOR, acme.id, collection.collection_id, [row.id for row in rows], user=None
             )
 
     @override_settings(MAX_ARCHIVE_ENTRIES=1, MAX_UPLOAD_FILE_SIZE=10)
@@ -425,7 +440,7 @@ class TestLimits:
 
         with pytest.raises(StorageImportLimitExceededException, match="limit is 1"):
             import_service.import_files(
-                _ACTOR, acme.id, collection.collection_id, [good.id, big.id]
+                _ACTOR, acme.id, collection.collection_id, [good.id, big.id], user=None
             )
 
     @override_settings(MAX_ARCHIVE_ENTRIES=1)
@@ -436,7 +451,7 @@ class TestLimits:
         sheet = _store(storage_manager, acme, "sheet.xlsx", b"xl")
 
         result = import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [good.id, sheet.id]
+            _ACTOR, acme.id, collection.collection_id, [good.id, sheet.id], user=None
         )
 
         assert [document.file_name for document in result.documents] == ["good.txt"]
@@ -453,7 +468,11 @@ class TestLimits:
 
         with pytest.raises(StorageImportLimitExceededException, match="more than 2 files"):
             import_service.import_files(
-                _ACTOR, acme.id, collection.collection_id, [_folder(acme, "big-folder/").id]
+                _ACTOR,
+                acme.id,
+                collection.collection_id,
+                [_folder(acme, "big-folder/").id],
+                user=None,
             )
 
     @override_settings(MAX_ARCHIVE_ENTRIES=1)
@@ -461,7 +480,9 @@ class TestLimits:
         self, import_service, acme, collection
     ):
         with pytest.raises(StorageImportLimitExceededException, match="more than 2"):
-            import_service.import_files(_ACTOR, acme.id, collection.collection_id, [1, 2, 3])
+            import_service.import_files(
+                _ACTOR, acme.id, collection.collection_id, [1, 2, 3], user=None
+            )
 
     @override_settings(MAX_UPLOAD_TOTAL_SIZE=10)
     def test_running_total_stops_downloads_when_the_index_understates_sizes(
@@ -471,7 +492,9 @@ class TestLimits:
         StorageFile.objects.filter(id=grown.id).update(size=1)
 
         with pytest.raises(StorageImportLimitExceededException, match="over the limit"):
-            import_service.import_files(_ACTOR, acme.id, collection.collection_id, [grown.id])
+            import_service.import_files(
+                _ACTOR, acme.id, collection.collection_id, [grown.id], user=None
+            )
 
         assert _document_names(collection) == []
 
@@ -492,15 +515,15 @@ class TestRecheckAtWriteTime:
         calm = _store(storage_manager, acme, "calm.txt", b"calm")
 
         result = StorageDocumentImportService(storage_manager).import_files(
-            _ACTOR, acme.id, collection.collection_id, [raced.id, calm.id]
+            _ACTOR, acme.id, collection.collection_id, [raced.id, calm.id], user=None
         )
 
         assert [document.file_name for document in result.documents] == ["calm.txt"]
         assert result.skipped == [SkippedStorageFile(raced.id, "race.txt", SkipReason.DUPLICATE)]
         assert _document_names(collection) == ["calm.txt", "race.txt"]
 
-    def test_every_file_duplicated_before_the_write_raises_nothing_to_import(
-        self, acme, collection
+    def test_every_file_duplicated_before_the_write_raises_nothing_to_import_and_records_no_edit(
+        self, acme, admin_acme, collection
     ):
         def add_same_file_before_write():
             if not DocumentMetadata.objects.filter(file_name="race.txt").exists():
@@ -511,13 +534,14 @@ class TestRecheckAtWriteTime:
 
         with pytest.raises(NothingToImportException) as raised:
             StorageDocumentImportService(storage_manager).import_files(
-                _ACTOR, acme.id, collection.collection_id, [raced.id]
+                _ACTOR, acme.id, collection.collection_id, [raced.id], user=admin_acme
             )
 
         assert raised.value.skipped == [
             SkippedStorageFile(raced.id, "race.txt", SkipReason.DUPLICATE)
         ]
         assert _document_names(collection) == ["race.txt"]
+        assert not collection.last_edits.exists()
 
     @pytest.mark.parametrize("delete_mode", ["soft", "hard"])
     def test_collection_deleted_before_the_write_is_not_found(
@@ -532,7 +556,7 @@ class TestRecheckAtWriteTime:
 
         with pytest.raises(CollectionNotFoundException):
             StorageDocumentImportService(storage_manager).import_files(
-                _ACTOR, acme.id, collection.collection_id, [stored.id]
+                _ACTOR, acme.id, collection.collection_id, [stored.id], user=None
             )
 
         assert not DocumentMetadata.objects.filter(file_name="late.txt").exists()
@@ -546,7 +570,7 @@ class TestAuditLog:
         sheet = _store(storage_manager, acme, "reports/sheet.xlsx", b"xl")
 
         import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [notes.id, sheet.id]
+            _ACTOR, acme.id, collection.collection_id, [notes.id, sheet.id], user=None
         )
 
         [line] = _audit_lines(audit_log)
@@ -567,7 +591,7 @@ class TestAuditLog:
         ]
 
         import_service.import_files(
-            _ACTOR, acme.id, collection.collection_id, [row.id for row in rows]
+            _ACTOR, acme.id, collection.collection_id, [row.id for row in rows], user=None
         )
 
         # The project's stdout sink truncates messages over 200 characters
@@ -586,7 +610,9 @@ class TestAuditLog:
     ):
         stored = _store(storage_manager, acme, "odd/a\nforged audit line.txt", b"x")
 
-        import_service.import_files(_ACTOR, acme.id, collection.collection_id, [stored.id])
+        import_service.import_files(
+            _ACTOR, acme.id, collection.collection_id, [stored.id], user=None
+        )
 
         [line] = _audit_lines(audit_log)
         assert "\n" not in line
@@ -599,7 +625,9 @@ class TestAuditLog:
         assert len(long_path) > 200
         stored = _store(storage_manager, acme, long_path, b"x")
 
-        import_service.import_files(_ACTOR, acme.id, collection.collection_id, [stored.id])
+        import_service.import_files(
+            _ACTOR, acme.id, collection.collection_id, [stored.id], user=None
+        )
 
         [line] = _audit_lines(audit_log)
         logged_path = line.split(f"({stored.id}, '", 1)[1].split("')", 1)[0]
@@ -614,9 +642,27 @@ class TestAuditLog:
         sheet = _store(storage_manager, acme, "sheet.xlsx", b"xl")
 
         with pytest.raises(NothingToImportException):
-            import_service.import_files(_ACTOR, acme.id, collection.collection_id, [sheet.id])
+            import_service.import_files(
+                _ACTOR, acme.id, collection.collection_id, [sheet.id], user=None
+            )
 
         assert _audit_lines(audit_log) == []
+
+
+class TestCollectionLastEdit:
+    """An import edits its collection the way a direct upload does."""
+
+    def test_import_records_the_importing_user_as_the_collections_last_editor(
+        self, import_service, storage_manager, acme, admin_acme, collection
+    ):
+        notes = _store(storage_manager, acme, "notes.txt", b"plain notes")
+        readme = _store(storage_manager, acme, "docs/readme.md", b"# Readme")
+
+        import_service.import_files(
+            _ACTOR, acme.id, collection.collection_id, [notes.id, readme.id], user=admin_acme
+        )
+
+        assert collection.last_edits.get().edited_by_id == admin_acme.id
 
 
 class TestShortenPathForLog:
@@ -643,7 +689,7 @@ class TestUploadNewFilesBatch:
         in_batch_duplicate = SimpleUploadedFile("new.txt", b"new")
 
         created, duplicates = DocumentManagementService.upload_new_files_batch(
-            collection.collection_id, [existing_duplicate, first, in_batch_duplicate]
+            collection.collection_id, [existing_duplicate, first, in_batch_duplicate], user=None
         )
 
         assert [document.file_name for document in created] == ["new.txt"]
@@ -656,5 +702,5 @@ class TestUploadNewFilesBatch:
 
         with pytest.raises(CollectionNotFoundException):
             DocumentManagementService.upload_new_files_batch(
-                collection.collection_id, [SimpleUploadedFile("a.txt", b"a")]
+                collection.collection_id, [SimpleUploadedFile("a.txt", b"a")], user=None
             )

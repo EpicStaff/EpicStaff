@@ -315,7 +315,7 @@ class DocumentManagementService:
     @staticmethod
     @transaction.atomic
     def upload_new_files_batch(
-        collection_id: int, uploaded_files: list[UploadedFile]
+        collection_id: int, uploaded_files: list[UploadedFile], *, user: object | None
     ) -> tuple[list[DocumentMetadata], list[UploadedFile]]:
         """Upload the files the collection does not already hold, skipping the rest.
 
@@ -325,6 +325,11 @@ class DocumentManagementService:
         before the duplicate check, so two concurrent batches into one collection
         cannot both insert the same file: the second waits and then sees the
         first's rows.
+
+        Args:
+            user: Acting user, recorded as the collection's last editor when any
+                file is uploaded. Has no default so a caller cannot omit it
+                unnoticed; None records no edit.
 
         Returns:
             ``(created documents, duplicate files)``. Nothing is written when every
@@ -360,7 +365,7 @@ class DocumentManagementService:
         # Runs as a savepoint inside this transaction, so the lock is held
         # until every document is written.
         created_documents = DocumentManagementService.upload_files_batch(
-            collection_id=collection_id, uploaded_files=new_files
+            collection_id=collection_id, uploaded_files=new_files, user=user
         )
         return created_documents, duplicate_files
 
