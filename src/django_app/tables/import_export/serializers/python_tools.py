@@ -8,28 +8,26 @@ from tables.models import (
 from tables.serializers.utils.description_sanitizer import validate_tool_description
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.validators.execution_timeout_validator import normalize_imported_execution_timeout
-from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
 class PythonCodeImportSerializer(serializers.ModelSerializer):
+    """Python code as it travels in an import/export file.
+
+    Libraries are not here: they belong to the venv, which travels as its own
+    `Venv` entry, and the code only names which one it runs in.
+    """
+
     code = serializers.CharField(allow_blank=True)
-    libraries = serializers.CharField(allow_blank=True)
     entrypoint = serializers.CharField(allow_blank=True, required=False)
+    # A plain integer on purpose, not a related field: the value is the exporting
+    # system's binding pk, so resolving it against this database would validate --
+    # and could import -- another organization's environment. The strategies remap
+    # it through the IDMapper before this serializer ever sees a local id.
+    venv = serializers.IntegerField(source="venv_id", required=False, allow_null=True)
 
     class Meta:
         model = PythonCode
         exclude = ["id", "secrets"]
-
-    def validate_libraries(self, value: str) -> str:
-        """Apply the runtime rule to every entry of the space-separated string.
-
-        An import file is untrusted input, and the sandbox runs `pip install` on
-        each entry, so a VCS URL, a direct `name @ url` reference or a file path
-        must be rejected here exactly as `PythonCodeSerializer` rejects it.
-        """
-        for entry in value.split():
-            validate_python_library_spec(entry)
-        return value
 
     def validate_execution_timeout(self, value: int) -> int:
         return normalize_imported_execution_timeout(value)

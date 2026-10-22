@@ -1,7 +1,15 @@
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
 from django_app.settings import DEBUG
-from rest_framework.exceptions import APIException, NotFound
+from foundation.transport.http.errors import (
+    ClientConnectionError,
+    ClientError,
+    ClientNotFoundError,
+    ClientRateLimitError,
+    ClientValidationError,
+)
+from rest_framework import status
+from rest_framework.exceptions import APIException, NotFound, Throttled, ValidationError
 from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
 from rest_framework.settings import api_settings
 from rest_framework.views import exception_handler
@@ -26,6 +34,50 @@ def _flatten_detail(detail) -> str:
     return str(detail)
 
 
+def _upstream_detail(exc: ClientError) -> str | None:
+    """Return the upstream response body, or the exception text when there is no body.
+
+    `ClientTimeoutError` is raised without a response, and a response body can be empty,
+    so neither is assumed to be there. `None` lets DRF fall back to its default detail
+    rather than render an empty message.
+    """
+    response = getattr(exc, "response", None)
+    if response is not None and response.text:
+        return response.text
+    return str(exc) or None
+
+
+def _client_error_as_api_exception(exc: ClientError) -> APIException:
+    """Translate a transport error from a proxied microservice into a DRF exception.
+
+    Only a missing resource, a rejected payload and rate limiting describe the caller's
+    own request, so those statuses pass through. A dependency that could not be reached
+    at all is service unavailable, which tells the caller the request is worth retrying.
+    Every other upstream failure - timeout, upstream auth, conflict, 5xx - is a failure
+    of this gateway's dependency rather than anything the caller did, and is reported as
+    a bad gateway: passing an upstream 401 or 409 through would tell the caller something
+    false about their own request.
+    """
+    detail = _upstream_detail(exc)
+
+    if isinstance(exc, ClientNotFoundError):
+        return NotFound(detail)
+    if isinstance(exc, ClientValidationError):
+        return ValidationError(detail)
+    if isinstance(exc, ClientRateLimitError):
+        return Throttled(detail=detail)
+    if isinstance(exc, ClientConnectionError):
+        unreachable_error = APIException(detail)
+        unreachable_error.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        unreachable_error.default_code = "upstream_service_unreachable"
+        return unreachable_error
+
+    upstream_error = APIException(detail)
+    upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
+    upstream_error.default_code = "upstream_service_error"
+    return upstream_error
+
+
 def custom_exception_handler(exc, context):
     """Render every exception as the project's `{status_code, code, message}` envelope."""
 
@@ -40,6 +92,8 @@ def custom_exception_handler(exc, context):
         exc = NotFound(*exc.args)
     elif isinstance(exc, PermissionDenied):
         exc = DRFPermissionDenied(*exc.args)
+    elif isinstance(exc, ClientError):
+        exc = _client_error_as_api_exception(exc)
 
     response = exception_handler(exc, context)
 

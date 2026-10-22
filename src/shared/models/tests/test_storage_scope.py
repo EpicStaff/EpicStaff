@@ -5,8 +5,6 @@ from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import CodeTaskData
 
 CODE_TASK = {
-    "venv_name": "test-venv",
-    "libraries": ["lib1", "lib2"],
     "code": "print('hello')",
     "execution_id": "exec-123",
     "entrypoint": "main",

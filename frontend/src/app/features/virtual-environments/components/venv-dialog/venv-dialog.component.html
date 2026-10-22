@@ -1,0 +1,196 @@
+<div class="venv-dialog">
+    <header class="venv-dialog__header">
+        <h2 class="venv-dialog__title text-h3">{{ title() }}</h2>
+        <div class="venv-dialog__header-actions">
+            <app-button
+                type="outline-primary"
+                (click)="cancel()"
+            >
+                Cancel
+            </app-button>
+            <app-button
+                type="primary"
+                [disabled]="isSubmitting()"
+                (click)="submit()"
+            >
+                {{ submitLabel() }}
+            </app-button>
+        </div>
+    </header>
+
+    <form
+        class="venv-dialog__body"
+        [formGroup]="form"
+        (ngSubmit)="submit()"
+    >
+        <section class="venv-dialog__section venv-dialog__section--name">
+            <div class="venv-dialog__name-row">
+                <div class="venv-dialog__name-label">
+                    <label
+                        class="text-body"
+                        for="venv-dialog-name"
+                        >Name<span class="venv-dialog__required">*</span></label
+                    >
+                    <app-help-tooltip text="Unique name of the virtual environment within your organization" />
+                </div>
+                <div class="venv-dialog__name-field">
+                    <app-custom-input
+                        [id]="'venv-dialog-name'"
+                        formControlName="name"
+                        placeholder="e.g. data science base"
+                    />
+                    <app-validation-errors [control]="form.controls.name" />
+                </div>
+            </div>
+        </section>
+
+        <section class="venv-dialog__section venv-dialog__libs">
+            <h3 class="venv-dialog__libs-title text-body">Libraries</h3>
+
+            <div class="venv-dialog__libs-table">
+                <table>
+                    <colgroup>
+                        <col class="venv-dialog__col-index" />
+                        <col class="venv-dialog__col-name" />
+                        <col />
+                        <col class="venv-dialog__col-version" />
+                        <col class="venv-dialog__col-spec" />
+                        <col class="venv-dialog__col-action" />
+                    </colgroup>
+                    <thead>
+                        <tr class="text-body-small-large">
+                            <th class="venv-dialog__cell--center">#</th>
+                            <th>Library Name<span class="venv-dialog__required">*</span></th>
+                            <th>Description</th>
+                            <th>
+                                <span class="venv-dialog__col-header">
+                                    Version
+                                    <app-help-tooltip
+                                        [text]="versionHint"
+                                        position="top"
+                                        size="14px"
+                                    />
+                                </span>
+                            </th>
+                            <th>
+                                <span class="venv-dialog__col-header">
+                                    Specification
+                                    <app-help-tooltip
+                                        [text]="specificationHint"
+                                        position="top"
+                                        size="14px"
+                                        tooltipClass="venv-specifier-tooltip"
+                                    />
+                                </span>
+                            </th>
+                            <th class="venv-dialog__cell--center">
+                                <button
+                                    type="button"
+                                    class="venv-dialog__icon-btn venv-dialog__icon-btn--accent"
+                                    aria-label="Remove all libraries"
+                                    matTooltip="Remove all libraries"
+                                    matTooltipPosition="above"
+                                    [disabled]="libs.length === 0"
+                                    (click)="removeAllLibraries()"
+                                >
+                                    <app-svg-icon
+                                        icon="trash"
+                                        size="14px"
+                                    />
+                                </button>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody
+                        class="text-body-small"
+                        formArrayName="libs"
+                    >
+                        @for (row of libs.controls; track row; let index = $index) {
+                            @let versionError = versionErrorMessage(row);
+                            @let specificationError = specificationErrorMessage(row);
+                            <tr [formGroupName]="index">
+                                <td class="venv-dialog__cell--center venv-dialog__cell--muted">{{ index + 1 }}</td>
+                                <td>
+                                    <input
+                                        class="venv-dialog__cell-input"
+                                        type="text"
+                                        formControlName="name"
+                                        placeholder="e.g. requests"
+                                        aria-label="Library name"
+                                        appTooltipOnOverflow
+                                        matTooltipPosition="above"
+                                        [matTooltip]="row.controls.name.value"
+                                        [class.venv-dialog__cell-input--invalid]="
+                                            row.controls.name.invalid && row.controls.name.touched
+                                        "
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        class="venv-dialog__cell-input"
+                                        type="text"
+                                        formControlName="description"
+                                        placeholder="e.g. HTTP client"
+                                        aria-label="Description"
+                                        appTooltipOnOverflow
+                                        matTooltipPosition="above"
+                                        [matTooltip]="row.controls.description.value"
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        class="venv-dialog__cell-input"
+                                        type="text"
+                                        formControlName="version"
+                                        placeholder="e.g. 2.31.0"
+                                        aria-label="Version"
+                                        matTooltipPosition="above"
+                                        [matTooltip]="versionError ?? ''"
+                                        [matTooltipDisabled]="!versionError"
+                                        [class.venv-dialog__cell-input--invalid]="!!versionError"
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        class="venv-dialog__cell-input"
+                                        type="text"
+                                        formControlName="specification"
+                                        placeholder="e.g. >=1.0,<2.0"
+                                        aria-label="Specification"
+                                        matTooltipPosition="above"
+                                        [matTooltip]="specificationError ?? ''"
+                                        [matTooltipDisabled]="!specificationError"
+                                        [class.venv-dialog__cell-input--invalid]="!!specificationError"
+                                    />
+                                </td>
+                                <td class="venv-dialog__cell--center">
+                                    <button
+                                        type="button"
+                                        class="venv-dialog__icon-btn venv-dialog__icon-btn--remove"
+                                        aria-label="Remove library"
+                                        matTooltip="Remove library"
+                                        matTooltipPosition="above"
+                                        (click)="removeLibrary(index)"
+                                    >
+                                        <app-svg-icon
+                                            icon="x"
+                                            size="24px"
+                                        />
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <button
+                type="button"
+                class="venv-dialog__add-lib text-body-small"
+                (click)="addLibrary()"
+            >
+                + Add library
+            </button>
+        </section>
+    </form>
+</div>

@@ -94,7 +94,7 @@ def _python_tool(org, name):
         name=name,
         description="description",
         python_code=PythonCode.objects.create(
-            code="def main(): return 1", entrypoint="main", libraries=""
+            code="def main(): return 1", entrypoint="main"
         ),
     )
 

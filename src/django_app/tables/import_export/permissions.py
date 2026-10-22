@@ -43,6 +43,7 @@ ENTITY_RESOURCE_MAP: dict[EntityType, ResourceType] = {
     EntityType.LLM_CONFIG_TAG: ResourceType.LLM_CONFIGS,
     EntityType.LLM_MODEL_TAG: ResourceType.LLM_CONFIGS,
     EntityType.EMBEDDING_MODEL_TAG: ResourceType.LLM_CONFIGS,
+    EntityType.VENV: ResourceType.VENVS,
     EntityType.PYTHON_CODE_TOOL: ResourceType.TOOLS,
     EntityType.MCP_TOOL: ResourceType.TOOLS,
 }

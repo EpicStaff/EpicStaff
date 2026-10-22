@@ -504,7 +504,7 @@ describe('NodePanelShellComponent', () => {
             type: NodeType.PYTHON,
             node_name: 'Python-Node (#1)',
             python_code_id: 12,
-            data: { code: 'def main(): pass', entrypoint: 'main', libraries: [], secret_ids: [], secret_names: [] },
+            data: { code: 'def main(): pass', entrypoint: 'main', secret_ids: [], secret_names: [] },
             test_input: {},
             position: { x: 0, y: 0 },
             ports: null,

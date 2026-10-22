@@ -1799,7 +1799,6 @@ def test_get_node_python_includes_python_code_summary(graph, db):
             "    return r.json()"
         ),
         entrypoint="main",
-        libraries="requests pandas",
     )
     node = PythonNode.objects.create(
         graph=graph,
@@ -1836,7 +1835,6 @@ def test_get_node_webhook_trigger_includes_python_code_summary(graph, db):
             "    return resp.json()"
         ),
         entrypoint="handle",
-        libraries="httpx",
     )
     node = WebhookTriggerNode.objects.create(
         graph=graph,
@@ -1913,12 +1911,10 @@ def test_get_node_classification_decision_table_serializes_cleanly(graph, db):
     pre_code = PythonCode.objects.create(
         code="def pre(args):\n    args['pre_called'] = True",
         entrypoint="pre",
-        libraries="",
     )
     post_code = PythonCode.objects.create(
         code="def post(args):\n    args['post_called'] = True",
         entrypoint="post",
-        libraries="",
     )
     node = ClassificationDecisionTableNode.objects.create(
         graph=graph,
@@ -1966,12 +1962,10 @@ def test_get_node_classification_decision_table_includes_pre_post_python_summari
     pre_code = PythonCode.objects.create(
         code="def pre(args):\n    args['pre_called'] = True",
         entrypoint="pre",
-        libraries="",
     )
     post_code = PythonCode.objects.create(
         code="def post(args):\n    args['post_called'] = True",
         entrypoint="post",
-        libraries="",
     )
     node = ClassificationDecisionTableNode.objects.create(
         graph=graph,
