@@ -73,6 +73,7 @@ async def test_submit_sends_the_whole_execution_including_storage_credentials():
         "storage_org_prefix": "org_7",
         "storage_credentials": {"access_key": "AK-TEMP", "secret_key": "SK-TEMP"},
         "timeout": None,
+        "reply_to_crew_channel": False,
     }
 
 

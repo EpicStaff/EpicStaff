@@ -46,7 +46,8 @@ def _submit_body(code_task_data: CodeTaskData) -> dict[str, Any]:
 
     The intake types `global_kwargs`, `func_kwargs` and `storage_allowed_paths` as
     containers with an empty default, so the optional ones are sent empty rather
-    than null. `timeout` is left to the sandbox's own execution timeout.
+    than null. `timeout` carries the code's own execution timeout; None lets the
+    sandbox apply its default.
     """
     storage_credentials = code_task_data.storage_credentials
     return {
@@ -64,5 +65,5 @@ def _submit_body(code_task_data: CodeTaskData) -> dict[str, Any]:
         "storage_credentials": (
             storage_credentials.model_dump() if storage_credentials is not None else None
         ),
-        "timeout": None,
+        "timeout": code_task_data.execution_timeout,
     }

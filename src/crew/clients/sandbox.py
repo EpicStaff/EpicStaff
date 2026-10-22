@@ -5,7 +5,9 @@ receives the result back on the Redis result channel, unchanged. The request bod
 mirrors sandbox_new's ExecutionSubmitSchema; the venv is addressed by `venv_id`
 (None means sandbox_new's default venv). Storage credentials are minted upstream
 by django_app and only passed through here; sandbox_new rejects an execution with
-`use_storage` set and no credentials.
+`use_storage` set and no credentials. `reply_to_crew_channel` asks the sandbox to
+publish the result to crew's own channel, so crew never parses results meant for
+django_app, agent or realtime.
 """
 
 from typing import Any
@@ -32,6 +34,7 @@ class SandboxClient(AsyncClient):
         storage_org_prefix: str | None,
         storage_credentials: StorageCredentials | None,
         timeout: float | None,
+        reply_to_crew_channel: bool = False,
     ) -> None:
         """Hand one execution to sandbox_new. Raises ClientError on a failed submit."""
         await self.request(
@@ -53,5 +56,6 @@ class SandboxClient(AsyncClient):
                     storage_credentials.model_dump() if storage_credentials is not None else None
                 ),
                 "timeout": timeout,
+                "reply_to_crew_channel": reply_to_crew_channel,
             },
         )
