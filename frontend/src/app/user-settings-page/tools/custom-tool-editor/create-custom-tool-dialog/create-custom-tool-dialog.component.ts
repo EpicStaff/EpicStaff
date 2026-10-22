@@ -23,7 +23,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
-    ChipsInputComponent,
     ConfirmationDialogService,
     CustomInputComponent,
     ExecutionTimeoutFieldComponent,
@@ -127,7 +126,6 @@ const VARIABLES_SCHEMA_TOOLTIP =
         MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
-        ChipsInputComponent,
         CustomInputComponent,
         ExecutionTimeoutFieldComponent,
         HelpTooltipComponent,
