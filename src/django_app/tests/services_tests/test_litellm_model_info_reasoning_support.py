@@ -12,11 +12,11 @@ from collections import OrderedDict
 import litellm
 import pytest
 
+from src.shared.litellm_model_names import litellm_lookup_name
 from tables.utils import litellm_model_info
 from tables.utils.litellm_model_info import (
     NO_REASONING_SUPPORT,
     ReasoningSupport,
-    litellm_lookup_name,
     reasoning_support,
 )
 
@@ -95,20 +95,6 @@ def test_azure_is_looked_up_by_model_name(snapshot_path):
     # The deployment id is never part of the lookup: callers pass LLMModel.name.
     assert litellm_lookup_name("azure", "o3-mini") == "azure/o3-mini"
     assert reasoning_support("azure", "o3-mini").supports_reasoning is True
-
-
-@pytest.mark.parametrize(
-    "provider_name, model_name, expected",
-    [
-        (None, "gpt-4o", "gpt-4o"),
-        ("", "gpt-4o", "gpt-4o"),
-        (" OpenAI ", "gpt-4o", "openai/gpt-4o"),
-        ("ollama", "ollama/mistral", "ollama/mistral"),
-        ("groq", "openai/gpt-oss-120b", "groq/openai/gpt-oss-120b"),
-    ],
-)
-def test_lookup_name(provider_name, model_name, expected):
-    assert litellm_lookup_name(provider_name, model_name) == expected
 
 
 def test_unknown_model_is_not_a_reasoning_model(snapshot_path):

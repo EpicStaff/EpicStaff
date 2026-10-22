@@ -21,6 +21,7 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tables.services.copy_services.graph_copy_service import GraphCopyService
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 WEBHOOK_TEST_PAYLOAD = {"order_id": 42, "nested": {"items": [1, 2]}}
@@ -105,7 +106,11 @@ def _without_test_payload(data):
 
 
 def _export_and_import(graph: Graph, org_id: int, transform=lambda data: data) -> Graph:
-    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    export_data = (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
     id_mapper, _ = ImportService(entity_registry).import_data(
         transform(copy.deepcopy(export_data)),
         EntityType.GRAPH,

@@ -1,5 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { Component, signal } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
@@ -30,22 +32,28 @@ const USER = {
 describe('LeftSidebarComponent', () => {
     let fixture: ComponentFixture<LeftSidebarComponent>;
     let element: HTMLElement;
+    let activeOrgId: WritableSignal<number | null>;
 
     beforeEach(() => {
+        activeOrgId = signal<number | null>(1);
         TestBed.configureTestingModule({
             providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
                 provideRouter([
                     { path: 'workspace', children: [] },
                     { path: '**', children: [] },
                 ]),
                 { provide: ProfileService, useValue: { currentUserSignal: signal(USER) } },
-                { provide: ActiveOrgService, useValue: { activeOrgId: signal(1) } },
+                { provide: ActiveOrgService, useValue: { activeOrgId } },
                 {
                     provide: PermissionsService,
                     useValue: {
                         can: () => true,
                         resolveStorageTab: () => 'files',
                         canOpenConfigureModelsDialog: () => true,
+                        canApplyQuickstart: () => false,
+                        canAccessWorkspace: () => true,
                     },
                 },
                 { provide: ConfigService, useValue: { isAuditTrailEnabled: false, isChatEnabled: true } },
@@ -88,6 +96,10 @@ describe('LeftSidebarComponent', () => {
             .map((tooltip) => tooltip.componentInstance as TooltipComponent)
             .filter((tooltip) => tooltip.visible)
             .map((tooltip) => tooltip.text);
+    }
+
+    function accountRow(): HTMLElement {
+        return element.querySelector<HTMLElement>('.user-avatar-btn')!;
     }
 
     function logoName(): HTMLElement | null {
@@ -146,7 +158,6 @@ describe('LeftSidebarComponent', () => {
 
         it('offers an active "Close sidebar" control that asks the owner of the width to collapse', () => {
             expect(sidebarToggle().getAttribute('aria-label')).toBe('Close sidebar');
-            expect(sidebarToggle().classList).toContain('active');
             expect(emittedToggles()).toBe(1);
         });
 
@@ -165,12 +176,19 @@ describe('LeftSidebarComponent', () => {
             expect(visibleTooltipTexts()).not.toContain('Recycle Bin');
         });
 
-        it('shows the full org and user names as titles for truncated labels', () => {
-            const orgLabel = element.querySelector('.org-menu-btn .sidenav-row-label')!;
-            const userLabel = element.querySelector('.user-avatar-btn .sidenav-row-label')!;
+        it('shows the active organization and the role in it on the account row, the full name as a title', () => {
+            const orgLabel = accountRow().querySelector('.sidenav-row-label')!;
 
             expect(orgLabel.textContent!.trim()).toBe(ORG_NAME);
             expect(orgLabel.getAttribute('title')).toBe(ORG_NAME);
+            expect(accountRow().querySelector('.account-role')!.textContent!.trim()).toBe('Admin');
+        });
+
+        it('shows the user on the account row when no organization is active', () => {
+            activeOrgId.set(null);
+            fixture.detectChanges();
+
+            const userLabel = accountRow().querySelector('.sidenav-row-label')!;
             expect(userLabel.textContent!.trim()).toBe(DISPLAY_NAME);
             expect(userLabel.getAttribute('title')).toBe(DISPLAY_NAME);
         });
@@ -186,13 +204,63 @@ describe('LeftSidebarComponent', () => {
 
             expect(navLink(label)!.classList).toContain('active');
         });
+    });
 
-        it('labels the org switcher "Workspace" on workspace pages', async () => {
-            await TestBed.inject(Router).navigateByUrl('/workspace');
+    describe('account row', () => {
+        beforeEach(() => render(COLLAPSED_WIDTH));
+
+        it.each([
+            ['/workspace', true],
+            ['/workspace/members', true],
+            ['/profile', true],
+            ['/profile/overview', true],
+            ['/flows', false],
+            ['/profiles', false],
+        ])('on %s is highlighted: %s', async (url, highlighted) => {
+            await TestBed.inject(Router).navigateByUrl(url);
             fixture.detectChanges();
 
-            const orgLabel = element.querySelector('.org-menu-btn .sidenav-row-label')!;
-            expect(orgLabel.textContent!.trim()).toBe('Workspace');
+            expect(accountRow().classList.contains('active')).toBe(highlighted);
+        });
+
+        it('is highlighted while its menu is open', () => {
+            accountRow().click();
+            fixture.detectChanges();
+
+            expect(accountRow().classList).toContain('opened');
+            expect(element.querySelector('app-user-menu')).not.toBeNull();
+        });
+    });
+
+    describe('Audit item', () => {
+        function separatorBeforeAudit(): boolean {
+            const auditItem = navLink('Audit')!.closest('li')!;
+            return auditItem.previousElementSibling?.getAttribute('role') === 'separator';
+        }
+
+        it('is set off from the pages above it by a separator', () => {
+            (TestBed.inject(ConfigService) as { isAuditTrailEnabled: boolean }).isAuditTrailEnabled = true;
+            render(COLLAPSED_WIDTH);
+
+            expect(separatorBeforeAudit()).toBe(true);
+        });
+
+        it('leaves no separator behind when the audit trail is off', () => {
+            render(COLLAPSED_WIDTH);
+
+            expect(navLink('Audit')).toBeUndefined();
+            expect(element.querySelector('.main-nav [role="separator"]')).toBeNull();
+        });
+    });
+
+    describe('Recycle Bin item', () => {
+        it('is labelled and active on its pages like the other items', async () => {
+            render(EXPANDED_WIDTH);
+            await TestBed.inject(Router).navigateByUrl('/recycle-bin/flows');
+            fixture.detectChanges();
+
+            expect(labelTexts()).toContain('Recycle Bin');
+            expect(navLink('Recycle Bin')!.classList).toContain('active');
         });
     });
 
@@ -433,20 +501,17 @@ describe('LeftSidebarComponent page shortcuts', () => {
         expect(router.url).toBe('/agents');
     });
 
-    it.each([
-        { name: 'account', button: '.user-avatar-btn', menu: 'app-user-menu' },
-        { name: 'organizations', button: '.org-menu-btn', menu: 'app-organizations-menu' },
-    ])('closes the $name menu when it moves to another page', async ({ button, menu }) => {
+    it('closes the account menu when it moves to another page', async () => {
         await startAt('/agents');
-        fixture.nativeElement.querySelector(button).click();
+        fixture.nativeElement.querySelector('.user-avatar-btn').click();
         fixture.detectChanges();
-        expect(fixture.nativeElement.querySelector(menu)).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('app-user-menu')).not.toBeNull();
 
         await press('ArrowDown');
         fixture.detectChanges();
 
         expect(router.url).toBe('/tools');
-        expect(fixture.nativeElement.querySelector(menu)).toBeNull();
+        expect(fixture.nativeElement.querySelector('app-user-menu')).toBeNull();
     });
 
     it('ignores the key while a dialog is open', async () => {

@@ -28,6 +28,7 @@ from tables.services.webhook_trigger_service import (
     find_available_path,
     organization_suffixed_path,
 )
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
@@ -59,7 +60,9 @@ class TestWebhookTriggerImportPathCollision:
         self, acme, beta, export_service
     ):
         source_graph, source_node = _build_source_graph(acme, path="collision-path")
-        export_data = export_service.export_entities(EntityType.GRAPH, [source_graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [source_graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         imported_node = _import_graph(export_data, beta)
 
@@ -74,7 +77,9 @@ class TestWebhookTriggerImportPathCollision:
 
     def test_same_org_import_reuses_existing_trigger(self, acme, export_service):
         source_graph, source_node = _build_source_graph(acme, path="own-path")
-        export_data = export_service.export_entities(EntityType.GRAPH, [source_graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [source_graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         triggers_before = WebhookTrigger.objects.count()
 
         imported_node = _import_graph(export_data, acme)
@@ -84,7 +89,9 @@ class TestWebhookTriggerImportPathCollision:
 
     def test_reimport_into_same_org_reuses_renamed_trigger(self, acme, beta, export_service):
         source_graph, _ = _build_source_graph(acme, path="popular-path")
-        export_data = export_service.export_entities(EntityType.GRAPH, [source_graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [source_graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         first_trigger = _import_graph(export_data, beta).webhook_trigger
         second_trigger = _import_graph(export_data, beta).webhook_trigger
@@ -98,7 +105,9 @@ class TestWebhookTriggerImportPathCollision:
         self, acme, beta, default_org, export_service
     ):
         source_graph, _ = _build_source_graph(acme, path="popular-path")
-        export_data = export_service.export_entities(EntityType.GRAPH, [source_graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [source_graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         beta_trigger = _import_graph(export_data, beta).webhook_trigger
         default_org_trigger = _import_graph(export_data, default_org).webhook_trigger
@@ -113,7 +122,9 @@ class TestWebhookTriggerImportPathCollision:
     ):
         source_graph, _ = _build_source_graph(acme, path="squat-path")
         squatter = WebhookTrigger.objects.create(path=f"squat-path-org{beta.id}", org=acme)
-        export_data = export_service.export_entities(EntityType.GRAPH, [source_graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [source_graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         imported_trigger = _import_graph(export_data, beta).webhook_trigger
 
@@ -128,7 +139,9 @@ class TestWebhookTriggerImportPathCollision:
         self, acme, beta, export_service
     ):
         source_graph, source_node = _build_source_graph(acme, path="free-path")
-        export_data = export_service.export_entities(EntityType.GRAPH, [source_graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [source_graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         # The exporting org renames its trigger, so the exported path is free again.
         WebhookTrigger.objects.filter(id=source_node.webhook_trigger_id).update(
             path="free-path-renamed"
@@ -145,7 +158,9 @@ class TestWebhookTriggerImportPathCollision:
     ):
         long_path = "a" * WEBHOOK_TRIGGER_PATH_MAX_LENGTH
         source_graph, _ = _build_source_graph(acme, path=long_path)
-        export_data = export_service.export_entities(EntityType.GRAPH, [source_graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [source_graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         first_trigger = _import_graph(export_data, beta).webhook_trigger
         second_trigger = _import_graph(export_data, beta).webhook_trigger
@@ -160,6 +175,7 @@ class TestWebhookTriggerImportPathCollision:
         export_result = GraphPartialExportService(entity_registry).export(
             [NodeRef(entity_type=EntityType.WEBHOOK_TRIGGER_NODE, node_id=source_node.id)],
             org_id=acme.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
         )
         assert not export_result.has_errors, export_result.errors
         target_graph = Graph.objects.create(name="paste-target", org=beta)

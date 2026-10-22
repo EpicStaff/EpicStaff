@@ -53,6 +53,7 @@ import {
     extractHttpErrorMessage,
     ImportFileData,
     JsonObject,
+    showExportExclusionWarning,
 } from '@shared/utils';
 import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, map, switchMap, take } from 'rxjs/operators';
@@ -594,7 +595,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         }
 
         this.importExportService.bulkExportFlow(ids).subscribe({
-            next: (blob) => {
+            next: ({ blob, excluded }) => {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -603,6 +604,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 window.URL.revokeObjectURL(url);
 
                 this.flowStorageService.setSelectMode(false);
+
+                showExportExclusionWarning(this.toastService, excluded);
             },
             error: (error) => {
                 console.error('Bulk export failed:', error);

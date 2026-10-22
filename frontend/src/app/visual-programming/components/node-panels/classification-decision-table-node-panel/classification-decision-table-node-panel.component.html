@@ -4,18 +4,21 @@
             *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
             label="Export"
             [items]="exportFormatItems"
+            mod="small"
             [panelWidth]="100"
-            [buttonWidth]="null"
+            [buttonWidth]="86"
             (mainClick)="exportAsJson()"
             (itemClick)="onExportItemSelected($event)"
         />
     }
 
     <app-button
+        class="decision-tree-btn"
         type="outline-secondary"
         mod="small"
         leftIcon="decision-tree"
         iconSize="10px"
+        iconWidth="8px"
         matTooltip="View this table as a read-only flowchart"
         matTooltipPosition="below"
         (click)="openDecisionTree()"

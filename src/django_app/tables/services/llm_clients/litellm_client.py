@@ -5,8 +5,8 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 
 import litellm
+from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
 from src.shared.models import LLMConfigData
-from tables.utils.litellm_model_info import litellm_lookup_name
 from utils.logger import logger
 
 from .base import (
@@ -27,20 +27,6 @@ JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
 # answers "json mode cannot be combined with tool/function calling" for models with native
 # structured outputs, and litellm refuses its tool-call emulation for the others.
 NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq"}
-
-
-def _routed_provider(model: str) -> str:
-    """Return the provider litellm sends ``model`` to.
-
-    A bare name can belong to any provider: an OpenAI row keeps ``claude-sonnet-4-6``
-    bare (see LiteLLMClient._model_string) and litellm still routes it to Anthropic.
-    get_llm_provider is a local table lookup (no network I/O).
-    """
-    try:
-        return litellm.get_llm_provider(model=model)[1]
-    except litellm.exceptions.BadRequestError:
-        # litellm does not know the model: keep its prefix, and a bare name is OpenAI's.
-        return model.split("/", 1)[0] if "/" in model else "openai"
 
 
 class LiteLLMClient(BaseLLMClient):
@@ -82,7 +68,7 @@ class LiteLLMClient(BaseLLMClient):
         # UnsupportedLLMProviderError at construction time (fail-fast), not
         # lazily during the first stream_completion call.
         self._model = self._model_string()
-        self._routed_provider = _routed_provider(self._model)
+        self._routed_provider = litellm_routed_provider(self._model)
 
     def _model_string(self) -> str:
         """Build the LiteLLM model string from the config's model and provider.
@@ -94,21 +80,7 @@ class LiteLLMClient(BaseLLMClient):
         if not model_name:
             raise UnsupportedLLMProviderError("(empty model name)")
 
-        if not self._provider_name or self._provider_name == "openai":
-            # Plain model name for OpenAI; litellm defaults to OpenAI for bare names.
-            return model_name
-
-        if self._provider_name in ("azure", "azure_openai"):
-            # Azure uses the deployment name, falling back to model name if not set.
-            deployment = (self._config.deployment_id or model_name).strip()
-            return f"azure/{deployment}"
-
-        # All other providers: "<provider>/<model>" — litellm understands this format
-        # for Anthropic, Gemini, Mistral, Cohere, Bedrock, Together, etc.
-        # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
-        # Only the row's own provider counts: "openai/gpt-oss-120b" on a Groq row is a Groq
-        # model id and must become "groq/openai/gpt-oss-120b".
-        return litellm_lookup_name(self._provider_name, model_name)
+        return litellm_call_model(self._provider_name, model_name, self._config.deployment_id)
 
     def _build_tools(self, tools: list[ToolSpec]) -> list[dict] | None:
         if not tools:
