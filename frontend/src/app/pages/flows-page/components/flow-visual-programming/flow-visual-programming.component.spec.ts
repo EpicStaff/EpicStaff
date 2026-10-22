@@ -108,6 +108,7 @@ const RESTORED_GRAPH = graphDto({
     graph_note_list: [
         {
             id: 99,
+            uuid: '00000000-0000-4000-8000-000000000099',
             created_at: '2026-01-01T00:00:00Z',
             node_name: 'Restored note',
             graph: 1,
@@ -876,6 +877,7 @@ describe('FlowVisualProgrammingComponent', () => {
     describe('test run from a trigger node', () => {
         const savedWebhook: GetWebhookTriggerNodeRequest = {
             id: 21,
+            uuid: '00000000-0000-4000-8000-000000000021',
             graph: 1,
             node_number: 1,
             node_name: 'Webhook Trigger #1',
@@ -1079,6 +1081,7 @@ describe('FlowVisualProgrammingComponent', () => {
                         webhook_trigger_node_list: [
                             {
                                 id: 21,
+                                uuid: '00000000-0000-4000-8000-000000000021',
                                 graph: graphId,
                                 node_number: 1,
                                 node_name: 'Webhook Trigger #1',
@@ -1147,6 +1150,7 @@ describe('FlowVisualProgrammingComponent', () => {
             graph_note_list: [
                 {
                     id: 77,
+                    uuid: '00000000-0000-4000-8000-000000000077',
                     created_at: '2026-01-01T00:00:00Z',
                     node_name: 'Remote note',
                     graph: 1,
@@ -2298,6 +2302,7 @@ describe('FlowVisualProgrammingComponent', () => {
     describe('full save of an agent node', () => {
         const SAVED_AGENT: AgentNode = {
             ...UNEDITED_NODE,
+            uuid: '00000000-0000-4000-8000-000000000041',
             id: 50,
             metadata: {},
             node_number: 1,
@@ -2377,6 +2382,7 @@ describe('FlowVisualProgrammingComponent', () => {
         function cdtDto(id: number, name: string, routeCode: string): GetClassificationDecisionTableNodeRequest {
             return {
                 ...UNEDITED_NODE,
+                uuid: '00000000-0000-4000-8000-000000000042',
                 id,
                 graph: 1,
                 node_number: id,
@@ -2939,6 +2945,7 @@ describe('FlowVisualProgrammingComponent', () => {
         describe('unpack a subflow', () => {
             const SUBGRAPH_NODE: SubGraphNode = {
                 ...UNEDITED_NODE,
+                uuid: '00000000-0000-4000-8000-000000000043',
                 id: 41,
                 node_number: 1,
                 node_name: 'Inner flow',

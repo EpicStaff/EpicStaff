@@ -10,6 +10,7 @@ export function mapAudioToTextNodeToModel(n: GetAudioToTextNodeRequest): AudioTo
     return {
         id: generateUuid(),
         backendId: n.id,
+        nodeUuid: n.uuid,
         type: NodeType.AUDIO_TO_TEXT,
         node_name: n.node_name,
         nodeNumber: n.node_number ?? undefined,

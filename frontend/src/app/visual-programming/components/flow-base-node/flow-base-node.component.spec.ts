@@ -18,6 +18,7 @@ import { FlowBaseNodeComponent } from './flow-base-node.component';
 const KEY_VALUE_NODE = {
     ...mapKeyValueNodeToModel({
         id: 12,
+        uuid: '00000000-0000-4000-8000-000000000012',
         graph: 1,
         node_number: 1,
         node_name: 'Key-Value',
@@ -139,6 +140,7 @@ describe('FlowBaseNodeComponent key-value summary', () => {
         render({
             ...mapStartNodeToModel({
                 id: 1,
+                uuid: '00000000-0000-4000-8000-000000000001',
                 created_at: '2026-01-01T00:00:00Z',
                 graph: 1,
                 node_name: '__start__',

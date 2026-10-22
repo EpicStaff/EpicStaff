@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime
 
 from django.contrib.auth import get_user_model
@@ -45,6 +46,25 @@ from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
+
+_TELEGRAM_BOT_KEY_FIELD = "telegram_bot_api_key_secret"
+
+# Shared by restore and preview, so both report a secret that no longer resolves in the
+# same words.
+_SECRET_GONE_REASON = "it no longer exists in this organization."
+_TELEGRAM_SECRET_GONE_REASON = (
+    "it no longer exists in this organization, so the bot token was not restored."
+)
+
+
+@dataclass(frozen=True)
+class _PreviewDeclaration:
+    """One declared field of a snapshot node: the names it declares and how to word a loss."""
+
+    node: dict
+    field: str
+    names: list[str]
+    reason_suffix: str
 
 
 class GraphVersioningManager:
@@ -146,15 +166,20 @@ class GraphVersioningManager:
     def _restore_node_declarations(
         self, *, graph: Graph, recorded: dict, node_mapper: IDMapper
     ) -> list[dict]:
+        # Warnings carry the snapshot node id: change_old_warnings_ids maps it to the
+        # restored id afterwards, or drops it when the node was not restored.
         warnings: list[dict] = []
         for old_node_id, by_code_field in recorded.items():
-            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            snapshot_node_id = int(old_node_id)
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, snapshot_node_id)
             for code_field, names in by_code_field.items():
                 if new_node_id is None:
                     warnings.extend(
                         self._dropped(
                             names=names,
                             node_name=f"node #{old_node_id}",
+                            node_id=snapshot_node_id,
+                            field=code_field,
                             reason_suffix=(
                                 "its node was not restored, so the declaration "
                                 "had nowhere to attach."
@@ -168,6 +193,8 @@ class GraphVersioningManager:
                         self._dropped(
                             names=names,
                             node_name=f"node #{new_node_id}",
+                            node_id=snapshot_node_id,
+                            field=code_field,
                             reason_suffix=(
                                 f"no restored node carries a '{code_field}' to "
                                 "attach the declaration to."
@@ -181,6 +208,8 @@ class GraphVersioningManager:
                         names=names,
                         org_id=graph.org_id,
                         node_name=getattr(row, "node_name", None) or f"node #{new_node_id}",
+                        node_id=snapshot_node_id,
+                        field=code_field,
                     )
                 )
         return warnings
@@ -205,7 +234,8 @@ class GraphVersioningManager:
     ) -> list[dict]:
         warnings: list[dict] = []
         for old_node_id, name in recorded.items():
-            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, int(old_node_id))
+            snapshot_node_id = int(old_node_id)
+            new_node_id = node_mapper.get_or_none(NODE_MAPPING_KEY, snapshot_node_id)
             node = (
                 None
                 if new_node_id is None
@@ -216,6 +246,8 @@ class GraphVersioningManager:
                     self._dropped(
                         names=[name],
                         node_name=f"node #{old_node_id}",
+                        node_id=snapshot_node_id,
+                        field=_TELEGRAM_BOT_KEY_FIELD,
                         reason_suffix="its node was not restored.",
                     )
                 )
@@ -227,20 +259,26 @@ class GraphVersioningManager:
                     self._dropped(
                         names=missing,
                         node_name=node.node_name,
-                        reason_suffix=(
-                            "it no longer exists in this organization, so the "
-                            "bot token was not restored."
-                        ),
+                        node_id=snapshot_node_id,
+                        field=_TELEGRAM_BOT_KEY_FIELD,
+                        reason_suffix=_TELEGRAM_SECRET_GONE_REASON,
                     )
                 )
                 continue
             node.telegram_bot_api_key_secret = resolved[0]
-            node.save(update_fields=["telegram_bot_api_key_secret"])
+            node.save(update_fields=[_TELEGRAM_BOT_KEY_FIELD])
             warnings.extend(self._binned(secrets=resolved, node_name=node.node_name))
         return warnings
 
     def _link(
-        self, *, python_code: PythonCode, names: list[str], org_id: int, node_name: str
+        self,
+        *,
+        python_code: PythonCode,
+        names: list[str],
+        org_id: int,
+        node_name: str,
+        node_id: int,
+        field: str,
     ) -> list[dict]:
         """Attach every name that still resolves; warn about every one that does not."""
         resolved, missing = self._resolve_names(names=names, org_id=org_id)
@@ -249,7 +287,9 @@ class GraphVersioningManager:
         return self._binned(secrets=resolved, node_name=node_name) + self._dropped(
             names=missing,
             node_name=node_name,
-            reason_suffix="it no longer exists in this organization.",
+            node_id=node_id,
+            field=field,
+            reason_suffix=_SECRET_GONE_REASON,
         )
 
     @staticmethod
@@ -269,16 +309,22 @@ class GraphVersioningManager:
         ]
 
     @staticmethod
-    def _dropped(*, names: list[str], node_name: str, reason_suffix: str) -> list[dict]:
+    def _dropped(
+        *, names: list[str], node_name: str, node_id: int, field: str, reason_suffix: str
+    ) -> list[dict]:
         """One warning per lost declaration, shaped like the dependency warnings.
 
-        Same keys the restore response already carries, so the caller renders these
-        with no change on its side.
+        Anchored like the other node warnings: ``node_id`` is the snapshot node id,
+        ``field`` the code field (or the Telegram bot key field) that declared the name,
+        and ``missing_name`` the secret name that was lost.
         """
         return [
             {
                 "type": "secret_declaration_dropped",
                 "node_name": node_name,
+                "node_id": node_id,
+                "field": field,
+                "missing_name": name,
                 "reason": (
                     f'Secret "{name}" was declared when this version was saved, '
                     f"but {reason_suffix} The declaration was not restored."
@@ -286,6 +332,81 @@ class GraphVersioningManager:
             }
             for name in names
         ]
+
+    def resolve_secret_declarations(
+        self, *, declarations: dict | None, snapshot_nodes: list[dict], org_id: int
+    ) -> tuple[dict[str, int], list[dict]]:
+        """Resolve a snapshot's declared secret names the way a restore would, writing nothing.
+
+        Uses the restore's org-scoped name lookup (``_resolve_names``), one query for every
+        name declared by a node in ``snapshot_nodes``, with no permission check, like a
+        restore. Declarations of nodes not in ``snapshot_nodes`` (filtered out of the
+        preview) are skipped: there is no node to anchor them to. Never returns secret
+        values, and only names the declarations already hold.
+
+        Returns:
+            The declared names that resolve in ``org_id``, mapped to their secret ids, and
+            one ``secret_declaration_dropped`` warning (see ``_dropped``) per declared name
+            that does not.
+        """
+        if not declarations:
+            return {}, []
+
+        preview_declarations = self._preview_declarations(
+            declarations=declarations, snapshot_nodes=snapshot_nodes
+        )
+        declared_names = sorted(
+            {name for declaration in preview_declarations for name in declaration.names}
+        )
+        if not declared_names:
+            return {}, []
+
+        resolved, _ = self._resolve_names(names=declared_names, org_id=org_id)
+        resolved_ids = {secret.name: secret.id for secret in resolved}
+
+        warnings: list[dict] = []
+        for declaration in preview_declarations:
+            node_id = declaration.node["id"]
+            warnings.extend(
+                self._dropped(
+                    names=[name for name in declaration.names if name not in resolved_ids],
+                    node_name=declaration.node.get("node_name") or f"node #{node_id}",
+                    node_id=node_id,
+                    field=declaration.field,
+                    reason_suffix=declaration.reason_suffix,
+                )
+            )
+        return resolved_ids, warnings
+
+    @staticmethod
+    def _preview_declarations(
+        *, declarations: dict, snapshot_nodes: list[dict]
+    ) -> list[_PreviewDeclaration]:
+        nodes_by_id = {node["id"]: node for node in snapshot_nodes}
+        preview_declarations: list[_PreviewDeclaration] = []
+        for node_id, by_code_field in (declarations.get("nodes") or {}).items():
+            node = nodes_by_id.get(int(node_id))
+            if node is None:
+                continue
+            preview_declarations.extend(
+                _PreviewDeclaration(
+                    node=node, field=code_field, names=names, reason_suffix=_SECRET_GONE_REASON
+                )
+                for code_field, names in by_code_field.items()
+            )
+        for node_id, name in (declarations.get("telegram") or {}).items():
+            node = nodes_by_id.get(int(node_id))
+            if node is None:
+                continue
+            preview_declarations.append(
+                _PreviewDeclaration(
+                    node=node,
+                    field=_TELEGRAM_BOT_KEY_FIELD,
+                    names=[name],
+                    reason_suffix=_TELEGRAM_SECRET_GONE_REASON,
+                )
+            )
+        return preview_declarations
 
     @staticmethod
     def _collect_telegram_secrets(graph: Graph) -> dict[str, str]:
@@ -877,6 +998,8 @@ class GraphVersioningManager:
             filtered_snapshot,
             id_mapper,
             user=user,
+            # The restored nodes are the version's nodes, so a diff can match them.
+            keep_node_uuids=True,
             preserve_node_numbers=True,
         )
 
@@ -975,6 +1098,8 @@ class GraphVersioningManager:
             },
             id_mapper,
             user=user,
+            # A new flow: its nodes are new, not the version's.
+            keep_node_uuids=False,
         )
         record_last_edit(graph, user)
 

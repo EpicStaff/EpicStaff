@@ -55,12 +55,18 @@ export type SnapshotNodeType =
 
 type ExcludedExportFields = 'graph' | 'created_at' | 'updated_at' | keyof AuthorshipFields;
 
-/** A node DTO as the export writes it: without the excluded fields, tagged with its `node_type`. */
-type SnapshotNodeOf<TNodeType extends SnapshotNodeType, TNodeDto> = Omit<TNodeDto, ExcludedExportFields> & {
-    node_type: TNodeType;
-};
+/** The node's stable uuid. Absent on nodes of versions saved before node uuids that the backend could not stamp. */
+interface SnapshotNodeIdentity {
+    uuid?: string;
+}
 
-interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> {
+/** A node DTO as the export writes it: without the excluded fields, tagged with its `node_type`. */
+type SnapshotNodeOf<TNodeType extends SnapshotNodeType, TNodeDto> = Omit<TNodeDto, ExcludedExportFields | 'uuid'> &
+    SnapshotNodeIdentity & {
+        node_type: TNodeType;
+    };
+
+interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> extends SnapshotNodeIdentity {
     id: number;
     node_type: TNodeType;
     node_name: string;
@@ -249,4 +255,11 @@ export interface PreviewGraphVersionResponse {
      * recorded node authorship; a node missing from it has no recorded author or editor.
      */
     node_authorship: Record<string, SnapshotNodeAuthorship>;
+    /**
+     * Secret name → secret id, for the names the previewed nodes declared (`snapshot.secret_declarations`) that
+     * still exist in the flow's organisation: what a restore re-links. A declared name missing here gets a
+     * `secret_declaration_dropped` warning instead. The backend resolves them, so the preview needs no access
+     * to the secrets list.
+     */
+    resolved_secrets: Record<string, number>;
 }

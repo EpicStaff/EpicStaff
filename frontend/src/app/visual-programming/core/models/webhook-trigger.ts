@@ -1,8 +1,9 @@
 import { AuthorshipFields, CreatePythonCodeRequest, GetPythonCodeRequest } from '@shared/models';
 
+import { NodeIdentityDto } from './node-identity.model';
 import { NumberedNodeDto } from './numbered-node-dto.model';
 
-export interface GetWebhookTriggerNodeRequest extends AuthorshipFields, NumberedNodeDto {
+export interface GetWebhookTriggerNodeRequest extends AuthorshipFields, NodeIdentityDto, NumberedNodeDto {
     id: number;
     created_at: string;
     node_name: string;

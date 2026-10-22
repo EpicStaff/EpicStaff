@@ -36,6 +36,7 @@ import { NodePanelShellComponent } from './node-panel-shell.component';
 const endNode: EndNodeModel = {
     id: 'end-1',
     backendId: null,
+    nodeUuid: 'node-uuid-end-1',
     type: NodeType.END,
     node_name: '__end_node__',
     data: { output_map: { answer: 'variables.answer' } },

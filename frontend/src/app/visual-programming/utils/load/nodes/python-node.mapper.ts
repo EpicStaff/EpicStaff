@@ -10,6 +10,7 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
     return {
         id: generateUuid(),
         backendId: pn.id,
+        nodeUuid: pn.uuid,
         type: NodeType.PYTHON,
         test_input: pn.test_input ?? {},
         node_name: pn.node_name,

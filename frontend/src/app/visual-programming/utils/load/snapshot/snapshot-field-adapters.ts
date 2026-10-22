@@ -29,7 +29,7 @@ export function parseSnapshotLibraries(libraries: string | null | undefined): st
 
 /**
  * Declared secret names → live refs. A name the organisation no longer has is left out, the same
- * as a secret deleted after the node was saved; the restore warnings report it.
+ * as a secret deleted after the node was saved; the preview and restore warnings report it.
  */
 export function resolveDeclaredSecrets(
     names: readonly string[] | undefined,

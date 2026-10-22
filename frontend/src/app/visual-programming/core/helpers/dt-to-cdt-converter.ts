@@ -13,6 +13,7 @@ import { getClassificationTableVisualHeight } from './node-size.util';
  *
  * - A fresh UUID is assigned so the diff/save layer creates a new backend record.
  * - backendId is null so the backend treats it as a new node.
+ * - A new nodeUuid: the CDT is a new node, not the DT under another type.
  * - nodeNumber is preserved to maintain visual ordering.
  * - condition_groups, default_next_node, next_error_node are carried verbatim.
  * - CDT-only fields (prompts, pre/post_computation, default_llm_config,
@@ -110,6 +111,7 @@ export function convertDecisionTableToCdt(dtNode: DecisionTableNodeModel): {
     const node: ClassificationDecisionTableNodeModel = {
         id: newId,
         backendId: null,
+        nodeUuid: generateUuid(),
         type: NodeType.CLASSIFICATION_TABLE,
         node_name: dtNode.node_name,
         position: { ...dtNode.position },

@@ -13,6 +13,7 @@ export function mapKnowledgeRetrieverNodeToModel(kr: GetKnowledgeRetrieverNodeRe
     return {
         id: generateUuid(),
         backendId: kr.id,
+        nodeUuid: kr.uuid,
         type: NodeType.KNOWLEDGE_RETRIEVER,
         node_name: kr.node_name,
         nodeNumber: kr.node_number ?? undefined,
