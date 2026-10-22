@@ -239,7 +239,7 @@ section.
 
 The node installs a backend offline, from the package alone, with the pip that ships with the
 plugin's own interpreter, run from outside the virtual environment (which has no pip of its own):
-`pip install --isolated --prefix <venv> --ignore-installed --no-deps --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock`.
+`pip install --isolated --prefix <venv> --ignore-installed --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock`.
 So the lock is a pip requirements file that holds nothing but exact pins with hashes:
 
 - every requirement is `name==version`, optionally with extras and an environment marker
@@ -252,7 +252,14 @@ So the lock is a pip requirements file that holds nothing but exact pins with ha
   The error reads `line N: pip may not be pinned: the plugin node installs a backend with its own
   pip, never one from the package; remove it from the lock`. It applies at `validate`, `pack`,
   upload and on the node;
-- every file in `backend/wheels/` is a wheel whose name and version the lock pins.
+- every file in `backend/wheels/` is a wheel whose name and version the lock pins;
+- it pins every requirement of every packed wheel: pip installs a wheel's requirements too, and
+  fails on one the lock does not pin. `pack` checks this for each target platform and refuses the
+  package, as in `package.backend/requirements.lock: does not pin h11>=0.8, which
+  uvicorn-0.52.3-py3-none-any.whl requires on manylinux_2_28_x86_64, manylinux_2_28_aarch64; add
+  it to the requirements the lock is compiled from`. On the node, a lock that still misses one
+  fails the placement with "installing the plugin's requirements failed (exit 1):" followed by
+  pip's last lines, which name the package.
 
 `uv pip compile requirements.in --universal --generate-hashes` writes such a lock; [Sign and
 package a plugin](../how-to/sign-and-package.md#a-plugin-with-a-backend) shows how, and how `pack`
@@ -359,6 +366,6 @@ The SuperAdmin's review shows these next to the package:
 | Code | When |
 |---|---|
 | `untrusted_package` | The package is not signed by a key the deployment trusts |
-| `flows_run_code` | `access` gives `flows` `create`, `update` or `use`: through flows, the plugin can run code in EpicStaff's sandbox, which has its own network access, and the plugin's outbound hosts do not apply to that code |
+| `runs_code_in_sandbox` | `access` gives `flows` `create`, `update` or `use`, or `tools` `create` or `update`. The message reads "Through {flows \| tools \| flows and tools}, the plugin can have code of its choosing run in EpicStaff's sandbox, which has its own network access. The plugin's outbound hosts do not apply to that code." |
 | `flows_use_missing` | `access` gives `flows` `create` or `update` but not `use`: the plugin cannot run a flow itself or write schedule, webhook or Telegram trigger nodes, but a flow it writes still runs, with its code, when someone in the organization runs it |
 | `wildcard_outbound_host` | An outbound host starts with `*.`; one warning per such host |

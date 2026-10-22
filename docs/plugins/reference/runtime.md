@@ -14,7 +14,7 @@ ships with the plugin's interpreter, run from outside the environment, so nothin
 can replace the installer:
 
 ```
-pip install --isolated --prefix <venv> --ignore-installed --no-deps --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock
+pip install --isolated --prefix <venv> --ignore-installed --no-index --find-links backend/wheels --require-hashes --only-binary=:all: -r backend/requirements.lock
 ```
 
 Scripts that wheels put in the environment's `bin/` start the environment's own Python. A build

@@ -48,18 +48,22 @@ def make_wheel(
     tag: str = "py3-none-any",
     body: str = "",
     extra_files: dict[str, str] | None = None,
+    requires: tuple[str, ...] = (),
 ) -> Path:
     """A minimal pure-Python wheel pip installs offline: one module named after `name`.
 
     `extra_files` adds members by their path in the wheel, e.g. a root `.pth` file or a
-    `<name>-<version>.data/scripts/...` script.
+    `<name>-<version>.data/scripts/...` script. `requires` are its `Requires-Dist` lines.
     """
     distribution = name.replace("-", "_")
     dist_info = f"{distribution}-{version}.dist-info"
+    metadata = f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n" + "".join(
+        f"Requires-Dist: {requirement}\n" for requirement in requires
+    )
     files = {
         **(extra_files or {}),
         f"{distribution}/__init__.py": body or f"VERSION = {version!r}\n",
-        f"{dist_info}/METADATA": f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n",
+        f"{dist_info}/METADATA": metadata,
         f"{dist_info}/WHEEL": (
             f"Wheel-Version: 1.0\nGenerator: es-plugins-tests\nRoot-Is-Purelib: true\nTag: {tag}\n"
         ),

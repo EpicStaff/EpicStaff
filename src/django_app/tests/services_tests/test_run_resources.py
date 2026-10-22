@@ -15,6 +15,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
+from rbac.models import Organization
 from tables.services.run_admission import RunKind, RunSubject
 from tables.services.run_resources import (
     CODE_SLOT_STORAGE_FLAGS,
@@ -720,3 +721,87 @@ def test_a_start_that_does_not_exist_reaches_only_itself():
 @pytest.mark.django_db
 def test_no_starts_cost_no_queries():
     assert _queries_to_collect(RunKind.FLOW, []) == 0
+
+
+# ---- header markers ----
+
+
+def _marker_headers(*names: str) -> dict[str, str]:
+    return {f"X-Key-{number}": f"Bearer epicstaff_secret({name})" for number, name in enumerate(names)}
+
+
+def _flow_asking(world: World, *configs):
+    """A flow whose decision table asks each of `configs`, one prompt each."""
+    flow = world.make("tables.Graph", name=world.name("markers"), org=world.org)
+    node = world.make("tables.ClassificationDecisionTableNode", graph=flow, node_name=world.name("cdt"))
+    for number, config in enumerate(configs):
+        world.make(
+            "tables.ClassificationDecisionTablePrompt", cdt_node=node, prompt_key=f"p{number}", llm_config=config
+        )
+    return flow
+
+
+def _config_with_headers(world: World, headers: dict[str, str]):
+    return world.make("tables.LLMConfig", custom_name=world.name("cfg"), org=world.org, extra_headers=headers)
+
+
+@pytest.mark.django_db
+def test_a_header_marker_reaches_the_live_secret_of_its_name_in_the_row_s_organization(world):
+    live = world.secret()
+    binned = world.secret()
+    type(binned).all_objects.filter(pk=binned.pk).update(active=False, soft_deleted_at=timezone.now())
+    elsewhere = _make_secret(Organization.objects.create(name="Markers elsewhere"), live.name, "value")
+    config = _config_with_headers(world, _marker_headers(live.name, binned.name, "nobody"))
+
+    resources = _collect(RunKind.FLOW, _flow_asking(world, config))
+
+    assert ref(live) in resources.refs
+    assert ref(binned) not in resources.refs
+    assert ref(elsewhere) not in resources.refs
+    assert resources.secret_marker_names == {live.name, binned.name, "nobody"}
+
+
+@pytest.mark.django_db
+def test_an_embedding_config_s_markers_are_followed_too(world):
+    secret = world.secret()
+    collection = world.make("tables.SourceCollection", collection_name=world.name("kb"), org=world.org)
+    base = world.make("tables.BaseRagType", rag_type="naive", source_collection=collection)
+    embedder = world.make(
+        "tables.EmbeddingConfig", custom_name=world.name("emb"), org=world.org, extra_headers=_marker_headers(secret.name)
+    )
+    world.make("tables.NaiveRag", base_rag_type=base, embedder=embedder)
+    flow = world.make("tables.Graph", name=world.name("kb-flow"), org=world.org)
+    world.make("tables.KnowledgeNode", graph=flow, node_name="knowledge", source_collection=collection)
+
+    resources = _collect(RunKind.FLOW, flow)
+
+    assert ref(secret) in resources.refs
+    assert resources.secret_marker_names == {secret.name}
+
+
+@pytest.mark.django_db
+def test_each_run_gets_only_the_marker_names_it_reaches(world):
+    first, second = world.secret(), world.secret()
+    first_flow = _flow_asking(world, _config_with_headers(world, _marker_headers(first.name)))
+    second_flow = _flow_asking(world, _config_with_headers(world, _marker_headers(second.name)))
+
+    together = RunResourceCollector().collect_many(RunKind.FLOW, [first_flow.pk, second_flow.pk])
+
+    assert together[first_flow.pk].secret_marker_names == {first.name}
+    assert ref(second) not in together[first_flow.pk].refs
+    assert together[second_flow.pk].secret_marker_names == {second.name}
+
+
+@pytest.mark.django_db
+def test_markers_cost_one_query_however_many_rows_and_names_there_are(world):
+    without_markers = _flow_asking(world, _config_with_headers(world, {"X-Trace": "t"}))
+    one = _flow_asking(world, _config_with_headers(world, _marker_headers(world.secret().name)))
+    six = _flow_asking(
+        world,
+        *(_config_with_headers(world, _marker_headers(world.secret().name, world.secret().name)) for _ in range(6)),
+    )
+
+    plain = _queries_to_collect(RunKind.FLOW, [without_markers.pk])
+
+    assert _queries_to_collect(RunKind.FLOW, [one.pk]) == plain + 1
+    assert _queries_to_collect(RunKind.FLOW, [six.pk]) == plain + 1

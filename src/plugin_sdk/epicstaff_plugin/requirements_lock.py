@@ -1,10 +1,12 @@
 """`backend/requirements.lock`: the hash-pinned list of everything a plugin's backend installs.
 
 The node builds the backend's virtual environment offline with
-`pip install --no-index --require-hashes --only-binary=:all: --no-deps -r backend/requirements.lock`,
+`pip install --no-index --require-hashes --only-binary=:all: -r backend/requirements.lock`,
 from the wheels in `backend/wheels/`. So the lock may hold nothing but exact pins with
 SHA-256 hashes: no index or link options, no URLs, no editable or nested requirement files.
-`uv pip compile requirements.in --universal --generate-hashes` writes such a file.
+pip resolves every wheel's requirements too, and fails on one the lock does not pin, so the
+lock must pin them all (`pack` checks it). `uv pip compile requirements.in --universal
+--generate-hashes` writes such a file.
 
 The lock may not pin pip: the node installs with its own pip, never one a package brings.
 """
@@ -49,6 +51,8 @@ class LockedRequirement:
     marker: Marker | None
     sha256: tuple[str, ...]
     line_number: int
+    extras: frozenset[str] = frozenset()
+    """The extras the line asks for (`name[extra]==...`): pip installs what they require too."""
 
     def applies_to(self, environment: Mapping[str, str]) -> bool:
         """Whether pip installs this pin on a machine described by `environment` (PEP 508 names)."""
@@ -204,4 +208,5 @@ def _parse_line(line: str, line_number: int) -> LockedRequirement:
         marker=requirement.marker,
         sha256=tuple(hashes),
         line_number=line_number,
+        extras=frozenset(canonicalize_name(extra) for extra in requirement.extras),
     )

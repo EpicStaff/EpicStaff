@@ -39,8 +39,12 @@ PLUGINS_MAX_REQUEST_BODY_MB = env.str("PLUGINS_MAX_REQUEST_BODY_MB")
 # plugins.E012 start-up check refuses it anywhere else. Read when used, never cached.
 PLUGINS_DEV_MODE = env.bool("PLUGINS_DEV_MODE")
 # Set to true only by docker-compose.plugins-dev.yaml, which publishes EpicStaff's ports on
-# 127.0.0.1 alone; never by an operator, so it is not in env.yaml, and absent means false. The
-# plugins.E012 start-up check refuses development mode without it.
+# 127.0.0.1 alone. It is outside env.yaml on purpose: it says which compose files started the
+# stack, so only those files may set it. An entry in env.yaml would put it in every .env, where
+# a value true would claim the loopback binding without the file that makes it; absent means
+# false. Under compose (RUN_IN_DOCKER), the plugins.E012 start-up check refuses development mode
+# without it. A Django process on the host, such as manage.py run against src/.env, is not
+# checked for it: the PLUGINS_DEV_MODE it reads there belongs to the compose stack.
 PLUGINS_DEV_LOOPBACK_ONLY = env.bool("PLUGINS_DEV_LOOPBACK_ONLY", False)
 # Port on 127.0.0.1 where a development backend reaches EpicStaff's API. Read as text: the
 # plugins.E013 start-up check reports a bad value while development mode is on, so nothing

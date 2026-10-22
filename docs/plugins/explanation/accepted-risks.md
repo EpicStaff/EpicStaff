@@ -61,16 +61,22 @@ A backend reaches only the hosts its manifest declares, over HTTPS on port 443. 
 list takes effect within about 30 seconds. A declared host that serves many sites behind one
 name lets the plugin reach all of them.
 
-## Flows run code outside the outbound hosts
+## Code runs in the sandbox outside the outbound hosts
 
-A plugin whose access includes `create`, `update` or `use` on flows can, through flows, run code
-in EpicStaff's sandbox: by writing a flow that holds code, or by running one. The sandbox has its
-own network access, and the plugin's outbound hosts do not apply to that code. So the list a
-SuperAdmin approves bounds the plugin's backend, not what its flows can reach. A flow a plugin
-writes also runs, with its code, whenever someone in the organization runs it, even when the
-plugin may not run flows itself. The review warns about this
+A plugin whose access includes `create`, `update` or `use` on flows, or `create` or `update` on
+tools, can have code of its choosing run in EpicStaff's sandbox: by writing a flow or a tool that
+holds code, or by running a flow. The sandbox has its own network access, and the plugin's
+outbound hosts do not apply to that code. So the list a SuperAdmin approves bounds the plugin's
+backend, not what its flows and tools can reach. A flow a plugin writes also runs, with its code,
+whenever someone in the organization runs it, even when the plugin may not run flows itself. A
+tool's code runs whenever an agent calls the tool. The review warns about this
 ([review warnings](../reference/manifest.md#review-warnings)). Grant `flows` `create`, `update`
-or `use` only to a plugin you would trust with that network access.
+or `use`, or `tools` `create` or `update`, only to a plugin you would trust with that network
+access.
+
+Tools `create` or `update` has a second effect: the plugin can point an agent at an MCP server
+that is not one of its outbound hosts. The agent, not the plugin's backend, connects to it, so
+the outbound hosts do not apply there either.
 
 ## Soft limits
 

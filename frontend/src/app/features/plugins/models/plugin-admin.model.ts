@@ -43,12 +43,12 @@ export type PluginGrantState =
 export type PluginSignatureStatus = 'valid' | 'absent' | 'unknown_key';
 
 /**
- * The review warnings, in the order the server sends them. `flows_run_code`: through flows, the plugin can run code in
- * EpicStaff's sandbox, whose network its outbound hosts do not bound.
+ * The review warnings, in the order the server sends them. `runs_code_in_sandbox`: through flows or tools, the plugin can
+ * have code run in EpicStaff's sandbox, whose network its outbound hosts do not bound.
  */
 export type PluginReviewWarningCode =
     | 'untrusted_package'
-    | 'flows_run_code'
+    | 'runs_code_in_sandbox'
     | 'flows_use_missing'
     | 'wildcard_outbound_host';
 

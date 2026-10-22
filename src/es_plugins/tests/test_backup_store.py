@@ -9,6 +9,7 @@ from src.shared.models.plugin_nodes import MAX_BACKUPS_PER_PLACEMENT, backup_fil
 
 from es_plugins.database.backup_store import (
     METADATA_FORMAT,
+    QUARANTINE_SUFFIX,
     BackupMetadata,
     BackupStore,
     metadata_name,
@@ -190,3 +191,25 @@ def test_the_inventory_is_read_again_only_when_the_directory_changes(store, monk
 def test_a_plugin_without_backups_lists_none(store):
     assert store.inventory("weather") == ()
     assert store.delete("weather", [backup_file_name(CREATED, 7, "pre_upgrade")]) == []
+
+
+def test_a_quarantined_backup_leaves_the_inventory_and_survives_the_agent_start(store, layout):
+    kept = backup(store, upgrade_id=5)
+    set_aside = backup(store, upgrade_id=6)
+    assert {stored.file_name for stored in store.inventory("weather")} == {kept, set_aside}
+
+    quarantined = store.quarantine("weather", set_aside)
+    store.clean_up()
+
+    assert quarantined == set_aside + QUARANTINE_SUFFIX
+    assert [stored.file_name for stored in store.inventory("weather")] == [kept]
+    assert sorted(os.listdir(layout.plugin_backups("weather"))) == sorted(
+        [kept, metadata_name(kept), quarantined, metadata_name(set_aside) + QUARANTINE_SUFFIX]
+    )
+
+
+def test_a_backup_that_is_not_there_cannot_be_quarantined(store):
+    store.directory("weather")
+
+    with pytest.raises(FileNotFoundError):
+        store.quarantine("weather", backup_file_name(CREATED, 9, "pre_upgrade"))

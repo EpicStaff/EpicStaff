@@ -152,6 +152,31 @@ def _secret_behind_llm_config(organization) -> Reach:
     return Reach(agent_node_flow(organization, _unique("Digest"), agent(organization, _unique("writer"), llm_config=config)), secret)
 
 
+def marker(secret: Secret) -> dict[str, str]:
+    """Headers whose `epicstaff_secret(<name>)` marker names `secret`."""
+    return {"Authorization": f"Bearer epicstaff_secret({secret.name})"}
+
+
+def _secret_named_by_an_llm_config_header(organization) -> Reach:
+    secret = secret_row(organization, _unique("Weather gateway key"))
+    graph = flow(organization, _unique("Digest"))
+    config = llm_config(organization, _unique("Weather classifier"), extra_headers=marker(secret))
+    ClassificationDecisionTableNode.objects.create(graph=graph, node_name="cdt", default_llm_config=config)
+    return Reach(graph, secret)
+
+
+def _secret_named_by_an_embedder_header(organization) -> Reach:
+    secret = secret_row(organization, _unique("Weather embeddings key"))
+    collection = SourceCollection.objects.create(org=organization, collection_name=_unique("Forecasts"))
+    embedder = EmbeddingConfig.objects.create(
+        org=organization, custom_name=_unique("Weather embeddings"), extra_headers=marker(secret)
+    )
+    NaiveRag.objects.create(base_rag_type=BaseRagType.objects.create(rag_type="naive", source_collection=collection), embedder=embedder)
+    graph = flow(organization, _unique("Digest"))
+    KnowledgeNode.objects.create(graph=graph, node_name="knowledge", source_collection=collection)
+    return Reach(graph, secret)
+
+
 def _key_value_table(organization) -> Reach:
     graph = flow(organization, _unique("Digest"))
     table = KeyValueTable.objects.create(org=organization, name=_unique("weather_cache"))
@@ -273,6 +298,8 @@ REACHES: dict[str, Callable[[object], Reach]] = {
     "agent fcm llm config": _agent_fcm_llm_config,
     "secret declared by python code": _secret_declared_by_code,
     "secret behind an llm config": _secret_behind_llm_config,
+    "secret named by an llm config's header": _secret_named_by_an_llm_config_header,
+    "secret named by an embedder's header": _secret_named_by_an_embedder_header,
     "key-value table": _key_value_table,
     "knowledge collection of a node": _knowledge_node_collection,
     "embedder of a surface's rag": _surface_rag_embedder,

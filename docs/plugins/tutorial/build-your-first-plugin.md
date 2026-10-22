@@ -219,7 +219,7 @@ started before a restart is still found after it.
 The flow's Python node runs inside EpicStaff, in its sandbox, so its calls to Open-Meteo go out
 from the sandbox, which has its own network access. The plugin's outbound hosts do not cover them
 (part 3), and they would not limit them either: that is why the review warns about `flows` access
-(see [Accepted risks](../explanation/accepted-risks.md#flows-run-code-outside-the-outbound-hosts)).
+(see [Accepted risks](../explanation/accepted-risks.md#code-runs-in-the-sandbox-outside-the-outbound-hosts)).
 
 ### 3. Settings for admins, and the person's own rights
 

@@ -4,8 +4,10 @@ The interpreter is the tests' own; the pip that installs is the wheel its standa
 for ensurepip, as on the node.
 """
 
+import asyncio
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -102,6 +104,46 @@ async def test_a_hash_mismatch_fails_the_offline_install(tmp_path):
     assert not request.venv.exists()
 
 
+async def test_a_lock_that_misses_a_requirement_fails_the_build_naming_it(tmp_path):
+    wheels = [
+        make_wheel(tmp_path / "built", "uvicorn", "0.52.3", requires=("h11>=0.8",)),
+        make_wheel(tmp_path / "built", "h11", "0.16.0"),
+    ]
+    # The wheel is packed, but the lock pins only uvicorn.
+    request = request_for(tmp_path, backend(tmp_path, wheels, lock_for(wheels[:1])))
+
+    with pytest.raises(VenvBuildError, match="installing the plugin's requirements failed") as failed:
+        await build_venv(request)
+
+    assert "h11" in str(failed.value)
+    assert not request.venv.exists()
+
+
+async def test_a_requirement_with_no_wheel_at_all_fails_the_build_naming_it(tmp_path):
+    wheels = [make_wheel(tmp_path / "built", "uvicorn", "0.52.3", requires=("h11>=0.8",))]
+    request = request_for(tmp_path, backend(tmp_path, wheels))
+
+    with pytest.raises(VenvBuildError, match="installing the plugin's requirements failed") as failed:
+        await build_venv(request)
+
+    assert "h11" in str(failed.value)
+    assert not request.venv.exists()
+
+
+async def test_a_complete_lock_installs_every_requirement_and_skips_those_whose_marker_does_not_apply(tmp_path):
+    wheels = [
+        make_wheel(
+            tmp_path / "built", "uvicorn", "0.52.3", requires=("h11>=0.8", 'colorama ; sys_platform == "win32"')
+        ),
+        make_wheel(tmp_path / "built", "h11", "0.16.0"),
+    ]
+    request = request_for(tmp_path, backend(tmp_path, wheels))
+
+    python = await build_venv(request)
+
+    assert run_isolated(python, "import h11, uvicorn; print(h11.VERSION, uvicorn.VERSION)") == "0.16.0 0.52.3"
+
+
 async def test_a_wrong_platform_wheel_is_refused_before_pip_runs(tmp_path):
     wheels = [
         make_wheel(tmp_path / "built", "uvicorn", "0.52.3"),
@@ -173,6 +215,12 @@ async def test_the_venv_has_no_pip_of_its_own(tmp_path):
 
 
 async def test_a_wheel_that_overwrites_pips_files_never_runs_while_the_venv_is_built(tmp_path):
+    """Describes the case: a wheel that overwrites pip's own files runs nothing as the agent.
+
+    The guards are elsewhere: pip runs from the interpreter's own wheel outside the venv, and the
+    venv has no pip of its own (`test_the_venv_has_no_pip_of_its_own`), so nothing the wheel
+    writes is read while the venv is built.
+    """
     ran = tmp_path / "ran"
     ran.mkdir()
     # pip's entry point and modules it imports while it installs: a pip that ran from the venv's
@@ -243,3 +291,25 @@ async def test_an_interpreter_without_a_pip_wheel_of_its_own_is_refused(tmp_path
 
     with pytest.raises(VenvBuildError, match="ships 0 pip wheels for ensurepip, not one"):
         await venv_builder._describe_interpreter(interpreter)
+
+
+async def test_a_cancelled_build_still_waits_for_its_tree_work_before_it_ends():
+    started, release = threading.Event(), threading.Event()
+    finished = []
+
+    def remove_tree():
+        started.set()
+        release.wait(10)
+        finished.append(True)
+
+    work = asyncio.create_task(venv_builder._in_thread_to_the_end(remove_tree))
+    await asyncio.to_thread(started.wait, 10)
+    work.cancel()
+    await asyncio.sleep(0.05)
+
+    # A later build of the same venv cannot start while the thread still works on it.
+    assert not work.done()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await work
+    assert finished == [True]

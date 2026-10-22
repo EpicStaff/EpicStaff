@@ -280,13 +280,15 @@ def _messages():
 
 @pytest.fixture
 def development_platform(valid_platform):
-    """A local development deployment with development mode on: only the warning is given.
+    """A local development deployment with development mode on, under compose: only the warning
+    is given.
 
     DEBUG is set explicitly, because the test runner forces it off. The loopback marker is
     what docker-compose.plugins-dev.yaml sets.
     """
     valid_platform.PLUGINS_DEV_MODE = True
     valid_platform.PLUGINS_DEV_API_PORT = "8082"
+    valid_platform.RUN_IN_DOCKER = True
     valid_platform.PLUGINS_DEV_LOOPBACK_ONLY = True
     valid_platform.DEBUG = True
     return valid_platform
@@ -344,7 +346,7 @@ def test_e012_development_mode_without_the_development_compose_file(development_
     assert list(messages) == ["plugins.E012"]
     assert messages["plugins.E012"] == (
         "PLUGINS_DEV_MODE is true, but this is not a local development deployment: "
-        "PLUGINS_DEV_LOOPBACK_ONLY is not true, so the stack was not started with "
+        "PLUGINS_DEV_LOOPBACK_ONLY is not true in this container, so the stack was not started with "
         "docker-compose.plugins-dev.yaml and EpicStaff's ports may be reachable from other machines."
     )
 
@@ -354,6 +356,30 @@ def test_e012_without_the_development_compose_file_stops_management_commands(dev
 
     with pytest.raises(SystemCheckError, match="plugins.E012"):
         call_command("check")
+
+
+@pytest.fixture
+def development_on_the_host(development_platform):
+    """manage.py run on the host: it reads src/.env, whose PLUGINS_DEV_MODE is the compose
+    stack's, and no compose file set the loopback marker."""
+    development_platform.RUN_IN_DOCKER = False
+    development_platform.PLUGINS_DEV_LOOPBACK_ONLY = False
+    return development_platform
+
+
+def test_on_the_host_the_loopback_marker_is_not_checked(development_on_the_host):
+    assert _ids() == ["plugins.W001"]
+    call_command("check")
+
+
+def test_on_the_host_every_other_condition_still_holds(development_on_the_host):
+    development_on_the_host.DEBUG = False
+
+    messages = _messages()
+
+    assert list(messages) == ["plugins.E012"]
+    assert "DJANGO_DEBUG is not true" in messages["plugins.E012"]
+    assert "PLUGINS_DEV_LOOPBACK_ONLY" not in messages["plugins.E012"]
 
 
 def test_the_loopback_marker_alone_neither_turns_development_mode_on_nor_is_checked(valid_platform):

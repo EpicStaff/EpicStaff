@@ -215,6 +215,17 @@ the package. Packing again with the same lock gives the same bytes.
 Without `--download-wheels`, `pack` takes the wheels from `backend/wheels/` in your source, if
 you keep them there; the two cannot be combined.
 
+`pack` also checks that the lock pins every requirement of every packed wheel, on each target
+platform, because the node's pip installs those too. A missing one stops the pack:
+
+```
+package.backend/requirements.lock: does not pin h11>=0.8, which uvicorn-0.52.3-py3-none-any.whl requires on manylinux_2_28_x86_64, manylinux_2_28_aarch64; add it to the requirements the lock is compiled from
+```
+
+Add it to `requirements.in` and compile the lock again. A package that skipped the check would
+fail on the node with "installing the plugin's requirements failed (exit 1):" and pip's last
+lines, which name the package.
+
 ### Upload refusals to expect
 
 A backend package is refused with `invalid_plugin` when the lock has an entry that is not an

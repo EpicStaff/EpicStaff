@@ -9,10 +9,15 @@ when both final names are there, and only complete backups are listed:
   `MAX_BACKUPS_PER_PLACEMENT`. It is read again only when the directory changed.
 - **Deletion.** Only the names EpicStaff lists, the dump and its metadata both. A link is
   deleted, never followed.
+- **Quarantine.** A complete backup EpicStaff cannot be told about is set aside: its dump and
+  metadata get `QUARANTINE_SUFFIX` added, which no backup name has, so the inventory leaves it
+  out and is whole again. The files stay for an operator, until the plugin is removed.
 - **Clean-up at agent start.** Temporary files, dumps without metadata, metadata without a dump
-  and metadata the node cannot read are deleted: none of them is a backup.
+  and metadata the node cannot read are deleted: none of them is a backup. Quarantined files are
+  kept.
 
-Files are 0600 and the directories 0700, the agent's. Log line: `plugins.backup.deleted`.
+Files are 0600 and the directories 0700, the agent's. Log lines: `plugins.backup.deleted`,
+`plugins.backup.quarantined`.
 """
 
 import contextlib
@@ -51,6 +56,7 @@ METADATA_FORMAT = 1
 DUMP_SUFFIX = ".dump"
 METADATA_SUFFIX = ".json"
 TEMPORARY_PREFIX = "."
+QUARANTINE_SUFFIX = ".unreportable"
 MAX_METADATA_BYTES = 1024 * 1024
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 _DUMP_NAME = re.compile(BACKUP_FILE_NAME_PATTERN)
@@ -195,8 +201,35 @@ class BackupStore:
             os.close(descriptor)
         return deleted
 
+    def quarantine(self, plugin: str, file_name: str) -> str:
+        """Set a backup aside under names no backup has; return the dump's new name.
+
+        The dump is renamed first, so from then on the backup is not complete and no inventory
+        lists it. A link is renamed, never followed.
+
+        Raises:
+            OSError: A file could not be renamed; the backup may still be listed.
+        """
+        directory = self._layout.plugin_backups(check_plugin_identifier(plugin))
+        descriptor = os.open(directory, _DIRECTORY_FLAGS)
+        try:
+            for name in (file_name, metadata_name(file_name)):
+                os.rename(
+                    name, name + QUARANTINE_SUFFIX, src_dir_fd=descriptor, dst_dir_fd=descriptor
+                )
+        finally:
+            os.close(descriptor)
+        # The directory's time may not have moved on a coarse clock: read it again regardless.
+        self._inventories.pop(plugin, None)
+        quarantined = file_name + QUARANTINE_SUFFIX
+        logger.warning(
+            "plugins.backup.quarantined plugin={} file={} as={}", plugin, file_name, quarantined
+        )
+        return quarantined
+
     def clean_up(self) -> None:
-        """At agent start: delete everything in the backups tree that is not a complete backup."""
+        """At agent start: delete everything in the backups tree that is not a complete backup,
+        except what is quarantined."""
         root = self._layout.backups_root
         try:
             plugins = os.listdir(root)
@@ -211,6 +244,7 @@ class BackupStore:
                 names = set(os.listdir(descriptor))
                 complete = {backup.file_name for backup in _complete_backups(directory)}
                 keep = complete | {metadata_name(name) for name in complete}
+                keep |= {name for name in names if name.endswith(QUARANTINE_SUFFIX)}
                 for name in names - keep:
                     _unlink(descriptor, name)
                     logger.info("plugins.backup.deleted plugin={} file={}", plugin, name)

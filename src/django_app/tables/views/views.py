@@ -102,6 +102,11 @@ from tables.services.run_admission import (
 )
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
+from tables.services.secrets.reference_guard import (
+    pinned_principal_of_user,
+    secret_reference_guard,
+)
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 from tables.services.session_access import (
     assert_parent_session_in_org,
     get_accessible_session,
@@ -1009,6 +1014,14 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
         )
 
         indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type)
+        principal = pinned_principal_of_user(request.user)
+        if principal is not None:
+            # The headers' markers resolve below by name, as a run's do when it starts.
+            secret_reference_guard.assert_may_resolve_markers(
+                principal=principal,
+                names=extract_secret_marker_names(indexing_data["embedder_extra_headers"])
+                | extract_secret_marker_names(indexing_data["llm_extra_headers"]),
+            )
         secret_resolver = SecretResolver()
 
         embedding_api_key_secret_id = indexing_data["embedder_api_key_secret_id"]

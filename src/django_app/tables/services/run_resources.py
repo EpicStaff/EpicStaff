@@ -1,17 +1,20 @@
 """What a run uses: every row it reaches from the row it starts from.
 
-`RUN_REFERENCES` is the walk; no other code decides what a run touches. A `FollowField` row
-follows a forward FK, O2O or auto-through M2M by id, whatever the target's recycle-bin state,
-because a run would use the target or fail on it. A `FollowChildren` row follows the live
-rows of a child model (its default manager) whose FK points at a reached row, as a run reads
-them. The walk is deliberately broad: an agent counts with both LLM configs, all its default
+`RUN_REFERENCES` and `RUN_SECRET_MARKERS` are the walk; no other code decides what a run
+touches. A `FollowField` row follows a forward FK, O2O or auto-through M2M by id, whatever the
+target's recycle-bin state, because a run would use the target or fail on it. A
+`FollowChildren` row follows the live rows of a child model (its default manager) whose FK
+points at a reached row, as a run reads them. A `FollowSecretMarkers` row follows the
+`epicstaff_secret(<name>)` markers of a header field by name, to the secret a run resolves for
+it. The walk is deliberately broad: an agent counts with both LLM configs, all its default
 surfaces and its voice configs, a collection with every RAG's embedder and LLM, and an
 attached folder with every file under it. Over-counting shows in what a suspension stops;
 a missed reference would let a run use something it should not.
 
 Adding a reference (a new node type, a new FK on a model the walk reaches, a new child row):
 add a `FollowField` or `FollowChildren` row, or an entry in `RUN_REFERENCE_EXEMPTIONS` or
-`RUN_TRAVERSAL_STOPS` with the reason it is not followed.
+`RUN_TRAVERSAL_STOPS` with the reason it is not followed. A new header field a run resolves
+markers in (a field whose name ends in `extra_headers`) gets a `FollowSecretMarkers` row.
 `tests/plugins_tests/test_run_resource_collector_coverage.py` fails until one is added.
 """
 
@@ -25,6 +28,7 @@ from types import MappingProxyType
 from django.apps import apps
 from django.db.models import Q
 from tables.services.run_admission import RunKind, RunSubject
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 
 
 @dataclass(frozen=True, order=True)
@@ -43,10 +47,14 @@ class RunResources:
         refs: Every row the walk reached, the start row included.
         storage_prefixes: Org-relative paths, ending in "/", of the storage folders the
             walk reached. Every file under one of them counts as used.
+        secret_marker_names: Every name the `epicstaff_secret(<name>)` markers of the reached
+            rows name, whether a secret has the name or not. The secrets a run resolves them
+            to are in `refs`.
     """
 
     refs: frozenset[ResourceRef]
     storage_prefixes: frozenset[str]
+    secret_marker_names: frozenset[str] = frozenset()
 
     def pks_of(self, model_label: str) -> frozenset[int]:
         """Return the ids of the reached rows of `model_label`."""
@@ -67,6 +75,20 @@ class FollowChildren:
 
     child: str
     fk: str
+
+
+@dataclass(frozen=True)
+class FollowSecretMarkers:
+    """Follow the `epicstaff_secret(<name>)` markers in the header field `field` of `model`.
+
+    A marker binds by name when a run starts, not by id when it is written: the run sends the
+    live secret of that name in its organization (`SecretResolver.resolve_named`). So a marker
+    reaches that secret, looked up in the organization of the row holding the marker; a name no
+    live secret has reaches nothing, as the run would fail on it.
+    """
+
+    model: str
+    field: str
 
 
 RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
@@ -207,6 +229,13 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     FollowField("tables.TwilioChannel", "webhook_trigger"),
 )
 
+# Every header field whose markers a run resolves (`SecretResolver` fills each payload field
+# whose name ends in `extra_headers` from these).
+RUN_SECRET_MARKERS: tuple[FollowSecretMarkers, ...] = (
+    FollowSecretMarkers("tables.LLMConfig", "extra_headers"),
+    FollowSecretMarkers("tables.EmbeddingConfig", "extra_headers"),
+)
+
 # Forward references of a model the walk reaches that it does not follow: (model, field).
 RUN_REFERENCE_EXEMPTIONS: Mapping[tuple[str, str], str] = MappingProxyType(
     {
@@ -283,8 +312,11 @@ CODE_SLOT_STORAGE_FLAGS: Mapping[tuple[str, str], str] = MappingProxyType(
 
 _GRAPH = "tables.Graph"
 _PYTHON_CODE = "tables.PythonCode"
+_SECRET = "tables.Secret"
 _STORAGE_FILE = "tables.StorageFile"
 _FOLDER = "folder"
+# The column of a marker's row that names the organization its markers resolve in.
+_ORGANIZATION_COLUMN = "org_id"
 
 
 class RunResourceCollector:
@@ -333,6 +365,7 @@ class RunResourceCollector:
                     for ref in refs
                     if ref.model_label == _STORAGE_FILE and ref.pk in folder_paths
                 ),
+                secret_marker_names=walk.secret_marker_names(refs),
             )
             for subject_id, refs in used.items()
         }
@@ -385,6 +418,8 @@ class _CodeHolder:
 @dataclass(frozen=True)
 class _WalkPlan:
     forward_fields: Mapping[str, tuple[_ForwardField, ...]]
+    # The header fields whose markers are followed, by model, as column names.
+    marker_fields: Mapping[str, tuple[str, ...]]
     many_to_many_fields: Mapping[str, tuple[_ManyToManyField, ...]]
     child_links: Mapping[str, tuple[_ChildLink, ...]]
     # Child links whose child also points forward at another row of the parent's model
@@ -396,7 +431,7 @@ class _WalkPlan:
 
 @cache
 def _walk_plan() -> _WalkPlan:
-    return _build_plan(RUN_REFERENCES)
+    return _build_plan(RUN_REFERENCES, RUN_SECRET_MARKERS)
 
 
 @cache
@@ -429,8 +464,16 @@ def _related_label(model_label: str, field_name: str) -> str:
     return apps.get_model(model_label)._meta.get_field(field_name).related_model._meta.label
 
 
-def _build_plan(references: tuple[FollowField | FollowChildren, ...]) -> _WalkPlan:
+def _build_plan(
+    references: tuple[FollowField | FollowChildren, ...],
+    secret_markers: tuple[FollowSecretMarkers, ...] = (),
+) -> _WalkPlan:
     forward_fields: dict[str, list[_ForwardField]] = defaultdict(list)
+    marker_fields: dict[str, list[str]] = defaultdict(list)
+    for marker in secret_markers:
+        marker_fields[marker.model].append(
+            apps.get_model(marker.model)._meta.get_field(marker.field).attname
+        )
     many_to_many_fields: dict[str, list[_ManyToManyField]] = defaultdict(list)
     children: list[tuple[str, FollowChildren, _ChildLink]] = []
     for reference in references:
@@ -457,7 +500,7 @@ def _build_plan(references: tuple[FollowField | FollowChildren, ...]) -> _WalkPl
             children.append((parent, reference, _ChildLink(reference.child, field.attname)))
 
     # A model leads somewhere if it has a field to follow, or a child that leads somewhere.
-    leads_somewhere = set(forward_fields) | set(many_to_many_fields)
+    leads_somewhere = set(forward_fields) | set(marker_fields) | set(many_to_many_fields)
     grew = True
     while grew:
         grew = False
@@ -483,6 +526,8 @@ def _build_plan(references: tuple[FollowField | FollowChildren, ...]) -> _WalkPl
     leads_to: dict[str, set[str]] = defaultdict(set)
     for model, fields in forward_fields.items():
         leads_to[model] |= {field.target for field in fields}
+    for model in marker_fields:
+        leads_to[model].add(_SECRET)
     for model, fields in many_to_many_fields.items():
         leads_to[model] |= {field.target for field in fields}
     for parent, links in (*child_links.items(), *recursive_links.items()):
@@ -490,6 +535,7 @@ def _build_plan(references: tuple[FollowField | FollowChildren, ...]) -> _WalkPl
 
     return _WalkPlan(
         forward_fields=MappingProxyType({k: tuple(v) for k, v in forward_fields.items()}),
+        marker_fields=MappingProxyType({k: tuple(v) for k, v in marker_fields.items()}),
         many_to_many_fields=MappingProxyType({k: tuple(v) for k, v in many_to_many_fields.items()}),
         child_links=MappingProxyType({k: tuple(v) for k, v in child_links.items()}),
         recursive_links=MappingProxyType({k: tuple(v) for k, v in recursive_links.items()}),
@@ -604,7 +650,9 @@ class _Walk:
 
     Passes go model by model in the plan's order and query a model's newly reached rows
     together, so the number of queries depends on the table and on how often references
-    lead back to an earlier model, never on how many rows there are.
+    lead back to an earlier model, never on how many rows there are. A row's header markers
+    are read in the same query as its other fields, and the names found are looked up once
+    the passes reach nothing more: one query for every name of every row.
     """
 
     def __init__(self, plan: _WalkPlan) -> None:
@@ -613,10 +661,23 @@ class _Walk:
         self._edges: dict[ResourceRef, set[ResourceRef]] = defaultdict(set)
         self._fields_read: set[ResourceRef] = set()
         self._pending: dict[str, set[int]] = defaultdict(set)
+        self._marker_names: dict[ResourceRef, frozenset[str]] = {}
+        # (organization id, name) -> the rows whose markers name it, not yet looked up.
+        self._unresolved_markers: dict[tuple[int | None, str], set[ResourceRef]] = defaultdict(set)
 
     def run(self, starts: Iterable[ResourceRef]) -> None:
         for start in starts:
             self._reach(None, start)
+        while self._pending:
+            self._run_passes()
+            # A secret a marker reaches is a row like any other: its turn comes next.
+            self._resolve_secret_markers()
+
+    def secret_marker_names(self, refs: Iterable[ResourceRef]) -> frozenset[str]:
+        """The names the markers of `refs` name."""
+        return frozenset().union(*(self._marker_names.get(ref, ()) for ref in refs))
+
+    def _run_passes(self) -> None:
         while self._pending:
             expanded = False
             for model_label in self._plan.model_order:
@@ -662,8 +723,9 @@ class _Walk:
             self._pending[target.model_label].add(target.pk)
 
     def _follow_forward_fields(self, model_label: str, pks: set[int]) -> None:
-        fields = self._plan.forward_fields.get(model_label)
-        if not fields:
+        fields = self._plan.forward_fields.get(model_label, ())
+        markers = self._plan.marker_fields.get(model_label, ())
+        if not fields and not markers:
             return
         unread = [pk for pk in pks if ResourceRef(model_label, pk) not in self._fields_read]
         if not unread:
@@ -671,10 +733,10 @@ class _Walk:
         rows = (
             apps.get_model(model_label)
             ._base_manager.filter(pk__in=unread)
-            .values_list("pk", *(field.attname for field in fields))
+            .values_list("pk", *_row_columns(fields, markers))
         )
         for pk, *values in rows:
-            self._record_forward_fields(ResourceRef(model_label, pk), fields, values)
+            self._record_row(ResourceRef(model_label, pk), fields, markers, values)
 
     def _follow_many_to_many_fields(self, model_label: str, pks: set[int]) -> None:
         for field in self._plan.many_to_many_fields.get(model_label, ()):
@@ -713,21 +775,68 @@ class _Walk:
     def _follow_child_link(self, model_label: str, link: _ChildLink, pks: set[int]) -> None:
         # The child's own fields come in the same query, so its rows need no second read.
         fields = self._plan.forward_fields.get(link.child, ())
+        markers = self._plan.marker_fields.get(link.child, ())
         rows = (
             apps.get_model(link.child)
             ._default_manager.filter(**{f"{link.fk_attname}__in": pks})
-            .values_list("pk", link.fk_attname, *(field.attname for field in fields))
+            .values_list("pk", link.fk_attname, *_row_columns(fields, markers))
         )
         for pk, parent_pk, *values in rows:
             child = ResourceRef(link.child, pk)
             self._reach(ResourceRef(model_label, parent_pk), child)
-            if fields:
-                self._record_forward_fields(child, fields, values)
+            if fields or markers:
+                self._record_row(child, fields, markers, values)
 
-    def _record_forward_fields(
-        self, source: ResourceRef, fields: tuple[_ForwardField, ...], values: list
+    def _record_row(
+        self,
+        source: ResourceRef,
+        fields: tuple[_ForwardField, ...],
+        markers: tuple[str, ...],
+        values: list,
     ) -> None:
+        """Reach what one row's fields point at, and note the names its markers give."""
         self._fields_read.add(source)
-        for field, value in zip(fields, values, strict=True):
+        for field, value in zip(fields, values[: len(fields)], strict=True):
             if value is not None:
                 self._reach(source, ResourceRef(field.target, value))
+        if not markers:
+            return
+        organization_id, *headers = values[len(fields) :]
+        names = frozenset().union(*(extract_secret_marker_names(value) for value in headers))
+        if names:
+            self._marker_names[source] = names
+            for name in names:
+                self._unresolved_markers[(organization_id, name)].add(source)
+
+    def _resolve_secret_markers(self) -> None:
+        """Reach, for each name noted since the last call, the live secret a run resolves it to."""
+        if not self._unresolved_markers:
+            return
+        unresolved, self._unresolved_markers = self._unresolved_markers, defaultdict(set)
+        names_by_organization: dict[int | None, set[str]] = defaultdict(set)
+        for organization_id, name in unresolved:
+            names_by_organization[organization_id].add(name)
+        # The default manager, as the resolver reads: binned and system secrets never resolve.
+        secrets = (
+            apps.get_model(_SECRET)
+            ._default_manager.filter(
+                reduce(
+                    or_,
+                    (
+                        Q(org_id=organization_id, name__in=names)
+                        for organization_id, names in names_by_organization.items()
+                    ),
+                )
+            )
+            .values_list("pk", "org_id", "name")
+        )
+        for pk, organization_id, name in secrets:
+            for source in unresolved.get((organization_id, name), ()):
+                self._reach(source, ResourceRef(_SECRET, pk))
+
+
+def _row_columns(fields: tuple[_ForwardField, ...], markers: tuple[str, ...]) -> tuple[str, ...]:
+    """The columns `_Walk._record_row` reads: the fields to follow, then the markers' organization
+    and header fields."""
+    marker_columns = (_ORGANIZATION_COLUMN, *markers) if markers else ()
+    return (*(field.attname for field in fields), *marker_columns)

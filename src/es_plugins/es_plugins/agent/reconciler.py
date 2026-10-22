@@ -41,7 +41,9 @@ placement's package is the target and the start above runs its migrations. A des
 replaces the database and starts nothing. With no upgrade open, every version but the desired
 one is deleted once it is installed. The desired placement's `backups_to_delete` are deleted
 (`BackupStore`), and the report lists every complete backup (none at all, rather than an empty
-list, when the backups cannot be read or one of them cannot be reported).
+list, when the backups cannot be read). A backup the report cannot carry is quarantined (set aside
+under a name no backup has, so the inventory is whole without it) and named in the placement's
+`last_error` and the log.
 
 A placement in the desired state's `removals` has its controller closed first, like any placement
 that left `placements`; `PlacementRemover` then drops its database and deletes everything the node
@@ -292,6 +294,8 @@ class PlacementController:
             self._taken_port = None
 
     def report(self) -> PlacementReport:
+        # First: a backup quarantined on the way is in this report's last_error.
+        backups = self._backup_reports()
         status = self.supervisor.status()
         last_error = status.last_error[:MAX_LAST_ERROR_LENGTH] if status.last_error else None
         started = self._started_with
@@ -312,7 +316,7 @@ class PlacementController:
             database=self._database.report() if self._database is not None else None,
             upgrade=self._upgrade.report(desired),
             restore=self._restore.report(desired),
-            backups=self._backup_reports(),
+            backups=backups,
         )
 
     def bytes_outside_home(self) -> int:
@@ -742,11 +746,16 @@ class PlacementController:
             )
 
     def _backup_reports(self) -> list[BackupFileReport] | None:
-        """Every complete backup of the plugin, the whole inventory. None when they cannot be
-        listed, or one of them cannot be reported: EpicStaff then marks none of the recorded ones
-        deleted, rather than one whose file is still here."""
+        """Every complete backup of the plugin, the whole inventory.
+
+        A backup that cannot be reported is quarantined first, so the inventory is whole without
+        it, and EpicStaff marks it deleted: its file is no longer a backup here. None when the
+        backups cannot be listed, or such a backup cannot be quarantined: EpicStaff then marks
+        none of the recorded ones deleted, rather than one whose file is still here.
+        """
+        identifier = self._desired.plugin_identifier
         try:
-            stored = self._services.backup_store.inventory(self._desired.plugin_identifier)
+            stored = self._services.backup_store.inventory(identifier)
         except OSError as error:
             self._log_unreportable_backups(f"the backups cannot be listed: {error}")
             return None
@@ -754,10 +763,30 @@ class PlacementController:
         for backup in stored:
             try:
                 reports.append(backup.report())
-            except ValidationError:
-                self._log_unreportable_backups(f"backup {backup.file_name} cannot be reported")
-                return None
+            except ValidationError as error:
+                if not self._quarantine(backup.file_name, error):
+                    return None
         return reports
+
+    def _quarantine(self, file_name: str, error: ValidationError) -> bool:
+        """Set aside a backup the report cannot carry, and say so in `last_error` and the log."""
+        identifier = self._desired.plugin_identifier
+        try:
+            quarantined = self._services.backup_store.quarantine(identifier, file_name)
+        except OSError as rename_error:
+            self._log_unreportable_backups(
+                f"backup {file_name} cannot be reported, nor set aside: {rename_error}"
+            )
+            return False
+        problem = error.errors()[0]
+        field = ".".join(str(part) for part in problem["loc"]) or "the backup"
+        message = (
+            f"Backup {file_name} could not be reported to EpicStaff ({field}: {problem['msg']}), "
+            f"so the node set it aside as {quarantined}; EpicStaff no longer lists it."
+        )
+        logger.warning("Plugin {}: {}", identifier, message)
+        self.supervisor.note_error(message)
+        return True
 
     def _log_unreportable_backups(self, message: str) -> None:
         if not self._unreportable_backups:

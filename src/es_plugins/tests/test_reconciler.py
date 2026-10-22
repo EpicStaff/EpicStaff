@@ -788,23 +788,64 @@ async def test_the_disk_a_placement_uses_outside_its_home_is_its_database_and_it
     assert controller.bytes_outside_home() == 8192 + sum(backup.metadata.size_bytes for backup in stored)
 
 
-async def test_a_backup_that_cannot_be_reported_withholds_the_whole_inventory(database_node, monkeypatch):
+def _unreportable(monkeypatch, file_name):
+    """The report cannot carry the backup `file_name`, as when its metadata and the contract differ."""
     from es_plugins.database.backup_store import StoredBackup
     from src.shared.models.plugin_nodes import BackupFileReport
+
+    real_report = StoredBackup.report
+
+    def report(backup):
+        if backup.file_name == file_name:
+            BackupFileReport.model_validate({**real_report(backup).model_dump(), "version": ""})
+        return real_report(backup)
+
+    monkeypatch.setattr(StoredBackup, "report", report)
+
+
+async def test_a_backup_that_cannot_be_reported_is_set_aside_and_the_inventory_stays_whole(database_node, monkeypatch):
+    from es_plugins.database.backup_store import QUARANTINE_SUFFIX
 
     reconciler, django, launcher, desired, with_database = database_node
     await reconciler.apply(with_database())
     await wait_until(lambda: running(reconciler))
     reportable, unreportable = await backed_up(reconciler, desired, [5, 6])
     assert [backup.file_name for backup in reconciler.reports()[0].backups] == [unreportable.file_name, reportable.file_name]
-    real_report = StoredBackup.report
+    _unreportable(monkeypatch, unreportable.file_name)
+    log_lines = []
+    sink = logger.add(log_lines.append, format="{message}", level="WARNING")
+    try:
+        [report] = reconciler.reports()
+    finally:
+        logger.remove(sink)
 
-    def report(backup):
-        if backup.file_name == unreportable.file_name:
-            BackupFileReport.model_validate({})
-        return real_report(backup)
+    # EpicStaff marks it deleted: its file is no longer a backup on the node.
+    assert [backup.file_name for backup in report.backups] == [reportable.file_name]
+    quarantined = unreportable.file_name + QUARANTINE_SUFFIX
+    assert report.last_error == (
+        f"Backup {unreportable.file_name} could not be reported to EpicStaff (version: String should have at "
+        f"least 1 character), so the node set it aside as {quarantined}; EpicStaff no longer lists it."
+    )
+    assert not unreportable.path.exists()
+    assert unreportable.path.with_name(quarantined).exists()
+    assert any("plugins.backup.quarantined" in line and quarantined in line for line in log_lines)
+    # The next report is whole too, and the process runs on.
+    [again] = reconciler.reports()
+    assert [backup.file_name for backup in again.backups] == [reportable.file_name]
+    assert running(reconciler)
 
-    monkeypatch.setattr(StoredBackup, "report", report)
+
+async def test_a_backup_that_cannot_be_reported_nor_set_aside_withholds_the_inventory(database_node, monkeypatch):
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+    reportable, unreportable = await backed_up(reconciler, desired, [5, 6])
+    _unreportable(monkeypatch, unreportable.file_name)
+
+    def refuse(plugin, file_name):
+        raise PermissionError("read-only file system")
+
+    monkeypatch.setattr(desired.services.backup_store, "quarantine", refuse)
 
     # A whole inventory without it would have EpicStaff mark it deleted while its file stays.
     assert reconciler.reports()[0].backups is None

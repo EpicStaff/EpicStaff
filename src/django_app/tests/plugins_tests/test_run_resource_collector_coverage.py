@@ -27,6 +27,7 @@ from plugins.ownership.ownership_recorder import ownable_models
 from tables.services.run_resources import (
     RUN_REFERENCE_EXEMPTIONS,
     RUN_REFERENCES,
+    RUN_SECRET_MARKERS,
     RUN_START_MODELS,
     RUN_TRAVERSAL_STOPS,
     FollowChildren,
@@ -111,32 +112,16 @@ def find_coverage_problems(
     for child_label, fk_name in sorted(follow_children & set(stops)):
         problems.append(f"{child_label}.{fk_name} is both followed and stopped")
 
-    def target_of(model_label: str, field_name: str) -> str:
-        return _field(model_label, field_name).related_model._meta.label
-
-    # The walk's models: the flow and every start model, then whatever the rows reach.
     starts = {GRAPH, *RUN_START_MODELS.values()}
-    walk_models = set(starts)
-    grew = True
-    while grew:
-        grew = False
-        for model_label, field_name in follow_fields:
-            target = target_of(model_label, field_name)
-            if model_label in walk_models and target not in walk_models:
-                walk_models.add(target)
-                grew = True
-        for child_label, fk_name in follow_children:
-            if target_of(child_label, fk_name) in walk_models and child_label not in walk_models:
-                walk_models.add(child_label)
-                grew = True
+    walk_models = _walk_models(follow_fields, follow_children)
     for model_label, field_name in sorted(follow_fields):
         if model_label not in walk_models:
             problems.append(f"followed field {model_label}.{field_name} is never reached")
     for child_label, fk_name in sorted(follow_children):
-        if target_of(child_label, fk_name) not in walk_models:
+        if _target_of(child_label, fk_name) not in walk_models:
             problems.append(f"followed child link {child_label}.{fk_name} is never reached")
 
-    forward_targets = {target_of(model_label, field) for model_label, field in follow_fields}
+    forward_targets = {_target_of(model_label, field) for model_label, field in follow_fields}
     reached_other_than_as_child = starts | forward_targets
     child_links: dict[str, set[str]] = {}
     for child_label, fk_name in follow_children:
@@ -188,6 +173,28 @@ def find_coverage_problems(
     for model_label, field_name in sorted(set(stops) - needed_stops):
         problems.append(f"stop {model_label}.{field_name} is no longer needed")
     return problems
+
+
+def _target_of(model_label: str, field_name: str) -> str:
+    return _field(model_label, field_name).related_model._meta.label
+
+
+def _walk_models(follow_fields, follow_children) -> set[str]:
+    """The walk's models: the flow and every start model, then whatever the rows reach."""
+    walk_models = {GRAPH, *RUN_START_MODELS.values()}
+    grew = True
+    while grew:
+        grew = False
+        for model_label, field_name in follow_fields:
+            target = _target_of(model_label, field_name)
+            if model_label in walk_models and target not in walk_models:
+                walk_models.add(target)
+                grew = True
+        for child_label, fk_name in follow_children:
+            if _target_of(child_label, fk_name) in walk_models and child_label not in walk_models:
+                walk_models.add(child_label)
+                grew = True
+    return walk_models
 
 
 def _naming_problems(follow_fields, follow_children, exemptions, stops) -> list[str]:
@@ -373,3 +380,41 @@ def test_a_child_the_walk_never_queries_is_not_ownable():
     )
 
     assert unqueried_ownable == []
+
+
+# ---- header markers ----
+
+
+def _walk_models_of(references) -> set[str]:
+    return _walk_models(
+        {(row.model, row.field) for row in references if isinstance(row, FollowField)},
+        {(row.child, row.fk) for row in references if isinstance(row, FollowChildren)},
+    )
+
+
+def test_every_header_field_of_a_walk_model_has_its_markers_followed():
+    # The resolver fills markers in every payload field whose name ends in `extra_headers`.
+    walk_models = _walk_models_of(RUN_REFERENCES)
+    header_fields = {
+        (model._meta.label, field.name)
+        for model in apps.get_models()
+        if model._meta.label in walk_models
+        for field in model._meta.concrete_fields
+        if field.name.endswith("extra_headers")
+    }
+
+    assert header_fields == {(row.model, row.field) for row in RUN_SECRET_MARKERS}
+
+
+def test_every_marker_row_is_a_json_field_of_a_row_that_belongs_to_an_organization():
+    # A marker is looked up in the organization of the row holding it.
+    wrong = [
+        row
+        for row in RUN_SECRET_MARKERS
+        if _field(row.model, row.field) is None
+        or _field(row.model, row.field).get_internal_type() != "JSONField"
+        or _field(row.model, "org") is None
+        or _field(row.model, "org").related_model._meta.label != "rbac.Organization"
+    ]
+
+    assert wrong == []

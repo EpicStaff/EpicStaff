@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import subprocess
 import zipfile
@@ -10,35 +11,51 @@ from epicstaff_plugin.cli import backend_wheels
 from epicstaff_plugin.cli.main import main
 from epicstaff_plugin.package_layout import read_package_file
 
-# The wheels the fake index serves, by requirement and platform; "any" serves every platform.
-INDEX = {
-    ("uvicorn", "0.52.3"): {"any": b"uvicorn-wheel"},
-    ("pydantic-core", "2.46.4"): {
-        "manylinux_2_28_x86_64": b"pydantic-core-x86_64",
-        "manylinux_2_28_aarch64": b"pydantic-core-aarch64",
-    },
-    ("colorama", "0.4.6"): {"any": b"colorama-wheel"},
-    ("arm-helper", "1.0.0"): {"any": b"arm-helper-wheel"},
-    ("pyjwt", "2.13.0"): {"any": b"pyjwt-wheel"},
-}
-
-
 def _wheel_file_name(name, version, platform):
     tag = "py3-none-any" if platform == "any" else f"cp313-cp313-{platform}"
     return f"{name.replace('-', '_')}-{version}-{tag}.whl"
+
+
+def _wheel_bytes(name, version, requires=()):
+    """A wheel holding only its metadata; the same bytes every time."""
+    metadata = f"Metadata-Version: 2.4\nName: {name}\nVersion: {version}\n" + "".join(
+        f"Requires-Dist: {requirement}\n" for requirement in requires
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(zipfile.ZipInfo(f"{name.replace('-', '_')}-{version}.dist-info/METADATA", (2026, 1, 1, 0, 0, 0)), metadata)
+    return buffer.getvalue()
+
+
+def _served(name, version, platforms=("any",), requires=()):
+    return {platform: _wheel_bytes(name, version, requires) for platform in platforms}
+
+
+# The wheels the fake index serves, by requirement and platform; "any" serves every platform.
+INDEX = {
+    ("uvicorn", "0.52.3"): _served("uvicorn", "0.52.3", requires=('colorama ; sys_platform == "win32"',)),
+    ("pydantic-core", "2.46.4"): _served(
+        "pydantic-core", "2.46.4", ("manylinux_2_28_x86_64", "manylinux_2_28_aarch64"), ('arm-helper ; platform_machine == "aarch64"',)
+    ),
+    ("colorama", "0.4.6"): _served("colorama", "0.4.6"),
+    ("arm-helper", "1.0.0"): _served("arm-helper", "1.0.0"),
+    ("pyjwt", "2.13.0"): _served("pyjwt", "2.13.0"),
+}
 
 
 def _sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def _lock_text():
+def _lock_text(index=INDEX, uvicorn="uvicorn"):
+    """The lock of `index`; `uvicorn` is how its line names it (with extras, say)."""
+
     def hashes(name, version):
-        return " ".join(f"--hash=sha256:{_sha256(data)}" for data in INDEX[(name, version)].values())
+        return " ".join(f"--hash=sha256:{_sha256(data)}" for data in index[(name, version)].values())
 
     return (
         "# compiled by uv\n"
-        f"uvicorn==0.52.3 \\\n    {hashes('uvicorn', '0.52.3')}\n"
+        f"{uvicorn}==0.52.3 \\\n    {hashes('uvicorn', '0.52.3')}\n"
         f"pydantic-core==2.46.4 \\\n    {hashes('pydantic-core', '2.46.4')}\n"
         f"colorama==0.4.6 ; sys_platform == 'win32' \\\n    {hashes('colorama', '0.4.6')}\n"
         f"arm-helper==1.0.0 ; platform_machine == 'aarch64' \\\n    {hashes('arm-helper', '1.0.0')}\n"
@@ -49,10 +66,11 @@ def _lock_text():
 class FakePip:
     """Stands in for `python -m pip download`: reads the requirement file, writes wheels."""
 
-    def __init__(self, returncode=0):
+    def __init__(self, returncode=0, index=INDEX):
         self.commands = []
         self.requested = {}
         self.returncode = returncode
+        self.index = index
 
     def __call__(self, command, check):
         assert check is False
@@ -64,7 +82,7 @@ class FakePip:
         if self.returncode == 0:
             for line in lines:
                 name, _, version = line.split(" ")[0].partition("==")
-                wheels = INDEX[(name, version)]
+                wheels = self.index[(name, version)]
                 served = "any" if "any" in wheels else platform
                 (destination / _wheel_file_name(name, version, served)).write_bytes(wheels[served])
         return subprocess.CompletedProcess(command, self.returncode)
@@ -236,6 +254,89 @@ def test_a_local_wheel_whose_requirements_the_lock_misses_is_refused(backend_sou
     assert "does not pin cryptography>=50" in out
     assert "pywin32" not in out
     assert fake_pip.commands == []
+
+
+def _with_index(monkeypatch, source, index, uvicorn="uvicorn"):
+    """Serve `index` from the fake pip, and give the source the lock compiled for it."""
+    pip = FakePip(index=index)
+    monkeypatch.setattr(backend_wheels.subprocess, "run", pip)
+    (source / "backend" / "requirements.lock").write_text(_lock_text(index, uvicorn))
+    return pip
+
+
+def test_a_downloaded_wheel_whose_requirement_the_lock_misses_is_refused(backend_source, monkeypatch, tmp_path, capsys):
+    source, spa, sdk_wheel = backend_source
+    _with_index(monkeypatch, source, {**INDEX, ("uvicorn", "0.52.3"): _served("uvicorn", "0.52.3", requires=("h11>=0.8",))})
+    output = tmp_path / "weather.esplugin"
+
+    assert _pack(source, spa, output, "--download-wheels", "--local-wheel", str(sdk_wheel)) == 1
+
+    assert (
+        "does not pin h11>=0.8, which uvicorn-0.52.3-py3-none-any.whl requires on "
+        "manylinux_2_28_x86_64, manylinux_2_28_aarch64; add it to the requirements the lock is compiled from"
+    ) in capsys.readouterr().out
+    assert not output.exists()
+
+
+def test_a_requirement_only_one_platform_installs_names_that_platform(backend_source, monkeypatch, tmp_path, capsys):
+    source, spa, sdk_wheel = backend_source
+    platforms = ("manylinux_2_28_x86_64", "manylinux_2_28_aarch64")
+    requires = ('arm-only ; platform_machine == "aarch64"',)
+    _with_index(monkeypatch, source, {**INDEX, ("pydantic-core", "2.46.4"): _served("pydantic-core", "2.46.4", platforms, requires)})
+
+    assert _pack(source, spa, tmp_path / "weather.esplugin", "--download-wheels", "--local-wheel", str(sdk_wheel)) == 1
+
+    out = capsys.readouterr().out
+    assert (
+        "does not pin arm-only; platform_machine == \"aarch64\", which "
+        "pydantic_core-2.46.4-cp313-cp313-manylinux_2_28_aarch64.whl requires on manylinux_2_28_aarch64;"
+    ) in out
+    assert "x86_64.whl requires" not in out
+
+
+@pytest.mark.parametrize(("lock_line", "packed"), [("uvicorn[standard]", False), ("uvicorn", True)], ids=["asked", "not_asked"])
+def test_what_an_extra_requires_counts_only_when_the_lock_asks_for_the_extra(
+    backend_source, monkeypatch, tmp_path, capsys, lock_line, packed
+):
+    source, spa, sdk_wheel = backend_source
+    requires = ('watchfiles>=0.13 ; extra == "standard"',)
+    _with_index(monkeypatch, source, {**INDEX, ("uvicorn", "0.52.3"): _served("uvicorn", "0.52.3", requires=requires)}, lock_line)
+
+    status = _pack(source, spa, tmp_path / "weather.esplugin", "--download-wheels", "--local-wheel", str(sdk_wheel))
+
+    assert status == (0 if packed else 1)
+    assert ("does not pin watchfiles>=0.13" in capsys.readouterr().out) is not packed
+
+
+def test_an_extra_a_requirement_asks_for_counts_too(backend_source, monkeypatch, tmp_path, capsys):
+    source, spa, sdk_wheel = backend_source
+    index = {
+        **INDEX,
+        ("pyjwt", "2.13.0"): _served("pyjwt", "2.13.0", requires=('cryptography>=3.4 ; extra == "crypto"',)),
+    }
+    _with_index(monkeypatch, source, index)
+    directory = tmp_path / "crypto-sdk"
+    directory.mkdir()
+    crypto_sdk = _sdk_wheel(directory, requires=("pyjwt[crypto]>=2.10,<3",))
+
+    assert _pack(source, spa, tmp_path / "weather.esplugin", "--download-wheels", "--local-wheel", str(crypto_sdk)) == 1
+
+    assert "does not pin cryptography>=3.4; extra == \"crypto\", which pyjwt-2.13.0-py3-none-any.whl requires" in capsys.readouterr().out
+
+
+def test_wheels_the_source_ships_are_checked_too(backend_source, fake_pip, tmp_path, capsys):
+    source, spa, _ = backend_source
+    (source / "backend" / "wheels").mkdir()
+    (source / "backend" / "wheels" / "uvicorn-0.52.3-py3-none-any.whl").write_bytes(
+        _wheel_bytes("uvicorn", "0.52.3", requires=("h11>=0.8",))
+    )
+    (source / "backend" / "wheels" / "pyjwt-2.13.0-py3-none-any.whl").write_bytes(b"not a zip")
+
+    assert _pack(source, spa, tmp_path / "weather.esplugin") == 1
+
+    out = capsys.readouterr().out
+    assert "does not pin h11>=0.8, which uvicorn-0.52.3-py3-none-any.whl requires" in out
+    assert "package.backend/wheels/pyjwt-2.13.0-py3-none-any.whl: cannot be read: File is not a zip file" in out
 
 
 def test_a_failed_download_writes_no_package(backend_source, monkeypatch, tmp_path, capsys):

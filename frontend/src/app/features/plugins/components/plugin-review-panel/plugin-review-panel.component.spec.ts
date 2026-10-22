@@ -17,11 +17,11 @@ import {
 } from './plugin-review-panel.component';
 
 /** The review warnings as the server words them (packages/review.py). */
-const FLOWS_RUN_CODE_WARNING: PluginReviewWarning = {
-    code: 'flows_run_code',
+const RUNS_CODE_IN_SANDBOX_WARNING: PluginReviewWarning = {
+    code: 'runs_code_in_sandbox',
     message:
-        "Through flows, the plugin can run code in EpicStaff's sandbox, which has its own network access. The " +
-        "plugin's outbound hosts do not apply to that code.",
+        "Through flows, the plugin can have code of its choosing run in EpicStaff's sandbox, which has its own network " +
+        "access. The plugin's outbound hosts do not apply to that code.",
 };
 const FLOWS_USE_MISSING_WARNING: PluginReviewWarning = {
     code: 'flows_use_missing',
@@ -114,7 +114,7 @@ describe('PluginReviewPanelComponent', () => {
                     // As the backend sends them: its untrusted warning is the banner's own sentence.
                     warnings: [
                         { code: 'untrusted_package', message: UNTRUSTED_PACKAGE_WARNING },
-                        FLOWS_RUN_CODE_WARNING,
+                        RUNS_CODE_IN_SANDBOX_WARNING,
                         FLOWS_USE_MISSING_WARNING,
                     ],
                 })
@@ -124,7 +124,7 @@ describe('PluginReviewPanelComponent', () => {
         it('shows the Untrusted banner once, the other warnings, and marks the publisher as claimed', () => {
             expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe(UNTRUSTED_PACKAGE_WARNING);
             expect(element.textContent?.split(UNTRUSTED_PACKAGE_WARNING)).toHaveLength(2);
-            expect(warnings()).toEqual([FLOWS_RUN_CODE_WARNING.message, FLOWS_USE_MISSING_WARNING.message]);
+            expect(warnings()).toEqual([RUNS_CODE_IN_SANDBOX_WARNING.message, FLOWS_USE_MISSING_WARNING.message]);
             expect(element.querySelector('.review__claimed')).not.toBeNull();
         });
 
@@ -160,10 +160,10 @@ describe('PluginReviewPanelComponent', () => {
         });
 
         it("warns that flows run the plugin's code in the sandbox, which its outbound hosts do not bound", () => {
-            render(buildPackageReview({ warnings: [FLOWS_RUN_CODE_WARNING, WILDCARD_OUTBOUND_HOST_WARNING] }));
+            render(buildPackageReview({ warnings: [RUNS_CODE_IN_SANDBOX_WARNING, WILDCARD_OUTBOUND_HOST_WARNING] }));
 
             expect(element.querySelector('[role="alert"]')).toBeNull();
-            expect(warnings()).toEqual([FLOWS_RUN_CODE_WARNING.message, WILDCARD_OUTBOUND_HOST_WARNING.message]);
+            expect(warnings()).toEqual([RUNS_CODE_IN_SANDBOX_WARNING.message, WILDCARD_OUTBOUND_HOST_WARNING.message]);
         });
 
         it('shows no banner and no acknowledgement, and approves without one', () => {
@@ -319,9 +319,9 @@ describe('PluginReviewPanelComponent', () => {
         }
 
         it("warns on the new version's review too that flows run the plugin's code in the sandbox", () => {
-            render(buildUpgradePackageReview({ warnings: [FLOWS_RUN_CODE_WARNING] }));
+            render(buildUpgradePackageReview({ warnings: [RUNS_CODE_IN_SANDBOX_WARNING] }));
 
-            expect(warnings()).toEqual([FLOWS_RUN_CODE_WARNING.message]);
+            expect(warnings()).toEqual([RUNS_CODE_IN_SANDBOX_WARNING.message]);
         });
 
         it('says where it upgrades from, the new access, the changes, the backup and who goes offline', () => {

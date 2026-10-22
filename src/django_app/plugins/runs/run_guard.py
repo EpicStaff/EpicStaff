@@ -1,4 +1,5 @@
-"""The plugin run guard: a run that uses anything a plugin owns waits for the plugin to be active.
+"""The plugin run guard: a run that uses anything a plugin owns waits for the plugin to be active,
+and a run a plugin starts sends no secret the plugin may not reference.
 
 Registered as a run-admission check (`tables.services.run_admission`) in `PluginsConfig.ready()`.
 It runs whatever `PLUGINS_ENABLED` says, so switching the platform off never resumes a
@@ -9,9 +10,12 @@ from django.db.models import Exists, OuterRef, Q, QuerySet
 from rbac.models import Organization
 from tables.services.run_admission import RunSubject
 from tables.services.run_resources import RunResourceCollector, RunResources
+from tables.services.secrets.reference_guard import secret_reference_guard
 
 from plugins.exceptions import PluginSuspendedError
+from plugins.identity.principals import PluginServiceAccountPrincipal
 from plugins.models import PluginGrant, PluginOwnedResource
+from plugins.ownership.request_scope import current_principal
 from plugins.runs.owned_resource_index import (
     INACTIVE_GRANT_STATES,
     RUN_STOPPING_GRANT_STATES,
@@ -20,40 +24,53 @@ from plugins.runs.owned_resource_index import (
 
 
 class PluginRunGuard:
-    """Refuses a run that uses a row a plugin owns in the organization unless its grant is active.
+    """Refuses a run that uses a row a plugin owns in the organization unless its grant is active,
+    and a run a plugin's service account starts whose header markers name a secret the plugin
+    may not reference.
 
     Not cached: the fast path is one query, so no grant writer has a cache to invalidate.
     """
 
     def check(self, subject: RunSubject) -> RunResources | None:
-        """Admit the run, or refuse it naming the plugin.
+        """Admit the run, or refuse it.
+
+        A run a plugin starts is always walked: its `epicstaff_secret(<name>)` markers bind by
+        name now, so each must name a secret the plugin may reference, as when it wrote them.
 
         Returns:
-            What the run uses, for the re-check; None when the organization has nothing
-            that could refuse a run, so nothing was walked.
+            What the run uses, for the re-check; None when nothing was walked: no plugin
+            starts the run, and the organization has nothing that could refuse it.
 
         Raises:
             PluginSuspendedError: The run reaches a row owned under a grant that is not active,
                 or whose grant is gone.
+            SecretMarkerNotReferenceableError: A plugin starts the run, and one of the run's
+                header markers names a secret the plugin may not reference.
         """
-        if not _may_refuse_in(subject.organization_id):
+        principal = current_principal()
+        may_refuse = _may_refuse_in(subject.organization_id)
+        if principal is None and not may_refuse:
             return None
         resources = RunResourceCollector().collect(subject)
-        _refuse_if_owned(subject, resources)
+        _refuse_unreferenceable_markers(principal, resources)
+        if may_refuse:
+            _refuse_if_owned(subject, resources)
         return resources
 
     def recheck(self, subject: RunSubject, first_look: RunResources | None) -> None:
-        """Refuse the run if a grant owning what it uses stopped being active since `check`.
+        """Refuse the run if what refuses it in `check` came about since.
 
-        A run walked the first time is matched again without a second walk: one or two
-        queries. One that was not walked is checked from the start.
+        A run walked the first time is matched again without a second walk: a few queries.
+        One that was not walked is checked from the start.
 
         Raises:
             PluginSuspendedError: As `check`.
+            SecretMarkerNotReferenceableError: As `check`.
         """
         if first_look is None:
             self.check(subject)
             return
+        _refuse_unreferenceable_markers(current_principal(), first_look)
         _refuse_if_owned(subject, first_look)
 
 
@@ -76,6 +93,20 @@ def organizations_with_stoppable_runs() -> QuerySet:
     return Organization.objects.filter(_has_refusable_runs(RUN_STOPPING_GRANT_STATES)).values_list(
         "pk", flat=True
     )
+
+
+def _refuse_unreferenceable_markers(
+    principal: PluginServiceAccountPrincipal | None, resources: RunResources
+) -> None:
+    """A plugin's run sends a marker's secret only when the plugin may reference it.
+
+    Without this, a name the plugin wrote could come to mean a secret of the organization (its
+    own purged and a person's created under the name) and the run would send that one.
+    """
+    if principal is not None:
+        secret_reference_guard.assert_may_resolve_markers(
+            principal=principal, names=resources.secret_marker_names
+        )
 
 
 def _refuse_if_owned(subject: RunSubject, resources: RunResources) -> None:

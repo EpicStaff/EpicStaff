@@ -341,7 +341,7 @@ status=$(api POST "/api/admin/plugins/packages/$first_package/approve/" -H 'Cont
   --data-binary "@$work_dir/approve.json")
 expect "approving against the reviewed baseline starts the upgrade" 202 "$status" \
   "body['open_upgrade'] is not None and body['open_upgrade']['to_version'] == '$first'"
-upgrade_id=$(json "body['open_upgrade']['id']" || echo "")
+upgrade_id=$(json "body['open_upgrade']['id']" 2> /dev/null || echo "")
 
 echo "# 3. the upgrade fails while migrating, and the plugin is in maintenance"
 if wait_for 180 upgrade_failed_in_migrating_with_changes; then

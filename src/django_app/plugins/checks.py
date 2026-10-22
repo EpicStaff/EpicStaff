@@ -103,8 +103,9 @@ def _development_mode_messages() -> list[checks.CheckMessage]:
                 + ".",
                 hint=(
                     "Plugin development mode is only for a deployment on your own machine: "
-                    "DJANGO_DEBUG=true, .localhost host names, and docker-compose.plugins-dev.yaml "
-                    "added to the docker compose command. Otherwise set PLUGINS_DEV_MODE=false."
+                    "DJANGO_DEBUG=true, .localhost host names and, under docker compose, "
+                    "docker-compose.plugins-dev.yaml added to the docker compose command. "
+                    "Otherwise set PLUGINS_DEV_MODE=false."
                 ),
                 id=DEVELOPMENT_MODE_CHECK_ID,
             )

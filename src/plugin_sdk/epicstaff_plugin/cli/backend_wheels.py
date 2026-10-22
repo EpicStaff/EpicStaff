@@ -8,6 +8,9 @@ platform and Python. Two things pip leaves to its caller, so they are done here:
   filtered per target platform before pip sees it;
 - it takes a `manylinux_X_Y` tag literally, while a node with that C library also runs every
   older manylinux wheel, so pip is given each compatible tag.
+
+The node's pip also installs what each wheel requires, and refuses a requirement the lock does
+not pin; `packed_requirement_problems` finds those at pack time.
 """
 
 import dataclasses
@@ -17,7 +20,8 @@ import re
 import subprocess
 import sys
 import zipfile
-from collections.abc import Iterable, Sequence
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from email.message import Message
 from email.parser import BytesHeaderParser
@@ -36,7 +40,12 @@ from epicstaff_plugin.cli.output import UsageError
 from epicstaff_plugin.package_layout import BACKEND_REQUIREMENTS, BACKEND_WHEELS_DIRECTORY
 from epicstaff_plugin.package_source import PackageSource, SourceFile
 from epicstaff_plugin.problems import MANIFEST_LOC, PackageProblemsError, Problem, archive_file_loc
-from epicstaff_plugin.requirements_lock import RequirementsLock, lock_line, parse_requirements_lock
+from epicstaff_plugin.requirements_lock import (
+    LockedRequirement,
+    RequirementsLock,
+    lock_line,
+    parse_requirements_lock,
+)
 
 DEFAULT_PLATFORMS = ("manylinux_2_28_x86_64", "manylinux_2_28_aarch64")
 # The node is Linux; a platform tag names the C library baseline and the machine.
@@ -59,6 +68,9 @@ _HASH_CHUNK_BYTES = 1024 * 1024
 _LOCK_LOC = archive_file_loc(BACKEND_REQUIREMENTS)
 
 
+_ANY_PLATFORM = "any"
+
+
 @dataclass(frozen=True)
 class LocalWheel:
     """A wheel given with `--local-wheel`: a distribution no index has, such as a local SDK build."""
@@ -67,6 +79,18 @@ class LocalWheel:
     name: NormalizedName
     version: Version
     sha256: str
+    requires: tuple[Requirement, ...]
+    tag_platforms: frozenset[str]
+
+
+@dataclass(frozen=True)
+class _WheelRequirements:
+    """What one wheel has pip install with it, and the platforms its tags name."""
+
+    file_name: str
+    name: NormalizedName
+    version: Version
+    tag_platforms: frozenset[str]
     requires: tuple[Requirement, ...]
 
 
@@ -145,7 +169,7 @@ def read_local_wheel(path: Path) -> LocalWheel:
         UsageError: The file is missing, not named like a wheel, or has no readable metadata.
     """
     try:
-        name, version, _, _ = parse_wheel_filename(path.name)
+        name, version, _, tags = parse_wheel_filename(path.name)
     except InvalidWheelFilename:
         raise UsageError(f"--local-wheel {path} is not named like a wheel") from None
     try:
@@ -153,11 +177,15 @@ def read_local_wheel(path: Path) -> LocalWheel:
         metadata = _wheel_metadata(path, name, version)
     except (OSError, zipfile.BadZipFile) as error:
         raise UsageError(f"cannot read --local-wheel {path}: {error}") from None
+    if metadata is None:
+        raise UsageError(f"--local-wheel {path} has no {name}-{version}.dist-info/METADATA")
     try:
-        requires = tuple(Requirement(text) for text in metadata.get_all("Requires-Dist") or [])
+        requires = _requirements(metadata)
     except InvalidRequirement as error:
         raise UsageError(f"--local-wheel {path} has an invalid requirement: {error}") from None
-    return LocalWheel(path, name, version, sha256, requires)
+    return LocalWheel(
+        path, name, version, sha256, requires, frozenset(tag.platform for tag in tags)
+    )
 
 
 def with_backend_wheels(
@@ -194,8 +222,16 @@ def with_backend_wheels(
             "the source already has backend/wheels/; remove it, or pack without --download-wheels"
         )
     python = source.manifest.backend.python
-    environments = [target_environment(python, platform) for platform in platforms]
-    if problems := _local_wheel_problems(local_wheels, lock, environments):
+    if problems := _local_wheel_problems(local_wheels, lock):
+        raise PackageProblemsError(problems)
+    packaged_lock = _packaged_lock(lock_bytes, local_wheels, work_directory)
+    # Before any download: what a local wheel requires is known already.
+    if problems := _requirement_problems(
+        [_requirements_of_local(wheel) for wheel in local_wheels],
+        parse_requirements_lock(packaged_lock.read_bytes()),
+        python,
+        platforms,
+    ):
         raise PackageProblemsError(problems)
 
     wheels: dict[str, Path] = {}
@@ -205,13 +241,136 @@ def with_backend_wheels(
     wheels.update({wheel.path.name: wheel.path for wheel in local_wheels})
 
     files = [file for file in source.files if file.path != BACKEND_REQUIREMENTS]
-    files.append(
-        SourceFile(BACKEND_REQUIREMENTS, _packaged_lock(lock_bytes, local_wheels, work_directory))
-    )
+    files.append(SourceFile(BACKEND_REQUIREMENTS, packaged_lock))
     files.extend(
         SourceFile(BACKEND_WHEELS_DIRECTORY + file_name, path) for file_name, path in wheels.items()
     )
     return dataclasses.replace(source, files=tuple(sorted(files, key=lambda file: file.path)))
+
+
+def packed_requirement_problems(source: PackageSource, platforms: Sequence[str]) -> list[Problem]:
+    """Check that the lock pins what every wheel in `backend/wheels/` requires, per platform.
+
+    The node's pip installs each wheel's `Requires-Dist` from the package's wheels, and fails
+    the install on one the lock does not pin, so such a package would never start. On each
+    target platform, a requirement counts when its wheel's tags fit the platform, the lock
+    installs the wheel there, and the requirement's marker holds there, for the extras asked of
+    the wheel's distribution. A wheel whose name is not a wheel's is left to the layout check.
+
+    Raises:
+        PackageProblemsError: The lock is invalid.
+    """
+    lock_file = source.file(BACKEND_REQUIREMENTS)
+    if source.manifest.backend is None or lock_file is None:
+        return []
+    lock = parse_requirements_lock(lock_file.source.read_bytes())
+    problems = []
+    wheels = []
+    for file in source.files:
+        if not file.path.startswith(BACKEND_WHEELS_DIRECTORY):
+            continue
+        file_name = file.path.rpartition("/")[2]
+        try:
+            name, version, _, tags = parse_wheel_filename(file_name)
+        except InvalidWheelFilename:
+            continue
+        try:
+            metadata = _wheel_metadata(file.source, name, version)
+            if metadata is None:
+                raise ValueError(f"it has no {name}-{version}.dist-info/METADATA")
+            requires = _requirements(metadata)
+        except (OSError, zipfile.BadZipFile, ValueError, InvalidRequirement) as error:
+            problems.append(Problem(archive_file_loc(file.path), f"cannot be read: {error}"))
+            continue
+        wheels.append(
+            _WheelRequirements(
+                file_name, name, version, frozenset(tag.platform for tag in tags), requires
+            )
+        )
+    return problems + _requirement_problems(wheels, lock, source.manifest.backend.python, platforms)
+
+
+def _requirements(metadata: Message) -> tuple[Requirement, ...]:
+    """Raises: InvalidRequirement."""
+    return tuple(Requirement(text) for text in metadata.get_all("Requires-Dist") or [])
+
+
+def _requirements_of_local(wheel: LocalWheel) -> _WheelRequirements:
+    return _WheelRequirements(
+        wheel.path.name, wheel.name, wheel.version, wheel.tag_platforms, wheel.requires
+    )
+
+
+def _requirement_problems(
+    wheels: Sequence[_WheelRequirements],
+    lock: RequirementsLock,
+    python: str,
+    platforms: Sequence[str],
+) -> list[Problem]:
+    """A problem for each requirement of `wheels` the lock misses, naming the platforms."""
+    missing: dict[tuple[str, str], list[str]] = {}
+    for platform in platforms:
+        environment = target_environment(python, platform)
+        served = {_ANY_PLATFORM, *compatible_platforms(platform)}
+        installed = [
+            wheel
+            for wheel in wheels
+            if wheel.tag_platforms & served
+            and any(
+                pin.version == wheel.version and pin.applies_to(environment)
+                for pin in lock.pins(wheel.name)
+            )
+        ]
+        extras = _requested_extras(installed, lock.requirements, environment)
+        for wheel in installed:
+            for requirement in wheel.requires:
+                if _applies(requirement, environment, extras[wheel.name]) and not _pinned(
+                    requirement, lock, environment
+                ):
+                    missing.setdefault((str(requirement), wheel.file_name), []).append(platform)
+    return [
+        Problem(
+            _LOCK_LOC,
+            f"does not pin {requirement}, which {file_name} requires on "
+            f"{', '.join(missing_on)}; add it to the requirements the lock is compiled from",
+        )
+        for (requirement, file_name), missing_on in missing.items()
+    ]
+
+
+def _requested_extras(
+    installed: Sequence[_WheelRequirements],
+    pins: Iterable[LockedRequirement],
+    environment: Mapping[str, str],
+) -> dict[NormalizedName, set[str]]:
+    """The extras pip installs of each distribution: those the lock's lines ask for, and those
+    the installed wheels' requirements ask for in turn."""
+    requested: dict[NormalizedName, set[str]] = defaultdict(set)
+    for pin in pins:
+        if pin.applies_to(environment):
+            requested[pin.name] |= pin.extras
+    grew = True
+    while grew:
+        grew = False
+        for wheel in installed:
+            for requirement in wheel.requires:
+                if not _applies(requirement, environment, requested[wheel.name]):
+                    continue
+                name = canonicalize_name(requirement.name)
+                asked = {canonicalize_name(extra) for extra in requirement.extras}
+                if not asked <= requested[name]:
+                    requested[name] |= asked
+                    grew = True
+    return requested
+
+
+def _applies(requirement: Requirement, environment: Mapping[str, str], extras: set[str]) -> bool:
+    """Whether pip installs `requirement` here, for a distribution installed with `extras`."""
+    if requirement.marker is None:
+        return True
+    return any(
+        requirement.marker.evaluate({**environment, "extra": extra}) for extra in ("", *extras)
+    )
 
 
 def _file_sha256(path: Path) -> str:
@@ -222,7 +381,12 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _wheel_metadata(path: Path, name: str, version: Version) -> Message:
+def _wheel_metadata(path: Path, name: str, version: Version) -> Message | None:
+    """The wheel's `<name>-<version>.dist-info/METADATA`, or None when it has none.
+
+    Raises:
+        OSError, zipfile.BadZipFile: The file cannot be read as a zip archive.
+    """
     with zipfile.ZipFile(path) as archive:
         for entry in archive.namelist():
             folder, _, file_name = entry.partition("/")
@@ -231,7 +395,7 @@ def _wheel_metadata(path: Path, name: str, version: Version) -> Message:
             distribution, _, folder_version = folder.removesuffix(".dist-info").rpartition("-")
             if canonicalize_name(distribution) == name and _same_version(folder_version, version):
                 return BytesHeaderParser().parsebytes(archive.read(entry))
-    raise UsageError(f"--local-wheel {path} has no {name}-{version}.dist-info/METADATA")
+    return None
 
 
 def _same_version(text: str, version: Version) -> bool:
@@ -242,7 +406,7 @@ def _same_version(text: str, version: Version) -> bool:
 
 
 def _local_wheel_problems(
-    local_wheels: Sequence[LocalWheel], lock: RequirementsLock, environments: list[dict[str, str]]
+    local_wheels: Sequence[LocalWheel], lock: RequirementsLock
 ) -> list[Problem]:
     problems = []
     seen: set[str] = set()
@@ -258,23 +422,6 @@ def _local_wheel_problems(
                     f"{wheel.path.name}",
                 )
             )
-    local_names = {wheel.name for wheel in local_wheels}
-    for wheel in local_wheels:
-        for requirement in wheel.requires:
-            if canonicalize_name(requirement.name) in local_names:
-                continue
-            if not all(
-                _pinned(requirement, lock, environment)
-                for environment in environments
-                if requirement.marker is None or requirement.marker.evaluate(environment)
-            ):
-                problems.append(
-                    Problem(
-                        _LOCK_LOC,
-                        f"does not pin {requirement}, which {wheel.path.name} requires; add it to "
-                        "the requirements the lock is compiled from",
-                    )
-                )
     return problems
 
 

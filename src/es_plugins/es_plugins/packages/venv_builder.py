@@ -10,12 +10,14 @@ interpreter never runs as the agent:
    on the image's read-only root): a venv with no pip in it, and no run of its interpreter.
 2. That same interpreter, isolated, runs the pip wheel its own standard library ships for
    `ensurepip` (`ensurepip/_bundled/pip-*.whl`, fixed by the image's digest): `pip install
-   --prefix <venv> --ignore-installed --no-deps --no-index --find-links <wheels>
-   --require-hashes --only-binary=:all: -r requirements.lock`. Nothing is fetched, nothing is
-   built from source, every wheel must match its pinned hash, and the lock's markers and the
-   wheels' tags are those of the interpreter the plugin runs on. The wheels pip installs land in
-   the venv, never where pip itself is read from, and the venv is not on that interpreter's
-   path.
+   --prefix <venv> --ignore-installed --no-index --find-links <wheels> --require-hashes
+   --only-binary=:all: -r requirements.lock`. Nothing is fetched, nothing is built from source,
+   every wheel must match its pinned hash, and the lock's markers and the wheels' tags are those
+   of the interpreter the plugin runs on. pip also resolves each wheel's requirements, from the
+   wheels' metadata alone, and hash-checking mode fails the install on one the lock does not pin,
+   naming it: a lock that misses a dependency fails the build rather than every start. The
+   wheels pip installs land in the venv, never where pip itself is read from, and the venv is not
+   on that interpreter's path.
 3. `venv/bin/python*` must still be the symlinks to the plugin's interpreter, and the scripts pip
    wrote get the venv's `bin/python` in their first line instead of the interpreter pip ran on.
    A `.pth` file then puts the plugin's own code (`plugins/<id>/<version>/backend/src`) on the
@@ -115,7 +117,7 @@ async def build_venv(request: VenvRequest) -> Path:
     }
     # A fresh, empty directory: nothing of an earlier build is in it.
     if request.venv.exists():
-        shutil.rmtree(request.venv)
+        await _in_thread_to_the_end(shutil.rmtree, request.venv)
     try:
         await _run(
             [str(request.interpreter), "-I", "-m", "venv", "--without-pip", str(request.venv)],
@@ -139,7 +141,6 @@ async def build_venv(request: VenvRequest) -> Path:
                 "--prefix",
                 str(request.venv),
                 "--ignore-installed",
-                "--no-deps",
                 "--no-index",
                 "--find-links",
                 str(request.backend / "wheels"),
@@ -156,12 +157,14 @@ async def build_venv(request: VenvRequest) -> Path:
         site_packages = request.venv / "lib" / f"python{interpreter.version}" / "site-packages"
         if not site_packages.is_dir():
             raise VenvBuildError(f"the venv has no {site_packages.relative_to(request.venv)}")
-        _point_scripts_at_the_venv(request.venv, interpreter.executable)
+        await _in_thread_to_the_end(
+            _point_scripts_at_the_venv, request.venv, interpreter.executable
+        )
         (site_packages / SOURCE_PATH_FILE_NAME).write_text(f"{request.source_path}\n")
         (request.venv / MARKER_FILE_NAME).write_text(json.dumps(marker))
     except BaseException:
         # A wheel may have written anything into the venv, a marker of this module's name too.
-        shutil.rmtree(request.venv, ignore_errors=True)
+        await _in_thread_to_the_end(shutil.rmtree, request.venv, True)
         raise
     return python
 
@@ -295,6 +298,28 @@ async def _describe_interpreter(interpreter: Path) -> _Interpreter:
             "installs with that pip"
         )
     return _Interpreter(version=version, executable=executable, pip_wheel=Path(wheels[0]))
+
+
+async def _in_thread_to_the_end(function, *arguments):
+    """Run `function` in a thread, and wait for it to finish even when cancelled meanwhile.
+
+    A venv's files are removed or rewritten here: a later build of the same venv must never
+    overlap that work. A cancellation is passed on once the thread is done.
+    """
+    work = asyncio.ensure_future(asyncio.to_thread(function, *arguments))
+    cancelled = False
+    while True:
+        try:
+            result = await asyncio.shield(work)
+        except asyncio.CancelledError:
+            if work.done():
+                raise
+            cancelled = True
+            continue
+        break
+    if cancelled:
+        raise asyncio.CancelledError
+    return result
 
 
 def _read_marker(venv: Path) -> dict | None:

@@ -98,11 +98,12 @@ later.
 **Plugin development mode** lets a SuperAdmin serve an installed plugin's backend and page from ports on your machine.
 It runs only on a deployment on your own machine: with `PLUGINS_DEV_MODE=true`, django_app refuses to start unless
 `DJANGO_DEBUG=true`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or a `.localhost` name,
-`PLUGINS_BASE_DOMAIN` is a `.localhost` name, and the stack runs with `docker-compose.plugins-dev.yaml` (which alone
-sets `PLUGINS_DEV_LOOPBACK_ONLY`; never put that in `.env`). epicstaff-nginx refuses the same way. What keeps the mode
+`PLUGINS_BASE_DOMAIN` is a `.localhost` name, and, under docker compose, the stack runs with
+`docker-compose.plugins-dev.yaml` (which alone sets `PLUGINS_DEV_LOOPBACK_ONLY`; never put that in `.env`). A
+`manage.py` run on the host is not checked for that file. epicstaff-nginx refuses the same way. What keeps the mode
 local is that file's binding of EpicStaff's ports to `127.0.0.1`. The `.localhost` names only stop browsers on other
-machines: a client that reaches a port can set the `Host` header by hand. Without the file, django_app and epicstaff-nginx
-refuse to start in this mode.
+machines: a client that reaches a port can set the `Host` header by hand. Under compose, without the file, django_app and
+epicstaff-nginx refuse to start in this mode.
 [Plugin development mode](../operator/enable-plugins.md#plugin-development-mode) says exactly what it opens. Turn it
 off again with `PLUGINS_DEV_MODE=false`, starting with `docker-compose.yaml` alone: what was routed to your machine is
 then ignored, and its keys are refused.

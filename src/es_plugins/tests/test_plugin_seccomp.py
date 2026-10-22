@@ -194,10 +194,13 @@ UNFILTERED = {
     "keyctl": -errno.EOPNOTSUPP,
     "add_key": -errno.EFAULT,
     "request_key": -errno.EFAULT,
-    "perf_event_open": -errno.EFAULT,
     "clone3": -errno.EINVAL,
     **{f"clone({name})": -errno.EINVAL for name in NAMED_FLAGS},
 }
+# Without the filter, these answer an error that depends on the host, but never EPERM: a kernel
+# that restricts perf events (Ubuntu's kernel.perf_event_paranoid above 2) answers EACCES before
+# it reads the attributes, and EFAULT otherwise.
+NOT_EPERM_UNFILTERED = ("perf_event_open",)
 # Without the filter, a host setting may refuse these with EPERM itself.
 HOST_SETTINGS = {
     "bpf": "kernel.unprivileged_bpf_disabled",
@@ -245,6 +248,7 @@ def test_without_the_filter_the_same_calls_get_other_answers():
     results = probe("unfiltered")["results"]
 
     assert {name: results[name] for name in UNFILTERED} == UNFILTERED
+    assert {name: results[name] for name in NOT_EPERM_UNFILTERED if results[name] == -errno.EPERM} == {}
 
 
 @pytest.mark.linux

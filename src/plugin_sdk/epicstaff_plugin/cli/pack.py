@@ -8,6 +8,7 @@ from pathlib import Path
 from epicstaff_plugin.cli.backend_wheels import (
     DEFAULT_PLATFORMS,
     linux_machine,
+    packed_requirement_problems,
     read_local_wheel,
     with_backend_wheels,
 )
@@ -66,6 +67,8 @@ def pack(
                     platforms=target_platforms,
                     local_wheels=local_wheels,
                 )
+            if problems := packed_requirement_problems(source, target_platforms):
+                raise PackageProblemsError(problems)
         except PackageProblemsError as error:
             print_problems(error.problems)
             return EXIT_INVALID

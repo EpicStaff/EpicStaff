@@ -50,7 +50,8 @@ class PinnedOrgPrincipal(Protocol):
         """Return whether a row the principal writes may reference every one of `secret_ids`.
 
         Asked by `SecretReferenceGuard` for each secret reference of every row the
-        principal creates or changes, on top of `secrets: use`. A row that references a
+        principal creates or changes, on top of `secrets: use`, and for the secrets the
+        header markers of a run or an indexing job it starts name. A row that references a
         secret also says where its value is sent (an LLM config's `base_url`, a Python
         node's code), so a principal that could reference any of the organization's
         secrets could send their values anywhere.

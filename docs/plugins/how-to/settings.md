@@ -51,6 +51,8 @@ Unix user alone, and, on a deployment in plugin development mode, the developmen
 SuperAdmin downloads for a [development backend](local-development.md#develop-the-backend-on-your-machine).
 Changes are recorded by key, never by value.
 
+A secret your plugin stores through EpicStaff's API (`secrets: create`) is a different thing from a secret setting, and is named in a model configuration's `extra_headers` with `epicstaff_secret(<name>)`. The name binds when a run starts, so a plugin's run is refused with `secret_marker_not_referenceable` (409) when a header of an LLM or embedding configuration it uses names any secret the plugin did not create, whether the name is another secret's, no secret's, or shared with someone else's binned secret. The same applies to `process-rag-indexing/`. A person's run of the same flow is not affected. [Error codes](../reference/error-codes.md) lists it.
+
 ## Read them in your backend
 
 Your process gets every setting in its runtime file: non-secret settings with their value or

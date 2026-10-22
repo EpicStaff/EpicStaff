@@ -136,7 +136,7 @@ a value in `src/.env` later changes nothing in the database (see
 
 | Variable | Default | What to set |
 |---|---|---|
-| `PLUGINS_DEV_MODE` | `false` | Leave `false` on every deployment other people use: with `true`, django_app and epicstaff-nginx refuse to start unless `DJANGO_DEBUG=true`, EpicStaff and `PLUGINS_BASE_DOMAIN` use `.localhost` names, and the stack runs with `docker-compose.plugins-dev.yaml` (which alone sets `PLUGINS_DEV_LOOPBACK_ONLY`; never put it in `.env`). The same spellings as `PLUGINS_ENABLED` are accepted. |
+| `PLUGINS_DEV_MODE` | `false` | Leave `false` on every deployment other people use: with `true`, django_app and epicstaff-nginx refuse to start unless `DJANGO_DEBUG=true`, EpicStaff and `PLUGINS_BASE_DOMAIN` use `.localhost` names, and the stack runs with `docker-compose.plugins-dev.yaml`, which it requires (which alone sets `PLUGINS_DEV_LOOPBACK_ONLY`; never put it in `.env`). The same spellings as `PLUGINS_ENABLED` are accepted. |
 | `PLUGINS_DEV_API_PORT` | `8082` | The port on `127.0.0.1` where a development backend reaches EpicStaff's API. Only `docker-compose.plugins-dev.yaml` publishes it. A whole number from 1024 to 65535 (`plugins.E013`), checked only while the mode is on. |
 
 ## 4. Apply
@@ -184,7 +184,7 @@ Wrong values stop a container with a message instead of serving a broken plugin 
 | `plugins.E009` | A `PLUGINS_MAX_*` value is not a positive whole number. |
 | `plugins.E010` | The host of `DJANGO_FRONTEND_BASE_URL` is `PLUGINS_BASE_DOMAIN` or a name under it. A plugin's address could then be EpicStaff's own, and EpicStaff would refuse its own pages as a plugin's. |
 | `plugins.E011` | `PLUGINS_GRACE_PERIOD_DAYS` is not a whole number from 1 to 3650. |
-| `plugins.E012` | `PLUGINS_DEV_MODE` is true on a deployment that is not on your own machine: `DJANGO_DEBUG` is not true, `PLUGINS_BASE_DOMAIN` does not end in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is neither `localhost` nor a `.localhost` name, or `PLUGINS_DEV_LOOPBACK_ONLY` is not true, which only `docker-compose.plugins-dev.yaml` sets. The message names each condition that fails (see [Plugin development mode](#plugin-development-mode)). |
+| `plugins.E012` | `PLUGINS_DEV_MODE` is true on a deployment that is not on your own machine: `DJANGO_DEBUG` is not true, `PLUGINS_BASE_DOMAIN` does not end in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is neither `localhost` nor a `.localhost` name, or, when Django runs under compose, `PLUGINS_DEV_LOOPBACK_ONLY` is not true, which only `docker-compose.plugins-dev.yaml` sets. Compose sets `RUN_IN_DOCKER` for every service; a `manage.py` run on the host is not checked for the marker. The problem text for it begins "PLUGINS_DEV_LOOPBACK_ONLY is not true in this container, so …". The message names each condition that fails (see [Plugin development mode](#plugin-development-mode)). |
 | `plugins.E013` | `PLUGINS_DEV_MODE` is true and `PLUGINS_DEV_API_PORT` is not a whole number from 1024 to 65535. |
 
 `plugins.W001` is a warning and stops nothing: plugin development mode is on, where it is allowed.
@@ -199,7 +199,7 @@ never printed), or `PLUGINS_NETWORK_SUBNET` is not an IPv4 CIDR such as `10.235.
 exits, with plugins on, when `PLUGINS_DEV_MODE` is not a boolean, and when it is true while
 `PLUGINS_BASE_DOMAIN` does not end in `.localhost` or the host of `DJANGO_FRONTEND_BASE_URL` is
 neither `localhost` nor a `.localhost` name, or when `PLUGINS_DEV_LOOPBACK_ONLY` is not true
-(the development compose file is not in use): nginx's own refusal of plugin development mode,
+(the development compose file is not in use; nginx always runs under compose): nginx's own refusal of plugin development mode,
 whatever Django decides. With plugins off nginx does not read the plugin values at all.
 
 **es_plugins** exits when `PLUGINS_NODE_UID_RANGE` is not a valid range, `PLUGINS_NODE_KEY` is
@@ -522,8 +522,8 @@ A plugin backend reaches the internet only through `plugins_egress`, a Squid pro
 gives each backend its proxy URL in `HTTPS_PROXY` (and `https_proxy`, `HTTP_PROXY`, `http_proxy`).
 The proxy allows a plugin an HTTPS tunnel (`CONNECT`) to port 443 of the hosts its package declares
 in `outbound_hosts`, which the review shows before approval, and nothing else. This binds the
-backend's process. Code a plugin runs through flows runs in EpicStaff's sandbox, which has its own
-network access, and the review warns about it (`flows_run_code`). Writing a backend
+backend's process. Code a plugin gets run through flows or tools runs in EpicStaff's sandbox, which has its own
+network access, and the review warns about it (`runs_code_in_sandbox`). Writing a backend
 for it is in [Call the internet from your backend](../how-to/outbound-hosts.md).
 
 - **One password per plugin.** The node makes a plugin's proxy password when it starts the
@@ -702,6 +702,13 @@ itself.
   database itself.
 - **Where:** `backups/<identifier>/` on the `es_plugins_data` volume, one `.dump` and one
   `.json` each. They go with the plugin when it is deleted.
+- **A backup EpicStaff cannot be told about** is set aside, and the rest are still reported. If
+  one backup cannot be reported, the node renames it to `<dump>.unreportable` (and its
+  `<stem>.json` to `<stem>.json.unreportable`) in `backups/<identifier>/` and logs
+  `plugins.backup.quarantined`. EpicStaff no longer lists it. The placement's last error reads
+  "Backup <file> could not be reported to EpicStaff (<field>: <reason>), so the node set it aside
+  as <file>.unreportable; EpicStaff no longer lists it." Set-aside files stay after an agent
+  restart, are removed with the plugin, and do not count in the disk ranking below the floor.
 - **`PLUGINS_DB_BACKUP_PASSWORD`** is read by es_plugins now, as well as by `plugins_db`.
 - **EpicStaff restores only during an upgrade that failed**, and only a backup that upgrade took
   (Restore… on the Runtime tab). It replaces the database, after backing up the database as it
@@ -907,6 +914,8 @@ memory, the last error and, for a failed plugin, the end of its log.
 | The backend exits at once with `Operation not permitted` or `Address already in use` in its log | It opens a server socket itself instead of serving on the socket the node hands it (`EPICSTAFF_PLUGIN_LISTEN_FD`, which `epicstaff-plugin` uses); no plugin may bind a socket, and every port of the node's range is the node's. The publisher must fix the backend. |
 | `port … is still in use by placement …` | The plugin got a port another plugin on the node is just giving up (EpicStaff moved them). The node tries again every 30 s; it passes once the other is stopped. |
 | `port … is not one of this node's ports` | The node and django_app disagree about the port range: they are of different versions. Run the same version of both. |
+| `installing the plugin's requirements failed (exit 1):` followed by pip's last lines | The lock does not pin a requirement of one of the package's wheels, and the last lines name the package. The node installs a backend with pip's dependency resolution on. The publisher must add the requirement to the lock's source and pack again (`pack` checks this). |
+| `Backup … could not be reported to EpicStaff (…), so the node set it aside as ….unreportable; EpicStaff no longer lists it.` | The node could not describe one backup to EpicStaff, so it renamed the backup's files. See [Backups](#backups). |
 | `bin/python is not a symlink; a wheel may have replaced it` | A wheel in the package installs a program of its own over the plugin's Python. The node refuses to install the package; the publisher must remove that wheel. |
 | `uses … MB of disk, more than its limit of … MB` or `has … files, more than its limit of … files` | The plugin's own files reached `ES_PLUGINS_DISK_MB_PER_PLUGIN` or `ES_PLUGINS_FILES_PER_PLUGIN`. Free space in its HOME, or raise the cap for every plugin, then press Restart (see [Disk](#disk)). |
 | `its disk use could not be measured 2 times in a row` | Two measurements in a row brought no result, as when the node was refused or ran out of time. Press Restart; if it repeats, the publisher must look at what slows the plugin's files. |
@@ -969,7 +978,9 @@ send plugin traffic to any other host.
 
 - django_app refuses to start (`plugins.E012`) unless `DJANGO_DEBUG=true`, `PLUGINS_BASE_DOMAIN`
   ends in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or ends in
-  `.localhost`, and `PLUGINS_DEV_LOOPBACK_ONLY` is true;
+  `.localhost`, and, when Django runs under compose (`RUN_IN_DOCKER`, which compose sets for
+  every service), `PLUGINS_DEV_LOOPBACK_ONLY` is true. A `manage.py` run on the host with
+  `PLUGINS_DEV_MODE=true` is not refused for the marker, though the other conditions still apply;
 - epicstaff-nginx refuses to start (exit 64) unless the two names are `.localhost` names and
   `PLUGINS_DEV_LOOPBACK_ONLY` is true.
 

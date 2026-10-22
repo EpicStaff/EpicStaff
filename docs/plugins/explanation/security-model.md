@@ -26,7 +26,7 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
 - **More access takes another approval.** A new version that declares more access, a new outbound host or a wider
   public path cannot be installed until a SuperAdmin approves that new access
   ([Compatibility and versioning](../reference/compatibility-and-versioning.md#what-needs-the-superadmins-approval)).
-  Approving the outbound hosts does not limit what code run through flows can reach.
+  Approving the outbound hosts does not limit what code run through flows or tools can reach.
 - **Installing a plugin means trusting its code**, whichever label it has
   ([Accepted risks](accepted-risks.md#installing-a-plugin-means-trusting-its-code)).
 
@@ -65,7 +65,8 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
 
 - **Exactly its declared access**, in each organization it is granted to, through EpicStaff's own endpoints. That
   access reaches every item of the declared type in the organization, apart from secrets, of which it may use only
-  the ones it created ([Declare what your backend may do](../how-to/declare-access.md#what-the-declaration-does-not-give),
+  the ones it created. A run it starts, and an indexing job, are refused when a model configuration's headers name
+  another secret ([Declare what your backend may do](../how-to/declare-access.md#what-the-declaration-does-not-give),
   [Accepted risks](accepted-risks.md#declared-access-covers-every-item-of-a-type)).
 - **Never EpicStaff's administration.** Organizations, memberships, roles, API keys, the audit log and chats cannot be
   declared, and the endpoints only people use refuse a plugin ([Manifest](../reference/manifest.md#access)).
@@ -101,10 +102,11 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
   ([Serve public paths](../how-to/public-paths.md)).
 - **Outbound, only to declared hosts**, over HTTPS on port 443, through the egress proxy, and a change to the list
   applies within about 30 seconds ([Call the internet from your backend](../how-to/outbound-hosts.md)). The backend's
-  own process has no other route out. Code that a plugin gets run through flows is the exception: see the next item.
-- **Flows run code.** A plugin whose access includes `create`, `update` or `use` on flows can, through flows, run code
-  in EpicStaff's sandbox. The sandbox has its own network access, and the plugin's outbound hosts do not apply to that
-  code ([Accepted risks](accepted-risks.md#flows-run-code-outside-the-outbound-hosts)).
+  own process has no other route out. Code that a plugin gets run through flows or tools is the exception: see the next item.
+- **Flows and tools run code.** A plugin whose access includes `create`, `update` or `use` on flows, or `create` or
+  `update` on tools, can have code of its choosing run in EpicStaff's sandbox. The sandbox has its own network access,
+  and the plugin's outbound hosts do not apply to that code. Tools `create` or `update` also lets it point an agent at
+  an MCP server outside its outbound hosts ([Accepted risks](accepted-risks.md#code-runs-in-the-sandbox-outside-the-outbound-hosts)).
 - **A declared host can carry more than its name.** A host on a shared content delivery network, or a `*.` wildcard,
   reaches more sites than its name says ([What an allow-list does not
   stop](../how-to/outbound-hosts.md#what-an-allow-list-does-not-stop)).

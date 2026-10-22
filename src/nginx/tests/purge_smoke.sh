@@ -241,7 +241,7 @@ grant_of_org() { # prints the grant id of SMOKE_ORG_ID, or nothing
 }
 grant_state() { # grant id: prints its state, or "gone"
   [ "$(api GET "/api/admin/plugins/$plugin/grants/?page_size=200")" = 200 ] || return 1
-  json "next((grant['state'] for grant in body['results'] if grant['id'] == $1), 'gone')"
+  json "next((grant['state'] for grant in body['results'] if grant['id'] == $1), 'gone')" 2> /dev/null
 }
 grant_is_gone() { [ "$(grant_state "$1")" = gone ]; }
 org_removed_job_succeeded() {
@@ -266,7 +266,7 @@ echo "# setup"
 log_in
 status=$(api GET "/api/admin/plugins/$plugin/")
 [ "$status" = 200 ] || bail_out "the plugin $plugin answered $status"
-[ "$(json "body['state']")" = running ] || bail_out "the plugin $plugin is $(json "body['state']" || echo unknown), not running"
+[ "$(json "body['state']")" = running ] || bail_out "the plugin $plugin is $(json "body['state']" 2> /dev/null || echo unknown), not running"
 public_path=$(json "body['current_package']['public_paths'][0]['path']" 2> /dev/null) ||
   bail_out "the plugin $plugin declares no public path for the gateway check"
 [ "$(api GET "/api/admin/plugins/$plugin/runtime/")" = 200 ] || bail_out "the plugin's runtime did not answer"
