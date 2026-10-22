@@ -71,8 +71,8 @@ export class SelectComponent implements ControlValueAccessor {
     showSearch = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
     transparent = input<boolean>(false);
-    /** Line border, 8px radius and a chevron 12px from the edge, for selects laid out in a settings row. */
-    outlined = input<boolean>(false);
+    /** When true, the selected item's tip is shown at the end of the closed trigger too, not only in the list. */
+    showTipInTrigger = input<boolean>(false);
     /** When true, the user can commit the search text as a custom value (Enter or clicking the "Use ..." row). */
     allowCustomValue = input<boolean>(false);
     /**

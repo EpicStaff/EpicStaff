@@ -41,7 +41,6 @@
                 [class.selector__btn--open]="open()"
                 [class.selector__btn--placeholder]="!selectedItem() && !(allowCustomValue() && selectedValue())"
                 [class.selector__btn--transparent]="transparent()"
-                [class.selector__btn--outlined]="outlined()"
                 (click)="toggle()"
             >
                 @if (loading()) {
@@ -68,11 +67,13 @@
                     >
                         {{ displayText() }}
                     </span>
+                    @if (showTipInTrigger() && selectedItem()?.tip; as tip) {
+                        <span class="selector__tip">{{ tip }}</span>
+                    }
 
                     <svg
                         class="selector__chevron"
                         [class.selector__chevron--open]="open()"
-                        [class.selector__chevron--outlined]="outlined()"
                         [ngClass]="'selector__chevron--' + mod()"
                         width="16"
                         height="16"

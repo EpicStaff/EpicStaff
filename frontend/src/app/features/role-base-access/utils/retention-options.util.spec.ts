@@ -5,7 +5,9 @@ import {
     buildRetentionUpdate,
     describeRetentionLowerings,
     findRetentionLowerings,
+    RetentionChoice,
     RetentionLowering,
+    toRetentionChoice,
 } from './retention-options.util';
 
 const POLICY: RetentionPolicy = {
@@ -116,6 +118,16 @@ describe('buildRetentionUpdate', () => {
         ).toEqual({ sessions_days: null });
     });
 
+    it('does not send a stored value equal to the default that is left on the default option', () => {
+        expect(
+            buildRetentionUpdate(retention({ sessions_days: 30, sessions_effective_days: 30 }), {
+                sessions_days: 'default',
+                conversations_days: 'default',
+                audit_days: 'default',
+            })
+        ).toBeNull();
+    });
+
     it('returns null when nothing changed', () => {
         expect(
             buildRetentionUpdate(retention(), {
@@ -128,10 +140,9 @@ describe('buildRetentionUpdate', () => {
 });
 
 describe('buildRetentionItems', () => {
-    it('starts with the default in days, then the allowed values in policy order', () => {
+    it('lists the allowed values in policy order, tagging the default once instead of adding a row for it', () => {
         expect(buildRetentionItems(retention(), 'sessions')).toEqual([
-            { name: 'Use default (30 days)', value: 'default' },
-            { name: '30 days', value: 30 },
+            { name: '30 days', tip: 'Default', value: 'default' },
             { name: '90 days', value: 90 },
             { name: '180 days', value: 180 },
             { name: '1 year', value: 365 },
@@ -139,11 +150,25 @@ describe('buildRetentionItems', () => {
         ]);
     });
 
-    it('labels an unlimited default as Unlimited', () => {
-        expect(buildRetentionItems(retention(), 'audit')[0]).toEqual({
-            name: 'Use default (Unlimited)',
-            value: 'default',
-        });
+    it('tags an unlimited default on the Unlimited option', () => {
+        const items = buildRetentionItems(retention(), 'audit');
+
+        expect(items.filter((item) => item.name === 'Unlimited')).toEqual([
+            { name: 'Unlimited', tip: 'Default', value: 'default' },
+        ]);
+    });
+
+    it('puts a default that is not an allowed value first', () => {
+        const policy: RetentionPolicy = {
+            ...POLICY,
+            sessions: { default_days: 60, max_days: null, allowed: [30, 90] },
+        };
+
+        expect(buildRetentionItems(retention({ retention_policy: policy }), 'sessions')).toEqual([
+            { name: '60 days', tip: 'Default', value: 'default' },
+            { name: '30 days', value: 30 },
+            { name: '90 days', value: 90 },
+        ]);
     });
 
     it('keeps a stored value above the cap as the last option, with the days applied', () => {
@@ -153,5 +178,15 @@ describe('buildRetentionItems', () => {
         );
 
         expect(items.at(-1)).toEqual({ name: '1 year (above limit, 180 days applied)', value: 365 });
+    });
+});
+
+describe('toRetentionChoice', () => {
+    it.each<[string, number | null, RetentionChoice]>([
+        ['shows null as the default', null, 'default'],
+        ['shows a stored value equal to the default on the default option', 30, 'default'],
+        ['keeps any other stored value', 90, 90],
+    ])('%s', (_case, days, expected) => {
+        expect(toRetentionChoice(days, 30)).toBe(expected);
     });
 });

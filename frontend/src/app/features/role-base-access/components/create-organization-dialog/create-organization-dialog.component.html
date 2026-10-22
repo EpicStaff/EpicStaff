@@ -63,8 +63,7 @@
                                     [items]="column.items"
                                     [formControl]="column.control"
                                     [ariaLabelledby]="column.labelId"
-                                    [outlined]="true"
-                                    [transparent]="true"
+                                    [showTipInTrigger]="true"
                                 />
                                 <app-validation-errors [control]="column.control" />
                                 @if (column.hint) {

@@ -22,4 +22,19 @@ describe('SelectComponent', () => {
 
         expect(trigger.type).toBe('button');
     });
+
+    it.each([
+        ['shows the selected tip in the trigger when opted in', true, 'Default'],
+        ['keeps the trigger to the name by default', false, undefined],
+    ])('%s', (_case, showTipInTrigger, expectedTip) => {
+        const fixture = TestBed.createComponent(SelectComponent);
+        fixture.componentRef.setInput('items', [{ name: 'One', tip: 'Default', value: 1 }]);
+        fixture.componentRef.setInput('selectedValue', 1);
+        fixture.componentRef.setInput('showTipInTrigger', showTipInTrigger);
+        fixture.detectChanges();
+
+        const tip = (fixture.nativeElement as HTMLElement).querySelector('.selector__btn .selector__tip');
+
+        expect(tip?.textContent?.trim()).toBe(expectedTip);
+    });
 });

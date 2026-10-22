@@ -68,18 +68,6 @@
             padding: 0.25rem 1.5rem 0.25rem 0.5rem;
         }
 
-        // after the size modifiers so its padding wins, before --invalid so an error border still shows
-        &--outlined {
-            border-color: var(--color-ks-line);
-            border-radius: 8px;
-            // 12px edge + 16px chevron + 8px gap, the chevron being absolutely positioned
-            padding-right: 36px;
-
-            &.selector__btn--open {
-                border-color: var(--accent-color);
-            }
-        }
-
         &--invalid {
             border-color: var(--color-ks-status-failed);
         }
@@ -135,10 +123,6 @@
         &--small {
             right: 5px;
             top: 6px;
-        }
-
-        &--outlined {
-            right: 12px;
         }
 
         &--open {

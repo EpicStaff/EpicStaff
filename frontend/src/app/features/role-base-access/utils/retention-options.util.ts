@@ -34,8 +34,9 @@ export function formatRetentionDays(days: number): string {
     return days === 1 ? '1 day' : `${days} days`;
 }
 
-export function toRetentionChoice(days: number | null): RetentionChoice {
-    return days === null ? USE_DEFAULT_RETENTION : days;
+/** A stored value equal to the default is shown on the default option, which is the only option for that value. */
+export function toRetentionChoice(days: number | null, defaultDays: number): RetentionChoice {
+    return days === null || days === defaultDays ? USE_DEFAULT_RETENTION : days;
 }
 
 export function fromRetentionChoice(choice: RetentionChoice): number | null {
@@ -43,22 +44,30 @@ export function fromRetentionChoice(choice: RetentionChoice): number | null {
 }
 
 /**
- * "Use default" first, then the allowed values in policy order. A stored value the policy no longer
- * allows (its cap was lowered) is kept as an extra option, so the select never shows blank.
+ * The allowed values in policy order, the one equal to the default tagged "Default" and standing for "use the
+ * instance default" (null), so the default value is never listed twice. A default outside the allowed values
+ * leads the list. A stored value the policy no longer allows (its cap was lowered) is kept as an extra option,
+ * so the select never shows blank.
  */
 export function buildRetentionItems(
     retention: OrganizationRetention,
     type: RetentionDataType
 ): SelectItem<RetentionChoice>[] {
     const rule = retention.retention_policy[type];
-    const defaultLabel = rule.default_days === 0 ? 'Unlimited' : `${rule.default_days} days`;
-    const items: SelectItem<RetentionChoice>[] = [
-        { name: `Use default (${defaultLabel})`, value: USE_DEFAULT_RETENTION },
-        ...rule.allowed.map((days) => ({ name: formatRetentionDays(days), value: days })),
-    ];
+    const defaultItem: SelectItem<RetentionChoice> = {
+        name: formatRetentionDays(rule.default_days),
+        tip: 'Default',
+        value: USE_DEFAULT_RETENTION,
+    };
+    const items: SelectItem<RetentionChoice>[] = rule.allowed.map((days) =>
+        days === rule.default_days ? defaultItem : { name: formatRetentionDays(days), value: days }
+    );
+    if (!rule.allowed.includes(rule.default_days)) {
+        items.unshift(defaultItem);
+    }
 
     const stored = retention[`${type}_days` as const];
-    if (stored !== null && !rule.allowed.includes(stored)) {
+    if (stored !== null && stored !== rule.default_days && !rule.allowed.includes(stored)) {
         const applied = retention[`${type}_effective_days` as const];
         items.push({
             name: `${formatRetentionDays(stored)} (above limit, ${applied} days applied)`,
@@ -79,10 +88,10 @@ export function buildRetentionUpdate(
     const update: OrganizationRetentionUpdate = {};
     for (const type of RETENTION_DATA_TYPES) {
         const field: RetentionField = `${type}_days`;
-        const chosen = fromRetentionChoice(choices[field]);
-        if (chosen !== retention[field]) {
-            update[field] = chosen;
-        }
+        const stored = retention[field];
+        // a stored value equal to the default is shown as the default, so leaving it untouched keeps it as stored
+        if (choices[field] === toRetentionChoice(stored, retention.retention_policy[type].default_days)) continue;
+        update[field] = fromRetentionChoice(choices[field]);
     }
     return Object.keys(update).length > 0 ? update : null;
 }

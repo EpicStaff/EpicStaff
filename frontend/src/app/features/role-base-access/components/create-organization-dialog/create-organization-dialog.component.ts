@@ -283,10 +283,11 @@ export class CreateOrganizationDialogComponent implements OnInit {
 
     private applyRetention(retention: OrganizationRetention): void {
         this.retention.set(retention);
+        const policy = retention.retention_policy;
         this.retentionForm.setValue({
-            sessions_days: toRetentionChoice(retention.sessions_days),
-            audit_days: toRetentionChoice(retention.audit_days),
-            conversations_days: toRetentionChoice(retention.conversations_days),
+            sessions_days: toRetentionChoice(retention.sessions_days, policy.sessions.default_days),
+            audit_days: toRetentionChoice(retention.audit_days, policy.audit.default_days),
+            conversations_days: toRetentionChoice(retention.conversations_days, policy.conversations.default_days),
         });
     }
 }
