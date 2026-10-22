@@ -41,3 +41,16 @@ class UndeclaredSecretError(CustomAPIExeption):
     status_code = 400
     default_detail = "Code reads a secret that was not declared for it."
     default_code = "undeclared_secret"
+
+
+class SecretUseDeniedError(Exception):
+    """Raised when a write needs secrets:USE and the actor does not hold it.
+
+    A domain error, not an HTTP one: the write point that called SecretUseService
+    turns it into the response shape its clients expect, keyed by `field_path`.
+    """
+
+    def __init__(self, *, field_path: tuple[str, ...], message: str):
+        super().__init__(message)
+        self.field_path = field_path
+        self.message = message
