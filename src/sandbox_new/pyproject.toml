@@ -8,15 +8,15 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "foundation",
-    "litestar>=2.24.0",
-    "loguru>=0.7.3",
-    "packaging>=24.0",
-    "piccolo[postgres]>=1.36.0",
+    "litestar==2.24.0",
+    "loguru==0.7.3",
+    "packaging==24.0",
+    "piccolo[postgres]==1.36.0",
     "pydantic==2.13.4",
-    "redis>=8.1.0",
-    "unicorn>=2.1.4",
-    "uvicorn>=0.54.0",
+    "redis==5.3.1",
+    "uvicorn==0.52.3",
 ]
+
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
@@ -33,6 +33,12 @@ dev = [
     "fakeredis>=2.38.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+]
+transitive-pins = [
+    "anyio==4.14.2",
+    "idna==3.18",
+    "pyjwt==2.13.0",
+    "certifi==2026.7.22"
 ]
 
 [tool.pytest.ini_options]
