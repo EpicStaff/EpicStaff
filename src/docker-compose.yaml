@@ -546,9 +546,10 @@ services:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8081/nginx-health || exit 1"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
-      # Unhealthy about 40s after start, inside the 60s deploy.sh waits before its check.
+      # Unhealthy about 90s after start: later than the 60s deploy.sh waits, so the deploy
+      # catches a crash-looping nginx (restarting), not one that runs but stops answering.
       retries: 3
       start_period: 10s
     restart: always
