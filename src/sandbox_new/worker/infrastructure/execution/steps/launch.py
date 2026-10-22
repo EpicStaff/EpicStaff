@@ -6,6 +6,9 @@ process group. Records raw ``stdout``/``stderr``/``returncode`` on the context; 
 capture step reads the result file and scrubs secrets afterwards. A timeout is
 reported as return code 124. Nothing here raises: a failure to launch surfaces as a
 failed context.
+
+The timeout a run gets is decided here by ``effective_timeout``, not by the caller: the
+per-job value is a request, bounded by the deployment's configured minimum and maximum.
 """
 
 import asyncio
@@ -22,7 +25,7 @@ from worker.domain.enums import NetworkPolicy
 from worker.domain.models import IsolationPlan
 from worker.infrastructure.execution.privileges import privilege_drop_kwargs
 
-__all__ = ["LaunchStep"]
+__all__ = ["LaunchStep", "effective_timeout"]
 
 # Referenced by path, never imported: launcher.py must run as a script so its
 # flat ``import landlock`` resolves against its own directory on sys.path.
@@ -34,13 +37,36 @@ LAUNCHER_PATH = Path(__file__).parents[2] / "isolation" / "launcher.py"
 _TIMEOUT_DRAIN_GRACE_SECONDS = 5
 
 
+def effective_timeout(
+    requested: float | None, *, default: float, minimum: float, maximum: float | None
+) -> float:
+    """Return the timeout to actually run with, in seconds.
+
+    The requested value reaches the sandbox from a python tool's configuration and is
+    untrusted, so ``maximum`` is the security bound it is capped at (None there means no
+    upper limit) and ``minimum`` keeps a too-small value from killing every run before it
+    starts. ``default`` only fills in a request that carries no timeout of its own.
+    """
+    timeout = default if requested is None else max(requested, minimum)
+    if maximum is None:
+        return timeout
+    return min(timeout, maximum)
+
+
 class LaunchStep:
-    def __init__(self, *, default_timeout: float):
+    def __init__(self, *, default_timeout: float, min_timeout: float, max_timeout: float | None):
         self._default_timeout = default_timeout
+        self._min_timeout = min_timeout
+        self._max_timeout = max_timeout
 
     async def __call__(self, context: ExecutionContext) -> None:
         isolation = context.isolation
-        timeout = context.job.timeout or self._default_timeout
+        timeout = effective_timeout(
+            context.job.timeout,
+            default=self._default_timeout,
+            minimum=self._min_timeout,
+            maximum=self._max_timeout,
+        )
 
         env = dict(context.env)
         self._apply_network_marker(env, isolation)

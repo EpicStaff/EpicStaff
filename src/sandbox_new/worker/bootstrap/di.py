@@ -55,7 +55,13 @@ def build_pipeline() -> Pipeline:
                 storage_port=settings.STORAGE_PORT,
             )
         )
-        .register(LaunchStep(default_timeout=settings.EXECUTION_TIMEOUT))
+        .register(
+            LaunchStep(
+                default_timeout=settings.DEFAULT_EXECUTION_TIMEOUT,
+                min_timeout=settings.MIN_EXECUTION_TIMEOUT,
+                max_timeout=settings.MAX_EXECUTION_TIMEOUT,
+            )
+        )
         .register(CaptureMutationsStep())
         .register(CaptureResultStep())
     )
