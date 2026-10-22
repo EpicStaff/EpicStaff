@@ -278,8 +278,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     protected readonly hoverContext = computed<HoverContext | null>(() => {
         const nodeId = this.hoveredNodeId();
-        if (!nodeId) return null;
-        return computeHoverContext(nodeId, this.flowService.nodes(), this.flowService.connections());
+        const nodes = this.flowService.nodes();
+        if (!nodeId || !nodes.some((n) => n.id === nodeId)) return null;
+        return computeHoverContext(nodeId, nodes, this.flowService.connections());
     });
 
     /** The node may not be changed here, so it cannot be dragged either (a trigger node without Flows:Use). */
