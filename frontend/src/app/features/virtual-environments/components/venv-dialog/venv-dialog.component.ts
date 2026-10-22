@@ -15,6 +15,7 @@ import { TooltipOnOverflowDirective } from '@shared/directives';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { Observable } from 'rxjs';
 
+import { ToastService } from '../../../../services/notifications';
 import {
     CreateVenvRequest,
     Venv,
@@ -30,6 +31,7 @@ export interface VenvDialogData {
 
 interface LibraryRowGroup {
     name: FormControl<string>;
+    description: FormControl<string>;
     // The installed version: a pin when the user types one, otherwise what the last build resolved.
     version: FormControl<string>;
     // The whole PEP 440 specifier set, stored and sent verbatim.
@@ -53,7 +55,6 @@ interface LibraryRowGroup {
 })
 export class VenvDialogComponent {
     readonly isSubmitting = signal(false);
-    readonly errorMessage = signal<string | null>(null);
 
     readonly data = inject<VenvDialogData | null>(DIALOG_DATA, { optional: true }) ?? {};
     readonly isEdit = !!this.data.venv;
@@ -88,6 +89,7 @@ export class VenvDialogComponent {
 
     private readonly dialogRef = inject<DialogRef<Venv | null>>(DialogRef);
     private readonly venvsApi = inject(VenvsApiService);
+    private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 
     constructor() {
@@ -124,7 +126,6 @@ export class VenvDialogComponent {
         if (this.isSubmitting()) return;
 
         this.isSubmitting.set(true);
-        this.errorMessage.set(null);
         const body = this.buildPayload();
         const request$: Observable<Venv> = this.data.venv
             ? this.venvsApi.updateVenv(this.data.venv.id, body)
@@ -134,7 +135,7 @@ export class VenvDialogComponent {
             next: (venv) => this.dialogRef.close(venv),
             error: (error: HttpErrorResponse) => {
                 this.isSubmitting.set(false);
-                this.errorMessage.set(extractHttpErrorMessage(error));
+                this.toastService.error(extractHttpErrorMessage(error));
             },
         });
     }
@@ -163,6 +164,7 @@ export class VenvDialogComponent {
                 nonNullable: true,
                 validators: [Validators.required],
             }),
+            description: new FormControl(lib?.description ?? '', { nonNullable: true }),
             version: new FormControl(lib?.version ?? '', {
                 nonNullable: true,
                 validators: [Validators.pattern(VENV_LIBRARY_VERSION_PATTERN)],
@@ -184,6 +186,7 @@ export class VenvDialogComponent {
                     name: row.name.trim(),
                     specification: row.specification.trim(),
                     version: version || null,
+                    description: row.description.trim() || null,
                 };
             }),
         };

@@ -24,12 +24,6 @@
         (ngSubmit)="submit()"
     >
         <section class="venv-dialog__section venv-dialog__section--name">
-            @if (errorMessage()) {
-                <div class="venv-dialog__error-message">
-                    <p class="text-body">{{ errorMessage() }}</p>
-                </div>
-            }
-
             <div class="venv-dialog__name-row">
                 <div class="venv-dialog__name-label">
                     <label
@@ -57,15 +51,17 @@
                 <table>
                     <colgroup>
                         <col class="venv-dialog__col-index" />
+                        <col class="venv-dialog__col-name" />
                         <col />
-                        <col />
+                        <col class="venv-dialog__col-version" />
                         <col class="venv-dialog__col-spec" />
                         <col class="venv-dialog__col-action" />
                     </colgroup>
                     <thead>
-                        <tr class="text-body-small">
+                        <tr class="text-body-small-large">
                             <th class="venv-dialog__cell--center">#</th>
                             <th>Library Name<span class="venv-dialog__required">*</span></th>
+                            <th>Description</th>
                             <th>
                                 <span class="venv-dialog__col-header">
                                     Version
@@ -133,6 +129,18 @@
                                     <input
                                         class="venv-dialog__cell-input"
                                         type="text"
+                                        formControlName="description"
+                                        placeholder="e.g. HTTP client"
+                                        aria-label="Description"
+                                        appTooltipOnOverflow
+                                        matTooltipPosition="above"
+                                        [matTooltip]="row.controls.description.value"
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        class="venv-dialog__cell-input"
+                                        type="text"
                                         formControlName="version"
                                         placeholder="e.g. 2.31.0"
                                         aria-label="Version"
@@ -166,7 +174,7 @@
                                     >
                                         <app-svg-icon
                                             icon="x"
-                                            size="14px"
+                                            size="24px"
                                         />
                                     </button>
                                 </td>
