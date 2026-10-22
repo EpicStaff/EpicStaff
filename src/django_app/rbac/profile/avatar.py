@@ -21,6 +21,9 @@ from rbac.models import OrganizationUser
 
 # Largest side of a stored avatar: covers the biggest rendering on a high-DPI screen.
 AVATAR_MAX_DIMENSION = 512
+# Largest image decoded to build an avatar: 64 MB as RGBA, far below Pillow's
+# process-wide MAX_IMAGE_PIXELS (~89 MP, ~350 MB per copy).
+AVATAR_MAX_DECODED_PIXELS = 4096 * 4096
 
 _CONTENT_TYPE_BY_EXTENSION = {".jpg": "image/jpeg", ".png": "image/png"}
 _FALLBACK_CONTENT_TYPE = "application/octet-stream"
@@ -228,17 +231,18 @@ class UserAvatarStorageService:
     def _reencode(self, upload_bytes: bytes, format_name: str) -> bytes:
         try:
             with Image.open(io.BytesIO(upload_bytes)) as source:
-                # Image.open only warns between MAX_IMAGE_PIXELS and twice that;
-                # refuse here instead of decoding it (a warnings filter is
-                # process-global, so not safe in a threaded server).
-                if source.width * source.height > Image.MAX_IMAGE_PIXELS:
-                    raise InvalidAvatarError()
                 # Lets the JPEG decoder scale down by up to 8x while decoding, so a
                 # phone photo never sits in memory at full size; no-op for PNG.
                 source.draft(None, (AVATAR_MAX_DIMENSION, AVATAR_MAX_DIMENSION))
-                image = ImageOps.exif_transpose(source)
-                image = self._to_encodable_mode(image, format_name)
+                # Checked on the size the decoder will produce: a PNG is always
+                # decoded in full, and a few hundred KB can declare ~89 MP.
+                if source.width * source.height > AVATAR_MAX_DECODED_PIXELS:
+                    raise InvalidAvatarError()
+                # Shrink before rotating, so the rotation copies a small image, not a
+                # full-size one; the mode changes first because a palette shrinks badly.
+                image = self._to_encodable_mode(source, format_name)
                 image.thumbnail((AVATAR_MAX_DIMENSION, AVATAR_MAX_DIMENSION))
+                image = ImageOps.exif_transpose(image)
                 # Encoders read ICC profiles, comments and EXIF from `info`;
                 # the converted image keeps none of them.
                 image.info = {}
@@ -259,4 +263,5 @@ class UserAvatarStorageService:
         if format_name == "JPEG":
             return image if image.mode in ("RGB", "L") else image.convert("RGB")
         has_alpha = image.mode in ("RGBA", "LA", "PA") or "transparency" in image.info
-        return image.convert("RGBA" if has_alpha else "RGB")
+        target_mode = "RGBA" if has_alpha else "RGB"
+        return image if image.mode == target_mode else image.convert(target_mode)

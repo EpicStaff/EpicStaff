@@ -205,15 +205,28 @@ def test_the_size_limit_is_inclusive(uploader, member_only, settings):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("size", "accepted"),
-    [((100, 100), True), ((101, 100), False), ((300, 300), False)],
-    ids=["at-the-limit", "over-the-limit-only-warned-by-pillow", "over-twice-the-limit"],
+    ("format_name", "size", "accepted"),
+    [
+        ("PNG", (512, 512), True),
+        ("PNG", (513, 512), False),
+        ("JPEG", (4096, 4096), True),
+        ("JPEG", (4096, 300), False),
+    ],
+    ids=[
+        "png-at-the-limit",
+        "png-one-column-over",
+        "jpeg-the-decoder-shrinks-to-the-limit",
+        "jpeg-the-decoder-cannot-shrink",
+    ],
 )
-def test_more_pixels_than_pillow_allows_is_refused(uploader, member_only, monkeypatch, size, accepted):
-    # A small file can declare a huge canvas; scale the limit down instead of building one.
-    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100 * 100)
+def test_an_image_decoding_to_more_pixels_than_the_avatar_limit_is_refused(
+    uploader, member_only, monkeypatch, format_name, size, accepted
+):
+    # A few hundred KB of PNG can declare ~89 MP and decode to ~1 GB; the limit is on
+    # what gets decoded, so a JPEG counts at the scale its decoder reads it.
+    monkeypatch.setattr("rbac.profile.avatar.AVATAR_MAX_DECODED_PIXELS", 512 * 512)
 
-    response = _upload(uploader, image_bytes("PNG", size=size))
+    response = _upload(uploader, image_bytes(format_name, size=size))
 
     if accepted:
         assert response.status_code == status.HTTP_200_OK
@@ -222,6 +235,20 @@ def test_more_pixels_than_pillow_allows_is_refused(uploader, member_only, monkey
         assert response.json()["code"] == "invalid_avatar"
         member_only.refresh_from_db()
         assert not member_only.avatar
+
+
+@pytest.mark.django_db
+def test_an_image_pillow_refuses_to_open_is_refused(uploader, member_only, monkeypatch):
+    # Over twice MAX_IMAGE_PIXELS Pillow raises while reading the header, before the
+    # avatar limit is ever checked; scale its limit down instead of building such a file.
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100 * 100)
+
+    response = _upload(uploader, image_bytes("PNG", size=(300, 300)))
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["code"] == "invalid_avatar"
+    member_only.refresh_from_db()
+    assert not member_only.avatar
 
 
 # ---- the previous object ----
