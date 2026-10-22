@@ -30,7 +30,6 @@ from tables.validators.token_price_validator import validate_token_prices_set_to
 
 from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
 from ..utils.mixins import TagHandlingMixin
-from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
 class RealtimeModelSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
@@ -47,11 +46,7 @@ class RealtimeModelSerializer(AuthorSummarySerializerMixin, serializers.ModelSer
         ]
 
 
-class RealtimeConfigSerializer(
-    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
-):
-    secret_reference_fields = ("api_key_secret_id",)
-
+class RealtimeConfigSerializer(AuthorSummarySerializerMixin, serializers.ModelSerializer):
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",
@@ -85,10 +80,8 @@ class RealtimeTranscriptionModelSerializer(
 
 
 class RealtimeTranscriptionConfigSerializer(
-    AuthorSummarySerializerMixin, SecretReferenceGuardMixin, serializers.ModelSerializer
+    AuthorSummarySerializerMixin, serializers.ModelSerializer
 ):
-    secret_reference_fields = ("api_key_secret_id",)
-
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",

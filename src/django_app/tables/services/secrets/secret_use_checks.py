@@ -53,14 +53,65 @@ def check_embedding_model_write(actor: SecretActor | None, instance, data: dict)
     _check_model_base_url(actor, instance, data, config_class=EmbeddingConfig)
 
 
-def _check_api_key_and_header_markers(actor: SecretActor | None, instance, data: dict) -> None:
-    current_secret_id = _persisted_value(instance, "api_key_secret_id")
-    secret_use_service.check_references(
+def check_realtime_config_write(actor: SecretActor | None, instance, data: dict) -> None:
+    """Gate a change of a RealtimeConfig's API-key secret."""
+    _check_secret_reference(actor, instance, data, attribute="api_key_secret")
+
+
+def check_realtime_transcription_config_write(
+    actor: SecretActor | None, instance, data: dict
+) -> None:
+    """Gate a change of a RealtimeTranscriptionConfig's API-key secret."""
+    _check_secret_reference(actor, instance, data, attribute="api_key_secret")
+
+
+def check_openai_realtime_config_write(actor: SecretActor | None, instance, data: dict) -> None:
+    """Gate an OpenAIRealtimeConfig write: its two API-key secrets and its `base_url`.
+
+    The realtime service sends the realtime key and the transcription key to the
+    config's `base_url` alike, so either one makes the `base_url` a destination
+    of a secret.
+    """
+    _check_secret_reference(actor, instance, data, attribute="api_key_secret")
+    _check_secret_reference(actor, instance, data, attribute="transcription_api_key_secret")
+    current_base_url = _persisted_value(instance, "base_url")
+    secret_use_service.check_destination(
         actor,
-        field_path=("api_key_secret_id",),
-        current=current_secret_id,
-        incoming=data.get("api_key_secret", current_secret_id),
+        field_path=("base_url",),
+        carries_secret=_references_secret_after_write(instance, data, "api_key_secret")
+        or _references_secret_after_write(instance, data, "transcription_api_key_secret"),
+        current=current_base_url,
+        incoming=data.get("base_url", current_base_url),
     )
+
+
+def check_elevenlabs_realtime_config_write(actor: SecretActor | None, instance, data: dict) -> None:
+    """Gate a change of an ElevenLabsRealtimeConfig's API-key secret.
+
+    The config has no destination field: the realtime service always calls ElevenLabs.
+    """
+    _check_secret_reference(actor, instance, data, attribute="api_key_secret")
+
+
+def check_gemini_realtime_config_write(actor: SecretActor | None, instance, data: dict) -> None:
+    """Gate a change of a GeminiRealtimeConfig's API-key secret.
+
+    The config has no destination field: the realtime service always calls Gemini.
+    """
+    _check_secret_reference(actor, instance, data, attribute="api_key_secret")
+
+
+def check_twilio_channel_write(actor: SecretActor | None, instance, data: dict) -> None:
+    """Gate a change of a TwilioChannel's auth-token secret.
+
+    The channel has no destination field: the stored token is only used to verify
+    the signature of Twilio's inbound requests, never sent anywhere.
+    """
+    _check_secret_reference(actor, instance, data, attribute="auth_token_secret")
+
+
+def _check_api_key_and_header_markers(actor: SecretActor | None, instance, data: dict) -> None:
+    _check_secret_reference(actor, instance, data, attribute="api_key_secret")
     current_headers = _persisted_value(instance, "extra_headers")
     secret_use_service.check_markers(
         actor,
@@ -121,12 +172,30 @@ def _any_config_of_model_carries_secret(config_class: type[models.Model], model_
 
 
 def _config_carries_secret_after_write(instance, data: dict) -> bool:
-    if "api_key_secret" in data:
-        has_api_key_secret = data["api_key_secret"] is not None
-    else:
-        has_api_key_secret = _persisted_value(instance, "api_key_secret_id") is not None
     headers = data.get("extra_headers", _persisted_value(instance, "extra_headers"))
-    return has_api_key_secret or bool(extract_secret_marker_names(headers))
+    return _references_secret_after_write(instance, data, "api_key_secret") or bool(
+        extract_secret_marker_names(headers)
+    )
+
+
+def _check_secret_reference(
+    actor: SecretActor | None, instance, data: dict, *, attribute: str
+) -> None:
+    """Gate a change of the secret FK `attribute`, reported under its API field `<attribute>_id`."""
+    field_name = f"{attribute}_id"
+    current_secret_id = _persisted_value(instance, field_name)
+    secret_use_service.check_references(
+        actor,
+        field_path=(field_name,),
+        current=current_secret_id,
+        incoming=data.get(attribute, current_secret_id),
+    )
+
+
+def _references_secret_after_write(instance, data: dict, attribute: str) -> bool:
+    if attribute in data:
+        return data[attribute] is not None
+    return _persisted_value(instance, f"{attribute}_id") is not None
 
 
 def _model_base_url(model_row) -> str | None:

@@ -278,10 +278,16 @@ from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.secrets.secret_use_checks import (
+    check_elevenlabs_realtime_config_write,
     check_embedding_config_write,
     check_embedding_model_write,
+    check_gemini_realtime_config_write,
     check_llm_config_write,
     check_llm_model_write,
+    check_openai_realtime_config_write,
+    check_realtime_config_write,
+    check_realtime_transcription_config_write,
+    check_twilio_channel_write,
 )
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
@@ -1579,10 +1585,13 @@ class RealtimeModelViewSet(
     serializer_class = RealtimeModelSerializer
 
 
-class RealtimeConfigModelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class RealtimeConfigModelViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_realtime_config_write
 
     class RealtimeConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -1619,10 +1628,13 @@ class RealtimeTranscriptionModelViewSet(
     serializer_class = RealtimeTranscriptionModelSerializer
 
 
-class RealtimeTranscriptionConfigModelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class RealtimeTranscriptionConfigModelViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_realtime_transcription_config_write
 
     class RealtimeTranscriptionConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -1724,26 +1736,35 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         return Response({"detail": "Updated"})
 
 
-class OpenAIRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class OpenAIRealtimeConfigViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_openai_realtime_config_write
     queryset = OpenAIRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = OpenAIRealtimeConfigSerializer
 
 
-class ElevenLabsRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class ElevenLabsRealtimeConfigViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_elevenlabs_realtime_config_write
     queryset = ElevenLabsRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = ElevenLabsRealtimeConfigSerializer
 
 
-class GeminiRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class GeminiRealtimeConfigViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
+    secret_use_check = check_gemini_realtime_config_write
     queryset = GeminiRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = GeminiRealtimeConfigSerializer
 
@@ -1815,9 +1836,12 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         return Response(RealtimeChannelInternalSerializer(channel).data)
 
 
-class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class TwilioChannelViewSet(
+    SecretUseCheckedViewSetMixin, OrgScopedChildViewSetMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     org_filter_path = "channel__org_id"
+    secret_use_check = check_twilio_channel_write
     queryset = TwilioChannel.objects.select_related(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
     )
@@ -1831,7 +1855,10 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         if instance:
             serializer = self.get_serializer(instance, data=request.data)
             serializer.is_valid(raise_exception=True)
+            # The row was found without org scoping: another org's channel must be a
+            # 404 before the secret check can answer with anything else.
             self._assert_parent_in_active_org(serializer)
+            self.run_secret_use_check(instance, serializer.validated_data)
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return super().create(request, *args, **kwargs)
