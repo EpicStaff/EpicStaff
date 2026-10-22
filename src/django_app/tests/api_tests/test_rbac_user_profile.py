@@ -7,7 +7,6 @@ from unittest.mock import ANY
 
 import pytest
 from django.core.cache import cache
-from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from PIL import Image
@@ -51,12 +50,6 @@ def orphan_user(django_user_model):
     return django_user_model.objects.create_user(email="orphan@x.test", password="StrongPass123!")
 
 
-@pytest.fixture
-def tmp_media_root(settings, tmp_path):
-    settings.MEDIA_ROOT = str(tmp_path)
-    return tmp_path
-
-
 def client_for(user):
     client = APIClient()
     client.force_authenticate(user=user)
@@ -98,7 +91,7 @@ def _png_upload(name="a.png", content=None):
         "complete-quickstart-tour",
     ],
 )
-def test_an_env_api_key_has_no_profile(issue_api_key, tmp_media_root, method, url, body, format_name):
+def test_an_env_api_key_has_no_profile(issue_api_key, method, url, body, format_name):
     """An env-seeded key belongs to no user, so there is no profile to read or change."""
     raw, _ = issue_api_key(user=None)
     client = APIClient()
@@ -173,16 +166,16 @@ def test_a_superadmin_is_shown_every_active_org_as_superadmin(superadmin_client)
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("with_avatar", [False, True])
-def test_avatar_url_is_absolute_or_null(member_acme, tmp_media_root, with_avatar):
+def test_avatar_url_is_the_avatar_endpoint_or_null(member_acme, with_avatar):
     if with_avatar:
-        member_acme.avatar.save("seed.png", ContentFile(_image("PNG")), save=True)
+        member_acme.avatar.name = f"avatars/{member_acme.id}/4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b.png"
+        member_acme.save(update_fields=["avatar"])
 
-    url = client_for(member_acme).get(PROFILE_URL).json()["avatar_url"]
+    body = client_for(member_acme).get(PROFILE_URL).json()
 
-    if with_avatar:
-        assert url.startswith("http") and "/media/avatars/" in url
-    else:
-        assert url is None
+    expected = f"/api/users/{member_acme.id}/avatar/?v=4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b" if with_avatar else None
+    assert body["avatar_url"] == expected
+    assert "avatar" not in body
 
 
 @pytest.mark.django_db
@@ -630,7 +623,7 @@ def test_patch_rejects_a_body_that_is_not_an_object_before_reading_custom_shortc
 
 
 @pytest.mark.django_db
-def test_avatar_upload_and_delete(member_acme, tmp_media_root):
+def test_avatar_upload_and_delete(member_acme):
     client = client_for(member_acme)
     upload = SimpleUploadedFile("a.jpg", _image("JPEG"), content_type="image/jpeg")
 
@@ -655,7 +648,7 @@ def test_avatar_upload_and_delete(member_acme, tmp_media_root):
     ],
     ids=["gif", "text-disguised-as-png", "over-size-cap", "no-file"],
 )
-def test_avatar_upload_rejects_anything_but_a_small_real_image(member_acme, settings, tmp_media_root, upload, code):
+def test_avatar_upload_rejects_anything_but_a_small_real_image(member_acme, settings, upload, code):
     settings.AVATAR_MAX_SIZE = 1024
     file = upload()
 

@@ -189,7 +189,7 @@ def test_schema_user_summary_exposes_only_public_identity(openapi_components):
 
 @pytest.fixture
 def subgraph_node_edited_by_avatar_user(acme, named_author):
-    named_author.avatar.name = f"avatars/{named_author.id}/summary-avatar.png"
+    named_author.avatar.name = f"avatars/{named_author.id}/5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d.png"
     named_author.save(update_fields=["avatar"])
     parent = Graph.objects.create(name="summary-parent-flow", org=acme)
     referenced = Graph.objects.create(name="summary-referenced-flow", org=acme)
@@ -198,7 +198,7 @@ def subgraph_node_edited_by_avatar_user(acme, named_author):
 
 
 @pytest.mark.django_db
-def test_subgraph_detail_renders_editor_avatar_as_absolute_url(
+def test_subgraph_detail_renders_editor_avatar_as_relative_avatar_endpoint_url(
     client_in, subgraph_node_edited_by_avatar_user, named_author, acme
 ):
     node = subgraph_node_edited_by_avatar_user
@@ -209,7 +209,7 @@ def test_subgraph_detail_renders_editor_avatar_as_absolute_url(
 
     assert node_response.status_code == status.HTTP_200_OK, node_response.content
     assert graph_response.status_code == status.HTTP_200_OK, graph_response.content
-    expected_avatar_url = f"http://testserver{named_author.avatar.url}"
+    expected_avatar_url = f"/api/users/{named_author.id}/avatar/?v=5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d"
     (graph_subgraph_node,) = graph_response.data["subgraph_node_list"]
     for subgraph_detail in (
         node_response.data["subgraph_detail"],

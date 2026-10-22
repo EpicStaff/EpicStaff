@@ -347,16 +347,19 @@ def test_losing_superadmin_releases_deleters_outside_memberships(superadmin, acm
     assert _deleter_id(graph) is None
 
 
-def test_avatar_urls_are_absolute(acme_admin_client, admin_acme, acme):
-    admin_acme.avatar = "avatars/admin.png"
+def test_avatar_urls_point_at_the_avatar_endpoint(acme_admin_client, admin_acme, acme):
+    admin_acme.avatar = f"avatars/{admin_acme.id}/7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b.png"
     admin_acme.save(update_fields=["avatar"])
     graph = Graph.objects.create(org=acme, name="Pictured", created_by=admin_acme)
     acme_admin_client.delete(f"{FLOWS_URL}{graph.pk}/")
 
     lines = _authorship_lines(_bin(acme_admin_client, FLOWS_URL)[0])
 
+    assert lines
     for line in lines:
-        assert line["value"]["avatar_url"].startswith("http://testserver/")
+        assert line["value"]["avatar_url"] == (
+            f"/api/users/{admin_acme.id}/avatar/?v=7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
+        )
 
 
 def test_a_surface_deleted_with_its_agent_shows_the_agents_deleter(

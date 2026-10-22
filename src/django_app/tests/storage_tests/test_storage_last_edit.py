@@ -536,11 +536,11 @@ class TestListingOutput:
         _assert_last_edit_fields(results["a.txt"], member_only)
         _assert_last_edit_fields(results["b.txt"], None)
 
-    def test_files_by_ids_returns_editor_with_absolute_avatar(
+    def test_files_by_ids_returns_editor_with_avatar_endpoint_url(
         self, client_in_org, edited_tree, admin_acme, member_only, acme
     ):
         member_only.display_name = "Member Only"
-        member_only.avatar.name = f"avatars/{member_only.id}/face.png"
+        member_only.avatar.name = f"avatars/{member_only.id}/3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f.png"
         member_only.save(update_fields=["display_name", "avatar"])
         file_row = _row(acme, "docs/a.txt")
 
@@ -552,7 +552,7 @@ class TestListingOutput:
         assert response.data[0]["last_edited_by"] == {
             "id": member_only.id,
             "display_name": "Member Only",
-            "avatar_url": f"http://testserver/media/avatars/{member_only.id}/face.png",
+            "avatar_url": f"/api/users/{member_only.id}/avatar/?v=3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f",
         }
 
     def test_listing_never_shows_another_orgs_entries(

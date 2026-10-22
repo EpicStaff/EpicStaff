@@ -23,6 +23,13 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [],
 }
 
+# Avatars go to an in-memory storage, never to the bucket. Set here, not with
+# override_settings: the avatar field resolves its storage once, when models load.
+STORAGES = {
+    **STORAGES,
+    "avatars": {"BACKEND": "tests.avatar_storage_double.InMemoryAvatarStorage"},
+}
+
 # The existing first-setup API tests exercise the browser flow, so the test
 # suite runs in `open` mode. Tests for the gate itself opt in explicitly with
 # @override_settings(FIRST_SETUP_MODE="cli_only").

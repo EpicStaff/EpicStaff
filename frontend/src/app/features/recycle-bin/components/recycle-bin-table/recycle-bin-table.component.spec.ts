@@ -1,10 +1,13 @@
 import { DatePipe } from '@angular/common';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
 import { FetchErrorStateComponent, FlowNodeListComponent, SelectComponent } from '@shared/components';
 import { NodeType, UserSummary } from '@shared/models';
 
+import { FakeObjectUrls } from '../../../../shared/services/avatar-image/testing/fake-object-urls';
 import { RECYCLE_BIN_DATE_FORMAT } from '../../constants/recycle-bin-dates.constants';
 import { RecycleBinItem } from '../../models/recycle-bin.model';
 import { RecycleBinTableComponent } from './recycle-bin-table.component';
@@ -478,8 +481,24 @@ describe('RecycleBinTableComponent', () => {
     });
 
     describe('user details', () => {
-        const IVAN: UserSummary = { id: 1, display_name: 'Ivan Bohun', avatar_url: 'https://example.com/ivan.png' };
+        const IVAN: UserSummary = { id: 1, display_name: 'Ivan Bohun', avatar_url: '/api/users/1/avatar/?v=9d3f' };
         const UNNAMED: UserSummary = { id: 2, display_name: null, avatar_url: null };
+        let httpMock: HttpTestingController;
+        let objectUrls: FakeObjectUrls;
+
+        beforeEach(() => {
+            objectUrls = new FakeObjectUrls();
+            objectUrls.install();
+            TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+            httpMock = TestBed.inject(HttpTestingController);
+        });
+
+        afterEach(() => {
+            // Tests that are not about the image leave its load pending; anything else is unexpected.
+            httpMock.match((request) => request.url.startsWith('/api/users/'));
+            httpMock.verify();
+            objectUrls.restore();
+        });
 
         function userRows(createdBy: UserSummary | null, deletedBy: UserSummary | null): Element[] {
             const tool = binItem({
@@ -493,14 +512,19 @@ describe('RecycleBinTableComponent', () => {
         }
 
         it('shows the avatar and the name of a user', () => {
-            const [created] = userRows(IVAN, IVAN);
+            const [created, deleted] = userRows(IVAN, IVAN);
 
             expect(created.classList).toContain('bin-details__row--user');
             expect(created.querySelector('.bin-details__label')?.textContent?.trim()).toBe('Created by');
             expect(created.querySelector('.bin-details__user-name')?.textContent?.trim()).toBe('Ivan Bohun');
-            expect(created.querySelector('app-user-avatar img')?.getAttribute('src')).toBe(
-                'https://example.com/ivan.png'
-            );
+            expect(created.querySelector('app-user-avatar .initials')?.textContent).toBe('IB');
+
+            // Both lines show the same user: one request for the avatar, one image shared by both.
+            httpMock.expectOne(IVAN.avatar_url as string).flush(new Blob(['png'], { type: 'image/png' }));
+            fixture.detectChanges();
+
+            expect(created.querySelector('app-user-avatar img')?.getAttribute('src')).toBe('blob:fake-1');
+            expect(deleted.querySelector('app-user-avatar img')?.getAttribute('src')).toBe('blob:fake-1');
         });
 
         it('shows an unknown user as a muted "Unknown", without an avatar', () => {
@@ -539,8 +563,8 @@ describe('RecycleBinTableComponent', () => {
             const element = renderOpen({ items: [file] });
 
             const rows = Array.from(element.querySelectorAll('.bin-details__row'));
-            expect(rows.map((row) => row.querySelector('.bin-details__value')?.textContent?.trim())).toEqual([
-                'Ivan Bohun',
+            expect(rows[0].querySelector('.bin-details__user-name')?.textContent?.trim()).toBe('Ivan Bohun');
+            expect(rows.slice(1).map((row) => row.querySelector('.bin-details__value')?.textContent?.trim())).toEqual([
                 'Unknown',
                 'Quarterly report',
                 new DatePipe('en-US').transform(created, RECYCLE_BIN_DATE_FORMAT),
