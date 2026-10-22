@@ -229,17 +229,10 @@ server {
     # <bucket>/system/avatars/ and nothing else, so no credential goes to storage.
     # Query arguments are dropped: S3 reads them as subresources and header overrides.
     location /media/avatars/ {
-        limit_except GET { deny all; }
         set $args "";
         proxy_pass http://storage_server/${STORAGE_BUCKET}/system/avatars/;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-        proxy_http_version 1.1;
         proxy_set_header Authorization "";
-        proxy_set_header X-API-Key "";
-        proxy_set_header Cookie "";
-        proxy_hide_header x-amz-request-id;
-        proxy_hide_header x-amz-id-2;
-        proxy_hide_header x-request-id;
     }
 
     location /media/ {

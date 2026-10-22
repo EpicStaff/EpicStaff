@@ -45,7 +45,7 @@ JWT is NOT re-issued — the FE does not need to refresh tokens. Just refetch th
 
 ### 3. Uploading or replacing the avatar
 
-`POST /api/profile/avatar/` with `multipart/form-data`; form field name `avatar`. The server rotates the image upright from its EXIF orientation, shrinks it to fit 512×512 (aspect ratio kept, never enlarged), re-encodes it in the uploaded format (an MPO phone photo is stored as JPEG) and drops EXIF (including GPS) and comments; the colour (ICC) profile is kept. Refused with `invalid_avatar`: a PNG over 4.2 megapixels (2048×2048), a progressive JPEG over 16 megapixels, a baseline JPEG that still exceeds 4.2 megapixels when decoded at up to 1/8 scale, and 16-bit / 32-bit / float pixels. The previous file (if any) is deleted server-side after the DB write commits.
+`POST /api/profile/avatar/` with `multipart/form-data`; form field name `avatar`. The previous file (if any) is deleted server-side after the DB write commits.
 
 Validation errors come back as 400 with one of these `code` values:
 

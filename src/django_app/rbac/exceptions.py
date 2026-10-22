@@ -206,10 +206,9 @@ class InvalidPasswordChangeTicketError(CustomAPIExeption):
 
 
 class InvalidAvatarError(CustomAPIExeption):
-    """Raised by UserAvatarStorageService when Pillow cannot decode the upload,
-    its format is outside settings.AVATAR_ALLOWED_FORMATS, or it has too many
-    pixels or too deep a pixel mode. Generic message — does not expose Pillow's
-    internal reason."""
+    """Raised by UserAvatarStorageService when Pillow verification fails
+    or the decoded image format is outside settings.AVATAR_ALLOWED_FORMATS.
+    Generic message — does not expose Pillow's internal reason."""
 
     status_code = 400
     default_detail = "Uploaded file is not a valid JPEG or PNG image."
