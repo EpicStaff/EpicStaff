@@ -14,16 +14,19 @@ import {
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
-import { filter, finalize, switchMap } from 'rxjs';
+import { catchError, EMPTY, filter, finalize, repeat, Subscription, switchMap, timer } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { VenvCardComponent } from '../../components/venv-card/venv-card.component';
 import { VenvDialogComponent, VenvDialogData } from '../../components/venv-dialog/venv-dialog.component';
-import { Venv } from '../../models/venv.model';
+import { Venv, VenvStatus } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
 
 type VenvSortOrder = 'default' | 'name_asc' | 'name_desc';
+
+const POLL_INTERVAL_MS = 2_000;
+const BUILDING_STATUSES: ReadonlySet<VenvStatus> = new Set(['declared', 'processing']);
 
 @Component({
     selector: 'app-venvs-list-page',
@@ -78,6 +81,8 @@ export class VenvsListPageComponent {
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
+
+    private pollSubscription: Subscription | null = null;
 
     constructor() {
         this.loadVenvs();
@@ -149,6 +154,7 @@ export class VenvsListPageComponent {
     }
 
     private loadVenvs(): void {
+        this.stopPolling();
         this.isLoading.set(true);
         this.loadError.set(null);
         this.venvsApi
@@ -156,7 +162,7 @@ export class VenvsListPageComponent {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (venvs) => {
-                    this.venvs.set(venvs);
+                    this.applyVenvs(venvs);
                     this.isLoading.set(false);
                 },
                 error: (error: HttpErrorResponse) => {
@@ -165,5 +171,43 @@ export class VenvsListPageComponent {
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
+    }
+
+    private applyVenvs(venvs: Venv[]): void {
+        const previousStatuses = new Map(this.venvs().map((venv) => [venv.id, venv.status]));
+        for (const venv of venvs) {
+            const previousStatus = previousStatuses.get(venv.id);
+            if (!previousStatus || !BUILDING_STATUSES.has(previousStatus)) continue;
+            if (venv.status === 'completed') {
+                this.toastService.success(`Venv "${venv.name}" is ready`);
+            } else if (venv.status === 'failed') {
+                this.toastService.error(`Venv "${venv.name}" failed to build`);
+            }
+        }
+
+        this.venvs.set(venvs);
+        if (venvs.some((venv) => BUILDING_STATUSES.has(venv.status))) {
+            this.startPolling();
+        } else {
+            this.stopPolling();
+        }
+    }
+
+    private startPolling(): void {
+        if (this.pollSubscription) return;
+        // timer + repeat: the next request is scheduled only after the previous response arrived.
+        this.pollSubscription = timer(POLL_INTERVAL_MS)
+            .pipe(
+                filter(() => document.visibilityState === 'visible'),
+                switchMap(() => this.venvsApi.getVenvs().pipe(catchError(() => EMPTY))),
+                repeat(),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((venvs) => this.applyVenvs(venvs));
+    }
+
+    private stopPolling(): void {
+        this.pollSubscription?.unsubscribe();
+        this.pollSubscription = null;
     }
 }
