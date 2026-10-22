@@ -337,7 +337,7 @@ class QuickstartService(metaclass=SingletonMeta):
         if own_model is not None:
             if own_model.base_url:
                 raise QuickstartCustomModelError(
-                    f"The organization's custom model \"{own_model.name}\" sends requests "
+                    f'The organization\'s custom model "{own_model.name}" sends requests '
                     "to a custom URL, so quickstart will not attach a key to it."
                 )
             return own_model

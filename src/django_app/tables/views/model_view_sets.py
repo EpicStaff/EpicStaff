@@ -433,9 +433,7 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
         instance.delete()
 
 
-class LLMConfigReadWriteViewSet(
-    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, ModelViewSet
-):
+class LLMConfigReadWriteViewSet(SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
@@ -2539,7 +2537,11 @@ class WebhookTriggerViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "flows_using_trigger": Permission.READ, **RECYCLE_BIN_ACTION_MAP}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "flows_using_trigger": Permission.READ,
+        **RECYCLE_BIN_ACTION_MAP,
+    }
     recycle_bin_resource_key = RecycleBinSource.WEBHOOK_TRIGGER
     queryset = WebhookTrigger.objects.select_related(
         "ngrok", "localhost", "auth", "auth__secret"

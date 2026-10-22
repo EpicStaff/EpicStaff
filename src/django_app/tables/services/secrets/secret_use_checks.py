@@ -341,8 +341,7 @@ def _any_config_of_model_carries_secret(config_class: type[models.Model], model_
         "api_key_secret_id", "extra_headers"
     )
     return any(
-        secret_id is not None or extract_secret_marker_names(headers)
-        for secret_id, headers in rows
+        secret_id is not None or extract_secret_marker_names(headers) for secret_id, headers in rows
     )
 
 

@@ -793,7 +793,7 @@ class TestPythonCodeDeclarationIsGatedInEveryParent:
         self, request, no_use_client_6b, endpoint, attribute, fixture_name, secret_a
     ):
         parent = request.getfixturevalue(fixture_name)
-        code_reading_the_secret = 'def main(**kwargs):\n    return get_secret("FKUSE_SECRET_A")\n'
+        code_reading_the_secret = 'def main(**kwargs):\n    return get_secret("FKUSE_SECRET_A")'
 
         response = no_use_client_6b.patch(
             f"{endpoint}{parent.pk}/",
