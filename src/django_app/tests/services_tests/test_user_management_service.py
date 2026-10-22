@@ -29,7 +29,6 @@ from rbac.exceptions import (
 )
 from rbac.governance.users import UserManagementService
 from rbac.identity.credential_revocation import CredentialRevocationService
-from tests.avatar_helpers import avatar_storage
 
 UserModel = get_user_model()
 
@@ -254,7 +253,7 @@ def test_delete_user_preview_omits_memberships_and_api_keys_when_the_user_has_no
 
 @pytest.mark.django_db
 def test_delete_user_dry_run_prediction_matches_what_the_delete_actually_removes(
-    actor, target_user, issue_api_key
+    actor, target_user, issue_api_key, settings, tmp_path
 ):
     """The load-bearing guarantee: the delete removes exactly the rows the preview predicted, and nothing else."""
     from django.core.files.uploadedfile import SimpleUploadedFile
@@ -263,6 +262,7 @@ def test_delete_user_dry_run_prediction_matches_what_the_delete_actually_removes
     role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
     OrganizationUser.objects.create(user=target_user, org=org, role=role)
     issue_api_key(user=target_user, name="cross-check-key")
+    settings.MEDIA_ROOT = str(tmp_path)
     target_user.avatar.save(
         "face.png", SimpleUploadedFile("face.png", b"fake-image-bytes"), save=True
     )
@@ -479,22 +479,26 @@ def test_deleting_a_user_blacklists_their_refresh_tokens(actor, target_user):
 
 
 @pytest.mark.django_db
-def test_user_avatar_is_previewed_and_removed_from_avatar_storage(
-    actor, target_user, django_capture_on_commit_callbacks
+def test_user_avatar_is_previewed_and_removed_from_disk(
+    actor, target_user, settings, tmp_path, django_capture_on_commit_callbacks
 ):
-    """The report names the avatar object and the real delete removes it from the avatar storage."""
+    """The avatar lives on local disk, not in MinIO: the report names it and the real delete removes the file."""
+    from pathlib import Path
+
     from django.core.files.uploadedfile import SimpleUploadedFile
 
+    settings.MEDIA_ROOT = str(tmp_path)
     target_user.avatar.save(
         "face.png", SimpleUploadedFile("face.png", b"fake-image-bytes"), save=True
     )
     avatar_name = target_user.avatar.name
-    assert avatar_storage().exists(avatar_name), "fixture failed to write the avatar"
+    stored = Path(settings.MEDIA_ROOT) / avatar_name
+    assert stored.exists(), "fixture failed to write the avatar"
 
     service = UserManagementService()
     preview = service.preview_delete(actor=actor, target_user_id=target_user.pk)
     assert preview.affected_resources["avatar"] == 1
-    assert avatar_storage().exists(avatar_name), "a dry run must not touch the object"
+    assert stored.exists(), "a dry run must not touch the file"
 
     with django_capture_on_commit_callbacks(execute=True):
         service.delete_user(
@@ -503,16 +507,17 @@ def test_user_avatar_is_previewed_and_removed_from_avatar_storage(
             verification_phrase=f"delete-{target_user.email}",
         )
 
-    assert not avatar_storage().exists(avatar_name)
+    assert not stored.exists()
 
 
 @pytest.mark.django_db
 def test_avatar_cleanup_failure_does_not_undo_a_committed_delete(
-    actor, target_user, django_user_model, mocker, django_capture_on_commit_callbacks
+    actor, target_user, django_user_model, settings, tmp_path, mocker, django_capture_on_commit_callbacks
 ):
     """A storage failure while deleting the orphaned avatar is logged, never re-raised, and never undoes the already-committed delete."""
     from django.core.files.uploadedfile import SimpleUploadedFile
 
+    settings.MEDIA_ROOT = str(tmp_path)
     target_user.avatar.save(
         "face.png", SimpleUploadedFile("face.png", b"fake-image-bytes"), save=True
     )
@@ -531,13 +536,18 @@ def test_avatar_cleanup_failure_does_not_undo_a_committed_delete(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_files_are_only_removed_once_the_delete_commits(actor, target_user, django_user_model):
+def test_files_are_only_removed_once_the_delete_commits(
+    actor, target_user, django_user_model, settings, tmp_path
+):
     """If the caller's transaction rolls back, the user is back and so must their avatar be."""
+    from pathlib import Path
+
     from django.core.files.uploadedfile import SimpleUploadedFile
     from django.db import transaction
 
+    settings.MEDIA_ROOT = str(tmp_path)
     target_user.avatar.save("face.png", SimpleUploadedFile("face.png", b"fake-image-bytes"), save=True)
-    avatar_name = target_user.avatar.name
+    stored = Path(settings.MEDIA_ROOT) / target_user.avatar.name
 
     with pytest.raises(RuntimeError):
         with transaction.atomic():
@@ -547,7 +557,7 @@ def test_files_are_only_removed_once_the_delete_commits(actor, target_user, djan
             raise RuntimeError("the caller's transaction fails after the delete")
 
     assert django_user_model.objects.filter(pk=target_user.pk).exists()
-    assert avatar_storage().exists(avatar_name)
+    assert stored.exists()
 
 
 class _RecordingCredentialRevoker(CredentialRevocationService):

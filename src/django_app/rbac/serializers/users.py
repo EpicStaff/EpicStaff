@@ -38,6 +38,7 @@ class UserResponseSerializer(serializers.ModelSerializer):
             "id",
             "email",
             "display_name",
+            "avatar",
             "avatar_url",
             "is_superadmin",
             "is_active",
@@ -47,8 +48,8 @@ class UserResponseSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_avatar_url(self, user) -> str | None:
-        return build_avatar_url(user)
+    def get_avatar_url(self, user):
+        return build_avatar_url(user, self.context.get("request"))
 
 
 # ---- request serializers (schema-only; real validation in

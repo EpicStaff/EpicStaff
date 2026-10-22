@@ -1,3 +1,5 @@
+from botocore.config import Config
+
 from django_app.settings import env
 
 http = "https" if env.bool("STORAGE_SSL") else "http"
@@ -26,10 +28,20 @@ STORAGES = {
             "location": "system",
             "default_acl": None,
             "file_overwrite": True,
+            # Every upload gets a new random key, so a cached avatar never goes stale.
+            "object_parameters": {"CacheControl": "public, max-age=31536000, immutable"},
             # SigV4 signs with a region; us-east-1 matches what storage-init configures.
             "region_name": "us-east-1",
-            "signature_version": "s3v4",
-            "addressing_style": "path",
+            # A given client_config replaces django-storages' own, so signing and
+            # addressing are set here. An avatar call runs inside a request: fail fast
+            # instead of holding the worker for botocore's 60 s defaults.
+            "client_config": Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "path"},
+                connect_timeout=5,
+                read_timeout=30,
+                retries={"mode": "standard", "total_max_attempts": 2},
+            ),
         },
     },
 }

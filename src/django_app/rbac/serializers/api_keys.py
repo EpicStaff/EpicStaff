@@ -2,7 +2,6 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from rbac.models import ApiKey
-from rbac.profile.avatar import build_avatar_url
 
 
 class ApiKeySerializer(serializers.ModelSerializer):
@@ -47,14 +46,13 @@ class ApiKeyCreateResponseSerializer(ApiKeySerializer):
 
 
 class ApiKeyOwnerSerializer(serializers.ModelSerializer):
-    avatar_url = serializers.SerializerMethodField()
+    # `avatar_url` is built by DRF's ImageField when `request` is in the
+    # serializer context, matching the convention used elsewhere (e.g. AdminNestedSerializer).
+    avatar_url = serializers.ImageField(source="avatar", use_url=True, read_only=True)
 
     class Meta:
         model = get_user_model()
         fields = ["id", "email", "display_name", "avatar_url"]
-
-    def get_avatar_url(self, user) -> str | None:
-        return build_avatar_url(user)
 
 
 class ApiKeyAdminSerializer(ApiKeySerializer):

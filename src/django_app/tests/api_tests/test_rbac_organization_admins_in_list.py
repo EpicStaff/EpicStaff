@@ -2,6 +2,7 @@
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.models import Organization, OrganizationUser, Role
@@ -85,25 +86,35 @@ def test_orgs_without_admins_show_the_oldest_active_superadmin(api_client, super
 
 
 @pytest.mark.django_db
-def test_avatar_url_is_the_avatar_endpoint_when_set_and_null_when_unset(
-    api_client, superadmin_jwt, org_admin_role
+def test_avatar_url_is_absolute_when_set_and_null_when_unset(
+    api_client, superadmin_jwt, org_admin_role, settings, tmp_path
 ):
+    settings.MEDIA_ROOT = str(tmp_path)
     org = Organization.objects.create(name="AvatarOrg")
     u_no = _make_user("noava@example.com")
     u_yes = _make_user("ava@example.com")
     OrganizationUser.objects.create(user=u_no, org=org, role=org_admin_role)
     OrganizationUser.objects.create(user=u_yes, org=org, role=org_admin_role)
-    u_yes.avatar.name = f"avatars/{u_yes.id}/6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a.png"
+
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\x00"
+        b"\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    u_yes.avatar = SimpleUploadedFile("a.png", png, content_type="image/png")
     u_yes.save(update_fields=["avatar"])
 
-    resp = _auth(api_client, superadmin_jwt).get(_list_url())
-
-    payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
-    by_email = {a["email"]: a for a in payload["admins"]}
-    assert by_email["noava@example.com"]["avatar_url"] is None
-    assert by_email["ava@example.com"]["avatar_url"] == (
-        f"/api/users/{u_yes.id}/avatar/?v=6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a"
-    )
+    try:
+        resp = _auth(api_client, superadmin_jwt).get(_list_url())
+        payload = next(o for o in resp.json()["results"] if o["id"] == org.id)
+        by_email = {a["email"]: a for a in payload["admins"]}
+        assert by_email["noava@example.com"]["avatar_url"] is None
+        assert by_email["ava@example.com"]["avatar_url"].startswith("http")
+        assert "/avatars/" in by_email["ava@example.com"]["avatar_url"]
+    finally:
+        u_yes.refresh_from_db()
+        if u_yes.avatar:
+            u_yes.avatar.delete(save=False)
 
 
 @pytest.mark.django_db

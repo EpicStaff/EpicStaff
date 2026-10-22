@@ -23,11 +23,12 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [],
 }
 
-# Avatars go to an in-memory storage, never to the bucket. Set here, not with
-# override_settings: the avatar field resolves its storage once, when models load.
+# Avatars go to local disk under MEDIA_ROOT, never to the bucket; the URLs are
+# `/media/<name>`, as AvatarStorage's. Set here, not with override_settings: the
+# avatar field resolves its storage once, when models load.
 STORAGES = {
     **STORAGES,
-    "avatars": {"BACKEND": "tests.avatar_storage_double.InMemoryAvatarStorage"},
+    "avatars": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
 }
 
 # The existing first-setup API tests exercise the browser flow, so the test

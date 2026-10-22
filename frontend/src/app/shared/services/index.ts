@@ -1,7 +1,5 @@
 export * from './app-storage.service';
 export * from './app-storage.token';
-export * from './avatar-image/avatar-image.service';
-export * from './avatar-image/avatar-image-api.service';
 export * from './base-labels-store.service';
 export * from './dropdown-manager.service';
 export * from './embeddings/embedding-config-storage.service';

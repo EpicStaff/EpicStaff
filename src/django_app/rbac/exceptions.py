@@ -206,9 +206,10 @@ class InvalidPasswordChangeTicketError(CustomAPIExeption):
 
 
 class InvalidAvatarError(CustomAPIExeption):
-    """Raised by UserAvatarStorageService when Pillow verification fails
-    or the decoded image format is outside settings.AVATAR_ALLOWED_FORMATS.
-    Generic message — does not expose Pillow's internal reason."""
+    """Raised by UserAvatarStorageService when Pillow cannot decode the upload,
+    its format is outside settings.AVATAR_ALLOWED_FORMATS, or it has too many
+    pixels or too deep a pixel mode. Generic message — does not expose Pillow's
+    internal reason."""
 
     status_code = 400
     default_detail = "Uploaded file is not a valid JPEG or PNG image."
@@ -224,17 +225,6 @@ class AvatarTooLargeError(CustomAPIExeption):
     status_code = 400
     default_detail = "Avatar file exceeds the maximum allowed size."
     default_code = "avatar_too_large"
-
-
-class AvatarNotFoundError(CustomAPIExeption):
-    """Raised by UserAvatarReadService when the avatar is not served: the user is
-    unknown or not visible to the caller, has no avatar, the requested version is
-    stale, or the stored object is gone. One answer for all, so the response never
-    reveals whether a user exists or has an avatar."""
-
-    status_code = 404
-    default_detail = "Avatar not found."
-    default_code = "avatar_not_found"
 
 
 class BuiltInRoleImmutableError(CustomAPIExeption):

@@ -18,7 +18,7 @@ class MembershipResponseSerializer(serializers.Serializer):
                 "id": user.id,
                 "email": user.email,
                 "display_name": user.display_name,
-                "avatar_url": build_avatar_url(user),
+                "avatar_url": build_avatar_url(user, self.context.get("request")),
                 "is_active": user.is_active,
             },
             "role": {"id": instance.role_id, "name": instance.role.name},
@@ -38,7 +38,7 @@ class AssignableUserSerializer(serializers.Serializer):
             "id": instance.id,
             "email": instance.email,
             "display_name": instance.display_name,
-            "avatar_url": build_avatar_url(instance),
+            "avatar_url": build_avatar_url(instance, self.context.get("request")),
             "org_ids": [m.org_id for m in instance._visible_memberships],
         }
 

@@ -1,20 +1,18 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
-import { injectAvatarObjectUrl } from '../../services/avatar-image/avatar-image.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 /**
  * Round user avatar: the avatar image when there is one, otherwise the initials of `name`,
  * otherwise a generic person placeholder (no name, e.g. a user who never set a display name).
- * The fallback also shows while the image loads and when it cannot be loaded.
  */
 @Component({
     selector: 'app-user-avatar',
     imports: [AppSvgIconComponent],
     template: `
-        @if (imageSrc()) {
+        @if (avatarUrl()) {
             <img
-                [src]="imageSrc()"
+                [src]="avatarUrl()"
                 alt="User avatar"
                 class="avatar-img"
             />
@@ -77,6 +75,4 @@ export class UserAvatarComponent {
         }
         return visibleName.replace(/\s/g, '').substring(0, 2).toUpperCase();
     });
-
-    protected readonly imageSrc = injectAvatarObjectUrl(this.avatarUrl);
 }

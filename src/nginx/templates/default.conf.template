@@ -23,6 +23,11 @@ upstream webhook_server {
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT} resolve;
 }
 
+upstream storage_server {
+    zone storage_server 64k;
+    server ${STORAGE_HOST}:${STORAGE_PORT} resolve;
+}
+
 # Docker's embedded DNS. The upstreams above re-resolve through it (`resolve`), so a
 # recreated container's new IP is picked up without restarting nginx; the
 # /auditor/ location also resolves the auditor through it at request time.
@@ -218,6 +223,23 @@ server {
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Avatars are public: the bucket policy storage-init sets lets anyone read
+    # <bucket>/system/avatars/ and nothing else, so no credential goes to storage.
+    # Query arguments are dropped: S3 reads them as subresources and header overrides.
+    location /media/avatars/ {
+        limit_except GET { deny all; }
+        set $args "";
+        proxy_pass http://storage_server/${STORAGE_BUCKET}/system/avatars/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        proxy_http_version 1.1;
+        proxy_set_header Authorization "";
+        proxy_set_header X-API-Key "";
+        proxy_set_header Cookie "";
+        proxy_hide_header x-amz-request-id;
+        proxy_hide_header x-amz-id-2;
+        proxy_hide_header x-request-id;
     }
 
     location /media/ {

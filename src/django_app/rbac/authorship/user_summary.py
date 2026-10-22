@@ -10,21 +10,21 @@ from rbac.profile.avatar import build_avatar_url
 USER_SUMMARY_FIELDS = ("id", "display_name", "avatar")
 
 
-def represent_user_summary(user) -> dict | None:
+def represent_user_summary(user, request) -> dict | None:
     """Render `user` the way every API response renders an author or last editor.
 
-    Returns None for no user.
+    Returns None for no user. `avatar_url` is absolute when `request` is given.
     """
     if user is None:
         return None
     return {
         "id": user.pk,
         "display_name": user.display_name or None,
-        "avatar_url": build_avatar_url(user),
+        "avatar_url": build_avatar_url(user, request),
     }
 
 
-def user_summaries_by_id(user_ids: Iterable[int | None]) -> dict[int, dict]:
+def user_summaries_by_id(user_ids: Iterable[int | None], request) -> dict[int, dict]:
     """Load the users behind `user_ids` in one query and render each as a summary.
 
     None ids are ignored; ids of deleted users are absent from the result.
@@ -33,7 +33,7 @@ def user_summaries_by_id(user_ids: Iterable[int | None]) -> dict[int, dict]:
     if not wanted_ids:
         return {}
     users = get_user_model().objects.filter(pk__in=wanted_ids).only(*USER_SUMMARY_FIELDS)
-    return {user.pk: represent_user_summary(user) for user in users}
+    return {user.pk: represent_user_summary(user, request) for user in users}
 
 
 class UserSummarySerializer(serializers.Serializer):
@@ -44,4 +44,4 @@ class UserSummarySerializer(serializers.Serializer):
     avatar_url = serializers.CharField(read_only=True, allow_null=True)
 
     def to_representation(self, instance):
-        return represent_user_summary(instance)
+        return represent_user_summary(instance, self.context.get("request"))

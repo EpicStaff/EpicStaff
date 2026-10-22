@@ -2,12 +2,12 @@ from storages.backends.s3 import S3Storage
 
 
 class AvatarStorage(S3Storage):
-    """S3 storage for user avatars, served only through the avatar endpoint.
+    """S3 storage for user avatars, which are public and served by nginx.
 
-    The bucket is private and its endpoint is internal, so a storage URL would
-    either be unreachable from the browser or leak a presigned link. Every avatar
-    URL comes from `build_avatar_url` instead.
+    nginx maps `/media/avatars/` to `<bucket>/system/avatars/`, and the bucket policy
+    lets anyone read that prefix only, so an avatar URL is an origin-relative path,
+    never the internal storage endpoint or a presigned link.
     """
 
     def url(self, name, *args, **kwargs):
-        raise NotImplementedError("Avatar URLs come from build_avatar_url")
+        return f"/media/{name}"

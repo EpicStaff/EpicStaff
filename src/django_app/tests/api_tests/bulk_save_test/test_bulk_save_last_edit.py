@@ -397,7 +397,7 @@ def test_save_response_renders_authorship_like_graph_detail(
     auth_client, saved_flow, previous_editor, regular_user
 ):
     regular_user.display_name = "Flow Author"
-    regular_user.avatar.name = f"avatars/{regular_user.id}/2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e.png"
+    regular_user.avatar.name = f"avatars/{regular_user.id}/author.png"
     regular_user.save(update_fields=["display_name", "avatar"])
     payload = saved_flow.unchanged_payload()
     payload["graph_note_list"] = [_note_item(saved_flow.graph, id=saved_flow.note.id, content="new")]
@@ -408,7 +408,7 @@ def test_save_response_renders_authorship_like_graph_detail(
     expected_author = {
         "id": regular_user.id,
         "display_name": "Flow Author",
-        "avatar_url": f"/api/users/{regular_user.id}/avatar/?v=2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e",
+        "avatar_url": f"http://testserver/media/avatars/{regular_user.id}/author.png",
     }
     saved_note = saved.data["graph_note_list"][0]
     assert saved_note["created_by"] == expected_author

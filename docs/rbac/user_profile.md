@@ -45,7 +45,7 @@ JWT is NOT re-issued — the FE does not need to refresh tokens. Just refetch th
 
 ### 3. Uploading or replacing the avatar
 
-`POST /api/profile/avatar/` with `multipart/form-data`; form field name `avatar`. The server rotates the image upright from its EXIF orientation, shrinks it to fit 512×512 (aspect ratio kept, never enlarged), re-encodes it in the uploaded format and drops all metadata (EXIF including GPS, ICC profile, comments). The previous file (if any) is deleted server-side after the DB write commits.
+`POST /api/profile/avatar/` with `multipart/form-data`; form field name `avatar`. The server rotates the image upright from its EXIF orientation, shrinks it to fit 512×512 (aspect ratio kept, never enlarged), re-encodes it in the uploaded format (an MPO phone photo is stored as JPEG) and drops EXIF (including GPS) and comments; the colour (ICC) profile is kept. Refused with `invalid_avatar`: a PNG over 4.2 megapixels (2048×2048), a progressive JPEG over 16 megapixels, a baseline JPEG that still exceeds 4.2 megapixels when decoded at up to 1/8 scale, and 16-bit / 32-bit / float pixels. The previous file (if any) is deleted server-side after the DB write commits.
 
 Validation errors come back as 400 with one of these `code` values:
 
@@ -124,7 +124,7 @@ For a superadmin the same `memberships[]` block lists every active organization 
   "id": 4,
   "email": "user1@example.com",
   "display_name": "Alice",
-  "avatar_url": "/api/users/4/avatar/?v=9f2b1e0a8c",
+  "avatar_url": "http://host/media/avatars/4/9f2b1e0a8c.png",
   "is_superadmin": false,
   "is_active": true,
   "created_at": "2026-05-06T10:04:42.284563Z",
@@ -165,28 +165,6 @@ To clear: `{"display_name": null}`. Empty object `{}` is a 200 no-op (returns cu
 No body.
 
 **Response 204** No Content.
-
-### GET `/api/users/{user_id}/avatar/`
-
-The image behind every `avatar_url` (profile, user lists, memberships, authorship
-`created_by` / `last_edited_by`, flow-editor presence). `avatar_url` is always this
-relative path with a `v` query parameter that changes on every upload. Avatars are
-kept in object storage under `system/avatars/`; the bucket is never exposed to the
-browser.
-
-Authenticated with the usual `Authorization` header (JWT or API key), so the FE
-fetches it like any other API call and renders the bytes, not a bare `<img src>`.
-No `X-Organization-Id` needed: a caller sees their own avatar, any avatar as a
-superadmin, a superadmin's avatar (superadmins hold no memberships but author
-content in every org), and the avatar of anyone sharing an active organization
-with them.
-
-| Request | Response |
-|---|---|
-| `?v=<current version>` | 200 image, `Cache-Control: private, max-age=31536000, immutable` |
-| no `v` | 200 image, `Cache-Control: private, no-cache` — revalidate with `If-None-Match` |
-| `If-None-Match` equals the `ETag` | 304, no body |
-| unknown or invisible user, no avatar, stale `v`, file missing | 404 `avatar_not_found` |
 
 ### POST `/api/profile/password-change/request/`
 
@@ -271,14 +249,14 @@ Or, for multi-field validation:
 | 401 | (default DRF) | Unauthenticated. |
 | 403 | — | Authenticated but lacks user context (e.g., env-seeded API key). |
 | 404 | — | URL not registered (defense against stale FE that still calls `/api/auth/me/`). |
-| 404 | `avatar_not_found` | `GET /api/users/{user_id}/avatar/`: the avatar is not served (see above). |
 | 429 | — | Throttled. Read `Retry-After` header. |
 
 ---
 
 ## Deployment
 
-- Avatars are stored in the `STORAGE_BUCKET` bucket under `system/avatars/` and served by Django; they need no `MEDIA_URL` route. A migration clears avatars uploaded before the move to object storage (and deletes their local files), so those users upload again.
+- `MEDIA_URL` must be served by the reverse proxy (nginx / Caddy) in production. Django serves `MEDIA_URL` only in DEBUG mode.
+- Avatars are public. They are stored in the `STORAGE_BUCKET` bucket under `system/avatars/`, which `storage-init` makes anonymously readable (that prefix only, `s3:GetObject` only), and nginx serves them at `/media/avatars/` straight from the bucket. Every upload gets a new key, stored with `Cache-Control: public, max-age=31536000, immutable`. A migration clears avatars uploaded before the move to object storage (and deletes their local files); those users upload again.
 - Env vars:
   - `DJANGO_PASSWORD_CHANGE_TICKET_TTL` (default `5m`)
   - `DJANGO_AVATAR_MAX_SIZE` (default `10mb`)

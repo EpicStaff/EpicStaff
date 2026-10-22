@@ -37,7 +37,6 @@ from rbac.views.profile import (
     ProfileView,
 )
 from rbac.views.roles import RoleAdminViewSet
-from rbac.views.user_avatar import UserAvatarView
 from rbac.views.users import UserAdminViewSet
 
 admin_router = DefaultRouter()
@@ -112,7 +111,6 @@ urlpatterns = [
         ProfileApiKeyRevokeView.as_view(),
         name="profile_api_key_revoke",
     ),
-    path("api/users/<int:user_id>/avatar/", UserAvatarView.as_view(), name="user_avatar"),
     path(
         "api/permissions/catalog/",
         PermissionCatalogView.as_view(),

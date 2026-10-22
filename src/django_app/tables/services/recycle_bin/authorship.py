@@ -30,6 +30,7 @@ DeletedWith = tuple[type[Model], int]
 def authorship_details(
     model: type[Model],
     entries: Mapping[int, BinEntryAuthorship],
+    request,
     *,
     deleted_with: Mapping[int, DeletedWith] | None = None,
 ) -> dict[int, list[BinDetail]]:
@@ -45,13 +46,14 @@ def authorship_details(
 
     Args:
         entries: Each entry's author and deletion time, keyed by entry id.
+        request: Makes avatar URLs absolute; None leaves them relative.
         deleted_with: The owner an entry was binned with, whose deleter is the entry's
             too: deleting an agent bins its surfaces, but only the agent the user picked
             records the deletion.
     """
     deleter_ids = _deleter_ids(model, entries, deleted_with or {})
     summaries = user_summaries_by_id(
-        [*(entry.author_id for entry in entries.values()), *deleter_ids.values()]
+        [*(entry.author_id for entry in entries.values()), *deleter_ids.values()], request
     )
     return {
         entry_id: [
