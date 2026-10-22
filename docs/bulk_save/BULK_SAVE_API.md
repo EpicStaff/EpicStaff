@@ -501,6 +501,7 @@ If any of the three operations fail validation, none of the writes happen.
 | Sending both `start_node_id` and `start_temp_id` on the same edge | `{ "index": 0, "errors": "Provide exactly one of start_node_id or start_temp_id, not both." }` |
 | `start_temp_id` value not matching any `temp_id` in the node lists | `{ "index": 0, "errors": "start_temp_id='...' does not match any temp_id in the node lists of this request." }` |
 | Deleting a node id that belongs to a different graph | `"deleted": ["python_node_ids: IDs [42] not found in graph 12"]` |
+| Declaring or changing the secrets of a node's code (`python_code.secret_ids`; also the Telegram trigger node's `telegram_bot_api_key_secret_id`) without the `Use` permission on Secrets. A resend of the stored value is free, and so is editing `code` / `libraries` | `{ "index": 0, "errors": { "python_code": { "secret_ids": ["Changing the secrets referenced here requires the \"Use\" permission on Secrets. ..."] } } }` |
 | Missing required nested field (e.g. `python_code.code`) | `{ "index": 0, "errors": { "python_code": { "code": ["This field is required."] } } }` |
 | DTN: both `default_next_node_id` and `default_next_node_temp_id` provided | `{ "index": 0, "errors": ["Provide at most one of default_next_node_id or default_next_node_temp_id, not both."] }` |
 | DTN: `default_next_node_temp_id` not matching any `temp_id` in node lists | `{ "index": 0, "errors": ["default_next_node_temp_id='...' does not match any temp_id in the node lists of this request."] }` |

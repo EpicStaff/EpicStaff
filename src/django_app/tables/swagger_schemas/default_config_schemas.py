@@ -97,7 +97,10 @@ QUICKSTART_POST = {
     "description": (
         "Initiates the quickstart process for a specified provider, creating default "
         "configurations and resources as needed. Supply exactly one of `api_key` "
-        "(cold start) or `api_key_secret_id` (reuse an existing Secret)."
+        "(cold start) or `api_key_secret_id` (reuse an existing Secret, which needs the "
+        "`Use` permission on Secrets). The key is attached to the provider's built-in "
+        "catalog model; if only the organization's own model of that name exists and it "
+        "has a custom `base_url`, the request is refused with a 400 and nothing is created."
     ),
     "request": QuickstartSerializer,
     "responses": {

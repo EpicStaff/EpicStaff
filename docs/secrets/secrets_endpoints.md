@@ -272,17 +272,36 @@ delta:
 
 That distinction is what makes `POST /api/graphs/{id}/save/` workable — it resubmits the
 whole graph on every save, so a caller editing an unrelated node resends every secret field
-unchanged and needs nothing. Refusals come back as a normal DRF field error:
+unchanged and needs nothing. Refusals come back as a `400` in the usual error envelope, with
+the field named in `message` (the frontend matches on that text):
 
 ```json
-{ "auth_secret_id": ["Changing the secrets referenced here requires the \"Use\" permission on Secrets. The existing selection was left unchanged. Ask an organization admin to grant it."] }
+{ "status_code": 400, "code": "invalid", "message": "auth_secret_id: Changing the secrets referenced here requires the \"Use\" permission on Secrets. The existing selection was left unchanged. Ask an organization admin to grant it." }
 ```
+
+Nested fields are named along their path (`ngrok_config: auth_token_secret_id: …`,
+`python_code: secret_ids: …`). `POST /api/graphs/{id}/save/` reports the same denial per node
+instead, under that node's list key (`{"errors": {"python_node_list": [{"index": 0, "errors":
+{"python_code": {"secret_ids": ["…"]}}}]}}`).
+
+An `extra_headers` marker is a secret reference too: **adding** an
+`epicstaff_secret(<name>)` name to an LLM or embedding config's `extra_headers` needs
+`secrets:USE`; keeping or removing markers does not. Importing a config that carries markers
+needs it as well, since every marker in a new row is new.
 
 Pointing a resource that carries a secret at a new destination needs `secrets:USE` the same
 way: an LLM or embedding config's `base_url` (or a `model` switch to one with another
 `base_url`), an OpenAI realtime config's `base_url`, an MCP tool's `transport`, and a custom
 model's `base_url` while a secret-bearing config uses it. `null` and `""` are the same
-destination. Those refusals name the field too.
+destination. Those refusals name the field too, with this message: *"Changing where this sends
+its secrets requires the "Use" permission on Secrets. The existing value was left unchanged.
+Ask an organization admin to grant it."*
+
+Deliberately **not** gated: editing the `code` or `libraries` of a Python code that already
+declares secrets (only declaring them, `secret_ids`, needs `USE`); copying a resource, restoring
+a graph version and re-linking keys on graph import, which reproduce an existing reference; and
+the Telegram bot key, ElevenLabs and Gemini realtime keys and Twilio auth token, which have no
+user-chosen destination.
 
 Enforcement lives in `SecretUseService`, called at each write point after validation —
 mechanism, write points and coverage guarantees are in
@@ -294,4 +313,8 @@ mechanism, write points and coverage guarantees are in
 
 `POST /api/quickstart/` accepts an optional `api_key`. When the org already has a secret
 holding that credential it is **reused** rather than duplicated; `api_key` being optional is
-the only breaking change this made to the existing contract. 
+the only breaking change this made to the existing contract. Passing an existing
+`api_key_secret_id` counts as a secret reference and needs `secrets:USE`; a raw `api_key` does
+not. Quickstart attaches the key to the built-in catalog model when there is one, and refuses
+(`400`, nothing created) when the only match is the org's own model with a custom `base_url`.
+

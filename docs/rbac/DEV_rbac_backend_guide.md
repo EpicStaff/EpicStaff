@@ -470,7 +470,9 @@ on every save, usable without `USE`.
    - `EmbeddingConfig`: its model's `base_url` (via a `model` switch).
    - `OpenAIRealtimeConfig`: `base_url`, when either API-key secret is set.
    - `McpTool`: `transport` (the URL the agent connects to, sending `auth_secret`), when
-     `auth_secret` is set. A PUT that back-fills an unchanged `transport` is not a change.
+     `auth_secret` is set. A PUT that resends the stored `transport` is not a change. A PUT
+     that omits `transport` never reaches the check: `McpToolViewSet.update` back-fills the
+     missing field with `None`, which the serializer rejects with a 400.
 
    "Carries a secret" means an API-key secret reference or any header marker.
 4. **Model `base_url` change while a secret-bearing config uses it** — `LLMModel` /
@@ -498,13 +500,14 @@ change needs `USE` — fail-safe, not fail-open.
 | Config import | `BaseConfigStrategy` calls `check_config_import` with the strategy's `marker_fields`; actor from the importing user |
 
 PythonCode is always nested: each parent's check calls `check_python_code_write` with the
-field path it nests it under.
+attribute it nests it under.
 
-**Error shape.** A check raises the domain error `SecretUseDeniedError(field_path, message)`;
-the write point turns `denial.field_errors()` into a `ValidationError` nested along
-`field_path` (`denial_as_validation_error` in views). Clients get the usual 400 envelope with
-the field named in `message`, e.g. `("python_code", "secret_ids")` →
-`{"python_code": {"secret_ids": [...]}}`. Graph bulk save reports it per node, as
+**Error shape.** A check raises the domain error `SecretUseDeniedError(field_path, message)`
+and the write point lets it propagate (rolling back any open transaction).
+`custom_exception_handler` (`utils/exception_handler.py`) renders it as a `ValidationError`
+of `denial.field_errors()`, nested along `field_path`: the usual 400 envelope with the field
+named in `message`, e.g. `("python_code", "secret_ids")` →
+`{"python_code": {"secret_ids": [...]}}`. Graph bulk save catches it and reports it per node, as
 `{"errors": {"<list_key>": [{"index", "errors": {...}}]}}`. Because the check runs after
 validation, a shape error (an undeclared `get_secret`) wins over a `USE` denial.
 
@@ -698,7 +701,8 @@ References to it from other serializers: `OrgVisiblePrimaryKeyRelatedField`.
 `org` explicitly, and must state a *precedence* when both a built-in and an own-org row can
 match: `org_visible_queryset(...)` returns both, and `.first()` on it has no `ORDER BY`, so
 the result is whatever Postgres feels like returning. See
-`QuickstartService._get_or_create_llm_model` for the pattern (own-org wins), and
+`QuickstartService._get_or_create_model` for the pattern (the built-in wins; the org's own
+row is used only when it has no `base_url`, see §5.6), and
 `upload_models.py` for the built-ins-only form (`org__isnull=True`) — Django strips
 `__`-lookups from `get_or_create`/`update_or_create` create params, so that filter narrows
 the lookup without leaking into the created row.

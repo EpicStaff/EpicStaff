@@ -230,6 +230,7 @@ The regression guard for all of this is
 | Row present, value will not decrypt | `SecretResolutionError` | 500 |
 | Value over 8192 bytes on create | `SecretTooLargeError` | 400 |
 | Code reads an undeclared secret | `UndeclaredSecretError` | 400 |
+| Write needs `secrets:USE` and the actor lacks it | `SecretUseDeniedError`, rendered by `custom_exception_handler` (per node in graph bulk save) | 400 |
 
 A **null** reference is not an error — it means no credential is configured, which is
 legitimate for providers that need none.
@@ -416,7 +417,7 @@ All paths are relative to `src/django_app/` unless stated otherwise.
 | Usage sources and payload | `tests/services_tests/test_secret_usage_sources.py`, `test_secret_usage_service.py`, `test_secret_usage_source_coverage.py` |
 | Usage endpoints, query cost | `tests/api_tests/test_secret_usage_api.py`, `test_graph_list_cdt_secrets_query_count.py` |
 | Usage visibility per role (readable/hidden) | `tests/services_tests/test_secret_usage_permission_filtering.py`, `tests/api_tests/test_secret_usage_permission_visibility.py` |
-| `secrets:USE` service: delta, marker and destination rules, fail-safe | `tests/services_tests/test_secret_use_service.py`, `test_secret_use_view_glue.py` |
+| `secrets:USE` service: delta, marker and destination rules, fail-safe | `tests/services_tests/test_secret_use_service.py`, `test_secret_use_view_glue.py`, `test_secret_use_exception_handler.py` |
 | `secrets:USE` coverage — every Secret field mapped to a write-point check | `tests/services_tests/test_secret_reference_coverage.py` |
 | `secrets:USE` per endpoint family | `tests/api_tests/test_secret_use_fk_fields.py`, `test_secret_use_bulk_save.py`, `test_secret_use_ngrok_inline.py`, `test_secret_use_webhook_trigger_auth.py`, `test_secret_use_permission_plumbing.py`, `test_config_extra_headers_secret_use.py`, `tests/import_export_tests/test_config_marker_import_secret_use.py` |
 | `secrets:USE` destination (`base_url`, model switch, MCP `transport`) | `tests/api_tests/test_secret_use_destination.py` |
