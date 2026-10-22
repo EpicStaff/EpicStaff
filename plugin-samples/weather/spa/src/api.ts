@@ -67,10 +67,19 @@ export interface PlaceCandidate {
     longitude: number;
 }
 
+/** What Weather last measured at a place, through Open-Meteo. */
+export interface PlaceConditions {
+    temperature_c: number;
+    /** When Weather fetched the value (ISO 8601). */
+    observed_at: string;
+}
+
 /** A place the organization saved. */
 export interface SavedPlace extends PlaceCandidate {
     id: number;
     created_at: string;
+    /** `null` until Weather has looked the place up, or when the value is not one this page understands. */
+    conditions: PlaceConditions | null;
 }
 
 /** The longest city name the backend takes: a saved place's name, so every place can be forecast. */
@@ -135,12 +144,14 @@ export function saveLlmSettings(
     });
 }
 
-/** The organization's saved places, in the order the backend lists them. */
+/** The organization's saved places, in the order the backend lists them, each with its current temperature. */
 export function listPlaces(fetchApi: ApiFetch): Promise<ApiResult<SavedPlace[]>> {
     return call(fetchApi, '/api/places', { method: 'GET' }, 200, [], (body) => {
         if (!isRecord(body)) return undefined;
         const places = body['places'];
-        return Array.isArray(places) && places.every(isSavedPlace) ? places : undefined;
+        if (!Array.isArray(places)) return undefined;
+        const parsed = places.map(toSavedPlace);
+        return parsed.every((place): place is SavedPlace => place !== undefined) ? parsed : undefined;
     });
 }
 
@@ -169,9 +180,7 @@ export function addPlace(
         headers: JSON_HEADERS,
         body: JSON.stringify({ name, admin1, country, latitude, longitude }),
     };
-    return call(fetchApi, '/api/places', init, 201, ['already_saved', 'forbidden'], (body) =>
-        isSavedPlace(body) ? body : undefined
-    );
+    return call(fetchApi, '/api/places', init, 201, ['already_saved', 'forbidden'], toSavedPlace);
 }
 
 /** Removes one of the organization's places; `not_found` when it is gone already. */
@@ -285,13 +294,33 @@ function isPlaceCandidate(value: unknown): value is PlaceCandidate {
     );
 }
 
-function isSavedPlace(value: unknown): value is SavedPlace {
-    return (
-        isRecord(value) &&
-        isPositiveInteger(value['id']) &&
-        typeof value['created_at'] === 'string' &&
-        isPlaceCandidate(value)
-    );
+/** A saved place as the page keeps it; `undefined` when it is not one. Conditions it cannot read count as none. */
+function toSavedPlace(value: unknown): SavedPlace | undefined {
+    if (!isRecord(value) || !isPositiveInteger(value['id']) || typeof value['created_at'] !== 'string')
+        return undefined;
+    if (!isPlaceCandidate(value)) return undefined;
+    const { name, admin1, country, latitude, longitude } = value;
+    return {
+        id: value['id'],
+        created_at: value['created_at'],
+        name,
+        admin1,
+        country,
+        latitude,
+        longitude,
+        conditions: parseConditions(value['conditions']),
+    };
+}
+
+/** A place's conditions when they are a number of degrees and a time; `null` for anything else, never a failure. */
+export function parseConditions(value: unknown): PlaceConditions | null {
+    if (!isRecord(value)) return null;
+    const temperature = value['temperature_c'];
+    const observedAt = value['observed_at'];
+    if (!isFiniteNumber(temperature) || typeof observedAt !== 'string' || Number.isNaN(Date.parse(observedAt))) {
+        return null;
+    }
+    return { temperature_c: temperature, observed_at: observedAt };
 }
 
 function isFiniteNumber(value: unknown): value is number {

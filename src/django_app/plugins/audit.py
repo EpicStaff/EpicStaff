@@ -412,5 +412,138 @@ def log_retention_tick(counts: dict[str, int]) -> None:
         )
 
 
+def log_housekeeping(counts: dict[str, int]) -> None:
+    """Log what one hourly housekeeping run did, naming only the counts above zero."""
+    done = {name: count for name, count in counts.items() if count}
+    if done:
+        logger.info(
+            "plugins.housekeeping.run {counts}",
+            counts=" ".join(f"{name}={count}" for name, count in done.items()),
+        )
+
+
+def log_upgrade_started(
+    actor, *, identifier: str, from_version: str, to_version: str, replaced: str | None
+) -> None:
+    logger.info(
+        "plugins.upgrade.started actor={actor} plugin={identifier} from={from_version} "
+        "to={to_version} replaced={replaced}",
+        actor=actor_label(actor),
+        identifier=identifier,
+        from_version=from_version,
+        to_version=to_version,
+        replaced=replaced or "none",
+    )
+
+
+def log_maintenance_started(*, identifier: str, to_version: str, grants: int) -> None:
+    logger.info(
+        "plugins.upgrade.maintenance_started plugin={identifier} to={to_version} grants={grants}",
+        identifier=identifier,
+        to_version=to_version,
+        grants=grants,
+    )
+
+
+def log_migrations_started(*, identifier: str, to_version: str, backup: str | None) -> None:
+    logger.info(
+        "plugins.upgrade.migrations_started plugin={identifier} to={to_version} backup={backup}",
+        identifier=identifier,
+        to_version=to_version,
+        backup=backup or "none",
+    )
+
+
+def log_upgrade_failed(*, identifier: str, to_version: str, stage: str, step: str | None) -> None:
+    """Log that an upgrade failed; never with the error, which the plugin's code may write."""
+    logger.warning(
+        "plugins.upgrade.failed plugin={identifier} to={to_version} stage={stage} step={step}",
+        identifier=identifier,
+        to_version=to_version,
+        stage=stage,
+        step=step or "none",
+    )
+
+
+def log_upgrade_action(action: str, actor, *, identifier: str, to_version: str, stage: str) -> None:
+    """Log a SuperAdmin's `retried` or `cancelled` on an upgrade."""
+    logger.info(
+        "plugins.upgrade.{action} actor={actor} plugin={identifier} to={to_version} stage={stage}",
+        action=action,
+        actor=actor_label(actor),
+        identifier=identifier,
+        to_version=to_version,
+        stage=stage,
+    )
+
+
+def log_upgrade_done(
+    *, identifier: str, from_version: str, to_version: str, maintenance_seconds: int
+) -> None:
+    logger.info(
+        "plugins.upgrade.done plugin={identifier} from={from_version} to={to_version} "
+        "maintenance_seconds={maintenance_seconds}",
+        identifier=identifier,
+        from_version=from_version,
+        to_version=to_version,
+        maintenance_seconds=maintenance_seconds,
+    )
+
+
+def log_upgrade_abandoned(*, identifier: str, to_version: str, migrations_started: bool) -> None:
+    logger.info(
+        "plugins.upgrade.abandoned plugin={identifier} to={to_version} "
+        "migrations_started={migrations_started}",
+        identifier=identifier,
+        to_version=to_version,
+        migrations_started=migrations_started,
+    )
+
+
+def log_backup_recorded(identifier: str, backup) -> None:
+    logger.info(
+        "plugins.backup.recorded plugin={identifier} file={file_name} reason={reason} "
+        "size_bytes={size_bytes}",
+        identifier=identifier,
+        file_name=backup.file_name,
+        reason=backup.reason,
+        size_bytes=backup.size_bytes,
+    )
+
+
+def log_backup_mismatch(identifier: str, file_name: str) -> None:
+    logger.warning(
+        "plugins.backup.mismatch plugin={identifier} file={file_name}",
+        identifier=identifier,
+        file_name=file_name,
+    )
+
+
+def log_restore_requested(actor, *, identifier: str, backup: str) -> None:
+    logger.info(
+        "plugins.restore.requested actor={actor} plugin={identifier} backup={backup}",
+        actor=actor_label(actor),
+        identifier=identifier,
+        backup=backup,
+    )
+
+
+def log_restore_finished(*, identifier: str, restore_id: int, outcome: str, step: str) -> None:
+    logger.info(
+        "plugins.restore.finished plugin={identifier} restore={restore_id} outcome={outcome} "
+        "step={step}",
+        identifier=identifier,
+        restore_id=restore_id,
+        outcome=outcome,
+        step=step,
+    )
+
+
+def log_spa_repaired(identifier: str, what: str) -> None:
+    logger.warning(
+        "plugins.spa.repaired plugin={identifier} what={what}", identifier=identifier, what=what
+    )
+
+
 def _actor_or_platform(actor) -> str:
     return actor_label(actor) if actor is not None else "platform"

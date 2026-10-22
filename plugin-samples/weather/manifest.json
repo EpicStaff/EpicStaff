@@ -1,7 +1,7 @@
 {
     "manifest_version": 1,
     "id": "weather",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "name": "Weather",
     "description": "Forecasts for the places your organization cares about.",
     "publisher": { "name": "EpicStaff" },
@@ -38,7 +38,8 @@
         { "path": "/api/demo-provider", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 30, "max_body_kb": 0 }
     ],
     "outbound_hosts": [
-        { "host": "geocoding-api.open-meteo.com", "reason": "Looks up places by name when someone adds a saved place." }
+        { "host": "geocoding-api.open-meteo.com", "reason": "Looks up places by name when someone adds a saved place." },
+        { "host": "api.open-meteo.com", "reason": "Looks up the current temperature of saved places." }
     ],
     "settings": [
         {
@@ -59,5 +60,5 @@
         }
     ],
     "limits": { "memory_mb": 256, "db_connections": 3, "statement_timeout_seconds": 10 },
-    "hooks": { "install": true, "org_removed": true }
+    "hooks": { "install": true, "upgrade": true, "org_removed": true }
 }

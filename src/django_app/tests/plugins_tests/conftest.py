@@ -85,6 +85,7 @@ def plugins_enabled(settings):
 def package_store(monkeypatch):
     store = InMemoryPackageStore()
     monkeypatch.setattr("plugins.lifecycle.installation_service.get_package_store", lambda: store)
+    monkeypatch.setattr("plugins.lifecycle.upgrade_service.get_package_store", lambda: store)
     monkeypatch.setattr("plugins.views.node_api.get_package_store", lambda: store)
     return store
 

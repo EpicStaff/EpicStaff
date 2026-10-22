@@ -1,9 +1,17 @@
 :host {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 :host:empty {
     display: none;
+}
+
+.banner-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .banner {
@@ -15,6 +23,10 @@
     border-radius: 8px;
     overflow-wrap: anywhere;
 
+    &__detail {
+        color: var(--color-text-secondary);
+    }
+
     &--uninstalled {
         display: block;
         background: var(--transparent-orange-8);
@@ -25,8 +37,24 @@
         }
     }
 
-    &--deleting {
+    &--deleting,
+    &--failed {
         background: var(--color-status-error-subtle);
         color: var(--color-status-error);
+    }
+
+    &--progress {
+        background: var(--color-ghost-btn-hover);
+        color: var(--color-text-primary);
+    }
+
+    &--offline,
+    &--stale {
+        background: var(--transparent-orange-8);
+        color: var(--color-warning);
+    }
+
+    &--stale {
+        padding: 8px 12px;
     }
 }

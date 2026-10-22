@@ -9,6 +9,10 @@ from es_plugins.packages.package_verifier import PackageVerificationError, verif
 from tests.helpers import backend_wheels, manifest, package_files, placement, write_package
 
 
+def verify(path, desired):
+    return verify_package(path, desired.plugin_identifier, desired.package, desired.runtime)
+
+
 @pytest.fixture
 def files(tmp_path):
     return package_files(backend_wheels(tmp_path / "wheels"))
@@ -17,7 +21,7 @@ def files(tmp_path):
 def test_an_untrusted_package_is_checked_by_its_digests_and_accepted(tmp_path, files):
     package = write_package(tmp_path / "weather.esplugin", files)
 
-    archive = verify_package(package, placement(package.read_bytes()))
+    archive = verify(package, placement(package.read_bytes()))
 
     assert archive.manifest.id == "weather"
     assert archive.signature is None
@@ -30,7 +34,7 @@ def test_a_trusted_package_signed_by_the_named_key_is_accepted(tmp_path, files):
         package.read_bytes(), trust="trusted", signer_public_key=key.public_key.to_text()
     )
 
-    archive = verify_package(package, desired)
+    archive = verify(package, desired)
 
     assert archive.signature is not None
 
@@ -45,7 +49,7 @@ def test_a_file_whose_digest_differs_from_contents_json_is_refused(tmp_path, fil
     package = write_package(tmp_path / "tampered.esplugin", files, contents=tampered)
 
     with pytest.raises(PackageVerificationError, match="sha256"):
-        verify_package(package, placement(package.read_bytes()))
+        verify(package, placement(package.read_bytes()))
 
 
 def test_a_trusted_package_signed_by_another_key_is_refused(tmp_path, files):
@@ -57,7 +61,7 @@ def test_a_trusted_package_signed_by_another_key_is_refused(tmp_path, files):
     )
 
     with pytest.raises(PackageVerificationError) as refused:
-        verify_package(package, desired)
+        verify(package, desired)
 
     assert signer.public_key.display_id in str(refused.value)
     assert expected.public_key.display_id in str(refused.value)
@@ -71,7 +75,7 @@ def test_a_trusted_package_without_a_signature_is_refused(tmp_path, files):
     )
 
     with pytest.raises(PackageVerificationError, match="has no signature"):
-        verify_package(package, desired)
+        verify(package, desired)
 
 
 def test_a_signature_over_other_contents_is_refused(tmp_path, files):
@@ -87,7 +91,7 @@ def test_a_signature_over_other_contents_is_refused(tmp_path, files):
     )
 
     with pytest.raises(PackageVerificationError, match="signature is invalid"):
-        verify_package(package, desired)
+        verify(package, desired)
 
 
 @pytest.mark.parametrize(
@@ -109,12 +113,12 @@ def test_a_manifest_that_is_not_the_desired_one_is_refused(tmp_path, overrides, 
     )
 
     with pytest.raises(PackageVerificationError, match=f"has {field}"):
-        verify_package(package, placement(package.read_bytes()))
+        verify(package, placement(package.read_bytes()))
 
 
 def test_unpacking_writes_only_the_backend_files(tmp_path, files):
     package = write_package(tmp_path / "weather.esplugin", files)
-    archive = verify_package(package, placement(package.read_bytes()))
+    archive = verify(package, placement(package.read_bytes()))
     destination = tmp_path / "unpacked"
     (destination / "stale").mkdir(parents=True)
 
@@ -125,3 +129,16 @@ def test_unpacking_writes_only_the_backend_files(tmp_path, files):
     )
     assert written == sorted(path for path in files if path.startswith("backend/"))
     assert not (destination / "stale").exists()
+
+
+def test_an_upgrade_target_is_checked_against_its_own_package_and_runtime(tmp_path):
+    target_files = package_files(backend_wheels(tmp_path / "wheels"), manifest(version="0.3.0"))
+    target = write_package(tmp_path / "weather-0.3.0.esplugin", target_files, version="0.3.0")
+    running = placement(b"the running version's package")
+    target_placement = placement(target.read_bytes(), version="0.3.0")
+
+    archive = verify_package(target, "weather", target_placement.package, target_placement.runtime)
+
+    assert archive.manifest.version == "0.3.0"
+    with pytest.raises(PackageVerificationError, match="version '0.3.0', the desired state '0.2.0'"):
+        verify_package(target, "weather", running.package, running.runtime)

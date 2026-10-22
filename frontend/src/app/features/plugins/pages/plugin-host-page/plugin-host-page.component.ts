@@ -10,7 +10,7 @@ import {
     untracked,
     viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
     ActivatedRoute,
     Event as RouterEvent,
@@ -23,10 +23,11 @@ import {
     UrlSegment,
 } from '@angular/router';
 import { FetchErrorStateComponent } from '@shared/components';
-import { map } from 'rxjs';
+import { asyncScheduler, EMPTY, exhaustMap, filter, map, Subject, switchMap, throttleTime, timer } from 'rxjs';
 
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
+import { PluginMaintenancePanelComponent } from '../../components/plugin-maintenance-panel/plugin-maintenance-panel.component';
 import { AvailablePlugin } from '../../models/available-plugin.model';
 import { PluginFrameOrg } from '../../models/plugin-frame-protocol.model';
 import { AvailablePluginsStorageService } from '../../services/available-plugins-storage.service';
@@ -60,13 +61,19 @@ interface ReadyView {
     org: PluginFrameOrg;
 }
 
+/** The plugin is being updated: its page is not loaded until the server says it is ready again. */
+interface MaintenanceView {
+    kind: 'maintenance';
+    name: string;
+}
+
 interface MessageView {
     kind: 'message';
     title: string;
     message: string;
 }
 
-type PluginHostView = ReadyView | MessageView;
+type PluginHostView = ReadyView | MaintenanceView | MessageView;
 
 /** The address of the plugin page, split the way the matcher consumed it. */
 interface RouteTarget {
@@ -91,6 +98,15 @@ interface PagePathRequest {
  */
 const FRAME_NAVIGATION_INFO = Object.freeze({ source: 'plugin-page' });
 
+/** How often the page asks whether a plugin being updated is back. */
+export const PLUGIN_MAINTENANCE_POLL_MS = 15_000;
+
+/**
+ * After a framed page says its API is down, the page asks EpicStaff's server again at most this often; a report inside
+ * the window is answered once it ends.
+ */
+export const PLUGIN_AVAILABILITY_CHECK_MS = 10_000;
+
 /**
  * `/plugins/<identifier>/**`: frames a plugin's own page, served from the plugin's own origin, and keeps EpicStaff's
  * address in step with it over frame protocol 1 ({@link PluginFrameSyncService}, one per page).
@@ -99,10 +115,15 @@ const FRAME_NAVIGATION_INFO = Object.freeze({ source: 'plugin-page' });
  * `es_org`), a `nav.changed` from the page moves the address without reloading the frame, and an address change made
  * in EpicStaff (back/forward, a link) is sent to the page as `nav.navigate`. The frame gets no credentials, and its
  * sandbox has no `allow-top-navigation`, so a plugin cannot navigate EpicStaff away.
+ *
+ * While the plugin is being updated (`availability: 'maintenance'`), a panel says so instead of the frame; the page
+ * asks the server every 15 seconds (not while the browser tab is hidden) and opens the frame once the plugin is
+ * ready. A framed page that reports its API down (`availability.changed`) only makes the page ask the server again,
+ * at most once per 10 seconds: the server's answer decides between the frame, the panel and "not available".
  */
 @Component({
     selector: 'app-plugin-host-page',
-    imports: [FetchErrorStateComponent],
+    imports: [FetchErrorStateComponent, PluginMaintenancePanelComponent],
     templateUrl: './plugin-host-page.component.html',
     styleUrl: './plugin-host-page.component.scss',
     providers: [PluginFrameSyncService],
@@ -138,10 +159,15 @@ export class PluginHostPageComponent {
         const ready = this.readyView();
         return ready ? [ready] : [];
     });
+    protected readonly maintenanceView = computed(() => {
+        const view = this.view();
+        return view.kind === 'maintenance' ? view : null;
+    });
     protected readonly messageView = computed(() => {
         const view = this.view();
         return view.kind === 'message' ? view : null;
     });
+    private readonly isInMaintenance = computed(() => this.view().kind === 'maintenance');
 
     // A new target closes the old frame's port at once; then attach, then give the iframe its address (the page can't
     // post `es:ready` before EpicStaff listens).
@@ -163,6 +189,8 @@ export class PluginHostPageComponent {
     private readonly route = inject(ActivatedRoute);
     private readonly document = inject(DOCUMENT);
     private readonly destroyRef = inject(DestroyRef);
+    /** A framed page reported its API down: ask the server again, within the rate of the checks. */
+    private readonly availabilityChecks = new Subject<void>();
     /** Frames that already got their address; each iframe is opened once. */
     private readonly openedFrames = new WeakSet<HTMLIFrameElement>();
     /**
@@ -180,6 +208,26 @@ export class PluginHostPageComponent {
     private pagePathRequest: PagePathRequest | null = null;
 
     constructor() {
+        toObservable(this.isInMaintenance)
+            .pipe(
+                switchMap((inMaintenance) =>
+                    inMaintenance
+                        ? timer(PLUGIN_MAINTENANCE_POLL_MS, PLUGIN_MAINTENANCE_POLL_MS).pipe(
+                              filter(() => !this.document.hidden),
+                              exhaustMap(() => this.availablePlugins.refresh())
+                          )
+                        : EMPTY
+                ),
+                takeUntilDestroyed()
+            )
+            .subscribe();
+        this.availabilityChecks
+            .pipe(
+                throttleTime(PLUGIN_AVAILABILITY_CHECK_MS, asyncScheduler, { leading: true, trailing: true }),
+                exhaustMap(() => this.availablePlugins.refresh()),
+                takeUntilDestroyed()
+            )
+            .subscribe();
         this.router.events.pipe(takeUntilDestroyed()).subscribe((event) => {
             if (event instanceof NavigationEnd) {
                 this.onAddressChanged();
@@ -211,6 +259,7 @@ export class PluginHostPageComponent {
         if (!target.org) {
             return messageView('Choose an organization', 'Plugins open inside an organization you belong to.');
         }
+        if (target.plugin.availability === 'maintenance') return { kind: 'maintenance', name: target.plugin.name };
         // Read now, not when the target changed first: the address may have moved meanwhile.
         const initialPath = this.routeTarget().path;
         const frameUrl = toPluginFrameUrl({
@@ -247,6 +296,7 @@ export class PluginHostPageComponent {
             initialPath: ready.initialPath,
             org: ready.org,
             onNavChanged: (path, replace) => this.onPageNavigated(ready, path, replace),
+            onAvailabilityChanged: () => this.availabilityChecks.next(),
         });
         this.attachedFrameKey = ready.frameKey;
         this.pageNavigation = { path: ready.initialPath, replace: true };
@@ -365,7 +415,8 @@ function isSameFrameTarget(first: FrameTarget, second: FrameTarget): boolean {
         first.org?.id === second.org?.id &&
         first.org?.name === second.org?.name &&
         first.plugin?.frame_origin === second.plugin?.frame_origin &&
-        first.plugin?.name === second.plugin?.name
+        first.plugin?.name === second.plugin?.name &&
+        first.plugin?.availability === second.plugin?.availability
     );
 }
 

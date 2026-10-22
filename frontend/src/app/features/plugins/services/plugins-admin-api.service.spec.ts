@@ -3,15 +3,24 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 
 import { ConfigService } from '../../../services/config';
-import { PluginDetail, PluginGrant, PluginOrgRemovedJob } from '../models/plugin-admin.model';
+import {
+    PluginBackupList,
+    PluginDetail,
+    PluginGrant,
+    PluginOrgRemovedJob,
+    PluginRestore,
+} from '../models/plugin-admin.model';
 import { PluginGrantPurgePreview, PluginPurgePreview } from '../models/plugin-purge-preview.model';
 import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 import {
     buildGrantPurgePreview,
     buildOrgRemovedJob,
+    buildPluginBackupList,
     buildPluginDetail,
     buildPluginGrant,
     buildPluginPurgePreview,
+    buildPluginRestore,
+    buildPluginUpgrade,
     buildSuspendPreview,
 } from '../testing/plugin-fixtures';
 import { PluginsAdminApiService } from './plugins-admin-api.service';
@@ -38,11 +47,82 @@ describe('PluginsAdminApiService', () => {
         const body = buildPluginGrant({ state: 'granting' });
         let answer: PluginGrant | undefined;
 
-        api.retryInstallHook('weather', 5).subscribe((grant) => (answer = grant));
+        api.retryHook('weather', 5).subscribe((grant) => (answer = grant));
         const request = http.expectOne('/api/admin/plugins/weather/grants/5/retry-hook/');
         request.flush(body, { status: 202, statusText: 'Accepted' });
 
         expect(request.request.method).toBe('POST');
+        expect(answer).toEqual(body);
+    });
+
+    it('approves a first install with the untrusted acknowledgement only', () => {
+        api.approvePackage(11, { untrusted_acknowledged: true }).subscribe();
+        const request = http.expectOne('/api/admin/plugins/packages/11/approve/');
+        request.flush(buildPluginDetail());
+
+        expect(request.request.method).toBe('POST');
+        expect(request.request.body).toEqual({ untrusted_acknowledged: true });
+    });
+
+    it('starts an upgrade with the acknowledgements, the reviewed baseline and the needed settings', () => {
+        const body = buildPluginDetail({ open_upgrade: buildPluginUpgrade() });
+        let answer: PluginDetail | undefined;
+
+        api.approvePackage(12, {
+            access_growth_acknowledged: true,
+            reviewed_against_package_id: 10,
+            settings: { units: 'metric', api_key: 's3cret' },
+        }).subscribe((plugin) => (answer = plugin));
+        const request = http.expectOne('/api/admin/plugins/packages/12/approve/');
+        request.flush(body, { status: 202, statusText: 'Accepted' });
+
+        expect(request.request.body).toEqual({
+            access_growth_acknowledged: true,
+            reviewed_against_package_id: 10,
+            settings: { units: 'metric', api_key: 's3cret' },
+        });
+        expect(answer).toEqual(body);
+    });
+
+    it('cancels and retries the open upgrade with an empty body', () => {
+        const cancelled = buildPluginDetail();
+        const retried = buildPluginDetail({ open_upgrade: buildPluginUpgrade() });
+        const answers: PluginDetail[] = [];
+
+        api.cancelUpgrade('weather').subscribe((plugin) => answers.push(plugin));
+        const cancel = http.expectOne('/api/admin/plugins/weather/upgrade/cancel/');
+        cancel.flush(cancelled);
+        api.retryUpgrade('weather').subscribe((plugin) => answers.push(plugin));
+        const retry = http.expectOne('/api/admin/plugins/weather/upgrade/retry/');
+        retry.flush(retried, { status: 202, statusText: 'Accepted' });
+
+        expect([cancel.request.method, retry.request.method]).toEqual(['POST', 'POST']);
+        expect([cancel.request.body, retry.request.body]).toEqual([null, null]);
+        expect(answers).toEqual([cancelled, retried]);
+    });
+
+    it('lists the backups of the plugin’s database', () => {
+        const body = buildPluginBackupList();
+        let answer: PluginBackupList | undefined;
+
+        api.listBackups('weather').subscribe((list) => (answer = list));
+        const request = http.expectOne('/api/admin/plugins/weather/backups/');
+        request.flush(body);
+
+        expect(request.request.method).toBe('GET');
+        expect(answer).toEqual(body);
+    });
+
+    it('asks for a restore with the phrase exactly as typed', () => {
+        const body = buildPluginRestore({ state: 'pending', step: null });
+        let answer: PluginRestore | undefined;
+
+        api.restoreBackup('weather', 62, ' restore-weather').subscribe((restore) => (answer = restore));
+        const request = http.expectOne('/api/admin/plugins/weather/backups/62/restore/');
+        request.flush(body, { status: 202, statusText: 'Accepted' });
+
+        expect(request.request.method).toBe('POST');
+        expect(request.request.body).toEqual({ verification_phrase: ' restore-weather' });
         expect(answer).toEqual(body);
     });
 

@@ -42,6 +42,7 @@ def test_a_member_whose_role_has_view_by_default_sees_the_plugin(client_as, memb
             "icon_url": "/api/plugin-public/weather/icon/?v=0.1.0",
             "frame_origin": "http://weather.plugins.epicstaff.localhost",
             "permissions": ["read"],
+            "availability": "ready",
         }
     ]
 
@@ -121,11 +122,43 @@ def test_a_superadmin_naming_an_unknown_organization_is_not_found(client_as, sup
     assert response.json()["code"] == "organization_not_found"
 
 
-@pytest.mark.parametrize("state", [PluginState.UPLOADED, PluginState.MAINTENANCE, PluginState.FAILED])
+@pytest.mark.parametrize("state", [PluginState.UPLOADED, PluginState.FAILED])
 def test_a_plugin_that_is_not_running_is_hidden(client_as, member_only, acme, weather_in_acme, state):
     Plugin.objects.filter(pk=weather_in_acme.pk).update(state=state)
 
     assert _available(client_as, member_only, acme).json() == []
+
+
+def test_a_plugin_stopped_for_an_upgrade_stays_listed_in_maintenance(client_as, member_only, acme, weather_in_acme):
+    Plugin.objects.filter(pk=weather_in_acme.pk).update(state=PluginState.MAINTENANCE)
+
+    [listed] = _available(client_as, member_only, acme).json()
+
+    assert (listed["identifier"], listed["availability"]) == ("weather", "maintenance")
+
+
+def test_an_organization_still_upgrading_lists_the_plugin_in_maintenance(client_as, member_only, acme, weather_in_acme):
+    PluginGrant.objects.filter(plugin=weather_in_acme, org=acme).update(state=GrantState.UPGRADING)
+
+    [listed] = _available(client_as, member_only, acme).json()
+
+    assert listed["availability"] == "maintenance"
+
+
+def test_an_organization_whose_upgrade_failed_does_not_list_the_plugin(client_as, member_only, acme, weather_in_acme):
+    PluginGrant.objects.filter(plugin=weather_in_acme, org=acme).update(state=GrantState.UPGRADE_FAILED)
+
+    assert _available(client_as, member_only, acme).json() == []
+
+
+def test_another_organization_s_upgrade_does_not_change_this_one_s_listing(
+    client_as, member_only, acme, beta, weather_in_acme, grant_to
+):
+    grant_to(weather_in_acme, beta, state=GrantState.UPGRADING)
+
+    [listed] = _available(client_as, member_only, acme).json()
+
+    assert listed["availability"] == "ready"
 
 
 @pytest.mark.parametrize("state", [GrantState.SUSPENDED, GrantState.GRANTING, GrantState.INSTALL_FAILED])

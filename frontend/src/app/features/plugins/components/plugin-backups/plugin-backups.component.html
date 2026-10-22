@@ -1,0 +1,61 @@
+<section class="backups">
+    <h3
+        #heading
+        class="backups__title text-h4"
+        tabindex="-1"
+    >
+        Backups
+    </h3>
+
+    @if (loadError(); as message) {
+        <div
+            class="backups__error text-body"
+            role="alert"
+        >
+            <span>{{ message }}</span>
+            <app-button
+                type="outline-primary"
+                mod="small"
+                (click)="reload()"
+            >
+                Retry
+            </app-button>
+        </div>
+    }
+
+    @if (list()) {
+        @if (rows().length > 0) {
+            <ul class="backups__list">
+                @for (row of rows(); track row.backup.id) {
+                    <li class="backups__row">
+                        <div class="backups__text">
+                            <span class="text-body-medium">{{ row.title }}</span>
+                            <span class="backups__muted text-body-small">
+                                {{ row.facts }} · {{ row.backup.created_at | date: 'medium' }}
+                            </span>
+                            @if (row.notRestorable; as reason) {
+                                <span class="backups__muted text-body-small">{{ reason }}</span>
+                            }
+                        </div>
+                        @if (row.backup.restorable) {
+                            <app-button
+                                type="outline-danger"
+                                mod="small"
+                                [ariaLabel]="'Restore ' + row.title"
+                                (click)="openRestore(row)"
+                            >
+                                Restore…
+                            </app-button>
+                        }
+                    </li>
+                }
+            </ul>
+        } @else {
+            <p class="backups__muted text-body">
+                None yet. The plugin node backs the database up before an upgrade runs its migrations.
+            </p>
+        }
+    } @else if (isLoading()) {
+        <app-loading-spinner size="sm" />
+    }
+</section>

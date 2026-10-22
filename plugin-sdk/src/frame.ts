@@ -1,5 +1,6 @@
 import { canonicalNavPath } from './nav-path.js';
 import {
+    type AvailabilityChangedMessage,
     FRAME_ERROR_CODES,
     FRAME_LIMITS,
     FRAME_MESSAGE_TYPES,
@@ -9,6 +10,7 @@ import {
     type NavChangedMessage,
     ORG_HINT_PARAMETER,
     type OrgContext,
+    type PluginAvailability,
     type ReadyMessage,
     type ThemeState,
 } from './protocol.js';
@@ -107,7 +109,10 @@ export interface FramePortHandlers {
     onThemeChanged(theme: ThemeState): void;
 }
 
-/** The page's end of the port: sends `nav.changed`, dispatches `nav.navigate` and `theme.changed`. */
+/**
+ * The page's end of the port: sends `nav.changed` and `availability.changed`, dispatches `nav.navigate` and
+ * `theme.changed`.
+ */
 export class FrameChannel {
     private readonly port: MessagePort;
     private closed = false;
@@ -133,11 +138,69 @@ export class FrameChannel {
         this.port.postMessage(message);
     }
 
+    reportAvailability(state: PluginAvailability): void {
+        if (this.closed) return;
+        const message: AvailabilityChangedMessage = { type: FRAME_MESSAGE_TYPES.availabilityChanged, state };
+        this.port.postMessage(message);
+    }
+
     close(): void {
         if (this.closed) return;
         this.closed = true;
         this.port.onmessage = null;
         this.port.close();
+    }
+}
+
+/** How long the page waits after telling EpicStaff its availability before it tells it again. */
+export const AVAILABILITY_REPORT_INTERVAL_MS = 30_000;
+
+/**
+ * Tells EpicStaff when the plugin's API answers `maintenance` or `unavailable`, at most once per
+ * {@link AVAILABILITY_REPORT_INTERVAL_MS}. A change inside that window is not lost: when the window ends, the latest
+ * state is sent, unless the API is available again by then. `available` itself is never sent: EpicStaff finds out
+ * from its own server.
+ */
+export class AvailabilityReporter {
+    private readonly send: (state: PluginAvailability) => void;
+    private readonly intervalMs: number;
+    /** Set while a window is open: a report waits for it to end. */
+    private timer: ReturnType<typeof setTimeout> | null = null;
+    /** What to send when the window ends. */
+    private waiting: PluginAvailability | null = null;
+    private closed = false;
+
+    constructor(send: (state: PluginAvailability) => void, intervalMs = AVAILABILITY_REPORT_INTERVAL_MS) {
+        this.send = send;
+        this.intervalMs = intervalMs;
+    }
+
+    report(state: PluginAvailability): void {
+        if (this.closed) return;
+        if (this.timer !== null) {
+            this.waiting = state === 'available' ? null : state;
+            return;
+        }
+        if (state !== 'available') this.sendNow(state);
+    }
+
+    close(): void {
+        this.closed = true;
+        this.waiting = null;
+        if (this.timer !== null) clearTimeout(this.timer);
+        this.timer = null;
+    }
+
+    private sendNow(state: PluginAvailability): void {
+        this.send(state);
+        this.timer = setTimeout(() => this.endWindow(), this.intervalMs);
+    }
+
+    private endWindow(): void {
+        this.timer = null;
+        const waiting = this.waiting;
+        this.waiting = null;
+        if (waiting !== null && !this.closed) this.sendNow(waiting);
     }
 }
 

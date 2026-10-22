@@ -31,6 +31,19 @@ class ActivityAction(models.TextChoices):
     ORG_REMOVED_HOOK_FAILED = "org_removed_hook_failed"
     ORG_REMOVED_HOOK_RETRIED = "org_removed_hook_retried"
     ORG_REMOVED_HOOK_SKIPPED = "org_removed_hook_skipped"
+    PLUGIN_UPGRADE_STARTED = "plugin_upgrade_started"
+    PLUGIN_MAINTENANCE_STARTED = "plugin_maintenance_started"
+    PLUGIN_UPGRADE_FAILED = "plugin_upgrade_failed"
+    PLUGIN_UPGRADE_RETRIED = "plugin_upgrade_retried"
+    PLUGIN_UPGRADE_CANCELLED = "plugin_upgrade_cancelled"
+    PLUGIN_UPGRADED = "plugin_upgraded"
+    DATABASE_BACKED_UP = "database_backed_up"
+    DATABASE_RESTORE_REQUESTED = "database_restore_requested"
+    DATABASE_RESTORED = "database_restored"
+    DATABASE_RESTORE_FAILED = "database_restore_failed"
+    UPGRADE_HOOK_SUCCEEDED = "upgrade_hook_succeeded"
+    UPGRADE_HOOK_FAILED = "upgrade_hook_failed"
+    UPGRADE_HOOK_RETRIED = "upgrade_hook_retried"
 
 
 class ActorKind(models.TextChoices):

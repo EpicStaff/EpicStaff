@@ -9,7 +9,11 @@ import psycopg
 import pytest
 from loguru import logger
 from psycopg import sql
-from src.shared.models.plugin_nodes import MAX_APPLIED_MIGRATIONS, is_reportable_migration_name
+from src.shared.models.plugin_nodes import (
+    MAX_APPLIED_MIGRATIONS,
+    LedgerEntry,
+    is_reportable_ledger_entry,
+)
 
 from es_plugins.database import migration_runner
 from es_plugins.database.connections import DatabaseConnector, DatabaseProvisioningError, scram_verifier
@@ -30,7 +34,8 @@ from tests.plugin_databases import (
 )
 
 REPOSITORY = Path(__file__).resolve().parents[3]
-WEATHER_MIGRATION = REPOSITORY / "plugin-samples/weather/database/migrations/001_weather.sql"
+WEATHER_MIGRATIONS = REPOSITORY / "plugin-samples/weather/database/migrations"
+WEATHER_MIGRATION = WEATHER_MIGRATIONS / "001_weather.sql"
 
 
 def migration(name: str, text: str | bytes) -> Migration:
@@ -75,7 +80,8 @@ async def test_migrations_run_in_name_order_and_the_ledger_records_each_files_sh
 
     outcome = await provision(desired, files)
 
-    assert outcome.ledger == ("001_first.sql", "002_second.sql", "003_third.sql")
+    assert [entry.name for entry in outcome.ledger] == ["001_first.sql", "002_second.sql", "003_third.sql"]
+    assert all(isinstance(entry, LedgerEntry) for entry in outcome.ledger)
     assert outcome.applied == 3
     assert await ledger(desired) == sorted((file.name, file.sha256) for file in files)
     async with owner_session(desired) as owner:
@@ -167,6 +173,8 @@ async def test_a_failing_migration_rolls_back_alone_and_stops_the_run(plugin_dat
     assert str(failed.value) == '002_broken.sql line 3: [42601] syntax error at or near "SELEC"'
     assert await tables(desired) == {"first"}
     assert [name for name, _ in await ledger(desired)] == ["001_first.sql"]
+    # The failure carries what the database holds now: EpicStaff decides Cancel from it.
+    assert failed.value.ledger == (LedgerEntry(name="001_first.sql", sha256=files[0].sha256),)
     assert await owner_is_closed(desired)
 
 
@@ -243,7 +251,7 @@ async def test_a_trusted_extension_can_be_created(plugin_databases):
         desired, [migration("001_uuids.sql", "CREATE EXTENSION pgcrypto;\nSELECT gen_random_bytes(8);")]
     )
 
-    assert outcome.ledger == ("001_uuids.sql",)
+    assert [entry.name for entry in outcome.ledger] == ["001_uuids.sql"]
 
 
 @pytest.mark.postgres
@@ -294,6 +302,10 @@ async def test_asgs_migrations_all_apply(plugin_databases):
     assert await owner_is_closed(desired)
 
 
+def verify(path, desired):
+    return verify_package(path, desired.plugin_identifier, desired.package, desired.runtime)
+
+
 def database_package(tmp_path, migrations: dict[str, bytes], version="0.5.0"):
     plugin_manifest = {**manifest(version=version), "database": {}}
     files = package_files(backend_wheels(tmp_path / "wheels"), plugin_manifest)
@@ -306,7 +318,7 @@ def test_migrations_are_read_from_the_verified_package_as_packaged(tmp_path):
     contents = {"002_more.sql": b"SELECT 2;\n", "001_places.sql": b"CREATE TABLE places (id int);\n"}
     path, desired = database_package(tmp_path, contents)
 
-    migrations = read_migrations(path, verify_package(path, desired))
+    migrations = read_migrations(path, verify(path, desired))
 
     assert sorted((item.name, item.content, item.sha256) for item in migrations) == sorted(
         (name, content, hashlib.sha256(content).hexdigest()) for name, content in contents.items()
@@ -315,7 +327,7 @@ def test_migrations_are_read_from_the_verified_package_as_packaged(tmp_path):
 
 def test_a_migration_that_differs_from_its_listing_is_refused(tmp_path):
     path, desired = database_package(tmp_path, {"001_places.sql": b"CREATE TABLE places (id int);\n"})
-    archive = verify_package(path, desired)
+    archive = verify(path, desired)
     # The same package name, rewritten after it was verified.
     database_package(tmp_path, {"001_places.sql": b"DROP TABLE places;\n"})
 
@@ -329,9 +341,9 @@ def test_migrations_up_to_the_formats_cap_are_read_and_one_byte_more_is_refused(
     at_the_cap, desired = database_package(tmp_path / "at", {"001_a.sql": b"SELECT 1;\n", "002_b.sql": b"SELECT 22;\n"})
     over_the_cap, over = database_package(tmp_path / "over", {"001_a.sql": b"SELECT 1;\n", "002_b.sql": b"SELECT 333;\n"})
 
-    assert len(read_migrations(at_the_cap, verify_package(at_the_cap, desired))) == 2
+    assert len(read_migrations(at_the_cap, verify(at_the_cap, desired))) == 2
     with pytest.raises(PackageVerificationError, match="hold 22 bytes, more than 21"):
-        read_migrations(over_the_cap, verify_package(over_the_cap, over))
+        read_migrations(over_the_cap, verify(over_the_cap, over))
 
 
 @pytest.mark.postgres
@@ -400,8 +412,8 @@ async def test_ledger_rows_a_migration_wrote_are_read_bounded_and_never_reported
     finally:
         logger.remove(sink)
 
-    assert "001_places.sql" in outcome.ledger
-    assert all(is_reportable_migration_name(name) for name in outcome.ledger)
+    assert "001_places.sql" in [entry.name for entry in outcome.ledger]
+    assert all(is_reportable_ledger_entry(entry.name, entry.sha256) for entry in outcome.ledger)
     assert len(outcome.ledger) <= MAX_APPLIED_MIGRATIONS
     assert [line for line in lines if line.startswith("plugins.database.ledger_entries_dropped count=")]
     assert not [line for line in lines if "passwd" in line or "aaaa" in line]
@@ -425,3 +437,86 @@ def test_a_byte_order_mark_at_the_start_of_a_migration_is_dropped():
     text = migration_runner._migration_text(migration("001_a.sql", "﻿CREATE TABLE a (x int);"), {})
 
     assert text == "CREATE TABLE a (x int);"
+
+
+class _LedgerRows:
+    """An owner session whose ledger holds exactly `rows`, as `_read_ledger` asks for them."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def execute(self, query, *arguments):
+        rows = self._rows
+
+        class Cursor:
+            async def fetchall(self):
+                return rows
+
+        return Cursor()
+
+
+@pytest.mark.parametrize(
+    "bad_row",
+    [
+        ("001_" + "a" * 300 + ".sql", "a" * 64),
+        ("7", "a" * 64),
+        ("../etc/passwd", "a" * 64),
+        ("002_more.sql", "NOT-A-DIGEST"),
+        ("002_more.sql", None),
+        ("002_more.sql", "A" * 64),
+    ],
+)
+async def test_a_ledger_row_a_plugin_wrote_never_reaches_the_report(bad_row):
+    rows = [("001_places.sql", "a" * 64), bad_row, ("003_last.sql", "b" * 64)]
+
+    entries = await migration_runner.reportable_ledger(_LedgerRows(rows))
+
+    assert entries == (
+        LedgerEntry(name="001_places.sql", sha256="a" * 64),
+        LedgerEntry(name="003_last.sql", sha256="b" * 64),
+    )
+
+
+@pytest.mark.postgres
+async def test_weathers_migrations_apply_on_a_database_with_rows_and_number_each_organizations_places(
+    plugin_databases,
+):
+    desired = plugin_databases("weather")
+    password = new_app_password()
+    files = {path.name: path.read_bytes() for path in sorted(WEATHER_MIGRATIONS.glob("*.sql"))}
+    first = [migration(name, content) for name, content in files.items() if name < "003"]
+    await provision(desired, first, password)
+    app = await connect_as(desired.app_role, password, desired.database_name)
+    try:
+        for organization_id, names in ((1, ("Lisbon", "Porto")), (2, ("Kyiv",))):
+            for name in names:
+                async with app.transaction():
+                    await app.execute("SELECT pg_catalog.set_config('app.org_id', %s, true)", (str(organization_id),))
+                    await app.execute(
+                        "INSERT INTO weather.saved_places (org_id, name, country, latitude, longitude, created_by) "
+                        "VALUES (%s, %s, 'X', 1, 2, 7)",
+                        (organization_id, name),
+                    )
+    finally:
+        await app.close()
+
+    outcome = await provision(desired, [migration(name, content) for name, content in files.items()], password)
+
+    assert [entry.name for entry in outcome.ledger] == list(files)
+    assert outcome.ledger[-1].sha256 == hashlib.sha256(files["003_place_conditions.sql"]).hexdigest()
+    async with owner_session(desired) as owner:
+        forced = await fetch_all(
+            owner,
+            "SELECT relname, relforcerowsecurity FROM pg_class "
+            "WHERE relnamespace = 'weather'::regnamespace AND relname IN ('saved_places', 'place_conditions') "
+            "ORDER BY relname",
+        )
+    assert forced == [("place_conditions", True), ("saved_places", True)]
+    app = await connect_as(desired.app_role, password, desired.database_name)
+    try:
+        for organization_id, expected in ((1, [("Lisbon", 1), ("Porto", 2)]), (2, [("Kyiv", 1)])):
+            async with app.transaction():
+                await app.execute("SELECT pg_catalog.set_config('app.org_id', %s, true)", (str(organization_id),))
+                assert await fetch_all(app, "SELECT name, position FROM weather.saved_places ORDER BY position") == expected
+    finally:
+        await app.close()

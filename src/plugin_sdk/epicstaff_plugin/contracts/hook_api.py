@@ -25,15 +25,18 @@ break a plugin built against an older SDK:
 
     HookRequest.model_validate_json(body, extra="ignore")
 
-A failed organization removed hook is retried by EpicStaff on its own, on the schedule
-`org_removed_retry_delay` gives, until `ORG_REMOVED_RETRY_WINDOW_SECONDS` after its first
-attempt; the other kinds wait for a SuperAdmin to retry them.
+EpicStaff retries some failed hooks on its own. An organization removed hook is retried on the
+schedule `org_removed_retry_delay` gives, until `ORG_REMOVED_RETRY_WINDOW_SECONDS` after its
+first attempt. An upgrade hook is retried after each of its first failures in a row, as
+`upgrade_retry_delay` gives, and then waits for a SuperAdmin to retry it. An install hook waits
+for a SuperAdmin after its first failure.
 
 Adding a hook kind: `HookKind` and `HOOK_PATHS` here, then EpicStaff's job kind and the
 lifecycle step that creates the job, then the registration method of
-`epicstaff_plugin.hooks.HookRegistry`. A kind that EpicStaff retries on its own also gets its
-retry constants here, then their use where EpicStaff records a hook's result, then its row in
-the hook API reference.
+`epicstaff_plugin.hooks.HookRegistry`. A kind whose organization holds no key when it runs goes
+in `KEYLESS_HOOK_KINDS` too. A kind that EpicStaff retries on its own also gets its retry
+constants here, then their use where EpicStaff records a hook's result, then its row in the
+hook API reference.
 """
 
 import hashlib
@@ -69,6 +72,12 @@ HOOK_PATHS: Mapping[str, str] = MappingProxyType(
         "org_removed": "/_epicstaff/hooks/org-removed",
     }
 )
+KEYLESS_HOOK_KINDS: frozenset[str] = frozenset({"org_removed"})
+"""The kinds whose organization no longer holds a service-account key when the hook runs.
+
+The plugin's handler gets no EpicStaff client for them, and the node runs them without waiting
+for the organization's key in the runtime file. Every other kind's handler gets an `OrgClient`.
+"""
 HOOK_HEADER = "X-EpicStaff-Hook"
 HOOK_ASSERTION_TYPE = "epicstaff-plugin-hook+jwt"
 HOOK_ASSERTION_ALGORITHM = "EdDSA"
@@ -100,6 +109,34 @@ def org_removed_retry_delay(attempt: int) -> int:
     if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
         raise ValueError(f"an attempt number is a positive integer, not {attempt!r}")
     return ORG_REMOVED_RETRY_DELAYS_SECONDS[min(attempt, len(ORG_REMOVED_RETRY_DELAYS_SECONDS)) - 1]
+
+
+UPGRADE_RETRY_DELAYS_SECONDS = (60, 300)
+"""Seconds EpicStaff waits before it tries a failed upgrade hook again: after the first and the
+second failure in a row. After the third it stops; the organization's upgrade stays failed until
+a SuperAdmin retries it, which starts a new series."""
+
+
+def upgrade_retry_delay(failures_in_series: int) -> int | None:
+    """Return the seconds before the next attempt, after this many failures in a row.
+
+    None means EpicStaff tries no more on its own: the organization's upgrade has failed, and
+    waits for a SuperAdmin's Retry.
+
+    Raises:
+        ValueError: `failures_in_series` is not a positive integer.
+    """
+    if (
+        isinstance(failures_in_series, bool)
+        or not isinstance(failures_in_series, int)
+        or failures_in_series < 1
+    ):
+        raise ValueError(
+            f"a number of failures in a row is a positive integer, not {failures_in_series!r}"
+        )
+    if failures_in_series > len(UPGRADE_RETRY_DELAYS_SECONDS):
+        return None
+    return UPGRADE_RETRY_DELAYS_SECONDS[failures_in_series - 1]
 
 
 class _HookContractModel(BaseModel):
@@ -139,8 +176,13 @@ class HookRequest(_HookContractModel):
     """The body of a hook call: which job, which attempt, for which organization.
 
     A retried job keeps its `job_id` and gets the next `attempt`; a handler that already did
-    the work for a `job_id` must succeed again without doing it twice. `previous_version` is
-    the version the organization ran before an upgrade, null for every other kind.
+    the work for a `job_id` must succeed again without doing it twice.
+
+    `previous_version` is set for an upgrade: the version the organization was last brought
+    to, which may be several versions back (compare it with `epicstaff_plugin.versions`). It is
+    null for an upgrade only when the organization never finished installing an earlier
+    version, so the hook sets everything up as an install would. It is null for every other
+    kind.
     """
 
     format: Literal[1]

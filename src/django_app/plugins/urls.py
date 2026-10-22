@@ -42,6 +42,12 @@ from plugins.views.admin_plugins import (
     PluginUploadPermissionView,
 )
 from plugins.views.admin_role_permissions import PluginRolePermissionViewSet
+from plugins.views.admin_upgrades import (
+    PluginBackupListView,
+    PluginBackupRestoreView,
+    PluginUpgradeCancelView,
+    PluginUpgradeRetryView,
+)
 from plugins.views.available_plugins import AvailablePluginsView
 from plugins.views.login import PluginAuthorizeView, PluginTokenView
 from plugins.views.login_organizations import PluginLoginOrganizationsView
@@ -52,6 +58,7 @@ from plugins.views.node_api import (
     NodePackageView,
     NodeReportView,
     RuntimeCredentialsView,
+    UpgradeAdvanceView,
 )
 from plugins.views.public_config import PluginIconView, PluginJwksView, PluginPublicConfigView
 from plugins.views.runtime_api import PeopleLookupView, PluginPersonView, ServiceAccountMeView
@@ -118,6 +125,26 @@ urlpatterns = [
         "api/admin/plugins/<str:identifier>/retry-removal/",
         PluginRetryRemovalView.as_view(),
         name="admin-plugin-retry-removal",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/upgrade/cancel/",
+        PluginUpgradeCancelView.as_view(),
+        name="admin-plugin-upgrade-cancel",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/upgrade/retry/",
+        PluginUpgradeRetryView.as_view(),
+        name="admin-plugin-upgrade-retry",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/backups/",
+        PluginBackupListView.as_view(),
+        name="admin-plugin-backups",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/backups/<int:backup_id>/restore/",
+        PluginBackupRestoreView.as_view(),
+        name="admin-plugin-backup-restore",
     ),
     path(
         "api/admin/plugins/<str:identifier>/grants/<int:grant_id>/",
@@ -255,6 +282,11 @@ urlpatterns = [
         "api/plugin-nodes/self/hook-jobs/<int:job_id>/result/",
         HookJobResultView.as_view(),
         name="plugin-node-hook-job-result",
+    ),
+    path(
+        "api/plugin-nodes/self/upgrades/<int:upgrade_id>/advance/",
+        UpgradeAdvanceView.as_view(),
+        name="plugin-node-upgrade-advance",
     ),
     path("api/plugin-runtime/me/", ServiceAccountMeView.as_view(), name="plugin-runtime-me"),
     path(

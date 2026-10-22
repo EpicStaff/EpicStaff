@@ -52,8 +52,9 @@ the SuperAdmin sees next to the grant. An `EpicStaffApiError` already reads well
 example `EpicStaff refused POST graphs/: 403 permission_denied: You do not have permission to
 perform this action.`
 
-`hook_registry.on_upgrade` registers the upgrade hook the same way; EpicStaff does not call it
-yet. The organization removed hook takes the request alone, with no client:
+`hook_registry.on_upgrade` registers the upgrade hook the same way, and the Weather sample's
+runs the install hook's steps again: [Write an upgrade hook](upgrade-hook.md). The organization
+removed hook takes the request alone, with no client:
 [Delete your data when an organization leaves](org-removed-hook.md).
 
 ## 3. Make it safe to run again
@@ -75,11 +76,14 @@ async def ensure_readme(epicstaff: OrgClient) -> None:
 The Weather sample finds its flow by a tag it writes into the flow's description
 (`graph-light/?search=…`), creates it if it is missing, and fills it in one bulk save
 (`graphs/<id>/save/`), which EpicStaff applies in one transaction: an attempt that fails before
-the save leaves an empty flow, and the next attempt fills it. Find what your hook made by a mark
-of your own, not by a name alone: a person may already have a flow of that name, and adopting
-it would change their work. Flow names are unique in an organization, so the sample names its
-flow "Weather forecast (Weather plugin)" when a person's flow already has the plain name. A plugin with a database of its own can record what it made under the `job_id`
-instead.
+the save leaves an empty flow, and the next attempt fills it. A flow that is already there gets
+this version's description and fetch code when they differ
+(`plugin-samples/weather/backend/src/weather_plugin/forecast_flow.py`), so the upgrade hook can
+run the same steps. Find what your hook made by a mark of your own, not by a name alone: a
+person may already have a flow of that name, and adopting it would change their work. Flow
+names are unique in an organization, so the sample names its flow "Weather forecast (Weather
+plugin)" when a person's flow already has the plain name. A plugin with a database of its own
+can record what it made under the `job_id` instead.
 
 ## 4. Test it
 

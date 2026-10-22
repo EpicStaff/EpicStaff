@@ -12,7 +12,7 @@
     "authorize_params": ["plugin", "state", "code_challenge", "code_challenge_method", "org", "prompt"],
     "code_challenge_method": "S256",
     "prompt_values": ["none"],
-    "callback_errors": ["login_required", "access_denied", "interaction_required"],
+    "callback_errors": ["login_required", "access_denied", "interaction_required", "temporarily_unavailable"],
     "message_types": ["es:login-result", "es:popup-result"],
     "storage_keys": {
         "pending": "epicstaff.login.pending",

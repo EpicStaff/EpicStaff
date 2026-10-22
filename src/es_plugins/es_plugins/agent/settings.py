@@ -5,7 +5,7 @@ from src.shared.envtools import Env, EnvironmentNotFoundError
 from es_plugins.uid_range import UidRange
 
 MINIMUM_NODE_KEY_LENGTH = 32
-MINIMUM_DATABASE_ADMIN_PASSWORD_LENGTH = 32
+MINIMUM_DATABASE_PASSWORD_LENGTH = 32
 
 
 class AgentSettingsError(Exception):
@@ -27,13 +27,16 @@ class AgentSettings:
     database_admin_password: str = field(repr=False)
     """`PLUGINS_DB_ADMIN_PASSWORD`: `plugins_admin`'s password on plugins_db."""
 
+    database_backup_password: str = field(repr=False)
+    """`PLUGINS_DB_BACKUP_PASSWORD`: `plugins_backup`'s password; only `pg_dump` is given it."""
+
     @classmethod
     def from_environment(cls, env: Env | None = None) -> "AgentSettings":
         """Read the node's variables (the launcher passes them on from the container).
 
         Raises:
-            AgentSettingsError: A variable is missing, the node key or the database admin
-                password is `none` or short, or a disk cap is not a whole number above 0.
+            AgentSettingsError: A variable is missing, the node key or a database password is
+                `none` or short, or a disk cap is not a whole number above 0.
         """
         env = env or Env()
         try:
@@ -44,6 +47,7 @@ class AgentSettings:
             disk_megabytes = env.int("ES_PLUGINS_DISK_MB_PER_PLUGIN")
             files = env.int("ES_PLUGINS_FILES_PER_PLUGIN")
             database_admin_password = env.str("PLUGINS_DB_ADMIN_PASSWORD")
+            database_backup_password = env.str("PLUGINS_DB_BACKUP_PASSWORD")
         except (EnvironmentNotFoundError, ValueError) as error:
             raise AgentSettingsError(str(error)) from None
         for name, value in (
@@ -57,15 +61,16 @@ class AgentSettings:
                 "PLUGINS_NODE_KEY must be set to the key django_app knows, at least 32 characters "
                 "(generate one with: openssl rand -hex 32)"
             )
-        # `none`, the variable's default, is shorter than the minimum too.
-        if (
-            not database_admin_password
-            or len(database_admin_password) < MINIMUM_DATABASE_ADMIN_PASSWORD_LENGTH
+        # `none`, the variables' default, is shorter than the minimum too.
+        for name, password in (
+            ("PLUGINS_DB_ADMIN_PASSWORD", database_admin_password),
+            ("PLUGINS_DB_BACKUP_PASSWORD", database_backup_password),
         ):
-            raise AgentSettingsError(
-                "PLUGINS_DB_ADMIN_PASSWORD must be set to the password plugins_db was first "
-                "started with, at least 32 characters (generate one with: openssl rand -hex 32)"
-            )
+            if not password or len(password) < MINIMUM_DATABASE_PASSWORD_LENGTH:
+                raise AgentSettingsError(
+                    f"{name} must be set to the password plugins_db was first started with, at "
+                    "least 32 characters (generate one with: openssl rand -hex 32)"
+                )
         if not node_name or not api_url:
             raise AgentSettingsError("PLUGINS_NODE_NAME and PLUGINS_INTERNAL_API_URL must be set")
         if not api_url.endswith("/"):
@@ -78,4 +83,5 @@ class AgentSettings:
             disk_megabytes_per_plugin=disk_megabytes,
             files_per_plugin=files,
             database_admin_password=database_admin_password,
+            database_backup_password=database_backup_password,
         )

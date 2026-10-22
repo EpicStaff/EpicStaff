@@ -10,7 +10,8 @@
     },
     "scripts": {
         "build": "node scripts/build.mjs",
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "test": "node --test \"test/**/*.test.mjs\""
     },
     "devDependencies": {
         "@epicstaff/plugin-sdk": "file:../../../plugin-sdk",

@@ -265,3 +265,47 @@ async def test_the_init_scripts_memberships_of_plugins_admin_are_not_self_grante
 
     # INHERIT, granted by the superuser: the drop's check counts only grants of its own.
     assert rows == [("pg_signal_backend", "postgres", True), ("pg_use_reserved_connections", "postgres", True)]
+
+
+async def test_a_database_its_owner_made_a_template_is_dropped_all_the_same(plugin_databases):
+    desired = plugin_databases()
+    await provision(desired)
+    password = new_app_password()
+    async with DatabaseConnector(admin_password()).admin_session(desired.server) as admin:
+        await open_owner_login(admin, desired.owner_role, password, datetime.now(UTC) + timedelta(minutes=5))
+    owner = await connect_as(desired.owner_role, password, desired.database_name)
+    try:
+        await owner.execute(
+            sql.SQL("ALTER DATABASE {} IS_TEMPLATE true CONNECTION LIMIT 0").format(sql.Identifier(desired.database_name))
+        )
+    finally:
+        await owner.close()
+
+    await dropper().drop(desired)
+
+    assert await what_is_left(desired) == {"roles": [], "databases": []}
+
+
+async def test_a_role_another_plugins_database_refers_to_fails_the_drop_naming_that_database(plugin_databases):
+    desired = plugin_databases()
+    await provision(desired)
+    other = plugin_databases()
+    await provision(other)
+    password = new_app_password()
+    async with DatabaseConnector(admin_password()).admin_session(other.server) as admin:
+        await open_owner_login(admin, other.owner_role, password, datetime.now(UTC) + timedelta(minutes=5))
+    owner = await connect_as(other.owner_role, password, other.database_name)
+    try:
+        await owner.execute("CREATE TABLE shared (id int)")
+        await owner.execute(sql.SQL("GRANT SELECT ON shared TO {}").format(sql.Identifier(desired.app_role)))
+    finally:
+        await owner.close()
+
+    with pytest.raises(DatabaseDropError) as refused:
+        await dropper().drop(desired)
+
+    assert (refused.value.reason, refused.value.temporary) == ("database", False)
+    assert f'database "{other.database_name}" still refer to this plugin\'s roles' in str(refused.value)
+    assert [row[0] for row in (await what_is_left(desired))["roles"]] == sorted(
+        [desired.owner_role, desired.app_role, desired.job_role]
+    )

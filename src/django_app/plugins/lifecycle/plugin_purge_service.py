@@ -10,6 +10,7 @@ commit its frontend and package files are deleted. A frontend-only plugin is fin
 without a node. Activity events stay. No backup is taken.
 """
 
+import time
 from dataclasses import dataclass
 from functools import partial
 
@@ -32,6 +33,7 @@ from plugins.lifecycle.lifecycle_locks import lock_existing_plugin, lock_grants_
 from plugins.lifecycle.org_removed_hooks import OrgRemovedHookService
 from plugins.lifecycle.plugin_actions import PluginLifecycleAction, assert_plugin_action
 from plugins.lifecycle.purge_phrases import assert_purge_phrase, plugin_purge_phrase
+from plugins.lifecycle.upgrade_service import PluginUpgradeService
 from plugins.models import (
     GrantState,
     HookJobKind,
@@ -75,9 +77,11 @@ class PluginPurgeService:
     def begin(self, plugin: Plugin, *, actor, reason: str) -> None:
         """Make `plugin` (locked by the caller) `purging`, and begin deleting every grant's data.
 
-        A plugin that was not uninstalled gets its uninstall dates set to now: nothing of it
-        is kept. `actor` None is the platform.
+        An open upgrade is abandoned first (`PluginUpgradeService.abandon`). A plugin that was
+        not uninstalled gets its uninstall dates set to now: nothing of it is kept. `actor`
+        None is the platform.
         """
+        PluginUpgradeService().abandon(plugin)
         now = timezone.now()
         if plugin.state != PluginState.UNINSTALLING:
             plugin.uninstall_requested_at = now
@@ -123,6 +127,8 @@ class PluginPurgeService:
             .distinct()
         )
         for organization_id in list(organizations):
+            if time.monotonic() >= until:
+                break
             purger.purge(
                 organization_id=organization_id,
                 plugin_identifier=plugin.identifier,
@@ -196,7 +202,7 @@ class PluginPurgeService:
         now = timezone.now()
         with transaction.atomic():
             plugin = (
-                Plugin.objects.select_for_update(of=("self",))
+                Plugin.objects.select_for_update(of=("self",), no_key=True)
                 .select_related("current_package")
                 .defer("current_package__icon_bytes")
                 .filter(placement__pk=report.placement_id, placement__node=node)
@@ -228,8 +234,8 @@ class PluginPurgeService:
                         )
                     )
             else:
+                # The error of a failed attempt stays until the removal is retried.
                 placement.removal_state = PlacementRemovalState.REMOVING
-                placement.removal_error = None
             placement.removal_reported_at = now
             placement.save(
                 update_fields=[

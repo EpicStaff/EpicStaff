@@ -24,6 +24,7 @@ from plugins.exceptions import (
     HookNotRetryableError,
     PluginUninstallingError,
 )
+from plugins.lifecycle.plugin_actions import OUT_OF_SERVICE_PLUGIN_STATES
 from plugins.models import GrantState, PluginGrant, PluginState
 
 
@@ -31,17 +32,22 @@ class GrantAction(StrEnum):
     SUSPEND = "suspend"
     RESUME = "resume"
     RETRY_INSTALL = "retry_install"
+    RETRY_UPGRADE = "retry_upgrade"
     PURGE = "purge"
 
 
-# A grant can be suspended while its install hook runs or after it failed, not only once it is
-# active, so a SuperAdmin can stop a plugin at any point of its installation.
+# A grant can be suspended while its install or upgrade hook runs or after it failed, not only
+# once it is active, so a SuperAdmin can stop a plugin at any point of its installation.
 SUSPENDABLE_GRANT_STATES = frozenset(
-    {GrantState.GRANTING, GrantState.ACTIVE, GrantState.INSTALL_FAILED}
+    {
+        GrantState.GRANTING,
+        GrantState.ACTIVE,
+        GrantState.INSTALL_FAILED,
+        GrantState.UPGRADING,
+        GrantState.UPGRADE_FAILED,
+    }
 )
 PURGEABLE_GRANT_STATES = SUSPENDABLE_GRANT_STATES | {GrantState.SUSPENDED}
-# The plugin states in which a grant is out of service: only its data can still be deleted.
-_PLUGIN_OUT_OF_SERVICE = frozenset({PluginState.UNINSTALLING, PluginState.PURGING})
 
 
 @dataclass(frozen=True)
@@ -60,19 +66,25 @@ _RULES: dict[GrantAction, _ActionRule] = {
     GrantAction.RETRY_INSTALL: _ActionRule(
         frozenset({GrantState.INSTALL_FAILED}),
         HookNotRetryableError,
-        _PLUGIN_OUT_OF_SERVICE,
+        OUT_OF_SERVICE_PLUGIN_STATES,
+        PluginUninstallingError,
+    ),
+    GrantAction.RETRY_UPGRADE: _ActionRule(
+        frozenset({GrantState.UPGRADE_FAILED}),
+        HookNotRetryableError,
+        OUT_OF_SERVICE_PLUGIN_STATES,
         PluginUninstallingError,
     ),
     GrantAction.SUSPEND: _ActionRule(
         SUSPENDABLE_GRANT_STATES,
         GrantNotSuspendableError,
-        _PLUGIN_OUT_OF_SERVICE,
+        OUT_OF_SERVICE_PLUGIN_STATES,
         PluginUninstallingError,
     ),
     GrantAction.RESUME: _ActionRule(
         frozenset({GrantState.SUSPENDED}),
         GrantNotSuspendedError,
-        _PLUGIN_OUT_OF_SERVICE,
+        OUT_OF_SERVICE_PLUGIN_STATES,
         PluginUninstallingError,
     ),
     GrantAction.PURGE: _ActionRule(
@@ -98,12 +110,13 @@ def assert_grant_action(grant: PluginGrant, action: GrantAction) -> None:
     """Refuse `action` unless `grant`'s state and its plugin's allow it.
 
     Raises:
-        HookNotRetryableError: `retry_install` on a grant whose install hook has not failed.
+        HookNotRetryableError: `retry_install` or `retry_upgrade` on a grant whose install or
+            upgrade hook has not failed.
         GrantNotSuspendableError: `suspend` on a grant that cannot be suspended.
         GrantNotSuspendedError: `resume` on a grant that is not suspended.
         GrantNotPurgeableError: `purge` on a grant, or of a plugin, already being deleted.
-        PluginUninstallingError: `suspend`, `resume` or `retry_install` while the plugin is
-            uninstalled or being deleted.
+        PluginUninstallingError: `suspend`, `resume`, `retry_install` or `retry_upgrade` while
+            the plugin is uninstalled or being deleted.
     """
     rule = _RULES[action]
     if grant.state not in rule.grant_states:

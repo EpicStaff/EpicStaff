@@ -21,7 +21,11 @@ browser ── https://weather.plugins.example.com/api/ping ──▶ EpicStaff'
 ```
 
 The gateway decides every request to `https://<id>.<plugins base domain>/api/**` before the
-plugin sees it, and adds the context in the `X-EpicStaff-Plugin-Context` header. Whatever value a
+plugin sees it, and adds the context in the `X-EpicStaff-Plugin-Context` header. While the
+plugin is stopped for an upgrade, it refuses every path, public ones included, with the deny
+reason `maintenance` (the client gets `503 plugin_maintenance`); once the plugin is back, it
+gives the same answer to a person of an organization whose upgrade hook has not finished, and
+`plugin_unavailable` to one whose upgrade failed ([Error codes](error-codes.md#gateway-codes)). Whatever value a
 client sends in that header, in any spelling, is removed first. The plugin also never receives
 the browser's cookies, and the browser never receives cookies the plugin sets.
 
@@ -53,6 +57,8 @@ Otherwise the gateway answers instead of the plugin, in EpicStaff's error shape:
 |---|---|---|
 | `401 login_required` | The request has no acceptable token: none, expired, for another plugin, or no longer valid (checks 1–3) | Renews the token silently, once, and repeats the request |
 | `403 forbidden` | The token is fine, but the person may no longer use the plugin in that organization (check 4) | Reports that the person has no access, and does not retry |
+| `503 plugin_maintenance` | The plugin is stopped for an upgrade, or the person's organization is still being upgraded (checks 2 hold, the grant is `upgrading`). Comes with `Retry-After: 30` | Reports `availability: maintenance`, and does not renew the token |
+| `503 plugin_unavailable` | The person's organization's upgrade failed (the grant is `upgrade_failed`), or the plugin's process is not up | Reports `availability: unavailable` |
 
 A change to an account, a membership, a role or a grant takes effect within 10 seconds. The token
 itself lives at most 15 minutes and is not ended by logging out of EpicStaff.

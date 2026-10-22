@@ -16,6 +16,11 @@ import {
     PluginPurgeTarget,
 } from '../components/plugin-purge-dialog/plugin-purge-dialog.component';
 import {
+    PLUGIN_RESTORE_DIALOG_TITLE_ID,
+    PluginRestoreDialogComponent,
+    PluginRestoreDialogData,
+} from '../components/plugin-restore-dialog/plugin-restore-dialog.component';
+import {
     PLUGIN_REVIEW_DIALOG_TITLE_ID,
     PluginReviewDialogComponent,
     PluginReviewDialogData,
@@ -35,7 +40,7 @@ import {
     PLUGIN_UPLOAD_DIALOG_TITLE_ID,
     PluginUploadDialogComponent,
 } from '../components/plugin-upload-dialog/plugin-upload-dialog.component';
-import { PackageReview, PluginDetail, PluginGrant } from '../models/plugin-admin.model';
+import { PackageReview, PluginDetail, PluginGrant, PluginRestore } from '../models/plugin-admin.model';
 
 /** Opens the SuperAdmin plugin dialogs; each observable emits the dialog's result, or `undefined` when dismissed. */
 @Injectable({ providedIn: 'root' })
@@ -94,6 +99,15 @@ export class PluginDialogsService {
         return this.openPurge({ scope: 'plugin', ...data }).pipe(
             map((result) => (result?.scope === 'plugin' ? result.plugin : undefined))
         );
+    }
+
+    /** Emits the restore under way; closes as the suspend dialog does. */
+    openRestore(data: PluginRestoreDialogData): Observable<PluginRestore | undefined> {
+        return this.dialog.open<PluginRestore, PluginRestoreDialogData>(PluginRestoreDialogComponent, {
+            ariaLabelledBy: PLUGIN_RESTORE_DIALOG_TITLE_ID,
+            disableClose: true,
+            data,
+        }).closed;
     }
 
     private openPurge(data: PluginPurgeDialogData): Observable<PluginPurgeDialogResult | undefined> {

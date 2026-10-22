@@ -11,8 +11,10 @@ in an organization: when a person's flow already has that name, Weather names it
 "Weather forecast (Weather plugin)". Removing the tag from the description makes Weather lose
 the flow; the next install creates a new one.
 
-Every step looks up what is already there, so the hook can run again for the same organization
-(a retried job) and only adds what an earlier attempt did not finish.
+The install hook and the upgrade hook (`weather_plugin.upgrade_hook`) both call
+`ensure_forecast_flow`. Every step looks up what is already there, so a hook can run again for
+the same organization (a retried job) and only adds what an earlier attempt did not finish. A
+flow an earlier version of Weather made gets this version's description and fetch code.
 """
 
 import uuid
@@ -24,10 +26,10 @@ from epicstaff_plugin.client import OrgClient
 FLOW_NAME = "Weather forecast"
 FLOW_NAME_WHEN_TAKEN = "Weather forecast (Weather plugin)"
 FLOW_TAG = "[weather-plugin:forecast-flow]"
-FLOW_DESCRIPTION = (
-    "Fetches a seven-day forecast from Open-Meteo. Created by the Weather plugin, which finds "
-    f"it by this tag: {FLOW_TAG}"
-)
+# The Weather version that last changed the flow. The description names it, and the upgrade
+# hook brings every organization from before it to this flow.
+FLOW_VERSION = "0.7.0"
+FLOW_DESCRIPTION = f"Forecast for a city · Weather {FLOW_VERSION} {FLOW_TAG}"
 FETCH_NODE_NAME = "Fetch forecast"
 SCHEDULE_NODE_NAME = "Every day at 06:00 UTC"
 DEFAULT_CITY = "Berlin"
@@ -95,7 +97,10 @@ async def find_forecast_flow(epicstaff: OrgClient) -> dict[str, Any] | None:
 
 
 async def ensure_forecast_flow(epicstaff: OrgClient) -> int:
-    """Create the flow, its nodes and its schedule where they are missing; return its id.
+    """Bring the organization's forecast flow to this version of Weather; return its id.
+
+    Creates the flow, its nodes and its schedule where they are missing. A flow that is there
+    gets this version's description, and its fetch node this version's code, when they differ.
 
     Raises:
         EpicStaffApiError: EpicStaff refused a call; the hook fails with its message.
@@ -109,14 +114,54 @@ async def ensure_forecast_flow(epicstaff: OrgClient) -> int:
     else:
         graph_id = flow["id"]
     graph = await epicstaff.get(f"graphs/{graph_id}/")
-    if not any(node["node_name"] == FETCH_NODE_NAME for node in graph["python_node_list"]):
+    if graph["description"] != FLOW_DESCRIPTION:
+        await epicstaff.patch(f"graphs/{graph_id}/", {"description": FLOW_DESCRIPTION})
+    fetch = next(
+        (node for node in graph["python_node_list"] if node["node_name"] == FETCH_NODE_NAME), None
+    )
+    if fetch is None:
         # One request, one transaction: an attempt that fails here leaves the flow empty,
         # and the next attempt fills it.
         await epicstaff.post(
             f"graphs/{graph_id}/save/",
             flow_contents(graph_id, graph["save_version"], datetime.now(UTC)),
         )
+    elif not _is_this_versions_fetch_node(fetch):
+        # A save replaces every field of a node it names, so it sends the whole node, where the
+        # flow's editor left it.
+        await epicstaff.post(
+            f"graphs/{graph_id}/save/",
+            {
+                "save_version": graph["save_version"],
+                "python_node_list": [
+                    {
+                        "id": fetch["id"],
+                        "graph": graph_id,
+                        **fetch_node_definition(),
+                        "metadata": fetch.get("metadata") or {"position": {"x": 320, "y": 0}},
+                    }
+                ],
+            },
+        )
     return graph_id
+
+
+def fetch_node_definition() -> dict[str, Any]:
+    """Return what this version's fetch node is: its name, input, output and code."""
+    return {
+        "node_name": FETCH_NODE_NAME,
+        "input_map": {"city": "variables.city"},
+        "output_variable_path": "variables.forecast",
+        "python_code": {"code": FETCH_FORECAST_CODE, "entrypoint": "main", "libraries": []},
+    }
+
+
+def _is_this_versions_fetch_node(node: dict[str, Any]) -> bool:
+    wanted = fetch_node_definition()
+    code = node.get("python_code") or {}
+    return all(
+        node.get(key) == wanted[key] for key in ("input_map", "output_variable_path")
+    ) and all(code.get(key) == value for key, value in wanted["python_code"].items())
 
 
 async def _free_flow_name(epicstaff: OrgClient) -> str:
@@ -148,14 +193,7 @@ def flow_contents(graph_id: int, save_version: int, now: datetime) -> dict[str, 
             {
                 "graph": graph_id,
                 "temp_id": fetch,
-                "node_name": FETCH_NODE_NAME,
-                "input_map": {"city": "variables.city"},
-                "output_variable_path": "variables.forecast",
-                "python_code": {
-                    "code": FETCH_FORECAST_CODE,
-                    "entrypoint": "main",
-                    "libraries": [],
-                },
+                **fetch_node_definition(),
                 "metadata": {"position": {"x": 320, "y": 0}},
             }
         ],

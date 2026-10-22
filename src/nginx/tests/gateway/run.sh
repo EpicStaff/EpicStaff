@@ -12,6 +12,9 @@ trap cleanup EXIT
 cleanup
 
 compose up -d --build --quiet-pull > /dev/null 2>&1 || { compose logs; exit 1; }
+# The published SPAs, readable by nginx's worker user as django_app writes them (0755 and 0644).
+compose exec -T tools sh -c 'cp -R /lab/spa/. /srv/plugin-spa/ && chmod -R u=rwX,go=rX /srv/plugin-spa' \
+  || { compose logs; exit 1; }
 for _ in $(seq 60); do
   if compose exec -T tools curl -s -o /dev/null -H 'Host: alpha.plugins.epicstaff.test' http://nginx/; then
     break

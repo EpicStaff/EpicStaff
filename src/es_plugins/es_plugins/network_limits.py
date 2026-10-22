@@ -8,25 +8,37 @@ the five kept for the plugin node included. The egress proxy checks a password f
 request it is sent, so a plugin that floods it slows every other plugin's outbound access.
 
 Every plugin and the agent share the container's one network namespace, and with it its
-ephemeral ports: a plugin opening new connections fast enough would leave none for the others,
-nor for the agent's links to django_app and plugins_db.
+ephemeral ports (about 28,000). A socket holds one from the moment it is bound, before any packet
+is sent: `bind()` to port 0, or a UDP `connect()`, takes one silently, and a TCP connection takes
+one until about a minute after it closes. Without limits one plugin could take them all, and the
+agent could reach neither django_app nor plugins_db, so the plugin could not even be suspended.
 
-One nftables table in the es_plugins container's network namespace sets, for each plugin UID:
+At start-up, for each plugin UID:
 
-- at most `NEW_CONNECTIONS_PER_SECOND` new TCP connections a second, to anywhere, after a burst
-  of `NEW_CONNECTIONS_BURST`;
-- at most `PLUGINS_MAX_DB_CONNECTIONS` TCP connections open at once to plugins_db, and
-  `PROXY_CONNECTIONS_PER_PLUGIN` to the egress proxy.
+- **No `bind()` of an inet socket** (`bind_refusal`). A plugin serves on the socket the agent
+  hands it as fd 3 and never needs to bind one.
+- **One nftables table** in the container's network namespace:
+  - at most `NEW_CONNECTIONS_PER_SECOND` new TCP connections a second, to anywhere, after a
+    burst of `NEW_CONNECTIONS_BURST`;
+  - at most `TCP_CONNECTIONS_PER_PLUGIN` TCP connections open at once, to anywhere (its own
+    listener included);
+  - at most `PLUGINS_MAX_DB_CONNECTIONS` of them to plugins_db, and
+    `PROXY_CONNECTIONS_PER_PLUGIN` to the egress proxy.
 
-A connection over a limit is refused at once (a TCP reset), and closed connections stop
-counting. The agent's UID is outside `PLUGINS_NODE_UID_RANGE`, so the node's own connections are
-never limited.
+  A connection over a limit is refused at once (a TCP reset), and closed connections stop
+  counting.
 
-The container's entrypoint runs `python -m es_plugins.network_limits` as root with NET_ADMIN,
-then starts the launcher without NET_ADMIN or SETPCAP in any capability set, so nothing that
-runs on the node afterwards can change the table.
+The launcher's descriptor limit per process (`RLIMIT_NOFILE`) bounds what is left, a plugin's UDP
+sockets connected without sending; several plugins together could still take the ephemeral
+ports that way (an accepted risk). The agent's UID is outside `PLUGINS_NODE_UID_RANGE`, so the
+node's own sockets are never limited.
+
+The container's entrypoint runs `python -m es_plugins.network_limits` as root with NET_ADMIN and
+BPF, then starts the launcher without NET_ADMIN, BPF or SETPCAP in any capability set, so nothing
+that runs on the node afterwards can change the limits.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -34,6 +46,7 @@ import sys
 
 from loguru import logger
 
+from es_plugins.bind_refusal import BindRefusalError, install_bind_refusal
 from es_plugins.egress.policy_writer import EGRESS_PROXY_PORT
 from es_plugins.logging_setup import configure_logging
 from es_plugins.uid_range import UidRange
@@ -48,6 +61,8 @@ PROXY_CONNECTIONS_PER_PLUGIN = 64
 # 28,000, each held about a minute after it closes).
 NEW_CONNECTIONS_PER_SECOND = 200
 NEW_CONNECTIONS_BURST = 200
+# Far above a plugin's database, proxy and loopback connections together.
+TCP_CONNECTIONS_PER_PLUGIN = 512
 # No plugin's database connection limit is above this: the manifest and the node contract bound it.
 MAXIMUM_DATABASE_CONNECTIONS = 100
 NFT_TIMEOUT_SECONDS = 30
@@ -65,10 +80,7 @@ def connection_limits_ruleset(uid_range: UidRange, database_connections: int) ->
     so the delete never fails, and the caps are never missing in between.
     """
     uids = f"{uid_range.first}-{uid_range.last}"
-    caps = (
-        ("database_connections", PLUGINS_DB_PORT, database_connections),
-        ("proxy_connections", EGRESS_PROXY_PORT, PROXY_CONNECTIONS_PER_PLUGIN),
-    )
+    caps = _caps(database_connections)
     sets = "".join(
         f"    set {name} {{\n"
         "        typeof meta skuid\n"
@@ -93,6 +105,15 @@ def connection_limits_ruleset(uid_range: UidRange, database_connections: int) ->
     )
 
 
+def _caps(database_connections: int) -> tuple[tuple[str, int | None, int], ...]:
+    """(set, port or None for every TCP connection, limit) of each cap on open connections."""
+    return (
+        ("tcp_connections", None, TCP_CONNECTIONS_PER_PLUGIN),
+        ("database_connections", PLUGINS_DB_PORT, database_connections),
+        ("proxy_connections", EGRESS_PROXY_PORT, PROXY_CONNECTIONS_PER_PLUGIN),
+    )
+
+
 def _rate_rule(uids: str) -> str:
     return (
         f"meta skuid {uids} meta l4proto tcp ct state new add @new_connections "
@@ -101,9 +122,10 @@ def _rate_rule(uids: str) -> str:
     )
 
 
-def _cap_rule(uids: str, set_name: str, port: int, limit: int) -> str:
+def _cap_rule(uids: str, set_name: str, port: int | None, limit: int) -> str:
+    destination = f"tcp dport {port}" if port is not None else "meta l4proto tcp"
     return (
-        f"meta skuid {uids} tcp dport {port} ct state new "
+        f"meta skuid {uids} {destination} ct state new "
         f"add @{set_name} {{ meta skuid ct count over {limit} }} counter reject with tcp reset"
     )
 
@@ -122,27 +144,69 @@ def install_connection_limits(uid_range: UidRange, database_connections: int) ->
     loaded = _run_nft(nft, ["-f", "-"], connection_limits_ruleset(uid_range, database_connections))
     if loaded.returncode != 0:
         raise NetworkLimitsError(f"nft refused the connection caps: {_one_line(loaded.stderr)}")
-    listed = _run_nft(nft, ["list", "table", TABLE_FAMILY, TABLE_NAME])
+    listed = _run_nft(nft, ["-j", "list", "table", TABLE_FAMILY, TABLE_NAME])
     if listed.returncode != 0:
         raise NetworkLimitsError(
             f"the connection caps cannot be listed: {_one_line(listed.stderr)}"
         )
-    installed = " ".join(listed.stdout.split())
-    uids = f"{uid_range.first}-{uid_range.last}"
-    expected_rules = {
-        "the rate of new connections": _rate_rule(uids),
-        **{
-            f"the cap on port {port}": _cap_rule(uids, name, port, limit)
-            for name, port, limit in (
-                ("database_connections", PLUGINS_DB_PORT, database_connections),
-                ("proxy_connections", EGRESS_PROXY_PORT, PROXY_CONNECTIONS_PER_PLUGIN),
-            )
-        },
+    try:
+        installed = installed_rules(json.loads(listed.stdout))
+    except (ValueError, KeyError, TypeError) as error:
+        raise NetworkLimitsError(f"nft listed the connection caps unreadably: {error}") from None
+    expected = expected_rules(uid_range, database_connections)
+    if installed != expected:
+        missing = sorted(str(rule) for rule in expected - installed)
+        raise NetworkLimitsError(
+            "the connection caps are not as installed: "
+            + (f"missing {'; '.join(missing)}" if missing else "the table holds other rules")
+        )
+
+
+Rule = tuple
+"""What a rule of the table does, read from `nft -j` (libnftables' documented JSON): the UID range,
+the port (None for every TCP connection), the set, the limit, and whether it resets."""
+
+
+def expected_rules(uid_range: UidRange, database_connections: int) -> set[Rule]:
+    uids = (uid_range.first, uid_range.last)
+    rate = ("rate", NEW_CONNECTIONS_PER_SECOND, NEW_CONNECTIONS_BURST, "second")
+    return {
+        (uids, None, "new_connections", rate, True),
+        *(
+            (uids, port, name, ("count", limit), True)
+            for name, port, limit in _caps(database_connections)
+        ),
     }
-    for description, rule in expected_rules.items():
-        # The listing adds the packet and byte counts after `counter`.
-        if rule.removesuffix(" counter reject with tcp reset") not in installed:
-            raise NetworkLimitsError(f"{description} is not limited after installing the rules")
+
+
+def installed_rules(listing: dict) -> set[Rule]:
+    """The rules of the table's output chain, as `expected_rules` describes them."""
+    rules = set()
+    for item in listing["nftables"]:
+        rule = item.get("rule")
+        if rule is None or rule["chain"] != "output":
+            continue
+        uids = port = set_name = limit = None
+        resets = False
+        for expression in rule["expr"]:
+            if "match" in expression:
+                left, right = expression["match"]["left"], expression["match"]["right"]
+                if left == {"meta": {"key": "skuid"}} and isinstance(right, dict):
+                    uids = tuple(right["range"])
+                elif left == {"payload": {"protocol": "tcp", "field": "dport"}}:
+                    port = right
+            elif "set" in expression:
+                set_name = expression["set"]["set"].removeprefix("@")
+                [statement] = expression["set"]["stmt"]
+                if "limit" in statement and statement["limit"].get("inv"):
+                    found = statement["limit"]
+                    limit = ("rate", found["rate"], found["burst"], found["per"])
+                elif "ct count" in statement and statement["ct count"].get("inv"):
+                    limit = ("count", statement["ct count"]["val"])
+            elif "reject" in expression:
+                resets = expression["reject"].get("type") == "tcp reset"
+        rules.add((uids, port, set_name, limit, resets))
+    return rules
 
 
 def _run_nft(nft: str, arguments: list[str], script: str | None = None):
@@ -190,15 +254,18 @@ def main() -> int:
         return EXIT_CONFIGURATION_ERROR
     try:
         install_connection_limits(uid_range, database_connections)
-    except NetworkLimitsError as error:
+        install_bind_refusal(uid_range)
+    except (NetworkLimitsError, BindRefusalError) as error:
         logger.error("The per-plugin connection limits could not be set: {}", error)
         return 1
     logger.info(
-        "plugins.node.connection_limits uids={}-{} database={} proxy={} new_per_second={}",
+        "plugins.node.connection_limits uids={}-{} database={} proxy={} tcp={} new_per_second={} "
+        "bind=refused",
         uid_range.first,
         uid_range.last,
         database_connections,
         PROXY_CONNECTIONS_PER_PLUGIN,
+        TCP_CONNECTIONS_PER_PLUGIN,
         NEW_CONNECTIONS_PER_SECOND,
     )
     return 0

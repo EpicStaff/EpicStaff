@@ -25,7 +25,9 @@ class DatabaseReportRecorder:
         """Store `report` on `record` (locked by the caller) and write the events it causes.
 
         A report about another installation is ignored. `provisioning` and `failed` store the
-        node's error; `ready` stores the ledger and the size and clears the error. Events,
+        node's error; `ready` stores the applied migrations and the size and clears the error.
+        The ledger with its digests is stored whenever the node read it, in any state: after a
+        failed migration it holds what was applied before the failure. Events,
         all deployment-wide: `database_ready` the first time the database is ready, again
         once it is ready after a failure (the node reports `provisioning` in between, so the
         record keeps `failed_at` until then) or when the ledger changed (not when an agent
@@ -42,6 +44,8 @@ class DatabaseReportRecorder:
             )
             return
         changes = _state_changes(record, report, now)
+        if report.ledger is not None:
+            changes["ledger"] = [entry.model_dump() for entry in report.ledger]
         activity = ActivityRecorder()
         if report.state == PluginDatabaseState.READY and (
             record.ready_at is None

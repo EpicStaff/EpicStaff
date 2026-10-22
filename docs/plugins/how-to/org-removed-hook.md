@@ -67,6 +67,7 @@ that opens the database it deletes from. The deleting itself is in
 
 ```python
 DELETE_ORGANIZATION_ROWS = (
+    "DELETE FROM weather.place_conditions WHERE org_id = %s",
     "DELETE FROM weather.saved_places WHERE org_id = %s",
     "DELETE FROM weather.forecast_runs WHERE org_id = %s",
     "DELETE FROM weather.popup_results WHERE org_id = %s",
@@ -89,7 +90,9 @@ class OrganizationData:
   row-level security limits every statement to that organization, and say `WHERE org_id = %s`
   as well. Then a mistake in either still deletes nothing of another organization's. List every
   table with organization rows: the Weather sample's tests compare its statements with the
-  tables its migrations create, so a new table cannot be forgotten.
+  tables its migrations create, so a new table cannot be forgotten. A table whose rows go with
+  another's, like Weather's `place_conditions` with its places, comes first: the cascade would
+  delete its rows anyway, but they would not be counted.
 - **Memory.** Clear anything the process keeps for the organization: caches, sessions,
   connections to other systems. The Weather sample keeps nothing per organization in memory.
 - **Other systems.** Revoke the organization's tokens and delete what you stored for it at
@@ -144,7 +147,7 @@ from weather_plugin.app import app
 def test_the_org_removed_hook_succeeds(tmp_path, monkeypatch, test_database_url):
     monkeypatch.setenv("DATABASE_URL", test_database_url)
     monkeypatch.setenv("EPICSTAFF_PLUGIN_DB_CONNECTIONS", "3")
-    signer = ContextSigner(plugin_identifier="weather", plugin_version="0.6.0")
+    signer = ContextSigner(plugin_identifier="weather", plugin_version="0.7.0")
     runtime_file = tmp_path / "runtime.json"
     write_runtime_file(runtime_file, signer=signer)
 

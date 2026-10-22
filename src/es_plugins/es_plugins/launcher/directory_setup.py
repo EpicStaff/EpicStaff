@@ -86,6 +86,8 @@ class DirectorySetup:
             (layout.plugins_root, 0o711, launcher),
             (layout.venvs_root, 0o711, launcher),
             (layout.logs_root, 0o700, self._agent),
+            # Backups hold every organization's plugin data: the agent's alone.
+            (layout.backups_root, 0o700, self._agent),
             (layout.run_root, 0o711, launcher),
             (layout.launcher_socket_directory, 0o750, Ownership(launcher.uid, self._agent.gid)),
         ):
@@ -159,6 +161,28 @@ class DirectorySetup:
                 os.rename(version, replaced_name, src_dir_fd=code_root, dst_dir_fd=code_root)
             os.rename(staging_name, version, src_dir_fd=code_root, dst_dir_fd=code_root)
             _remove_tree_if_present(code_root, replaced_name)
+
+    def prune_code(self, plugin: str, keep_version: str) -> list[str]:
+        """Delete every entry of `plugins/<id>/` but `keep_version`; return the names deleted.
+
+        After an upgrade completes, is cancelled or is replaced, only the version the plugin runs
+        stays. Each entry is taken by name in the root-owned directory, and a link is deleted,
+        never followed. A missing directory is fine.
+        """
+        check_plugin_identifier(plugin)
+        check_version_segment(keep_version)
+        code_root = self._layout.plugin_code_root(plugin)
+        try:
+            descriptor = os.open(code_root, _DIRECTORY_FLAGS)
+        except FileNotFoundError:
+            return []
+        try:
+            removed = sorted(name for name in os.listdir(descriptor) if name != keep_version)
+            for name in removed:
+                _remove_tree_if_present(descriptor, name)
+        finally:
+            os.close(descriptor)
+        return removed
 
     def purge_plugin_data(self, plugin: str, uid: int) -> None:
         """Delete the plugin's HOME. The caller kills the UID's processes first.

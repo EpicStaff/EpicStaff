@@ -139,6 +139,9 @@ def test_the_desired_state_describes_each_backend_on_the_node(backend_plugin, pl
         "hook_jobs": [],
         "database": None,
         "egress": {"hosts": []},
+        "upgrade": None,
+        "restore": None,
+        "backups_to_delete": [],
     }
     assert len(placement["credentials_revision"]) == 64
 

@@ -25,6 +25,7 @@ def node_wide_modes(layout):
         layout.plugins_root: 0o711,
         layout.venvs_root: 0o711,
         layout.logs_root: 0o700,
+        layout.backups_root: 0o700,
         layout.run_root: 0o711,
         layout.launcher_socket_directory: 0o750,
         layout.heartbeat_file: 0o644,
@@ -243,6 +244,7 @@ def test_root_gives_every_directory_its_owner(layout):
         layout.data_root: (0, 0),
         layout.agent_directory: (AGENT_UID, 0),
         layout.logs_root: (AGENT_UID, AGENT_UID),
+        layout.backups_root: (AGENT_UID, AGENT_UID),
         layout.launcher_socket_directory: (0, AGENT_UID),
         layout.heartbeat_file: (AGENT_UID, AGENT_UID),
         layout.plugin_home(PLUGIN): (PLUGIN_UID, PLUGIN_UID),
@@ -389,3 +391,36 @@ def test_root_removes_everything_of_a_plugin_with_its_processes_and_ipc_objects(
     ):
         assert not os.path.lexists(path)
     assert remove() == {"ok": True, "ipc_objects": 0}
+
+
+def test_pruning_keeps_only_the_version_the_plugin_runs_and_again_does_nothing(layout, unprivileged_setup, tmp_path):
+    unprivileged_setup.prepare_plugin(PLUGIN, os.getuid())
+    for version in ("0.6.0", "0.7.0", "0.7.1"):
+        code = layout.plugin_code(PLUGIN, version) / "backend" / "src"
+        code.mkdir(parents=True)
+        (code / "app.py").write_text(version)
+    (layout.plugin_code_root(PLUGIN) / ".install-0.7.1").mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "kept.txt").write_text("not the plugin's")
+    (layout.plugin_code_root(PLUGIN) / "0.5.0").symlink_to(outside)
+
+    removed = unprivileged_setup.prune_code(PLUGIN, "0.7.0")
+    again = unprivileged_setup.prune_code(PLUGIN, "0.7.0")
+
+    assert removed == [".install-0.7.1", "0.5.0", "0.6.0", "0.7.1"]
+    assert again == []
+    assert os.listdir(layout.plugin_code_root(PLUGIN)) == ["0.7.0"]
+    assert (layout.plugin_code(PLUGIN, "0.7.0") / "backend" / "src" / "app.py").read_text() == "0.7.0"
+    assert (outside / "kept.txt").read_text() == "not the plugin's"
+
+
+def test_pruning_a_plugin_without_code_does_nothing(layout, unprivileged_setup):
+    assert unprivileged_setup.prune_code(PLUGIN, "0.7.0") == []
+
+
+@pytest.mark.parametrize("version", ["..", "../other", ".hidden"])
+def test_pruning_refuses_a_version_that_is_not_one_path_segment(layout, unprivileged_setup, version):
+    with pytest.raises(ValueError):
+        unprivileged_setup.prune_code(PLUGIN, version)
+

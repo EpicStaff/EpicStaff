@@ -22,6 +22,7 @@ from src.shared.models.plugin_nodes import (
     DesiredPlacement,
     DesiredRemoval,
     DesiredState,
+    LedgerEntry,
     database_names_for,
 )
 
@@ -355,6 +356,11 @@ class FakeDjango:
         """Answer this many result posts with `failing_result_status` before taking one."""
         self.failing_result_status = 503
         self.on_claim: Callable[[int], None] | None = None
+        self.advances: list[tuple[int, dict]] = []
+        """(upgrade id, body) of every advance request, in order."""
+        self.advance_status = 204
+        self.on_advance: Callable[[int, dict], None] | None = None
+        """Called for each granted advance, as django_app would move the desired state on."""
         self.transport = httpx.MockTransport(self.handle)
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -395,6 +401,14 @@ class FakeDjango:
             return httpx.Response(204)
         if parts[:3] == ["plugin-nodes", "self", "hook-jobs"] and request.method == "POST":
             return self._handle_hook_job(int(parts[3]), parts[4], request)
+        if parts[:3] == ["plugin-nodes", "self", "upgrades"] and parts[4:] == ["advance"]:
+            body = json.loads(request.content)
+            self.advances.append((int(parts[3]), body))
+            if self.advance_status != 204:
+                return httpx.Response(self.advance_status, json={"code": "refused_by_the_test"})
+            if self.on_advance is not None:
+                self.on_advance(int(parts[3]), body)
+            return httpx.Response(204)
         return httpx.Response(404)
 
     def _handle_hook_job(self, job_id: int, action: str, request: httpx.Request) -> httpx.Response:
@@ -506,6 +520,10 @@ class FakeLauncher:
     async def install_code(self, plugin, uid, version):
         self.operations.append(("install_code", plugin, uid, version))
 
+    async def prune_code(self, plugin, uid, keep_version):
+        self.operations.append(("prune_code", plugin, uid, keep_version))
+        return []
+
     async def write_runtime_file(self, plugin, uid, content):
         self.operations.append(("write_runtime_file", plugin, uid))
         self.runtime_files[plugin] = content
@@ -615,8 +633,8 @@ class RecordingProvisioner:
         self.calls: list[dict] = []
         self.failures: list[Exception] = []
         """Raised by the next calls, one each, first first."""
-        self.ledger: tuple | None = None
-        """The ledger to answer with instead of the migrations' names (rows a plugin wrote)."""
+        self.ledger: tuple[LedgerEntry, ...] | None = None
+        """The ledger to answer with instead of the migrations' own entries."""
         self._events = events
 
     async def ensure(self, plugin, desired, app_password, migrations):
@@ -629,10 +647,13 @@ class RecordingProvisioner:
             self._events.append(("provision", plugin))
         if self.failures:
             raise self.failures.pop(0)
-        names = tuple(sorted(migration.name for migration in migrations))
-        ledger = self.ledger if self.ledger is not None else names
+        applied = tuple(
+            LedgerEntry(name=migration.name, sha256=migration.sha256)
+            for migration in sorted(migrations, key=lambda migration: migration.name)
+        )
+        ledger = self.ledger if self.ledger is not None else applied
         return ProvisionedDatabase(
-            created=len(self.calls) == 1, ledger=ledger, applied=len(names), size_bytes=8192
+            created=len(self.calls) == 1, ledger=ledger, applied=len(applied), size_bytes=8192
         )
 
 
@@ -658,3 +679,100 @@ class RecordingDropper:
         if self.nothing_left:
             return DroppedDatabase(databases=0, roles=0)
         return DroppedDatabase(databases=1, roles=3)
+
+
+class RecordingBackups:
+    """The node's `BackupService` without a server: writes a small backup into the real store.
+
+    `events`, when given, gets `("backup", reason)` at each call, next to the launcher's.
+    """
+
+    def __init__(self, store, events: list | None = None):
+        self.requests: list = []
+        self.failures: list[Exception] = []
+        """Raised by the next backups, one each, first first."""
+        self.started = None
+        """Set while a backup runs, when `hold` is set: released by setting `hold`."""
+        self.hold = None
+        self._store = store
+        self._events = events
+
+    async def backup(self, request):
+        import asyncio as _asyncio
+
+        from es_plugins.database.backup_store import METADATA_FORMAT, BackupMetadata, StoredBackup
+        from src.shared.models.plugin_nodes import backup_file_name
+
+        self.requests.append(request)
+        if self._events is not None:
+            self._events.append(("backup", request.reason))
+        if self.hold is not None:
+            self.started.set()
+            await self.hold.wait()
+        if self.failures:
+            raise self.failures.pop(0)
+        created_at = datetime.now(UTC).replace(microsecond=0)
+        name = backup_file_name(created_at, request.upgrade_id, request.reason)
+        directory = self._store.directory(request.plugin)
+        dump_path, descriptor = self._store.create_temporary(directory, name)
+        content = b"PGDMP fake dump of " + request.database.database_name.encode()
+        os.write(descriptor, content)
+        os.close(descriptor)
+        metadata = BackupMetadata(
+            format=METADATA_FORMAT,
+            plugin=request.plugin,
+            installation_id=request.database.installation_id,
+            database_name=request.database.database_name,
+            upgrade_id=request.upgrade_id,
+            reason=request.reason,
+            version=request.version,
+            restore_id=request.restore_id,
+            created_at=created_at,
+            size_bytes=len(content),
+            sha256=sha256_hex(content),
+            pg_dump_version="pg_dump (PostgreSQL) 17.11",
+            server_version="17.11",
+            database_settings=[],
+            ledger=[],
+        )
+        metadata_path = self._store.write_metadata(directory, name, metadata)
+        final = self._store.publish(directory, dump_path, metadata_path, name)
+        await _asyncio.sleep(0)
+        return StoredBackup(file_name=name, path=final, metadata=metadata)
+
+
+class RecordingRestores:
+    """The node's `RestoreService` without a server: walks the steps, takes the pre-restore backup."""
+
+    def __init__(self, backups: RecordingBackups, events: list | None = None):
+        self.calls: list[dict] = []
+        self.failures: list[Exception] = []
+        self._backups = backups
+        self._events = events
+
+    async def restore(self, plugin, database, restore, *, version, app_password, on_step):
+        from es_plugins.database.backup_service import BackupRequest
+        from es_plugins.database.provisioner import ProvisionedDatabase
+        from es_plugins.database.restore_service import RestoreOutcome
+
+        self.calls.append(
+            {"plugin": plugin, "database": database, "restore": restore, "version": version,
+             "app_password": app_password}
+        )
+        if self._events is not None:
+            self._events.append(("restore", restore.restore_id))
+        on_step("verify", None)
+        on_step("backup", None)
+        pre_restore = await self._backups.backup(
+            BackupRequest(plugin=plugin, database=database, upgrade_id=restore.upgrade_id,
+                          reason="pre_restore", version=version, restore_id=restore.restore_id)
+        )
+        for step in ("close", "recreate", "restore", "settings", "assert"):
+            on_step(step, pre_restore)
+            if self.failures and step == "restore":
+                raise self.failures.pop(0)
+        ledger = (LedgerEntry(name="001_places.sql", sha256="a" * 64),)
+        return RestoreOutcome(
+            pre_restore=pre_restore,
+            provisioned=ProvisionedDatabase(created=False, ledger=ledger, applied=0, size_bytes=4096),
+        )

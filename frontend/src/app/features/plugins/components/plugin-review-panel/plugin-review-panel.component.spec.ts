@@ -2,11 +2,16 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { of } from 'rxjs';
 
-import { PackageReview } from '../../models/plugin-admin.model';
-import { buildPackageReview } from '../../testing/plugin-fixtures';
+import { PackageReview, PluginApproveRequest } from '../../models/plugin-admin.model';
+import {
+    buildAccessGrowth,
+    buildPackageReview,
+    buildSettingNeeded,
+    buildUpgradePackageReview,
+    buildUpgradeReview,
+} from '../../testing/plugin-fixtures';
 import {
     OUTBOUND_HOSTS_NOTE,
-    PluginApproveRequest,
     PluginReviewPanelComponent,
     UNTRUSTED_PACKAGE_WARNING,
 } from './plugin-review-panel.component';
@@ -112,7 +117,7 @@ describe('PluginReviewPanelComponent', () => {
 
             expect(approveButton().disabled).toBe(false);
             approveButton().click();
-            expect(approvals).toEqual([{ untrustedAcknowledged: true }]);
+            expect(approvals).toEqual([{ untrusted_acknowledged: true }]);
         });
 
         it('forgets the acknowledgement when another package is shown', () => {
@@ -135,7 +140,7 @@ describe('PluginReviewPanelComponent', () => {
 
             approveButton().click();
 
-            expect(approvals).toEqual([{ untrustedAcknowledged: false }]);
+            expect(approvals).toEqual([{}]);
         });
 
         it('shows the signer, the default roles and that it declares no access', () => {
@@ -224,6 +229,154 @@ describe('PluginReviewPanelComponent', () => {
             render(buildPackageReview());
 
             expect(section('Outbound hosts')).toBe("None. The plugin's backend cannot reach the internet.");
+        });
+    });
+
+    describe('a new version of an installed plugin', () => {
+        function growthAcknowledgement(): HTMLInputElement | null {
+            return element.querySelector<HTMLInputElement>('.upgrade__acknowledge input[type="checkbox"]');
+        }
+
+        function upgradeText(): string {
+            return element.querySelector('app-plugin-upgrade-review')?.textContent?.replace(/\s+/g, ' ') ?? '';
+        }
+
+        function settingField(key: string): HTMLElement {
+            return element.querySelector<HTMLElement>(`[data-setting-key="${key}"]`)!;
+        }
+
+        async function type(key: string, text: string): Promise<void> {
+            const input = settingField(key).querySelector<HTMLInputElement>('input')!;
+            input.value = text;
+            input.dispatchEvent(new Event('input'));
+            fixture.detectChanges();
+            await fixture.whenStable();
+        }
+
+        it('says where it upgrades from, the new access, the changes, the backup and who goes offline', () => {
+            render(buildUpgradePackageReview());
+
+            const text = upgradeText();
+            expect(text).toContain('Upgrade from 0.6.0');
+            expect(text).toContain('New access — approve it to upgrade');
+            expect(text).toContain('api.open-meteo.com');
+            expect(text).toContain('Looks up the current temperature of saved places.');
+            expect(text).toContain('Migrations: 003_place_conditions.sql');
+            expect(text).toContain('Hooks: upgrade (new)');
+            expect(text).toMatch(/plugin_weather \([^)]+\) is backed up before the migrations\./);
+            expect(text).toContain('2 organizations are offline until their upgrade finishes.');
+            expect(text).not.toContain('cannot be cancelled');
+            expect(approveButton().textContent?.trim()).toBe('Upgrade to 0.7.0');
+        });
+
+        it('keeps "Upgrade to" disabled until the new access is approved, and sends the reviewed baseline', () => {
+            render(buildUpgradePackageReview());
+
+            expect(approveButton().disabled).toBe(true);
+            growthAcknowledgement()!.click();
+            fixture.detectChanges();
+            approveButton().click();
+
+            expect(approvals).toEqual([{ access_growth_acknowledged: true, reviewed_against_package_id: 10 }]);
+        });
+
+        it('asks for no acknowledgement when nothing grows, and still sends the baseline', () => {
+            render(
+                buildUpgradePackageReview({
+                    access_growth: buildAccessGrowth({ requires_acknowledgement: false, outbound_hosts: [] }),
+                })
+            );
+
+            expect(upgradeText()).not.toContain('New access');
+            expect(growthAcknowledgement()).toBeNull();
+            approveButton().click();
+
+            expect(approvals).toEqual([{ reviewed_against_package_id: 10 }]);
+        });
+
+        it('needs both boxes for an untrusted version with new access', () => {
+            render(buildUpgradePackageReview({ trust: 'untrusted', signature: 'absent', signer: null }));
+
+            growthAcknowledgement()!.click();
+            fixture.detectChanges();
+            expect(approveButton().disabled).toBe(true);
+            acknowledgement()!.click();
+            fixture.detectChanges();
+            approveButton().click();
+
+            expect(approvals).toEqual([
+                { untrusted_acknowledged: true, access_growth_acknowledged: true, reviewed_against_package_id: 10 },
+            ]);
+        });
+
+        it('says when the upgrade cannot be cancelled, and which failed upgrade it replaces', () => {
+            render(
+                buildUpgradePackageReview({
+                    upgrade: buildUpgradeReview({ cancellable: false, replaces_version: '0.7.1' }),
+                })
+            );
+
+            expect(upgradeText()).toContain('Upgrade from 0.6.0 · replaces the failed upgrade to 0.7.1');
+            expect(upgradeText()).toContain('Compared with 0.7.1, the version this one replaces.');
+            expect(upgradeText()).toContain('This upgrade cannot be cancelled once it starts.');
+        });
+
+        it('enables "Upgrade to" only once every needed setting has a valid value, and sends them', async () => {
+            render(
+                buildUpgradePackageReview({
+                    access_growth: null,
+                    upgrade: buildUpgradeReview({
+                        settings: {
+                            added: ['api_key', 'refresh_minutes'],
+                            removed: [],
+                            needed: [
+                                buildSettingNeeded({ key: 'api_key', type: 'secret', label: 'API key', values: null }),
+                                buildSettingNeeded({
+                                    key: 'refresh_minutes',
+                                    type: 'integer',
+                                    label: 'Refresh every',
+                                    reason: 'invalid',
+                                    values: null,
+                                }),
+                            ],
+                        },
+                    }),
+                })
+            );
+            expect(section('Settings this version needs')).toContain('The stored value is not valid for this version.');
+            expect(settingField('api_key').querySelector('input')!.type).toBe('password');
+            expect(approveButton().disabled).toBe(true);
+
+            await type('api_key', ' s3cret ');
+            await type('refresh_minutes', '1.5');
+            expect(approveButton().disabled).toBe(true);
+            expect(settingField('refresh_minutes').textContent).toContain('Enter a whole number.');
+
+            await type('refresh_minutes', '15');
+            approveButton().click();
+
+            expect(approvals).toEqual([
+                { reviewed_against_package_id: 10, settings: { api_key: ' s3cret ', refresh_minutes: 15 } },
+            ]);
+        });
+
+        it('starts over when the same package’s review is loaded again', () => {
+            const review = buildUpgradePackageReview();
+            render(review);
+            growthAcknowledgement()!.click();
+            fixture.detectChanges();
+
+            render({ ...review });
+
+            expect(growthAcknowledgement()!.checked).toBe(false);
+            expect(approveButton().disabled).toBe(true);
+        });
+
+        it('shows the approved upgrade without a box to tick', () => {
+            render(buildUpgradePackageReview({ review_state: 'approved' }));
+
+            expect(growthAcknowledgement()).toBeNull();
+            expect(element.querySelector('.review__actions')).toBeNull();
         });
     });
 

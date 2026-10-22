@@ -1,5 +1,8 @@
 import { PluginAction } from './plugin-admin.model';
 
+/** `maintenance`: the plugin, or the organization's install of it, is being updated; it can't be opened until then. */
+export type AvailablePluginAvailability = 'ready' | 'maintenance';
+
 /** A plugin the caller may open in the active organization (`GET /api/plugins/available/`). */
 export interface AvailablePlugin {
     identifier: string;
@@ -10,4 +13,5 @@ export interface AvailablePlugin {
     frame_origin: string;
     /** Always contains `read`. */
     permissions: PluginAction[];
+    availability: AvailablePluginAvailability;
 }

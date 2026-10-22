@@ -1,3 +1,5 @@
+import { PluginSettingScalar } from './plugin-backend.model';
+
 /** A plugin user permission; shown as View, Create, Edit, Delete, Export, Use. */
 export type PluginAction = 'read' | 'create' | 'update' | 'delete' | 'export' | 'use';
 
@@ -15,8 +17,19 @@ export type PluginState =
     | 'uninstalling'
     | 'purging';
 
-/** What a SuperAdmin can do to a whole plugin. */
-export type PluginLifecycleAction = 'uninstall' | 'reinstall' | 'purge' | 'retry_removal';
+/**
+ * What a SuperAdmin can do to a whole plugin. `upgrade`: approve the pending package as an upgrade; `restore_backup`:
+ * restore a backup the open upgrade took.
+ */
+export type PluginLifecycleAction =
+    | 'uninstall'
+    | 'reinstall'
+    | 'purge'
+    | 'retry_removal'
+    | 'upgrade'
+    | 'cancel_upgrade'
+    | 'retry_upgrade'
+    | 'restore_backup';
 
 export type PluginGrantState =
     | 'granting'
@@ -112,6 +125,58 @@ export interface PluginReviewWarning {
     message: string;
 }
 
+/** What a new version adds that the SuperAdmin must approve before it can be installed. */
+export interface PluginAccessGrowth {
+    requires_acknowledgement: boolean;
+    /** Only the actions the version before does not declare. */
+    access: PluginDeclaredAccess[];
+    outbound_hosts: PluginOutboundHost[];
+    /** `widened`: the path was declared before, with fewer methods or lower limits, or as `exact`. */
+    public_paths: (PluginPublicPath & { change: 'new' | 'widened' })[];
+}
+
+/** A setting the new version cannot start without: required with no value, or a stored value it refuses. */
+export interface PluginSettingNeeded {
+    key: string;
+    type: string;
+    label: string;
+    description: string;
+    reason: 'required' | 'invalid';
+    /** The options of an `enum`, else `null`. */
+    values: string[] | null;
+}
+
+export type PluginHookKind = 'install' | 'upgrade' | 'org_removed';
+
+/** What upgrading the installed plugin to a pending package changes, compared with the latest approved version. */
+export interface PluginUpgradeReview {
+    /** Send it back as `reviewed_against_package_id`: an approval is refused once it is no longer the baseline. */
+    baseline_package_id: number;
+    /** The version the plugin runs now. */
+    from_version: string;
+    /** The failed upgrade's target this package replaces; the new access is shown against it. */
+    replaces_version: string | null;
+    trust_change: 'none' | 'became_untrusted' | 'became_trusted' | 'signer_changed';
+    /** The plugin goes offline while it is upgraded (it has a backend now). */
+    maintenance: boolean;
+    backend: 'unchanged' | 'added';
+    database: 'unchanged' | 'added' | 'none';
+    /** The migration files the database has not run yet. */
+    migrations_added: string[];
+    hooks_added: PluginHookKind[];
+    hooks_removed: PluginHookKind[];
+    has_upgrade_hook: boolean;
+    user_permissions: { added: PluginAction[]; removed: PluginAction[]; defaults_changed: PluginAction[] };
+    settings: { added: string[]; removed: string[]; needed: PluginSettingNeeded[] };
+    limits_changed: string[];
+    /** `database_size_bytes` as the node last reported it. */
+    backup: { required: boolean; database_name: string | null; database_size_bytes: number | null };
+    /** Organizations active now that are offline until their upgrade finishes. */
+    organizations_going_offline: number;
+    /** Whether the upgrade can still be cancelled once it starts (not for a version that adds a backend). */
+    cancellable: boolean;
+}
+
 /** Everything a SuperAdmin reviews before approving a package (`GET .../packages/{id}/review/`). */
 export interface PackageReview {
     id: number;
@@ -144,7 +209,90 @@ export interface PackageReview {
     limits: PluginLimits | null;
     hooks: PluginHooks;
     warnings: PluginReviewWarning[];
-    access_growth: null;
+    /** `null` for a first install and for an approved package. */
+    access_growth: PluginAccessGrowth | null;
+    /** `null` for a first install and for an approved package. */
+    upgrade: PluginUpgradeReview | null;
+}
+
+/** What the approval sends. An upgrade must name the package its review was computed against. */
+export interface PluginApproveRequest {
+    untrusted_acknowledged?: boolean;
+    access_growth_acknowledged?: boolean;
+    reviewed_against_package_id?: number;
+    /** Values for the settings the new version needs; only the target version's keys. */
+    settings?: Record<string, PluginSettingScalar | null>;
+}
+
+export type PluginUpgradeStage = 'preparing' | 'maintenance' | 'migrating' | 'done' | 'cancelled' | 'abandoned';
+
+/** The plugin node's last step of an upgrade. */
+export type PluginUpgradeStep = 'download' | 'verify' | 'build' | 'drain' | 'stop' | 'backup' | 'migrate' | 'start';
+
+export type PluginBackupReason = 'pre_upgrade' | 'pre_restore';
+
+export type PluginRestoreState = 'pending' | 'running' | 'succeeded' | 'failed';
+
+export type PluginRestoreStep = 'verify' | 'backup' | 'close' | 'recreate' | 'restore' | 'settings' | 'assert';
+
+/** A restore of a backup of the plugin's database, during an upgrade that failed. */
+export interface PluginRestore {
+    id: number;
+    /** The backup restored; `id` is `null` once the backup is deleted. */
+    backup: { id: number | null; file_name: string; reason: PluginBackupReason };
+    state: PluginRestoreState;
+    step: PluginRestoreStep | null;
+    /** The backup of the database taken just before the restore, to undo it. */
+    pre_restore_backup_id: number | null;
+    last_error: string | null;
+    requested_by: PluginUserRef | null;
+    requested_at: string;
+    finished_at: string | null;
+}
+
+/** An upgrade of the plugin from one version to another. */
+export interface PluginUpgrade {
+    id: number;
+    from_version: string;
+    to_version: string;
+    stage: PluginUpgradeStage;
+    step: PluginUpgradeStep | null;
+    failed: boolean;
+    failed_at: string | null;
+    last_error: string | null;
+    adds_backend: boolean;
+    /** The database already holds changes of `to_version`, so Cancel is no longer possible without a restore. */
+    database_changed: boolean;
+    backup_id: number | null;
+    /** The latest restore of this upgrade. */
+    restore: PluginRestore | null;
+    started_by: PluginUserRef | null;
+    started_at: string;
+    maintenance_started_at: string | null;
+    migrations_started_at: string | null;
+    finished_at: string | null;
+}
+
+/** A backup of the plugin's database the plugin node holds. */
+export interface PluginBackup {
+    id: number;
+    file_name: string;
+    reason: PluginBackupReason;
+    /** The plugin version whose migrations the database held. */
+    version: string;
+    /** The upgrade it was taken for. */
+    upgrade: { id: number; to_version: string } | null;
+    size_bytes: number;
+    created_at: string;
+    restorable: boolean;
+    /** `earlier_upgrade`: taken for an upgrade that is closed; `not_now`: no failed upgrade allows a restore now. */
+    not_restorable_reason: 'earlier_upgrade' | 'not_now' | 'mismatch' | null;
+}
+
+/** `GET .../backups/`: the present backups, newest first, and the phrase a restore must be confirmed with. */
+export interface PluginBackupList {
+    verification_phrase: string;
+    backups: PluginBackup[];
 }
 
 export interface PluginPendingPackage {
@@ -158,8 +306,8 @@ export interface PluginSummary {
     name: string;
     description: string;
     state: PluginState;
-    /** Of the current package, else of the pending one. */
-    trust: PluginTrust;
+    /** Of the current package, else of the pending one; `null` when the plugin has neither. */
+    trust: PluginTrust | null;
     /** `null` until the first approval. */
     current_version: string | null;
     /** `null` until the first approval. */
@@ -169,13 +317,21 @@ export interface PluginSummary {
     grant_count: number;
     pending_package: PluginPendingPackage | null;
     created_at: string;
-    /** Set while the plugin is uninstalled: when its data is deleted unless it is reinstalled. */
+    /**
+     * Set while the plugin is uninstalled: when its data is deleted unless it is reinstalled; kept once its deletion
+     * has started.
+     */
     purge_after: string | null;
-    /** A data removal failed for good, the node failed to remove the plugin, or a deleting grant has an error. */
+    /**
+     * A data removal failed for good, the node failed to remove the plugin, a deleting grant has an error, the open
+     * upgrade or its latest restore failed, or an organization's upgrade failed.
+     */
     needs_attention: boolean;
+    /** The open upgrade. */
+    upgrade: { to_version: string; stage: PluginUpgradeStage; failed: boolean } | null;
 }
 
-/** Where the plugin node is with removing a plugin being deleted; `not_needed` for a plugin without a backend. */
+/** Where the plugin node is with removing a plugin being deleted; `not_needed` for a plugin without a placement. */
 export type PluginPurgeNodeState = 'waiting' | 'removing' | 'failed' | 'not_needed';
 
 /** How far the deletion of a plugin has come. */
@@ -196,6 +352,11 @@ export interface PluginDetail extends PluginSummary {
     purge_started_at: string | null;
     /** Set while the plugin is being deleted. */
     purge_progress: PluginPurgeProgress | null;
+    open_upgrade: PluginUpgrade | null;
+    /** The latest upgrade that is closed. */
+    last_upgrade: PluginUpgrade | null;
+    /** Organizations whose upgrade hook has not finished, and those whose upgrade failed. */
+    upgrade_hooks: { upgrading: number; upgrade_failed: number };
 }
 
 /** `skipped`: a SuperAdmin or the platform gave up on a data removal. */
@@ -217,8 +378,21 @@ export interface PluginInstallHook {
     error: string | null;
 }
 
+/** The latest run of the plugin's upgrade hook for one organization; it may belong to an earlier upgrade. */
+export interface PluginUpgradeHook {
+    state: PluginHookJobState;
+    attempt: number;
+    /** The version the organization was upgraded from. */
+    from_version: string | null;
+    /** When a failed attempt is tried again by itself. */
+    next_attempt_at: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+    error: string | null;
+}
+
 /** What a SuperAdmin can do to a grant. */
-export type PluginGrantAction = 'suspend' | 'resume' | 'retry_install' | 'purge';
+export type PluginGrantAction = 'suspend' | 'resume' | 'retry_install' | 'retry_upgrade' | 'purge';
 
 /** Why a grant is suspended: on its own, or because the whole plugin was uninstalled. */
 export type PluginGrantSuspensionCause = 'grant' | 'uninstall';
@@ -264,7 +438,10 @@ export interface PluginGrant {
     id: number;
     plugin_identifier: string;
     organization: PluginOrganizationRef;
-    /** `granting` while the install hook runs; `install_failed` when it failed (a SuperAdmin may retry). */
+    /**
+     * `granting` while the install hook runs; `install_failed` when it failed (a SuperAdmin may retry); `upgrading` and
+     * `upgrade_failed` likewise for the upgrade hook.
+     */
     state: PluginGrantState;
     /** What the grant allows in its current state. The server decides; the buttons follow this list only. */
     allowed_actions: PluginGrantAction[];
@@ -274,7 +451,7 @@ export interface PluginGrant {
     suspended_at: string | null;
     /** Until when a suspended grant keeps the plugin's data in the organization. */
     purge_after: string | null;
-    /** The install hook's last error. */
+    /** The install or upgrade hook's last error. */
     last_hook_error: string | null;
     /** `null` for a plugin without a backend. */
     service_account: PluginGrantServiceAccount | null;
@@ -282,7 +459,7 @@ export interface PluginGrant {
     install_hook: PluginInstallHook | null;
     /** What the plugin's service account created in the organization and still exists. */
     owned_resource_count: number;
-    /** Set while the grant is suspended. */
+    /** Set while the grant is suspended, and kept while its data is deleted. */
     suspension_cause: PluginGrantSuspensionCause | null;
     /** Set while the grant's data is being deleted. */
     purge_started_at: string | null;
@@ -290,6 +467,10 @@ export interface PluginGrant {
     last_purge_error: string | null;
     /** The latest data removal for the grant's organization; `null` when there is none. */
     org_removed_hook: PluginOrgRemovedJob | null;
+    /** The plugin version this organization was last brought to; `null` until its install finished. */
+    installed_version: string | null;
+    /** `null` until the organization's first upgrade hook. */
+    upgrade_hook: PluginUpgradeHook | null;
 }
 
 /** One step of a package upload: progress while the bytes go up, then the review of the stored package. */

@@ -41,8 +41,16 @@ export const LOGIN_CODE_CHALLENGE_METHOD = 'S256';
 
 export const LOGIN_PROMPT_VALUES = ['none'] as const;
 
-/** What the callback fragment's `error` may be (OAuth vocabulary, not API error codes). */
-export const LOGIN_CALLBACK_ERRORS = ['login_required', 'access_denied', 'interaction_required'] as const;
+/**
+ * What the callback fragment's `error` may be (OAuth vocabulary, not API error codes). `temporarily_unavailable`: the
+ * plugin is being updated in the person's organization, so EpicStaff signs nobody in to it there for now.
+ */
+export const LOGIN_CALLBACK_ERRORS = [
+    'login_required',
+    'access_denied',
+    'interaction_required',
+    'temporarily_unavailable',
+] as const;
 
 export type LoginCallbackError = (typeof LOGIN_CALLBACK_ERRORS)[number];
 
@@ -106,7 +114,7 @@ export const LOGIN_LIMITS = {
  */
 export const GATEWAY_DENY_HEADER = 'X-EpicStaff-Gateway-Deny';
 
-/** The values of {@link GATEWAY_DENY_HEADER}. */
+/** The values of {@link GATEWAY_DENY_HEADER}. `maintenance`: the plugin, or the person's organization, is being updated. */
 export const GATEWAY_DENY_REASONS = [
     'login',
     'forbidden',
@@ -114,6 +122,7 @@ export const GATEWAY_DENY_REASONS = [
     'rate_limited',
     'too_large',
     'unavailable',
+    'maintenance',
 ] as const;
 
 export type GatewayDenyReason = (typeof GATEWAY_DENY_REASONS)[number];

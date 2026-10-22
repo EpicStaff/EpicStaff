@@ -26,6 +26,8 @@ AGENT_VARIABLES = (
     "PLUGINS_NODE_KEY",
     # plugins_admin's password: only the agent holds it, never pip, a venv or a plugin.
     "PLUGINS_DB_ADMIN_PASSWORD",
+    # plugins_backup's: the agent holds it for pg_dump, the one process it is given to.
+    "PLUGINS_DB_BACKUP_PASSWORD",
     "PLUGINS_NODE_UID_RANGE",
     "PLUGINS_INTERNAL_API_URL",
     "ES_PLUGINS_DISK_MB_PER_PLUGIN",

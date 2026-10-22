@@ -362,7 +362,7 @@ def test_a_plugin_one_cannot_log_in_to_is_not_found(client, member_only, running
 
 
 def test_a_plugin_that_is_not_running_is_not_found(client, member_only, weather_in_acme):
-    Plugin.objects.filter(pk=weather_in_acme.pk).update(state=PluginState.MAINTENANCE)
+    Plugin.objects.filter(pk=weather_in_acme.pk).update(state=PluginState.FAILED)
 
     assert authorize(client, cookie=session_cookie(member_only)).status_code == 404
 
@@ -409,3 +409,53 @@ def test_the_protocol_constants_equal_the_shared_login_protocol_file():
     assert patterns["continue"] == login_protocol.CONTINUE_PATTERN
     assert protocol["limits"]["code_ttl_seconds"] == login_protocol.CODE_TTL_SECONDS
     assert protocol["limits"]["token_lifetime_seconds"] == login_protocol.TOKEN_LIFETIME_SECONDS
+
+
+# ---- while the plugin, or the person's organization, is being upgraded ----
+
+
+def test_a_plugin_stopped_for_its_upgrade_answers_temporarily_unavailable(client, member_only, weather_in_acme):
+    Plugin.objects.filter(pk=weather_in_acme.pk).update(state=PluginState.MAINTENANCE)
+
+    _assert_callback_error(authorize(client, cookie=session_cookie(member_only)), "temporarily_unavailable")
+
+
+def test_an_organization_still_upgrading_answers_temporarily_unavailable(client, member_only, acme, loginable_weather, grant_to):
+    grant_to(loginable_weather, acme, state=GrantState.UPGRADING)
+
+    _assert_callback_error(authorize(client, cookie=session_cookie(member_only)), "temporarily_unavailable")
+    _assert_callback_error(
+        authorize(client, cookie=session_cookie(member_only), org=str(acme.pk)), "temporarily_unavailable"
+    )
+
+
+def test_a_silent_request_during_an_upgrade_answers_at_the_silent_callback(client, member_only, weather_in_acme):
+    Plugin.objects.filter(pk=weather_in_acme.pk).update(state=PluginState.MAINTENANCE)
+
+    _assert_callback_error(
+        authorize(client, cookie=session_cookie(member_only), prompt="none"),
+        "temporarily_unavailable",
+        callback=SILENT_CALLBACK_URL,
+    )
+
+
+def test_an_organization_whose_upgrade_failed_is_denied(client, member_only, acme, loginable_weather, grant_to):
+    grant_to(loginable_weather, acme, state=GrantState.UPGRADE_FAILED)
+
+    _assert_callback_error(authorize(client, cookie=session_cookie(member_only)), "access_denied")
+
+
+def test_someone_without_the_plugin_s_view_is_denied_even_during_an_upgrade(client, make_member, role_viewer, acme, weather_in_acme):
+    viewer = make_member(acme, role_viewer, "viewer-during-upgrade@example.com")
+    Plugin.objects.filter(pk=weather_in_acme.pk).update(state=PluginState.MAINTENANCE)
+
+    _assert_callback_error(authorize(client, cookie=session_cookie(viewer)), "access_denied")
+
+
+def test_without_a_session_an_upgrade_still_sends_the_browser_to_login(client, weather_in_acme):
+    Plugin.objects.filter(pk=weather_in_acme.pk).update(state=PluginState.MAINTENANCE)
+
+    response = authorize(client)
+
+    assert response.status_code == 302
+    assert "/plugin-login" in response["Location"]

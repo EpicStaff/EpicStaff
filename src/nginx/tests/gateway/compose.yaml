@@ -2,6 +2,10 @@
 # nginx image, a stand-in decision service and two plugin backends. Run with run.sh, which
 # uses the project name es-gateway-lab and removes everything afterwards. No fixed host ports:
 # nginx is published on an ephemeral 127.0.0.1 port only.
+#
+# The plugins' SPA files live in a volume, as in the stack: nginx mounts it read-only, and the
+# tools container writes it (run.sh copies spa/ in; checks.sh sets and clears a maintenance flag
+# there, as django_app does).
 name: es-gateway-lab
 
 x-lab-secret: &lab-secret
@@ -52,7 +56,8 @@ services:
       - ../../templates/:/etc/nginx/templates:ro
       - ../../docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
       - ../../docker-entrypoint.d/16-normalize-plugins-enabled.envsh:/docker-entrypoint.d/16-normalize-plugins-enabled.envsh:ro
-      - ./spa:/srv/plugin-spa:ro
+      - plugin_spa:/srv/plugin-spa:ro
+      - ../../plugin-platform:/usr/share/nginx/plugin-platform:ro
     ports:
       - "127.0.0.1::80"
     # As in src/docker-compose.yaml: without it, one busy plugin exhausts the local ports.
@@ -104,6 +109,14 @@ services:
     mem_limit: 256m
     environment:
       <<: *lab-secret
+    # The lab-service volumes, and what the browser's side compares and writes.
+    volumes:
+      - ./services:/lab/services:ro
+      - ./scripts:/lab/scripts:ro
+      - evidence:/evidence
+      - ./spa:/lab/spa:ro
+      - ../../plugin-platform:/lab/plugin-platform:ro
+      - plugin_spa:/srv/plugin-spa
     networks: [public, backend]
 
   # A plugin backend's or the node's view: on the plugins network only.
@@ -115,6 +128,7 @@ services:
 
 volumes:
   evidence: {}
+  plugin_spa: {}
 
 networks:
   public: {}

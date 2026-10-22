@@ -23,13 +23,14 @@ from plugins.exceptions import (
     PackageNotPendingError,
     PackageTooLargeError,
     PluginPackageNotFoundError,
-    PluginUpgradeUnavailableError,
     UntrustedNotAcknowledgedError,
 )
+from plugins.lifecycle.lifecycle_locks import lock_plugin
 from plugins.lifecycle.plugin_actions import assert_plugin_in_service
+from plugins.lifecycle.upgrade_service import ApprovalRequest, PluginUpgradeService
 from plugins.models import Plugin, PluginPackage, PluginState, ReviewState, Trust
 from plugins.nodes.placement_service import PlacementService
-from plugins.packages.package_reader import read_uploaded_package
+from plugins.packages.package_reader import migration_files, read_uploaded_package
 from plugins.packages.package_store import (
     PackageFileMissingError,
     PluginPackageStore,
@@ -41,6 +42,11 @@ from plugins.packages.signature_verifier import (
     verify_package_signature,
 )
 from plugins.packages.spa_publisher import SpaPublisher
+from plugins.packages.version_rules import (
+    UpgradeCandidate,
+    assert_upgrade_allowed,
+    installed_version_of,
+)
 
 _HASH_CHUNK_BYTES = 1024 * 1024
 
@@ -52,11 +58,12 @@ def max_package_bytes() -> int:
 class PluginInstallationService:
     """Upload of plugin packages and the review decisions on them.
 
-    In this version a plugin has at most one approved package (no upgrades). Approving
-    publishes the SPA; a plugin without a backend runs at once, one with a backend is placed
-    on the plugin node and is `provisioning` until the node reports its process running. A
-    package with a database also gets the record of the plugin's own database, which the
-    node creates before it first starts the backend.
+    The first approval of a plugin installs it: it publishes the SPA; a plugin without a
+    backend runs at once, one with a backend is placed on the plugin node and is
+    `provisioning` until the node reports its process running. A package with a database also
+    gets the record of the plugin's own database, which the node creates before it first
+    starts the backend. Approving a newer package of an installed plugin starts its upgrade
+    instead (`PluginUpgradeService`); uploading one only puts it up for review.
     """
 
     def __init__(
@@ -82,7 +89,9 @@ class PluginInstallationService:
                 maximums, or holds nothing to install.
             InvalidSignatureError: The package's signature does not belong to it.
             PluginUninstallingError: The plugin is uninstalled or being deleted.
-            PluginUpgradeUnavailableError: The plugin already has an approved package.
+            PluginVersionNotNewerError: The plugin is installed and this version is not newer
+                than its latest approved one.
+            PluginUpgradeUnavailableError: The package cannot upgrade the installed plugin.
         """
         if size > max_package_bytes():
             raise PackageTooLargeError()
@@ -93,11 +102,18 @@ class PluginInstallationService:
         verdict = verify_package_signature(package)
         _assert_installable(manifest)
         _assert_within_platform_maximums(manifest)
-        existing = Plugin.objects.filter(identifier=manifest.id).first()
+        candidate = UpgradeCandidate(manifest, migration_files(package))
+        existing = (
+            Plugin.objects.select_related("current_package")
+            .defer("current_package__icon_bytes")
+            .filter(identifier=manifest.id)
+            .first()
+        )
         if existing is not None:
+            # Checked before the file is stored, and again under the plugin's lock.
             assert_plugin_in_service(existing)
             if existing.current_package_id is not None:
-                raise PluginUpgradeUnavailableError()
+                assert_upgrade_allowed(candidate, installed_version_of(existing))
 
         sha256 = _sha256(file)
         storage_key = package_storage_key(manifest.id, manifest.version, sha256)
@@ -107,6 +123,7 @@ class PluginInstallationService:
             with transaction.atomic():
                 pending, replaced = self._register_pending_package(
                     package,
+                    candidate,
                     sha256=sha256,
                     size=size,
                     storage_key=storage_key,
@@ -129,16 +146,25 @@ class PluginInstallationService:
         return pending
 
     def _register_pending_package(
-        self, package: PackageArchive, *, sha256, size, storage_key, verdict, uploaded_by
+        self,
+        package: PackageArchive,
+        candidate: UpgradeCandidate,
+        *,
+        sha256,
+        size,
+        storage_key,
+        verdict,
+        uploaded_by,
     ) -> tuple[PluginPackage, list[PackageFacts]]:
         manifest = package.manifest
-        plugin, _ = Plugin.objects.select_for_update().get_or_create(
+        plugin, _ = Plugin.objects.select_for_update(no_key=True).get_or_create(
             identifier=manifest.id,
             defaults={"name": manifest.name, "description": manifest.description},
         )
         assert_plugin_in_service(plugin)
-        if plugin.current_package_id is not None:
-            raise PluginUpgradeUnavailableError()
+        installed = plugin.current_package_id is not None
+        if installed:
+            assert_upgrade_allowed(candidate, installed_version_of(plugin))
         replaced = list(
             plugin.packages.select_for_update().filter(review_state=ReviewState.PENDING)
         )
@@ -147,9 +173,11 @@ class PluginInstallationService:
         replaced_facts = [PackageFacts.of(old) for old in replaced]
         for old in replaced:
             old.delete()
-        plugin.name = manifest.name
-        plugin.description = manifest.description
-        plugin.save(update_fields=["name", "description", "updated_at"])
+        if not installed:
+            # An installed plugin keeps its name until its new version is running.
+            plugin.name = manifest.name
+            plugin.description = manifest.description
+            plugin.save(update_fields=["name", "description", "updated_at"])
         pending = PluginPackage.objects.create(
             plugin=plugin,
             version=manifest.version,
@@ -168,25 +196,38 @@ class PluginInstallationService:
             spa_bytes=package.summary.spa_bytes,
             wheel_count=package.summary.wheel_count,
             migration_count=package.summary.migration_count,
+            migration_files=candidate.migration_files,
             uploaded_by=uploaded_by,
         )
         if replaced_keys:
             self._after_commit_robustly(self._delete_unreferenced, replaced_keys)
         return pending, replaced_facts
 
-    def approve(self, package_id: int, approved_by, *, untrusted_acknowledged: bool) -> Plugin:
-        """Approve a pending package: make it the plugin's running package and publish its SPA.
+    def approve(
+        self,
+        package_id: int,
+        approved_by,
+        *,
+        untrusted_acknowledged: bool = False,
+        access_growth_acknowledged: bool = False,
+        reviewed_against_package_id: int | None = None,
+        settings: dict | None = None,
+    ) -> Plugin:
+        """Approve a pending package: install the plugin, or start its upgrade.
 
         The stored file is checked again first: it must still be the reviewed file, and its
         signature is judged with the trusted keys as they are now, so a key the operator has
         removed since the upload no longer makes the package Trusted. A changed verdict is
         saved even when the approval is then refused, so the review shows it.
 
-        The SPA's files are written before the approval commits and served (`current`
-        switched) only once it has; a failed approval leaves nothing served. A package with
-        a backend gets its placement (port and Unix user id on the plugin node) and leaves
-        the plugin `provisioning`, and one with a database gets its database record, in the
-        same transaction; the platform maximums are checked again, as they are now.
+        A first approval installs the plugin: the SPA's files are written before the approval
+        commits and served (`current` switched) only once it has; a failed approval leaves
+        nothing served. A package with a backend gets its placement (port and Unix user id on
+        the plugin node) and leaves the plugin `provisioning`, and one with a database gets
+        its database record, in the same transaction; the platform maximums are checked
+        again, as they are now. Approving a newer package of an installed plugin starts its
+        upgrade (`PluginUpgradeService.start_locked`), with the acknowledgements, the
+        reviewed baseline and the settings the upgrade needs.
 
         Raises:
             PluginPackageNotFoundError: No package with this id.
@@ -195,90 +236,147 @@ class PluginInstallationService:
             InvalidPluginError: The stored package breaks a package rule or asks for more than
                 today's platform maximums.
             InvalidSignatureError: Its signature does not verify with today's trusted keys.
+            PluginUninstallingError: The plugin is uninstalled or being deleted.
             UntrustedNotAcknowledgedError: The package is untrusted now and the SuperAdmin did
                 not acknowledge it.
             NoPluginNodeError: The package has a backend and no plugin node is registered.
             PluginNodeFullError: The plugin node has no free port or user id left.
             NoPluginDatabaseServerError: The package has a database and no plugin database
                 server is registered.
-            PluginUninstallingError: The plugin is uninstalled or being deleted.
+            PluginNotUpgradableError, PluginVersionNotNewerError,
+            PluginUpgradeUnavailableError, ReviewOutdatedError,
+            AccessGrowthNotAcknowledgedError, InvalidPluginSettingsError: An upgrade's
+                refusals (`PluginUpgradeService.start_locked`).
         """
+        request = ApprovalRequest(
+            untrusted_acknowledged=untrusted_acknowledged,
+            access_growth_acknowledged=access_growth_acknowledged,
+            reviewed_against_package_id=reviewed_against_package_id,
+            settings=settings,
+        )
         with tempfile.TemporaryFile() as local_copy:
             pending = self._pending_package(package_id)
             assert_plugin_in_service(pending.plugin)
             archive = self._reviewed_archive(pending, local_copy)
             _assert_within_platform_maximums(archive.manifest)
-            package = self._record_verdict(package_id, verify_package_signature(archive))
-            if package.trust == Trust.UNTRUSTED and not untrusted_acknowledged:
-                raise UntrustedNotAcknowledgedError()
-            plugin = self._approve_checked(package_id, approved_by, archive, local_copy)
-        approved = plugin.current_package
+            self._record_verdict(package_id, verify_package_signature(archive))
+            plugin, approved = self._approve_checked(
+                package_id, approved_by, archive, local_copy, request
+            )
         log_package_action(
             "approve",
             approved_by,
-            PackageFacts(approved.pk, plugin.identifier, approved.version, approved.sha256),
-            trust=approved.trust,
-            signer=approved.signer_key_name or "none",
+            approved,
+            trust=pending.trust,
+            signer=pending.signer_key_name or "none",
             untrusted_acknowledged=untrusted_acknowledged,
         )
         return plugin
 
     def _approve_checked(
-        self, package_id: int, approved_by, archive: PackageArchive, local_copy: BinaryIO
-    ) -> Plugin:
+        self,
+        package_id: int,
+        approved_by,
+        archive: PackageArchive,
+        local_copy: BinaryIO,
+        request: ApprovalRequest,
+    ) -> tuple[Plugin, PackageFacts]:
         manifest = archive.manifest
         version_written = False
         committed = False
 
-        def serve_published_version() -> None:
+        def write_spa() -> None:
+            nonlocal version_written
+            if manifest.spa is None:
+                return
+            local_copy.seek(0)
+            with zipfile.ZipFile(local_copy) as zip_file:
+                self._publisher.write_version(
+                    manifest.id,
+                    manifest.version,
+                    zip_file,
+                    [file.path for file in archive.spa_files],
+                )
+            version_written = True
+
+        def mark_committed() -> None:
             nonlocal committed
             committed = True
-            self._publisher.switch_current(manifest.id, manifest.version)
 
         try:
             with transaction.atomic():
-                package = self._pending_package(package_id, lock=True)
-                assert_plugin_in_service(package.plugin)
-                if manifest.spa is not None:
-                    local_copy.seek(0)
-                    with zipfile.ZipFile(local_copy) as zip_file:
-                        self._publisher.write_version(
-                            manifest.id,
-                            manifest.version,
-                            zip_file,
-                            [file.path for file in archive.spa_files],
-                        )
-                    version_written = True
-                    transaction.on_commit(serve_published_version)
-                package.review_state = ReviewState.APPROVED
-                package.approved_by = approved_by
-                package.approved_at = timezone.now()
-                package.save(update_fields=["review_state", "approved_by", "approved_at"])
-                plugin = package.plugin
-                if manifest.backend is not None:
-                    self._placements.ensure_placement(plugin)
-                if manifest.database is not None:
-                    PluginDatabaseRecords().ensure_for(plugin)
-                plugin.current_package = package
-                plugin.state = (
-                    PluginState.RUNNING if manifest.backend is None else PluginState.PROVISIONING
-                )
-                plugin.name = manifest.name
-                plugin.description = manifest.description
-                plugin.save(
-                    update_fields=["current_package", "state", "name", "description", "updated_at"]
-                )
-                ActivityRecorder().package_approved(
-                    approved_by,
-                    identifier=plugin.identifier,
-                    version=package.version,
-                    trust=package.trust,
-                )
+                plugin, package = self._lock_pending(package_id)
+                assert_plugin_in_service(plugin)
+                facts = PackageFacts.of(package)
+                if plugin.current_package_id is not None:
+                    PluginUpgradeService(
+                        publisher=self._publisher, store=self._store, placements=self._placements
+                    ).start_locked(plugin, package, approved_by, request, write_spa)
+                    transaction.on_commit(mark_committed)
+                else:
+                    if package.trust == Trust.UNTRUSTED and not request.untrusted_acknowledged:
+                        raise UntrustedNotAcknowledgedError()
+                    write_spa()
+                    transaction.on_commit(mark_committed)
+                    self._install(plugin, package, manifest, approved_by)
         except BaseException:
             if version_written and not committed:
                 self._discard_written_version(manifest)
             raise
-        return Plugin.objects.with_summary().get(pk=plugin.pk)
+        return Plugin.objects.with_summary().get(pk=plugin.pk), facts
+
+    def _install(self, plugin: Plugin, package: PluginPackage, manifest, approved_by) -> None:
+        """A plugin's first approval: `package` becomes its current package."""
+        package.review_state = ReviewState.APPROVED
+        package.approved_by = approved_by
+        package.approved_at = timezone.now()
+        package.save(update_fields=["review_state", "approved_by", "approved_at"])
+        if manifest.backend is not None:
+            self._placements.ensure_placement(plugin)
+        if manifest.database is not None:
+            PluginDatabaseRecords().ensure_for(plugin)
+        plugin.current_package = package
+        plugin.state = PluginState.RUNNING if manifest.backend is None else PluginState.PROVISIONING
+        plugin.name = manifest.name
+        plugin.description = manifest.description
+        plugin.save(update_fields=["current_package", "state", "name", "description", "updated_at"])
+        ActivityRecorder().package_approved(
+            approved_by,
+            identifier=plugin.identifier,
+            version=package.version,
+            trust=package.trust,
+        )
+        if manifest.spa is not None:
+            identifier, version = manifest.id, manifest.version
+            transaction.on_commit(lambda: self._publisher.switch_current(identifier, version))
+
+    @staticmethod
+    def _lock_pending(package_id: int) -> tuple[Plugin, PluginPackage]:
+        """Lock the package's plugin, then the package, which must still be pending.
+
+        Raises:
+            PluginPackageNotFoundError: No package with this id.
+            PackageNotPendingError: The package was already decided.
+        """
+        identifier = (
+            PluginPackage.objects.filter(pk=package_id)
+            .values_list("plugin__identifier", flat=True)
+            .first()
+        )
+        plugin = lock_plugin(identifier) if identifier is not None else None
+        package = (
+            PluginPackage.objects.select_for_update(of=("self",))
+            .filter(pk=package_id, plugin=plugin)
+            .first()
+            if plugin is not None
+            else None
+        )
+        if package is None:
+            raise PluginPackageNotFoundError()
+        if package.review_state != ReviewState.PENDING:
+            raise PackageNotPendingError()
+        package.plugin = plugin
+        return plugin, package
 
     def reject(self, package_id: int, rejected_by) -> None:
         """Reject a pending package: delete its row and file, and its plugin if never approved.
@@ -290,9 +388,8 @@ class PluginInstallationService:
             PackageNotPendingError: The package was already decided.
         """
         with transaction.atomic():
-            package = self._pending_package(package_id, lock=True)
+            plugin, package = self._lock_pending(package_id)
             facts = PackageFacts.of(package)
-            plugin = package.plugin
             package.delete()
             plugin_removed = plugin.current_package_id is None
             if plugin_removed:
@@ -314,11 +411,8 @@ class PluginInstallationService:
         transaction.on_commit(run_cleanup, robust=True)
 
     @staticmethod
-    def _pending_package(package_id: int, *, lock: bool = False) -> PluginPackage:
-        packages = PluginPackage.objects.select_related("plugin")
-        if lock:
-            packages = packages.select_for_update()
-        package = packages.filter(pk=package_id).first()
+    def _pending_package(package_id: int) -> PluginPackage:
+        package = PluginPackage.objects.select_related("plugin").filter(pk=package_id).first()
         if package is None:
             raise PluginPackageNotFoundError()
         if package.review_state != ReviewState.PENDING:
@@ -347,7 +441,7 @@ class PluginInstallationService:
             "signer_public_key": trusted_signer_public_key(verdict),
         }
         with transaction.atomic():
-            package = self._pending_package(package_id, lock=True)
+            _, package = self._lock_pending(package_id)
             changed = [
                 name for name, value in verdict_fields.items() if getattr(package, name) != value
             ]

@@ -1,14 +1,22 @@
+import { formatDate } from '@angular/common';
+import { formatFileSize } from '@shared/utils';
+
 import {
     PluginActivityAction,
     PluginActivityDetailValue,
     PluginActivityEvent,
     PluginPurgeReason,
 } from '../models/plugin-activity.model';
+import { PluginBackupReason, PluginRestoreStep, PluginUpgradeStep } from '../models/plugin-admin.model';
 import {
     formatPluginLimit,
     isPluginNumericLimitKey,
+    lowerFirst,
+    PLUGIN_BACKUP_REASON_LABELS,
     PLUGIN_CPU_PRIORITY_LABELS,
     PLUGIN_LIMIT_LABELS,
+    PLUGIN_RESTORE_STEP_LABELS,
+    PLUGIN_UPGRADE_STEP_LABELS,
 } from './plugin-display.util';
 
 /** How each activity action reads in a list. A new action needs its label here before it builds. */
@@ -39,6 +47,19 @@ export const PLUGIN_ACTIVITY_ACTION_LABELS: Readonly<Record<PluginActivityAction
     org_removed_hook_failed: 'Data removal failed',
     org_removed_hook_retried: 'Data removal retried',
     org_removed_hook_skipped: 'Data removal skipped',
+    plugin_upgrade_started: 'Upgrade started',
+    plugin_maintenance_started: 'Maintenance started',
+    plugin_upgrade_failed: 'Upgrade failed',
+    plugin_upgrade_retried: 'Upgrade retried',
+    plugin_upgrade_cancelled: 'Upgrade cancelled',
+    plugin_upgraded: 'Upgraded',
+    database_backed_up: 'Database backed up',
+    database_restore_requested: 'Database restore requested',
+    database_restored: 'Database restored',
+    database_restore_failed: 'Database restore failed',
+    upgrade_hook_succeeded: 'Upgrade hook succeeded',
+    upgrade_hook_failed: 'Upgrade hook failed',
+    upgrade_hook_retried: 'Upgrade hook retried',
 };
 
 /** Why a deletion began, as `detail.reason` says. */
@@ -54,6 +75,9 @@ const ACTIONS_WITH_ERROR: ReadonlySet<PluginActivityAction> = new Set<PluginActi
     'database_failed',
     'plugin_removal_failed',
     'org_removed_hook_failed',
+    'plugin_upgrade_failed',
+    'upgrade_hook_failed',
+    'database_restore_failed',
 ]);
 
 /** The actions whose `detail.reason` says why a deletion began. */
@@ -98,8 +122,8 @@ export function pluginActivityPluginText(event: PluginActivityEvent): string {
 }
 
 /**
- * The error of a failed install, database setup, removal from the node or data removal, as the hook or the node
- * reported it; else `null`.
+ * The error of a failed install, database setup, removal from the node, data removal, upgrade, upgrade hook or
+ * restore, as the hook or the node reported it; else `null`.
  */
 export function pluginActivityErrorText(event: PluginActivityEvent): string | null {
     if (!ACTIONS_WITH_ERROR.has(event.action)) return null;
@@ -108,16 +132,118 @@ export function pluginActivityErrorText(event: PluginActivityEvent): string | nu
 }
 
 /**
- * The overrides in force after a limits change (`Overrides: Memory 128 MB, CPU priority Low`), or why a deletion began
- * (`Reason: Grace period over`); else `null`.
+ * The overrides in force after a limits change (`Overrides: Memory 128 MB, CPU priority Low`), why a deletion began
+ * (`Reason: Grace period over`), or the versions and backups of an upgrade event (`0.6.0 → 0.7.0 · offline 2 min`);
+ * else `null`. `locale` formats the time of a planned retry.
  */
-export function pluginActivityDetailText(event: PluginActivityEvent): string | null {
+export function pluginActivityDetailText(event: PluginActivityEvent, locale: string): string | null {
     if (event.action === 'limits_changed') {
         const overrides = Object.entries(event.detail).map(([key, value]) => limitOverrideText(key, value));
         return `Overrides: ${overrides.length > 0 ? overrides.join(', ') : 'none'}`;
     }
     if (ACTIONS_WITH_REASON.has(event.action)) return reasonText(event.detail['reason']);
-    return null;
+    return upgradeDetailText(event, locale);
+}
+
+/** What an upgrade, backup, restore or upgrade hook event adds to its label; `null` for any other event. */
+function upgradeDetailText(event: PluginActivityEvent, locale: string): string | null {
+    const detail = event.detail;
+    const from = detailText(detail['from_version']);
+    const to = detailText(detail['to_version']);
+    switch (event.action) {
+        case 'plugin_upgrade_started': {
+            const replaced = detailText(detail['replaced_version']);
+            return joined([versionsText(from, to), replaced ? `replaces ${replaced}` : null]);
+        }
+        case 'plugin_upgraded': {
+            const seconds = detail['maintenance_seconds'];
+            const offline = typeof seconds === 'number' && seconds > 0 ? `offline ${durationText(seconds)}` : null;
+            return joined([versionsText(from, to), offline]);
+        }
+        case 'plugin_maintenance_started': {
+            const organizations = detail['organizations'];
+            const offline =
+                typeof organizations === 'number'
+                    ? `${organizations} ${organizations === 1 ? 'organization' : 'organizations'} offline`
+                    : null;
+            return joined([to ? `To ${to}` : null, offline]);
+        }
+        case 'plugin_upgrade_retried':
+        case 'plugin_upgrade_cancelled':
+            return to ? `To ${to}` : null;
+        case 'plugin_upgrade_failed': {
+            const step = detailText(detail['step']);
+            const where = step && isUpgradeStep(step) ? `while ${lowerFirst(PLUGIN_UPGRADE_STEP_LABELS[step])}` : null;
+            return joined([to ? `To ${to}` : null, where]);
+        }
+        case 'database_backed_up':
+            return backupDetailText(detail);
+        case 'database_restore_requested':
+        case 'database_restored': {
+            const file = detailText(detail['file_name']);
+            return file ? `From ${file}` : null;
+        }
+        case 'database_restore_failed': {
+            const step = detailText(detail['step']);
+            return step && isRestoreStep(step) ? `While ${lowerFirst(PLUGIN_RESTORE_STEP_LABELS[step])}` : null;
+        }
+        case 'upgrade_hook_succeeded':
+            return from ? `From ${from}${to ? ` to ${to}` : ''}` : null;
+        case 'upgrade_hook_failed': {
+            const next = detailText(detail['next_attempt_at']);
+            return next ? `Next try ${formatDate(next, 'shortTime', locale)}` : 'No retries left: Retry it on its row';
+        }
+        default:
+            return null;
+    }
+}
+
+/** "Before upgrade · holds 0.6.0 · 7.3 MB". */
+function backupDetailText(detail: PluginActivityEvent['detail']): string | null {
+    const reason = detailText(detail['reason']);
+    const version = detailText(detail['version']);
+    const size = detail['size_bytes'];
+    return joined([
+        reason && isBackupReason(reason) ? PLUGIN_BACKUP_REASON_LABELS[reason] : null,
+        version ? `holds ${version}` : null,
+        typeof size === 'number' ? formatFileSize(size, 'auto') : null,
+    ]);
+}
+
+function versionsText(from: string | null, to: string | null): string | null {
+    if (from && to) return `${from} → ${to}`;
+    return to ? `To ${to}` : null;
+}
+
+/** "45 s", "3 min", "1 h 5 min". */
+function durationText(seconds: number): string {
+    if (seconds < 60) return `${Math.round(seconds)} s`;
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes} min`;
+    const rest = minutes % 60;
+    return rest === 0 ? `${Math.floor(minutes / 60)} h` : `${Math.floor(minutes / 60)} h ${rest} min`;
+}
+
+/** The parts that are there, joined with " · "; `null` when none is. */
+function joined(parts: readonly (string | null)[]): string | null {
+    const present = parts.filter((part): part is string => part !== null && part !== '');
+    return present.length > 0 ? present.join(' · ') : null;
+}
+
+function detailText(value: PluginActivityDetailValue | undefined): string | null {
+    return typeof value === 'string' && value ? value : null;
+}
+
+function isUpgradeStep(step: string): step is PluginUpgradeStep {
+    return Object.hasOwn(PLUGIN_UPGRADE_STEP_LABELS, step);
+}
+
+function isRestoreStep(step: string): step is PluginRestoreStep {
+    return Object.hasOwn(PLUGIN_RESTORE_STEP_LABELS, step);
+}
+
+function isBackupReason(reason: string): reason is PluginBackupReason {
+    return Object.hasOwn(PLUGIN_BACKUP_REASON_LABELS, reason);
 }
 
 /** A reason this page does not know shows as the server sent it; a missing one shows nothing. */

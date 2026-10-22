@@ -79,6 +79,10 @@ class Node:
         unpacked = layout.unpacked_package(plugin, "0.2.0") / "backend"
         unpacked.mkdir(parents=True)
         (unpacked / "requirements.lock").write_text("")
+        backups = layout.plugin_backups(plugin)
+        backups.mkdir(parents=True, mode=0o700)
+        (backups / "20261021T101500Z-u7-pre_upgrade.dump").write_bytes(b"PGDMP")
+        (backups / "20261021T101500Z-u7-pre_upgrade.json").write_text("{}")
 
     def agent_trees_exist(self, plugin: str) -> bool:
         layout = self.layout
@@ -87,12 +91,13 @@ class Node:
             (venvs.is_dir() and any(venvs.iterdir()))
             or layout.plugin_logs(plugin).exists()
             or (layout.unpack_directory / plugin).exists()
+            or layout.plugin_backups(plugin).exists()
         )
 
 
 @pytest.fixture
 async def node(layout):
-    for directory in (layout.venvs_root, layout.logs_root, layout.unpack_directory):
+    for directory in (layout.venvs_root, layout.logs_root, layout.unpack_directory, layout.backups_root):
         directory.mkdir(parents=True, exist_ok=True)
     node = Node(layout)
     await node.egress.start()
@@ -182,6 +187,7 @@ async def test_the_agents_trees_of_the_plugin_go_and_another_plugins_stay(node, 
     (outside / "keep.txt").write_text("not the plugin's")
     (layout.plugin_logs("weather") / "link").symlink_to(outside)
     (layout.plugin_venvs("weather") / "link").symlink_to(outside)
+    (layout.plugin_backups("weather") / "link.dump").symlink_to(outside / "keep.txt")
     remover = node.remover()
 
     remover.apply([removal()], {})
@@ -193,6 +199,12 @@ async def test_the_agents_trees_of_the_plugin_go_and_another_plugins_stay(node, 
     assert node.agent_trees_exist("notes")
     assert (layout.plugin_venv("notes", "0.2.0") / "bin" / "python").exists()
     assert (outside / "keep.txt").read_text() == "not the plugin's"
+    # A deleted plugin keeps no backups; another plugin keeps its own.
+    assert not layout.plugin_backups("weather").exists()
+    assert sorted(path.name for path in layout.plugin_backups("notes").iterdir()) == [
+        "20261021T101500Z-u7-pre_upgrade.dump",
+        "20261021T101500Z-u7-pre_upgrade.json",
+    ]
 
 
 @pytest.mark.parametrize(

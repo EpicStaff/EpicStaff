@@ -12,7 +12,11 @@
             [title]="ready.name"
         ></iframe>
     } @empty {
-        @if (messageView(); as message) {
+        @if (maintenanceView(); as maintenance) {
+            <div class="plugin-host__state">
+                <app-plugin-maintenance-panel [pluginName]="maintenance.name" />
+            </div>
+        } @else if (messageView(); as message) {
             <div class="plugin-host__state">
                 <app-fetch-error-state
                     [title]="message.title"

@@ -1,14 +1,24 @@
 {
     "protocol": 1,
-    "message_types": ["es:ready", "es:init", "es:error", "nav.changed", "nav.navigate", "theme.changed"],
+    "message_types": [
+        "es:ready",
+        "es:init",
+        "es:error",
+        "nav.changed",
+        "nav.navigate",
+        "theme.changed",
+        "availability.changed"
+    ],
     "error_codes": ["unsupported_protocol"],
     "limits": {
         "max_nav_path_length": 1024,
         "max_nav_changes_per_minute": 120,
-        "init_timeout_ms": 3000
+        "init_timeout_ms": 3000,
+        "max_availability_changes_per_minute": 6
     },
     "nav_path_pattern": "^/([A-Za-z0-9\\-._~%]+(/[A-Za-z0-9\\-._~%]+)*)?(\\?[A-Za-z0-9\\-._~%=&+]*)?$",
     "theme_modes": ["dark", "light"],
+    "availability_states": ["available", "maintenance", "unavailable"],
     "theme_tokens": [
         "--es-color-background",
         "--es-color-surface",

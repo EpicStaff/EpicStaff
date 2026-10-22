@@ -7,6 +7,7 @@ recorded instead of run (it has its own tests).
 import asyncio
 import base64
 import errno
+import hashlib
 import json
 import socket
 import sys
@@ -16,12 +17,14 @@ from types import SimpleNamespace
 import bcrypt
 import pytest
 from loguru import logger
+from src.shared.models.plugin_nodes import LedgerEntry
 
 from es_plugins.agent import reconciler as reconciler_module
 from es_plugins.agent.django_client import DjangoNodeClient
 from es_plugins.agent.main import prepare_agent_directories
 from es_plugins.agent.port_reservation import PortReservation
 from es_plugins.agent.reconciler import AgentServices, Reconciler
+from es_plugins.database.backup_store import BackupStore
 from es_plugins.database.connections import DatabaseProvisioningError, DatabaseUnreachableError
 from es_plugins.egress.policy_writer import HOSTS_FILE_NAME, PASSWORDS_FILE_NAME, EgressPolicyWriter
 from es_plugins.health.health_checker import HealthChecker
@@ -37,8 +40,10 @@ from tests.helpers import (
     SERVICE_ACCOUNT_KEY,
     FakeDjango,
     FakeLauncher,
+    RecordingBackups,
     RecordingDropper,
     RecordingProvisioner,
+    RecordingRestores,
     backend_wheels,
     database_section,
     desired_state,
@@ -143,6 +148,11 @@ async def node(tmp_path, layout, package_bytes):
     volume = Volume()
     ports = PortReservation([port, other_port])
     ports.reserve()
+    layout.backups_root.mkdir(mode=0o700)
+    backup_store = BackupStore(layout)
+    backups = RecordingBackups(backup_store, launcher.operations)
+    restores = RecordingRestores(backups, launcher.operations)
+    desired_state_requests = []
     services = AgentServices(
         layout=layout,
         django=client,
@@ -155,7 +165,11 @@ async def node(tmp_path, layout, package_bytes):
         provisioner=provisioner,
         dropper=dropper,
         egress=egress,
+        backup_store=backup_store,
+        backups=backups,
+        restores=restores,
         on_change=lambda: changes.append(reconciler.reports()),
+        request_desired_state=lambda: desired_state_requests.append(True),
         interpreter_for=lambda python: Path(sys.executable),
         venv_builder=venv_builder,
     )
@@ -173,6 +187,9 @@ async def node(tmp_path, layout, package_bytes):
     desired.services = services
     desired.provisioner = provisioner
     desired.dropper = dropper
+    desired.backups = backups
+    desired.restores = restores
+    desired.desired_state_requests = desired_state_requests
     yield reconciler, django, launcher, venv_builder, desired
     await reconciler.close()
     ports.close()
@@ -650,7 +667,7 @@ async def test_a_database_is_provisioned_after_the_credentials_and_before_the_pr
 
     steps = [operation[0] for operation in launcher.operations]
     start = steps.index("fetch_credentials")
-    assert [step for step in steps[start:] if step != "prepare_plugin"][:5] == [
+    assert [step for step in steps[start:] if step not in ("prepare_plugin", "prune_code")][:5] == [
         "fetch_credentials",
         "provision",
         "issue_password",
@@ -931,15 +948,41 @@ async def test_a_start_the_watchdog_fails_before_the_password_leaves_no_password
     assert all(process.poll() is not None for process in launcher.processes_of(UID))
 
 
-@pytest.mark.parametrize("bad_entry", ["001_" + "a" * 300 + ".sql", 7, None, "../etc/passwd"])
-async def test_a_ledger_row_a_plugin_wrote_never_breaks_its_report(database_node, bad_entry):
+async def test_the_report_carries_the_ledger_with_each_files_digest(database_node):
     reconciler, django, launcher, desired, with_database = database_node
-    desired.provisioner.ledger = ("001_places.sql", bad_entry, "002_more.sql")
 
     await reconciler.apply(with_database())
     await wait_until(lambda: running(reconciler))
 
-    assert reconciler.reports()[0].database.applied_migrations == ["001_places.sql", "002_more.sql"]
+    ledger = reconciler.reports()[0].database.ledger
+    assert [(entry.name, entry.sha256) for entry in ledger] == [
+        (name, hashlib.sha256(content).hexdigest()) for name, content in sorted(DATABASE_MIGRATIONS.items())
+    ]
+
+
+async def test_a_failed_migration_run_reports_the_ledger_it_left(database_node):
+    reconciler, django, launcher, desired, with_database = database_node
+    failure = DatabaseProvisioningError("migration", "002_more.sql line 1: [22012] division by zero")
+    failure.ledger = (LedgerEntry(name="001_places.sql", sha256="a" * 64),)
+    desired.provisioner.failures.append(failure)
+
+    await reconciler.apply(with_database())
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "failed")
+
+    report = reconciler.reports()[0].database
+    assert report.state == "failed"
+    assert [entry.name for entry in report.ledger] == ["001_places.sql"]
+    assert report.last_error == "002_more.sql line 1: [22012] division by zero"
+
+
+async def test_a_ledger_not_read_in_this_agents_life_is_reported_as_unknown(database_node):
+    reconciler, django, launcher, desired, with_database = database_node
+    desired.provisioner.failures.append(DatabaseProvisioningError("conflict", "roles of another installation"))
+
+    await reconciler.apply(with_database())
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "failed")
+
+    assert reconciler.reports()[0].database.ledger is None
 
 
 async def test_a_placement_whose_report_cannot_be_built_is_reported_as_unknown(database_node, monkeypatch):

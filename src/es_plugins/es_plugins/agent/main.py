@@ -10,11 +10,13 @@ Loops, all in one event loop:
 - disk watchdog, every 30 s;
 - database limits watchdog, every 60 s.
 
-Before any of them, the agent empties the egress proxy's policy files: no proxy password of an
-earlier run works any more.
+Before any of them, the agent empties the egress proxy's policy files (no proxy password of an
+earlier run works any more), and deletes from the backups tree whatever is not a complete backup
+(a dump a stopped agent left half-written).
 """
 
 import asyncio
+import contextlib
 import os
 import signal
 from collections.abc import Callable, Sequence
@@ -35,10 +37,14 @@ from es_plugins.agent.launcher_client import LauncherClient
 from es_plugins.agent.port_reservation import PortReservation
 from es_plugins.agent.reconciler import AgentServices, Reconciler
 from es_plugins.agent.settings import AgentSettings
+from es_plugins.database.backup_service import BackupService
+from es_plugins.database.backup_store import BackupStore
 from es_plugins.database.connections import DatabaseConnector
 from es_plugins.database.drop_sequence import DatabaseDropper
 from es_plugins.database.limits_watchdog import DatabaseLimitsWatchdog
+from es_plugins.database.postgres_client import PostgresClient
 from es_plugins.database.provisioner import DatabaseProvisioner
+from es_plugins.database.restore_service import RestoreService
 from es_plugins.egress.policy_writer import EgressPolicyWriter
 from es_plugins.health.health_checker import HealthChecker
 from es_plugins.hooks.hook_caller import PluginHookCaller
@@ -142,6 +148,11 @@ class NodeAgent:
         self._watchdogs = watchdogs
         self._unreachable = False
         self._warned_node_name: str | None = None
+        self._fetch_now = asyncio.Event()
+
+    def request_desired_state(self) -> None:
+        """Fetch the desired state now rather than at the next poll."""
+        self._fetch_now.set()
 
     async def reconcile_once(self) -> None:
         try:
@@ -170,8 +181,10 @@ class NodeAgent:
 
     async def reconcile_forever(self) -> None:
         while True:
+            self._fetch_now.clear()
             await self.reconcile_once()
-            await asyncio.sleep(RECONCILE_INTERVAL_SECONDS)
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._fetch_now.wait(), RECONCILE_INTERVAL_SECONDS)
 
     async def beat_heartbeat(self) -> None:
         """Touch the heartbeat file on its own clock, so a slow Django never fails the health check."""
@@ -220,6 +233,8 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
         PortReservationError: A port of the node's range could not be bound at start-up.
     """
     prepare_agent_directories(layout)
+    backup_store = BackupStore(layout)
+    backup_store.clean_up()
     egress = EgressPolicyWriter(layout.egress_policy_directory)
     await egress.start()
     # Before any plugin runs: from here on no plugin can bind a port of the range.
@@ -232,7 +247,17 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
     hook_caller = PluginHookCaller()
     node_disk = NodeDisk(layout.data_root)
     database_connector = DatabaseConnector(settings.database_admin_password)
+    provisioner = DatabaseProvisioner(database_connector)
+    postgres_client = PostgresClient()
+    backups = BackupService(
+        database_connector,
+        postgres_client,
+        backup_store,
+        node_disk,
+        settings.database_backup_password,
+    )
     reconciler: Reconciler
+    agent: NodeAgent
     reporter = Reporter(django, lambda: reconciler.reports(), lambda: reconciler.removal_reports())
     services = AgentServices(
         layout=layout,
@@ -243,10 +268,16 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
         ports=ports,
         disk=node_disk,
         hook_caller=hook_caller,
-        provisioner=DatabaseProvisioner(database_connector),
+        provisioner=provisioner,
         dropper=DatabaseDropper(database_connector),
         egress=egress,
+        backup_store=backup_store,
+        backups=backups,
+        restores=RestoreService(
+            database_connector, postgres_client, backup_store, backups, provisioner
+        ),
         on_change=reporter.request,
+        request_desired_state=lambda: agent.request_desired_state(),
     )
     reconciler = Reconciler(services)
     watchdogs = [

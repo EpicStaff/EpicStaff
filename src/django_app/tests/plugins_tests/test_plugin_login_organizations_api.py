@@ -105,7 +105,7 @@ def test_an_unknown_plugin_is_not_found(client_as, member_only, weather_in_acme_
 
 
 def test_a_plugin_that_is_not_running_is_not_found(client_as, member_only, weather_in_acme_and_beta):
-    Plugin.objects.filter(pk=weather_in_acme_and_beta.pk).update(state=PluginState.MAINTENANCE)
+    Plugin.objects.filter(pk=weather_in_acme_and_beta.pk).update(state=PluginState.FAILED)
 
     assert client_as(member_only).get(URL).status_code == 404
 

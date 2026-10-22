@@ -215,21 +215,39 @@ async def test_a_failed_rename_leaves_no_temporary_file(writer, tmp_path, monkey
     assert json.loads((tmp_path / HOSTS_FILE_NAME).read_text()) == {}
 
 
-async def test_removing_a_plugin_drops_its_password_and_hosts_and_again_changes_nothing(writer, tmp_path):
+async def test_removing_a_plugin_drops_its_password_and_hosts_and_again_keeps_them_dropped(writer, tmp_path):
     await writer.write_hosts({"weather": ["example.com"], "notes": ["api.example.org"]})
     await writer.issue_password("weather")
     notes_password = await writer.issue_password("notes")
 
     await writer.remove_plugin("weather")
     hosts_inode = os.stat(tmp_path / HOSTS_FILE_NAME).st_ino
-    passwords_inode = os.stat(tmp_path / PASSWORDS_FILE_NAME).st_ino
     await writer.remove_plugin("weather")
 
     assert json.loads((tmp_path / HOSTS_FILE_NAME).read_text()) == {"notes": ["api.example.org"]}
     assert list(password_lines(tmp_path)) == ["notes"]
     assert bcrypt.checkpw(notes_password.encode(), password_lines(tmp_path)["notes"].encode())
     assert os.stat(tmp_path / HOSTS_FILE_NAME).st_ino == hosts_inode
-    assert os.stat(tmp_path / PASSWORDS_FILE_NAME).st_ino == passwords_inode
+
+
+async def test_a_removal_retried_after_a_failed_password_write_writes_the_file(writer, tmp_path, monkeypatch):
+    await writer.issue_password("weather")
+    real_replace = EgressPolicyWriter._replace
+    failures = [EgressPolicyError("the disk is full")]
+
+    async def failing_once(self, name, text, **arguments):
+        if name == PASSWORDS_FILE_NAME and failures:
+            raise failures.pop()
+        return await real_replace(self, name, text, **arguments)
+
+    monkeypatch.setattr(EgressPolicyWriter, "_replace", failing_once)
+    with pytest.raises(EgressPolicyError):
+        await writer.remove_plugin("weather")
+    assert "weather" in password_lines(tmp_path)
+
+    await writer.remove_plugin("weather")
+
+    assert "weather" not in password_lines(tmp_path)
 
 
 async def test_a_removal_never_writes_back_an_older_host_list(writer, tmp_path):

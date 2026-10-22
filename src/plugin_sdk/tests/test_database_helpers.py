@@ -220,6 +220,77 @@ def test_a_task_started_inside_an_org_transaction_inherits_its_organization():
     asyncio.run(parent())
 
 
+def test_a_task_that_outlives_its_block_no_longer_holds_the_connection():
+    connection = FakeConnection()
+
+    async def child(block_ended):
+        await block_ended.wait()
+        # By now the pool lent the connection to another request, in organization 2's transaction.
+        with pytest.raises(ConnectionInTransactionError, match="already has a transaction open"):
+            async with org_transaction(connection, 1):
+                pass
+
+    async def requests():
+        block_ended = asyncio.Event()
+        async with org_transaction(connection, 1):
+            task = asyncio.create_task(child(block_ended))
+        async with org_transaction(connection, 2):
+            block_ended.set()
+            await task
+
+    asyncio.run(requests())
+
+    # No savepoint set organization 1 inside organization 2's transaction.
+    assert connection.calls == [
+        ("begin",),
+        ("execute", SET_ORG_ID, ("1",)),
+        ("commit",),
+        ("begin",),
+        ("execute", SET_ORG_ID, ("2",)),
+        ("commit",),
+    ]
+
+
+def test_a_task_that_outlives_its_block_may_work_for_another_organization():
+    connection, fresh = FakeConnection(), FakeConnection()
+
+    async def child(block_ended):
+        await block_ended.wait()
+        async with org_transaction(fresh, 2):
+            pass
+
+    async def request():
+        block_ended = asyncio.Event()
+        async with org_transaction(connection, 1):
+            task = asyncio.create_task(child(block_ended))
+        block_ended.set()
+        await task
+
+    asyncio.run(request())
+
+    assert fresh.calls == [("begin",), ("execute", SET_ORG_ID, ("2",)), ("commit",)]
+
+
+def test_a_task_started_in_a_nested_block_keeps_the_block_around_it_while_that_is_open():
+    connection = FakeConnection()
+
+    async def child(inner_ended):
+        await inner_ended.wait()
+        with pytest.raises(NestedOrgTransactionError, match="organization 3 is open"):
+            async with org_transaction(FakeConnection(), 5):
+                pass
+
+    async def request():
+        inner_ended = asyncio.Event()
+        async with org_transaction(connection, 3):
+            async with org_transaction(connection, 3):
+                task = asyncio.create_task(child(inner_ended))
+            inner_ended.set()
+            await task
+
+    asyncio.run(request())
+
+
 # --- A connection with a transaction already open ---
 
 

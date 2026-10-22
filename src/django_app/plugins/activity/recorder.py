@@ -244,13 +244,158 @@ class ActivityRecorder:
         detail = {"job_id": job.pk, "attempt": job.attempt}
         if not succeeded:
             detail["error"] = error
-        PluginActivityEvent.objects.create(
-            plugin_identifier=identifier,
-            organization_id=job.organization_id,
-            actor_kind=ActorKind.PLATFORM,
-            actor_label=PLATFORM_ACTOR_LABEL,
-            action=succeeded_action if succeeded else failed_action,
-            detail=detail,
+        _organization_event(
+            identifier,
+            job.organization_id,
+            succeeded_action if succeeded else failed_action,
+            detail,
+        )
+
+    def upgrade_hook_succeeded(self, job: PluginHookJob, identifier: str) -> None:
+        _organization_event(
+            identifier,
+            job.organization_id,
+            ActivityAction.UPGRADE_HOOK_SUCCEEDED,
+            {
+                "job_id": job.pk,
+                "attempt": job.attempt,
+                "from_version": job.previous_version,
+                "to_version": job.package.version if job.package else None,
+            },
+        )
+
+    def upgrade_hook_failed(
+        self, job: PluginHookJob, identifier: str, *, error: str | None, next_attempt_at
+    ) -> None:
+        """Record a failed upgrade attempt; `next_attempt_at` None means it waits for Retry."""
+        _organization_event(
+            identifier,
+            job.organization_id,
+            ActivityAction.UPGRADE_HOOK_FAILED,
+            {
+                "job_id": job.pk,
+                "attempt": job.attempt,
+                "error": error,
+                "next_attempt_at": _datetime_text(next_attempt_at),
+            },
+        )
+
+    def upgrade_hook_retried(self, actor, job: PluginHookJob, identifier: str) -> None:
+        _superadmin_event(
+            actor,
+            identifier,
+            job.organization_id,
+            ActivityAction.UPGRADE_HOOK_RETRIED,
+            {"job_id": job.pk},
+        )
+
+    def plugin_upgrade_started(
+        self,
+        actor,
+        identifier: str,
+        *,
+        from_version: str,
+        to_version: str,
+        access_growth_acknowledged: bool,
+        untrusted_acknowledged: bool,
+        replaced_version: str | None,
+    ) -> None:
+        _superadmin_event(
+            actor,
+            identifier,
+            None,
+            ActivityAction.PLUGIN_UPGRADE_STARTED,
+            {
+                "from_version": from_version,
+                "to_version": to_version,
+                "access_growth_acknowledged": access_growth_acknowledged,
+                "untrusted_acknowledged": untrusted_acknowledged,
+                "replaced_version": replaced_version,
+            },
+        )
+
+    def plugin_maintenance_started(
+        self, identifier: str, to_version: str, organizations: int
+    ) -> None:
+        _platform_event(
+            identifier,
+            ActivityAction.PLUGIN_MAINTENANCE_STARTED,
+            {"to_version": to_version, "organizations": organizations},
+        )
+
+    def plugin_upgrade_failed(
+        self, identifier: str, *, to_version: str, stage: str, step: str | None, error: str | None
+    ) -> None:
+        _platform_event(
+            identifier,
+            ActivityAction.PLUGIN_UPGRADE_FAILED,
+            {"to_version": to_version, "stage": stage, "step": step, "error": error},
+        )
+
+    def plugin_upgrade_retried(self, actor, identifier: str, to_version: str) -> None:
+        _superadmin_event(
+            actor,
+            identifier,
+            None,
+            ActivityAction.PLUGIN_UPGRADE_RETRIED,
+            {"to_version": to_version},
+        )
+
+    def plugin_upgrade_cancelled(self, actor, identifier: str, to_version: str, stage: str) -> None:
+        _superadmin_event(
+            actor,
+            identifier,
+            None,
+            ActivityAction.PLUGIN_UPGRADE_CANCELLED,
+            {"to_version": to_version, "stage": stage},
+        )
+
+    def plugin_upgraded(
+        self, identifier: str, *, from_version: str, to_version: str, maintenance_seconds: int
+    ) -> None:
+        _platform_event(
+            identifier,
+            ActivityAction.PLUGIN_UPGRADED,
+            {
+                "from_version": from_version,
+                "to_version": to_version,
+                "maintenance_seconds": maintenance_seconds,
+            },
+        )
+
+    def database_backed_up(self, identifier: str, backup) -> None:
+        _platform_event(
+            identifier,
+            ActivityAction.DATABASE_BACKED_UP,
+            {
+                "file_name": backup.file_name,
+                "reason": backup.reason,
+                "size_bytes": backup.size_bytes,
+                "version": backup.version,
+            },
+        )
+
+    def database_restore_requested(self, actor, identifier: str, file_name: str) -> None:
+        _superadmin_event(
+            actor,
+            identifier,
+            None,
+            ActivityAction.DATABASE_RESTORE_REQUESTED,
+            {"file_name": file_name},
+        )
+
+    def database_restored(
+        self, identifier: str, file_name: str, pre_restore_file_name: str | None
+    ) -> None:
+        _platform_event(
+            identifier,
+            ActivityAction.DATABASE_RESTORED,
+            {"file_name": file_name, "pre_restore_file_name": pre_restore_file_name},
+        )
+
+    def database_restore_failed(self, identifier: str, step: str | None, error: str | None) -> None:
+        _platform_event(
+            identifier, ActivityAction.DATABASE_RESTORE_FAILED, {"step": step, "error": error}
         )
 
     def settings_changed(self, actor, identifier: str, keys: list[str]) -> None:
@@ -438,6 +583,18 @@ def _actor_event(
 
 def _datetime_text(value) -> str | None:
     return serializers.DateTimeField().to_representation(value) if value is not None else None
+
+
+def _organization_event(identifier: str, organization_id: int, action: str, detail: dict) -> None:
+    """An event the platform caused in one organization."""
+    PluginActivityEvent.objects.create(
+        plugin_identifier=identifier,
+        organization_id=organization_id,
+        actor_kind=ActorKind.PLATFORM,
+        actor_label=PLATFORM_ACTOR_LABEL,
+        action=action,
+        detail=detail,
+    )
 
 
 def _platform_event(identifier: str, action: str, detail: dict) -> None:

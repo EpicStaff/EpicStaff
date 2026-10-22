@@ -13,6 +13,7 @@ class AvailablePluginSerializer(serializers.Serializer):
     icon_url = serializers.SerializerMethodField()
     frame_origin = serializers.SerializerMethodField()
     permissions = serializers.ListField(child=serializers.CharField())
+    availability = serializers.ChoiceField(choices=["ready", "maintenance"])
 
     def get_icon_url(self, available: AvailablePlugin) -> str:
         return icon_url(available.plugin)

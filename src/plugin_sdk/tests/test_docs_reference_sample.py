@@ -12,6 +12,7 @@ TUTORIAL = DOCS / "tutorial" / "build-your-first-plugin.md"
 PAGES_NAMING_THE_SAMPLE = [
     TUTORIAL,
     DOCS / "how-to" / "install-hook.md",
+    DOCS / "how-to" / "upgrade-hook.md",
     DOCS / "how-to" / "org-removed-hook.md",
     DOCS / "how-to" / "call-epicstaff-from-the-backend.md",
     DOCS / "how-to" / "database-migrations.md",
@@ -75,6 +76,34 @@ def test_part_four_and_the_hook_guide_name_the_files_of_the_organization_removed
     assert files - {"plugin-samples/weather/manifest.json"} <= set(
         SAMPLE_PATH.findall((DOCS / "how-to" / "org-removed-hook.md").read_text())
     )
+
+
+def test_part_five_and_the_upgrade_hook_guide_name_the_files_of_the_new_version():
+    part_five = TUTORIAL.read_text().split("## Part 5:", 1)[1]
+    guide = (DOCS / "how-to" / "upgrade-hook.md").read_text()
+
+    assert {
+        "plugin-samples/weather/manifest.json",
+        "plugin-samples/weather/database/migrations/003_place_conditions.sql",
+        "plugin-samples/weather/backend/src/weather_plugin/current_conditions.py",
+        "plugin-samples/weather/backend/src/weather_plugin/places.py",
+        "plugin-samples/weather/backend/src/weather_plugin/organization_data.py",
+        "plugin-samples/weather/backend/src/weather_plugin/upgrade_hook.py",
+        "plugin-samples/weather/backend/src/weather_plugin/forecast_flow.py",
+    } <= set(SAMPLE_PATH.findall(part_five))
+    assert {
+        "plugin-samples/weather/backend/src/weather_plugin/upgrade_hook.py",
+        "plugin-samples/weather/backend/src/weather_plugin/app.py",
+        "plugin-samples/weather/backend/src/weather_plugin/forecast_flow.py",
+    } <= set(SAMPLE_PATH.findall(guide))
+
+
+@pytest.mark.parametrize("page", [TUTORIAL, DOCS / "how-to" / "upgrade-hook.md"], ids=lambda page: page.name)
+def test_the_upgrade_hook_a_page_quotes_is_the_samples(page):
+    sample = (REPO_ROOT / "plugin-samples" / "weather" / "backend" / "src" / "weather_plugin" / "upgrade_hook.py").read_text()
+    (quoted,) = re.findall(r"```python\n(@hook_registry\.on_upgrade\n.*?)\n```", page.read_text(), re.DOTALL)
+
+    assert quoted in sample
 
 
 def test_the_sql_the_tutorial_quotes_is_in_the_samples_migrations():

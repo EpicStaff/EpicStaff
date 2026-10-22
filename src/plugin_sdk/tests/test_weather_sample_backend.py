@@ -6,7 +6,8 @@ import json
 import logging
 import re
 import tomllib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 
 import httpx
@@ -21,6 +22,7 @@ from epicstaff_plugin.requirements_lock import parse_requirements_lock
 from epicstaff_plugin.runtime import RuntimeConfig
 from epicstaff_plugin.serve import build_app
 from epicstaff_plugin.testing import HookSigner, service_account_key, write_runtime_file
+from epicstaff_plugin.versions import is_newer
 from fake_epicstaff import FakeEpicStaff
 from fake_weather_stores import FakeForecastRuns, FakePopupRelay, FakeSavedPlaces, RecordingConnection, RecordingPool
 from local_servers import EmptyApi, RefusingProxy, serving
@@ -51,6 +53,9 @@ LISBON_ANSWER = {
     "generationtime_ms": 0.6,
 }
 LISBON = {"name": "Lisbon", "country": "Portugal", "admin1": "Lisbon", "latitude": 38.71667, "longitude": -9.13333}
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+# The time the tests' clock starts at; the fake store saves places at noon the same day.
+NOW = datetime(2026, 10, 21, 12, 30, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -65,6 +70,9 @@ def sample_modules(monkeypatch):
         database=importlib.import_module("weather_plugin.database"),
         organization_data=importlib.import_module("weather_plugin.organization_data"),
         retention=importlib.import_module("weather_plugin.retention"),
+        current_conditions=importlib.import_module("weather_plugin.current_conditions"),
+        forecast_flow=importlib.import_module("weather_plugin.forecast_flow"),
+        upgrade_hook=importlib.import_module("weather_plugin.upgrade_hook"),
     )
 
 
@@ -103,9 +111,68 @@ def geocoding():
     return FakeGeocoding()
 
 
-def _serve_with(monkeypatch, app_module, runtime, epicstaff, stores, place_search):
+class FakeForecastApi:
+    """Open-Meteo's forecast API: records every request and answers each place's temperature.
+
+    `temperatures` maps a place's latitude to the temperature it answers, or to an exception it
+    raises; any other latitude answers 21.5.
+    """
+
+    def __init__(self):
+        self.requests = []
+        self.temperatures = {}
+
+    def __call__(self, request):
+        self.requests.append(request)
+        answer = self.temperatures.get(float(request.url.params["latitude"]), 21.5)
+        if isinstance(answer, Exception):
+            raise answer
+        if isinstance(answer, httpx.Response):
+            return answer
+        return httpx.Response(
+            200,
+            json={
+                "latitude": float(request.url.params["latitude"]),
+                "current_units": {"time": "iso8601", "interval": "seconds", "temperature_2m": "°C"},
+                "current": {"time": "2026-10-21T12:15", "interval": 900, "temperature_2m": answer},
+            },
+        )
+
+
+@pytest.fixture
+def forecast_api():
+    return FakeForecastApi()
+
+
+class Clock:
+    """The time the place list sees; a test moves it on."""
+
+    def __init__(self, now):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.fixture
+def clock():
+    return Clock(NOW)
+
+
+def _places_with_conditions(sample_modules, stores, *, forecast_api=None, clock=None):
+    current_conditions = sample_modules.current_conditions
+    transport = None if forecast_api is None else httpx.MockTransport(forecast_api)
+    return current_conditions.PlacesWithConditions(
+        stores.places,
+        current_conditions.CurrentTemperature(transport=transport),
+        clock=clock or Clock(NOW),
+    )
+
+
+def _serve_with(monkeypatch, app_module, runtime, epicstaff, stores, place_search, places_with_conditions):
     for name, value in {
         "places": stores.places,
+        "places_with_conditions": places_with_conditions,
         "forecast_runs": stores.forecast_runs,
         "popup_relay": stores.popup_relay,
         "place_search": place_search,
@@ -117,11 +184,12 @@ def _serve_with(monkeypatch, app_module, runtime, epicstaff, stores, place_searc
 
 
 @pytest.fixture
-def weather(monkeypatch, tmp_path, signer, sample_modules, epicstaff_api, stores, geocoding):
+def weather(monkeypatch, tmp_path, signer, sample_modules, epicstaff_api, stores, geocoding, forecast_api, clock):
     """The sample's app, served as the node serves it, with `units` set to imperial.
 
     It holds a service account for Acme and calls `epicstaff_api`. Its stores are `stores`,
-    and its place search calls `geocoding`.
+    its place search calls `geocoding`, and its temperature lookups call `forecast_api` at the
+    time `clock` says.
     """
     runtime_file = tmp_path / "runtime.json"
     write_runtime_file(
@@ -135,7 +203,8 @@ def weather(monkeypatch, tmp_path, signer, sample_modules, epicstaff_api, stores
     runtime = RuntimeConfig.load(runtime_file)
     epicstaff = EpicStaffClient(runtime, transport=epicstaff_api.transport())
     place_search = sample_modules.place_search.PlaceSearch(transport=httpx.MockTransport(geocoding))
-    return _serve_with(monkeypatch, sample_modules.app, runtime, epicstaff, stores, place_search)
+    places = _places_with_conditions(sample_modules, stores, forecast_api=forecast_api, clock=clock)
+    return _serve_with(monkeypatch, sample_modules.app, runtime, epicstaff, stores, place_search, places)
 
 
 def _as_person(signer, method, path, person=ADA, org=ACME):
@@ -213,16 +282,19 @@ def test_the_sample_source_is_a_valid_backend_plugin():
     contents = source.describe()
 
     assert source.problems(contents, require_sdk_pin=False) == []
-    assert source.manifest.version == "0.6.0"
-    assert (source.manifest.hooks.install, source.manifest.hooks.org_removed) == (True, True)
+    assert source.manifest.version == "0.7.0"
+    hooks = source.manifest.hooks
+    assert (hooks.install, hooks.upgrade, hooks.org_removed) == (True, True, True)
     assert source.manifest.hooks.timeouts_seconds is None
     assert source.manifest.database is not None
     assert [path for path in contents if path.startswith("database/")] == [
         "database/migrations/001_weather.sql",
         "database/migrations/002_retention.sql",
+        "database/migrations/003_place_conditions.sql",
     ]
     assert [(host.host, host.reason) for host in source.manifest.outbound_hosts] == [
-        ("geocoding-api.open-meteo.com", "Looks up places by name when someone adds a saved place.")
+        ("geocoding-api.open-meteo.com", "Looks up places by name when someone adds a saved place."),
+        ("api.open-meteo.com", "Looks up the current temperature of saved places."),
     ]
     assert source.manifest.limits.model_dump(exclude_none=True) == {
         "memory_mb": 256,
@@ -626,6 +698,169 @@ def test_the_tagged_flow_is_found_whatever_its_name(weather, signer, epicstaff_a
     assert forecast_flow.FLOW_TAG in epicstaff_api.graphs[graph_id]["description"]
 
 
+def test_the_install_hook_gives_the_flow_this_versions_description(weather, signer, epicstaff_api):
+    _install(weather, signer)
+
+    (graph,) = epicstaff_api.graphs.values()
+    assert graph["description"] == "Forecast for a city · Weather 0.7.0 [weather-plugin:forecast-flow]"
+
+
+def test_the_flow_version_is_not_newer_than_the_sample(sample_modules):
+    version = json.loads((SAMPLE / "manifest.json").read_text())["version"]
+
+    assert not is_newer(sample_modules.forecast_flow.FLOW_VERSION, version)
+
+
+# --- The upgrade hook ---
+
+# What Weather 0.6.0's install hook wrote, and fetch code an earlier version could have had.
+DESCRIPTION_0_6_0 = (
+    "Fetches a seven-day forecast from Open-Meteo. Created by the Weather plugin, which finds it "
+    "by this tag: [weather-plugin:forecast-flow]"
+)
+CODE_0_6_0 = 'def main(city="Berlin"):\n    return {"city": city, "days": []}\n'
+
+
+def _upgrade(weather, signer, *, previous_version="0.6.0", job_id=51, attempt=1):
+    call = HookSigner(signer).call("upgrade", org=ACME, job_id=job_id, attempt=attempt, previous_version=previous_version)
+    return request(weather, "POST", call.path, call.headers, call.body)
+
+
+def _flow_of_0_6_0(weather, signer, epicstaff_api):
+    """Install, then make the flow look as an earlier version left it, its fetch node moved by a person."""
+    _install(weather, signer)
+    ((graph_id, graph),) = epicstaff_api.graphs.items()
+    graph["description"] = DESCRIPTION_0_6_0
+    (fetch,) = graph["contents"]["python_node_list"]
+    fetch["python_code"] = {"code": CODE_0_6_0, "entrypoint": "main", "libraries": []}
+    fetch["metadata"] = {"position": {"x": 500, "y": 40}}
+    epicstaff_api.requests.clear()
+    return graph_id
+
+
+def test_the_upgrade_hook_brings_a_flow_of_an_earlier_version_to_this_ones(weather, signer, epicstaff_api, sample_modules):
+    graph_id = _flow_of_0_6_0(weather, signer, epicstaff_api)
+    graph = epicstaff_api.graphs[graph_id]
+    (fetch_before,) = graph["contents"]["python_node_list"]
+    others_before = {key: list(nodes) for key, nodes in graph["contents"].items() if key != "python_node_list"}
+
+    response = _upgrade(weather, signer)
+
+    assert (response.status, response.json()) == (200, {"status": "done"})
+    assert list(epicstaff_api.graphs) == [graph_id]
+    assert graph["description"] == sample_modules.forecast_flow.FLOW_DESCRIPTION
+    (fetch,) = graph["contents"]["python_node_list"]
+    assert fetch["id"] == fetch_before["id"]
+    assert fetch["python_code"]["code"] == sample_modules.forecast_flow.FETCH_FORECAST_CODE
+    assert (fetch["input_map"], fetch["output_variable_path"]) == ({"city": "variables.city"}, "variables.forecast")
+    # Where the person left it.
+    assert fetch["metadata"] == {"position": {"x": 500, "y": 40}}
+    assert {key: nodes for key, nodes in graph["contents"].items() if key != "python_node_list"} == others_before
+    assert [(sent.method, sent.path) for sent in epicstaff_api.writes()] == [
+        ("PATCH", f"graphs/{graph_id}/"),
+        ("POST", f"graphs/{graph_id}/save/"),
+    ]
+
+
+def test_the_upgrade_hook_creates_the_flow_and_the_readme_where_they_are_missing(weather, signer, epicstaff_api, sample_modules):
+    response = _upgrade(weather, signer)
+
+    assert response.status == 200
+    ((graph_id, graph),) = epicstaff_api.graphs.items()
+    assert graph["description"] == sample_modules.forecast_flow.FLOW_DESCRIPTION
+    assert graph["contents"]["python_node_list"][0]["node_name"] == "Fetch forecast"
+    assert epicstaff_api.files["weather/README.md"].startswith(b"# Weather")
+
+
+def test_the_upgrade_hook_sets_everything_up_for_an_organization_that_never_finished_installing(weather, signer, epicstaff_api):
+    response = _upgrade(weather, signer, previous_version=None)
+
+    assert response.status == 200
+    assert len(epicstaff_api.graphs) == 1
+    assert "weather/README.md" in epicstaff_api.files
+
+
+@pytest.mark.parametrize("previous_version", ["0.7.0", "0.7.0+5", "0.7.1", "1.0.0-rc.1"])
+def test_the_upgrade_hook_does_nothing_for_an_organization_already_at_0_7_0_or_later(weather, signer, epicstaff_api, previous_version):
+    _flow_of_0_6_0(weather, signer, epicstaff_api)
+
+    response = _upgrade(weather, signer, previous_version=previous_version)
+
+    assert (response.status, response.json()) == (200, {"status": "done"})
+    assert epicstaff_api.requests == []
+
+
+def test_a_pre_release_of_0_7_0_is_brought_to_0_7_0(weather, signer, epicstaff_api, sample_modules):
+    graph_id = _flow_of_0_6_0(weather, signer, epicstaff_api)
+
+    assert _upgrade(weather, signer, previous_version="0.7.0-rc.1").status == 200
+
+    assert epicstaff_api.graphs[graph_id]["description"] == sample_modules.forecast_flow.FLOW_DESCRIPTION
+
+
+def test_running_the_upgrade_hook_twice_is_harmless(weather, signer, epicstaff_api):
+    graph_id = _flow_of_0_6_0(weather, signer, epicstaff_api)
+    assert _upgrade(weather, signer).status == 200
+    writes_after_first = len(epicstaff_api.writes())
+
+    assert _upgrade(weather, signer, attempt=2).status == 200
+
+    assert list(epicstaff_api.graphs) == [graph_id]
+    assert len(epicstaff_api.graphs[graph_id]["contents"]["python_node_list"]) == 1
+    assert list(epicstaff_api.files) == ["weather/README.md"]
+    assert len(epicstaff_api.writes()) == writes_after_first
+
+
+def test_the_upgrade_hook_acts_as_the_plugin_alone(weather, signer, epicstaff_api):
+    _flow_of_0_6_0(weather, signer, epicstaff_api)
+
+    _upgrade(weather, signer)
+
+    assert epicstaff_api.requests
+    for sent in epicstaff_api.requests:
+        assert sent.headers["authorization"] == f"PluginKey {ACME_KEY}"
+        assert "x-epicstaff-on-behalf-of" not in sent.headers
+
+
+def test_the_upgrade_hook_leaves_a_persons_own_flow_of_that_name_alone(weather, signer, epicstaff_api):
+    theirs = epicstaff_api.add_graph("Weather forecast", "Ada's own forecast experiments.")
+
+    assert _upgrade(weather, signer).status == 200
+
+    assert epicstaff_api.graphs[theirs] == {"name": "Weather forecast", "description": "Ada's own forecast experiments.", "save_version": 1, "contents": None}
+    assert not any(sent.path == f"graphs/{theirs}/" and sent.method == "PATCH" for sent in epicstaff_api.requests)
+
+
+def test_an_epicstaff_refusal_fails_the_upgrade_hook_with_its_message(weather, signer, epicstaff_api):
+    graph_id = _flow_of_0_6_0(weather, signer, epicstaff_api)
+    epicstaff_api.refusals[("PATCH", f"graphs/{graph_id}/")] = (403, "permission_denied", "You do not have permission to perform this action.")
+
+    response = _upgrade(weather, signer)
+
+    assert (response.status, response.json()) == (
+        500,
+        {
+            "status": "failed",
+            "error": {
+                "message": f"EpicStaff refused PATCH graphs/{graph_id}/: 403 permission_denied: You do not have permission to perform this action."
+            },
+        },
+    )
+    assert epicstaff_api.graphs[graph_id]["description"] == DESCRIPTION_0_6_0
+
+
+def test_a_retried_upgrade_hook_finishes_what_an_earlier_attempt_left(weather, signer, epicstaff_api, sample_modules):
+    graph_id = _flow_of_0_6_0(weather, signer, epicstaff_api)
+    epicstaff_api.refusals[("POST", f"graphs/{graph_id}/save/")] = (503, "unavailable", "Try again.")
+    assert _upgrade(weather, signer).status == 500
+    del epicstaff_api.refusals[("POST", f"graphs/{graph_id}/save/")]
+
+    assert _upgrade(weather, signer, attempt=2).status == 200
+
+    (fetch,) = epicstaff_api.graphs[graph_id]["contents"]["python_node_list"]
+    assert fetch["python_code"]["code"] == sample_modules.forecast_flow.FETCH_FORECAST_CODE
+
+
 def test_the_flows_python_code_returns_the_forecast_the_backend_reads(monkeypatch, sample_modules):
     forecast_flow = importlib.import_module("weather_plugin.forecast_flow")
     forecast_runs = importlib.import_module("weather_plugin.forecast_runs")
@@ -1007,7 +1242,7 @@ def test_places_are_for_logged_in_people_only(weather, signer, method, path, que
     assert (response.status, response.json()) == (401, {"code": "login_required"})
 
 
-def test_the_list_shows_only_the_organizations_own_places(weather, signer, stores):
+def test_the_list_shows_only_the_organizations_own_places(weather, signer, stores, forecast_api):
     lisbon = stores.places.seed(3, 42, "Lisbon", "Portugal", 38.7, -9.1, admin1="Lisbon")
     stores.places.seed(5, 77, "Kyiv", "Ukraine", 50.45, 30.52)
 
@@ -1017,9 +1252,21 @@ def test_the_list_shows_only_the_organizations_own_places(weather, signer, store
     assert response.headers["cache-control"] == "no-store"
     assert response.json() == {
         "places": [
-            {"id": lisbon.id, "name": "Lisbon", "admin1": "Lisbon", "country": "Portugal", "latitude": 38.7, "longitude": -9.1, "created_at": "2026-10-21T12:00:00Z"}
+            {
+                "id": lisbon.id,
+                "name": "Lisbon",
+                "admin1": "Lisbon",
+                "country": "Portugal",
+                "latitude": 38.7,
+                "longitude": -9.1,
+                "created_at": "2026-10-21T12:00:00Z",
+                "position": 1,
+                "conditions": {"temperature_c": 21.5, "observed_at": "2026-10-21T12:30:00Z"},
+            }
         ]
     }
+    # Only the organization's own place was looked up.
+    assert [request.url.params["latitude"] for request in forecast_api.requests] == ["38.7"]
 
 
 def test_adding_a_search_result_saves_it_for_the_persons_organization(weather, signer, stores):
@@ -1067,7 +1314,8 @@ def test_places_of_one_name_in_one_country_are_told_apart_by_their_region(weathe
     listed = _places_call(weather, signer, "GET", "/api/places")
 
     assert (missouri.status, no_region.status) == (201, 201)
-    assert [place["admin1"] for place in listed.json()["places"]] == [None, "Illinois", "Missouri"]
+    # In the order they were saved.
+    assert [place["admin1"] for place in listed.json()["places"]] == ["Illinois", "Missouri", None]
 
 
 def test_another_organization_may_save_the_same_place(weather, signer, stores):
@@ -1116,6 +1364,211 @@ def test_removing_another_organizations_or_an_unknown_place_is_not_found(weather
 
     assert (response.status, response.json()) == (404, {"code": "not_found"})
     assert list(stores.places.rows) == [kyiv.id]
+
+
+# --- Positions and current temperatures ---
+
+
+def _list_places(weather, signer):
+    return _places_call(weather, signer, "GET", "/api/places", permissions=("read",))
+
+
+def _conditions(temperature_c, observed_at):
+    return {"temperature_c": temperature_c, "observed_at": observed_at}
+
+
+def test_places_come_back_in_the_order_they_were_saved(weather, signer, stores):
+    for name in ("Porto", "Aveiro", "Braga"):
+        stores.places.seed(3, 42, name, "Portugal")
+
+    response = _list_places(weather, signer)
+
+    assert [(place["name"], place["position"]) for place in response.json()["places"]] == [
+        ("Porto", 1),
+        ("Aveiro", 2),
+        ("Braga", 3),
+    ]
+
+
+def test_a_new_place_goes_at_the_end_of_its_organizations_list_without_a_temperature(weather, signer, stores):
+    stores.places.seed(3, 42, "Porto", "Portugal")
+    stores.places.seed(5, 77, "Kyiv", "Ukraine")
+    stores.places.seed(5, 77, "Lviv", "Ukraine")
+
+    response = _places_call(weather, signer, "POST", "/api/places", LISBON)
+
+    assert response.status == 201
+    assert (response.json()["position"], response.json()["conditions"]) == (2, None)
+
+
+def test_the_list_sends_a_json_number_an_integer_and_iso_8601_in_utc(weather, signer, stores, forecast_api):
+    # As the database gives them: a Decimal, and a timestamp in the session's time zone.
+    stores.places.seed(
+        3, 42, "Lisbon", "Portugal", 38.7, -9.1,
+        conditions=_conditions(Decimal("12.4"), datetime(2026, 10, 21, 14, 25, tzinfo=timezone(timedelta(hours=2)))),
+    )
+
+    response = _list_places(weather, signer)
+
+    (place,) = response.json()["places"]
+    assert b'"temperature_c":12.4,' in response.body
+    assert type(place["conditions"]["temperature_c"]) is float
+    assert type(place["position"]) is int
+    assert place["conditions"]["observed_at"] == "2026-10-21T12:25:00Z"
+    assert datetime.fromisoformat(place["conditions"]["observed_at"]).utcoffset() == timedelta(0)
+    # Five minutes old: not looked up again.
+    assert forecast_api.requests == []
+
+
+def test_a_place_without_a_temperature_gets_one_from_the_forecast_api(weather, signer, stores, forecast_api, sample_modules):
+    lisbon = stores.places.seed(3, 42, "Lisbon", "Portugal", 38.7, -9.1)
+    forecast_api.temperatures[38.7] = 17.8
+
+    response = _list_places(weather, signer)
+
+    assert response.json()["places"][0]["conditions"] == _conditions(17.8, "2026-10-21T12:30:00Z")
+    (sent,) = forecast_api.requests
+    assert (sent.method, sent.url.scheme, sent.url.host, sent.url.path) == ("GET", "https", "api.open-meteo.com", "/v1/forecast")
+    assert dict(sent.url.params) == {"latitude": "38.7", "longitude": "-9.1", "current": "temperature_2m"}
+    stored = sample_modules.places.PlaceConditions(temperature_c=17.8, observed_at=NOW)
+    assert stores.places.stored_conditions == [(3, {lisbon.id: stored})]
+    # The next list reads it from the store.
+    assert _list_places(weather, signer).json()["places"][0]["conditions"] == _conditions(17.8, "2026-10-21T12:30:00Z")
+    assert len(forecast_api.requests) == 1
+
+
+def test_a_temperature_is_looked_up_again_once_it_is_older_than_fifteen_minutes(weather, signer, stores, forecast_api, clock):
+    stores.places.seed(3, 42, "Lisbon", "Portugal", 38.7, -9.1, conditions=_conditions(12.0, NOW - timedelta(minutes=15)))
+
+    assert _list_places(weather, signer).json()["places"][0]["conditions"]["temperature_c"] == 12.0
+    assert forecast_api.requests == []
+
+    clock.now = NOW + timedelta(seconds=1)
+    response = _list_places(weather, signer)
+
+    assert response.json()["places"][0]["conditions"] == _conditions(21.5, "2026-10-21T12:30:01Z")
+    assert len(forecast_api.requests) == 1
+
+
+def test_at_most_ten_places_are_looked_up_per_request_those_without_a_temperature_first_then_the_oldest(weather, signer, stores, forecast_api):
+    ages = {1: 20, 2: 60, 3: 16, 4: 5}
+    for latitude in range(1, 13):
+        age = ages.get(latitude)
+        conditions = None if age is None else _conditions(9.0, NOW - timedelta(minutes=age))
+        stores.places.seed(3, 42, f"Place {latitude}", "Portugal", float(latitude), 0.0, conditions=conditions)
+
+    _list_places(weather, signer)
+
+    looked_up = sorted(float(request.url.params["latitude"]) for request in forecast_api.requests)
+    assert looked_up == [1.0, 2.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+    # The 16-minute-old one is next.
+    _list_places(weather, signer)
+    assert [request.url.params["latitude"] for request in forecast_api.requests[10:]] == ["3.0"]
+
+
+def test_the_lookups_of_one_request_run_at_the_same_time(monkeypatch, weather, signer, stores, sample_modules):
+    in_flight, most_in_flight = 0, 0
+
+    async def slow_forecast_api(request):
+        nonlocal in_flight, most_in_flight
+        in_flight += 1
+        most_in_flight = max(most_in_flight, in_flight)
+        await asyncio.sleep(0.02)
+        in_flight -= 1
+        return httpx.Response(200, json={"current": {"temperature_2m": 10.0}})
+
+    current_conditions = sample_modules.current_conditions
+    places = current_conditions.PlacesWithConditions(
+        stores.places,
+        current_conditions.CurrentTemperature(transport=httpx.MockTransport(slow_forecast_api)),
+        clock=Clock(NOW),
+    )
+    monkeypatch.setattr(sample_modules.app.app.state, "places_with_conditions", places)
+    for latitude in range(1, 4):
+        stores.places.seed(3, 42, f"Place {latitude}", "Portugal", float(latitude), 0.0)
+
+    response = _list_places(weather, signer)
+
+    assert [place["conditions"]["temperature_c"] for place in response.json()["places"]] == [10.0, 10.0, 10.0]
+    assert most_in_flight == 3
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        httpx.Response(500),
+        httpx.Response(429, json={"reason": "Too many requests"}),
+        httpx.Response(200, content=b"<html>"),
+        httpx.Response(200, json={"current": {}}),
+        httpx.Response(200, json={"current": {"temperature_2m": 1000}}),
+        httpx.Response(200, json={"current": {"temperature_2m": None}}),
+        httpx.Response(403, text="ERR_ACCESS_DENIED"),
+        httpx.ConnectError("unreachable"),
+        httpx.ReadTimeout("slow"),
+    ],
+    ids=["server error", "rate limited", "not json", "no temperature", "off the scale", "null", "proxy refusal", "unreachable", "timeout"],
+)
+def test_a_failed_lookup_keeps_the_stored_temperature_and_never_fails_the_list(weather, signer, stores, forecast_api, answer):
+    stores.places.seed(3, 42, "Lisbon", "Portugal", 38.7, -9.1, conditions=_conditions(12.0, NOW - timedelta(hours=1)))
+    stores.places.seed(3, 42, "Porto", "Portugal", 41.15, -8.61)
+    forecast_api.temperatures = {38.7: answer, 41.15: answer}
+
+    response = _list_places(weather, signer)
+
+    assert response.status == 200
+    assert [place["conditions"] for place in response.json()["places"]] == [
+        _conditions(12.0, "2026-10-21T11:30:00Z"),
+        None,
+    ]
+    assert stores.places.stored_conditions == []
+
+
+def test_one_failed_lookup_does_not_keep_the_others_from_being_stored(weather, signer, stores, forecast_api):
+    stores.places.seed(3, 42, "Lisbon", "Portugal", 38.7, -9.1)
+    porto = stores.places.seed(3, 42, "Porto", "Portugal", 41.15, -8.61)
+    forecast_api.temperatures = {38.7: httpx.ConnectError("unreachable"), 41.15: 14.06}
+
+    response = _list_places(weather, signer)
+
+    assert [place["conditions"] for place in response.json()["places"]] == [None, _conditions(14.1, "2026-10-21T12:30:00Z")]
+    ((org_id, stored),) = stores.places.stored_conditions
+    assert (org_id, list(stored)) == (3, [porto.id])
+
+
+def test_the_lookup_limits(sample_modules):
+    current_conditions = sample_modules.current_conditions
+
+    assert current_conditions.CONDITIONS_MAX_AGE == timedelta(minutes=15)
+    assert current_conditions.MAX_LOOKUPS_PER_REQUEST == 10
+    assert current_conditions.CurrentTemperature()._http.timeout == httpx.Timeout(5)
+
+
+def test_temperatures_go_through_the_egress_proxy(monkeypatch, sample_modules, stores):
+    with serving(RefusingProxy()) as proxy:
+        proxy_url = f"http://weather:proxy-password@127.0.0.1:{proxy.port}"
+        for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+            monkeypatch.setenv(name, proxy_url)
+        for name in ("NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy"):
+            monkeypatch.delenv(name, raising=False)
+        # The client as the app makes it, on the network.
+        current_conditions = sample_modules.current_conditions
+        temperature = current_conditions.CurrentTemperature()
+        places = current_conditions.PlacesWithConditions(stores.places, temperature, clock=Clock(NOW))
+        stores.places.seed(3, 42, "Lisbon", "Portugal", 38.7, -9.1)
+
+        async def list_then_close():
+            try:
+                return await places.list(3)
+            finally:
+                await temperature.aclose()
+
+        (listed,) = asyncio.run(list_then_close())
+
+    assert listed.conditions is None
+    ((connect, *headers),) = proxy.requests
+    assert connect == "CONNECT api.open-meteo.com:443 HTTP/1.1"
+    credentials = base64.b64encode(b"weather:proxy-password").decode()
+    assert f"Proxy-Authorization: Basic {credentials}" in headers
 
 
 # --- Place search, through the egress proxy ---
@@ -1200,7 +1653,8 @@ def test_the_search_goes_through_the_egress_proxy_and_epicstaff_calls_do_not(mon
         # Both clients as the app makes them, on the network.
         epicstaff = EpicStaffClient(runtime)
         place_search = sample_modules.place_search.PlaceSearch()
-        weather = _serve_with(monkeypatch, sample_modules.app, runtime, epicstaff, stores, place_search)
+        places = _places_with_conditions(sample_modules, stores)
+        weather = _serve_with(monkeypatch, sample_modules.app, runtime, epicstaff, stores, place_search, places)
 
         search = _places_call(weather, signer, "GET", "/api/places/search", query="q=Lisbon")
         status = request(weather, "GET", "/api/forecast/status", _as(signer, "GET", "/api/forecast/status"))
@@ -1274,6 +1728,7 @@ def test_the_org_removed_hook_deletes_the_organizations_rows_in_one_transaction(
     assert (response.status, response.json()) == (200, {"status": "done"})
     assert recorded_database.statements == [
         (1, SET_ORG_ID, ("9",)),
+        (1, "DELETE FROM weather.place_conditions WHERE org_id = %s", (9,)),
         (1, "DELETE FROM weather.saved_places WHERE org_id = %s", (9,)),
         (1, "DELETE FROM weather.forecast_runs WHERE org_id = %s", (9,)),
         (1, "DELETE FROM weather.popup_results WHERE org_id = %s", (9,)),
@@ -1326,6 +1781,8 @@ def test_the_org_removed_hook_deletes_from_every_table_the_migrations_create(sam
 
     assert sorted(deleted) == sorted(created)
     assert len(deleted) == len(set(deleted))
+    # A place's temperature goes with the place: deleted first, so the count includes it.
+    assert deleted.index("weather.place_conditions") < deleted.index("weather.saved_places")
 
 
 # --- The hourly purge of expired rows ---
@@ -1333,32 +1790,51 @@ def test_the_org_removed_hook_deletes_from_every_table_the_migrations_create(sam
 SET_ROLE = "SELECT pg_catalog.set_config('role', %s, true)"
 
 
-def test_the_purge_goes_in_batches_each_in_a_job_transaction_of_its_own(sample_modules):
+def test_the_purge_goes_in_batches_each_starting_where_the_last_one_ended(sample_modules):
     retention = sample_modules.retention
-    batches = {"weather.forecast_runs": [5000, 5003, 12], "weather.popup_results": [0]}
+    forecast, popups = retention.PURGES
+    first_end, second_end = datetime(2026, 10, 10, tzinfo=UTC), datetime(2026, 10, 12, tzinfo=UTC)
+    # Where each batch of a table ends; None when fewer than a batch are left.
+    batch_ends = {forecast.batch_end: [first_end, second_end, None], popups.batch_end: [None]}
+    deleted_rows = {forecast.delete_batch: [5000, 5003], forecast.delete_rest: [12], popups.delete_rest: [0]}
+
+    def rows(query):
+        if query not in batch_ends:
+            return None
+        end = batch_ends[query].pop(0)
+        return None if end is None else {"created_at" if query == forecast.batch_end else "expires_at": end}
 
     def rowcounts(query):
-        tables = [table for table in batches if query.startswith(f"DELETE FROM {table} ")]
-        return batches[tables[0]].pop(0) if tables else 1
+        return deleted_rows[query].pop(0) if query in deleted_rows else 1
 
-    connection = RecordingConnection(rowcounts=rowcounts)
+    connection = RecordingConnection(rowcounts=rowcounts, rows=rows)
     purge = retention.RetentionPurge(sample_modules.database.WeatherDatabase(RecordingPool(connection)))
 
     deleted = asyncio.run(purge.run_once())
 
     assert deleted == {"weather.forecast_runs": 10015, "weather.popup_results": 0}
-    forecast, popups = retention.PURGE_STATEMENTS["weather.forecast_runs"], retention.PURGE_STATEMENTS["weather.popup_results"]
+    job = ("weather_job",)
     assert connection.statements == [
-        (1, SET_ROLE, ("weather_job",)),
-        (1, forecast, (4999,)),
-        (2, SET_ROLE, ("weather_job",)),
-        (2, forecast, (4999,)),
-        (3, SET_ROLE, ("weather_job",)),
-        (3, forecast, (4999,)),
-        (4, SET_ROLE, ("weather_job",)),
-        (4, popups, (4999,)),
+        (1, SET_ROLE, job),
+        (1, forecast.batch_end, {"after": "-infinity", "offset": 4999}),
+        (1, forecast.delete_batch, {"after": "-infinity", "until": first_end}),
+        (2, SET_ROLE, job),
+        (2, forecast.batch_end, {"after": first_end, "offset": 4999}),
+        (2, forecast.delete_batch, {"after": first_end, "until": second_end}),
+        (3, SET_ROLE, job),
+        (3, forecast.batch_end, {"after": second_end, "offset": 4999}),
+        (3, forecast.delete_rest, {"after": second_end}),
+        (4, SET_ROLE, job),
+        (4, popups.batch_end, {"after": "-infinity", "offset": 4999}),
+        (4, popups.delete_rest, {"after": "-infinity"}),
     ]
     assert connection.committed == [1, 2, 3, 4]
+
+
+def test_every_purge_statement_starts_after_the_last_batch(sample_modules):
+    for purge in sample_modules.retention.PURGES:
+        for statement in (purge.batch_end, purge.delete_batch, purge.delete_rest):
+            assert f"WHERE {purge.column} > %(after)s::timestamptz" in statement
 
 
 def test_the_purge_runs_at_once_then_every_interval_and_survives_a_failure(monkeypatch, sample_modules, caplog):

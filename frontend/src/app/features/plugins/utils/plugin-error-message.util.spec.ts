@@ -49,11 +49,21 @@ const ENDPOINT_CODES: PluginErrorCode[] = [
     'hook_job_not_found',
     'org_removed_hook_not_retryable',
     'org_removed_hook_not_skippable',
+    'plugin_version_not_newer',
+    'plugin_not_upgradable',
+    'review_outdated',
+    'access_growth_not_acknowledged',
+    'upgrade_not_cancellable',
+    'upgrade_not_retryable',
+    'plugin_upgrade_open',
+    'backup_not_found',
+    'restore_not_allowed',
+    'invalid_restore_phrase',
     'throttled',
 ];
 
 /** Codes the UI shows with the server's own message. */
-const SERVER_MESSAGE_CODES: PluginErrorCode[] = ['plugin_suspended'];
+const SERVER_MESSAGE_CODES: PluginErrorCode[] = ['plugin_suspended', 'plugin_version_not_newer'];
 
 describe('toPluginErrorView', () => {
     it('has a message for every code the plugin endpoints answer with, and no other', () => {
@@ -81,6 +91,49 @@ describe('toPluginErrorView', () => {
         );
 
         expect(view).toEqual({ code: 'plugin_suspended', message, items: [] });
+    });
+
+    it("shows the server's sentence for a version that is not newer, which names both versions", () => {
+        const view = toPluginErrorView(
+            failure(409, {
+                status_code: 409,
+                code: 'plugin_version_not_newer',
+                message: '0.6.0 is not newer than the installed 0.7.0.',
+                installed_version: '0.7.0',
+                latest_version: '0.7.0',
+            }),
+            'fallback'
+        );
+
+        expect(view).toEqual({
+            code: 'plugin_version_not_newer',
+            message: '0.6.0 is not newer than the installed 0.7.0.',
+            items: [],
+        });
+    });
+
+    it('lists why a package cannot upgrade the installed plugin', () => {
+        const view = toPluginErrorView(
+            failure(409, {
+                status_code: 409,
+                code: 'plugin_upgrade_unavailable',
+                message: 'The package cannot upgrade the installed plugin.',
+                errors: [
+                    { loc: 'manifest.backend', message: 'a new version cannot drop the backend' },
+                    {
+                        loc: 'package.database/migrations/001_weather.sql',
+                        message: '001_weather.sql is already applied; a new version must keep it unchanged',
+                    },
+                ],
+            }),
+            'fallback'
+        );
+
+        expect(view.message).toBe(PLUGIN_ERROR_MESSAGES.plugin_upgrade_unavailable);
+        expect(view.items.map((item) => item.loc)).toEqual([
+            'manifest.backend',
+            'package.database/migrations/001_weather.sql',
+        ]);
     });
 
     it('falls back to its own text for a refused run without a server message', () => {

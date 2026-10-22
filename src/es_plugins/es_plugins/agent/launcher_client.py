@@ -17,7 +17,8 @@ class LauncherError(Exception):
 
 
 class LauncherUnavailableError(LauncherError):
-    """The launcher could not be reached, or did not answer in time: trying again may succeed."""
+    """The launcher could not be reached, did not answer in time, or is still busy with the same
+    plugin: trying again may succeed."""
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,13 @@ class LauncherClient:
 
     async def install_code(self, plugin: str, uid: int, version: str) -> None:
         await self._call(protocol.InstallCode(plugin=plugin, uid=uid, version=version))
+
+    async def prune_code(self, plugin: str, uid: int, keep_version: str) -> list[str]:
+        """Have the launcher delete every version of the plugin's code but `keep_version`."""
+        result, _ = await self._call(
+            protocol.PruneCode(plugin=plugin, uid=uid, keep_version=keep_version)
+        )
+        return result["removed"]
 
     async def write_runtime_file(self, plugin: str, uid: int, content: bytes) -> None:
         """Have the launcher replace the plugin's runtime file with `content`."""
@@ -168,7 +176,10 @@ class LauncherClient:
         if not response.get("ok"):
             for descriptor in received:
                 os.close(descriptor)
-            raise LauncherError(response.get("error", "the launcher refused the request"))
+            error = response.get("error", "the launcher refused the request")
+            if response.get("temporary"):
+                raise LauncherUnavailableError(error)
+            raise LauncherError(error)
         if len(received) != expect:
             for descriptor in received:
                 os.close(descriptor)

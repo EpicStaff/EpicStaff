@@ -1,10 +1,11 @@
 # Hook API
 
-Lifecycle hooks let a plugin backend set itself up in an organization, and delete its own data
-when the organization leaves. EpicStaff decides that a hook runs, the deployment's plugin node
-calls the plugin process, and the plugin's answer decides what happens next. This page is the
-contract, version 1 (`platform.hook_api: 1` in the manifest).
-[Write an install hook](../how-to/install-hook.md) and
+Lifecycle hooks let a plugin backend set itself up in an organization, bring the organization
+to a new version of the plugin, and delete its own data when the organization leaves.
+EpicStaff decides that a hook runs, the deployment's plugin node calls the plugin process, and
+the plugin's answer decides what happens next. This page is the contract, version 1
+(`platform.hook_api: 1` in the manifest). [Write an install hook](../how-to/install-hook.md),
+[Write an upgrade hook](../how-to/upgrade-hook.md) and
 [Delete your data when an organization leaves](../how-to/org-removed-hook.md) show how to build
 them with the [Python SDK](python-sdk.md#epicstaff_pluginhooks).
 
@@ -13,13 +14,13 @@ them with the [Python SDK](python-sdk.md#epicstaff_pluginhooks).
 | Kind | Path | When | Status |
 |---|---|---|---|
 | `install` | `/_epicstaff/hooks/install` | A SuperAdmin granted the plugin to an organization | Supported |
-| `upgrade` | `/_epicstaff/hooks/upgrade` | An organization moves to a new version of the plugin | Reserved: not called yet |
+| `upgrade` | `/_epicstaff/hooks/upgrade` | An organization moves to a new version of the plugin: after the new version started, and when a suspended organization is resumed on a version it has not run yet | Supported |
 | `org_removed` | `/_epicstaff/hooks/org-removed` | The plugin's data for an organization is to be deleted: after the grace period, when a SuperAdmin deletes it, when the organization is deleted, or when the plugin is deleted | Supported |
 
 A plugin asks for a hook in its manifest, and may shorten its timeout:
 
 ```json
-"hooks": { "install": true, "org_removed": true, "timeouts_seconds": { "install": 300 } }
+"hooks": { "install": true, "upgrade": true, "org_removed": true, "timeouts_seconds": { "install": 300 } }
 ```
 
 The platform maximums are 900 seconds for `install` and `org_removed` and 1800 for `upgrade`;
@@ -37,6 +38,40 @@ hooks.
 While the grant is `granting` nobody in the organization can open the plugin, and the plugin's
 service account already works, so the hook can create what the plugin needs. A retry runs the
 same job again with the next attempt number.
+
+## What happens on an upgrade
+
+A SuperAdmin approves a newer version of the plugin; the
+[plugin lifecycle](../explanation/lifecycle.md) describes the whole upgrade. The upgrade hook
+comes last: once the new version's migrations ran and its process started, EpicStaff calls it
+once for each organization that had the plugin, if the new version's manifest declares
+`"upgrade": true`.
+
+- **Until its hook succeeds, an organization's grant is `upgrading`.** Its service account holds
+  a key, so the hook can call EpicStaff, but nobody in the organization can use the plugin:
+  EpicStaff shows it as being updated, and runs that use its resources are refused.
+- **Which organizations.** Every organization that was using the plugin (grant `active`), and
+  every organization whose earlier upgrade hook failed. A suspended organization
+  gets its hook when it is resumed, if the version changed meanwhile. One whose install hook
+  has not succeeded gets the install hook, never an upgrade hook.
+- **Without `"upgrade": true`,** each organization goes straight back to `active` on the new
+  version.
+
+| The hook | Then |
+|---|---|
+| Succeeds | `active`, on the new version |
+| Fails, times out, or the plugin has no handler (501) | Tried again: 1 minute after the first failure, 5 minutes after the second. The grant stays `upgrading` |
+| Fails a third time in a row | `upgrade_failed`: the organization stays off, and the plugin shows "Needs attention" until a SuperAdmin chooses **Retry**, which starts a new series. A newer version of the plugin gives the organization a new upgrade hook too |
+
+The schedule is `UPGRADE_RETRY_DELAYS_SECONDS` in `epicstaff_plugin.contracts.hook_api`, and
+`upgrade_retry_delay(failures_in_series)` gives the wait after that many failures in a row, or
+`None` when EpicStaff stops trying on its own.
+
+`previous_version` is the version the organization was last brought to. It may be several
+versions back: an organization whose hook failed, or that was suspended, skips the versions
+in between. It may name a version without a backend. It is `null` only for an organization that
+never finished installing an earlier version: set it up as the install hook would. Compare
+versions with `epicstaff_plugin.versions`, never as text.
 
 ## What happens when an organization's data is deleted
 
@@ -86,8 +121,9 @@ Content-Type: application/json
 The node makes the call only when the process is running and healthy and runs with the latest
 credentials. For `install` and `upgrade`, its [runtime file](runtime.md#runtime-file) must also
 hold the organization's service-account key already; an `org_removed` call never waits for one,
-since the organization has none any more. A job waiting for the process never times out. The
-node runs one hook at a time per plugin.
+since the organization has none any more (`KEYLESS_HOOK_KINDS` in
+`epicstaff_plugin.contracts.hook_api` lists the kinds that run without a key). A job waiting for
+the process never times out. The node runs one hook at a time per plugin.
 
 ### The body
 
@@ -101,7 +137,7 @@ The model is `epicstaff_plugin.contracts.hook_api.HookRequest`; at most 16 KiB.
 | `kind` | `install`, `upgrade` or `org_removed`; always the kind of the path |
 | `org` | `{id, name}` of the organization. For `org_removed`, the name it had when its deletion started; the organization may no longer exist |
 | `plugin` | `{identifier, version}`: the plugin and the version the hook runs for |
-| `previous_version` | The version the organization ran before an upgrade; `null` for the other kinds |
+| `previous_version` | For `upgrade`, the version the organization was last brought to (see [above](#what-happens-on-an-upgrade)); `null` for the other kinds |
 
 ### The assertion
 
@@ -145,7 +181,7 @@ outside the runner.
 | Answer | Outcome |
 |---|---|
 | `200 {"status":"done"}` | The hook succeeded |
-| Anything else | The hook failed. With a JSON body `{"status":"failed","error":{"message":"…"}}`, the message is what the SuperAdmin sees (at most 2000 characters); otherwise they see `HTTP <status>`, `timed out after <n> s` or `could not connect: <reason>`. A failed `org_removed` hook is tried again on its own; the others wait for a SuperAdmin |
+| Anything else | The hook failed. With a JSON body `{"status":"failed","error":{"message":"…"}}`, the message is what the SuperAdmin sees (at most 2000 characters); otherwise they see `HTTP <status>`, `timed out after <n> s` or `could not connect: <reason>`. A failed `upgrade` or `org_removed` hook is tried again on its own, as above; a failed `install` hook waits for a SuperAdmin |
 
 The SDK's runner answers:
 
@@ -166,7 +202,7 @@ The rejection reasons are `missing`, `ambiguous`, `malformed`, `wrong_type`, `un
 
 An `install` or `upgrade` hook calls EpicStaff with the organization's
 [service account](../how-to/call-epicstaff-from-the-backend.md), alone: never on behalf of a
-person, since nobody can use the plugin in the organization yet. EpicStaff lets it do exactly
+person, since nobody can use the plugin in the organization until the hook succeeds. EpicStaff lets it do exactly
 what the manifest's `access` declares, and records everything it creates as owned by the
 plugin. Flows that hold a schedule, webhook or Telegram trigger need `flows: use`; without it
 EpicStaff refuses the trigger with 403.
@@ -182,8 +218,10 @@ systems. What the plugin created in EpicStaff, EpicStaff deletes itself.
   the plugin during the call fails it, and a timed-out attempt may still be running when the
   next one starts. Do the work at most once per `job_id`: look up what an earlier attempt made
   (by a mark you put on it, or in your own records) before making it again. Never adopt
-  something by its name alone: a person may have made one of that name. An `org_removed` hook
-  must also succeed for an organization it holds nothing for, or already deleted.
+  something by its name alone: a person may have made one of that name. An `upgrade` hook must
+  bring an organization from any earlier version, and succeed for one already brought. An
+  `org_removed` hook must also succeed for an organization it holds nothing for, or already
+  deleted.
 - **One organization at a time.** The SDK's runner runs at most one handler per organization at
   a time in the process, so a retry waits for a slow earlier attempt to end.
 - **A clear error.** The first line of the exception is what the SuperAdmin reads next to the

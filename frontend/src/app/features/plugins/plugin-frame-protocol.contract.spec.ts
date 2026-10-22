@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+    PLUGIN_FRAME_AVAILABILITY_STATES,
     PLUGIN_FRAME_ERROR_CODES,
     PLUGIN_FRAME_LIMITS,
     PLUGIN_FRAME_MESSAGE_TYPES,
@@ -28,9 +29,15 @@ interface FrameProtocolContract {
     protocol: number;
     message_types: string[];
     error_codes: string[];
-    limits: { max_nav_path_length: number; max_nav_changes_per_minute: number; init_timeout_ms: number };
+    limits: {
+        max_nav_path_length: number;
+        max_nav_changes_per_minute: number;
+        init_timeout_ms: number;
+        max_availability_changes_per_minute: number;
+    };
     nav_path_pattern: string;
     theme_modes: string[];
+    availability_states: string[];
     theme_tokens: string[];
     canonical_vectors: { path: string; canonical: string | null }[];
 }
@@ -47,6 +54,9 @@ describe('frame protocol constants equal plugin-sdk/contracts/frame-protocol.jso
     it('the limits EpicStaff enforces', () => {
         expect(PLUGIN_FRAME_LIMITS.maxNavPathLength).toBe(contract.limits.max_nav_path_length);
         expect(PLUGIN_FRAME_LIMITS.maxNavChangesPerMinute).toBe(contract.limits.max_nav_changes_per_minute);
+        expect(PLUGIN_FRAME_LIMITS.maxAvailabilityChangesPerMinute).toBe(
+            contract.limits.max_availability_changes_per_minute
+        );
     });
 
     it('the navigation path grammar', () => {
@@ -59,6 +69,10 @@ describe('frame protocol constants equal plugin-sdk/contracts/frame-protocol.jso
         for (const vector of contract.canonical_vectors) {
             expect(canonicalNavPath(vector.path), JSON.stringify(vector.path)).toBe(vector.canonical);
         }
+    });
+
+    it('the availability states a page may report', () => {
+        expect([...PLUGIN_FRAME_AVAILABILITY_STATES]).toEqual(contract.availability_states);
     });
 
     it('theme modes, and the theme tokens in order', () => {

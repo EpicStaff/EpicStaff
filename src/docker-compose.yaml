@@ -564,7 +564,8 @@ services:
       - ./nginx/certs:/etc/nginx/certs:ro
       - media_data:/usr/share/nginx/html/media:ro
       - plugin_spa:/srv/plugin-spa:ro
-      # The login callback pages every plugin host serves under /.well-known/epicstaff/.
+      # The login callback pages every plugin host serves under /.well-known/epicstaff/, and the
+      # maintenance page it shows on its SPA paths while the plugin is being upgraded.
       - ./nginx/plugin-platform:/usr/share/nginx/plugin-platform:ro
     # Namespaced to this container, no privileges needed. Every proxied request opens a new
     # upstream connection (no upstream keepalive is configured, and a proxy_pass through a
@@ -858,20 +859,24 @@ services:
       - /dev/shm:mode=0755
     cap_drop:
       - ALL
-    # NET_ADMIN and SETPCAP are the entrypoint's only: it installs the per-plugin connection caps,
-    # then starts the launcher with SETUID, SETGID and CHOWN alone in every capability set.
+    # NET_ADMIN, BPF and SETPCAP are the entrypoint's only: it installs the per-plugin connection
+    # caps and the bind refusal, then starts the launcher with SETUID, SETGID and CHOWN alone in
+    # every capability set.
     cap_add:
       - SETUID  # switch to a plugin's UID (spawn, kill helper, purge helper)
       - SETGID  # drop groups and switch to a plugin's GID
       - CHOWN  # hand per-plugin directories and runtime files to their UID
       - NET_ADMIN  # the connection caps to plugins_db and the egress proxy (es_plugins.network_limits)
-      - SETPCAP  # take NET_ADMIN and SETPCAP out of the launcher's bounding set
+      - BPF  # refuse inet bind() to plugin UIDs, in this container's cgroup (es_plugins.bind_refusal)
+      - SETPCAP  # take NET_ADMIN, BPF and SETPCAP out of the launcher's bounding set
     security_opt:
       - no-new-privileges:true
     # Plugins and the agent share this namespace's ephemeral ports: a port in TIME_WAIT may be
-    # reused for a new outbound connection (each plugin's rate of new ones is also capped).
+    # reused for a new outbound connection (each plugin's rate of new ones is also capped), and
+    # the range is widened above the node's plugin ports (20001-20999).
     sysctls:
       net.ipv4.tcp_tw_reuse: "1"
+      net.ipv4.ip_local_port_range: "21000 65535"
     pids_limit: 4096
     # The agent holds a socket for every port of the node's range (999) for its whole life, so
     # no plugin can bind one; the launcher gives each plugin its own lower limit.
@@ -893,6 +898,8 @@ services:
       PLUGINS_MAX_DB_CONNECTIONS: ${PLUGINS_MAX_DB_CONNECTIONS:?}
       # Provisions plugin databases on plugins_db; no process the agent starts gets it.
       PLUGINS_DB_ADMIN_PASSWORD: ${PLUGINS_DB_ADMIN_PASSWORD:?}
+      # Backs up a plugin's database before an upgrade, as plugins_backup; only pg_dump gets it.
+      PLUGINS_DB_BACKUP_PASSWORD: ${PLUGINS_DB_BACKUP_PASSWORD:?}
     volumes:
       # Unbounded by itself: put it on a file system of its own for a hard limit (see
       # docs/plugins/operator/enable-plugins.md). The agent caps each plugin's share of it.

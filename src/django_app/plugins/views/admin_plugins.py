@@ -24,7 +24,6 @@ from plugins.models import Plugin, PluginGrant, PluginPackage
 from plugins.ownership.owned_resource_summary import with_owned_resource_counts
 from plugins.serializers.admin import (
     GrantCreateSerializer,
-    PackageApprovalSerializer,
     PackageReviewSerializer,
     PackageUploadSerializer,
     PluginDetailSerializer,
@@ -32,6 +31,7 @@ from plugins.serializers.admin import (
     PluginSummarySerializer,
 )
 from plugins.serializers.purge import VerificationPhraseSerializer
+from plugins.serializers.upgrade import UpgradeApprovalSerializer
 
 ADMIN_PERMISSIONS = [IsAuthenticated, IsSuperadmin, DenyApiKeyAuth]
 # Pinned rather than inherited from the defaults, so no plugin credential is ever read here.
@@ -80,6 +80,7 @@ class PluginPackageUploadView(APIView):
     permission_classes = ADMIN_PERMISSIONS
     parser_classes = [MultiPartParser]
 
+    @extend_schema(request=PackageUploadSerializer, responses={201: PackageReviewSerializer})
     def post(self, request):
         # The body is already spooled to a temporary file when this runs. Behind nginx only a
         # SuperAdmin gets this far (PluginUploadPermissionView, asked before the body is read),
@@ -105,23 +106,42 @@ class PluginPackageReviewView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
+    @extend_schema(responses=PackageReviewSerializer)
     def get(self, request, package_id: int):
         return Response(PackageReviewSerializer(_package_for_review(package_id)).data)
 
 
 class PluginPackageApproveView(APIView):
+    """Approve a pending package: install the plugin, or start its upgrade.
+
+    A first install answers 200. An upgrade answers 202 while it runs, or 200 when it
+    completed at once (neither version has a backend).
+    """
+
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
+    @extend_schema(
+        request=UpgradeApprovalSerializer,
+        responses={200: PluginDetailSerializer, 202: PluginDetailSerializer},
+    )
     def post(self, request, package_id: int):
-        serializer = PackageApprovalSerializer(data=request.data)
+        serializer = UpgradeApprovalSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        body = serializer.validated_data
         plugin = PluginInstallationService().approve(
             package_id,
             request.user,
-            untrusted_acknowledged=serializer.validated_data["untrusted_acknowledged"],
+            untrusted_acknowledged=body["untrusted_acknowledged"],
+            access_growth_acknowledged=body["access_growth_acknowledged"],
+            reviewed_against_package_id=body["reviewed_against_package_id"],
+            settings=body["settings"],
         )
-        return Response(PluginDetailSerializer(plugin).data)
+        details = PluginDetailSerializer(plugin).data
+        upgrading = details["open_upgrade"] is not None
+        return Response(
+            details, status=status.HTTP_202_ACCEPTED if upgrading else status.HTTP_200_OK
+        )
 
 
 class PluginPackageRejectView(APIView):
@@ -189,11 +209,13 @@ class PluginGrantListView(generics.ListAPIView):
 
 
 class PluginGrantRetryHookView(APIView):
-    """Run a grant's failed install hook again: the grant is `granting` until it reports."""
+    """Run a grant's failed install or upgrade hook again: the grant is `granting` or
+    `upgrading` until the node reports."""
 
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
 
+    @extend_schema(request=None, responses={202: PluginGrantSerializer})
     def post(self, request, identifier: str, grant_id: int):
         grant = HookJobService().retry(identifier, grant_id, request.user)
         return Response(grant_details(grant.pk), status=status.HTTP_202_ACCEPTED)

@@ -94,8 +94,9 @@ class ServiceAccountEntry(BaseModel):
     key: ServiceAccountKey
     org_name: Annotated[str, StringConstraints(max_length=255)]
     grant_state: Annotated[str, StringConstraints(min_length=1, max_length=32)]
-    """`granting` while the install hook runs, `active` after it. Read as text: a newer
-    EpicStaff may add states."""
+    """`granting` while the install hook runs, `active` after it, and `upgrading` while the
+    organization's upgrade hook runs: do background work for the organization only while it is
+    `active`. Read as text: a newer EpicStaff may add states."""
 
 
 class RuntimeFile(BaseModel):
@@ -104,7 +105,7 @@ class RuntimeFile(BaseModel):
     `settings` holds every non-secret setting with its stored value, or its default when none
     is stored; an optional setting with neither is left out. `secret_settings` holds only the
     secrets that are set. `service_accounts` has one entry per organization whose grant holds
-    a key (`granting` or `active`), keyed by the organization id as text.
+    a key (`granting`, `active` or `upgrading`), keyed by the organization id as text.
     """
 
     # A validation error never repeats the input: it may be a secret setting. Pydantic applies

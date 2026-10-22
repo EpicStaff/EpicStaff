@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, input, output } from '@angular/core';
+import { Component, computed, inject, input, LOCALE_ID, output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppTableCellDirective,
@@ -95,8 +95,10 @@ export class PluginActivityListComponent {
     ]);
     protected readonly rows = computed<TableRow[]>(() => this.events().map((event) => ({ id: event.id })));
     private readonly entriesById = computed(
-        () => new Map(this.events().map((event) => [event.id, toEntry(event)] as const))
+        () => new Map(this.events().map((event) => [event.id, toEntry(event, this.locale)] as const))
     );
+
+    private readonly locale = inject(LOCALE_ID);
 
     protected entryOf(row: TableRow): ActivityEntry | undefined {
         return this.entriesById().get(row['id'] as number);
@@ -107,7 +109,7 @@ export class PluginActivityListComponent {
     }
 }
 
-function toEntry(event: PluginActivityEvent): ActivityEntry {
+function toEntry(event: PluginActivityEvent, locale: string): ActivityEntry {
     return {
         id: event.id,
         createdAt: event.created_at,
@@ -118,7 +120,7 @@ function toEntry(event: PluginActivityEvent): ActivityEntry {
         action: PLUGIN_ACTIVITY_ACTION_LABELS[event.action],
         requestLine: pluginActivityRequestLine(event),
         target: pluginActivityTargetText(event),
-        detail: pluginActivityDetailText(event),
+        detail: pluginActivityDetailText(event, locale),
         error: pluginActivityErrorText(event),
     };
 }

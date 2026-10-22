@@ -14,7 +14,9 @@ In the child, before `execve`, in this order:
    `oom_score_adj` makes the kernel kill a plugin rather than the agent or the launcher.
 5. `setgroups([])`, `setresgid`, `setresuid`: from here on the process has no capability.
 6. `PR_SET_NO_NEW_PRIVS`, so no file it executes can regain one.
-7. Working directory, close every other descriptor, `execve` with exactly the given
+7. The seccomp filter, when given (`plugin_seccomp`): it needs `no_new_privs`, and stays with
+   the process and everything it starts.
+8. Working directory, close every other descriptor, `execve` with exactly the given
    environment.
 
 A failure in the child is written to a close-on-exec pipe, so the caller gets the reason
@@ -29,6 +31,8 @@ import signal
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from es_plugins.launcher.plugin_seccomp import install_filter
 
 PR_SET_NO_NEW_PRIVS = 38
 CHILD_FAILURE_EXIT_CODE = 127
@@ -59,6 +63,9 @@ class SpawnSpec:
 
     listen_descriptor: int | None = None
     """The agent's listening socket; becomes the child's fd 3 (inheritable) when given."""
+
+    seccomp_filter: bytes | None = None
+    """A seccomp program (`plugin_seccomp.plugin_filter`) the process runs under; None for none."""
 
 
 def spawn_process(spec: SpawnSpec) -> int:
@@ -126,6 +133,9 @@ def _become_child(spec: SpawnSpec, error_write: int) -> None:
         if _libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
             error_number = ctypes.get_errno()
             raise OSError(error_number, os.strerror(error_number))
+        if spec.seccomp_filter is not None:
+            step = "seccomp filter"
+            install_filter(spec.seccomp_filter)
         step = "working directory"
         os.chdir(spec.working_directory)
         step = "execve"

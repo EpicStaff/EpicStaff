@@ -25,3 +25,45 @@
         </p>
     }
 }
+@if (upgradeLines().length > 0) {
+    <div
+        class="banner-group"
+        role="status"
+        aria-live="polite"
+    >
+        @for (line of upgradeLines(); track $index) {
+            <p
+                class="banner text-body"
+                [class.banner--progress]="line.tone === 'progress' || line.tone === 'done'"
+                [class.banner--offline]="line.tone === 'offline'"
+                [class.banner--failed]="line.tone === 'failed'"
+            >
+                @if (line.working) {
+                    <app-spinner2 [size]="16" />
+                }
+                <span>
+                    {{ line.text }}
+                    @if (line.detail) {
+                        <span class="banner__detail">({{ line.detail }})</span>
+                    }
+                </span>
+            </p>
+        }
+    </div>
+}
+@if (hooksText(); as hooks) {
+    <p
+        class="banner banner--progress text-body"
+        role="status"
+    >
+        {{ hooks }}
+    </p>
+}
+@if (staleText(); as stale) {
+    <p
+        class="banner banner--stale text-body-small"
+        role="status"
+    >
+        {{ stale }}
+    </p>
+}

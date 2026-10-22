@@ -10,7 +10,8 @@ list again and finds most of it done:
    lock, which the limits watchdog and provisioning share.
 3. Remove the plugin's proxy password and host list from the egress policy.
 4. Delete what the agent keeps for the plugin: the contents of `venvs/<id>/`, `logs/<id>/`,
-   `agent/unpack/<id>/` and the plugin's downloaded packages. A link is deleted, never followed.
+   `agent/unpack/<id>/`, its backups (`backups/<id>/`: a deleted plugin keeps none) and its
+   downloaded packages. A link is deleted, never followed.
 5. Have the launcher kill every process of the UID, remove its System V IPC objects, delete its
    HOME, code and run directory, and remove the empty `venvs/<id>/`.
 6. Report `removed`, for as long as the removal stays in the desired state.
@@ -27,17 +28,14 @@ password, a connection string or anything the plugin wrote.
 
 import asyncio
 import contextlib
-import os
-import shutil
-import stat
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Literal
 
 from loguru import logger
 from src.shared.models.plugin_nodes import MAX_LAST_ERROR_LENGTH, DesiredRemoval, RemovalReport
 
+from es_plugins.agent.agent_trees import delete_agent_trees
 from es_plugins.agent.launcher_client import LauncherClient, LauncherError, LauncherUnavailableError
 from es_plugins.database.connections import DatabaseUnreachableError
 from es_plugins.database.drop_sequence import DatabaseDropError, DatabaseDropper
@@ -47,10 +45,10 @@ from es_plugins.launcher.plugin_removal import REMOVAL_SECONDS
 from es_plugins.layout import NodeLayout
 
 TRANSIENT_RETRY_SECONDS = 30.0
-# Longer than the launcher's removing helper may take, so a retry never runs beside it.
+# Longer than the launcher's removing helper may take. A retry while it still runs is answered
+# "already being removed", a temporary refusal.
 LAUNCHER_REMOVAL_TIMEOUT_SECONDS = REMOVAL_SECONDS + 60.0
 FailureReason = Literal["conflict", "database", "files", "launcher", "unreachable"]
-_DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 
 
 class _RemovalStepError(Exception):
@@ -165,6 +163,7 @@ class PlacementRemover:
             desired.placement_id,
         )
         reported_temporary: str | None = None
+        reported_unexpected: str | None = None
         while True:
             try:
                 async with plugin_lock:
@@ -187,7 +186,12 @@ class PlacementRemover:
                 continue
             except Exception as error:
                 # The agent removes every plugin: one removal's unexpected error must not stop it.
-                logger.exception("Removing plugin {}: unexpected error", desired.plugin_identifier)
+                # Logged when it changes, not at every retry.
+                if str(error) != reported_unexpected:
+                    reported_unexpected = str(error)
+                    logger.exception(
+                        "Removing plugin {}: unexpected error", desired.plugin_identifier
+                    )
                 self._set(removal, "removing", f"internal error of the node agent: {error}")
                 await asyncio.sleep(self._retry_seconds)
                 continue
@@ -226,7 +230,7 @@ class PlacementRemover:
         except EgressPolicyError as error:
             raise _RemovalStepError("files", str(error), temporary=False) from None
         try:
-            await asyncio.to_thread(_delete_agent_trees, services.layout, desired.plugin_identifier)
+            await asyncio.to_thread(delete_agent_trees, services.layout, desired.plugin_identifier)
             services.prune_downloads()
         except OSError as error:
             raise _RemovalStepError(
@@ -270,51 +274,3 @@ class PlacementRemover:
             return
         removal.state, removal.last_error = state, last_error
         self._services.on_change()
-
-
-def _delete_agent_trees(layout: NodeLayout, plugin: str) -> None:
-    """Step 4: what the agent itself owns. Runs in a thread; a missing tree is fine."""
-    _empty_directory(layout.plugin_venvs(plugin))
-    for tree in (layout.plugin_logs(plugin), layout.unpack_directory / plugin):
-        _delete_entry(tree.parent, tree.name)
-
-
-def _empty_directory(directory: Path) -> None:
-    """Delete everything in `directory`, keeping it; anything but a directory there is left to the
-    launcher, which removes the entry itself."""
-    try:
-        entry = os.lstat(directory)
-    except FileNotFoundError:
-        return
-    if not stat.S_ISDIR(entry.st_mode):
-        return
-    # O_NOFOLLOW: a link swapped in since the check is refused, not followed.
-    descriptor = os.open(directory, _DIRECTORY_FLAGS)
-    try:
-        for name in os.listdir(descriptor):
-            _delete_in(descriptor, name)
-    finally:
-        os.close(descriptor)
-
-
-def _delete_entry(parent: Path, name: str) -> None:
-    try:
-        descriptor = os.open(parent, _DIRECTORY_FLAGS)
-    except FileNotFoundError:
-        return
-    try:
-        _delete_in(descriptor, name)
-    finally:
-        os.close(descriptor)
-
-
-def _delete_in(parent_descriptor: int, name: str) -> None:
-    try:
-        entry = os.lstat(name, dir_fd=parent_descriptor)
-    except FileNotFoundError:
-        return
-    if stat.S_ISDIR(entry.st_mode):
-        # The descriptor-based walk: links inside are deleted, not followed.
-        shutil.rmtree(name, dir_fd=parent_descriptor)
-    else:
-        os.unlink(name, dir_fd=parent_descriptor)

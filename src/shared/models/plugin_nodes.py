@@ -16,7 +16,9 @@ This module is deliberately not exported from `shared.models`: it depends on the
 install.
 """
 
+import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Annotated, Literal, Self
 
 from epicstaff_plugin.contracts.hook_api import (
@@ -44,15 +46,20 @@ from pydantic import (
 )
 
 __all__ = [
+    "BACKUP_FILE_NAME_PATTERN",
     "CONTRACT_FORMAT",
     "DATABASE_NAME_PREFIX",
     "MAX_APPLIED_MIGRATIONS",
+    "MAX_BACKUPS_PER_PLACEMENT",
     "MAX_LAST_ERROR_LENGTH",
     "MAX_LOG_LINE_LENGTH",
     "MAX_LOG_TAIL_LINES",
     "MAX_PENDING_HOOK_JOBS",
     "MAX_PLACEMENTS_PER_NODE",
     "NODE_PORT_RANGE",
+    "BackupFileName",
+    "BackupFileReport",
+    "BackupReason",
     "DatabaseNames",
     "DatabaseReport",
     "DesiredDatabase",
@@ -62,17 +69,29 @@ __all__ = [
     "DesiredPackage",
     "DesiredPlacement",
     "DesiredRemoval",
+    "DesiredRestore",
     "DesiredRuntime",
     "DesiredState",
     "DesiredStateNode",
+    "DesiredUpgrade",
     "HookInvocation",
     "HookResult",
+    "LedgerEntry",
     "NodeReport",
     "PlacementReport",
     "RemovalReport",
+    "RestoreReport",
+    "RestoreStep",
     "RuntimeCredentials",
     "RuntimeDatabaseCredentials",
+    "Sha256Hex",
+    "UpgradeAdvance",
+    "UpgradeReport",
+    "UpgradeStage",
+    "UpgradeStep",
+    "backup_file_name",
     "database_names_for",
+    "is_reportable_ledger_entry",
     "is_reportable_migration_name",
 ]
 
@@ -91,6 +110,17 @@ NODE_PORT_RANGE = (20001, 20999)
 DATABASE_NAME_PREFIX = "plugin_"
 # A package numbers its migrations 000 to 999, each number once.
 MAX_APPLIED_MIGRATIONS = 1000
+# The node reports at most this many backups of one placement, and is asked to delete at most
+# this many at once.
+MAX_BACKUPS_PER_PLACEMENT = 50
+BACKUP_FILE_NAME_PATTERN = (
+    r"^[0-9]{8}T[0-9]{6}Z-u([1-9][0-9]{0,18})-(pre_upgrade|pre_restore)\.dump$"
+)
+"""A backup's file name: when it was taken (UTC, to the second), the upgrade it belongs to and
+why it was taken, e.g. `20261021T101500Z-u7-pre_upgrade.dump`. Group 1 is the upgrade id, group
+2 the reason. `backup_file_name` builds one."""
+
+_BACKUP_FILE_NAME = re.compile(BACKUP_FILE_NAME_PATTERN)
 
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 """A sha256 digest as 64 lower-case hex characters."""
@@ -132,6 +162,58 @@ def is_reportable_migration_name(value: object) -> bool:
     except ValidationError:
         return False
     return True
+
+
+_SHA256_HEX = TypeAdapter(Sha256Hex)
+
+
+def is_reportable_ledger_entry(name: object, sha256: object) -> bool:
+    """Whether a row of the plugin's migration ledger may go in `DatabaseReport.ledger`.
+
+    Both columns are plugin-writable, like the name `is_reportable_migration_name` checks: the
+    entry is kept only when the name names a package migration and the digest is a sha256 in
+    lower-case hex, both as `str`. The node keeps only the entries this accepts, so no row a
+    plugin wrote can make its report invalid.
+    """
+    if not is_reportable_migration_name(name):
+        return False
+    try:
+        _SHA256_HEX.validate_python(sha256, strict=True)
+    except ValidationError:
+        return False
+    return True
+
+
+BackupFileName = Annotated[str, StringConstraints(pattern=BACKUP_FILE_NAME_PATTERN)]
+BackupReason = Literal["pre_upgrade", "pre_restore"]
+"""Why a backup was taken: before an upgrade's first migration, or before a restore replaced
+the database."""
+
+UpgradeStage = Literal["preparing", "maintenance", "migrating"]
+"""How far EpicStaff has let an upgrade go: `preparing` while the plugin keeps running,
+`maintenance` once its process may be stopped and its database backed up, `migrating` once the
+new version's migrations may run and its process start."""
+
+UpgradeStep = Literal["download", "verify", "build", "drain", "stop", "backup", "migrate", "start"]
+RestoreStep = Literal["verify", "backup", "close", "recreate", "restore", "settings", "assert"]
+
+
+def backup_file_name(created_at: datetime, upgrade_id: int, reason: str) -> str:
+    """The file name of a backup taken at `created_at` for an upgrade, by `reason`.
+
+    The time is written in UTC, to the second, so names sort by when they were taken.
+
+    Raises:
+        ValueError: `created_at` has no time zone, or the name would not match
+            `BACKUP_FILE_NAME_PATTERN` (an upgrade id that is not a positive integer of at most
+            19 digits, or another reason).
+    """
+    if created_at.tzinfo is None:
+        raise ValueError("created_at must carry a time zone")
+    name = f"{created_at.astimezone(UTC):%Y%m%dT%H%M%SZ}-u{upgrade_id}-{reason}.dump"
+    if not _BACKUP_FILE_NAME.fullmatch(name):
+        raise ValueError(f"{name!r} is not a backup file name")
+    return name
 
 
 DesiredProcessState = Literal["running", "stopped"]
@@ -224,8 +306,8 @@ class DesiredHookJob(_NodeContractModel):
     """A lifecycle hook call the node should make to the plugin's process.
 
     The node claims the job (`POST .../hook-jobs/{job_id}/claim/`) only once the process is
-    healthy and runs with the desired `credentials_revision`. An `install` job also waits
-    until the runtime file holds a service-account key for `organization_id`. An
+    healthy and runs with the desired `credentials_revision`. An `install` or `upgrade` job
+    also waits until the runtime file holds a service-account key for `organization_id`. An
     `org_removed` job does not: the organization's plugin data is being deleted, and it has
     no key any more.
     """
@@ -268,6 +350,54 @@ class DesiredEgress(_NodeContractModel):
     """The package's `outbound_hosts`, in manifest order; empty refuses every request."""
 
 
+class DesiredUpgrade(_NodeContractModel):
+    """A new version of the plugin the node should bring the placement to, stage by stage.
+
+    `stage` is as far as EpicStaff has let the upgrade go. In `preparing` the placement's
+    `package` and `runtime` are still the running version's, and the node only gets `target`
+    ready next to it without touching the running process; it then asks to stop the plugin
+    (`POST .../upgrades/{upgrade_id}/advance/`, `to: maintenance`). From `maintenance` on, the
+    placement's `package`, `runtime`, `database` and `egress` are the target's. The node asks
+    once more (`to: migrations`), with the backup it took when `backup` is `required`.
+    """
+
+    upgrade_id: PositiveInt
+    stage: UpgradeStage
+    from_version: PackageVersion
+    """The version the plugin ran when the upgrade started."""
+
+    target: DesiredPackage
+    target_runtime: DesiredRuntime
+    backup: Literal["required", "taken", "not_needed"]
+    """`required`: back the database up before asking for `migrations`; `taken`: EpicStaff has
+    recorded this upgrade's backup already; `not_needed`: the plugin had no database ready
+    before the upgrade."""
+
+    backup_bytes_needed: NonNegativeInt
+    """The database's last reported size when `backup` is `required`, else 0: the free disk
+    space the node checks for before it stops the plugin."""
+
+    failed: bool = False
+    """The stage failed, as the node reported. The node runs none of its steps again, also
+    after an agent restart, until it is false again: a Retry clears it (and raises the
+    placement's `restart_generation`), and so does a newer target. A restore of the database
+    still runs while it is set."""
+
+
+class DesiredRestore(_NodeContractModel):
+    """A backup the node should restore into the placement's database, during a failed upgrade.
+
+    The node checks the file against `backup_sha256` and the backup's installation before it
+    changes anything, takes a `pre_restore` backup of the database as it is, then replaces the
+    database with the backup. It does not start the process afterwards.
+    """
+
+    restore_id: PositiveInt
+    upgrade_id: PositiveInt
+    backup_file: BackupFileName
+    backup_sha256: Sha256Hex
+
+
 class DesiredPlacement(_NodeContractModel):
     """One plugin process the node should run (or keep stopped).
 
@@ -307,10 +437,61 @@ class DesiredPlacement(_NodeContractModel):
     to remove the plugin."""
 
     egress: DesiredEgress = Field(default_factory=lambda: DesiredEgress(hosts=[]))
+    upgrade: DesiredUpgrade | None = None
+    """Set while an upgrade of the plugin is open. A change of `upgrade` alone restarts
+    nothing: the running process is stopped only for the `maintenance` stage, and from then on
+    the placement's `package` is the target."""
+
+    restore: DesiredRestore | None = None
+    """Set while a restore of the database is asked for or running."""
+
+    backups_to_delete: Annotated[
+        list[BackupFileName], Field(max_length=MAX_BACKUPS_PER_PLACEMENT)
+    ] = Field(default_factory=list)
+    """The backups of this plugin the node deletes, dump and metadata both; it deletes no other."""
 
     @model_validator(mode="after")
     def _database_names_belong_to_the_plugin(self) -> Self:
         _assert_database_names_are_the_plugins(self.database, self.plugin_identifier)
+        return self
+
+    @model_validator(mode="after")
+    def _upgrade_matches_the_placement(self) -> Self:
+        upgrade = self.upgrade
+        if upgrade is None:
+            return self
+        target_runtime = upgrade.target_runtime
+        if (target_runtime.port, target_runtime.unix_uid) != (
+            self.runtime.port,
+            self.runtime.unix_uid,
+        ):
+            raise ValueError("an upgrade runs on the placement's port and user id")
+        if upgrade.stage == "preparing":
+            if self.package == upgrade.target:
+                raise ValueError("while preparing, package is the running version")
+            return self
+        if self.package != upgrade.target or self.runtime != target_runtime:
+            raise ValueError("from maintenance on, package and runtime are the target's")
+        if self.hook_jobs:
+            raise ValueError("no hook job is listed while the plugin is stopped for an upgrade")
+        return self
+
+    @model_validator(mode="after")
+    def _restore_belongs_to_the_open_upgrade(self) -> Self:
+        restore = self.restore
+        if restore is None:
+            return self
+        upgrade = self.upgrade
+        if (
+            upgrade is None
+            or upgrade.stage != "migrating"
+            or restore.upgrade_id != upgrade.upgrade_id
+        ):
+            raise ValueError("a restore belongs to the open upgrade, in its migrating stage")
+        if self.database is None:
+            raise ValueError("a restore needs the placement's database")
+        if restore.backup_file in self.backups_to_delete:
+            raise ValueError("the backup being restored cannot be deleted")
         return self
 
 
@@ -417,6 +598,14 @@ class RuntimeCredentials(_NodeContractModel):
     """Set exactly when the placement's desired state has `database`."""
 
 
+class LedgerEntry(_NodeContractModel):
+    """One migration the plugin's database has applied, as its ledger records it."""
+
+    name: MigrationName
+    sha256: Sha256Hex
+    """Of the file's bytes as packaged: the digest the package's `CONTENTS.json` lists for it."""
+
+
 class DatabaseReport(_NodeContractModel):
     """What the node observes about one placement's database."""
 
@@ -431,6 +620,74 @@ class DatabaseReport(_NodeContractModel):
     last_error: Annotated[str, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)] | None = None
     limits_restored_at: AwareDatetime | None = None
     """When the node last restored the app role's settings, in this agent's life."""
+
+    ledger: Annotated[list[LedgerEntry], Field(max_length=MAX_APPLIED_MIGRATIONS)] | None = None
+    """The ledger with each file's digest, in the order the migrations were applied, as the
+    node last read it, whatever `state` is: after a failed migration it holds the files
+    applied before the failure. None while the node has not read it in this agent's life, so
+    EpicStaff keeps the ledger it has. Only entries `is_reportable_ledger_entry` accepts."""
+
+
+class BackupFileReport(_NodeContractModel):
+    """A complete backup the node holds: the dump and its metadata, both under final names."""
+
+    file_name: BackupFileName
+    installation_id: InstallationId
+    """The installation whose database was dumped; EpicStaff ignores a backup of another."""
+
+    upgrade_id: PositiveInt
+    reason: BackupReason
+    version: PackageVersion
+    """The plugin version whose migrations the database held when it was dumped."""
+
+    size_bytes: PositiveInt
+    sha256: Sha256Hex
+    """Of the dump file."""
+
+    created_at: AwareDatetime
+    """When the dump was taken, by the node's clock."""
+
+    @model_validator(mode="after")
+    def _file_name_matches_the_fields(self) -> Self:
+        match = _BACKUP_FILE_NAME.fullmatch(self.file_name)
+        named = (int(match.group(1)), match.group(2)) if match else None
+        if named != (self.upgrade_id, self.reason):
+            raise ValueError("file_name names another upgrade or reason than the backup's")
+        return self
+
+
+class UpgradeReport(_NodeContractModel):
+    """How the node's work on the desired placement's upgrade goes.
+
+    EpicStaff ignores a report whose `generation` or `stage` is not the upgrade's current one,
+    so a report sent before the node saw a Retry or a newer target cannot fail it again.
+    """
+
+    upgrade_id: PositiveInt
+    generation: NonNegativeInt
+    """The placement's `restart_generation` the node is working to."""
+
+    stage: UpgradeStage
+    step: UpgradeStep
+    """The step the node is at, or the one that failed."""
+
+    state: Literal["working", "failed"]
+    """`failed` on an error the node does not retry by itself, until `generation` changes."""
+
+    last_error: Annotated[str, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)] | None = None
+    """Why the step failed, or the error a retried step last hit."""
+
+
+class RestoreReport(_NodeContractModel):
+    """How the node's restore of a backup into the placement's database goes."""
+
+    restore_id: PositiveInt
+    state: Literal["running", "succeeded", "failed"]
+    step: RestoreStep
+    pre_restore_backup: BackupFileName | None = None
+    """The backup of the database taken before it was replaced, once there is one."""
+
+    last_error: Annotated[str, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)] | None = None
 
 
 class PlacementReport(_NodeContractModel):
@@ -458,6 +715,17 @@ class PlacementReport(_NodeContractModel):
     applied_restart_generation: NonNegativeInt | None = None
     database: DatabaseReport | None = None
     """Null until the node has tried to provision the database in this agent's life."""
+
+    upgrade: UpgradeReport | None = None
+    """Set while the desired placement has an upgrade."""
+
+    restore: RestoreReport | None = None
+    """Set while the desired placement has a restore."""
+
+    backups: Annotated[list[BackupFileReport], Field(max_length=MAX_BACKUPS_PER_PLACEMENT)] = Field(
+        default_factory=list
+    )
+    """Every complete backup the node holds for the plugin, newest first."""
 
 
 class RemovalReport(_NodeContractModel):
@@ -520,3 +788,22 @@ class HookResult(_NodeContractModel):
 
     http_status: Annotated[int, Field(ge=100, le=599)] | None = None
     duration_ms: NonNegativeInt
+
+
+class UpgradeAdvance(_NodeContractModel):
+    """The node asking to take an upgrade to its next stage.
+
+    Posted to `POST /api/plugin-nodes/self/upgrades/{upgrade_id}/advance/`. `maintenance` once
+    the target is ready, to stop the plugin; `migrations` once it is stopped and, when the
+    desired upgrade's `backup` is `required`, backed up, with that backup. Asking for the stage
+    the upgrade is already in changes nothing.
+    """
+
+    to: Literal["maintenance", "migrations"]
+    backup: BackupFileReport | None = None
+
+    @model_validator(mode="after")
+    def _backup_only_with_migrations(self) -> Self:
+        if self.to == "maintenance" and self.backup is not None:
+            raise ValueError("a backup comes only with the request for migrations")
+        return self

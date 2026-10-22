@@ -38,6 +38,19 @@ const EVERY_ACTION: PluginActivityAction[] = [
     'org_removed_hook_failed',
     'org_removed_hook_retried',
     'org_removed_hook_skipped',
+    'plugin_upgrade_started',
+    'plugin_maintenance_started',
+    'plugin_upgrade_failed',
+    'plugin_upgrade_retried',
+    'plugin_upgrade_cancelled',
+    'plugin_upgraded',
+    'database_backed_up',
+    'database_restore_requested',
+    'database_restored',
+    'database_restore_failed',
+    'upgrade_hook_succeeded',
+    'upgrade_hook_failed',
+    'upgrade_hook_retried',
 ];
 
 /** A deployment-wide event of the platform, without a request or a target. */
@@ -346,5 +359,77 @@ describe('PluginActivityListComponent', () => {
         pageTwo!.click();
 
         expect(pages).toEqual([2]);
+    });
+
+    it('says what an upgrade changed: the versions, the backups and restores, and each organization', () => {
+        render([
+            platformEvent({
+                id: 1,
+                actor: { kind: 'superadmin', label: 'sam@example.com' },
+                action: 'plugin_upgrade_started',
+                detail: {
+                    from_version: '0.6.0',
+                    to_version: '0.7.2',
+                    access_growth_acknowledged: true,
+                    untrusted_acknowledged: false,
+                    replaced_version: '0.7.1',
+                },
+            }),
+            platformEvent({
+                id: 2,
+                action: 'plugin_maintenance_started',
+                detail: { to_version: '0.7.0', organizations: 2 },
+            }),
+            platformEvent({
+                id: 3,
+                action: 'database_backed_up',
+                detail: { file_name: 'x.dump', reason: 'pre_upgrade', size_bytes: 2048, version: '0.6.0' },
+            }),
+            platformEvent({
+                id: 4,
+                action: 'plugin_upgrade_failed',
+                detail: { to_version: '0.7.1', stage: 'migrating', step: 'migrate', error: '005_broken.sql line 1' },
+            }),
+            platformEvent({
+                id: 5,
+                action: 'plugin_upgraded',
+                detail: { from_version: '0.6.0', to_version: '0.7.0', maintenance_seconds: 95 },
+            }),
+            platformEvent({
+                id: 6,
+                organization: { id: 3, name: 'Acme' },
+                action: 'upgrade_hook_succeeded',
+                detail: { job_id: 40, attempt: 1, from_version: '0.6.0', to_version: '0.7.0' },
+            }),
+            platformEvent({
+                id: 7,
+                organization: { id: 4, name: 'Bravo' },
+                action: 'upgrade_hook_failed',
+                detail: { job_id: 41, attempt: 3, error: 'Weather answered HTTP 500.', next_attempt_at: null },
+            }),
+            platformEvent({
+                id: 8,
+                action: 'database_restored',
+                detail: { file_name: '20261021T110100Z-u8-pre_upgrade.dump', pre_restore_file_name: 'y.dump' },
+            }),
+            platformEvent({
+                id: 9,
+                action: 'database_restore_failed',
+                detail: { step: 'recreate', error: 'disk full' },
+            }),
+        ]);
+
+        expect(row(0)['Action']).toBe('Upgrade started');
+        expect(details(0)).toEqual(['0.6.0 → 0.7.2 · replaces 0.7.1']);
+        expect(details(1)).toEqual(['To 0.7.0 · 2 organizations offline']);
+        expect(details(2)).toEqual(['Before upgrade · holds 0.6.0 · 2 KB']);
+        expect(row(3)['Action']).toBe('Upgrade failed');
+        expect(details(3)).toEqual(['To 0.7.1 · while running migrations', '005_broken.sql line 1']);
+        expect(details(4)).toEqual(['0.6.0 → 0.7.0 · offline 2 min']);
+        expect(row(5)['Action']).toBe('Upgrade hook succeeded');
+        expect(details(5)).toEqual(['From 0.6.0 to 0.7.0']);
+        expect(details(6)).toEqual(['No retries left: Retry it on its row', 'Weather answered HTTP 500.']);
+        expect(details(7)).toEqual(['From 20261021T110100Z-u8-pre_upgrade.dump']);
+        expect(details(8)).toEqual(['While recreating the database', 'disk full']);
     });
 });

@@ -14,9 +14,11 @@ from epicstaff_plugin.contracts.hook_api import (
     HOOK_ASSERTION_TYPE,
     HOOK_KINDS,
     HOOK_PATHS,
+    KEYLESS_HOOK_KINDS,
     MAX_HOOK_BODY_BYTES,
     ORG_REMOVED_RETRY_DELAYS_SECONDS,
     ORG_REMOVED_RETRY_WINDOW_SECONDS,
+    UPGRADE_RETRY_DELAYS_SECONDS,
     HookAssertionClaims,
     HookKind,
     HookRequest,
@@ -25,6 +27,7 @@ from epicstaff_plugin.contracts.hook_api import (
     encode_hook_body,
     hook_body_sha256,
     org_removed_retry_delay,
+    upgrade_retry_delay,
 )
 from epicstaff_plugin.contracts.manifest import MAX_HOOK_TIMEOUT_SECONDS, Hooks, HookTimeouts
 from epicstaff_plugin.hooks import HookAssertionRejected, verify_hook_assertion
@@ -118,6 +121,29 @@ def test_the_delay_after_each_failed_attempt():
 def test_an_attempt_number_is_a_positive_integer(attempt):
     with pytest.raises(ValueError, match="positive integer"):
         org_removed_retry_delay(attempt)
+
+
+def test_only_the_organization_removed_hook_runs_without_a_key():
+    assert KEYLESS_HOOK_KINDS == frozenset({"org_removed"})
+    assert KEYLESS_HOOK_KINDS <= set(HOOK_KINDS)
+
+
+# --- Retries of the upgrade hook ---
+
+
+def test_the_upgrade_retry_schedule_is_one_then_five_minutes():
+    assert UPGRADE_RETRY_DELAYS_SECONDS == (60, 300)
+
+
+def test_an_upgrade_hook_is_tried_again_twice_then_waits_for_a_superadmin():
+    assert [upgrade_retry_delay(failures) for failures in range(1, 5)] == [60, 300, None, None]
+    assert upgrade_retry_delay(10_000) is None
+
+
+@pytest.mark.parametrize("failures", [0, -1, True, 1.0, "1", None])
+def test_a_number_of_failures_in_a_row_is_a_positive_integer(failures):
+    with pytest.raises(ValueError, match="positive integer"):
+        upgrade_retry_delay(failures)
 
 
 # --- The body ---

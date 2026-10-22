@@ -122,7 +122,7 @@ export interface PluginRuntimeDatabase {
     server: { name: string; host: string; port: number };
     database_name: string;
     roles: { owner: string; app: string; job: string };
-    /** `applied` in the order they ran; `in_package`: how many the current package has. */
+    /** `applied` in the order they ran; `in_package`: how many the package the node runs has. */
     migrations: { applied: string[]; in_package: number };
     /** Effective. */
     connection_limit: number;
@@ -150,4 +150,6 @@ export interface PluginRuntimeResponse {
     database: PluginRuntimeDatabase | null;
     /** `null`: the plugin has no backend. */
     egress: PluginRuntimeEgress | null;
+    /** Set exactly while the node runs a package other than the current one: during an upgrade's maintenance. */
+    upgrade: { from_version: string; to_version: string } | null;
 }

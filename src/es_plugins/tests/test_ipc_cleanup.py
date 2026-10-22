@@ -32,14 +32,14 @@ def test_objects_the_uid_owns_or_created_are_found_and_no_others(tmp_path):
     )
 
     assert ipc_objects_of(PLUGIN_UID, tmp_path) == [
-        IpcObject("shm", 11),
-        IpcObject("msg", 21),
-        IpcObject("sem", 31),
+        IpcObject("shm", 11, created=True),
+        IpcObject("msg", 21, created=True),
+        IpcObject("sem", 31, created=False),
     ]
     assert ipc_objects_of(OTHER_UID, tmp_path) == [
-        IpcObject("shm", 12),
-        IpcObject("msg", 21),
-        IpcObject("sem", 31),
+        IpcObject("shm", 12, created=True),
+        IpcObject("msg", 21, created=False),
+        IpcObject("sem", 31, created=True),
     ]
 
 
@@ -86,3 +86,60 @@ def test_the_plugins_objects_are_removed_as_the_plugin_and_another_uids_stay():
     finally:
         run_as_user(OTHER_UID, lambda: _remove_all_of(OTHER_UID))
         run_as_user(PLUGIN_UID, lambda: _remove_all_of(PLUGIN_UID))
+
+
+IPC_SET = 1
+
+
+class _ShmidDs(ctypes.Structure):
+    """The head of `struct shmid_ds` on Linux: its `struct ipc_perm`, then the rest unread."""
+
+    _fields_ = [
+        ("key", ctypes.c_int),
+        ("uid", ctypes.c_uint),
+        ("gid", ctypes.c_uint),
+        ("cuid", ctypes.c_uint),
+        ("cgid", ctypes.c_uint),
+        ("mode", ctypes.c_ushort),
+        ("padding", ctypes.c_ubyte * 256),
+    ]
+
+
+@pytest.mark.root
+def test_a_segment_another_uid_hands_over_and_keeps_attached_never_stops_the_removal():
+    import os
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.shmat.restype = ctypes.c_void_p
+    ready_read, ready_write = os.pipe()
+    done_read, done_write = os.pipe()
+    holder = os.fork()
+    if holder == 0:
+        # Another plugin's UID: make a segment, hand it to the removed plugin's UID, keep it attached.
+        status = 1
+        try:
+            os.setgroups([])
+            os.setresgid(OTHER_UID, OTHER_UID, OTHER_UID)
+            os.setresuid(OTHER_UID, OTHER_UID, OTHER_UID)
+            segment = libc.shmget(IPC_PRIVATE, 4096, IPC_CREAT | 0o600)
+            libc.shmat(segment, None, 0)
+            described = _ShmidDs()
+            libc.shmctl(segment, 2, ctypes.byref(described))  # IPC_STAT
+            described.uid = PLUGIN_UID
+            if libc.shmctl(segment, IPC_SET, ctypes.byref(described)) == 0:
+                status = 0
+            os.write(ready_write, str(segment).encode())
+            os.read(done_read, 1)
+            libc.shmctl(segment, IPC_RMID, None)
+        finally:
+            os._exit(status)
+    try:
+        segment = int(os.read(ready_read, 32))
+        assert any(item.identifier == segment and not item.created for item in ipc_objects_of(PLUGIN_UID))
+
+        # Removed as far as it can be (marked for removal), and the removal goes on.
+        assert remove_ipc_objects_of(PLUGIN_UID) >= 1
+    finally:
+        os.write(done_write, b"x")
+        os.waitpid(holder, 0)
+

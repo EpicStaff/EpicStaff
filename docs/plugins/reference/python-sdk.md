@@ -15,6 +15,7 @@ Python 3.12 and 3.13.
 | `epicstaff_plugin.database` | The plugin's own [database](database.md): its address, its connection limit, a transaction per organization |
 | `epicstaff_plugin.egress` | The egress proxy, for clients that do not read it from the environment ([outbound hosts](../how-to/outbound-hosts.md)) |
 | `epicstaff_plugin.health` | The `GET /_epicstaff/health` endpoint |
+| `epicstaff_plugin.versions` | Comparing plugin versions in SemVer order, as EpicStaff does: an upgrade hook compares `previous_version` with it |
 | `epicstaff_plugin.testing` | Forged contexts, hook calls and runtime files for your tests |
 | `epicstaff_plugin.contracts` | The documents EpicStaff and plugins exchange, as Pydantic models |
 | `epicstaff-plugin` (command) | `validate`, `pack`, `keygen`, `sign`, `verify`, `schema`; see [Sign and package a plugin](../how-to/sign-and-package.md) |
@@ -140,8 +141,8 @@ depends on no database driver: bring one, such as `psycopg[binary,pool]`, in you
 |---|---|
 | `database_url() -> str` | `DATABASE_URL`: the database's URL, logging in as the app role. Raises `DatabaseUnavailable` when it is not set. It holds the role's password: never log it |
 | `connection_limit() -> int` | `EPICSTAFF_PLUGIN_DB_CONNECTIONS`: how many connections the app role may hold. Raises `DatabaseUnavailable` when it is not set or not a positive integer. Size your pool to it |
-| `org_transaction(connection, org_id)` | An async context manager. It opens `connection.transaction()`, runs `SELECT pg_catalog.set_config('app.org_id', %s, true)` with `(str(org_id),)`, and yields the connection. The setting lasts for the transaction only. The transaction commits when the block ends and rolls back when it raises. Raises `ValueError` when `org_id` is not a positive integer. One organization at a time in a task: nested inside an open one for the same organization it is a savepoint on the same connection, or a transaction of its own on a connection with none open; for another organization, or inside a `job_transaction`, it raises `NestedOrgTransactionError`, on any connection. A task started inside the block inherits its organization |
-| `job_transaction(connection)` | An async context manager for maintenance work across organizations. It opens `connection.transaction()`, switches to the plugin's job role for that transaction only (`SELECT pg_catalog.set_config('role', %s, true)` with `<id_>_job`, named after the `<id_>_app` role the connection logs in as), and yields the connection. The transaction has exactly what your migrations grant `${job_role}`, and no organization set. Raises `ValueError` when the connection does not log in as the app role, and `NestedOrgTransactionError` inside an `org_transaction`. Nested in an open one, on the same connection, it is a savepoint |
+| `org_transaction(connection, org_id)` | An async context manager. It opens `connection.transaction()`, runs `SELECT pg_catalog.set_config('app.org_id', %s, true)` with `(str(org_id),)`, and yields the connection. The setting lasts for the transaction only. The transaction commits when the block ends and rolls back when it raises. Raises `ValueError` when `org_id` is not a positive integer. One organization at a time in a task: nested inside an open one for the same organization it is a savepoint on the same connection, or a transaction of its own on a connection with none open; for another organization, or inside a `job_transaction`, it raises `NestedOrgTransactionError`, on any connection. A task started inside the block inherits its organization while the block is open; once the block ended, the task has none, and the block's connection, which the pool may have lent to another request, is no longer its own |
+| `job_transaction(connection)` | An async context manager for maintenance work across organizations. It opens `connection.transaction()`, switches to the plugin's job role for that transaction only (`SELECT pg_catalog.set_config('role', %s, true)` with `<id_>_job`, named after the `<id_>_app` role the connection logs in as), and yields the connection. The transaction has exactly what your migrations grant `${job_role}`, and no organization set. Raises `ValueError` when the connection does not log in as the app role, and `NestedOrgTransactionError` inside an `org_transaction`. Nested in an open one, on the same connection, it is a savepoint. A task started inside the block inherits it while the block is open |
 | `ORG_ID_SETTING` | `"app.org_id"`, the setting your row-level security policies read with `current_setting('app.org_id', true)` |
 | `APP_ROLE_SUFFIX`, `JOB_ROLE_SUFFIX` | `"_app"` and `"_job"`, the endings of the role names ([Names](database.md#names)) |
 | `DatabaseUnavailable` | The process has no database: its manifest declares none, or it runs off the plugin node |
@@ -213,7 +214,8 @@ check; you never need it yourself. nginx does not forward `/_epicstaff/` from ou
 | Name | What it does |
 |---|---|
 | `hook_registry` | The process's `HookRegistry`, which `serve` dispatches to |
-| `hook_registry.on_install(handler)` | Registers the install hook; usable as a decorator. `on_upgrade` registers the upgrade hook the same way |
+| `hook_registry.on_install(handler)` | Registers the install hook; usable as a decorator |
+| `hook_registry.on_upgrade(handler)` | Registers the upgrade hook; usable as a decorator. Its handler takes the request and an `OrgClient`, like the install hook's |
 | `hook_registry.on_org_removed(handler)` | Registers the organization removed hook, whose handler takes the request alone; usable as a decorator |
 | `hook_registry.register(kind, handler)` | Registers any kind. A kind takes one handler (`ValueError` for a second one). A handler is an async function that can be called with its kind's arguments (`TypeError` otherwise, at registration) |
 | `OrgHookHandler`, `OrgRemovedHookHandler` | The two handler types: `async (request, epicstaff) -> None` for `install` and `upgrade`, `async (request) -> None` for `org_removed` |
@@ -226,10 +228,42 @@ An install or upgrade handler is `async def handler(request: HookRequest, epicst
 as the plugin alone. An organization removed handler is `async def handler(request: HookRequest)
 -> None`: the organization has no service account any more, so it gets no client, and deletes
 only the plugin's own data. Return to succeed; raise to fail, with the exception's first line as
-the error. Handlers for one organization run one at a time, whatever their kind.
-[Write an install hook](../how-to/install-hook.md) and
+the error. Handlers for one organization run one at a time, whatever their kind. An upgrade
+handler's `request.previous_version` is the version the organization was last brought to
+(`null` only when it never finished an install); compare it with `epicstaff_plugin.versions`.
+[Write an install hook](../how-to/install-hook.md),
+[Write an upgrade hook](../how-to/upgrade-hook.md) and
 [Delete your data when an organization leaves](../how-to/org-removed-hook.md) walk through one
 of each.
+
+## `epicstaff_plugin.versions`
+
+The order of plugin versions: SemVer 2.0 precedence, the rule EpicStaff applies when it decides
+whether an uploaded package is newer than the installed one
+([Compatibility and versioning](compatibility-and-versioning.md)).
+
+| Name | What it does |
+|---|---|
+| `is_newer(candidate, than) -> bool` | Whether `candidate` is a newer version than `than`. A version that differs only in build metadata is not newer |
+| `compare_versions(left, right) -> int` | -1 when `left` is older, 0 when it is the same version, 1 when it is newer |
+| `version_key(version)` | A sort key: `sorted(versions, key=version_key)` puts them oldest first. Compare keys only with each other |
+
+Each raises `ValueError` for anything that is not a SemVer 2.0 version (the manifest's
+`version` rule). Major, minor and patch compare as numbers, so `0.10.0` is newer than `0.9.9`; a
+pre-release is older than its release (`1.0.0-rc.1 < 1.0.0`); build metadata is ignored, so
+`0.7.0+2` is the same version as `0.7.0`.
+
+```python
+from epicstaff_plugin.versions import is_newer
+
+
+@hook_registry.on_upgrade
+async def upgrade(request: HookRequest, epicstaff: OrgClient) -> None:
+    if request.previous_version is None or is_newer("0.7.0", request.previous_version):
+        await set_up_what_0_7_0_needs(epicstaff)
+```
+
+The same functions are in `epicstaff_plugin.contracts.versions`.
 
 ## `epicstaff_plugin.client`
 
@@ -316,7 +350,10 @@ The documents of the platform, defined once and used by EpicStaff and the SDK al
 | `contracts.runtime.RuntimeFile`, `ServiceAccountEntry` | The runtime file ([reference](runtime.md#runtime-file)) |
 | `contracts.runtime.DATABASE_URL_ENVIRONMENT_VARIABLE`, `DATABASE_CONNECTIONS_ENVIRONMENT_VARIABLE`, `HTTPS_PROXY_ENVIRONMENT_VARIABLE`, `PROXY_ENVIRONMENT_VARIABLES`, `NO_PROXY_ENVIRONMENT_VARIABLES`, `LOOPBACK_NO_PROXY_HOSTS` | The names of the environment variables the node sets for the database and the egress proxy ([reference](runtime.md#environment)) |
 | `contracts.hook_api.HookRequest`, `HookAssertionClaims`, `HookResponse`, `HOOK_PATHS` | Hook calls ([reference](hook-api.md)) |
+| `contracts.hook_api.KEYLESS_HOOK_KINDS` | The hook kinds whose organization holds no service-account key when they run (`org_removed`): their handler gets no client ([reference](hook-api.md#the-call)) |
 | `contracts.hook_api.ORG_REMOVED_RETRY_DELAYS_SECONDS`, `ORG_REMOVED_RETRY_WINDOW_SECONDS`, `org_removed_retry_delay(attempt)` | When EpicStaff tries a failed organization removed hook again: 60, 300 and 1800 seconds after attempts 1–3, then every 3600, for 7 days from the first attempt ([reference](hook-api.md#what-happens-when-an-organizations-data-is-deleted)) |
+| `contracts.hook_api.UPGRADE_RETRY_DELAYS_SECONDS`, `upgrade_retry_delay(failures_in_series)` | When EpicStaff tries a failed upgrade hook again: 60 seconds after the first failure in a row, 300 after the second, then not by itself (`None`) ([reference](hook-api.md#what-happens-on-an-upgrade)) |
+| `contracts.versions.version_key`, `compare_versions`, `is_newer` | The order of versions, also as `epicstaff_plugin.versions` ([above](#epicstaff_pluginversions)) |
 | `contracts.service_account_api.ServiceAccountInfo`, `PluginPerson`, `PeopleLookupRequest`, `PeopleLookupResponse` | What EpicStaff's `/api/plugin-runtime/` endpoints answer ([reference](service-account-api.md)) |
 
 Each model refuses unknown fields, so whoever builds a document cannot misspell one. Read a

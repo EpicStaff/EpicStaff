@@ -10,7 +10,15 @@ from utils.exceptions import CustomAPIExeption
 
 ERROR_CODES_DOC = Path(__file__).resolve().parents[4] / "docs" / "plugins" / "reference" / "error-codes.md"
 # The client codes nginx answers with for each gateway refusal; nginx owns the mapping.
-GATEWAY_CODES = {"login_required", "not_found", "rate_limited", "request_too_large", "plugin_unavailable", "forbidden"}
+GATEWAY_CODES = {
+    "login_required",
+    "not_found",
+    "rate_limited",
+    "request_too_large",
+    "plugin_unavailable",
+    "plugin_maintenance",
+    "forbidden",
+}
 _CODE_CELL = re.compile(r"^\| `([a-z_]+)` \|", re.MULTILINE)
 
 

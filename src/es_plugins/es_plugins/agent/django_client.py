@@ -20,6 +20,7 @@ from src.shared.models.plugin_nodes import (
     HookResult,
     NodeReport,
     RuntimeCredentials,
+    UpgradeAdvance,
 )
 
 DESIRED_STATE_PATH = "plugin-nodes/self/desired-state/"
@@ -28,6 +29,7 @@ RUNTIME_CREDENTIALS_PATH = "plugin-nodes/self/placements/{placement_id}/runtime-
 REPORTS_PATH = "plugin-nodes/self/reports/"
 HOOK_CLAIM_PATH = "plugin-nodes/self/hook-jobs/{job_id}/claim/"
 HOOK_RESULT_PATH = "plugin-nodes/self/hook-jobs/{job_id}/result/"
+UPGRADE_ADVANCE_PATH = "plugin-nodes/self/upgrades/{upgrade_id}/advance/"
 # What django_app answers a claim of a job that is no longer pending for this node: unknown or
 # another node's (404), or taken by an earlier claim, finished, or its grant gone (409).
 _NOT_CLAIMABLE_STATUSES = (404, 409)
@@ -211,6 +213,17 @@ class DjangoNodeClient:
                 with this attempt, e.g. after it was failed for reporting too late).
         """
         await self._post_json(HOOK_RESULT_PATH.format(job_id=job_id), result)
+
+    async def advance_upgrade(self, upgrade_id: int, advance: UpgradeAdvance) -> None:
+        """Ask django_app to take an upgrade to its next stage (it answers 204, also when the
+        upgrade is there already).
+
+        Raises:
+            NodeApiError: Not granted: 409 when the upgrade is not open or not in a stage it can
+                move from (follow the next desired state), 400 or 404 when django_app refuses
+                the request itself, transient when it could not be reached.
+        """
+        await self._post_json(UPGRADE_ADVANCE_PATH.format(upgrade_id=upgrade_id), advance)
 
     async def _post_json(self, path: str, document: BaseModel) -> None:
         await self._request(

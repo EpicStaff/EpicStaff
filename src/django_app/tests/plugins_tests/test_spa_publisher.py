@@ -152,3 +152,76 @@ def test_an_unsafe_identifier_or_version_is_blocked(root, identifier, version):
 def test_removing_an_unsafe_identifier_is_blocked(root):
     with pytest.raises(UnsafeSpaPathError):
         SpaPublisher(root).remove_plugin("..")
+
+
+# ---- the maintenance flag and the other versions ----
+
+
+def test_the_maintenance_flag_is_an_empty_file_readable_by_nginx(root):
+    publisher = SpaPublisher(root)
+
+    publisher.set_maintenance("weather", True)
+
+    flag = root / "weather" / "maintenance"
+    assert flag.is_file() and flag.read_bytes() == b""
+    assert stat.S_IMODE(flag.stat().st_mode) == 0o644
+    assert stat.S_IMODE((root / "weather").stat().st_mode) == 0o755
+    assert publisher.maintenance_flag_set("weather")
+    assert [entry.name for entry in (root / "weather").iterdir()] == ["maintenance"]
+
+
+def test_setting_the_flag_twice_and_clearing_it_twice_is_harmless(root):
+    publisher = SpaPublisher(root)
+
+    publisher.set_maintenance("weather", True)
+    publisher.set_maintenance("weather", True)
+    publisher.set_maintenance("weather", False)
+    publisher.set_maintenance("weather", False)
+
+    assert not publisher.maintenance_flag_set("weather")
+
+
+def test_the_current_version_is_read_from_the_link(root):
+    publisher = SpaPublisher(root)
+    assert publisher.current_version("weather") is None
+
+    _publish(root, "0.1.0")
+
+    assert publisher.current_version("weather") == "0.1.0"
+
+
+def test_pruning_keeps_the_named_versions_the_link_and_the_flag(root):
+    for version in ("0.1.0", "0.2.0", "0.3.0"):
+        _write(root, version)
+    publisher = SpaPublisher(root)
+    publisher.switch_current("weather", "0.3.0")
+    publisher.set_maintenance("weather", True)
+    (root / "weather" / ".0.4.0.staging").mkdir()
+
+    publisher.prune_versions("weather", keep={"0.3.0"})
+
+    assert sorted(entry.name for entry in (root / "weather").iterdir()) == [
+        ".0.4.0.staging",
+        "0.3.0",
+        "current",
+        "maintenance",
+    ]
+
+
+def test_pruning_never_follows_a_link(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside")
+    (outside / "keep.txt").write_text("x")
+    _write(root, "0.3.0")
+    os.symlink(outside, root / "weather" / "0.2.0")
+
+    SpaPublisher(root).prune_versions("weather", keep={"0.3.0"})
+
+    assert (outside / "keep.txt").exists()
+
+
+def test_a_version_without_a_frontend_serves_none(root):
+    _publish(root, "0.1.0")
+
+    SpaPublisher(root).remove_current("weather")
+
+    assert SpaPublisher(root).current_version("weather") is None

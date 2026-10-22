@@ -33,7 +33,9 @@ PLUGINS = {
     "alpha": {"upstream": "plugin_alpha:20001"},
     "bravo": {"upstream": "plugin-bravo:20002"},
     "slow": {"upstream": "plugin_alpha:20001", "sleep_seconds": 0.002},
-    "maint": {"upstream": "plugin_alpha:20001", "unavailable": True},
+    # Refused by the availability check: not up, and being upgraded.
+    "down": {"upstream": "plugin_alpha:20001", "availability": "unavailable"},
+    "updating": {"upstream": "plugin_alpha:20001", "availability": "maintenance"},
     "noupstream": {"upstream": ""},
     "bogus": {"upstream": "plugin_alpha:20001", "deny": "something-new"},
     "emptydeny": {"upstream": "plugin_alpha:20001", "deny": ""},
@@ -105,8 +107,8 @@ async def check(request: web.Request) -> web.Response:
     path = headers.get("X-Original-Normalized-Path", "")
     if not canonical(raw_path, path):
         return deny(403, "not_found")
-    if plugin.get("unavailable"):
-        return deny(403, "unavailable")
+    if "availability" in plugin:
+        return deny(403, plugin["availability"])
     if plugin.get("sleep_seconds"):
         await asyncio.sleep(plugin["sleep_seconds"])
     method = headers.get("X-Original-Method", "")

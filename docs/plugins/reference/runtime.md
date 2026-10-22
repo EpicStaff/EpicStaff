@@ -36,9 +36,10 @@ three things you cannot turn off, in this order:
 **The platform owns the port.** The node binds the plugin's port itself and keeps it bound while
 the plugin restarts, so no other process on the node can take it in between. It passes the
 listening socket to the process as file descriptor 3 (`EPICSTAFF_PLUGIN_LISTEN_FD`), and
-`serve` serves on that socket and never binds one. Do not open listening sockets of your own:
-binding `PORT` fails, since the node holds it, and a socket on any other port is reached by
-nothing from EpicStaff but by every other plugin on the node, with no context check in front.
+`serve` serves on that socket and never binds one. Your backend cannot open listening sockets
+of its own: the node refuses every `bind()` of an IPv4 or IPv6 socket by a plugin process with
+`Operation not permitted` (`EPERM`), on `PORT` and on any other port. Outgoing connections are
+not affected.
 `serve` refuses to start when the descriptor is not a listening TCP socket. Without `EPICSTAFF_PLUGIN_LISTEN_FD`, on your own machine, `serve` binds
 `0.0.0.0:$PORT` itself.
 
@@ -136,8 +137,9 @@ with the SDK, or ignore fields you do not know.
 ```
 
 There is one entry per organization whose grant holds a key: `granting` while the install hook
-runs, then `active`. A grant whose install hook failed holds none, nor does an organization the
-plugin is not granted to.
+runs, then `active`, and `upgrading` while the organization's upgrade hook runs after an upgrade.
+Do background work for an organization only while it is `active`. A grant whose install or
+upgrade hook failed holds none, nor does an organization the plugin is not granted to.
 
 | Field | Meaning |
 |---|---|

@@ -71,6 +71,9 @@ Otherwise the answer is a redirect, decided in this order:
    - With `org`, that organization must be one of them, else `access_denied`.
    - Without `org`: none gives `access_denied`; exactly one is used; several send the person to
      EpicStaff's organization chooser, or answer `interaction_required` on a silent request.
+   - A person who may use the plugin once an upgrade finishes (the plugin is stopped for its
+     upgrade, or their organization's upgrade has not finished) gets `temporarily_unavailable`
+     instead of `access_denied`.
 3. **The code.** EpicStaff issues a one-time code and redirects to the plugin's callback page.
 
 | Redirect | Target |

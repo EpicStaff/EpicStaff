@@ -45,12 +45,108 @@ class PackageTooLargeError(CustomAPIExeption):
     default_code = "package_too_large"
 
 
-class PluginUpgradeUnavailableError(CustomAPIExeption):
+class PluginUpgradeUnavailableError(_ProblemListError):
+    """The package cannot upgrade the installed plugin: it drops the backend or the database,
+    or changes a migration file that is already applied; each problem says which."""
+
     status_code = 409
-    default_detail = (
-        "This plugin is already installed; installing a new version is not available yet."
-    )
+    default_detail = "This package cannot upgrade the installed plugin."
     default_code = "plugin_upgrade_unavailable"
+
+
+class PluginVersionNotNewerError(CustomAPIExeption):
+    """The package's version is not newer than the plugin's latest approved version."""
+
+    status_code = 409
+    default_detail = "This version is not newer than the installed one."
+    default_code = "plugin_version_not_newer"
+
+    def __init__(self, version: str, installed_version: str, latest_version: str):
+        if latest_version == installed_version:
+            detail = f"{version} is not newer than the installed {installed_version}"
+        else:
+            detail = f"{version} is not newer than {latest_version}, the version being installed"
+        super().__init__(detail=detail)
+        self.extra_response_data = {
+            "installed_version": installed_version,
+            "latest_version": latest_version,
+        }
+
+
+class PluginNotUpgradableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "The plugin cannot be upgraded now."
+    default_code = "plugin_not_upgradable"
+
+
+class ReviewOutdatedError(CustomAPIExeption):
+    """The approval names another package than the one the review was computed against."""
+
+    status_code = 409
+    default_detail = "The plugin changed since this review was loaded. Review it again."
+    default_code = "review_outdated"
+
+
+class AccessGrowthNotAcknowledgedError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "This version asks for new access. Approve the new access to upgrade."
+    default_code = "access_growth_not_acknowledged"
+
+
+class UpgradeNotCancellableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "This upgrade cannot be cancelled now."
+    default_code = "upgrade_not_cancellable"
+
+
+class UpgradeNotRetryableError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "No failed upgrade of this plugin to retry."
+    default_code = "upgrade_not_retryable"
+
+
+class PluginUpgradeOpenError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "The plugin is being upgraded. Cancel the upgrade first, or delete the plugin."
+    default_code = "plugin_upgrade_open"
+
+
+class BackupNotFoundError(CustomAPIExeption):
+    status_code = 404
+    default_detail = "Backup not found."
+    default_code = "backup_not_found"
+
+
+class RestoreNotAllowedError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "This backup cannot be restored now."
+    default_code = "restore_not_allowed"
+
+
+class InvalidRestorePhraseError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "Type the phrase exactly as shown to restore the backup."
+    default_code = "invalid_restore_phrase"
+
+
+class UpgradeNotFoundError(CustomAPIExeption):
+    status_code = 404
+    default_detail = "Upgrade not found."
+    default_code = "upgrade_not_found"
+
+
+class UpgradeNotCurrentError(CustomAPIExeption):
+    """The node asked to move an upgrade that is not open, has failed, or is in another stage."""
+
+    status_code = 409
+    default_detail = "The upgrade cannot move to this stage now."
+    default_code = "upgrade_not_current"
+
+
+class InvalidUpgradeAdvanceError(_ProblemListError):
+    status_code = 400
+    default_detail = "The upgrade request is invalid."
+    default_code = "invalid_upgrade_advance"
 
 
 class PluginPackageNotFoundError(CustomAPIExeption):
@@ -292,6 +388,13 @@ class GrantNotSuspendedError(CustomAPIExeption):
     default_code = "grant_not_suspended"
 
 
+# How a refused run names the state of the grant that blocks it; every other state is "not active".
+_GRANT_STATE_WORDS = {
+    GrantState.SUSPENDED: "suspended",
+    GrantState.UPGRADING: "being upgraded",
+}
+
+
 class PluginSuspendedError(RunAdmissionRefusedError):
     """A run would use something a plugin owns, and the plugin is not active in the organization.
 
@@ -304,7 +407,7 @@ class PluginSuspendedError(RunAdmissionRefusedError):
     default_code = "plugin_suspended"
 
     def __init__(self, owner: "BlockingOwner", organization_id: int):
-        state = "suspended" if owner.grant_state == GrantState.SUSPENDED else "not active"
+        state = _GRANT_STATE_WORDS.get(owner.grant_state, "not active")
         super().__init__(
             detail=(
                 f'This run uses resources of the plugin "{owner.plugin_name}", which is {state} '

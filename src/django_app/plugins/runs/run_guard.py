@@ -11,8 +11,12 @@ from tables.services.run_admission import RunSubject
 from tables.services.run_resources import RunResourceCollector, RunResources
 
 from plugins.exceptions import PluginSuspendedError
-from plugins.models import GrantState, PluginGrant, PluginOwnedResource
-from plugins.runs.owned_resource_index import OwnedResourceIndex
+from plugins.models import PluginGrant, PluginOwnedResource
+from plugins.runs.owned_resource_index import (
+    INACTIVE_GRANT_STATES,
+    RUN_STOPPING_GRANT_STATES,
+    OwnedResourceIndex,
+)
 
 
 class PluginRunGuard:
@@ -62,6 +66,18 @@ def organizations_with_refusable_runs() -> QuerySet:
     return Organization.objects.filter(_has_refusable_runs()).values_list("pk", flat=True)
 
 
+def organizations_with_stoppable_runs() -> QuerySet:
+    """The ids of the organizations where a running session may have to be stopped: one query.
+
+    The guard's rule, narrowed to the grant states that stop running sessions
+    (`RUN_STOPPING_GRANT_STATES`): an organization being upgraded refuses new runs, and lets
+    the ones already running finish.
+    """
+    return Organization.objects.filter(_has_refusable_runs(RUN_STOPPING_GRANT_STATES)).values_list(
+        "pk", flat=True
+    )
+
+
 def _refuse_if_owned(subject: RunSubject, resources: RunResources) -> None:
     owner = OwnedResourceIndex.for_inactive_grants(subject.organization_id, resources).first_owner(
         resources
@@ -81,15 +97,15 @@ def _may_refuse_in(organization_id: int) -> bool:
     return Organization.objects.filter(pk=organization_id).filter(_has_refusable_runs()).exists()
 
 
-def _has_refusable_runs() -> Q:
-    """The rule, as a filter on `Organization`, shared by the per-run and the per-org question."""
+def _has_refusable_runs(grant_states: tuple[str, ...] = INACTIVE_GRANT_STATES) -> Q:
+    """The rule, as a filter on `Organization`, shared by the per-run and the per-org question:
+    a grant of the organization in `grant_states` owns a row there, or an owned row lost its
+    grant."""
     rows_of_grant = PluginOwnedResource.objects.filter(
         grant_id=OuterRef("pk"), org_id=OuterRef("org_id")
     )
-    inactive_owning_grants = (
-        PluginGrant.objects.filter(org_id=OuterRef("pk"))
-        .exclude(state=GrantState.ACTIVE)
-        .filter(Exists(rows_of_grant))
-    )
+    inactive_owning_grants = PluginGrant.objects.filter(
+        org_id=OuterRef("pk"), state__in=grant_states
+    ).filter(Exists(rows_of_grant))
     orphaned_rows = PluginOwnedResource.objects.filter(org_id=OuterRef("pk"), grant__isnull=True)
     return Exists(inactive_owning_grants) | Exists(orphaned_rows)

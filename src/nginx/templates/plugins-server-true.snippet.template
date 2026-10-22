@@ -5,8 +5,8 @@
 # this container mounts read-only, and the platform config the SPA loads at start-up. /api/ is
 # the plugin's own backend, behind the gateway: every request is first checked by django_app
 # (auth_request), which names the upstream and signs the context the plugin verifies. The
-# platform's login callback pages are the same static files on every host; the platform's other
-# paths answer 404.
+# platform's login callback pages and its maintenance page are the same static files on every
+# host; the platform's other paths answer 404.
 
 # HSTS for the plugin hosts when nginx terminates TLS (NGINX_SSL_MODE=on), as EpicStaff's own
 # server does. A variable, because the header has to be repeated in every location.
@@ -31,6 +31,7 @@ map $plugin_deny $plugin_deny_retry_after {
     too_large    "";
     forbidden    "";
     rate_limited 60;
+    maintenance  30;
     default      30;
 }
 
@@ -49,6 +50,7 @@ map $plugin_deny $plugin_gateway_deny {
     rate_limited rate_limited;
     too_large    too_large;
     forbidden    forbidden;
+    maintenance  maintenance;
     default      unavailable;
 }
 
@@ -276,6 +278,11 @@ server {
         if ($plugin_deny = forbidden) {
             return 403 '{"status_code":403,"code":"forbidden","message":"You do not have access to this plugin."}';
         }
+        # The plugin is being upgraded, or the caller's organization still is: every path, public
+        # ones included, until it is back.
+        if ($plugin_deny = maintenance) {
+            return 503 '{"status_code":503,"code":"plugin_maintenance","message":"The plugin is being updated. Try again in a few minutes."}';
+        }
         return 503 '{"status_code":503,"code":"plugin_unavailable","message":"The plugin is not available right now."}';
     }
 
@@ -296,10 +303,21 @@ server {
 
     # The SPA's entry page is revalidated on every load, so a newly approved version is picked up
     # at once. "current" is a symlink django_app switches atomically to the published version.
+    #
+    # While a plugin is being upgraded, django_app keeps an empty file "maintenance" next to
+    # "current" (outside what is served), and every SPA path answers with the platform's
+    # maintenance page instead. It is tested on every request (nginx keeps no open_file_cache;
+    # tests/check_templates.sh fails if one is added), so it takes effect at once, without a reload.
+    # /api/ does not look at it: the gateway check decides each of its requests fresh.
     location = /index.html {
         include /etc/nginx/conf.d/plugins-security-headers.snippet;
         add_header Cache-Control no-cache always;
         root /srv/plugin-spa/$plugin_identifier/current;
+        # No "=": the answer keeps its 503 while the named location serves the page.
+        error_page 503 @plugin_maintenance_page;
+        if (-f /srv/plugin-spa/$plugin_identifier/maintenance) {
+            return 503;
+        }
     }
 
     # The SPA's files, and its index.html for any other path (client-side routes). The fallback is
@@ -309,5 +327,25 @@ server {
         include /etc/nginx/conf.d/plugins-security-headers.snippet;
         root /srv/plugin-spa/$plugin_identifier/current;
         try_files $uri /index.html;
+        error_page 503 @plugin_maintenance_page;
+        if (-f /srv/plugin-spa/$plugin_identifier/maintenance) {
+            return 503;
+        }
+    }
+
+    # The platform's maintenance page (src/nginx/plugin-platform, mounted read-only), the same
+    # static file for every plugin: no script, nothing loaded from anywhere, nothing about the
+    # plugin. It reloads itself every 30 s; never stored, so the SPA is back on the first load
+    # after the upgrade. Frameable like the SPA it stands in for. A missing file still answers 503.
+    location @plugin_maintenance_page {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" always;
+        add_header Cache-Control no-store always;
+        add_header Retry-After 30 always;
+        add_header X-EpicStaff-Gateway-Deny maintenance always;
+        types { }
+        default_type text/html;
+        root /usr/share/nginx/plugin-platform;
+        try_files /maintenance.html =503;
     }
 }

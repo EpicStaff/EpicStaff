@@ -5,6 +5,7 @@ from typing import BinaryIO
 from epicstaff_plugin.package_layout import (
     MAX_ENTRIES,
     MAX_UNCOMPRESSED_BYTES,
+    MIGRATION_PATTERN,
     PackageArchive,
     read_package_file,
 )
@@ -38,3 +39,16 @@ def read_uploaded_package(file: BinaryIO) -> PackageArchive:
         return read_package_file(file, guard)
     except PackageProblemsError as error:
         raise InvalidPluginError(error.problems) from None
+
+
+def migration_files(package: PackageArchive) -> list[dict[str, str]]:
+    """The package's migration files as `{name, sha256}`, sorted by name.
+
+    The digest is the one `CONTENTS.json` lists, which the reader checked against the bytes:
+    the one the plugin node records in the database's migration ledger when it applies them.
+    """
+    files = []
+    for file in package.files:
+        if match := MIGRATION_PATTERN.match(file.path):
+            files.append({"name": match.group(1), "sha256": file.sha256})
+    return sorted(files, key=lambda file: file["name"])

@@ -1,3 +1,5 @@
+@use '../plugin-dialog' as plugin-dialog;
+
 :host {
     display: block;
 }
@@ -31,14 +33,7 @@
 }
 
 .removals__error {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    background: var(--color-status-error-subtle);
-    color: var(--color-status-error);
+    @include plugin-dialog.plugin-load-error;
 }
 
 .removals__cell {

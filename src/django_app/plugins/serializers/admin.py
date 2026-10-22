@@ -1,24 +1,43 @@
 import base64
 
+from django.db.models import Count
 from drf_spectacular.utils import extend_schema_field
 from epicstaff_plugin.contracts.manifest import PluginManifest
 from rest_framework import serializers
 
 from plugins.lifecycle.grant_actions import GrantAction, allowed_grant_actions
-from plugins.lifecycle.plugin_actions import PluginLifecycleAction, allowed_plugin_actions
+from plugins.lifecycle.open_upgrades import open_upgrade_of
+from plugins.lifecycle.plugin_actions import (
+    PluginActionFacts,
+    PluginLifecycleAction,
+    allowed_plugin_actions,
+)
 from plugins.lifecycle.plugin_purge_service import purge_progress
 from plugins.models import (
+    GrantState,
     Plugin,
+    PluginDatabase,
     PluginGrant,
     PluginPackage,
     PluginState,
+    PluginUpgrade,
+    ReviewState,
     SignatureStatus,
     SuspensionCause,
     Trust,
 )
+from plugins.models.upgrade import OPEN_UPGRADE_STAGES
 from plugins.origins import PluginOrigins
 from plugins.packages.review import action_label, resource_label, review_warnings
+from plugins.packages.upgrade_review import PackageUpgradeReview, review_upgrade
+from plugins.serializers.common import UserRefSerializer
 from plugins.serializers.purge import OrgRemovedJobSerializer, PluginPurgeProgressSerializer
+from plugins.serializers.upgrade import (
+    AccessGrowthSerializer,
+    PluginUpgradeSerializer,
+    UpgradeReviewSerializer,
+    UpgradeSummarySerializer,
+)
 
 
 def icon_url(plugin: Plugin) -> str | None:
@@ -41,30 +60,44 @@ def declared_access_rows(manifest: PluginManifest) -> list[dict]:
     ]
 
 
+def open_upgrade_from_summary(plugin: Plugin) -> PluginUpgrade | None:
+    """The plugin's open upgrade, from `with_summary()`'s prefetch when it is there."""
+    prefetched = getattr(plugin, "open_upgrades", None)
+    if prefetched is None:
+        return open_upgrade_of(plugin)
+    return prefetched[0] if prefetched else None
+
+
 def datetime_text(value) -> str | None:
     """A datetime as the API writes it, or None."""
     return serializers.DateTimeField().to_representation(value) if value is not None else None
-
-
-class UserRefSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    email = serializers.EmailField()
 
 
 class PackageUploadSerializer(serializers.Serializer):
     file = serializers.FileField(allow_empty_file=False)
 
 
-class PackageApprovalSerializer(serializers.Serializer):
-    untrusted_acknowledged = serializers.BooleanField(required=False, default=False)
-
-
 class GrantCreateSerializer(serializers.Serializer):
     organization_id = serializers.IntegerField(min_value=1)
 
 
+class UpgradeHookSerializer(serializers.Serializer):
+    state = serializers.CharField()
+    attempt = serializers.IntegerField()
+    from_version = serializers.CharField(allow_null=True)
+    next_attempt_at = serializers.DateTimeField(allow_null=True)
+    started_at = serializers.DateTimeField(allow_null=True)
+    finished_at = serializers.DateTimeField(allow_null=True)
+    error = serializers.CharField(allow_null=True)
+
+
 class PackageReviewSerializer(serializers.ModelSerializer):
-    """Everything a SuperAdmin reviews before approving a package."""
+    """Everything a SuperAdmin reviews before approving a package; for a newer package of an
+    installed plugin, also the upgrade review (`plugins.packages.upgrade_review`)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._reviews: dict[int, PackageUpgradeReview | None] = {}
 
     plugin_identifier = serializers.CharField(source="plugin.identifier")
     name = serializers.SerializerMethodField()
@@ -87,6 +120,7 @@ class PackageReviewSerializer(serializers.ModelSerializer):
     hooks = serializers.SerializerMethodField()
     warnings = serializers.SerializerMethodField()
     access_growth = serializers.SerializerMethodField()
+    upgrade = serializers.SerializerMethodField()
 
     class Meta:
         model = PluginPackage
@@ -120,6 +154,7 @@ class PackageReviewSerializer(serializers.ModelSerializer):
             "hooks",
             "warnings",
             "access_growth",
+            "upgrade",
         ]
         read_only_fields = fields
 
@@ -144,10 +179,15 @@ class PackageReviewSerializer(serializers.ModelSerializer):
         return {"key_name": key_name, "key_id": package.signer_key_id}
 
     def get_is_upgrade(self, package: PluginPackage) -> bool:
-        return False
+        """Whether approving the package upgrades an installed plugin."""
+        return (
+            package.review_state == ReviewState.PENDING
+            and package.plugin.current_package_id is not None
+        )
 
-    def get_current_version(self, package: PluginPackage) -> None:
-        return None
+    def get_current_version(self, package: PluginPackage) -> str | None:
+        current = package.plugin.current_package
+        return current.version if current is not None else None
 
     def get_contents(self, package: PluginPackage) -> dict:
         manifest = package.parsed_manifest
@@ -206,8 +246,23 @@ class PackageReviewSerializer(serializers.ModelSerializer):
     def get_warnings(self, package: PluginPackage) -> list[dict]:
         return review_warnings(package.parsed_manifest, package.trust)
 
-    def get_access_growth(self, package: PluginPackage) -> None:
-        return None
+    @extend_schema_field(AccessGrowthSerializer(allow_null=True))
+    def get_access_growth(self, package: PluginPackage) -> dict | None:
+        """What the new version may do that its baseline may not; null for a first install and
+        for a decided package."""
+        review = self._upgrade_review(package)
+        return AccessGrowthSerializer(review.growth).data if review is not None else None
+
+    @extend_schema_field(UpgradeReviewSerializer(allow_null=True))
+    def get_upgrade(self, package: PluginPackage) -> dict | None:
+        review = self._upgrade_review(package)
+        return UpgradeReviewSerializer(review.review).data if review is not None else None
+
+    def _upgrade_review(self, package: PluginPackage) -> PackageUpgradeReview | None:
+        # Both fields read one review, computed once per package.
+        if package.pk not in self._reviews:
+            self._reviews[package.pk] = review_upgrade(package)
+        return self._reviews[package.pk]
 
 
 class PluginSummarySerializer(serializers.ModelSerializer):
@@ -222,10 +277,12 @@ class PluginSummarySerializer(serializers.ModelSerializer):
     state = serializers.ChoiceField(choices=PluginState.choices)
     needs_attention = serializers.BooleanField(
         help_text=(
-            "A data removal failed for good, the plugin node failed to remove the plugin, or "
-            "some of a grant's data could not be deleted yet."
+            "A data removal failed for good, the plugin node failed to remove the plugin, "
+            "some of a grant's data could not be deleted yet, the open upgrade failed, or an "
+            "organization's upgrade failed."
         )
     )
+    upgrade = serializers.SerializerMethodField()
 
     class Meta:
         model = Plugin
@@ -242,9 +299,18 @@ class PluginSummarySerializer(serializers.ModelSerializer):
             "pending_package",
             "purge_after",
             "needs_attention",
+            "upgrade",
             "created_at",
         ]
         read_only_fields = fields
+
+    @extend_schema_field(UpgradeSummarySerializer(allow_null=True))
+    def get_upgrade(self, plugin: Plugin) -> dict | None:
+        """The open upgrade, if any."""
+        upgrade = open_upgrade_from_summary(plugin)
+        if upgrade is None:
+            return None
+        return {"to_version": upgrade.to_version, "stage": upgrade.stage, "failed": upgrade.failed}
 
     def get_trust(self, plugin: Plugin) -> str | None:
         package = plugin.current_package or self._pending(plugin)
@@ -270,10 +336,24 @@ class PluginSummarySerializer(serializers.ModelSerializer):
         return plugin.pending_packages[0] if plugin.pending_packages else None
 
 
+class UpgradeHookCountsSerializer(serializers.Serializer):
+    upgrading = serializers.IntegerField()
+    upgrade_failed = serializers.IntegerField()
+
+
 class PluginDetailSerializer(PluginSummarySerializer):
+    """A plugin's detail page; expects a `Plugin.objects.with_summary()` row."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._databases: dict[int, PluginDatabase | None] = {}
+
     current_package = serializers.SerializerMethodField()
     allowed_actions = serializers.SerializerMethodField()
     purge_progress = serializers.SerializerMethodField()
+    open_upgrade = serializers.SerializerMethodField()
+    last_upgrade = serializers.SerializerMethodField()
+    upgrade_hooks = serializers.SerializerMethodField()
 
     class Meta(PluginSummarySerializer.Meta):
         fields = [
@@ -283,8 +363,54 @@ class PluginDetailSerializer(PluginSummarySerializer):
             "uninstall_requested_at",
             "purge_started_at",
             "purge_progress",
+            "open_upgrade",
+            "last_upgrade",
+            "upgrade_hooks",
         ]
         read_only_fields = fields
+
+    @extend_schema_field(PluginUpgradeSerializer(allow_null=True))
+    def get_open_upgrade(self, plugin: Plugin) -> dict | None:
+        upgrade = open_upgrade_from_summary(plugin)
+        return self._upgrade(plugin, upgrade) if upgrade is not None else None
+
+    @extend_schema_field(PluginUpgradeSerializer(allow_null=True))
+    def get_last_upgrade(self, plugin: Plugin) -> dict | None:
+        """The latest upgrade that is over."""
+        upgrade = (
+            PluginUpgrade.objects.filter(plugin=plugin)
+            .exclude(stage__in=OPEN_UPGRADE_STAGES)
+            .select_related("started_by", "from_package", "to_package")
+            .defer("from_package__icon_bytes", "to_package__icon_bytes")
+            .order_by("-started_at", "-pk")
+            .first()
+        )
+        return self._upgrade(plugin, upgrade) if upgrade is not None else None
+
+    @extend_schema_field(UpgradeHookCountsSerializer)
+    def get_upgrade_hooks(self, plugin: Plugin) -> dict[str, int]:
+        """How many organizations are still being upgraded, and how many failed."""
+        counts = dict(
+            PluginGrant.objects.filter(
+                plugin=plugin, state__in=(GrantState.UPGRADING, GrantState.UPGRADE_FAILED)
+            )
+            .values("state")
+            .annotate(count=Count("pk"))
+            .values_list("state", "count")
+        )
+        return {
+            "upgrading": counts.get(GrantState.UPGRADING, 0),
+            "upgrade_failed": counts.get(GrantState.UPGRADE_FAILED, 0),
+        }
+
+    def _upgrade(self, plugin: Plugin, upgrade: PluginUpgrade) -> dict:
+        if plugin.pk not in self._databases:
+            self._databases[plugin.pk] = (
+                PluginDatabase.objects.filter(plugin=plugin).only("pk", "ledger").first()
+            )
+        return PluginUpgradeSerializer(
+            upgrade, context={"plugin_database": self._databases[plugin.pk]}
+        ).data
 
     @extend_schema_field(
         serializers.ListField(
@@ -295,7 +421,8 @@ class PluginDetailSerializer(PluginSummarySerializer):
     )
     def get_allowed_actions(self, plugin: Plugin) -> list[str]:
         """The lifecycle actions the plugin allows now: the only input of the frontend's buttons."""
-        return [action.value for action in allowed_plugin_actions(plugin)]
+        facts = PluginActionFacts.of(plugin, open_upgrade_from_summary(plugin))
+        return [action.value for action in allowed_plugin_actions(plugin, facts)]
 
     @extend_schema_field(PluginPurgeProgressSerializer(allow_null=True))
     def get_purge_progress(self, plugin: Plugin) -> dict | None:
@@ -322,6 +449,7 @@ class PluginGrantSerializer(serializers.ModelSerializer):
     granted_at = serializers.DateTimeField(source="created_at")
     service_account = serializers.SerializerMethodField()
     install_hook = serializers.SerializerMethodField()
+    upgrade_hook = serializers.SerializerMethodField()
     owned_resource_count = serializers.IntegerField()
     allowed_actions = serializers.SerializerMethodField()
     suspension_cause = serializers.ChoiceField(choices=SuspensionCause.choices, allow_null=True)
@@ -344,11 +472,29 @@ class PluginGrantSerializer(serializers.ModelSerializer):
             "last_hook_error",
             "service_account",
             "install_hook",
+            "installed_version",
+            "upgrade_hook",
             "org_removed_hook",
             "owned_resource_count",
             "allowed_actions",
         ]
         read_only_fields = fields
+
+    @extend_schema_field(UpgradeHookSerializer(allow_null=True))
+    def get_upgrade_hook(self, grant: PluginGrant) -> dict | None:
+        """The grant's latest upgrade job."""
+        if not grant.upgrade_jobs:
+            return None
+        job = grant.upgrade_jobs[0]
+        return {
+            "state": job.state,
+            "attempt": job.attempt,
+            "from_version": job.previous_version,
+            "next_attempt_at": datetime_text(job.next_attempt_at),
+            "started_at": datetime_text(job.claimed_at),
+            "finished_at": datetime_text(job.finished_at),
+            "error": job.error,
+        }
 
     def get_organization(self, grant: PluginGrant) -> dict:
         return {"id": grant.org_id, "name": grant.org.name}

@@ -14,7 +14,8 @@ not expect. A request may carry file descriptors (`SCM_RIGHTS`):
 The content of a runtime file travels in a memfd rather than in the packet: a packet must
 fit the socket's buffer, and a runtime file with long text settings may not.
 
-A response is `{"ok": true, "result": {...}}` or `{"ok": false, "error": "<message>"}`.
+A response is `{"ok": true, "result": {...}}` or `{"ok": false, "error": "<message>",
+"temporary": <bool>}`, where `temporary` says the same request may succeed later.
 """
 
 import json
@@ -58,6 +59,22 @@ class InstallCode(_Message):
     version: VersionSegment
 
     @field_validator("version")
+    @classmethod
+    def _no_dot_segments(cls, version: str) -> str:
+        if ".." in version:
+            raise ValueError("must not contain '..'")
+        return version
+
+
+class PruneCode(_Message):
+    """Delete every version of the plugin's code but `keep_version` (`plugins/<id>/<version>/`)."""
+
+    operation: Literal["prune_code"] = "prune_code"
+    plugin: PluginIdentifier
+    uid: Uid
+    keep_version: VersionSegment
+
+    @field_validator("keep_version")
     @classmethod
     def _no_dot_segments(cls, version: str) -> str:
         if ".." in version:
@@ -167,6 +184,7 @@ class RemovePlugin(_Message):
 LauncherRequest = Annotated[
     PreparePlugin
     | InstallCode
+    | PruneCode
     | WriteRuntimeFile
     | Spawn
     | TerminateUid
@@ -183,6 +201,11 @@ DESCRIPTORS_EXPECTED = {"spawn": 2, "write_runtime_file": 1}
 
 class SpawnResult(_Message):
     pid: int
+
+
+class PruneResult(_Message):
+    removed: list[str]
+    """The version directories deleted (and leftovers of an install, which start with `.`)."""
 
 
 class KillResult(_Message):
@@ -209,5 +232,6 @@ def encode_success(result: _Message | None = None) -> bytes:
     return json.dumps(payload).encode()
 
 
-def encode_failure(error: str) -> bytes:
-    return json.dumps({"ok": False, "error": error[:2000]}).encode()
+def encode_failure(error: str, *, temporary: bool = False) -> bytes:
+    """`temporary`: the same request may succeed later, so the agent retries it."""
+    return json.dumps({"ok": False, "error": error[:2000], "temporary": temporary}).encode()

@@ -68,4 +68,39 @@ describe('PluginsAdminPageComponent', () => {
         expect(stateBadges('Beacon')).toEqual(['Uninstalled']);
         expect(stateBadges('Comet')).toEqual(['Deleting', 'Needs attention']);
     });
+
+    it('names each moment of an upgrade, and marks a failed one', () => {
+        render([
+            buildPluginSummary({
+                identifier: 'atlas',
+                name: 'Atlas',
+                upgrade: { to_version: '0.7.0', stage: 'preparing', failed: false },
+            }),
+            buildPluginSummary({
+                identifier: 'beacon',
+                name: 'Beacon',
+                state: 'maintenance',
+                upgrade: { to_version: '0.7.0', stage: 'migrating', failed: false },
+            }),
+            buildPluginSummary({
+                identifier: 'comet',
+                name: 'Comet',
+                state: 'maintenance',
+                needs_attention: true,
+                upgrade: { to_version: '0.7.1', stage: 'migrating', failed: true },
+            }),
+            buildPluginSummary({
+                identifier: 'delta',
+                name: 'Delta',
+                upgrade: { to_version: '2.0.0', stage: 'migrating', failed: false },
+            }),
+            buildPluginSummary({ identifier: 'echo', name: 'Echo', trust: null, state: 'uploaded' }),
+        ]);
+
+        expect(stateBadges('Atlas')).toEqual(['Running', 'Preparing 0.7.0']);
+        expect(stateBadges('Beacon')).toEqual(['Maintenance']);
+        expect(stateBadges('Comet')).toEqual(['Maintenance', 'Upgrade failed', 'Needs attention']);
+        expect(stateBadges('Delta')).toEqual(['Running', 'Upgrading to 2.0.0']);
+        expect(stateBadges('Echo')).toEqual(['Awaiting review']);
+    });
 });

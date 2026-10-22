@@ -30,6 +30,7 @@ from es_plugins.launcher.disk_measurement import start_measurement
 from es_plugins.launcher.ipc_cleanup import IpcCleanupError
 from es_plugins.launcher.kill_by_uid import kill_uid, signal_uid
 from es_plugins.launcher.plugin_removal import start_removal
+from es_plugins.launcher.plugin_seccomp import plugin_filter
 from es_plugins.launcher.process_spawn import LISTEN_FD, SpawnError, SpawnSpec, spawn_process
 from es_plugins.layout import NodeLayout
 from es_plugins.process_table import ProcessTable
@@ -44,7 +45,9 @@ from es_plugins.uid_range import UidRange
 _RLIMIT_MSGQUEUE = getattr(resource, "RLIMIT_MSGQUEUE", 12)
 PLUGIN_RESOURCE_LIMITS = (
     (resource.RLIMIT_NPROC, 64),
-    (resource.RLIMIT_NOFILE, 1024),
+    # Bounds the sockets a plugin can hold, each of which may take an ephemeral port of the
+    # shared network namespace without a packet (a UDP socket connected without sending).
+    (resource.RLIMIT_NOFILE, 256),
     (resource.RLIMIT_CORE, 0),
     # No POSIX message queues: they outlive the process like System V IPC objects, and no
     # listing shows them, so a removed plugin's could not be found to delete.
@@ -57,7 +60,14 @@ _LOOP_TIMEOUT_SECONDS = 0.5
 
 
 class LauncherRefusalError(Exception):
-    """The request is well-formed but not allowed; the message goes back to the agent."""
+    """The request is well-formed but not allowed; the message goes back to the agent.
+
+    `temporary` when the same request may succeed later (a removal still under way).
+    """
+
+    def __init__(self, message: str, *, temporary: bool = False):
+        super().__init__(message)
+        self.temporary = temporary
 
 
 class LauncherOperations:
@@ -75,6 +85,8 @@ class LauncherOperations:
         self._directory_setup = directory_setup
         self._process_table = process_table
         self._exit_statuses: OrderedDict[int, int] = OrderedDict()
+        # plugin -> pid of its removal helper, while one may still run.
+        self._removal_helpers: dict[str, int] = {}
 
     def handle(self, request: protocol.LauncherRequest, descriptors: list[int]):
         """Return `(result, descriptors to send back)`.
@@ -105,6 +117,9 @@ class LauncherOperations:
             case protocol.InstallCode(plugin=plugin, version=version):
                 self._directory_setup.install_code(plugin, version)
                 return None, []
+            case protocol.PruneCode(plugin=plugin, keep_version=keep_version):
+                removed = self._directory_setup.prune_code(plugin, keep_version)
+                return protocol.PruneResult(removed=removed), []
             case protocol.WriteRuntimeFile(plugin=plugin, uid=uid):
                 content = read_content_descriptor(descriptors[0])
                 write_runtime_file(self._layout.plugin_run_directory(plugin), uid, uid, content)
@@ -142,13 +157,18 @@ class LauncherOperations:
     def _start_removal(self, plugin: str, uid: int) -> int:
         """Kill the UID's processes, then start the helper that deletes the rest (see
         `plugin_removal`); return the pipe its result arrives on. Nothing is deleted while a
-        process lives."""
+        process lives, and a second helper never runs beside the first."""
+        helper = self._removal_helpers.get(plugin)
+        if helper is not None and self.exit_code_of(helper) is None:
+            raise LauncherRefusalError(f"{plugin} is already being removed", temporary=True)
         outcome = kill_uid(uid, self._process_table, reap=self.reap)
         if outcome.remaining:
             raise LauncherRefusalError(
                 f"{len(outcome.remaining)} process(es) of UID {uid} are still alive after SIGKILL"
             )
-        return start_removal(self._directory_setup, plugin, uid)
+        helper, result_pipe = start_removal(self._directory_setup, plugin, uid)
+        self._removal_helpers[plugin] = helper
+        return result_pipe
 
     def _spawn(self, request: protocol.Spawn, output_descriptor: int, listen_descriptor: int):
         if not stat.S_ISFIFO(os.fstat(output_descriptor).st_mode):
@@ -169,6 +189,7 @@ class LauncherOperations:
                 nice=request.nice,
                 resource_limits=PLUGIN_RESOURCE_LIMITS,
                 oom_score_adj=PLUGIN_OOM_SCORE_ADJ,
+                seccomp_filter=plugin_filter(),
                 output_descriptor=output_descriptor,
                 listen_descriptor=listen_descriptor,
             )
@@ -300,7 +321,7 @@ class LauncherServer:
         except ValidationError as error:
             reply = protocol.encode_failure(f"invalid request: {error.errors()[0]['msg']}")
         except LauncherRefusalError as error:
-            reply = protocol.encode_failure(str(error))
+            reply = protocol.encode_failure(str(error), temporary=error.temporary)
         except Exception:
             # PID 1 must outlive one bad request: its exit would stop every plugin on the node.
             logger.exception("The launcher failed a request")

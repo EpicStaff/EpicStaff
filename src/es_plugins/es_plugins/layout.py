@@ -14,6 +14,9 @@
             <version>/                                     built by the agent
     logs/                               0700 10000:10000
         <id>/current.log
+    backups/                            0700 10000:10000   no plugin UID may enter it
+        <id>/                           0700 10000:10000
+            <name>.dump, <name>.json    0600 10000:10000   a backup of the plugin's database
 /run/es_plugins/                        0711 root:root
     agent.heartbeat                     0644 10000:10000   the container's health check
     <id>/                               0711 root:root
@@ -103,6 +106,10 @@ class NodeLayout:
         return self.data_root / "logs"
 
     @property
+    def backups_root(self) -> Path:
+        return self.data_root / "backups"
+
+    @property
     def heartbeat_file(self) -> Path:
         return self.run_root / HEARTBEAT_FILE_NAME
 
@@ -134,6 +141,9 @@ class NodeLayout:
 
     def plugin_logs(self, identifier: str) -> Path:
         return self.logs_root / check_plugin_identifier(identifier)
+
+    def plugin_backups(self, identifier: str) -> Path:
+        return self.backups_root / check_plugin_identifier(identifier)
 
     def plugin_run_directory(self, identifier: str) -> Path:
         return self.run_root / check_plugin_identifier(identifier)

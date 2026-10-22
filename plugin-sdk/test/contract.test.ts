@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 import {
+    AVAILABILITY_STATES,
     canonicalNavPath,
     FRAME_ERROR_CODES,
     FRAME_LIMITS,
@@ -27,9 +28,15 @@ interface FrameProtocolContract {
     protocol: number;
     message_types: string[];
     error_codes: string[];
-    limits: { max_nav_path_length: number; max_nav_changes_per_minute: number; init_timeout_ms: number };
+    limits: {
+        max_nav_path_length: number;
+        max_nav_changes_per_minute: number;
+        init_timeout_ms: number;
+        max_availability_changes_per_minute: number;
+    };
     nav_path_pattern: string;
     theme_modes: string[];
+    availability_states: string[];
     theme_tokens: string[];
     canonical_vectors: { path: string; canonical: string | null }[];
 }
@@ -54,6 +61,7 @@ describe('the SDK constants equal contracts/frame-protocol.json', () => {
                 max_nav_path_length: FRAME_LIMITS.maxNavPathLength,
                 max_nav_changes_per_minute: FRAME_LIMITS.maxNavChangesPerMinute,
                 init_timeout_ms: FRAME_LIMITS.initTimeoutMs,
+                max_availability_changes_per_minute: FRAME_LIMITS.maxAvailabilityChangesPerMinute,
             },
             contract.limits
         );
@@ -74,6 +82,10 @@ describe('the SDK constants equal contracts/frame-protocol.json', () => {
     test('theme modes and tokens, in order', () => {
         assert.deepEqual([...THEME_MODES], contract.theme_modes);
         assert.deepEqual([...THEME_TOKENS], contract.theme_tokens);
+    });
+
+    test('availability states', () => {
+        assert.deepEqual([...AVAILABILITY_STATES], contract.availability_states);
     });
 });
 

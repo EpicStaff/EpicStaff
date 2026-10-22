@@ -6,10 +6,13 @@ import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
 import {
     PackageReview,
+    PluginApproveRequest,
+    PluginBackupList,
     PluginDetail,
     PluginGrant,
     PluginOrgRemovedJob,
     PluginOrgRemovedJobQuery,
+    PluginRestore,
     PluginSummary,
     PluginUploadEvent,
 } from '../models/plugin-admin.model';
@@ -84,9 +87,33 @@ export class PluginsAdminApiService {
         return this.http.get<PackageReview>(`${this.baseUrl}packages/${packageId}/review/`);
     }
 
-    approvePackage(packageId: number, untrustedAcknowledged: boolean): Observable<PluginDetail> {
-        return this.http.post<PluginDetail>(`${this.baseUrl}packages/${packageId}/approve/`, {
-            untrusted_acknowledged: untrustedAcknowledged,
+    /**
+     * A first install answers 200 with the plugin installing; an upgrade answers 202 with its `open_upgrade`, or 200 when
+     * it completed at once (a version that only changes the frontend).
+     */
+    approvePackage(packageId: number, request: PluginApproveRequest): Observable<PluginDetail> {
+        return this.http.post<PluginDetail>(`${this.baseUrl}packages/${packageId}/approve/`, request);
+    }
+
+    /** Answers with the plugin back on its installed version (409 `upgrade_not_cancellable` otherwise). */
+    cancelUpgrade(identifier: string): Observable<PluginDetail> {
+        return this.http.post<PluginDetail>(`${this.pluginUrl(identifier)}upgrade/cancel/`, null);
+    }
+
+    /** Runs the failed stage of the open upgrade again; answers 202 (409 `upgrade_not_retryable` otherwise). */
+    retryUpgrade(identifier: string): Observable<PluginDetail> {
+        return this.http.post<PluginDetail>(`${this.pluginUrl(identifier)}upgrade/retry/`, null);
+    }
+
+    /** The backups the plugin node holds of the plugin's database, newest first. */
+    listBackups(identifier: string): Observable<PluginBackupList> {
+        return this.http.get<PluginBackupList>(`${this.pluginUrl(identifier)}backups/`);
+    }
+
+    /** Asks the node to restore a backup of the failed upgrade under way; answers 202. The phrase is sent as typed. */
+    restoreBackup(identifier: string, backupId: number, verificationPhrase: string): Observable<PluginRestore> {
+        return this.http.post<PluginRestore>(`${this.pluginUrl(identifier)}backups/${backupId}/restore/`, {
+            verification_phrase: verificationPhrase,
         });
     }
 
@@ -104,8 +131,11 @@ export class PluginsAdminApiService {
         return this.http.post<PluginGrant>(`${this.pluginUrl(identifier)}grants/`, { organization_id: organizationId });
     }
 
-    /** Runs a failed install hook again; the grant answers back in `granting` (409 `hook_not_retryable` otherwise). */
-    retryInstallHook(identifier: string, grantId: number): Observable<PluginGrant> {
+    /**
+     * Runs a failed install or upgrade hook again; the grant answers back in `granting` or `upgrading` (409
+     * `hook_not_retryable` otherwise).
+     */
+    retryHook(identifier: string, grantId: number): Observable<PluginGrant> {
         return this.http.post<PluginGrant>(`${this.grantUrl(identifier, grantId)}retry-hook/`, null);
     }
 

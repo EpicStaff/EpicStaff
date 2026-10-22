@@ -1,10 +1,12 @@
 """Run the plugin platform's scheduled maintenance in exactly one web worker per host.
 
-The retention tick runs every 60 s (`RetentionService`), the housekeeping every hour
-(`HousekeepingService`). Several web workers on one host share the temp dir, so the one that
-wins the file lock runs both; separate hosts or containers each run their own, which is safe
-because every step skips rows another process holds. Started whatever `PLUGINS_ENABLED`
-says. Tests call the services directly; the scheduler never starts in them.
+The retention tick runs every 60 s (`RetentionService`, then `SpaStateReconciler`), the
+housekeeping at minute 7 of every hour by the wall clock (`HousekeepingService`): a web
+worker recycled more often than hourly would never reach an hourly interval. Several web
+workers on one host share the temp dir, so the one that wins the file lock runs both;
+separate hosts or containers each run their own, which is safe because every step skips rows
+another process holds. Started whatever `PLUGINS_ENABLED` says. Tests call the services
+directly; the scheduler never starts in them.
 """
 
 import tempfile
@@ -17,7 +19,7 @@ from filelock import FileLock, Timeout
 from utils.logger import logger
 
 RETENTION_INTERVAL_SECONDS = 60
-HOUSEKEEPING_INTERVAL_SECONDS = 3600
+HOUSEKEEPING_MINUTE = 7
 
 # Held for the lifetime of the owner process, so the lock is released only when it exits.
 _owner_lock: FileLock | None = None
@@ -28,10 +30,13 @@ def _lock_path() -> Path:
 
 
 def run_retention_tick() -> None:
-    """One retention tick; logs and swallows errors so the scheduler keeps running."""
+    """One retention tick, then the frontend repair; each logs and swallows its errors so the
+    other runs and the scheduler keeps running."""
     from plugins.lifecycle.retention_service import RetentionService
+    from plugins.packages.spa_state_reconciler import SpaStateReconciler
 
     _run_logged("Plugin retention tick", lambda: RetentionService().run())
+    _run_logged("Plugin frontend repair", lambda: SpaStateReconciler().run())
 
 
 def run_housekeeping() -> None:
@@ -64,20 +69,26 @@ def start_plugin_retention_if_owner() -> bool:
 
     _owner_lock = lock
     scheduler = BackgroundScheduler(daemon=True)
-    for job, job_id, seconds in (
-        (run_retention_tick, "plugin_retention", RETENTION_INTERVAL_SECONDS),
-        (run_housekeeping, "plugin_housekeeping", HOUSEKEEPING_INTERVAL_SECONDS),
-    ):
-        scheduler.add_job(
-            job,
-            trigger="interval",
-            seconds=seconds,
-            id=job_id,
-            replace_existing=True,
-            coalesce=True,
-            max_instances=1,
-            misfire_grace_time=RETENTION_INTERVAL_SECONDS,
-        )
+    common = {
+        "replace_existing": True,
+        "coalesce": True,
+        "max_instances": 1,
+        "misfire_grace_time": RETENTION_INTERVAL_SECONDS,
+    }
+    scheduler.add_job(
+        run_retention_tick,
+        trigger="interval",
+        seconds=RETENTION_INTERVAL_SECONDS,
+        id="plugin_retention",
+        **common,
+    )
+    scheduler.add_job(
+        run_housekeeping,
+        trigger="cron",
+        minute=HOUSEKEEPING_MINUTE,
+        id="plugin_housekeeping",
+        **common,
+    )
     scheduler.start()
     logger.info("Scheduled the plugin retention tick and the hourly plugin housekeeping")
     return True

@@ -62,7 +62,9 @@ These pages are for people who build plugins and for operators who run them.
 | [Service account API](reference/service-account-api.md) | The service account and its keys, what it may do, on behalf of a person, `/api/plugin-runtime/`, activity |
 | [Run code when an organization gets your plugin](how-to/install-hook.md) | The install hook: registering a handler, idempotency, failures and retries |
 | [Delete your data when an organization leaves](how-to/org-removed-hook.md) | The organization removed hook: when it runs, deleting only your own data, idempotency, retries and skip |
-| [The plugin lifecycle](explanation/lifecycle.md) | A plugin's states in an organization, suspending and resuming, the grace period, deleting a grant's data, uninstalling, reinstalling and deleting a plugin, deleting an organization |
+| [Bring organizations to a new version](how-to/upgrade-hook.md) | The upgrade hook: when it runs, `previous_version`, bringing an organization from any earlier version, retries |
+| [Compatibility and versioning](reference/compatibility-and-versioning.md) | Version order, what a new version may and may not change, what needs the SuperAdmin's approval, how an upgrade goes |
+| [The plugin lifecycle](explanation/lifecycle.md) | A plugin's states in an organization, suspending and resuming, the grace period, deleting a grant's data, uninstalling, reinstalling and deleting a plugin, upgrades and their backups, deleting an organization |
 | [Accepted risks](explanation/accepted-risks.md) | What installing a plugin means trusting, what isolation there is and is not, and what data deletion can leave behind |
 | [Hook API](reference/hook-api.md) | How EpicStaff calls a lifecycle hook: the signed assertion, the body, the answer |
 | [Limits](reference/limits.md) | Memory, CPU, the request rate and the other limits, the platform maximums, what is enforced |
@@ -88,10 +90,10 @@ EpicStaff supports:
 | Frame protocol (`platform.frame_protocol`) | 1 | Supported |
 | Gateway context (`platform.gateway_context`) | 1 | Supported: `public` mode on public paths, `user` mode for logged-in people |
 | Login protocol (`plugin-sdk/contracts/login-protocol.json`, `protocol`) | 1 | Supported, for plugins with a backend |
-| Hook API (`platform.hook_api`) | 1 | Supported for `install` and `org_removed`; `upgrade` is reserved |
+| Hook API (`platform.hook_api`) | 1 | Supported for `install`, `upgrade` and `org_removed` |
 | Service account API (`/api/plugin-runtime/`) | 1 | Supported |
 | Runtime file (`format`) | 1 | Supported |
 | Backend Python (`backend.python`) | 3.12, 3.13 | Supported |
 | Package signature | minisign, pre-hashed Ed25519 | Supported |
 
-A plugin that has been approved cannot be replaced by a new version yet; upgrades come later.
+| Upgrades | — | Supported: a SuperAdmin approves each newer version, which backs the database up before its migrations. See [compatibility and versioning](reference/compatibility-and-versioning.md) |

@@ -29,6 +29,9 @@ class HookJobState(models.TextChoices):
 
 
 OPEN_HOOK_JOB_STATES = (HookJobState.PENDING, HookJobState.RUNNING)
+# The kinds whose job is a step of its grant: without the grant it can never run, and an
+# organization's deletion ends it.
+GRANT_STEP_HOOK_KINDS = (HookJobKind.INSTALL, HookJobKind.UPGRADE)
 
 
 class PluginHookJob(models.Model):
@@ -68,6 +71,11 @@ class PluginHookJob(models.Model):
     deadline_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     error = models.CharField(max_length=MAX_HOOK_ERROR_MESSAGE_LENGTH, null=True, blank=True)
+    # An upgrade job's: the organization's installed version when the job was claimed.
+    previous_version = models.CharField(max_length=64, null=True, blank=True)
+    # Failed attempts since the job was created or last retried by a SuperAdmin, which decide
+    # when an upgrade or organization removed job is tried again by itself.
+    failures_in_series = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -94,6 +102,13 @@ class PluginHookJob(models.Model):
             # asks which organization removed jobs are due.
             models.Index(
                 fields=["kind", "state", "next_attempt_at"], name="plugins_hookjob_kind_state_due"
+            ),
+            # A plugin's organization removed jobs for one organization: the latest one, and
+            # whether one is open, are looked up by both.
+            models.Index(
+                fields=["plugin", "organization_id"],
+                condition=Q(kind=HookJobKind.ORG_REMOVED),
+                name="plugins_hookjob_org_removed",
             ),
         ]
 

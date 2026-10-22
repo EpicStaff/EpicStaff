@@ -10,6 +10,7 @@ import {
     type SavedPlace,
     searchPlaces,
 } from './api';
+import { conditionsText } from './conditions';
 import { button, element } from './dom';
 import { forecastAddress } from './forecast';
 import type { Permissions } from './org-settings';
@@ -33,6 +34,8 @@ type Search =
 interface SavedRow {
     label: string;
     item: HTMLLIElement;
+    /** "12.4 °C · 5 min ago", brought up to date on every render. */
+    conditions: HTMLSpanElement;
     removeButton: HTMLButtonElement;
 }
 
@@ -44,7 +47,8 @@ interface ResultRow {
 }
 
 /**
- * The Places page: the organization's saved places, each with a link to its forecast, and a search to add more.
+ * The Places page: the organization's saved places, in the backend's order, each with its current temperature and a
+ * link to its forecast, and a search to add more.
  * Everyone who may open Weather sees the list; adding and removing need the Edit permission, which the backend checks
  * as well. After every change the page asks for the list again, so it shows the backend's list in the backend's order.
  * A saved place keeps its row while it is listed, and busy buttons are marked rather than disabled, so a re-render never
@@ -121,6 +125,11 @@ export class PlacesPage {
             this.editNote,
             this.searchSection
         );
+    }
+
+    /** Asks for the list again, as after Weather was updated. */
+    refresh(): void {
+        this.checkAgain();
     }
 
     /** Brings the page up to date for what the person may do; asks for the list once. */
@@ -247,11 +256,15 @@ export class PlacesPage {
             removeButton.classList.add('button--secondary');
             const actions = element('div', 'actions');
             actions.append(forecast, removeButton);
+            const conditions = element('span', 'muted');
+            const text = element('div', 'place__text');
+            text.append(element('span', null, label), conditions);
             const item = element('li', 'place');
-            item.append(element('span', null, label), actions);
-            row = { label, item, removeButton };
+            item.append(text, actions);
+            row = { label, item, conditions, removeButton };
             this.savedRows.set(place.id, row);
         }
+        setText(row.conditions, conditionsText(place.conditions, Date.now()));
         const removing = this.removing.has(place.id);
         row.removeButton.hidden = !this.mayEdit;
         setText(row.removeButton, removing ? 'Removing…' : 'Remove');

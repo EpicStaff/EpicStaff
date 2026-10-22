@@ -19,22 +19,19 @@ import { PluginSettingScalar, PluginSettingsResponse, PluginSettingState } from 
 import { PluginErrorItem, PluginErrorView } from '../../models/plugin-error.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
+import { parsePluginInteger, PluginSettingControlValue } from '../../utils/plugin-setting-value.util';
 
 /** What happens to a stored secret on save: nothing, a new value, or removal. */
 type SecretEdit = 'keep' | 'replace' | 'clear';
 
-/** A setting control's value: `boolean` for a toggle, `null` for an enum left unset, else text (integers too, so a
- *  negative number can be typed). */
-type SettingControlValue = string | boolean | null;
+/** A setting control's value; integers are text, so a negative number can be typed. */
+type SettingControlValue = PluginSettingControlValue;
 
 /** Shown in front of a stored secret's last characters. */
 export const SECRET_MASK = '••••';
 
 /** `values.<key>` in an `errors[]` item's `loc`. */
 const SETTING_LOC_PREFIX = 'values.';
-
-/** A whole number, optionally negative. */
-const INTEGER_PATTERN = /^-?\d+$/;
 
 /**
  * A backend plugin's settings, one control per type: enum → select, boolean → toggle, text → textarea, the rest a text
@@ -86,7 +83,8 @@ export class PluginSettingsFormComponent {
         for (const setting of this.response()?.settings ?? []) {
             if (setting.type !== 'integer') continue;
             const text = this.controlValue(setting.key);
-            if (typeof text === 'string' && text.trim() !== '' && parseInteger(text) === null) invalid.add(setting.key);
+            if (typeof text === 'string' && text.trim() !== '' && parsePluginInteger(text) === null)
+                invalid.add(setting.key);
         }
         return invalid;
     });
@@ -332,15 +330,8 @@ function initialValue(setting: PluginSettingState): SettingControlValue {
 function toStoredValue(setting: PluginSettingState, current: SettingControlValue): PluginSettingScalar | null {
     if (typeof current === 'boolean') return current;
     if (current === null || current === '') return null;
-    if (setting.type === 'integer') return parseInteger(current);
+    if (setting.type === 'integer') return parsePluginInteger(current);
     return current;
-}
-
-function parseInteger(text: string): number | null {
-    const trimmed = text.trim();
-    if (!INTEGER_PATTERN.test(trimmed)) return null;
-    const value = Number(trimmed);
-    return Number.isSafeInteger(value) ? value : null;
 }
 
 function fieldErrorsOf(items: PluginErrorItem[]): Record<string, string> {

@@ -3,9 +3,9 @@
 A SuperAdmin grants a plugin to an organization, and can suspend it there and resume it. When a
 suspension lasts longer than the grace period, or when the SuperAdmin asks for it, EpicStaff
 deletes the plugin's data in that organization. A SuperAdmin can also uninstall a plugin from the
-whole deployment, reinstall it within the grace period, or delete it for good. This page explains
-the states a plugin goes through, what each step stops, keeps and deletes, and what plugin authors
-should do about it.
+whole deployment, reinstall it within the grace period, upgrade it to a newer version, or delete
+it for good. This page explains the states a plugin goes through, what each step stops, keeps and
+deletes, and what plugin authors should do about it.
 
 ## States
 
@@ -14,6 +14,8 @@ should do about it.
 | `granting` | Waiting for the plugin to start, then Installing… | The plugin was granted and its install hook has not finished. Its service account holds a key, so the hook can call EpicStaff, but people cannot open the plugin yet |
 | `active` | Active | People with the plugin's View open it from the left bar, and its backend acts in the organization |
 | `install_failed` | Install failed | The install hook failed. The SuperAdmin can retry it ("Retry install") |
+| `upgrading` | Upgrading… | The plugin is being upgraded, or is back on a new version and its upgrade hook has not finished in this organization. Its service account holds a key; people see that the plugin is being updated, and runs that use what it owns wait |
+| `upgrade_failed` | Upgrade failed | The upgrade hook failed in this organization after its automatic retries. People cannot use the plugin there until the SuperAdmin retries it ("Retry") or a newer version is approved |
 | `suspended` | Suspended, or Suspended (plugin uninstalled) | A SuperAdmin suspended the plugin in this organization, or uninstalled it from the deployment. Nothing it owns there runs, and its data is kept until the date shown |
 | `purging` | Deleting data | The plugin's data in the organization is being deleted; the row goes once that is done |
 
@@ -141,13 +143,18 @@ suspended. The plugin can then be granted to the organization again, as a new gr
 ## Delete data now
 
 "Delete data…" on a grant deletes the plugin's data in that organization at once, in any state
-but "Deleting data". It first shows what goes: what the plugin owns there, the organization's
+but "Deleting data", and is refused while the plugin itself is being deleted, which deletes
+every organization's data anyway. It first shows what goes: what the plugin owns there, the organization's
 flows that use it (they keep working without those parts), the plugin's own flows, the running
 sessions that will be stopped, the default-model settings that will be cleared, and what happens
 to the plugin's own data. It is irreversible, so it asks for a confirmation phrase,
 `purge-<plugin id>-<organization name>`, typed exactly. A grant that is not suspended yet is
 suspended first, without a separate "suspended" event, and deleting then goes on as when a grace
 period ends.
+
+What the plugin created stays the plugin's, even after people in the organization edited it,
+and a file a person overwrote under the plugin's name is still the plugin's file: deleting the
+plugin's data deletes them all. Copy anything worth keeping first.
 
 ## Uninstall and reinstall
 
@@ -196,12 +203,72 @@ it afterwards.
 
 An organization removed hook that fails is retried after 1, 5 and 30 minutes, then every hour, for
 7 days from its first attempt. After that it stays failed, and the plugin shows "Needs
-attention". A SuperAdmin can retry a removal that waits or failed, and skip one that has not run
-to the end: the plugin's data for that organization then stays where the plugin keeps it until
+attention", until a SuperAdmin retries or skips it. A SuperAdmin can retry a removal that waits
+or failed, and skip one that has not run to the end: the plugin's data for that organization then stays where the plugin keeps it until
 the plugin is deleted. A grant whose removal failed is not deleted until the removal is retried
 or skipped; deleting the plugin skips failed removals by itself once no grant is left, because
 its database goes next. The removals of deleted organizations are listed under "Deleted
 organizations".
+
+## Upgrades
+
+A SuperAdmin upgrades a plugin by uploading a newer version and approving it. Uploading only puts
+the version up for review: the plugin keeps running the version it runs. The review shows the
+access the new version asks for that the running one does not, under "New access", which needs
+its own approval, and everything else it changes ([Compatibility and
+versioning](../reference/compatibility-and-versioning.md)). A plugin without a backend is
+upgraded at once when the version is approved.
+
+**Preparing.** A plugin with a backend keeps running while its node downloads, checks and builds
+the new version. Most failures happen here (a wheel for another platform, a full disk, a broken
+package) and cost no downtime.
+
+**Maintenance.** Once the new version is ready, the plugin goes offline in every organization.
+Its page shows that it is being updated, its API answers 503 with `plugin_maintenance` on every
+path, public ones included, runs that use what it owns are refused ("is being upgraded"), and
+its hooks wait. Sessions that are already running finish. The node stops the process.
+
+**Backup.** When the plugin had a database before the upgrade, the node backs it up before any
+migration of the new version runs; EpicStaff lets the migrations start only once that backup is
+recorded. The Runtime tab lists the backups.
+
+**Migrations and the new process.** The node runs the new version's migrations and starts it.
+Once the node reports it running and healthy, the upgrade is done: the new frontend is served and
+the plugin is back. An upgrade that gives a plugin its first backend needs no maintenance: there
+is nothing to stop or back up, and the plugin stays usable while the backend starts.
+
+**Each organization.** With an upgrade hook, each organization is brought to the new version by
+that hook: until it succeeds there, the organization shows "Upgrading…" and stays offline while
+the others are back. A failed hook is retried after 1 minute, then after 5; after that the
+organization shows "Upgrade failed" until a SuperAdmin retries it on its row, or a newer version
+is approved, which gives it a new try. Without an upgrade hook every organization is back at
+once.
+
+**When an upgrade fails**, EpicStaff never rolls back by itself. The upgrade stays where it
+failed, and the SuperAdmin chooses:
+
+- **Retry**, for a passing error: the node runs the failed stage again.
+- **Upload a newer version**: it takes the failed version's place in the same upgrade, keeping
+  its backup.
+- **Cancel**: while the database holds no migration of the new version, that is before the
+  migrations start, after one failed before any file of the new version was applied, or after a
+  restore. The plugin starts again on the version it ran. An upgrade that gives a plugin its
+  first backend cannot be cancelled.
+- **Restore backup…**, after a failed migration or start: the database is replaced by a backup
+  this upgrade took. The node first backs up the database as it is, so the restore can be
+  undone. Changes made since the backup are lost. After a restore, Cancel is possible again.
+
+**Suspended organizations.** An organization suspended during an upgrade keeps the version it
+had. Resumed later, it is upgraded like the others, with the upgrade hook.
+
+**Uninstalling, deleting, and organizations deleted during an upgrade.** A plugin cannot be
+uninstalled while an upgrade is open: cancel the upgrade first, or delete the plugin. Deleting
+the plugin abandons the upgrade; once its migrations had started, the new version is the one the
+organization removed hooks run on. An organization deleted during an upgrade gets no upgrade
+hook; its data removal runs as usual.
+
+**Backups kept.** The backups of the three latest upgrades, none older than the grace period,
+plus every backup an open upgrade or restore needs. They are deleted with the plugin.
 
 ## With plugins switched off
 
@@ -223,4 +290,7 @@ organization removed hooks run once the plugin node does.
 - What installing a plugin means for its operators is in [Accepted risks](accepted-risks.md).
 - Until your install hook succeeds, runs that use what the plugin owns in the organization are
   refused ([Write an install hook](../how-to/install-hook.md)).
+- After an upgrade, your upgrade hook brings each organization to the new version, and until it
+  succeeds the organization's `grant_state` is `upgrading`
+  ([Bring organizations to a new version](../how-to/upgrade-hook.md)).
 - Every code is in [Error codes](../reference/error-codes.md).

@@ -1,10 +1,10 @@
 #!/bin/sh
 # The options are split into words on purpose.
 # shellcheck disable=SC2086
-# es_plugins start-up, as root with NET_ADMIN, SETPCAP, SETUID, SETGID and CHOWN. It installs the
-# per-plugin connection caps (es_plugins.network_limits), then runs the launcher as PID 1 with only
-# SETUID, SETGID and CHOWN left in any capability set: neither the launcher, the agent nor a plugin
-# can change the caps.
+# es_plugins start-up, as root with NET_ADMIN, BPF, SETPCAP, SETUID, SETGID and CHOWN. It installs
+# the per-plugin connection caps and the bind refusal (es_plugins.network_limits), then runs the
+# launcher as PID 1 with only SETUID, SETGID and CHOWN left in any capability set: neither the
+# launcher, the agent nor a plugin can change them.
 set -eu
 
 log() { echo "es_plugins: $*" >&2; }

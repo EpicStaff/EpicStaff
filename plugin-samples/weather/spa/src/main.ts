@@ -7,11 +7,13 @@ import {
 } from '@epicstaff/plugin-sdk';
 
 import type { ApiFetch } from './api';
+import { checkAvailabilityAgain, MAINTENANCE_RETRY_MS, showsMaintenance } from './availability';
 import { element } from './dom';
 import { FORECAST_PATH, ForecastPage, requestedCity } from './forecast';
 import {
     CONNECT_PATH,
     type ConnectState,
+    maintenanceNote,
     OAUTH_CALLBACK_PATH,
     POPUP_RELAY_PATH,
     renderConnect,
@@ -52,7 +54,8 @@ const HOME_PATH = '/';
  * The Weather page: routes kept in the address path. `startPlugin` runs before the first render, so it removes the
  * `es_org` hint before the router reads the address, and EpicStaff's address follows every route change from then on.
  * The person is signed in through EpicStaff right after; the page the demo provider returns to only hands the
- * provider's result back.
+ * provider's result back. Opened on its own while Weather is being updated, the page says so instead of its pages and
+ * checks again every 30 seconds; inside EpicStaff, EpicStaff shows its own panel.
  */
 async function main(): Promise<void> {
     const root = document.getElementById('app');
@@ -88,6 +91,8 @@ async function main(): Promise<void> {
     let forecastPage: ForecastPage | null = null;
     let placesPage: PlacesPage | null = null;
     let orgSettingsPage: OrgSettingsPage | null = null;
+    /** The next check whether Weather is back, while the page says it is being updated. */
+    let recheckTimer: ReturnType<typeof setTimeout> | null = null;
 
     // The header is built once and updated in place, so a re-render never takes the focus from a link in it.
     const signedInLine = element('span', 'muted');
@@ -111,7 +116,7 @@ async function main(): Promise<void> {
         const path = location.pathname;
         if (login?.state === 'signed-in') askWhoAmI(login);
         updateHeader(path);
-        const page = pageFor(path);
+        const page = maintenancePage() ?? pageFor(path);
         // Re-inserting the same elements would take the focus from a field being typed in.
         const current = Array.from(content.children);
         if (current.length !== page.length || current.some((child, index) => child !== page[index])) {
@@ -139,6 +144,17 @@ async function main(): Promise<void> {
     const permissions = (): Permissions => {
         if (knownPermissions !== null) return { status: 'known', actions: knownPermissions };
         return whoAmI.status === 'failed' ? { status: 'failed', message: whoAmI.message } : { status: 'loading' };
+    };
+
+    /** "Weather is being updated" while it is, with the next check planned; `null` otherwise. */
+    const maintenancePage = (): HTMLElement[] | null => {
+        if (login === null || !showsMaintenance(plugin.framed, login.availability)) return null;
+        const signedIn = login;
+        recheckTimer ??= setTimeout(() => {
+            recheckTimer = null;
+            void checkAvailabilityAgain(signedIn).finally(render);
+        }, MAINTENANCE_RETRY_MS);
+        return [maintenanceNote(pluginName)];
     };
 
     const pageFor = (path: string): HTMLElement[] => {
@@ -235,6 +251,11 @@ async function main(): Promise<void> {
     window.addEventListener('popstate', render);
     plugin.onThemeChange(render);
     login?.onChange(render);
+    login?.onAvailabilityChange((availability) => {
+        // Back after an update: the list shown may be the refusal it got meanwhile.
+        if (availability === 'available') placesPage?.refresh();
+        render();
+    });
     render();
     void login?.start();
 }

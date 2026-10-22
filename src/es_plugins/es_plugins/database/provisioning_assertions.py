@@ -9,7 +9,10 @@ Two groups, because the limits watchdog treats them differently:
     five of `expected_memberships`. That one rule says `plugins_admin` holds SET-only
     memberships, nothing inherits, and no plugin role is a member of another plugin's role;
   - the database is owned by the owner, PUBLIC cannot connect to it, and exactly the five
-    roles of `CONNECT_HOLDERS` can.
+    roles of `CONNECT_HOLDERS` can;
+  - nothing in the database (an owner, a grant, a policy) refers to a role but the five of
+    `connect_holders`. A grant to another plugin's role would keep that plugin's roles from ever
+    being dropped, and role names are visible to every plugin.
 - **Drift** (`drift`), which the platform restores itself: the app role's limits
   (`app_role_limits`), and the owner being able to log in or having a session open outside a
   migration run.
@@ -47,6 +50,15 @@ _MEMBERSHIPS = (
 )
 _DATABASE_OWNER = (
     "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_catalog.pg_database WHERE datname = %s"
+)
+# The roles what is in the database refers to, read from the cluster's dependency catalog. Roles
+# PostgreSQL itself defines (PUBLIC's grants, pg_database_owner) are never recorded there.
+_REFERENCED_ROLES = (
+    "SELECT DISTINCT r.rolname FROM pg_catalog.pg_shdepend s "
+    "JOIN pg_catalog.pg_roles r ON r.oid = s.refobjid "
+    "WHERE s.refclassid = 'pg_catalog.pg_authid'::pg_catalog.regclass "
+    "AND s.dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = %s) "
+    "AND r.rolname <> ALL(%s) ORDER BY r.rolname LIMIT 10"
 )
 # An ACL that was never set (NULL) is the default one, which lets PUBLIC connect.
 _DATABASE_PRIVILEGES = (
@@ -214,4 +226,8 @@ async def _database_problems(admin: psycopg.AsyncConnection, desired: DesiredDat
         problems.append(f"{', '.join(extra)} can connect to database {name}")
     if missing:
         problems.append(f"{', '.join(missing)} cannot connect to database {name}")
+    cursor = await admin.execute(_REFERENCED_ROLES, (name, sorted(expected)))
+    foreign = [row[0] for row in await cursor.fetchall()]
+    if foreign:
+        problems.append(f"objects in database {name} refer to role(s) {', '.join(foreign)}")
     return problems

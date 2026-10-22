@@ -4,11 +4,16 @@ Shared memory segments, message queues and semaphore sets outlive the processes 
 they stay in the container's IPC namespace until removed. A later plugin given the same UID could
 open them and read what the removed plugin left there. So the removal deletes every object whose
 owner (`uid`) or creator (`cuid`) is the plugin's UID: an object's owner can hand it to another
-UID, and its creator can still remove it.
+UID, and its creator can still remove it. (Plugin processes run under a seccomp filter that
+refuses to make or open such objects, `plugin_seccomp`; this removes what got there anyway.)
 
 The launcher holds no CAP_IPC_OWNER, so a helper running as the UID removes them, which the owner
 and the creator both may. A segment another process still has attached is only marked for
-removal and stays listed; that one is reported, not left silently.
+removal and stays listed:
+
+- one the UID created is reported, and the removal is tried again;
+- one only handed to the UID (another UID created it, and may hold it attached to keep this
+  removal from finishing) is removed as far as it can be, and never fails the removal.
 """
 
 import ctypes
@@ -33,6 +38,8 @@ class IpcCleanupError(Exception):
 class IpcObject:
     kind: IpcKind
     identifier: int
+    created: bool
+    """Whether the UID created it (`cuid`), rather than only owning it (`uid`)."""
 
 
 def ipc_objects_of(uid: int, root: Path = SYSVIPC_ROOT) -> list[IpcObject]:
@@ -52,8 +59,9 @@ def ipc_objects_of(uid: int, root: Path = SYSVIPC_ROOT) -> list[IpcObject]:
             fields = line.split()
             if len(fields) < len(columns):
                 continue
-            if uid in (int(fields[positions["uid"]]), int(fields[positions["cuid"]])):
-                found.append(IpcObject(kind, int(fields[positions[id_column]])))
+            owner, creator = int(fields[positions["uid"]]), int(fields[positions["cuid"]])
+            if uid in (owner, creator):
+                found.append(IpcObject(kind, int(fields[positions[id_column]]), creator == uid))
     return found
 
 
@@ -61,18 +69,18 @@ def remove_ipc_objects_of(uid: int, *, root: Path = SYSVIPC_ROOT) -> int:
     """Remove the UID's objects as that UID; return how many there were.
 
     Raises:
-        IpcCleanupError: Some are still listed afterwards.
+        IpcCleanupError: Objects the UID created are still listed afterwards.
     """
     objects = ipc_objects_of(uid, root)
     if not objects:
         return 0
     run_as_user(uid, lambda: _remove(objects))
-    left = ipc_objects_of(uid, root)
+    left = [item for item in ipc_objects_of(uid, root) if item.created]
     if left:
         kinds = ", ".join(sorted({item.kind for item in left}))
         raise IpcCleanupError(
-            f"{len(left)} System V IPC object(s) ({kinds}) of UID {uid} are still there; another "
-            "process may still have a segment attached"
+            f"{len(left)} System V IPC object(s) ({kinds}) UID {uid} created are still there; "
+            "another process may still have a segment attached"
         )
     return len(objects)
 

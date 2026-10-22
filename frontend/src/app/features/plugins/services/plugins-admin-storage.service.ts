@@ -5,10 +5,13 @@ import { finalize, Observable, tap } from 'rxjs';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import {
     PackageReview,
+    PluginApproveRequest,
+    PluginBackupList,
     PluginDetail,
     PluginGrant,
     PluginOrgRemovedJob,
     PluginOrgRemovedJobQuery,
+    PluginRestore,
     PluginSummary,
     PluginUploadEvent,
 } from '../models/plugin-admin.model';
@@ -25,7 +28,7 @@ import { PluginsAdminApiService } from './plugins-admin-api.service';
 
 /**
  * The SuperAdmin plugin list, kept in step with what is done to it here (upload, approve, reject, grant, uninstall,
- * reinstall, delete). Registered in `APP_STORAGE`, so logout clears it; a response that lands after `clear()` is
+ * reinstall, delete, cancel or retry an upgrade). Registered in `APP_STORAGE`, so logout clears it; a response that lands after `clear()` is
  * dropped.
  */
 @Injectable({ providedIn: 'root' })
@@ -102,10 +105,25 @@ export class PluginsAdminStorageService implements StorageService {
         return this.api.getPackageReview(packageId);
     }
 
-    approvePackage(packageId: number, untrustedAcknowledged: boolean): Observable<PluginDetail> {
-        return this.whenCurrent(this.api.approvePackage(packageId, untrustedAcknowledged), (plugin) =>
-            this.upsert(plugin)
-        );
+    approvePackage(packageId: number, request: PluginApproveRequest): Observable<PluginDetail> {
+        return this.whenCurrent(this.api.approvePackage(packageId, request), (plugin) => this.upsert(plugin));
+    }
+
+    cancelUpgrade(identifier: string): Observable<PluginDetail> {
+        return this.whenCurrent(this.api.cancelUpgrade(identifier), (plugin) => this.upsert(plugin));
+    }
+
+    retryUpgrade(identifier: string): Observable<PluginDetail> {
+        return this.whenCurrent(this.api.retryUpgrade(identifier), (plugin) => this.upsert(plugin));
+    }
+
+    listBackups(identifier: string): Observable<PluginBackupList> {
+        return this.api.listBackups(identifier);
+    }
+
+    /** The restore shows on the plugin's open upgrade: reload the plugin with `getPlugin` afterwards. */
+    restoreBackup(identifier: string, backupId: number, verificationPhrase: string): Observable<PluginRestore> {
+        return this.api.restoreBackup(identifier, backupId, verificationPhrase);
     }
 
     /** Rejecting deletes the package, and the plugin too when it had nothing approved; the list is reloaded. */
@@ -131,8 +149,8 @@ export class PluginsAdminStorageService implements StorageService {
     }
 
     /** The grant stays out of the active count until the hook succeeds, so the list does not change. */
-    retryInstallHook(identifier: string, grantId: number): Observable<PluginGrant> {
-        return this.api.retryInstallHook(identifier, grantId);
+    retryHook(identifier: string, grantId: number): Observable<PluginGrant> {
+        return this.api.retryHook(identifier, grantId);
     }
 
     getSuspendPreview(identifier: string, grantId: number): Observable<PluginSuspendPreview> {
@@ -246,6 +264,7 @@ function toSummary(plugin: PluginDetail): PluginSummary {
         created_at: plugin.created_at,
         purge_after: plugin.purge_after,
         needs_attention: plugin.needs_attention,
+        upgrade: plugin.upgrade,
     };
 }
 

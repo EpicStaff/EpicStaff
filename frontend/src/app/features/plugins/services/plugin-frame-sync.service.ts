@@ -8,6 +8,7 @@ import {
     PLUGIN_FRAME_PROTOCOL_VERSION,
 } from '../constants/plugin-frame-protocol.constants';
 import {
+    PluginFrameAvailability,
     PluginFrameErrorMessage,
     PluginFrameInitMessage,
     PluginFrameOrg,
@@ -28,6 +29,11 @@ export interface PluginFrameAttachOptions {
     org: PluginFrameOrg;
     /** The page reported a new path (canonical, within the rate limit); EpicStaff mirrors it in its address. */
     onNavChanged: (path: string, replace: boolean) => void;
+    /**
+     * The page says its API answers `maintenance` or `unavailable` (within the rate limit). Never trusted: EpicStaff
+     * only asks its own server again.
+     */
+    onAvailabilityChanged: (state: Exclude<PluginFrameAvailability, 'available'>) => void;
 }
 
 /** Everything that belongs to one attached frame; dropped as a whole on detach. */
@@ -42,12 +48,24 @@ interface FrameAttachment {
     sentTheme: PluginTheme | null;
     /** Kept across handshakes: a page that reloads is the same frame to its rate limit. */
     navChangeTimes: number[];
+    /** As `navChangeTimes`, for `availability.changed`. */
+    availabilityChangeTimes: number[];
 }
 
 const RATE_WINDOW_MS = 60_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Counts one message in a sliding 60-second window of `times`, in place; `false` once the window holds `limit`. */
+function consumeRate(times: number[], limit: number): boolean {
+    const now = Date.now();
+    const recent = times.filter((time) => now - time < RATE_WINDOW_MS);
+    times.splice(0, times.length, ...recent);
+    if (times.length >= limit) return false;
+    times.push(now);
+    return true;
 }
 
 /**
@@ -59,8 +77,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * the old port and repeats `es:init`.
  *
  * On the port: `nav.changed` from the page (canonical paths only, at most 120 a minute, the rest dropped) goes to
- * {@link PluginFrameAttachOptions.onNavChanged}; EpicStaff sends `nav.navigate` ({@link notifyNavigation}) and
- * `theme.changed`. Unknown message types are ignored. Nothing here carries credentials.
+ * {@link PluginFrameAttachOptions.onNavChanged}, and `availability.changed` (`maintenance` or `unavailable` only, at
+ * most 6 a minute) to {@link PluginFrameAttachOptions.onAvailabilityChanged}; EpicStaff sends `nav.navigate`
+ * ({@link notifyNavigation}) and `theme.changed`. Unknown message types are ignored. Nothing here carries credentials.
  */
 @Injectable()
 export class PluginFrameSyncService implements OnDestroy {
@@ -89,6 +108,7 @@ export class PluginFrameSyncService implements OnDestroy {
             navPath: canonicalNavPath(options.initialPath) ?? PLUGIN_ROOT_NAV_PATH,
             sentTheme: null,
             navChangeTimes: [],
+            availabilityChangeTimes: [],
         };
         this.hostWindow.addEventListener('message', this.windowMessageListener);
     }
@@ -153,21 +173,28 @@ export class PluginFrameSyncService implements OnDestroy {
 
     private handlePortMessage(attachment: FrameAttachment, data: unknown): void {
         if (this.attachment !== attachment || !isRecord(data)) return;
-        if (data['type'] !== PLUGIN_FRAME_MESSAGE_TYPES.navChanged) return;
-        if (!this.consumeNavChange(attachment)) return;
+        if (data['type'] === PLUGIN_FRAME_MESSAGE_TYPES.navChanged) {
+            this.handleNavChanged(attachment, data);
+        } else if (data['type'] === PLUGIN_FRAME_MESSAGE_TYPES.availabilityChanged) {
+            this.handleAvailabilityChanged(attachment, data);
+        }
+    }
+
+    private handleNavChanged(attachment: FrameAttachment, data: Record<string, unknown>): void {
+        if (!consumeRate(attachment.navChangeTimes, PLUGIN_FRAME_LIMITS.maxNavChangesPerMinute)) return;
         const path = canonicalNavPath(data['path']);
         if (path === null) return;
         attachment.navPath = path;
         attachment.options.onNavChanged(path, data['replace'] === true);
     }
 
-    /** Counts one `nav.changed` in a sliding 60-second window; `false` once the window is full. */
-    private consumeNavChange(attachment: FrameAttachment): boolean {
-        const now = Date.now();
-        attachment.navChangeTimes = attachment.navChangeTimes.filter((time) => now - time < RATE_WINDOW_MS);
-        if (attachment.navChangeTimes.length >= PLUGIN_FRAME_LIMITS.maxNavChangesPerMinute) return false;
-        attachment.navChangeTimes.push(now);
-        return true;
+    private handleAvailabilityChanged(attachment: FrameAttachment, data: Record<string, unknown>): void {
+        const state = data['state'];
+        if (state !== 'maintenance' && state !== 'unavailable') return;
+        if (!consumeRate(attachment.availabilityChangeTimes, PLUGIN_FRAME_LIMITS.maxAvailabilityChangesPerMinute)) {
+            return;
+        }
+        attachment.options.onAvailabilityChanged(state);
     }
 
     private sendTheme(theme: PluginTheme): void {

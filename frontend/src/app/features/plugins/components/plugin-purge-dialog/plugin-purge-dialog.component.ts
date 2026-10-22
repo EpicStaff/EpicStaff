@@ -7,21 +7,19 @@ import { formatFileSize } from '@shared/utils';
 import { filter, finalize, map, Observable } from 'rxjs';
 
 import { PluginDetail, PluginGrant } from '../../models/plugin-admin.model';
+import { PluginPreviewListView } from '../../models/plugin-preview-view.model';
 import { PluginDataFate, PluginGrantPurgePreview, PluginPurgePreview } from '../../models/plugin-purge-preview.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
 import {
     defaultModelsListView,
     ownedResourcesListView,
-    previewFlowItem,
+    previewNamedItem,
     previewOrganizationItem,
     previewSessionItem,
     toPreviewListView,
 } from '../../utils/plugin-preview-view.util';
-import {
-    PluginPreviewListView,
-    PluginPreviewSectionComponent,
-} from '../plugin-preview-section/plugin-preview-section.component';
+import { PluginPreviewSectionComponent } from '../plugin-preview-section/plugin-preview-section.component';
 
 /** The plugin whose data in one organization is to be deleted. */
 export interface PluginGrantPurgeTarget {
@@ -141,9 +139,14 @@ export class PluginPurgeDialogComponent implements OnInit {
         return phrase !== null && this.typedPhrase() === phrase && !this.isLoading() && !this.isPurging();
     });
 
+    /** In grant scope, named after the organization as the preview has it once loaded: it may have been renamed. */
+    protected readonly texts = computed(() => {
+        const loaded = this.loaded();
+        return dialogTexts(this.data, loaded?.scope === 'grant' ? loaded.preview.organization.name : null);
+    });
+
     protected readonly phraseControl = new FormControl('', { nonNullable: true });
     protected readonly data = inject<PluginPurgeDialogData>(DIALOG_DATA);
-    protected readonly texts = dialogTexts(this.data);
     protected readonly titleId = PLUGIN_PURGE_DIALOG_TITLE_ID;
 
     private readonly typedPhrase = toSignal(this.phraseControl.valueChanges, { initialValue: '' });
@@ -228,14 +231,14 @@ export class PluginPurgeDialogComponent implements OnInit {
     }
 }
 
-function dialogTexts(data: PluginPurgeDialogData): PurgeDialogTexts {
+function dialogTexts(data: PluginPurgeDialogData, loadedOrganizationName: string | null): PurgeDialogTexts {
     const pluginName = data.pluginName;
     const shared = {
         pluginFlowsHeading: `${pluginName}'s own flows`,
         organizationsEmptyText: `None. ${pluginName} is not granted to any organization.`,
     };
     if (data.scope === 'grant') {
-        const organizationName = data.grant.organization.name;
+        const organizationName = loadedOrganizationName ?? data.grant.organization.name;
         return {
             ...shared,
             title: `Delete ${pluginName}'s data in ${organizationName} now`,
@@ -256,13 +259,13 @@ function dialogTexts(data: PluginPurgeDialogData): PurgeDialogTexts {
 }
 
 function toGrantView(preview: PluginGrantPurgePreview, pluginName: string): GrantPurgeView {
-    const organizationFlows = toPreviewListView(preview.flows.organization, previewFlowItem);
+    const organizationFlows = toPreviewListView(preview.flows.organization, previewNamedItem);
     return {
         scope: 'grant',
         owned: ownedResourcesListView(preview.owned_resources),
         organizationFlows,
         organizationFlowsHint: organizationFlows.items.length > 0 ? PLUGIN_PURGE_FLOWS_HINT : null,
-        pluginFlows: toPreviewListView(preview.flows.plugin, previewFlowItem),
+        pluginFlows: toPreviewListView(preview.flows.plugin, previewNamedItem),
         sessions: toPreviewListView(preview.running_sessions, previewSessionItem),
         defaultModels: defaultModelsListView(preview.default_models),
         pluginDataText: pluginDataText(preview.plugin_data, pluginName, preview.organization.name),

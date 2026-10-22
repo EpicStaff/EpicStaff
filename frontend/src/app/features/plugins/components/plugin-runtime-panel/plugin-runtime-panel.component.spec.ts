@@ -1,12 +1,23 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService } from '@shared/components';
 import { Observable, of } from 'rxjs';
-import type { Mock } from 'vitest';
+import { type Mock, onTestFinished } from 'vitest';
 
 import { ToastService } from '../../../../services/notifications';
+import { PluginBackupList, PluginRestore, PluginUpgrade } from '../../models/plugin-admin.model';
 import { PluginDatabaseState, PluginRuntimeResponse } from '../../models/plugin-backend.model';
+import { PluginDialogsService } from '../../services/plugin-dialogs.service';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
-import { buildPluginPlacement, buildPluginRuntime, buildPluginRuntimeDatabase } from '../../testing/plugin-fixtures';
+import {
+    buildFailedMigrationUpgrade,
+    buildPluginBackup,
+    buildPluginBackupList,
+    buildPluginPlacement,
+    buildPluginRestore,
+    buildPluginRuntime,
+    buildPluginRuntimeDatabase,
+} from '../../testing/plugin-fixtures';
+import { PluginRestoreDialogData } from '../plugin-restore-dialog/plugin-restore-dialog.component';
 import { PLUGIN_RUNTIME_POLL_MS, PluginRuntimePanelComponent } from './plugin-runtime-panel.component';
 
 class ResizeObserverStub {
@@ -21,7 +32,9 @@ describe('PluginRuntimePanelComponent', () => {
     let storage: {
         getRuntime: Mock<(identifier: string) => Observable<PluginRuntimeResponse>>;
         restart: Mock<(identifier: string) => Observable<PluginRuntimeResponse>>;
+        listBackups: Mock<(identifier: string) => Observable<PluginBackupList>>;
     };
+    let openRestore: Mock<(data: PluginRestoreDialogData) => Observable<PluginRestore | undefined>>;
     let confirm: Mock<() => Observable<boolean | 'close'>>;
     let changes: number;
 
@@ -81,7 +94,9 @@ describe('PluginRuntimePanelComponent', () => {
             restart: vi.fn(() =>
                 of(buildPluginRuntime({ placement: buildPluginPlacement({ observed_state: 'starting' }) }))
             ),
+            listBackups: vi.fn(() => of(buildPluginBackupList())),
         };
+        openRestore = vi.fn(() => of<PluginRestore | undefined>(undefined));
         confirm = vi.fn(() => of<boolean | 'close'>(true));
         TestBed.configureTestingModule({
             imports: [PluginRuntimePanelComponent],
@@ -89,6 +104,7 @@ describe('PluginRuntimePanelComponent', () => {
                 { provide: PluginsAdminStorageService, useValue: storage },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
                 { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
+                { provide: PluginDialogsService, useValue: { openRestore } },
             ],
         });
     });
@@ -152,7 +168,9 @@ describe('PluginRuntimePanelComponent', () => {
     });
 
     it('says when the plugin has no node or no process yet', () => {
-        storage.getRuntime.mockReturnValue(of({ node: null, placement: null, database: null, egress: null }));
+        storage.getRuntime.mockReturnValue(
+            of({ node: null, placement: null, database: null, egress: null, upgrade: null })
+        );
         render();
 
         expect(element.textContent).toContain('No plugin node is registered');
@@ -336,5 +354,164 @@ describe('PluginRuntimePanelComponent', () => {
         // Once, although the answer also moved the process from running to starting.
         expect(changes).toBe(1);
         expect(fact('Observed state')).toBe('Starting');
+    });
+
+    describe('during an upgrade', () => {
+        /** The backups of Weather's failed upgrade to 0.7.1: its own, and one of the upgrade to 0.7.0 before it. */
+        const BACKUPS = buildPluginBackupList({
+            backups: [
+                buildPluginBackup({
+                    id: 62,
+                    file_name: '20261021T110100Z-u8-pre_upgrade.dump',
+                    version: '0.7.0',
+                    upgrade: { id: 8, to_version: '0.7.1' },
+                    created_at: '2026-10-21T11:01:00Z',
+                    restorable: true,
+                    not_restorable_reason: null,
+                }),
+                buildPluginBackup({ not_restorable_reason: 'earlier_upgrade' }),
+            ],
+        });
+
+        function backupRows(): string[] {
+            return Array.from(element.querySelectorAll('.backups__row')).map((row) => text(row));
+        }
+
+        function restoreButton(): HTMLButtonElement | undefined {
+            return Array.from(element.querySelectorAll<HTMLButtonElement>('.backups__row button')).find(
+                (button) => button.textContent?.trim() === 'Restore…'
+            );
+        }
+
+        function showUpgrade(upgrade: PluginUpgrade | null): void {
+            fixture.componentRef.setInput('openUpgrade', upgrade);
+            fixture.detectChanges();
+            TestBed.tick();
+            fixture.detectChanges();
+        }
+
+        beforeEach(() => {
+            storage.getRuntime.mockReturnValue(
+                of(
+                    buildPluginRuntime({
+                        database: buildPluginRuntimeDatabase(),
+                        upgrade: { from_version: '0.7.0', to_version: '0.7.1' },
+                    })
+                )
+            );
+            storage.listBackups.mockReturnValue(of(BACKUPS));
+        });
+
+        it('says the node runs the new version while it differs from the current one', () => {
+            render();
+            expect(text(element.querySelector('.runtime__upgrade'))).toBe('Running 0.7.0 → 0.7.1');
+
+            storage.getRuntime.mockReturnValue(of(buildPluginRuntime({ database: buildPluginRuntimeDatabase() })));
+            poll();
+            expect(element.querySelector('.runtime__upgrade')).toBeNull();
+        });
+
+        it('lists the backups with what they hold, and Restore… only where the server allows it', () => {
+            render();
+
+            const rows = backupRows();
+            expect(rows[0]).toMatch(/^Before upgrade to 0\.7\.1 holds 0\.7\.0 · .+ · Oct 21, 2026, .+ Restore…$/);
+            expect(rows[1]).toMatch(
+                /^Before upgrade to 0\.7\.0 holds 0\.6\.0 · .+ · .+ Not restorable: from an earlier upgrade$/
+            );
+            expect(element.querySelectorAll('.backups__row button')).toHaveLength(1);
+        });
+
+        it('names a backup taken before a restore', () => {
+            storage.listBackups.mockReturnValue(
+                of(
+                    buildPluginBackupList({
+                        backups: [
+                            buildPluginBackup({
+                                reason: 'pre_restore',
+                                version: '0.7.1',
+                                upgrade: { id: 8, to_version: '0.7.1' },
+                                not_restorable_reason: 'not_now',
+                            }),
+                        ],
+                    })
+                )
+            );
+            render();
+
+            expect(backupRows()[0]).toContain('Before restore · during the upgrade to 0.7.1');
+            expect(backupRows()[0]).toContain('Not restorable: only while an upgrade has failed');
+        });
+
+        it('opens the restore dialog with the phrase the list carries, and tells the page once it is asked for', () => {
+            openRestore.mockReturnValue(of(buildPluginRestore({ state: 'pending', step: null })));
+            render();
+
+            restoreButton()!.click();
+            fixture.detectChanges();
+
+            expect(openRestore).toHaveBeenCalledWith({
+                identifier: 'weather',
+                pluginName: 'Weather',
+                databaseName: 'plugin_weather',
+                backup: BACKUPS.backups[0],
+                verificationPhrase: 'restore-weather',
+            });
+            expect(changes).toBe(1);
+            expect(storage.listBackups).toHaveBeenCalledTimes(2);
+        });
+
+        it('loads the backups again when the open upgrade moves, not on every runtime poll', () => {
+            render();
+            expect(storage.listBackups).toHaveBeenCalledTimes(1);
+
+            poll();
+            expect(storage.listBackups).toHaveBeenCalledTimes(1);
+
+            showUpgrade(buildFailedMigrationUpgrade());
+            expect(storage.listBackups).toHaveBeenCalledTimes(2);
+
+            showUpgrade(buildFailedMigrationUpgrade({ restore: buildPluginRestore() }));
+            expect(storage.listBackups).toHaveBeenCalledTimes(3);
+
+            showUpgrade(buildFailedMigrationUpgrade({ restore: buildPluginRestore() }));
+            expect(storage.listBackups).toHaveBeenCalledTimes(3);
+        });
+
+        it('brings the backups into view when asked to', () => {
+            // jsdom does not scroll; the panel calls it when the browser has it.
+            const scrollIntoView = vi.fn();
+            Object.defineProperty(Element.prototype, 'scrollIntoView', { value: scrollIntoView, configurable: true });
+            onTestFinished(() => {
+                delete (Element.prototype as Partial<Element>).scrollIntoView;
+            });
+            fixture = TestBed.createComponent(PluginRuntimePanelComponent);
+            element = fixture.nativeElement as HTMLElement;
+            fixture.componentRef.setInput('identifier', 'weather');
+            fixture.componentRef.setInput('pluginName', 'Weather');
+            fixture.componentRef.setInput('revealBackups', true);
+            fixture.detectChanges();
+            TestBed.tick();
+            vi.advanceTimersByTime(0);
+            fixture.detectChanges();
+            TestBed.tick();
+
+            expect(scrollIntoView).toHaveBeenCalledTimes(1);
+            expect(document.activeElement?.textContent?.trim()).toBe('Backups');
+        });
+
+        it('says when the list could not be loaded, and loads it again on Retry', () => {
+            storage.listBackups.mockReturnValueOnce(
+                new Observable<PluginBackupList>((subscriber) => subscriber.error(new Error('offline')))
+            );
+            render();
+            expect(text(element.querySelector('.backups__error'))).toContain("Couldn't load the backups.");
+
+            Array.from(element.querySelectorAll<HTMLButtonElement>('.backups__error button'))[0].click();
+            fixture.detectChanges();
+
+            expect(element.querySelector('.backups__error')).toBeNull();
+            expect(backupRows()).toHaveLength(2);
+        });
     });
 });

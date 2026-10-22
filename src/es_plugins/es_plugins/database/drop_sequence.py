@@ -13,11 +13,15 @@
    role included) or as the owner, through `plugins_admin`'s `pg_signal_backend`. A session that
    is still there after 10 s is a permanent `database` failure. Sessions of other roles, a backup
    among them, are never ended.
-5. **Databases**: every database the owner owns is dropped as the owner, without FORCE. A
-   session still connected, a backup in practice, makes PostgreSQL refuse (SQLSTATE 55006): a
-   temporary failure, tried again later.
-6. **Roles**: the three, in one statement.
-7. **Checks**: no role of the three and no database of the owner is left, and `plugins_admin`
+5. **Databases**: every database the owner owns is dropped as the owner, without FORCE, after its
+   template mark and connection limit are put back (`database_attributes`: `DROP DATABASE`
+   refuses a template, and the owner may have made it one). A session still connected, a backup
+   in practice, makes PostgreSQL refuse (SQLSTATE 55006): a temporary failure, tried again later.
+6. **Other databases**: nothing in another database may still refer to one of the three roles
+   (`pg_shdepend`). Another plugin can grant on its own tables to this plugin's app role, and
+   PostgreSQL then refuses to drop it; the failure names that database, and is permanent.
+7. **Roles**: the three, in one statement.
+8. **Checks**: no role of the three and no database of the owner is left, and `plugins_admin`
    holds no membership it granted itself with INHERIT.
 
 Every step can run again: a drop that stopped half-way, or one already finished, picks up where
@@ -36,11 +40,18 @@ from es_plugins.database.connections import (
     DatabaseConnector,
     DatabaseProvisioningError,
     describe_error,
+    describe_text,
     end_sessions,
 )
+from es_plugins.database.database_attributes import reset_database_attributes
 from es_plugins.database.installation_lookup import find_installation
 
 SESSIONS_END_SECONDS = 10.0
+REFERENCED_ELSEWHERE_MESSAGE = (
+    "{databases} still refer to this plugin's roles (another plugin granted access to them or "
+    "named them in a policy), so the node cannot delete the roles. Remove those references in "
+    "that plugin (see the operator guide), then press Retry removal."
+)
 REMOVAL_CONFLICT_MESSAGE = (
     "plugins_db has {objects} that this plugin installation did not create, probably left from "
     "another EpicStaff database, and the node will not delete them. Remove them (see the operator "
@@ -49,6 +60,14 @@ REMOVAL_CONFLICT_MESSAGE = (
 _OWNED_DATABASES = (
     "SELECT datname FROM pg_catalog.pg_database "
     "WHERE datdba = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = %s) ORDER BY datname"
+)
+# Dependencies on the roles recorded under another database (dbid 0 is the cluster's own objects).
+_REFERENCES_ELSEWHERE = (
+    "SELECT DISTINCT d.datname FROM pg_catalog.pg_shdepend s "
+    "JOIN pg_catalog.pg_database d ON d.oid = s.dbid "
+    "WHERE s.refclassid = 'pg_catalog.pg_authid'::pg_catalog.regclass "
+    "AND s.refobjid IN (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = ANY(%s)) "
+    "ORDER BY d.datname LIMIT 10"
 )
 _SELF_GRANTED_INHERIT = (
     "SELECT r.rolname FROM pg_catalog.pg_auth_members m "
@@ -131,12 +150,24 @@ class DatabaseDropper:
                 f"{SESSIONS_END_SECONDS:.0f} s",
             )
         for database in databases:
+            await reset_database_attributes(admin, database, desired.owner_role)
             await _drop_database(admin, desired.owner_role, database)
-        await admin.execute(
-            sql.SQL("DROP ROLE IF EXISTS {}").format(
-                sql.SQL(", ").join(sql.Identifier(role) for role in roles)
+        await _check_not_referenced_elsewhere(admin, roles)
+        try:
+            await admin.execute(
+                sql.SQL("DROP ROLE IF EXISTS {}").format(
+                    sql.SQL(", ").join(sql.Identifier(role) for role in roles)
+                )
             )
-        )
+        except errors.DependentObjectsStillExist as error:
+            # A reference made since the check above. PostgreSQL's detail names the database.
+            await _check_not_referenced_elsewhere(admin, roles)
+            detail = describe_text(error.diag.message_detail or "")
+            raise DatabaseDropError(
+                "database",
+                f"the plugin's roles are still referred to elsewhere: {describe_error(error)}"
+                + (f" ({detail})" if detail else ""),
+            ) from None
         await _check_nothing_is_left(admin, desired, databases)
         return DroppedDatabase(databases=len(databases), roles=len(roles))
 
@@ -174,6 +205,19 @@ async def _drop_database(admin: psycopg.AsyncConnection, owner_role: str, databa
     finally:
         if not admin.broken:
             await admin.execute("RESET ROLE")
+
+
+async def _check_not_referenced_elsewhere(admin: psycopg.AsyncConnection, roles: list[str]) -> None:
+    """Raises: DatabaseDropError: another database refers to one of the roles (permanent)."""
+    cursor = await admin.execute(_REFERENCES_ELSEWHERE, (roles,))
+    databases = [row[0] for row in await cursor.fetchall()]
+    if databases:
+        raise DatabaseDropError(
+            "database",
+            REFERENCED_ELSEWHERE_MESSAGE.format(
+                databases=", ".join(f'database "{name}"' for name in databases)
+            ),
+        )
 
 
 async def _check_nothing_is_left(

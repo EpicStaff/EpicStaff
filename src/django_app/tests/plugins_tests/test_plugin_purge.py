@@ -136,7 +136,7 @@ def test_a_wrong_phrase_changes_nothing(grants, superadmin_client, phrase):
     assert not PluginGrant.objects.filter(state=GrantState.PURGING).exists()
 
 
-@pytest.mark.parametrize("state", [PluginState.UPLOADED, PluginState.MAINTENANCE, PluginState.PURGING])
+@pytest.mark.parametrize("state", [PluginState.UPLOADED, PluginState.PURGING])
 def test_a_plugin_that_cannot_be_deleted_now_says_so_before_the_phrase_is_read(weather, superadmin_client, state):
     Plugin.objects.filter(pk=weather.pk).update(state=state)
 

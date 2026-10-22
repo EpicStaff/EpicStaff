@@ -31,8 +31,8 @@ IN_SERVICE_ACTIONS = {
     GrantState.ACTIVE: ["suspend", "purge"],
     GrantState.INSTALL_FAILED: ["retry_install", "suspend", "purge"],
     GrantState.SUSPENDED: ["resume", "purge"],
-    GrantState.UPGRADING: [],
-    GrantState.UPGRADE_FAILED: [],
+    GrantState.UPGRADING: ["suspend", "purge"],
+    GrantState.UPGRADE_FAILED: ["retry_upgrade", "suspend", "purge"],
     GrantState.PURGING: [],
 }
 UNINSTALLED_ACTIONS = {
@@ -51,6 +51,7 @@ REFUSALS = {
     GrantAction.SUSPEND: GrantNotSuspendableError,
     GrantAction.RESUME: GrantNotSuspendedError,
     GrantAction.RETRY_INSTALL: HookNotRetryableError,
+    GrantAction.RETRY_UPGRADE: HookNotRetryableError,
     GrantAction.PURGE: GrantNotPurgeableError,
 }
 PLUGIN_STATES_WITH_GRANTS = list(EXPECTED_ACTIONS)

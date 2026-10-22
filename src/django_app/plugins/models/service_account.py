@@ -6,8 +6,9 @@ from plugins.models.grant import PluginGrant
 
 ONE_CURRENT_KEY_PER_ACCOUNT_CONSTRAINT = "plugins_sa_key_one_current_per_account"
 # The grant states in which a plugin's service account holds keys, so its backend can call
-# EpicStaff in the organization: while the install hook runs, and once the grant is active.
-KEY_HOLDING_GRANT_STATES = (GrantState.GRANTING, GrantState.ACTIVE)
+# EpicStaff in the organization: while the install or upgrade hook runs, and once the grant is
+# active.
+KEY_HOLDING_GRANT_STATES = (GrantState.GRANTING, GrantState.ACTIVE, GrantState.UPGRADING)
 
 
 class PluginServiceAccountQuerySet(models.QuerySet):

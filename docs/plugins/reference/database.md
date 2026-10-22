@@ -22,12 +22,14 @@ walks through the Weather sample's.
   backend is not started (see [Errors](#errors-on-the-runtime-tab)).
 - **Suspending** the plugin in an organization leaves the database as it is, and so does
   uninstalling it.
+- **Upgrading** to a version with new migrations: the node backs the database up, then runs
+  them, before the new version's backend starts ([Backups and restores](#backups-and-restores)).
+  A new version keeps every migration file that has run unchanged
+  ([Compatibility and versioning](compatibility-and-versioning.md)).
 - **Deleting** the plugin drops the database and its three roles, after the plugin's
   organization removed hook has run for each organization. The node ends your roles' sessions
-  first, and drops nothing another installation created. No backup is taken.
-
-This version runs the migrations of the version a SuperAdmin approved; installing a later
-version of a plugin, with its new migrations, comes later.
+  first, drops nothing another installation created, and deletes the backups it took before
+  upgrades. No backup is taken.
 
 ## Names
 
@@ -50,7 +52,7 @@ row-level security (`NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSR
 
 | Role | Logs in | What it may do |
 |---|---|---|
-| Owner (`<id_>_owner`) | Only to run your migrations: the node gives it a one-time password valid for 10 minutes and one connection, and afterwards, whether the migrations succeeded or not, sets it back to `NOLOGIN` and ends every session it still has | Owns the database, so it owns everything your migrations create. Your migrations run with it as the session user |
+| Owner (`<id_>_owner`) | Only to run your migrations or a restore: the node gives it a one-time password valid for 10 minutes and one connection, and afterwards, whether that succeeded or not, sets it back to `NOLOGIN` and ends every session it still has | Owns the database, so it owns everything your migrations create. Your migrations and restores run with it as the session user |
 | App (`<id_>_app`) | Yes, through `DATABASE_URL`, with at most the plugin's connection limit | Only what your migrations grant it. It is a member of the job role with `SET` but without `INHERIT`: it may `SET ROLE` to the job role, and has none of the job role's privileges otherwise |
 | Job (`<id_>_job`) | Never | Only what your migrations grant it. For work your backend does across organizations, with other privileges than a request has: the Python SDK's `job_transaction(connection)` switches to it for one transaction ([Python SDK](python-sdk.md#epicstaff_plugindatabase)), and [Write database migrations](../how-to/database-migrations.md#10-work-across-organizations-with-the-job-role) shows its use. In migrations, `${job_role}` names it |
 
@@ -127,8 +129,40 @@ The node records each file it ran in `_epicstaff.migrations`, with its name, its
 when it ran, and skips it the next time. A file whose content changed after it ran is refused:
 "`<name>` changed after it was applied". The ledger is owned by your owner role, so a
 migration could rewrite it: it guards against mistakes, not against your own code. The node
-reads at most 1,001 of its rows and reports only entries a migration file could be named; it
-ignores anything else written there. Leave the `_epicstaff` schema alone.
+reads at most 1,001 of its rows and reports only entries a migration file could be named, with a
+SHA-256 in lower-case hex; it ignores anything else written there. EpicStaff decides from the
+reported ledger whether a failed upgrade can still be cancelled. Leave the `_epicstaff` schema
+alone.
+
+## Backups and restores
+
+- **Backups.** Before an upgrade's first migration, and before a restore, the node dumps the
+  database with `pg_dump`, logged in as the role EpicStaff backs plugin databases up with. That
+  role reads every table, past row-level security, and runs nothing of yours: no policy,
+  trigger, view or function. Settings stored for your database do not change how it behaves.
+- **Large objects** (`lo_create`, `lo_import`) cannot be backed up: a backup of a database that
+  holds one fails, and the upgrade stops before any migration. Keep binary data in `bytea`
+  columns.
+- **Your database's own settings** (`ALTER DATABASE … SET`) are kept with each backup, and set
+  again after a restore. Settings PostgreSQL does not know (custom names with a `.`) cannot be
+  stored for a database by your owner at all.
+- **A restore** happens only during an upgrade that failed, when a SuperAdmin asks for it. The
+  node backs the database up as it is, drops it, creates it again from `template0`, and restores
+  the backup in one transaction **with your owner role as the session user**, with row-level
+  security on: functions your checks, indexes and materialized views call run as the owner, and
+  materialized views over tables with `FORCE ROW LEVEL SECURITY` are refreshed under your own
+  policies. Then the set-up runs again, without migrations: the roles, the app role's password,
+  CONNECT and the limits, and every check. The ledger is the backup's.
+- **After a restore everything belongs to the owner**, also objects your app role had created;
+  every grant is restored. Default privileges your app role set for itself (`ALTER DEFAULT
+  PRIVILEGES` run as the app role) cannot be restored and make the restore fail: set default
+  privileges in a migration, for the owner.
+- **The owner may mark its database a template or limit its connections**: the node puts both back
+  before a backup, a restore or a deletion, which they would stop.
+- **Settings stored on the owner role** (`ALTER ROLE CURRENT_USER SET …` in a migration) survive a
+  restore. The node's own sessions as the owner name the role, the transaction defaults
+  and the timeouts themselves, so those settings cannot stop a later migration or restore; any
+  other setting stored there applies to your migrations.
 
 ## What other plugins can see
 
@@ -138,6 +172,11 @@ its list of sessions, are shared by the whole server, and PostgreSQL cannot hide
 plugin on a shared server: every plugin can see the names of your database and your roles, and a
 row for each session your roles have open, though not what it runs. Never put data in a role or
 database name.
+
+Never grant anything to another plugin's roles, or name one in a policy: such a reference would
+keep that plugin from ever being deleted. The node refuses a database that refers to any role but
+its own three and the platform's: the set-up fails, and a running backend is stopped within a
+minute ("objects in database … refer to role(s) …").
 
 ## Shared server
 
@@ -165,4 +204,6 @@ database name.
 | "the plugin database's permissions changed during its migrations: …" | A migration granted more than this page lists, for example CONNECT to `PUBLIC`; the backend is not started |
 | "`<name>` ends its own transaction (COMMIT or ROLLBACK); …" | That migration ran `COMMIT` or `ROLLBACK` itself |
 | "provisioning the database did not finish within 11 minutes" | The set-up, migrations included, took too long and was stopped |
+| "… objects in database `<database>` refer to role(s) `<role>`" | A migration granted to another plugin's role, or named it in a policy. Remove that in a new version ([What other plugins can see](#what-other-plugins-can-see)) |
+| "the database holds large objects, which backups cannot read: …" (on the upgrade) | The database has large objects; the upgrade stopped before any migration ([Backups and restores](#backups-and-restores)) |
 | "plugins_db has … that this plugin installation did not create, … and the node will not delete them. …" | Deleting the plugin found a database or roles of its names from somewhere else, and stopped. An operator resolves it ([Enable the plugin platform](../operator/enable-plugins.md#leftovers-from-another-epicstaff-database)), then a SuperAdmin presses Retry removal |

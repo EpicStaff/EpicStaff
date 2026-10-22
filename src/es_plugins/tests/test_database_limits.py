@@ -8,7 +8,12 @@ import psycopg
 import pytest
 from loguru import logger
 from psycopg import sql
-from src.shared.models.plugin_nodes import DesiredDatabase, DesiredDatabaseServer, database_names_for
+from src.shared.models.plugin_nodes import (
+    DesiredDatabase,
+    DesiredDatabaseServer,
+    LedgerEntry,
+    database_names_for,
+)
 
 from es_plugins.database.connections import DatabaseConnector, scram_verifier
 from es_plugins.database.limits_watchdog import PERMISSIONS_CHANGED, DatabaseLimitsWatchdog
@@ -242,7 +247,7 @@ async def test_an_owner_session_left_after_the_owner_was_closed_is_ended(plugin_
     assert placement.failures == []
 
 
-def test_a_report_carries_only_ledger_entries_a_package_migration_can_name():
+def _weather_database() -> PlacementDatabase:
     names = database_names_for("weather")
     desired = DesiredDatabase(
         server=DesiredDatabaseServer(name="plugins_db", host="plugins_db", port=5432),
@@ -254,8 +259,30 @@ def test_a_report_carries_only_ledger_entries_a_package_migration_can_name():
         connection_limit=3,
         statement_timeout_seconds=10,
     )
-    database = PlacementDatabase("weather", desired)
-    ledger = ("001_places.sql", "001_" + "a" * 300 + ".sql", 7, None, "../x.sql", "002_more.sql")
+    return PlacementDatabase("weather", desired)
+
+
+def test_the_ledger_is_unknown_until_it_is_read_and_carries_each_files_digest():
+    database = _weather_database()
+    assert database.report().ledger is None
+
+    ledger = (LedgerEntry(name="001_places.sql", sha256="a" * 64), LedgerEntry(name="002_more.sql", sha256="b" * 64))
     database.provisioned(ProvisionedDatabase(created=False, ledger=ledger, applied=0, size_bytes=1))
 
-    assert database.report().applied_migrations == ["001_places.sql", "002_more.sql"]
+    report = database.report()
+    assert report.ledger == list(ledger)
+    assert report.applied_migrations == ["001_places.sql", "002_more.sql"]
+
+
+def test_a_failure_keeps_the_ledger_it_did_not_read_and_takes_the_one_it_did():
+    database = _weather_database()
+    first = (LedgerEntry(name="001_places.sql", sha256="a" * 64),)
+    database.provisioned(ProvisionedDatabase(created=False, ledger=first, applied=1, size_bytes=1))
+
+    database.failed("plugins_db cannot be reached")
+    assert database.report().ledger == list(first)
+
+    after = (*first, LedgerEntry(name="002_more.sql", sha256="b" * 64))
+    database.failed("003_broken.sql line 1: [22012] division by zero", ledger=after)
+    report = database.report()
+    assert (report.state, report.ledger) == ("failed", list(after))

@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from plugins.configuration.setting_values import SECRET_TYPE, SettingState
 from plugins.nodes.plugin_runtime_service import PluginRuntime
-from plugins.serializers.admin import UserRefSerializer
+from plugins.serializers.common import UserRefSerializer
 
 
 class PluginSettingStateSerializer(serializers.Serializer):
@@ -115,14 +115,22 @@ class PluginRuntimeEgressSerializer(serializers.Serializer):
     hosts = RuntimeOutboundHostSerializer(source="outbound_hosts", many=True)
 
 
+class RuntimeUpgradeSerializer(serializers.Serializer):
+    from_version = serializers.CharField()
+    to_version = serializers.CharField()
+
+
 class PluginRuntimeResponseSerializer(serializers.Serializer):
     """Where a plugin's backend runs, what its node last reported, its database and its
-    outbound hosts. No password of any kind is ever part of it."""
+    outbound hosts. No password of any kind is ever part of it. `upgrade` is set exactly while
+    the node runs a package other than the current one, whose database, limits and hosts it
+    shows."""
 
     node = serializers.SerializerMethodField()
     placement = serializers.SerializerMethodField()
     database = PluginRuntimeDatabaseSerializer(allow_null=True)
     egress = PluginRuntimeEgressSerializer(source="*")
+    upgrade = RuntimeUpgradeSerializer(allow_null=True)
 
     def get_node(self, runtime: PluginRuntime) -> dict | None:
         node = runtime.node

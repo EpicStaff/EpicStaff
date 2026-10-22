@@ -89,6 +89,8 @@ class PurgePassResult:
     """What one pass did.
 
     Attributes:
+        held_back: Rows the pass did not try because one failed within the last hour; their
+            error stands until a pass gets through them.
         remaining: Ownership rows still left once the pass ended: rows it did not reach,
             rows another process held, flows with a running session, and failed rows.
         first_error: `"<model> <pk>: <message>"` of the first failed row, at most 2000
@@ -99,6 +101,7 @@ class PurgePassResult:
     failed: int
     remaining: int
     first_error: str | None
+    held_back: int = 0
 
 
 class _Outcome(Enum):
@@ -128,13 +131,14 @@ class OwnedResourcePurger:
         """
         targets = purge_targets(organization_id, plugin_identifier, grant)
         actor = PURGE_ACTOR_TEMPLATE.format(identifier=plugin_identifier)
-        purged = failed = 0
+        purged = failed = held_back = 0
         first_error = None
         attempted = 0
         for row_pk in _in_purge_order(targets):
             if attempted and time.monotonic() >= until:
                 break
             if shared_cache.get(FAILED_ROW_CACHE_KEY.format(pk=row_pk)) is not None:
+                held_back += 1
                 continue
             attempted += 1
             outcome, error = self._purge_row(row_pk, organization_id, plugin_identifier, actor)
@@ -146,7 +150,11 @@ class OwnedResourcePurger:
                 failed += 1
                 first_error = first_error or error
         return PurgePassResult(
-            purged=purged, failed=failed, remaining=targets.count(), first_error=first_error
+            purged=purged,
+            failed=failed,
+            remaining=targets.count(),
+            first_error=first_error,
+            held_back=held_back,
         )
 
     def _purge_row(
@@ -157,9 +165,12 @@ class OwnedResourcePurger:
         try:
             with transaction.atomic():
                 # The lock storage writes take first, so a purge never interleaves with an
-                # upload, a restore or the organization's deletion.
+                # upload, a restore or the organization's deletion. Not a key lock: rows that
+                # point at the organization (a person saving a flow there) go on meanwhile.
                 if (
-                    Organization.objects.select_for_update().filter(pk=organization_id).first()
+                    Organization.objects.select_for_update(no_key=True)
+                    .filter(pk=organization_id)
+                    .first()
                     is None
                 ):
                     return _Outcome.ORGANIZATION_GONE, None
@@ -176,7 +187,22 @@ class OwnedResourcePurger:
                     # A model gone from the code: nothing of it can be run or purged.
                     row.delete()
                     return _Outcome.PURGED, None
-                root = _manager(model).select_for_update().filter(pk=object_id).first()
+                root = (
+                    _manager(model)
+                    .select_for_update()
+                    .filter(pk=object_id, org_id=organization_id)
+                    .first()
+                )
+                if root is None and _manager(model).filter(pk=object_id).exists():
+                    # An ownership row naming another organization's resource: never
+                    # deleted from here, and the row is dropped.
+                    logger.warning(
+                        "plugins.purge.foreign_root plugin={plugin} org={org} model={model} pk={pk}",
+                        plugin=identifier,
+                        org=organization_id,
+                        model=model._meta.label,
+                        pk=object_id,
+                    )
                 if root is not None and not _delete_root(root, organization_id, actor):
                     return _Outcome.WAITING, None
                 row.delete()
@@ -210,10 +236,9 @@ def purge_targets(
 def _in_purge_order(targets: QuerySet[PluginOwnedResource]) -> Iterable[int]:
     """The rows' pks in `owned_purge_order()`, oldest first within a model; one query (content
     types are cached per process). A row of a model outside the order comes last."""
-    ranks = {
-        ContentType.objects.get_for_model(model).pk: rank
-        for rank, model in enumerate(owned_purge_order())
-    }
+    order = owned_purge_order()
+    content_types = ContentType.objects.get_for_models(*order)
+    ranks = {content_types[model].pk: rank for rank, model in enumerate(order)}
     rows = targets.order_by().values_list("pk", "content_type_id")
     return [pk for pk, _ in sorted(rows, key=lambda row: (ranks.get(row[1], len(ranks)), row[0]))]
 

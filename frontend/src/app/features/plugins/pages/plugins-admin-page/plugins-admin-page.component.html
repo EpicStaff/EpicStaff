@@ -63,6 +63,13 @@
                     [label]="stateLabel(plugin)"
                     [tone]="stateTone(plugin)"
                 />
+                @if (upgradeBadge(plugin); as upgrade) {
+                    <app-plugin-badge
+                        class="upgrade-state"
+                        [label]="upgrade.label"
+                        [tone]="upgrade.tone"
+                    />
+                }
                 @if (plugin.needs_attention) {
                     <app-plugin-badge
                         class="needs-attention"

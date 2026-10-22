@@ -26,6 +26,10 @@ request() {
     -H "Host: $host" "$@" "$gateway$path" || true)
 }
 header() { grep -i "^$1:" "$work/headers" | tail -n 1 | cut -d: -f2- | sed 's/^ *//; s/\r$//'; }
+# Every value of a header the answer repeats, sorted and |-joined.
+header_values() {
+  grep -i "^$1:" "$work/headers" | cut -d: -f2- | sed 's/^ *//; s/\r$//' | LC_ALL=C sort | paste -sd '|' -
+}
 code_of_body() { jq -r '.code // empty' "$work/body" 2> /dev/null; }
 backend_header() { jq -r --arg name "$1" '[.headers[] | select(.[0] | ascii_downcase == $name) | .[1]] | join("|")' "$work/body"; }
 decision_entry() { grep -F "$1" /evidence/decision.log | tail -n 1; }
@@ -36,6 +40,7 @@ deny_reason_of_code() {
     login_required) echo login ;;
     request_too_large) echo too_large ;;
     plugin_unavailable) echo unavailable ;;
+    plugin_maintenance) echo maintenance ;;
     *) echo "$1" ;;
   esac
 }
@@ -84,8 +89,19 @@ expect_refusal "a chunked body (no length) on a capped public path is 413" 413 r
 head -c 1100000 /dev/zero > "$work/above-the-platform-cap"
 request "$alpha" /api/public/echo --data-binary @"$work/above-the-platform-cap"
 expect_refusal "a body above PLUGINS_MAX_REQUEST_BODY_MB is nginx's 413, as JSON" 413 request_too_large
-request maint.plugins.epicstaff.test /api/ping
+request down.plugins.epicstaff.test /api/ping
 expect_refusal "an unavailable plugin is 503 plugin_unavailable" 503 plugin_unavailable "Retry-After=30"
+# The check refuses every path of a plugin being upgraded, public or not, with one reason.
+maintenance_json='{"status_code":503,"code":"plugin_maintenance","message":"The plugin is being updated. Try again in a few minutes."}'
+for path in /api/ping /api/private; do
+  request updating.plugins.epicstaff.test "$path"
+  if [ "$(cat "$work/body")" != "$maintenance_json" ] || [ "$(header Content-Type)" != application/json ]; then
+    fail "a plugin being upgraded, $path: [$(head -c 200 "$work/body")] as [$(header Content-Type)]"
+  else
+    expect_refusal "a plugin being upgraded is 503 plugin_maintenance on $path, as JSON" 503 plugin_maintenance \
+      "Retry-After=30" "WWW-Authenticate="
+  fi
+done
 request closed.plugins.epicstaff.test /api/ping
 expect_refusal "a forbidden caller is 403 forbidden" 403 forbidden
 request bogus.plugins.epicstaff.test /api/ping
@@ -103,6 +119,88 @@ expect_refusal "a check that django_app answers with an error fails closed as 50
 request checkdown.plugins.epicstaff.test /api/ping
 expect_refusal "a check whose connection django_app drops fails closed as 503" 503 plugin_unavailable \
   "Retry-After=30"
+
+echo "# the maintenance flag: the SPA paths answer with the platform's page"
+
+flag=/srv/plugin-spa/alpha/maintenance
+page=/lab/plugin-platform/maintenance.html
+page_policies=$(printf '%s\n' "frame-ancestors 'self' https://epicstaff.test" \
+  "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" | LC_ALL=C sort | paste -sd '|' -)
+# As django_app writes it: an empty file next to "current", made under another name and renamed
+# into place.
+set_maintenance_flag() {
+  local temporary
+  temporary=$(mktemp /srv/plugin-spa/alpha/.maintenance.XXXXXX) && chmod 0644 "$temporary" \
+    && mv -f "$temporary" "$flag"
+}
+expect_spa() { # description, path, text of the SPA's file
+  request "$alpha" "$2"
+  if [ "$status" = 200 ] && grep -qF "$3" "$work/body" && [ -z "$(header X-EpicStaff-Gateway-Deny)" ]; then
+    pass "$1"
+  else
+    fail "$1: got $status $(head -c 120 "$work/body")"
+  fi
+}
+expect_maintenance_page() { # path
+  local problems=""
+  request "$alpha" "$1"
+  [ "$status" = 503 ] || problems="$problems status $status;"
+  cmp -s "$work/body" "$page" || problems="$problems not the committed page;"
+  [ "$(header_values Content-Type)" = text/html ] || problems="$problems Content-Type [$(header_values Content-Type)];"
+  [ "$(header_values Retry-After)" = 30 ] || problems="$problems Retry-After [$(header_values Retry-After)];"
+  [ "$(header_values Cache-Control)" = no-store ] || problems="$problems Cache-Control [$(header_values Cache-Control)];"
+  [ "$(header_values X-EpicStaff-Gateway-Deny)" = maintenance ] \
+    || problems="$problems X-EpicStaff-Gateway-Deny [$(header_values X-EpicStaff-Gateway-Deny)];"
+  [ "$(header_values Content-Security-Policy)" = "$page_policies" ] \
+    || problems="$problems Content-Security-Policy [$(header_values Content-Security-Policy)];"
+  [ "$(header_values X-Content-Type-Options)" = nosniff ] || problems="$problems no nosniff;"
+  [ "$(header_values Origin-Agent-Cluster)" = '?1' ] || problems="$problems no Origin-Agent-Cluster;"
+  [ -z "$(header_values Set-Cookie)$(header_values X-Frame-Options)" ] || problems="$problems Set-Cookie or X-Frame-Options;"
+  if [ -z "$problems" ]; then
+    pass "with the flag, $1 is 503 with the maintenance page and its headers"
+  else
+    fail "with the flag, $1:$problems"
+  fi
+}
+post_status() { curl -s -o /dev/null -w '%{http_code}' -X POST -H "Host: $alpha" "$gateway/" || true; }
+
+rm -f "$flag"
+expect_spa "without the flag, / is the plugin's SPA" / SPA-ALPHA-INDEX
+expect_spa "without the flag, an asset is the plugin's" /assets/app.css SPA-ALPHA-ASSET
+post_without_flag=$(post_status)
+set_maintenance_flag
+for path in / /index.html /assets/app.css /places/lisbon; do
+  expect_maintenance_page "$path"
+done
+request "$alpha" / --head
+if [ "$status" = 503 ] && [ "$(header X-EpicStaff-Gateway-Deny)" = maintenance ] \
+  && [ "$(header Content-Length)" = "$(wc -c < "$page" | tr -d ' ')" ]; then
+  pass "with the flag, HEAD / is 503 with the page's headers"
+else
+  fail "with the flag, HEAD /: got $status, deny [$(header X-EpicStaff-Gateway-Deny)], length [$(header Content-Length)]"
+fi
+# nginx serves static files to GET and HEAD only, with or without the flag.
+post_with_flag=$(post_status)
+if [ "$post_with_flag" = 405 ] && [ "$post_without_flag" = 405 ]; then
+  pass "a POST to an SPA path is 405, with the flag as without it"
+else
+  fail "a POST to an SPA path: $post_without_flag without the flag, $post_with_flag with it"
+fi
+request "$alpha" /.well-known/epicstaff/config.json
+if [ "$status" = 200 ] && [ "$(jq -r .path "$work/body")" = /api/plugin-public/alpha/config/ ]; then
+  pass "with the flag, the platform config is still Django's"
+else
+  fail "with the flag, the platform config: got $status $(head -c 120 "$work/body")"
+fi
+request "$alpha" /api/ping
+if [ "$status" = 200 ] && [ "$(jq -r .backend "$work/body")" = alpha ]; then
+  pass "with the flag, /api/ still follows the gateway check (the flag is for the SPA paths)"
+else
+  fail "with the flag, /api/ping: got $status $(head -c 120 "$work/body")"
+fi
+rm -f "$flag"
+expect_spa "the flag removed, / is the SPA again at once (no reload, no cache)" / SPA-ALPHA-INDEX
+expect_spa "the flag removed, the asset is served again" /assets/app.css SPA-ALPHA-ASSET
 
 echo "# forwarding"
 

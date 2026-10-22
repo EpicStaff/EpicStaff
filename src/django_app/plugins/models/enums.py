@@ -76,3 +76,26 @@ class PluginDatabaseState(models.TextChoices):
     PROVISIONING = "provisioning"
     READY = "ready"
     FAILED = "failed"
+
+
+class UpgradeStage(models.TextChoices):
+    """How far an upgrade has gone; the first three are open, the last three closed."""
+
+    PREPARING = "preparing"
+    MAINTENANCE = "maintenance"
+    MIGRATING = "migrating"
+    DONE = "done"
+    CANCELLED = "cancelled"
+    ABANDONED = "abandoned"
+
+
+class BackupReason(models.TextChoices):
+    PRE_UPGRADE = "pre_upgrade"
+    PRE_RESTORE = "pre_restore"
+
+
+class RestoreState(models.TextChoices):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"

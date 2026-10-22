@@ -1,14 +1,23 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, DestroyRef, inject, input, linkedSignal, output } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Component, computed, DestroyRef, inject, input, linkedSignal, output, signal } from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { ButtonComponent, CheckboxComponent, ConfirmationDialogService } from '@shared/components';
 import { escapeHtml, formatFileSize } from '@shared/utils';
+import { switchMap } from 'rxjs';
 
-import { PackageReview, PluginBuiltInRoleDefaults, PluginSettingDeclaration } from '../../models/plugin-admin.model';
+import {
+    PackageReview,
+    PluginApproveRequest,
+    PluginBuiltInRoleDefaults,
+    PluginSettingDeclaration,
+} from '../../models/plugin-admin.model';
 import { PLUGIN_SIGNATURE_LABELS, PLUGIN_TRUST_LABELS, pluginTrustTone } from '../../utils/plugin-display.util';
+import { createNeededSettingsForm, neededSettingValues } from '../../utils/plugin-setting-value.util';
 import { PluginAccessTableComponent } from '../plugin-access-table/plugin-access-table.component';
 import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
 import { PluginIconComponent } from '../plugin-icon/plugin-icon.component';
+import { PluginNeededSettingsComponent } from '../plugin-needed-settings/plugin-needed-settings.component';
+import { PluginUpgradeReviewComponent } from '../plugin-upgrade-review/plugin-upgrade-review.component';
 
 /** Shown above an untrusted package's details; the SuperAdmin must acknowledge it before approving. */
 export const UNTRUSTED_PACKAGE_WARNING =
@@ -22,17 +31,16 @@ export const OUTBOUND_HOSTS_NOTE =
 /** The only icon sources a review may carry; anything else is not shown. */
 const ICON_DATA_URL_PREFIXES = ['data:image/svg+xml;base64,', 'data:image/png;base64,'];
 
-export interface PluginApproveRequest {
-    untrustedAcknowledged: boolean;
-}
-
 /**
  * Everything in a package a SuperAdmin decides on: identity and publisher, trust and signature, review warnings, the
  * access it declares to EpicStaff, the permissions it gives people (with the built-in role defaults), public paths,
- * outbound hosts, its database, settings, limits, hooks and the package itself.
+ * outbound hosts, its database, settings, limits, hooks and the package itself. For a new version of an installed
+ * plugin, first what upgrading to it means ({@link PluginUpgradeReviewComponent}) and the settings it needs.
  *
- * For a pending package it offers Approve and Reject. Approving an untrusted package needs the acknowledgement box
- * ticked; rejecting asks for confirmation. The panel only asks — its container calls the API.
+ * For a pending package it offers Approve ("Upgrade to <version>" for a new version) and Reject. Approving needs
+ * every box the server asks for ticked (an untrusted package, new access) and every needed setting filled; the boxes
+ * and values start over for every review loaded. Rejecting asks for confirmation. The panel only asks, with the body
+ * the approval sends; its container calls the API.
  */
 @Component({
     selector: 'app-plugin-review-panel',
@@ -43,6 +51,8 @@ export interface PluginApproveRequest {
         PluginAccessTableComponent,
         PluginBadgeComponent,
         PluginIconComponent,
+        PluginNeededSettingsComponent,
+        PluginUpgradeReviewComponent,
     ],
     templateUrl: './plugin-review-panel.component.html',
     styleUrl: './plugin-review-panel.component.scss',
@@ -51,15 +61,39 @@ export class PluginReviewPanelComponent {
     readonly review = input.required<PackageReview>();
     /** An approve or reject request is under way. */
     readonly busy = input(false);
+    /** The body the approval sends. */
     readonly approveRequested = output<PluginApproveRequest>();
     readonly rejectRequested = output<void>();
 
-    /** Reset for every package shown. */
-    protected readonly acknowledged = linkedSignal({ source: () => this.review().id, computation: () => false });
+    /** Reset for every review shown, a reloaded one of the same package too. */
+    protected readonly acknowledged = linkedSignal({ source: () => this.review(), computation: () => false });
+    protected readonly growthAcknowledged = linkedSignal({ source: () => this.review(), computation: () => false });
     protected readonly isUntrusted = computed(() => this.review().trust === 'untrusted');
     protected readonly isPending = computed(() => this.review().review_state === 'pending');
+    protected readonly upgrade = computed(() => this.review().upgrade);
+    protected readonly needsGrowthAcknowledgement = computed(
+        () => this.review().access_growth?.requires_acknowledgement === true
+    );
+    protected readonly neededSettings = computed(() => this.upgrade()?.settings.needed ?? []);
+    /** A new form for every review shown. */
+    protected readonly neededForm = computed(() => createNeededSettingsForm(this.neededSettings()));
+    /** Bumped on every change of a needed setting, so the values below follow the form. */
+    private readonly neededRevision = signal(0);
+    /** What the approval sends for the needed settings; `null` while one is missing or not valid. */
+    private readonly neededValues = computed(() => {
+        this.neededRevision();
+        return neededSettingValues(this.neededSettings(), this.neededForm());
+    });
     protected readonly canApprove = computed(
-        () => this.isPending() && !this.busy() && (!this.isUntrusted() || this.acknowledged())
+        () =>
+            this.isPending() &&
+            !this.busy() &&
+            (!this.isUntrusted() || this.acknowledged()) &&
+            (!this.needsGrowthAcknowledgement() || this.growthAcknowledged()) &&
+            this.neededValues() !== null
+    );
+    protected readonly approveLabel = computed(() =>
+        this.upgrade() ? `Upgrade to ${this.review().version}` : 'Approve'
     );
     protected readonly iconSource = computed(() => {
         const source = this.review().icon_data_url;
@@ -108,6 +142,15 @@ export class PluginReviewPanelComponent {
     private readonly confirmation = inject(ConfirmationDialogService);
     private readonly destroyRef = inject(DestroyRef);
 
+    constructor() {
+        toObservable(this.neededForm)
+            .pipe(
+                switchMap((form) => form.valueChanges),
+                takeUntilDestroyed()
+            )
+            .subscribe(() => this.neededRevision.update((revision) => revision + 1));
+    }
+
     protected defaultRoles(defaults: PluginBuiltInRoleDefaults): string {
         const roles = [
             defaults.org_admin ? 'Org Admin' : null,
@@ -124,7 +167,7 @@ export class PluginReviewPanelComponent {
 
     protected approve(): void {
         if (!this.canApprove()) return;
-        this.approveRequested.emit({ untrustedAcknowledged: this.isUntrusted() && this.acknowledged() });
+        this.approveRequested.emit(this.approveRequest());
     }
 
     protected reject(): void {
@@ -142,5 +185,17 @@ export class PluginReviewPanelComponent {
             .subscribe((confirmed) => {
                 if (confirmed === true) this.rejectRequested.emit();
             });
+    }
+
+    /** Only what applies: each acknowledgement the review asks for, the reviewed baseline and settings of an upgrade. */
+    private approveRequest(): PluginApproveRequest {
+        const request: PluginApproveRequest = {};
+        if (this.isUntrusted()) request.untrusted_acknowledged = this.acknowledged();
+        if (this.needsGrowthAcknowledgement()) request.access_growth_acknowledged = this.growthAcknowledged();
+        const upgrade = this.upgrade();
+        if (upgrade) request.reviewed_against_package_id = upgrade.baseline_package_id;
+        const values = this.neededValues();
+        if (values && Object.keys(values).length > 0) request.settings = values;
+        return request;
     }
 }

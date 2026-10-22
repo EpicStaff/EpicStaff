@@ -87,15 +87,26 @@ class AsyncTransactionalConnection(Protocol):
     async def execute(self, query: str, params: Sequence[Any]) -> Any: ...
 
 
+@dataclass
+class _BlockLifetime:
+    """Whether a block is still open. Its `finally` closes it, for every task that holds it."""
+
+    open: bool = True
+
+
 @dataclass(frozen=True)
 class _OpenBlock:
-    """The `org_transaction` or `job_transaction` blocks open in this task."""
+    """An `org_transaction` or `job_transaction` block, with the blocks open around it."""
 
     org_id: int | None
-    """The organization of the open `org_transaction` blocks; None for `job_transaction`."""
+    """The organization of the `org_transaction` blocks; None for `job_transaction`."""
 
     connections: tuple[AsyncTransactionalConnection, ...]
-    """The connections those blocks hold a transaction open on."""
+    """The connections this block and the blocks around it hold a transaction open on."""
+
+    lifetime: _BlockLifetime
+    enclosing: "_OpenBlock | None"
+    """The block this one opened inside, in the same task."""
 
     def holds(self, connection: AsyncTransactionalConnection) -> bool:
         return any(held is connection for held in self.connections)
@@ -107,6 +118,16 @@ class _OpenBlock:
 
 
 _open_block: ContextVar[_OpenBlock | None] = ContextVar("epicstaff_plugin_open_block", default=None)
+
+
+def _innermost_open_block() -> _OpenBlock | None:
+    # A task started inside a block copies this variable, and keeps the copy after the block
+    # ended. Such a block no longer holds its connection, which may by then be in another
+    # task's transaction, so only a block still open counts.
+    block = _open_block.get()
+    while block is not None and not block.lifetime.open:
+        block = block.enclosing
+    return block
 
 
 def database_url() -> str:
@@ -157,7 +178,8 @@ async def org_transaction[Connection: AsyncTransactionalConnection](
     One organization at a time in a task: inside an open `org_transaction`, another one for the
     same organization is a savepoint on the same connection, or a transaction of its own on a
     connection with none open; one for another organization is refused, on any connection. A
-    task started inside the block inherits that organization.
+    task started inside the block inherits that organization while the block is open; once it
+    ended, the task has no block open, as any other task.
 
     Raises:
         ValueError: `org_id` is not a positive integer.
@@ -194,7 +216,7 @@ async def job_transaction[Connection: AsyncTransactionalConnection](
     a maintenance task opens one per batch of work.
 
     Inside an open `job_transaction`, another one on the same connection is a savepoint. A task
-    started inside the block inherits it.
+    started inside the block inherits it while the block is open.
 
     Raises:
         ValueError: The connection does not log in as the plugin's app role (`<id_>_app`).
@@ -223,7 +245,7 @@ async def _transaction_block(
     setting_query: str,
     setting_value: str,
 ) -> AsyncIterator[None]:
-    open_block = _open_block.get()
+    open_block = _innermost_open_block()
     if open_block is not None and open_block.org_id != org_id:
         raise NestedOrgTransactionError(
             f"{open_block.describe()} is open; finish it before starting {description}"
@@ -235,12 +257,19 @@ async def _transaction_block(
             "its block; commit or roll it back first, or take a fresh connection from the pool"
         )
     connections = open_block.connections if open_block is not None else ()
+    lifetime = _BlockLifetime()
     token = _open_block.set(
-        _OpenBlock(org_id=org_id, connections=connections if held else (*connections, connection))
+        _OpenBlock(
+            org_id=org_id,
+            connections=connections if held else (*connections, connection),
+            lifetime=lifetime,
+            enclosing=open_block,
+        )
     )
     try:
         async with connection.transaction():
             await connection.execute(setting_query, (setting_value,))
             yield
     finally:
+        lifetime.open = False
         _open_block.reset(token)

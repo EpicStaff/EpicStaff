@@ -9,9 +9,12 @@ its deadline. A `pending` job never times out: it waits until the plugin's proce
 to claim it.
 
 What a result does depends on the kind (`HOOK_KIND_RULES`). An install job moves its grant
-on, and a SuperAdmin retries a failed one. An organization removed job never moves a grant:
-a failed attempt is retried on the SDK's schedule (`org_removed_retry_delay`) until the retry
-window from its first attempt has passed, and only then does the job fail.
+on, and a SuperAdmin retries a failed one. An upgrade job brings its grant to the version it
+ran on; a failed attempt is retried on the SDK's schedule (`upgrade_retry_delay`), twice, and
+then waits for a SuperAdmin. An organization removed job never moves a grant: a failed
+attempt is retried on the SDK's schedule (`org_removed_retry_delay`) until the retry window
+from its first attempt has passed, and only then does the job fail. A grant that a result
+moves goes where `settle_grant` says, with the plugin's state read after the grant's lock.
 
 Lock order: whatever changes a job and may change its grant locks the grant first, then the
 job, as suspension does (it fails the grant's open jobs), so the two never deadlock.
@@ -44,8 +47,8 @@ from epicstaff_plugin.contracts.hook_api import (
     encode_hook_body,
     hook_body_sha256,
     org_removed_retry_delay,
+    upgrade_retry_delay,
 )
-from epicstaff_plugin.contracts.manifest import MAX_HOOK_TIMEOUT_SECONDS, PluginManifest
 from epicstaff_plugin.problems import Problem, format_loc
 from pydantic import ValidationError
 from src.shared.models.plugin_nodes import (
@@ -66,7 +69,10 @@ from plugins.exceptions import (
 )
 from plugins.identity.signing_keys import cached_signing_key
 from plugins.lifecycle.grant_actions import GrantAction, assert_grant_action
+from plugins.lifecycle.grant_settling import SETTLED_FIELDS, settle_grant
+from plugins.lifecycle.hook_timeouts import hook_timeout_seconds
 from plugins.lifecycle.lifecycle_locks import lock_grant
+from plugins.lifecycle.upgrade_hooks import UpgradeHookService
 from plugins.models import (
     GrantState,
     HookJobKind,
@@ -81,27 +87,25 @@ from plugins.origins import PluginOrigins
 
 
 @dataclass(frozen=True)
-class GrantStepRules:
-    """A hook that is a step of its grant's lifecycle (install).
+class InstallRules:
+    """The hook that installs a plugin in an organization.
 
-    Its jobs are listed and claimable only while the grant is in `runs_in` and the plugin is
-    running; the result moves the grant from there to `succeeded` or `failed`. A failed job
-    waits for a SuperAdmin to retry it.
+    Its jobs are listed while the grant is `granting`, and claimable while the plugin is
+    running too. Success brings the grant to the version the hook ran on, then
+    `settle_grant` decides (active, or upgrading while the plugin is in maintenance); a
+    failure makes it `install_failed`, until a SuperAdmin retries it.
     """
 
-    kind: str
-    runs_in: str
-    succeeded: str
-    failed: str
+    kind: str = HookJobKind.INSTALL
 
     def listed(self, now: datetime) -> Q:
-        return Q(kind=self.kind, grant__state=self.runs_in)
+        return Q(kind=self.kind, grant__state=GrantState.GRANTING)
 
     def claimable(self, job: PluginHookJob, now: datetime) -> bool:
         return (
             job.plugin.state == PluginState.RUNNING
             and job.grant is not None
-            and job.grant.state == self.runs_in
+            and job.grant.state == GrantState.GRANTING
         )
 
     def organization_name(self, job: PluginHookJob) -> str:
@@ -109,13 +113,92 @@ class GrantStepRules:
 
     def finish(self, job: PluginHookJob, *, succeeded: bool, error: str | None, now) -> None:
         _close(job, HookJobState.SUCCEEDED if succeeded else HookJobState.FAILED, error, now)
-        PluginGrant.objects.filter(pk=job.grant_id, state=self.runs_in).update(
-            state=self.succeeded if succeeded else self.failed,
-            last_hook_error=None if succeeded else error,
-            updated_at=now,
-        )
+        grant = _grant_with_plugin(job)
+        if grant is not None and grant.state == GrantState.GRANTING:
+            if succeeded:
+                grant.installed_version = job.package.version
+                grant.last_hook_error = None
+                settle_grant(grant)
+            else:
+                grant.state = GrantState.INSTALL_FAILED
+                grant.last_hook_error = error
+            grant.save(update_fields=[*SETTLED_FIELDS, "last_hook_error"])
         ActivityRecorder().hook_finished(
             job, job.plugin.identifier, succeeded=succeeded, error=error
+        )
+
+
+@dataclass(frozen=True)
+class UpgradeRules:
+    """The hook that brings an organization to the plugin's new version.
+
+    Its jobs are listed and claimable once due, while the grant is `upgrading` and the plugin
+    running. Success brings the grant to the version the hook ran on, then `settle_grant`
+    decides. A failure, or a result that never came, counts towards the job's series: while
+    `upgrade_retry_delay` gives a delay the job waits and goes again by itself, the grant
+    staying `upgrading`; then the job fails and the grant is `upgrade_failed`.
+    """
+
+    kind: str = HookJobKind.UPGRADE
+
+    def listed(self, now: datetime) -> Q:
+        return Q(
+            kind=self.kind,
+            grant__state=GrantState.UPGRADING,
+            plugin__state=PluginState.RUNNING,
+        ) & (Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
+
+    def claimable(self, job: PluginHookJob, now: datetime) -> bool:
+        return (
+            job.plugin.state == PluginState.RUNNING
+            and job.grant is not None
+            and job.grant.state == GrantState.UPGRADING
+            and (job.next_attempt_at is None or job.next_attempt_at <= now)
+        )
+
+    def organization_name(self, job: PluginHookJob) -> str:
+        return job.grant.org.name
+
+    def finish(self, job: PluginHookJob, *, succeeded: bool, error: str | None, now) -> None:
+        grant = _grant_with_plugin(job)
+        identifier = job.plugin.identifier
+        recorder = ActivityRecorder()
+        if succeeded:
+            _close(job, HookJobState.SUCCEEDED, None, now)
+            if grant is not None and grant.state == GrantState.UPGRADING:
+                grant.installed_version = job.package.version
+                grant.last_hook_error = None
+                settle_grant(grant)
+                grant.save(update_fields=[*SETTLED_FIELDS, "last_hook_error"])
+            recorder.upgrade_hook_succeeded(job, identifier)
+            return
+        job.failures_in_series += 1
+        delay = upgrade_retry_delay(job.failures_in_series)
+        job.error = error
+        if delay is not None:
+            job.state = HookJobState.PENDING
+            job.next_attempt_at = now + timedelta(seconds=delay)
+        else:
+            job.state = HookJobState.FAILED
+            job.next_attempt_at = None
+            job.finished_at = now
+        job.save(
+            update_fields=[
+                "state",
+                "failures_in_series",
+                "next_attempt_at",
+                "finished_at",
+                "error",
+                "updated_at",
+            ]
+        )
+        if grant is not None and grant.state == GrantState.UPGRADING:
+            if delay is None:
+                grant.state = GrantState.UPGRADE_FAILED
+            grant.last_hook_error = error
+            grant.save(update_fields=["state", "last_hook_error", "updated_at"])
+        recorder.upgrade_hook_failed(
+            job, identifier, error=error, next_attempt_at=job.next_attempt_at
         )
 
 
@@ -162,10 +245,23 @@ class OrgRemovedRules:
             ActivityRecorder().hook_finished(job, identifier, succeeded=True, error=None)
             return
         if now < retry_until(job):
+            # Counted since the job was created or last retried by a SuperAdmin, so the
+            # first failure after a retry waits the shortest delay again.
+            job.failures_in_series += 1
             job.state = HookJobState.PENDING
-            job.next_attempt_at = now + timedelta(seconds=org_removed_retry_delay(job.attempt))
+            job.next_attempt_at = now + timedelta(
+                seconds=org_removed_retry_delay(job.failures_in_series)
+            )
             job.error = error
-            job.save(update_fields=["state", "next_attempt_at", "error", "updated_at"])
+            job.save(
+                update_fields=[
+                    "state",
+                    "failures_in_series",
+                    "next_attempt_at",
+                    "error",
+                    "updated_at",
+                ]
+            )
             return
         _close(job, HookJobState.FAILED, error, now)
         ActivityRecorder().hook_finished(job, identifier, succeeded=False, error=error)
@@ -186,12 +282,8 @@ def retry_until(job: PluginHookJob) -> datetime | None:
 
 
 HOOK_KIND_RULES = {
-    HookJobKind.INSTALL: GrantStepRules(
-        kind=HookJobKind.INSTALL,
-        runs_in=GrantState.GRANTING,
-        succeeded=GrantState.ACTIVE,
-        failed=GrantState.INSTALL_FAILED,
-    ),
+    HookJobKind.INSTALL: InstallRules(),
+    HookJobKind.UPGRADE: UpgradeRules(),
     HookJobKind.ORG_REMOVED: OrgRemovedRules(),
 }
 # How long after its deadline a running job waits for the node's result before it fails.
@@ -199,13 +291,6 @@ RESULT_GRACE = timedelta(seconds=120)
 NO_RESULT_IN_TIME = "The plugin node reported no result in time"
 HOOK_FAILED_WITHOUT_REASON = "The plugin hook failed"
 RESULT_LOC = "result"
-
-
-def hook_timeout_seconds(manifest: PluginManifest, kind: str) -> int:
-    """The manifest's timeout for a hook kind, else the platform maximum for it."""
-    timeouts = manifest.hooks.timeouts_seconds
-    declared = getattr(timeouts, kind, None) if timeouts is not None else None
-    return declared or MAX_HOOK_TIMEOUT_SECONDS[kind]
 
 
 def parse_hook_result(raw: bytes) -> HookResult:
@@ -283,9 +368,10 @@ class HookJobService:
             HookJobNotFoundError: No such job on a placement of this node.
             HookJobNotClaimableError: The job is not pending, or its kind's rules do not let
                 it run now: an install job's plugin is not running or its grant is gone or
-                has moved on; an organization removed job is not due yet, its plugin is not
-                running, uninstalled or being deleted, or its grant is neither gone nor being
-                purged.
+                has moved on; an upgrade job is not due yet, its plugin is not running or its
+                grant is not upgrading; an organization removed job is not due yet, its plugin
+                is not running, uninstalled or being deleted, or its grant is neither gone nor
+                being purged.
         """
         self.fail_overdue(node)
         now = timezone.now()
@@ -305,6 +391,14 @@ class HookJobService:
             if job.first_attempt_at is None:
                 job.first_attempt_at = now
             job.next_attempt_at = None
+            # The call is made to the version running now, whichever version the job was
+            # created for: an organization skips the versions it did not run.
+            package = plugin.current_package
+            if job.kind != HookJobKind.ORG_REMOVED:
+                job.package = package
+                job.timeout_seconds = hook_timeout_seconds(package.parsed_manifest, job.kind)
+            if job.kind == HookJobKind.UPGRADE:
+                job.previous_version = job.grant.installed_version
             job.deadline_at = now + timedelta(seconds=job.timeout_seconds)
             job.finished_at = None
             job.error = None
@@ -315,6 +409,9 @@ class HookJobService:
                     "claimed_at",
                     "first_attempt_at",
                     "next_attempt_at",
+                    "package",
+                    "timeout_seconds",
+                    "previous_version",
                     "deadline_at",
                     "finished_at",
                     "error",
@@ -322,7 +419,7 @@ class HookJobService:
                 ]
             )
             invocation = _invocation(
-                job, plugin.identifier, plugin.current_package.version, rules.organization_name(job)
+                job, plugin.identifier, package.version, rules.organization_name(job)
             )
         log_hook_claimed(
             identifier=plugin.identifier,
@@ -358,15 +455,23 @@ class HookJobService:
         )
 
     def retry(self, identifier: str, grant_id: int, actor) -> PluginGrant:
-        """Put a grant's failed install job back to pending; the grant is `granting` again.
+        """Run a grant's failed install or upgrade hook again.
+
+        An `install_failed` grant's install job goes back to pending and the grant is
+        `granting`; an `upgrade_failed` grant's upgrade job gets a fresh series of retries
+        and the grant is `upgrading` (`UpgradeHookService.retry_locked`).
 
         Raises:
             GrantNotFoundError: No such grant of this plugin.
-            HookNotRetryableError: The grant's install hook has not failed.
+            HookNotRetryableError: The grant's install or upgrade hook has not failed.
             PluginUninstallingError: The plugin is uninstalled or being deleted.
         """
         with transaction.atomic():
             grant = lock_grant(identifier, grant_id)
+            if grant.state == GrantState.UPGRADE_FAILED:
+                assert_grant_action(grant, GrantAction.RETRY_UPGRADE)
+                UpgradeHookService().retry_locked(grant, actor)
+                return grant
             assert_grant_action(grant, GrantAction.RETRY_INSTALL)
             job = (
                 grant.hook_jobs.select_for_update()
@@ -401,7 +506,8 @@ class HookJobService:
 
         Only `node`'s jobs, or every node's when None (the scheduled sweep, so a job of a node
         that stopped reporting ends too). Each job is then what its kind's rules make of a
-        failed attempt. Returns how many there were.
+        failed attempt. Returns how many this call ended; one another process ended first
+        is not counted.
         """
         overdue = PluginHookJob.objects.filter(
             state=HookJobState.RUNNING, deadline_at__lt=timezone.now() - RESULT_GRACE
@@ -409,6 +515,7 @@ class HookJobService:
         if node is not None:
             overdue = overdue.filter(plugin__placement__node=node)
         overdue_ids = list(overdue.order_by("pk").values_list("pk", flat=True))
+        ended = 0
         for job_id in overdue_ids:
             with transaction.atomic():
                 running = PluginHookJob.objects.filter(pk=job_id, state=HookJobState.RUNNING)
@@ -421,6 +528,7 @@ class HookJobService:
                 if job is None:
                     continue
                 self._finish(job, succeeded=False, error=NO_RESULT_IN_TIME)
+            ended += 1
             log_hook_finished(
                 identifier=job.plugin.identifier,
                 job_id=job.pk,
@@ -430,7 +538,7 @@ class HookJobService:
                 outcome="failed",
                 duration_ms=None,
             )
-        return len(overdue_ids)
+        return ended
 
     @classmethod
     def _lock_job_of_node(cls, node: PluginNode, job_id: int) -> PluginHookJob:
@@ -459,6 +567,15 @@ class HookJobService:
         HOOK_KIND_RULES[job.kind].finish(job, succeeded=succeeded, error=error, now=timezone.now())
 
 
+def _grant_with_plugin(job: PluginHookJob) -> PluginGrant | None:
+    """The job's grant (locked before the job), with the plugin the job was read with: read
+    after that lock, so `settle_grant` sees the plugin's state as it is now."""
+    grant = job.grant
+    if grant is not None:
+        grant.plugin = job.plugin
+    return grant
+
+
 def _close(job: PluginHookJob, state: str, error: str | None, now: datetime) -> None:
     job.state = state
     job.finished_at = now
@@ -482,7 +599,7 @@ def _invocation(
             kind=job.kind,
             org=ContextOrganization(id=job.organization_id, name=organization_name),
             plugin=PluginIdentity(identifier=identifier, version=version),
-            previous_version=None,
+            previous_version=job.previous_version if job.kind == HookJobKind.UPGRADE else None,
         )
     )
     issued_at = int(time.time())

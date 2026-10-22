@@ -4,6 +4,7 @@ import pytest
 from plugins.lifecycle.grant_service import PluginGrantService
 from plugins.models import (
     ActivityAction,
+    GrantState,
     HookJobKind,
     HookJobState,
     PluginActivityEvent,
@@ -158,9 +159,13 @@ def test_a_plugin_without_the_hook_holds_no_data_and_gets_no_job(weather_backend
     assert not PluginHookJob.objects.filter(kind=HookJobKind.ORG_REMOVED).exists()
 
 
-def test_data_already_deleted_is_not_counted_again(cobalt_grant, weather, cobalt, actor):
+def test_a_grant_being_purged_whose_own_data_removal_succeeded_is_not_counted_again(
+    cobalt_grant, weather, cobalt, actor
+):
+    PluginGrant.objects.filter(pk=cobalt_grant.pk).update(state=GrantState.PURGING)
     PluginHookJob.objects.create(
         plugin=weather,
+        grant=cobalt_grant,
         organization_id=cobalt.pk,
         kind=HookJobKind.ORG_REMOVED,
         state=HookJobState.SUCCEEDED,
@@ -170,8 +175,46 @@ def test_data_already_deleted_is_not_counted_again(cobalt_grant, weather, cobalt
     assert "plugin_data" not in OrganizationManagementService().preview_delete(actor, cobalt.pk).affected_resources
 
 
+def test_an_earlier_grant_s_finished_data_removal_does_not_cover_the_grant_now(cobalt_grant, weather, cobalt, actor):
+    PluginHookJob.objects.create(
+        plugin=weather,
+        organization_id=cobalt.pk,
+        kind=HookJobKind.ORG_REMOVED,
+        state=HookJobState.SUCCEEDED,
+        timeout_seconds=60,
+    )
+
+    assert OrganizationManagementService().preview_delete(actor, cobalt.pk).affected_resources["plugin_data"] == 1
+
+
+@pytest.mark.parametrize("own_job", [None, HookJobState.SUCCEEDED, HookJobState.FAILED])
+@pytest.mark.parametrize("grant_state", [GrantState.ACTIVE, GrantState.PURGING])
+def test_the_delete_asks_for_as_many_data_removals_as_its_preview_counted(
+    cobalt_grant, weather, cobalt, actor, django_capture_on_commit_callbacks, grant_state, own_job
+):
+    PluginGrant.objects.filter(pk=cobalt_grant.pk).update(state=grant_state)
+    if own_job is not None:
+        PluginHookJob.objects.create(
+            plugin=weather,
+            grant=cobalt_grant,
+            organization_id=cobalt.pk,
+            kind=HookJobKind.ORG_REMOVED,
+            state=own_job,
+            timeout_seconds=60,
+        )
+    previewed = OrganizationManagementService().preview_delete(actor, cobalt.pk).affected_resources.get("plugin_data", 0)
+
+    _delete(actor, cobalt, django_capture_on_commit_callbacks)
+
+    # The jobs that stand for the organization's data once it is gone: new or reused ones.
+    standing = PluginHookJob.objects.filter(
+        kind=HookJobKind.ORG_REMOVED, organization_id=cobalt.pk, state__in=(HookJobState.PENDING, HookJobState.FAILED)
+    )
+    assert standing.count() == previewed
+
+
 def test_a_count_that_fails_counts_nothing(cobalt_grant, cobalt, mocker):
-    mocker.patch("plugins.organization_deletion._plugins_holding_data", side_effect=RuntimeError("down"))
+    mocker.patch("plugins.organization_deletion.grants_needing_a_job", side_effect=RuntimeError("down"))
 
     assert PluginsOrganizationDeletion().count_external_artifacts(cobalt) == {}
 

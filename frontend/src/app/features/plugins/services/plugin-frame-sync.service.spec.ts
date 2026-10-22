@@ -21,11 +21,13 @@ describe('PluginFrameSyncService', () => {
     let theme: WritableSignal<PluginTheme>;
     let pluginFrame: PluginFrame;
     let navChanges: { path: string; replace: boolean }[];
+    let availabilityChanges: string[];
 
     beforeEach(() => {
         vi.stubGlobal('MessageChannel', FakeMessageChannel);
         theme = signal(DARK_THEME);
         navChanges = [];
+        availabilityChanges = [];
         TestBed.configureTestingModule({
             providers: [PluginFrameSyncService, { provide: PluginHostThemeService, useValue: { theme } }],
         });
@@ -46,6 +48,7 @@ describe('PluginFrameSyncService', () => {
             initialPath: '/forecast?city=Berlin',
             org: { id: 3, name: 'Acme' },
             onNavChanged: (path, replace) => navChanges.push({ path, replace }),
+            onAvailabilityChanged: (state) => availabilityChanges.push(state),
             ...overrides,
         });
     }
@@ -189,6 +192,51 @@ describe('PluginFrameSyncService', () => {
             port.postMessage({ type: 'nav.changed', path: '/after-reload', replace: false });
 
             expect(navChanges.at(-1)?.path).not.toBe('/after-reload');
+        });
+
+        it('passes availability.changed on for maintenance and unavailable only', () => {
+            attach();
+            const port = handshake();
+
+            port.postMessage({ type: 'availability.changed', state: 'maintenance' });
+            port.postMessage({ type: 'availability.changed', state: 'available' });
+            port.postMessage({ type: 'availability.changed', state: 'down' });
+            port.postMessage({ type: 'availability.changed' });
+            port.postMessage({ type: 'availability.changed', state: 'unavailable' });
+
+            expect(availabilityChanges).toEqual(['maintenance', 'unavailable']);
+            expect(navChanges).toEqual([]);
+        });
+
+        it('accepts at most 6 availability.changed a minute, also across a re-handshake', () => {
+            vi.useFakeTimers();
+            attach();
+            let port = handshake();
+            const limit = PLUGIN_FRAME_LIMITS.maxAvailabilityChangesPerMinute;
+            for (let index = 0; index < limit; index++) {
+                port.postMessage({ type: 'availability.changed', state: 'maintenance' });
+            }
+
+            port = handshake();
+            port.postMessage({ type: 'availability.changed', state: 'unavailable' });
+            expect(availabilityChanges).toHaveLength(limit);
+            expect(availabilityChanges).not.toContain('unavailable');
+
+            vi.advanceTimersByTime(60_000);
+            port.postMessage({ type: 'availability.changed', state: 'unavailable' });
+            expect(availabilityChanges.at(-1)).toBe('unavailable');
+        });
+
+        it('counts nav.changed and availability.changed in windows of their own', () => {
+            attach();
+            const port = handshake();
+            for (let index = 0; index < PLUGIN_FRAME_LIMITS.maxAvailabilityChangesPerMinute; index++) {
+                port.postMessage({ type: 'availability.changed', state: 'maintenance' });
+            }
+
+            port.postMessage({ type: 'nav.changed', path: '/places', replace: false });
+
+            expect(navChanges).toEqual([{ path: '/places', replace: false }]);
         });
 
         it('sends nav.navigate for a new EpicStaff address, and nothing for the path the page shows', () => {

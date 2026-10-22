@@ -16,6 +16,7 @@ from plugins.databases.database_records import app_password_of
 from plugins.exceptions import PlacementNotFoundError
 from plugins.identity.service_account_keys import MintedKey, ServiceAccountKeyService
 from plugins.identity.signing_keys import PluginSigningKeyService
+from plugins.lifecycle.open_upgrades import node_package, open_upgrade_of
 from plugins.models import (
     Plugin,
     PluginNode,
@@ -127,8 +128,10 @@ class RuntimeCredentialsService:
     def credentials_for(self, node: PluginNode, placement_id: int) -> RuntimeCredentials:
         """Return the runtime credentials of a placement on `node`, with freshly minted keys.
 
-        For a plugin whose current package has a database, they also carry its app role's
-        password, decrypted. It never goes into the runtime file, and only this node gets it.
+        The runtime file is the node package's (`node_package`): the upgrade's target once the
+        plugin is stopped for it, with that version's settings, public paths and version. For
+        a node package with a database they also carry its app role's password, decrypted. It
+        never goes into the runtime file, and only this node gets it.
 
         Every call mints a new key for each of the plugin's key-holding service accounts
         (`ServiceAccountKeyService`): EpicStaff keeps only hashes, so a key cannot be handed
@@ -159,7 +162,7 @@ class RuntimeCredentialsService:
             if placement is None:
                 raise PlacementNotFoundError()
             plugin = placement.plugin
-            manifest = plugin.current_package.parsed_manifest
+            manifest = node_package(plugin, open_upgrade_of(plugin)).parsed_manifest
             if manifest.backend is None:
                 raise PlacementNotFoundError()
             builder = RuntimeFileBuilder(PluginSigningKeyService().jwks())

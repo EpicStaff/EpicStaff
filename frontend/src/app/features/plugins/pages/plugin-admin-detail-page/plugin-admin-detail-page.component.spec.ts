@@ -19,13 +19,20 @@ import { PluginActivityApiService } from '../../services/plugin-activity-api.ser
 import { PluginDialogsService } from '../../services/plugin-dialogs.service';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import {
+    buildFailedMigrationUpgrade,
+    buildMigratingUpgrade,
     buildPackageReview,
     buildPluginActivityEvent,
+    buildPluginBackupList,
     buildPluginDetail,
     buildPluginPurgeProgress,
+    buildPluginRestore,
+    buildPluginRuntime,
+    buildPluginRuntimeDatabase,
+    buildPluginUpgrade,
 } from '../../testing/plugin-fixtures';
 import { PLUGIN_ERROR_MESSAGES } from '../../utils/plugin-error-message.util';
-import { PLUGIN_DELETION_POLL_MS, PluginAdminDetailPageComponent } from './plugin-admin-detail-page.component';
+import { PLUGIN_DETAIL_POLL_MS, PluginAdminDetailPageComponent } from './plugin-admin-detail-page.component';
 
 class ResizeObserverStub {
     observe(): void {}
@@ -198,7 +205,7 @@ describe('PluginAdminDetailPageComponent uninstall, reinstall and deletion', () 
     }
 
     function poll(): void {
-        vi.advanceTimersByTime(PLUGIN_DELETION_POLL_MS);
+        vi.advanceTimersByTime(PLUGIN_DETAIL_POLL_MS);
         refresh();
     }
 
@@ -340,17 +347,31 @@ describe('PluginAdminDetailPageComponent uninstall, reinstall and deletion', () 
         expect(storage.getPlugin).toHaveBeenCalledTimes(3);
     });
 
-    it('keeps the plugin shown and keeps asking after a failed poll', () => {
+    it('keeps the plugin shown and keeps asking after a failed poll, and says the progress may be old', () => {
         render(DELETING);
         storage.getPlugin.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 502, error: null })));
         poll();
 
         expect(banner()).toContain('Deleting Weather');
         expect(element.querySelector('app-fetch-error-state')).toBeNull();
+        expect(text(element.querySelector('.banner--stale'))).toBe(
+            "Couldn't refresh: Couldn't load the plugin. Showing the last known progress."
+        );
 
         storage.getPlugin.mockReturnValue(of(DELETING));
         poll();
         expect(storage.getPlugin).toHaveBeenCalledTimes(3);
+        expect(element.querySelector('.banner--stale')).toBeNull();
+    });
+
+    it('says a plugin on screen that the server no longer knows was deleted, whatever its state', () => {
+        render(buildPluginDetail({ open_upgrade: buildPluginUpgrade() }));
+        storage.getPlugin.mockReturnValue(throwError(() => notFound()));
+
+        poll();
+
+        expect(toast.success).toHaveBeenCalledWith('Weather was deleted.');
+        expect(navigateByUrl).toHaveBeenCalledWith('/workspace/plugins');
     });
 
     it('never polls a plugin that is not being deleted', () => {
@@ -455,5 +476,337 @@ describe('PluginAdminDetailPageComponent uninstall, reinstall and deletion', () 
         expect(confirm).not.toHaveBeenCalled();
         expect(storage.retryRemoval).toHaveBeenCalledWith('weather');
         expect(toast.success).toHaveBeenCalledWith('The plugin node tries again to remove Weather.');
+    });
+});
+
+describe('PluginAdminDetailPageComponent upgrades', () => {
+    let fixture: ComponentFixture<PluginAdminDetailPageComponent>;
+    let element: HTMLElement;
+    let storage: {
+        getPlugin: Mock<(identifier: string) => Observable<PluginDetail>>;
+        cancelUpgrade: Mock<(identifier: string) => Observable<PluginDetail>>;
+        retryUpgrade: Mock<(identifier: string) => Observable<PluginDetail>>;
+        getRuntime: Mock;
+        listBackups: Mock;
+    };
+    let openReview: Mock;
+    let confirm: Mock<(options: ConfirmationDialogData) => Observable<boolean | 'close'>>;
+    let toast: { success: Mock; warning: Mock; error: Mock };
+
+    const PREPARING = buildPluginDetail({
+        current_version: '0.6.0',
+        allowed_actions: ['cancel_upgrade', 'purge'],
+        open_upgrade: buildPluginUpgrade(),
+        upgrade: { to_version: '0.7.0', stage: 'preparing', failed: false },
+    });
+    const OFFLINE = buildPluginDetail({
+        state: 'maintenance',
+        current_version: '0.6.0',
+        allowed_actions: ['purge'],
+        open_upgrade: buildMigratingUpgrade(),
+        upgrade: { to_version: '0.7.0', stage: 'migrating', failed: false },
+    });
+    const FAILED = buildPluginDetail({
+        state: 'maintenance',
+        current_version: '0.7.0',
+        allowed_actions: ['retry_upgrade', 'purge', 'restore_backup'],
+        open_upgrade: buildFailedMigrationUpgrade(),
+        upgrade: { to_version: '0.7.1', stage: 'migrating', failed: true },
+        needs_attention: true,
+    });
+
+    function withBackendPackage(plugin: PluginDetail): PluginDetail {
+        const review = buildPackageReview({ review_state: 'approved' });
+        return {
+            ...plugin,
+            current_package: { ...review, contents: { ...review.contents, has_backend: true, has_database: true } },
+        };
+    }
+
+    function render(plugin: PluginDetail): void {
+        storage.getPlugin.mockReturnValue(of(plugin));
+        fixture = TestBed.createComponent(PluginAdminDetailPageComponent);
+        element = fixture.nativeElement as HTMLElement;
+        fixture.componentRef.setInput('identifier', plugin.identifier);
+        refresh();
+    }
+
+    function refresh(): void {
+        fixture.detectChanges();
+        TestBed.tick();
+        fixture.detectChanges();
+    }
+
+    function poll(): void {
+        vi.advanceTimersByTime(PLUGIN_DETAIL_POLL_MS);
+        refresh();
+    }
+
+    function text(node: Element | null | undefined): string {
+        return node?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    }
+
+    function bannerLines(): string[] {
+        return Array.from(element.querySelectorAll('app-plugin-lifecycle-banner .banner')).map((line) => text(line));
+    }
+
+    function headerButtons(): string[] {
+        return Array.from(element.querySelectorAll('.detail__actions button')).map((button) => text(button));
+    }
+
+    function headerButton(label: string): HTMLButtonElement {
+        return Array.from(element.querySelectorAll<HTMLButtonElement>('.detail__actions button')).find(
+            (button) => text(button) === label
+        )!;
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-21T10:04:00Z'));
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        storage = {
+            getPlugin: vi.fn(),
+            cancelUpgrade: vi.fn(() => of(buildPluginDetail({ state: 'provisioning' }))),
+            retryUpgrade: vi.fn(() => of(PREPARING)),
+            getRuntime: vi.fn(() =>
+                of(
+                    buildPluginRuntime({
+                        database: buildPluginRuntimeDatabase(),
+                        upgrade: { from_version: '0.7.0', to_version: '0.7.1' },
+                    })
+                )
+            ),
+            listBackups: vi.fn(() => of(buildPluginBackupList())),
+        };
+        openReview = vi.fn(() => of(undefined));
+        confirm = vi.fn(() => of<boolean | 'close'>(true));
+        toast = { success: vi.fn(), warning: vi.fn(), error: vi.fn() };
+        TestBed.configureTestingModule({
+            imports: [PluginAdminDetailPageComponent],
+            providers: [
+                provideRouter([]),
+                { provide: PluginsAdminStorageService, useValue: storage },
+                { provide: PluginDialogsService, useValue: { openReview } },
+                { provide: ConfirmationDialogService, useValue: { confirm } },
+                { provide: ToastService, useValue: toast },
+            ],
+        });
+        vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+    });
+
+    it('says what is prepared while the plugin keeps running, with the node’s step', () => {
+        render(PREPARING);
+
+        expect(bannerLines()).toEqual(['Preparing 0.7.0 — Weather keeps running (Downloading the package)']);
+        expect(headerButtons()).toEqual(['Cancel upgrade', 'Delete permanently…']);
+    });
+
+    it('says the plugin is offline, with the step and for how long', () => {
+        render(OFFLINE);
+
+        expect(bannerLines()).toEqual([
+            'Upgrading to 0.7.0 — Weather is offline (Running migrations · offline for 3 min)',
+        ]);
+        expect(text(element.querySelector('.detail__badges'))).toContain('Maintenance');
+    });
+
+    it('says an upgrade that adds a backend keeps the plugin running', () => {
+        render(
+            buildPluginDetail({
+                open_upgrade: buildPluginUpgrade({ stage: 'migrating', step: 'migrate', adds_backend: true }),
+            })
+        );
+
+        expect(bannerLines()).toEqual(['Upgrading to 0.7.0 — Weather keeps running (Running migrations)']);
+        expect(element.textContent).toContain('Runtime');
+    });
+
+    it('says while doing what an upgrade failed, why, and that the database already holds its changes', () => {
+        render(FAILED);
+
+        expect(bannerLines()).toEqual([
+            'The upgrade to 0.7.1 failed while running migrations: 005_broken.sql line 1: [22012] division by zero',
+            'The database already holds changes of 0.7.1. Restore the backup to go back.',
+        ]);
+        expect(headerButtons()).toEqual(['Retry', 'Delete permanently…', 'Restore backup…']);
+    });
+
+    it('names the stage when the node reported no step, and leaves out the database line when it is unchanged', () => {
+        render({
+            ...FAILED,
+            open_upgrade: buildFailedMigrationUpgrade({ step: null, database_changed: false, last_error: null }),
+        });
+
+        expect(bannerLines()).toEqual(['The upgrade to 0.7.1 failed while running migrations: no reason was given']);
+    });
+
+    it('shows a restore under way, then the database restored, as the latest news', () => {
+        render({ ...FAILED, open_upgrade: buildFailedMigrationUpgrade({ restore: buildPluginRestore() }) });
+        expect(bannerLines()).toContain(
+            'Restoring the database from the backup taken before the upgrade to 0.7.1 (Restoring the backup)'
+        );
+        fixture.destroy();
+
+        render({
+            ...FAILED,
+            allowed_actions: ['cancel_upgrade', 'retry_upgrade', 'purge', 'restore_backup'],
+            open_upgrade: buildFailedMigrationUpgrade({
+                database_changed: false,
+                last_error: 'Database restored from x.dump. Retry, upload a newer version, or cancel the upgrade.',
+                restore: buildPluginRestore({ state: 'succeeded', finished_at: '2026-10-21T11:06:00Z' }),
+            }),
+        });
+        expect(bannerLines()).toEqual([
+            'The upgrade to 0.7.1 is stopped.',
+            'Database restored from the backup taken before the upgrade to 0.7.1',
+        ]);
+        expect(headerButtons()).toContain('Cancel upgrade');
+    });
+
+    it('says a failed restore, and how to undo it once the database was touched', () => {
+        render({
+            ...FAILED,
+            open_upgrade: buildFailedMigrationUpgrade({
+                restore: buildPluginRestore({
+                    state: 'failed',
+                    step: 'restore',
+                    pre_restore_backup_id: 63,
+                    last_error: 'pg_restore: error: could not execute query',
+                    finished_at: '2026-10-21T11:06:00Z',
+                }),
+            }),
+        });
+
+        expect(bannerLines().at(-1)).toBe(
+            'The restore failed while restoring the backup: pg_restore: error: could not execute query. ' +
+                'Restore the backup taken before the restore to undo it.'
+        );
+    });
+
+    it('treats a restore from before the latest failure as history', () => {
+        render({
+            ...FAILED,
+            open_upgrade: buildFailedMigrationUpgrade({
+                failed_at: '2026-10-21T11:20:00Z',
+                restore: buildPluginRestore({ state: 'succeeded', finished_at: '2026-10-21T11:06:00Z' }),
+            }),
+        });
+
+        expect(bannerLines()).toHaveLength(2);
+        expect(bannerLines()[0]).toContain('failed while running migrations');
+    });
+
+    it('counts the organizations still upgrading once the upgrade is done, and polls until none is', () => {
+        render(buildPluginDetail({ current_version: '0.7.0', upgrade_hooks: { upgrading: 1, upgrade_failed: 1 } }));
+        expect(bannerLines()).toEqual(['Organizations upgrading: 1 · failed: 1']);
+
+        storage.getPlugin.mockReturnValue(
+            of(buildPluginDetail({ current_version: '0.7.0', upgrade_hooks: { upgrading: 0, upgrade_failed: 1 } }))
+        );
+        poll();
+        poll();
+
+        expect(storage.getPlugin).toHaveBeenCalledTimes(2);
+        expect(bannerLines()).toEqual(['Organizations upgrading: 0 · failed: 1']);
+    });
+
+    it('polls while an upgrade is open and stops once it is done', () => {
+        render(PREPARING);
+        storage.getPlugin.mockReturnValue(of(OFFLINE));
+        poll();
+        expect(bannerLines()[0]).toContain('Weather is offline');
+
+        storage.getPlugin.mockReturnValue(of(buildPluginDetail({ current_version: '0.7.0' })));
+        poll();
+        poll();
+
+        expect(storage.getPlugin).toHaveBeenCalledTimes(3);
+        expect(element.querySelector('app-plugin-lifecycle-banner .banner')).toBeNull();
+    });
+
+    it('opens the pending package’s review from "Upgrade to <version>…", and polls the upgrade it started', () => {
+        const pending = buildPluginDetail({
+            current_version: '0.6.0',
+            allowed_actions: ['uninstall', 'purge', 'upgrade'],
+            pending_package: { id: 12, version: '0.7.0', trust: 'trusted' },
+        });
+        openReview.mockReturnValue(of({ kind: 'approved', plugin: PREPARING }));
+        render(pending);
+        storage.getPlugin.mockReturnValue(of(PREPARING));
+
+        expect(headerButtons()).toEqual(['Uninstall…', 'Delete permanently…', 'Upgrade to 0.7.0…']);
+        headerButton('Upgrade to 0.7.0…').click();
+        refresh();
+
+        expect(openReview).toHaveBeenCalledWith({ packageId: 12 });
+        expect(bannerLines()[0]).toContain('Preparing 0.7.0');
+        const loads = storage.getPlugin.mock.calls.length;
+        poll();
+        expect(storage.getPlugin).toHaveBeenCalledTimes(loads + 1);
+    });
+
+    it('cancels the upgrade only after confirmation', () => {
+        render(PREPARING);
+
+        confirm.mockReturnValueOnce(of(false));
+        headerButton('Cancel upgrade').click();
+        expect(storage.cancelUpgrade).not.toHaveBeenCalled();
+
+        headerButton('Cancel upgrade').click();
+        refresh();
+
+        expect(confirm).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                message: 'Cancel the upgrade of Weather to 0.7.0? 0.7.0 is deleted, and Weather goes on with 0.6.0.',
+                confirmText: 'Cancel upgrade',
+            })
+        );
+        expect(storage.cancelUpgrade).toHaveBeenCalledWith('weather');
+        expect(toast.success).toHaveBeenCalledWith('The upgrade of Weather is cancelled.');
+    });
+
+    it('retries a failed upgrade at once, and says why when it is refused', () => {
+        render(FAILED);
+
+        headerButton('Retry').click();
+        refresh();
+        expect(confirm).not.toHaveBeenCalled();
+        expect(storage.retryUpgrade).toHaveBeenCalledWith('weather');
+        expect(toast.success).toHaveBeenCalledWith('The plugin node tries the upgrade of Weather again.');
+        fixture.destroy();
+
+        storage.retryUpgrade.mockReturnValue(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 409,
+                        error: { status_code: 409, code: 'upgrade_not_retryable', message: 'Refused.' },
+                    })
+            )
+        );
+        render(FAILED);
+        headerButton('Retry').click();
+        refresh();
+        expect(toast.error).toHaveBeenCalledWith(PLUGIN_ERROR_MESSAGES.upgrade_not_retryable);
+    });
+
+    it('opens the Runtime tab with its backups on "Restore backup…"', () => {
+        render(withBackendPackage(FAILED));
+
+        headerButton('Restore backup…').click();
+        refresh();
+        // The runtime panel loads at its first timer tick.
+        vi.advanceTimersByTime(0);
+        refresh();
+
+        expect(element.querySelector('app-plugin-runtime-panel')).not.toBeNull();
+        expect(element.querySelector('app-plugin-backups')).not.toBeNull();
+        expect(storage.listBackups).toHaveBeenCalledWith('weather');
+        expect(text(element.querySelector('.runtime__upgrade'))).toBe('Running 0.7.0 → 0.7.1');
     });
 });

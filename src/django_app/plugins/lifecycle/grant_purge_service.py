@@ -123,14 +123,25 @@ class GrantPurgeService:
 
     def advance(self, grant: PluginGrant, until: float) -> PurgePassResult:
         """Delete what the plugin owns under a purging grant, until the `time.monotonic()`
-        deadline; the grant keeps the first error of the pass, or none after a clean pass."""
+        deadline.
+
+        The grant keeps the first error of a pass that failed. A pass that held back rows
+        which failed within the hour keeps the error the grant has, so it does not vanish
+        until a pass gets through them; only a pass with no failure that held back nothing
+        clears it.
+        """
         result = OwnedResourcePurger().purge(
             organization_id=grant.org_id,
             plugin_identifier=grant.plugin.identifier,
             grant=grant,
             until=until,
         )
-        last_error = result.first_error if result.failed else None
+        if result.failed:
+            last_error = result.first_error
+        elif result.held_back:
+            return result
+        else:
+            last_error = None
         PluginGrant.objects.filter(pk=grant.pk, state=GrantState.PURGING).exclude(
             last_purge_error=last_error
         ).update(last_purge_error=last_error, updated_at=timezone.now())

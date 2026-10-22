@@ -18,7 +18,7 @@
     const PENDING_KEY = 'epicstaff.login.pending';
     const RESULT_KEY = 'epicstaff.login.result';
     const PENDING_MAX_AGE_MS = 600 * 1000;
-    const CALLBACK_ERRORS = ['login_required', 'access_denied', 'interaction_required'];
+    const CALLBACK_ERRORS = ['login_required', 'access_denied', 'interaction_required', 'temporarily_unavailable'];
     const STATE_PATTERN = /^[A-Za-z0-9_-]{43,128}$/;
     const CODE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
     const RETURN_PATH_PATTERN = /^\/(?![/\\])[!-~]{0,2047}$/;

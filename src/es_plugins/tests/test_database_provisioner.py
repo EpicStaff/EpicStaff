@@ -112,7 +112,7 @@ async def test_provisioning_again_changes_nothing_but_the_reasserted_password(pl
 
     outcome = await provisioner(spy).ensure("weather", desired, password, [a_migration()])
 
-    assert (outcome.created, outcome.ledger, outcome.applied) == (False, ("001_places.sql",), 0)
+    assert (outcome.created, [entry.name for entry in outcome.ledger], outcome.applied) == (False, ["001_places.sql"], 0)
     assert await catalog_snapshot(desired) == before
     assert not [statement for statement in spy.statements if statement.startswith(("CREATE ROLE", "CREATE DATABASE"))]
     assert [statement for statement in spy.statements if statement.startswith(f'ALTER ROLE "{desired.app_role}" LOGIN PASSWORD')]
@@ -449,3 +449,23 @@ def test_an_error_text_a_plugin_chose_stays_on_one_line():
 
     # A Unicode line separator counts as a line break too.
     assert describe_error(error) == "line one plugins.database.provisioned plugin=forged end"
+
+
+@pytest.mark.postgres
+async def test_a_grant_to_another_plugins_role_fails_the_provisioning_naming_the_role(plugin_databases):
+    # Role names are visible to every plugin; a grant to one would keep that plugin's roles from
+    # ever being dropped.
+    other = plugin_databases()
+    await provisioner().ensure("other", other, new_app_password(), [])
+    desired = plugin_databases()
+    text = (
+        "CREATE TABLE shared (id int);\n"
+        f'GRANT SELECT ON shared TO "{other.app_role}";\n'
+    ).encode()
+    grant = Migration(name="001_share.sql", sha256=hashlib.sha256(text).hexdigest(), content=text)
+
+    with pytest.raises(DatabaseProvisioningError) as raised:
+        await provisioner().ensure("weather", desired, new_app_password(), [grant])
+
+    assert raised.value.reason == "assertion"
+    assert f"objects in database {desired.database_name} refer to role(s) {other.app_role}" in str(raised.value)

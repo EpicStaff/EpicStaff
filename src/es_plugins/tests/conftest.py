@@ -84,5 +84,6 @@ async def plugin_databases():
         return desired
 
     yield make
-    for desired in made:
+    # Newest first: a later plugin's database may refer to an earlier one's roles.
+    for desired in reversed(made):
         await drop_plugin_database(desired)

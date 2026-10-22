@@ -48,17 +48,19 @@ def spawn_request(**overrides):
     return protocol.decode_request(json.dumps(request).encode())
 
 
-def test_the_agent_gets_the_database_admin_password_and_nothing_else_of_the_launchers(layout, monkeypatch):
+def test_the_agent_gets_both_database_passwords_and_nothing_else_of_the_launchers(layout, monkeypatch):
     monkeypatch.setenv("PLUGINS_DB_ADMIN_PASSWORD", "d" * 64)
     monkeypatch.setenv("PLUGINS_NODE_KEY", "n" * 64)
     monkeypatch.setenv("POSTGRES_PASSWORD", "s" * 64)
     monkeypatch.setenv("PLUGINS_DB_BACKUP_PASSWORD", "b" * 64)
+    monkeypatch.setenv("PLUGINS_DB_SUPERUSER_PASSWORD", "u" * 64)
 
     environment = agent_environment(layout)
 
     assert (environment["PLUGINS_DB_ADMIN_PASSWORD"], environment["PLUGINS_NODE_KEY"]) == ("d" * 64, "n" * 64)
+    assert environment["PLUGINS_DB_BACKUP_PASSWORD"] == "b" * 64
     assert "POSTGRES_PASSWORD" not in environment
-    assert "PLUGINS_DB_BACKUP_PASSWORD" not in environment
+    assert "PLUGINS_DB_SUPERUSER_PASSWORD" not in environment
 
 
 def test_a_valid_request_is_decoded():
@@ -913,3 +915,74 @@ async def test_a_removal_the_launcher_cannot_finish_comes_back_as_its_reason(lay
     finally:
         client.close()
         running.stop()
+
+
+def test_a_prune_request_is_decoded():
+    request = protocol.decode_request(
+        json.dumps({"operation": "prune_code", "plugin": "weather", "uid": PLUGIN_UID, "keep_version": "0.7.0"}).encode()
+    )
+
+    assert request == protocol.PruneCode(plugin="weather", uid=PLUGIN_UID, keep_version="0.7.0")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"keep_version": ".."}, {"keep_version": "0.7.0/../x"}, {"keep_version": ""}, {"plugin": "../weather"}, {"uid": 0}],
+)
+def test_a_prune_of_something_that_is_not_one_plugins_version_is_refused(overrides):
+    document = {"operation": "prune_code", "plugin": "weather", "uid": PLUGIN_UID, "keep_version": "0.7.0", **overrides}
+
+    with pytest.raises(ValidationError):
+        protocol.decode_request(json.dumps(document).encode())
+
+
+def test_a_prune_for_a_uid_outside_the_range_is_refused(operations):
+    with pytest.raises(LauncherRefusalError, match="outside PLUGINS_NODE_UID_RANGE"):
+        operations.handle(protocol.PruneCode(plugin="weather", uid=PLUGIN_UID + 10, keep_version="0.7.0"), [])
+
+
+def test_a_temporary_refusal_says_so_and_a_permanent_one_does_not():
+    assert json.loads(protocol.encode_failure("busy", temporary=True)) == {"ok": False, "error": "busy", "temporary": True}
+    assert json.loads(protocol.encode_failure("no")) == {"ok": False, "error": "no", "temporary": False}
+
+
+@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
+@pytest.mark.root
+async def test_a_second_removal_while_the_first_runs_is_answered_as_temporary(layout):
+    from es_plugins.agent.launcher_client import LauncherUnavailableError
+
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    running = RunningServer(layout.launcher_socket, operations, agent_uid=os.getuid())
+    first, second = LauncherClient(layout.launcher_socket), LauncherClient(layout.launcher_socket)
+    try:
+        await first.prepare_plugin("weather", PLUGIN_UID)
+        assert run_as_user(PLUGIN_UID, lambda: _fill_home(layout.plugin_home("weather"), 50_000))
+        removal = asyncio.create_task(first.remove_plugin("weather", PLUGIN_UID, timeout_seconds=120))
+        await asyncio.sleep(0.05)
+
+        with pytest.raises(LauncherUnavailableError, match="already being removed"):
+            await second.remove_plugin("weather", PLUGIN_UID, timeout_seconds=120)
+        await removal
+        await second.remove_plugin("weather", PLUGIN_UID, timeout_seconds=120)
+    finally:
+        first.close()
+        second.close()
+        running.stop()
+
+
+@pytest.mark.root
+def test_root_prunes_a_plugins_code_but_the_version_it_runs(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    setup.prepare_plugin("weather", PLUGIN_UID)
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    for version in ("0.6.0", "0.7.0"):
+        (layout.plugin_code("weather", version) / "backend").mkdir(parents=True)
+
+    result, _ = operations.handle(protocol.PruneCode(plugin="weather", uid=PLUGIN_UID, keep_version="0.7.0"), [])
+
+    assert result.removed == ["0.6.0"]
+    assert os.listdir(layout.plugin_code_root("weather")) == ["0.7.0"]
+

@@ -176,16 +176,17 @@ def test_uploading_identical_bytes_again_keeps_the_file(superadmin_client, packa
     assert len(package_store.objects) == 1
 
 
-def test_a_plugin_with_an_approved_package_cannot_take_a_new_upload(superadmin_client, package_store):
+def test_a_newer_version_of_an_approved_plugin_is_put_up_for_review(superadmin_client, package_store):
     review = _upload(superadmin_client).json()
     _approve(superadmin_client, review["id"], untrusted_acknowledged=True)
 
     response = _upload(superadmin_client, build_package(manifest=sample_manifest(version="0.2.0")))
 
-    assert response.status_code == 409
-    assert response.json()["code"] == "plugin_upgrade_unavailable"
-    assert PluginPackage.objects.count() == 1
-    assert len(package_store.objects) == 1
+    assert response.status_code == 201
+    body = response.json()
+    assert (body["is_upgrade"], body["current_version"], body["review_state"]) == (True, "0.1.0", "pending")
+    assert Plugin.objects.get(identifier="weather").current_package_id == review["id"]
+    assert len(package_store.objects) == 2
 
 
 def test_a_package_with_nothing_to_install_is_invalid(superadmin_client):
@@ -281,9 +282,11 @@ def test_the_list_is_sorted_by_name_and_summarises_each_plugin(superadmin_client
     assert zebra_summary["state"] == "running" and zebra_summary["pending_package"] is None
     assert set(zebra_summary) == {
         "identifier", "name", "description", "state", "trust", "current_version", "icon_url",
-        "frame_origin", "grant_count", "pending_package", "purge_after", "needs_attention", "created_at",
+        "frame_origin", "grant_count", "pending_package", "purge_after", "needs_attention", "upgrade",
+        "created_at",
     }
     assert (zebra_summary["purge_after"], zebra_summary["needs_attention"]) == (None, False)
+    assert zebra_summary["upgrade"] is None
 
 
 def test_the_list_runs_a_fixed_number_of_queries(superadmin_client, django_assert_max_num_queries):
@@ -338,6 +341,10 @@ ADMIN_ENDPOINTS = [
     ("get", f"{PLUGINS_URL}weather/grants/1/suspend-preview/"),
     ("post", f"{PLUGINS_URL}weather/grants/1/suspend/"),
     ("post", f"{PLUGINS_URL}weather/grants/1/resume/"),
+    ("post", f"{PLUGINS_URL}weather/upgrade/cancel/"),
+    ("post", f"{PLUGINS_URL}weather/upgrade/retry/"),
+    ("get", f"{PLUGINS_URL}weather/backups/"),
+    ("post", f"{PLUGINS_URL}weather/backups/1/restore/"),
 ]
 
 

@@ -23,11 +23,11 @@ class PluginGrantQuerySet(models.QuerySet):
         """Load what the SuperAdmin's grant list shows, in two queries for any number of grants.
 
         Adds `key_last_used_at` (when the grant's service account last called EpicStaff,
-        `PluginServiceAccount.last_used_at`), and `install_jobs` and `org_removed_jobs` (its
-        install and organization removed hook jobs, newest first, the latter annotated
-        with `organization_exists`), and comes with the plugin, organization, granting
-        SuperAdmin and service account. The owned-resource count is set on the page
-        afterwards (`ownership.owned_resource_summary.with_owned_resource_counts`).
+        `PluginServiceAccount.last_used_at`), and `install_jobs`, `upgrade_jobs` and
+        `org_removed_jobs` (its install, upgrade and organization removed hook jobs, newest
+        first, the last annotated with `organization_exists`), and comes with the plugin,
+        organization, granting SuperAdmin and service account. The owned-resource count is
+        set on the page afterwards (`ownership.owned_resource_summary.with_owned_resource_counts`).
         """
         # Imported here: the hook job module imports this one.
         from plugins.models.hook_job import HookJobKind, PluginHookJob
@@ -45,6 +45,13 @@ class PluginGrantQuerySet(models.QuerySet):
                 ),
                 Prefetch(
                     "hook_jobs",
+                    queryset=PluginHookJob.objects.filter(kind=HookJobKind.UPGRADE).order_by(
+                        "-created_at", "-pk"
+                    ),
+                    to_attr="upgrade_jobs",
+                ),
+                Prefetch(
+                    "hook_jobs",
                     queryset=PluginHookJob.objects.filter(kind=HookJobKind.ORG_REMOVED)
                     .annotate(
                         organization_exists=Exists(
@@ -55,6 +62,23 @@ class PluginGrantQuerySet(models.QuerySet):
                     to_attr="org_removed_jobs",
                 ),
             )
+        )
+
+    def listed(self) -> "PluginGrantQuerySet":
+        """Grants that give their organization a plugin row in the left bar: usable ones, and
+        ones whose plugin or organization is being upgraded (its page then says so).
+
+        `active` or `upgrading` grants of a plugin `running` or in `maintenance`. Only the list
+        of available plugins uses it; sign-in, the gateway and the Roles matrix use `usable()`.
+        Each comes with its plugin and current package (without the icon), sorted by name.
+        """
+        return (
+            self.with_current_package()
+            .filter(
+                state__in=(GrantState.ACTIVE, GrantState.UPGRADING),
+                plugin__state__in=(PluginState.RUNNING, PluginState.MAINTENANCE),
+            )
+            .order_by(Lower("plugin__name"), "plugin__identifier")
         )
 
     def usable(self) -> "PluginGrantQuerySet":
@@ -87,6 +111,10 @@ class PluginGrant(OrgScopedModel):
     )
     purge_after = models.DateTimeField(null=True, blank=True)
     last_hook_error = models.TextField(null=True, blank=True)
+    # The plugin version this organization was last brought to: set when its install or
+    # upgrade hook succeeds, or when it becomes active without one. Null while its install
+    # hook has not succeeded.
+    installed_version = models.CharField(max_length=64, null=True, blank=True)
     # When deleting the grant's data began; the row is deleted once it is done.
     purge_started_at = models.DateTimeField(null=True, blank=True)
     # The first resource the last purge pass could not delete, and why; cleared by a pass

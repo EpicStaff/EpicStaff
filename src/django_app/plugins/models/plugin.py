@@ -16,15 +16,18 @@ class PluginQuerySet(models.QuerySet):
         """Load what a plugin summary shows in a fixed number of queries.
 
         Adds `grant_count` (active grants), `needs_attention` (an organization removed job
-        failed for good, the node failed to remove the plugin, or a grant's data could not
-        all be deleted yet) and `pending_packages` (a list holding the pending package, if
-        any). The current package comes without its icon and manifest, the placement with it.
+        failed for good, the node failed to remove the plugin, a grant's data could not all
+        be deleted yet, the open upgrade failed, or an organization's upgrade failed),
+        `pending_packages` (a list holding the pending package, if any) and `open_upgrades`
+        (a list holding the open upgrade, if any, with its packages). The current package
+        comes without its icon and manifest, the placement with it.
         """
         # Imported here: these modules import this one.
         from plugins.models.enums import PlacementRemovalState
         from plugins.models.grant import PluginGrant
         from plugins.models.hook_job import HookJobKind, HookJobState, PluginHookJob
         from plugins.models.node import PluginPlacement
+        from plugins.models.upgrade import OPEN_UPGRADE_STAGES, PluginUpgrade
 
         needs_attention = ExpressionWrapper(
             Exists(
@@ -45,6 +48,16 @@ class PluginQuerySet(models.QuerySet):
                     state=GrantState.PURGING,
                     last_purge_error__isnull=False,
                 )
+            )
+            | Exists(
+                PluginUpgrade.objects.filter(
+                    plugin=OuterRef("pk"),
+                    stage__in=OPEN_UPGRADE_STAGES,
+                    failed_at__isnull=False,
+                )
+            )
+            | Exists(
+                PluginGrant.objects.filter(plugin=OuterRef("pk"), state=GrantState.UPGRADE_FAILED)
             ),
             output_field=BooleanField(),
         )
@@ -64,7 +77,14 @@ class PluginQuerySet(models.QuerySet):
                         "id", "plugin_id", "version", "trust"
                     ),
                     to_attr="pending_packages",
-                )
+                ),
+                Prefetch(
+                    "upgrades",
+                    queryset=PluginUpgrade.objects.filter(stage__in=OPEN_UPGRADE_STAGES)
+                    .select_related("to_package", "from_package")
+                    .defer("to_package__icon_bytes", "from_package__icon_bytes"),
+                    to_attr="open_upgrades",
+                ),
             )
         )
 
@@ -145,6 +165,8 @@ class PluginPackage(models.Model):
     spa_bytes = models.PositiveBigIntegerField(default=0)
     wheel_count = models.PositiveIntegerField(default=0)
     migration_count = models.PositiveIntegerField(default=0)
+    # Every migration file of the package, `{name, sha256}` sorted by name, from CONTENTS.json.
+    migration_files = models.JSONField(default=list, blank=True)
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )

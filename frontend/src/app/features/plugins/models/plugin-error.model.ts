@@ -40,6 +40,16 @@ export type PluginErrorCode =
     | 'hook_job_not_found'
     | 'org_removed_hook_not_retryable'
     | 'org_removed_hook_not_skippable'
+    | 'plugin_version_not_newer'
+    | 'plugin_not_upgradable'
+    | 'review_outdated'
+    | 'access_growth_not_acknowledged'
+    | 'upgrade_not_cancellable'
+    | 'upgrade_not_retryable'
+    | 'plugin_upgrade_open'
+    | 'backup_not_found'
+    | 'restore_not_allowed'
+    | 'invalid_restore_phrase'
     | 'throttled';
 
 /** One problem in a refused package: `loc` is a dotted path such as `manifest.user_permissions[1].action`. */

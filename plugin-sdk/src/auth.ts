@@ -1,4 +1,5 @@
 import type { PlatformConfig, PlatformLogin } from './config.js';
+import { gatewayRefusal, passedGateway } from './gateway.js';
 import { describeError, PluginLoginError } from './login-error.js';
 import {
     GATEWAY_DENY_HEADER,
@@ -23,7 +24,7 @@ import {
     type PopupResult,
     sessionStorageOf,
 } from './popup.js';
-import { isRecord } from './protocol.js';
+import { isRecord, type PluginAvailability } from './protocol.js';
 
 /**
  * Where the person's sign-in stands.
@@ -34,9 +35,18 @@ import { isRecord } from './protocol.js';
  * - `access-denied`: the person may not use the plugin in this organization (or in any of theirs).
  * - `session-ended`: the EpicStaff session ended while the page was open. Inside EpicStaff, offer "Sign in again"
  *   (`signIn()`); a page opened on its own goes to EpicStaff's login at once.
+ * - `maintenance`: the plugin is being updated in the person's organization, so EpicStaff signs nobody in to it there
+ *   for now (`availability` is `maintenance` too). Say so, and call `renew()` now and then to try again.
  * - `failed`: something unexpected stopped the sign-in; `error` says what.
  */
-export type LoginState = 'idle' | 'signing-in' | 'signed-in' | 'access-denied' | 'session-ended' | 'failed';
+export type LoginState =
+    | 'idle'
+    | 'signing-in'
+    | 'signed-in'
+    | 'access-denied'
+    | 'session-ended'
+    | 'maintenance'
+    | 'failed';
 
 /** Who is signed in, from the token endpoint's answer. The token itself stays inside the SDK. */
 export interface PluginSession {
@@ -61,6 +71,8 @@ export interface PluginLoginSource {
     readonly config: PlatformConfig;
     /** The `es_org` hint, already removed from the address. */
     readonly orgHint: number | null;
+    /** Tells EpicStaff about a change of {@link PluginLogin.availability}; `startPlugin`'s result has it. */
+    readonly reportAvailability?: (availability: PluginAvailability) => void;
 }
 
 /** A person's sign-in to the plugin through EpicStaff, and the requests that carry it. */
@@ -70,8 +82,17 @@ export interface PluginLogin {
     readonly session: PluginSession | null;
     /** Why `state` is `failed`; `null` otherwise. */
     readonly error: PluginLoginError | null;
+    /**
+     * Whether the plugin's own API can be reached, from the last answer {@link fetch} got from it: `maintenance` or
+     * `unavailable` after the gateway answered `503` with that reason, `available` again after any answer that passed
+     * the gateway. A sign-in refused for maintenance sets `maintenance`; one that succeeds clears it. `available` until
+     * then.
+     */
+    readonly availability: PluginAvailability;
     /** Calls `listener` on every state change and every renewed token. Returns the function that stops it. */
     onChange(listener: (state: LoginState) => void): () => void;
+    /** Calls `listener` on every change of {@link availability}. Returns the function that stops it. */
+    onAvailabilityChange(listener: (availability: PluginAvailability) => void): () => void;
     /**
      * Signs the person in: finishes a sign-in that just came back from EpicStaff, else tries silently (a hidden frame,
      * no visible change), else sends the page to EpicStaff's login, which brings it back to the same address. Resolves
@@ -88,7 +109,8 @@ export interface PluginLogin {
      * with `X-EpicStaff-Gateway-Deny: login`) it renews once and retries once; when the gateway refuses the person
      * (`403` with `X-EpicStaff-Gateway-Deny: forbidden`) the state becomes `access-denied`. The plugin's own 401 and
      * 403 responses (without the header) are returned as they are. A retried request must have a body that can be
-     * sent twice (not a stream).
+     * sent twice (not a stream). A `503` from the gateway (`maintenance` or `unavailable`) sets {@link availability},
+     * is returned as it is, and never renews.
      */
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;
     /** See {@link openPopup}. Call it from a click or key press handler, before any `await`. */
@@ -120,7 +142,15 @@ export function createPluginLogin(plugin: PluginLoginSource, options: PluginLogi
         );
     }
     const fetchImplementation = options.fetch ?? globalThis.fetch.bind(globalThis);
-    return new BrowserPluginLogin(win, plugin.config, plugin.config.login, plugin.orgHint, fetchImplementation);
+    const reportAvailability = plugin.reportAvailability;
+    return new BrowserPluginLogin(
+        win,
+        plugin.config,
+        plugin.config.login,
+        plugin.orgHint,
+        fetchImplementation,
+        (state) => reportAvailability?.(state)
+    );
 }
 
 /** What EpicStaff answered on the callback page: a code, or an error from the OAuth vocabulary. */
@@ -156,16 +186,19 @@ class BrowserPluginLogin implements PluginLogin {
     private readonly config: PlatformConfig;
     private readonly endpoints: PlatformLogin;
     private readonly fetchImplementation: typeof fetch;
+    private readonly reportAvailability: (availability: PluginAvailability) => void;
     /** The org to sign in to when there is no token yet: `es_org`, else the org of this tab's last token. */
     private orgHint: number | null;
     /** `orgHint` came from this tab's last token, not from EpicStaff: it may name an org the person has lost. */
     private orgHintIsStored: boolean;
     private readonly listeners = new Set<(state: LoginState) => void>();
+    private readonly availabilityListeners = new Set<(availability: PluginAvailability) => void>();
     /** Cancels whatever is still running (a silent frame, a popup) when the login is closed. */
     private readonly cancellations = new Set<() => void>();
     private currentState: LoginState = 'idle';
     private currentSession: PluginSession | null = null;
     private currentError: PluginLoginError | null = null;
+    private currentAvailability: PluginAvailability = 'available';
     /** Kept only here, never in any storage. */
     private token: string | null = null;
     /** The org of the latest token, kept after it ends, for renewals and "Sign in again". */
@@ -187,12 +220,14 @@ class BrowserPluginLogin implements PluginLogin {
         config: PlatformConfig,
         endpoints: PlatformLogin,
         orgHint: number | null,
-        fetchImplementation: typeof fetch
+        fetchImplementation: typeof fetch,
+        reportAvailability: (availability: PluginAvailability) => void
     ) {
         this.win = win;
         this.config = config;
         this.endpoints = endpoints;
         this.fetchImplementation = fetchImplementation;
+        this.reportAvailability = reportAvailability;
         const storedOrg = orgHint === null ? this.readStoredOrg() : null;
         this.orgHint = orgHint ?? storedOrg;
         this.orgHintIsStored = storedOrg !== null;
@@ -211,9 +246,18 @@ class BrowserPluginLogin implements PluginLogin {
         return this.currentError;
     }
 
+    get availability(): PluginAvailability {
+        return this.currentAvailability;
+    }
+
     onChange(listener: (state: LoginState) => void): () => void {
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);
+    }
+
+    onAvailabilityChange(listener: (availability: PluginAvailability) => void): () => void {
+        this.availabilityListeners.add(listener);
+        return () => this.availabilityListeners.delete(listener);
     }
 
     start(): Promise<LoginState> {
@@ -238,7 +282,7 @@ class BrowserPluginLogin implements PluginLogin {
 
         await this.settled();
         const sentToken = this.token;
-        const response = await this.send(url, init, sentToken);
+        const response = await this.sendToApi(url, init, sentToken);
         if (sentToken === null) return response;
 
         // Only the gateway's own refusals change the sign-in; a 401 or 403 from the plugin is the caller's to handle.
@@ -251,7 +295,7 @@ class BrowserPluginLogin implements PluginLogin {
         // A request that failed alongside this one may have renewed already.
         if (this.token === sentToken) await this.renew();
         if (this.currentState !== 'signed-in' || this.token === null || !isReplayable(init)) return response;
-        return this.send(url, init, this.token);
+        return this.sendToApi(url, init, this.token);
     }
 
     openPopup(url: string | URL, options: OpenPopupOptions): Promise<PopupResult> {
@@ -269,6 +313,7 @@ class BrowserPluginLogin implements PluginLogin {
         for (const cancel of [...this.cancellations]) cancel();
         this.cancellations.clear();
         this.listeners.clear();
+        this.availabilityListeners.clear();
     }
 
     private async runStart(): Promise<LoginState> {
@@ -293,6 +338,7 @@ class BrowserPluginLogin implements PluginLogin {
         if (answer.error === 'access_denied') {
             return purpose === 'start' && this.isStaleStoredOrg(org) ? this.signInWithoutStoredOrg() : this.deny();
         }
+        if (answer.error === 'temporarily_unavailable') return this.holdForMaintenance();
         if (purpose === 'start') {
             await this.navigateToLogin(org, currentReturnPath(this.win));
             return this.currentState;
@@ -403,6 +449,7 @@ class BrowserPluginLogin implements PluginLogin {
         if (answer?.error === 'access_denied') {
             return retryStaleOrg && this.isStaleStoredOrg(returned.org) ? this.signInWithoutStoredOrg() : this.deny();
         }
+        if (answer?.error === 'temporarily_unavailable') return this.holdForMaintenance();
         return this.fail(
             'callback_failed',
             answer === null
@@ -447,6 +494,8 @@ class BrowserPluginLogin implements PluginLogin {
         this.lastOrgId = answer.session.org.id;
         this.storeOrg(answer.session.org.id);
         this.scheduleRenewal(answer.lifetimeSeconds);
+        // EpicStaff signs nobody in while the plugin is being updated in the organization: that is over.
+        if (this.currentAvailability === 'maintenance') this.setAvailability('available');
         this.setState('signed-in', true);
         return this.currentState;
     }
@@ -455,6 +504,18 @@ class BrowserPluginLogin implements PluginLogin {
         this.dropToken();
         this.currentError = null;
         this.setState('access-denied');
+        return this.currentState;
+    }
+
+    /**
+     * The plugin is being updated in the person's organization: no token until it is back. Never navigates, so a page
+     * opened on its own does not loop through EpicStaff's login; `renew()` tries again.
+     */
+    private holdForMaintenance(): LoginState {
+        this.dropToken();
+        this.currentError = null;
+        this.setAvailability('maintenance');
+        this.setState('maintenance');
         return this.currentState;
     }
 
@@ -503,6 +564,27 @@ class BrowserPluginLogin implements PluginLogin {
         for (const listener of [...this.listeners]) listener(next);
     }
 
+    private setAvailability(next: PluginAvailability): void {
+        if (next === this.currentAvailability || this.closed) return;
+        this.currentAvailability = next;
+        this.reportAvailability(next);
+        for (const listener of [...this.availabilityListeners]) listener(next);
+    }
+
+    /**
+     * What the gateway's answer says about the plugin's API: a `503` with `maintenance` or `unavailable` is that state;
+     * anything that passed the gateway is `available`. Its other refusals say nothing about it.
+     */
+    private observeAvailability(response: Response): void {
+        if (passedGateway(response)) {
+            this.setAvailability('available');
+            return;
+        }
+        const refusal = gatewayRefusal(response);
+        if (response.status !== 503 || refusal === null) return;
+        if (refusal.reason === 'maintenance' || refusal.reason === 'unavailable') this.setAvailability(refusal.reason);
+    }
+
     /**
      * Waits for a sign-in or renewal under way, and renews a token that is due, so a request goes out with the newest
      * token. The renewal timer alone is not enough: browsers delay timers in background tabs and while asleep.
@@ -545,10 +627,13 @@ class BrowserPluginLogin implements PluginLogin {
         return this.currentState;
     }
 
-    private send(url: URL, init: RequestInit, token: string | null): Promise<Response> {
+    /** Sends a request to the plugin's own API, with the token when there is one, and notes its availability. */
+    private async sendToApi(url: URL, init: RequestInit, token: string | null): Promise<Response> {
         const headers = new Headers(init.headers);
         if (token !== null) headers.set('authorization', `Bearer ${token}`);
-        return this.fetchImplementation(url.href, { ...init, headers });
+        const response = await this.fetchImplementation(url.href, { ...init, headers });
+        if (!this.closed) this.observeAvailability(response);
+        return response;
     }
 
     /** The plugin's own API: this page's origin, and a path at or below `api_base`. */

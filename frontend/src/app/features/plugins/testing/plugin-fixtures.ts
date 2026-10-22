@@ -2,11 +2,19 @@ import { AvailablePlugin } from '../models/available-plugin.model';
 import { OrganizationServiceAccount, PluginActivityEvent } from '../models/plugin-activity.model';
 import {
     PackageReview,
+    PluginAccessGrowth,
+    PluginBackup,
+    PluginBackupList,
     PluginDetail,
     PluginGrant,
     PluginOrgRemovedJob,
     PluginPurgeProgress,
+    PluginRestore,
+    PluginSettingNeeded,
     PluginSummary,
+    PluginUpgrade,
+    PluginUpgradeHook,
+    PluginUpgradeReview,
 } from '../models/plugin-admin.model';
 import {
     PluginLimitsResponse,
@@ -67,6 +75,7 @@ export function buildPackageReview(overrides: Partial<PackageReview> = {}): Pack
         hooks: { install: false, upgrade: false, org_removed: false },
         warnings: [],
         access_growth: null,
+        upgrade: null,
         ...overrides,
     };
 }
@@ -87,6 +96,7 @@ export function buildPluginSummary(overrides: Partial<PluginSummary> = {}): Plug
         created_at: '2026-10-20T10:00:00Z',
         purge_after: null,
         needs_attention: false,
+        upgrade: null,
         ...overrides,
     };
 }
@@ -99,6 +109,9 @@ export function buildPluginDetail(overrides: Partial<PluginDetail> = {}): Plugin
         uninstall_requested_at: null,
         purge_started_at: null,
         purge_progress: null,
+        open_upgrade: null,
+        last_upgrade: null,
+        upgrade_hooks: { upgrading: 0, upgrade_failed: 0 },
         ...overrides,
     };
 }
@@ -122,6 +135,7 @@ export function buildAvailablePlugin(overrides: Partial<AvailablePlugin> = {}): 
         icon_url: '/api/plugin-public/weather/icon/?v=0.1.0',
         frame_origin: 'https://weather.plugins.example.com',
         permissions: ['read'],
+        availability: 'ready',
         ...overrides,
     };
 }
@@ -248,6 +262,7 @@ export function buildPluginRuntime(overrides: Partial<PluginRuntimeResponse> = {
         placement: buildPluginPlacement(),
         database: null,
         egress: { hosts: [] },
+        upgrade: null,
         ...overrides,
     };
 }
@@ -296,6 +311,8 @@ export function buildPluginGrant(overrides: Partial<PluginGrant> = {}): PluginGr
         purge_started_at: null,
         last_purge_error: null,
         org_removed_hook: null,
+        installed_version: '0.1.0',
+        upgrade_hook: null,
         ...overrides,
     };
 }
@@ -312,7 +329,7 @@ export function buildOrgRemovedJob(overrides: Partial<PluginOrgRemovedJob> = {})
         next_attempt_at: '2026-10-21T09:01:00Z',
         retry_until: '2026-10-28T09:00:00Z',
         finished_at: null,
-        error: null,
+        error: 'Weather answered HTTP 500.',
         created_at: '2026-10-21T08:59:50Z',
         allowed_actions: ['retry', 'skip'],
         ...overrides,
@@ -470,6 +487,177 @@ export function buildOrganizationServiceAccount(
         ],
         outbound_hosts: [],
         has_database: false,
+        ...overrides,
+    };
+}
+
+/** Weather's upgrade from 0.6.0 to 0.7.0 as Sam started it: the node prepares 0.7.0 while 0.6.0 keeps running. */
+export function buildPluginUpgrade(overrides: Partial<PluginUpgrade> = {}): PluginUpgrade {
+    return {
+        id: 7,
+        from_version: '0.6.0',
+        to_version: '0.7.0',
+        stage: 'preparing',
+        step: 'download',
+        failed: false,
+        failed_at: null,
+        last_error: null,
+        adds_backend: false,
+        database_changed: false,
+        backup_id: null,
+        restore: null,
+        started_by: { id: 1, email: 'sam@example.com' },
+        started_at: '2026-10-21T10:00:00Z',
+        maintenance_started_at: null,
+        migrations_started_at: null,
+        finished_at: null,
+        ...overrides,
+    };
+}
+
+/** The same upgrade offline: the plugin is in maintenance, the backup taken, the migrations running. */
+export function buildMigratingUpgrade(overrides: Partial<PluginUpgrade> = {}): PluginUpgrade {
+    return buildPluginUpgrade({
+        stage: 'migrating',
+        step: 'migrate',
+        backup_id: 61,
+        maintenance_started_at: '2026-10-21T10:01:00Z',
+        migrations_started_at: '2026-10-21T10:01:40Z',
+        ...overrides,
+    });
+}
+
+/** Weather's upgrade to 0.7.1 that failed on its broken migration after applying the one before it. */
+export function buildFailedMigrationUpgrade(overrides: Partial<PluginUpgrade> = {}): PluginUpgrade {
+    return buildMigratingUpgrade({
+        id: 8,
+        from_version: '0.7.0',
+        to_version: '0.7.1',
+        failed: true,
+        failed_at: '2026-10-21T11:02:00Z',
+        last_error: '005_broken.sql line 1: [22012] division by zero',
+        database_changed: true,
+        backup_id: 62,
+        ...overrides,
+    });
+}
+
+/** Sam restoring the backup taken before the upgrade to 0.7.1: the node is restoring it. */
+export function buildPluginRestore(overrides: Partial<PluginRestore> = {}): PluginRestore {
+    return {
+        id: 4,
+        backup: { id: 62, file_name: '20261021T110100Z-u8-pre_upgrade.dump', reason: 'pre_upgrade' },
+        state: 'running',
+        step: 'restore',
+        pre_restore_backup_id: null,
+        last_error: null,
+        requested_by: { id: 1, email: 'sam@example.com' },
+        requested_at: '2026-10-21T11:05:00Z',
+        finished_at: null,
+        ...overrides,
+    };
+}
+
+/** The backup taken before the upgrade to 0.7.0, holding 0.6.0's database: restorable while that upgrade is open. */
+export function buildPluginBackup(overrides: Partial<PluginBackup> = {}): PluginBackup {
+    return {
+        id: 61,
+        file_name: '20261021T100130Z-u7-pre_upgrade.dump',
+        reason: 'pre_upgrade',
+        version: '0.6.0',
+        upgrade: { id: 7, to_version: '0.7.0' },
+        size_bytes: 7_654_321,
+        created_at: '2026-10-21T10:01:30Z',
+        restorable: false,
+        not_restorable_reason: 'not_now',
+        ...overrides,
+    };
+}
+
+export function buildPluginBackupList(overrides: Partial<PluginBackupList> = {}): PluginBackupList {
+    return {
+        verification_phrase: 'restore-weather',
+        backups: [buildPluginBackup()],
+        ...overrides,
+    };
+}
+
+/** What Weather 0.7.0 adds: it reaches Open-Meteo for current temperatures. */
+export function buildAccessGrowth(overrides: Partial<PluginAccessGrowth> = {}): PluginAccessGrowth {
+    return {
+        requires_acknowledgement: true,
+        access: [],
+        outbound_hosts: [{ host: 'api.open-meteo.com', reason: 'Looks up the current temperature of saved places.' }],
+        public_paths: [],
+        ...overrides,
+    };
+}
+
+export function buildSettingNeeded(overrides: Partial<PluginSettingNeeded> = {}): PluginSettingNeeded {
+    return {
+        key: 'units',
+        type: 'enum',
+        label: 'Units',
+        description: 'How temperatures are shown.',
+        reason: 'required',
+        values: ['metric', 'imperial'],
+        ...overrides,
+    };
+}
+
+/**
+ * Upgrading Weather from 0.6.0 to 0.7.0: one new migration, an upgrade hook, a database of 7.3 MB backed up first,
+ * Acme and Beta offline until their upgrade finishes, and Cancel possible.
+ */
+export function buildUpgradeReview(overrides: Partial<PluginUpgradeReview> = {}): PluginUpgradeReview {
+    return {
+        baseline_package_id: 10,
+        from_version: '0.6.0',
+        replaces_version: null,
+        trust_change: 'none',
+        maintenance: true,
+        backend: 'unchanged',
+        database: 'unchanged',
+        migrations_added: ['003_place_conditions.sql'],
+        hooks_added: ['upgrade'],
+        hooks_removed: [],
+        has_upgrade_hook: true,
+        user_permissions: { added: [], removed: [], defaults_changed: [] },
+        settings: { added: [], removed: [], needed: [] },
+        limits_changed: [],
+        backup: { required: true, database_name: 'plugin_weather', database_size_bytes: 7_654_321 },
+        organizations_going_offline: 2,
+        cancellable: true,
+        ...overrides,
+    };
+}
+
+/** The pending review of Weather 0.7.0 for an installed 0.6.0, with its new outbound host to approve. */
+export function buildUpgradePackageReview(overrides: Partial<PackageReview> = {}): PackageReview {
+    const review = buildPackageReview();
+    return buildPackageReview({
+        id: 12,
+        version: '0.7.0',
+        is_upgrade: true,
+        current_version: '0.6.0',
+        contents: { ...review.contents, has_backend: true, has_database: true, wheel_count: 4, migration_count: 3 },
+        hooks: { install: true, upgrade: true, org_removed: true },
+        access_growth: buildAccessGrowth(),
+        upgrade: buildUpgradeReview(),
+        ...overrides,
+    });
+}
+
+/** Acme's upgrade hook from 0.6.0: the first attempt failed, the next one is due at 10:05. */
+export function buildUpgradeHook(overrides: Partial<PluginUpgradeHook> = {}): PluginUpgradeHook {
+    return {
+        state: 'pending',
+        attempt: 1,
+        from_version: '0.6.0',
+        next_attempt_at: '2026-10-21T10:05:00Z',
+        started_at: '2026-10-21T10:03:50Z',
+        finished_at: null,
+        error: 'Weather answered HTTP 500.',
         ...overrides,
     };
 }

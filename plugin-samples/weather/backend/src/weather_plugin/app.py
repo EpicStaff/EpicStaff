@@ -4,8 +4,9 @@ The node runs it with `python -m epicstaff_plugin.serve`, which checks the gatew
 of every request before it reaches a route here; `context_from_scope` returns that context.
 Public paths (see the manifest) get a public context; every other route is reached only by a
 person logged in to EpicStaff, with a user context. Importing this module also registers the
-install hook (`weather_plugin.install_hook`) and the organization removed hook (defined here,
-because it needs the database the lifespan opens), which the same runner answers.
+install hook (`weather_plugin.install_hook`), the upgrade hook (`weather_plugin.upgrade_hook`)
+and the organization removed hook (defined here, because it needs the database the lifespan
+opens), which the same runner answers.
 
 Routes that read or change EpicStaff call it on behalf of the person asking
 (`EpicStaffClient.client_for_context`), so EpicStaff records that person on what Weather
@@ -14,8 +15,9 @@ does for them.
 Weather keeps its saved places, its forecast runs and its popup results in its own database
 (`weather_plugin.database`), which the lifespan opens before the first request: a backend
 whose database cannot be reached does not start. The lifespan also runs the hourly purge of
-expired rows (`weather_plugin.retention`). The place search calls Open-Meteo through the
-egress proxy (`weather_plugin.place_search`).
+expired rows (`weather_plugin.retention`). The place search and the current temperatures call
+Open-Meteo through the egress proxy (`weather_plugin.place_search`,
+`weather_plugin.current_conditions`).
 
 Refusals are `{"code": ...}` with a 4xx status: `invalid_request` (400) for input that breaks
 a route's rules, `forbidden` (403) without the Weather permission a route needs,
@@ -44,8 +46,10 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
-# Imported for its effect: registers the install hook with the SDK's hook registry.
-from weather_plugin import install_hook  # noqa: F401
+# Imported for their effect: they register the install and upgrade hooks with the SDK's hook
+# registry.
+from weather_plugin import install_hook, upgrade_hook  # noqa: F401
+from weather_plugin.current_conditions import CurrentTemperature, PlacesWithConditions
 from weather_plugin.database import WeatherDatabase
 from weather_plugin.demo_provider import parse_authorization_request, redirect_page
 from weather_plugin.forecast_flow import find_forecast_flow
@@ -87,7 +91,9 @@ logger = logging.getLogger(__name__)
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     database = await WeatherDatabase.open()
     place_search = PlaceSearch()
+    current_temperature = CurrentTemperature()
     app.state.places = SavedPlaces(database)
+    app.state.places_with_conditions = PlacesWithConditions(app.state.places, current_temperature)
     app.state.forecast_runs = ForecastRuns(database)
     app.state.popup_relay = PopupRelayStore(database)
     app.state.organization_data = OrganizationData(database)
@@ -100,6 +106,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         with contextlib.suppress(asyncio.CancelledError):
             await purge
         await place_search.aclose()
+        await current_temperature.aclose()
         await database.close()
 
 
@@ -324,8 +331,8 @@ async def put_llm_settings(
 
 @app.get("/api/places")
 async def list_places(request: Request, context: UserContext) -> JSONResponse:
-    """The organization's saved places."""
-    places = await request.app.state.places.list(context.org.id)
+    """The organization's saved places in the order they were saved, with current temperatures."""
+    places = await request.app.state.places_with_conditions.list(context.org.id)
     return JSONResponse(
         {"places": [place.model_dump(mode="json") for place in places]}, headers=NO_STORE
     )

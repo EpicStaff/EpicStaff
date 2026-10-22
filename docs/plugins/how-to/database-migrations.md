@@ -32,6 +32,9 @@ database/migrations/002_place_notes.sql
   order.
 - Each file is UTF-8 SQL. It may hold any number of statements, and `DO` blocks.
 - Each file runs once. The node records it in its ledger and skips it from then on.
+- A new version of your plugin adds files after the last one, and never changes a file an
+  earlier version shipped ([section 9](#9-never-change-a-file-that-ran),
+  [section 11](#11-change-the-schema-in-a-new-version)).
 - All of them together hold at most 64 MiB.
 - `epicstaff-plugin validate` and `pack` check the names and the size. `pack` copies `database/`
   into the package as it is.
@@ -176,6 +179,12 @@ The node keeps a ledger in `_epicstaff.migrations`: each file's name, its SHA-25
 ran. A file that ran is skipped from then on, and a file whose content changed after it ran is
 refused with "`<file>` changed after it was applied". To change your schema, add a new file.
 
+EpicStaff checks the same before your plugin goes offline. A new version whose package holds a
+file with the name of one the installed version ships, or one the ledger lists, but with other
+content, is refused when it is uploaded: 409 `plugin_upgrade_unavailable`, "`<name>` is already
+applied; a new version must keep it unchanged". A new version may leave out a file an earlier
+one shipped: the node ignores ledger entries it has no file for.
+
 The ledger is owned by your owner role, so a migration could rewrite it. It catches mistakes,
 such as an edited file, not your own code doing so on purpose. Leave the `_epicstaff` schema
 alone.
@@ -228,16 +237,80 @@ async with pool.connection() as connection, job_transaction(connection):
 It refuses to run inside an `org_transaction`, and the other way round, and needs a connection
 with no transaction open, like `org_transaction`. Keep each transaction short: for a table that
 can pile up rows, delete in batches, each in a `job_transaction` of its own, so no statement
-comes near your statement timeout. The Weather sample's
+comes near your statement timeout. Start each batch after the timestamp the last one ended at,
+not from the oldest row again: a batch that starts from the beginning reads every row the
+earlier batches deleted, so a backlog costs the square of its size. The Weather sample's
 `plugin-samples/weather/database/migrations/002_retention.sql` and
 `plugin-samples/weather/backend/src/weather_plugin/retention.py` delete old rows hourly, 5,000
 at a time.
 
+## 11. Change the schema in a new version
+
+A new version of your plugin brings its new files in `database/migrations/`, numbered after the
+last one. Weather 0.7.0 adds `003_place_conditions.sql` to 0.6.0's `001_weather.sql` and
+`002_retention.sql`. During the upgrade:
+
+1. The plugin goes offline, and its process stops.
+2. EpicStaff backs the database up. No migration runs without a backup taken for this upgrade.
+3. The node runs the files its ledger does not list yet, in name order, each in one transaction,
+   as in [section 3](#3-one-transaction-per-file-and-nothing-that-leaves-it).
+4. The new version's process starts, and then each organization's
+   [upgrade hook](upgrade-hook.md) runs.
+
+The plugin is offline from step 1 until its new process runs, so a long migration keeps it
+offline that long. Each file has up to 15 minutes, and fails when it waits more than 60 seconds
+for a lock. Keep the work a migration does on existing rows small. Work that can wait belongs in
+the backend after the upgrade, in batches.
+
+### Data migrations under row-level security
+
+A migration that changes existing rows runs as your owner role, and `FORCE ROW LEVEL SECURITY`
+applies the organization policy to the owner too. The migration sets no organization, so it
+sees no row: an `UPDATE` changes nothing, and a `SET NOT NULL` after it fails. Lift `FORCE` for
+the file's own transaction, and put it back in the same file:
+
+```sql
+ALTER TABLE weather.saved_places NO FORCE ROW LEVEL SECURITY;
+UPDATE weather.saved_places AS place SET position = numbered.position
+  FROM (SELECT id, row_number() OVER (PARTITION BY org_id ORDER BY created_at, id) AS position
+        FROM weather.saved_places) AS numbered
+  WHERE place.id = numbered.id;
+ALTER TABLE weather.saved_places FORCE ROW LEVEL SECURITY;
+```
+
+The file runs in one transaction, so no other session ever sees the table without `FORCE`. Never
+end a file with it off. The Weather sample numbers each organization's saved places this way,
+in `plugin-samples/weather/database/migrations/003_place_conditions.sql`.
+
+A new table needs what the first ones have: `ENABLE` and `FORCE ROW LEVEL SECURITY`, an
+organization policy `TO ${app_role}`, and grants to the roles that use it and no others. A table
+whose rows belong to another table's rows names the organization in its foreign key, as
+Weather's `place_conditions` does with `(org_id, place_id)`. Foreign key checks bypass
+row-level security, so a key on the other row's id alone would let a row of one organization
+point at another organization's row.
+
+### When a migration fails
+
+The run stops at the failing file, which is rolled back. The files before it stay applied. The
+plugin stays offline, and the upgrade shows the failure: "`<file>` line `<n>`: [`<SQLSTATE>`]
+`<message>`". The SuperAdmin can then:
+
+- **Retry**, when the cause has passed, such as a lock held for too long;
+- **Cancel the upgrade**, when none of the new version's files has run yet: the old version
+  starts again;
+- **Restore the backup**, when some have, and then cancel: the database goes back to what it
+  was before the upgrade, and changes made since are lost;
+- **upload a newer version** that fixes the file and keeps the files that already ran unchanged.
+
+EpicStaff never rolls back by itself. See [the plugin lifecycle](../explanation/lifecycle.md).
+
 ## Test your migrations before you upload
 
-A SuperAdmin cannot replace an approved package in this version, so a migration that fails keeps
-the backend from starting. Run your migrations against a PostgreSQL 17 set up the way the node
-sets one up: the three roles, the owner as the session user, each file in one transaction, the
-placeholders replaced. The Weather sample's tests do that, in
+A migration that fails at the first install keeps your backend from starting, and one that fails
+during an upgrade keeps the plugin offline until a SuperAdmin restores or retries. Run your
+migrations against a PostgreSQL 17 set up the way the node sets one up: the three roles, the
+owner as the session user, each file in one transaction, the placeholders replaced. For a new
+version, run the earlier version's files first, add rows for more than one organization, and
+then run the new files. The Weather sample's tests do both, in
 `src/plugin_sdk/tests/test_weather_sample_database.py` in the EpicStaff repository, and then run
 the backend's stores against the result, as the app role.

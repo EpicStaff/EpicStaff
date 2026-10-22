@@ -12,7 +12,11 @@ import { AvailablePluginsStorageService } from '../../services/available-plugins
 import { PluginHostThemeService } from '../../services/plugin-host-theme.service';
 import { buildAvailablePlugin } from '../../testing/plugin-fixtures';
 import { FakeMessageChannel, FakeMessagePort, postFromWindow } from '../../testing/plugin-frame-test-harness';
-import { PluginHostPageComponent } from './plugin-host-page.component';
+import {
+    PLUGIN_AVAILABILITY_CHECK_MS,
+    PLUGIN_MAINTENANCE_POLL_MS,
+    PluginHostPageComponent,
+} from './plugin-host-page.component';
 import { pluginPageMatcher } from './plugin-page.matcher';
 
 const FRAME_ORIGIN = 'https://weather.plugins.example.com';
@@ -83,7 +87,10 @@ describe('PluginHostPageComponent', () => {
         harness = await RouterTestingHarness.create();
     });
 
-    afterEach(() => vi.unstubAllGlobals());
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+    });
 
     function frame(): HTMLIFrameElement | null {
         return (harness.routeNativeElement as HTMLElement | null)?.querySelector('iframe') ?? null;
@@ -243,6 +250,106 @@ describe('PluginHostPageComponent', () => {
 
         expect(frame()).not.toBe(weatherFrame);
         expect(frame()?.getAttribute('src')).toBe(`${ATLAS_ORIGIN}/?es_org=3`);
+    });
+
+    describe('while the plugin is being updated', () => {
+        function text(): string {
+            return (harness.routeNativeElement as HTMLElement | null)?.textContent ?? '';
+        }
+
+        /**
+         * Opens the plugin, then moves it into maintenance with the timers under the test's control: the page starts
+         * its checks when maintenance begins.
+         */
+        async function enterMaintenance(): Promise<void> {
+            await open('/plugins/weather');
+            vi.useFakeTimers();
+            plugins.set([buildAvailablePlugin({ availability: 'maintenance' })]);
+            harness.detectChanges();
+        }
+
+        it('shows the maintenance panel instead of the frame', async () => {
+            plugins.set([buildAvailablePlugin({ availability: 'maintenance' })]);
+            await harness.navigateByUrl('/plugins/weather');
+            harness.detectChanges();
+
+            expect(frame()).toBeNull();
+            expect(text()).toContain('Weather is being updated. It will be back in a few minutes.');
+        });
+
+        it('asks again every 15 seconds and opens the frame once the plugin is ready', async () => {
+            await enterMaintenance();
+            expect(frame()).toBeNull();
+
+            vi.advanceTimersByTime(PLUGIN_MAINTENANCE_POLL_MS - 1);
+            expect(refresh).not.toHaveBeenCalled();
+            vi.advanceTimersByTime(1);
+            expect(refresh).toHaveBeenCalledTimes(1);
+            vi.advanceTimersByTime(PLUGIN_MAINTENANCE_POLL_MS);
+            expect(refresh).toHaveBeenCalledTimes(2);
+
+            plugins.set([buildAvailablePlugin()]);
+            harness.detectChanges();
+            expect(frame()?.getAttribute('src')).toBe(`${FRAME_ORIGIN}/?es_org=3`);
+            vi.advanceTimersByTime(PLUGIN_MAINTENANCE_POLL_MS * 2);
+            expect(refresh).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not ask while the browser tab is hidden', async () => {
+            await enterMaintenance();
+            const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+
+            vi.advanceTimersByTime(PLUGIN_MAINTENANCE_POLL_MS * 2);
+            expect(refresh).not.toHaveBeenCalled();
+
+            hidden.mockReturnValue(false);
+            vi.advanceTimersByTime(PLUGIN_MAINTENANCE_POLL_MS);
+            expect(refresh).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('availability.changed from the framed page', () => {
+        it('asks the server again at once, then at most once per 10 seconds, the last report answered late', async () => {
+            const port = handshake(await open('/plugins/weather'));
+            vi.useFakeTimers();
+
+            port.postMessage({ type: 'availability.changed', state: 'maintenance' });
+            expect(refresh).toHaveBeenCalledTimes(1);
+
+            vi.advanceTimersByTime(1000);
+            port.postMessage({ type: 'availability.changed', state: 'unavailable' });
+            port.postMessage({ type: 'availability.changed', state: 'maintenance' });
+            expect(refresh).toHaveBeenCalledTimes(1);
+
+            vi.advanceTimersByTime(PLUGIN_AVAILABILITY_CHECK_MS);
+            expect(refresh).toHaveBeenCalledTimes(2);
+        });
+
+        it('never acts on the message itself: the server’s answer decides what is shown', async () => {
+            const iframe = await open('/plugins/weather');
+            const port = handshake(iframe);
+
+            port.postMessage({ type: 'availability.changed', state: 'maintenance' });
+            harness.detectChanges();
+            expect(frame()).toBe(iframe);
+
+            plugins.set([buildAvailablePlugin({ availability: 'maintenance' })]);
+            harness.detectChanges();
+            expect(frame()).toBeNull();
+            expect(harness.routeNativeElement?.textContent).toContain('Weather is being updated.');
+
+            plugins.set([]);
+            harness.detectChanges();
+            expect(harness.routeNativeElement?.textContent).toContain('Plugin not available');
+        });
+
+        it('ignores available, which says nothing new', async () => {
+            const port = handshake(await open('/plugins/weather'));
+
+            port.postMessage({ type: 'availability.changed', state: 'available' });
+
+            expect(refresh).not.toHaveBeenCalled();
+        });
     });
 
     it('frames nothing for a plugin that is not available, or whose origin is not safe', async () => {

@@ -12,6 +12,8 @@ from epicstaff_plugin.contracts.gateway_context import CONTEXT_HEADER
 from epicstaff_plugin.contracts.hook_api import (
     HOOK_ASSERTION_GRACE_SECONDS,
     HOOK_HEADER,
+    HOOK_KINDS,
+    KEYLESS_HOOK_KINDS,
     MAX_HOOK_BODY_BYTES,
     HookRequest,
     encode_hook_body,
@@ -597,3 +599,87 @@ def test_org_removed_hooks_for_two_organizations_run_side_by_side(plugin_app, ru
 def test_running_a_kind_without_a_handler_is_a_lookup_error(hooks):
     with pytest.raises(LookupError, match="org_removed hook has no handler"):
         asyncio.run(HookRegistry().run(hooks.call("org_removed").request, None))
+
+
+@pytest.mark.parametrize("kind", HOOK_KINDS)
+def test_a_kinds_handler_takes_a_client_unless_its_organization_holds_no_key(kind):
+    async def with_client(request, epicstaff):
+        return None
+
+    async def request_only(request):
+        return None
+
+    accepted, refused = (request_only, with_client) if kind in KEYLESS_HOOK_KINDS else (with_client, request_only)
+
+    with pytest.raises(TypeError, match="handler is called with"):
+        HookRegistry().register(kind, refused)
+    assert HookRegistry().register(kind, accepted) is accepted
+
+
+# --- The upgrade hook ---
+
+
+def test_an_upgrade_handler_gets_the_request_and_a_client_for_its_organization(plugin_app, runtime, hooks):
+    handler = RecordingHandler()
+    registry = HookRegistry()
+    registry.on_upgrade(handler)
+    epicstaff = ClientSpy(runtime)
+    call = hooks.call("upgrade", org=ACME, job_id=51, attempt=2, previous_version="0.6.0")
+
+    response = _post(build_app(plugin_app, runtime, hooks=registry, epicstaff=epicstaff), call)
+
+    assert (response.status, response.json()) == (200, {"status": "done"})
+    ((received, client),) = handler.calls
+    assert received == call.request
+    assert (received.kind, received.previous_version, received.job_id, received.attempt) == ("upgrade", "0.6.0", 51, 2)
+    assert (client.org_id, client.on_behalf_of_user_id) == (3, None)
+    assert epicstaff.organizations == [3]
+    assert plugin_app.paths == []
+
+
+def test_an_upgrade_handler_that_raises_answers_failed_with_the_first_line(plugin_app, runtime, hooks):
+    registry = HookRegistry()
+    registry.on_upgrade(RecordingHandler(error=RuntimeError("the flow could not be updated\ndetail")))
+
+    response = _post(build_app(plugin_app, runtime, hooks=registry), hooks.call("upgrade", org=ACME, previous_version="0.6.0"))
+
+    assert (response.status, response.json()) == (
+        500,
+        {"status": "failed", "error": {"message": "the flow could not be updated"}},
+    )
+
+
+def test_the_per_organization_lock_covers_the_upgrade_hook(plugin_app, runtime, hooks):
+    events = []
+    install = RecordingHandler(delay=0.05)
+    upgrade = RecordingHandler(delay=0.05)
+    install.events = upgrade.events = events
+    registry = HookRegistry()
+    registry.on_install(install)
+    registry.on_upgrade(upgrade)
+    app = build_app(plugin_app, runtime, hooks=registry)
+
+    statuses = _run_together(
+        app,
+        hooks.call("install", org=ACME, job_id=41),
+        hooks.call("upgrade", org=ACME, job_id=42, previous_version="0.6.0"),
+        hooks.call("upgrade", org=ACME, job_id=42, attempt=2, previous_version="0.6.0"),
+    )
+
+    assert statuses == [200, 200, 200]
+    assert [event for event, _ in events] == ["start", "end", "start", "end", "start", "end"]
+
+
+def test_upgrade_hooks_for_two_organizations_run_side_by_side(plugin_app, runtime, hooks):
+    upgrade = RecordingHandler(delay=0.05)
+    registry = HookRegistry()
+    registry.on_upgrade(upgrade)
+    app = build_app(plugin_app, runtime, hooks=registry)
+
+    _run_together(
+        app,
+        hooks.call("upgrade", org=ACME, job_id=41, previous_version="0.6.0"),
+        hooks.call("upgrade", org={"id": 5, "name": "Contoso"}, job_id=42, previous_version="0.5.0"),
+    )
+
+    assert [event for event, _ in upgrade.events] == ["start", "start", "end", "end"]

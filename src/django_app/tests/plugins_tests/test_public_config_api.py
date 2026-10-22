@@ -88,9 +88,17 @@ def test_a_plugin_waiting_for_review_is_not_found(anonymous_client, installation
 @pytest.mark.parametrize("path", ["config", "icon"])
 def test_a_plugin_that_stopped_running_is_not_found(anonymous_client, running_plugin, path):
     plugin = running_plugin()
-    Plugin.objects.filter(pk=plugin.pk).update(state=PluginState.MAINTENANCE)
+    Plugin.objects.filter(pk=plugin.pk).update(state=PluginState.FAILED)
 
     assert anonymous_client.get(f"/api/plugin-public/weather/{path}/").status_code == 404
+
+
+@pytest.mark.parametrize("path", ["config", "icon"])
+def test_a_plugin_stopped_for_an_upgrade_is_still_served(anonymous_client, running_plugin, path):
+    plugin = running_plugin()
+    Plugin.objects.filter(pk=plugin.pk).update(state=PluginState.MAINTENANCE)
+
+    assert anonymous_client.get(f"/api/plugin-public/weather/{path}/").status_code == 200
 
 
 def test_a_plugin_with_a_backend_names_epicstaff_s_login_urls(anonymous_client, backend_plugin):

@@ -23,8 +23,12 @@
     <div class="dialog__body">
         <p class="uninstall__summary text-body">
             <strong>Uninstall {{ data.pluginName }}?</strong>
-            It stops working in every organization it is granted to. Its process stops, and every flow that uses its
-            resources stops.
+            It stops working in every organization it is granted to.
+            @if (preview()?.has_backend !== false) {
+                Its process stops, and every flow that uses its resources stops.
+            } @else {
+                Every flow that uses its resources stops.
+            }
         </p>
 
         @if (isLoading()) {

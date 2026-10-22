@@ -17,6 +17,7 @@ function plugin(identifier: string, name: string): AvailablePlugin {
         icon_url: `/api/plugin-public/${identifier}/icon/?v=1.0.0`,
         frame_origin: `https://${identifier}.plugins.example.com`,
         permissions: ['read'],
+        availability: 'ready',
     };
 }
 

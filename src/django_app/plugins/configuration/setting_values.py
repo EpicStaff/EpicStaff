@@ -46,6 +46,48 @@ class PluginSettings:
     missing_required: list[str]
 
 
+REQUIRED = "required"
+INVALID = "invalid"
+
+
+@dataclass(frozen=True)
+class NeededSetting:
+    """A setting a new version cannot start without: `required` with no value and no default,
+    or `invalid`, a stored value the new version's rules refuse."""
+
+    setting: Setting
+    reason: str
+
+
+def settings_needed(
+    manifest: PluginManifest, stored: Iterable[PluginSettingValue]
+) -> list[NeededSetting]:
+    """The settings of `manifest` that the stored values and its defaults leave unusable.
+
+    A stored secret is never decrypted to check it, so it counts as valid; a stored value of
+    the other kind (a plain value where the setting is now a secret, or the reverse) does not.
+    """
+    by_key = {row.key: row for row in stored}
+    needed = []
+    for setting in manifest.settings:
+        row = by_key.get(setting.key)
+        if row is None:
+            if setting.required and setting.default is None:
+                needed.append(NeededSetting(setting, REQUIRED))
+        elif _stored_problem(setting, row) is not None:
+            needed.append(NeededSetting(setting, INVALID))
+    return needed
+
+
+def _stored_problem(setting: Setting, row: PluginSettingValue) -> str | None:
+    is_secret = setting.type == SECRET_TYPE
+    if is_secret != (row.encrypted_value is not None):
+        return "is stored as another kind of setting"
+    if is_secret:
+        return None
+    return _value_problem(setting, row.value)
+
+
 def missing_required_settings(manifest: PluginManifest, stored_keys: Iterable[str]) -> list[str]:
     """Return the keys of required settings that have neither a stored value nor a default."""
     stored = set(stored_keys)
@@ -111,16 +153,19 @@ class PluginSettingsService:
             InvalidPluginSettingsError: An unknown key, a value of the wrong type or size, or
                 clearing a required setting that has no default; each located at
                 `values.<key>`.
+            PluginUninstallingError: The plugin is being deleted.
         """
-        declared = {setting.key: setting for setting in manifest.settings}
-        problems = [
-            Problem(f"values.{key}", message)
-            for key, value in values.items()
-            if (message := _value_problem(declared.get(key), value))
-        ]
-        if problems:
+        # Imported here: the lifecycle modules import this one.
+        from plugins.lifecycle.lifecycle_locks import lock_existing_plugin
+        from plugins.lifecycle.plugin_actions import assert_plugin_not_purging
+
+        declared = _declared(manifest)
+        if problems := _value_problems(declared, values, "values"):
             raise InvalidPluginSettingsError(problems)
         with transaction.atomic():
+            # The plugin first, as every lifecycle action locks it: no setting changes while
+            # the plugin is being deleted.
+            assert_plugin_not_purging(lock_existing_plugin(plugin.identifier))
             placement = PluginPlacement.objects.select_for_update().filter(plugin=plugin).first()
             stored = {row.key: row for row in plugin.setting_values.select_for_update()}
             changed = [
@@ -136,6 +181,62 @@ class PluginSettingsService:
         if changed:
             log_setting_changes(actor, plugin.identifier, changed)
         return self.settings_of(plugin, manifest)
+
+
+def apply_for_upgrade(
+    plugin: Plugin, manifest: PluginManifest, values: dict[str, Any], actor
+) -> list[str]:
+    """Save the settings an upgrade's approval carries, checked against the new version.
+
+    Runs in the approval's transaction, with the plugin locked. The values are validated
+    against `manifest`, the new version's; then every setting it needs must be resolved by
+    them. Nothing restarts: `settings_revision` is not raised, so the running version keeps
+    its runtime file and the new version starts with these values. Returns the changed keys;
+    the caller logs them once the approval commits.
+
+    Raises:
+        InvalidPluginSettingsError: A value is unknown to the new version or breaks its rules,
+            or a setting it needs is still missing; each located at `settings.<key>`.
+    """
+    declared = _declared(manifest)
+    if problems := _value_problems(declared, values, "settings"):
+        raise InvalidPluginSettingsError(problems)
+    unresolved = [
+        Problem(
+            f"settings.{needed.setting.key}",
+            "is required by the new version and has no value"
+            if needed.reason == REQUIRED
+            else "holds a value the new version refuses",
+        )
+        for needed in settings_needed(manifest, plugin.setting_values.all())
+        if values.get(needed.setting.key) is None
+        and not (needed.reason == INVALID and needed.setting.key in values)
+    ]
+    if unresolved:
+        raise InvalidPluginSettingsError(unresolved)
+    stored = {row.key: row for row in plugin.setting_values.select_for_update()}
+    changed = [
+        key
+        for key, value in values.items()
+        if _apply(plugin, declared[key], stored.get(key), value, actor)
+    ]
+    if changed:
+        ActivityRecorder().settings_changed(actor, plugin.identifier, changed)
+    return changed
+
+
+def _declared(manifest: PluginManifest) -> dict[str, Setting]:
+    return {setting.key: setting for setting in manifest.settings}
+
+
+def _value_problems(
+    declared: dict[str, Setting], values: dict[str, Any], location: str
+) -> list[Problem]:
+    return [
+        Problem(f"{location}.{key}", message)
+        for key, value in values.items()
+        if (message := _value_problem(declared.get(key), value))
+    ]
 
 
 def _apply(

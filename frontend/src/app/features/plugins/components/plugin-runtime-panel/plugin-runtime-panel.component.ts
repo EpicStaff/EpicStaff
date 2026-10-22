@@ -6,6 +6,7 @@ import { escapeHtml, formatFileSize } from '@shared/utils';
 import { catchError, EMPTY, exhaustMap, filter, finalize, switchMap, timer } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
+import { PluginUpgrade } from '../../models/plugin-admin.model';
 import { PluginBlockedReason, PluginRuntimeResponse } from '../../models/plugin-backend.model';
 import { PluginErrorView } from '../../models/plugin-error.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
@@ -19,6 +20,7 @@ import {
     pluginObservedStateTone,
 } from '../../utils/plugin-display.util';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
+import { PluginBackupsComponent } from '../plugin-backups/plugin-backups.component';
 import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
 
 /** How often the panel asks for the runtime while it is shown. */
@@ -33,21 +35,36 @@ const BLOCKED_REASON_MESSAGES: Readonly<Record<PluginBlockedReason, string>> = {
  * Where a backend plugin runs and how it is doing: its node, its placement (port, UID, desired and observed state,
  * health, version, process, memory), why it is held stopped, and its last error and log lines when it failed. For a
  * plugin with a database: its state, server, names, migrations, effective limits, size, last error, and when the
- * platform last set the statement timeout back. For a plugin with a backend: the hosts it may reach on the internet.
+ * platform last set the statement timeout back, and its backups. For a plugin with a backend: the hosts it may reach
+ * on the internet. While an upgrade has the node run the new version, "Running 0.6.0 → 0.7.0".
  *
  * Polls the runtime every few seconds while it is shown (not while the browser tab is hidden) and stops when it is
  * destroyed. Restart asks for confirmation first.
  */
 @Component({
     selector: 'app-plugin-runtime-panel',
-    imports: [ButtonComponent, DatePipe, DecimalPipe, LoadingSpinnerComponent, PluginBadgeComponent],
+    imports: [
+        ButtonComponent,
+        DatePipe,
+        DecimalPipe,
+        LoadingSpinnerComponent,
+        PluginBackupsComponent,
+        PluginBadgeComponent,
+    ],
     templateUrl: './plugin-runtime-panel.component.html',
     styleUrl: './plugin-runtime-panel.component.scss',
 })
 export class PluginRuntimePanelComponent {
     readonly identifier = input.required<string>();
     readonly pluginName = input.required<string>();
-    /** The process moved (observed state or health changed, or a restart was asked for), so the plugin's state may have. */
+    /** The plugin's open upgrade: the backups follow its stage, failure and restore. */
+    readonly openUpgrade = input<PluginUpgrade | null>(null);
+    /** "Restore backup…" was chosen: the backups come into view. */
+    readonly revealBackups = input(false);
+    /**
+     * The process moved (observed state or health changed, a restart or a restore was asked for), so the plugin's
+     * state may have.
+     */
     readonly runtimeChanged = output<void>();
 
     protected readonly runtime = signal<PluginRuntimeResponse | null>(null);
@@ -96,6 +113,18 @@ export class PluginRuntimePanelComponent {
     });
     /** `null` hides the section: the plugin has no backend. */
     protected readonly egress = computed(() => this.runtime()?.egress ?? null);
+    /** "Running 0.6.0 → 0.7.0" while the node runs the upgrade's target; `null` otherwise. */
+    protected readonly upgradeText = computed(() => {
+        const upgrade = this.runtime()?.upgrade ?? null;
+        return upgrade ? `Running ${upgrade.from_version} → ${upgrade.to_version}` : null;
+    });
+    /** Changes whenever what the backups allow may have changed. */
+    protected readonly backupsRefreshKey = computed(() => {
+        const upgrade = this.openUpgrade();
+        if (!upgrade) return 'none';
+        const restore = upgrade.restore;
+        return [upgrade.id, upgrade.stage, upgrade.failed, upgrade.backup_id, restore?.id, restore?.state].join('|');
+    });
 
     private readonly storage = inject(PluginsAdminStorageService);
     private readonly confirmation = inject(ConfirmationDialogService);

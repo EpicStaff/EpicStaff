@@ -46,6 +46,9 @@
                     Restart
                 </app-button>
             </div>
+            @if (upgradeText(); as upgrade) {
+                <p class="runtime__upgrade text-body-medium">{{ upgrade }}</p>
+            }
             @if (placement(); as current) {
                 @if (blockedMessage(); as message) {
                     <div
@@ -178,6 +181,14 @@
                     <pre class="runtime__code runtime__error">{{ lastError }}</pre>
                 }
             </section>
+            <app-plugin-backups
+                [identifier]="identifier()"
+                [pluginName]="pluginName()"
+                [databaseName]="pluginDatabase.database_name"
+                [refreshKey]="backupsRefreshKey()"
+                [revealed]="revealBackups()"
+                (restoreRequested)="runtimeChanged.emit()"
+            />
         }
 
         @if (egress(); as access) {

@@ -6,12 +6,14 @@ already limits each statement to the organization, and each also says `WHERE org
 delete stays right if a policy ever changes. Running it again deletes nothing more.
 
 A new table with organization rows gets its statement here; a test compares these statements
-with the tables the migrations create.
+with the tables the migrations create. A table whose rows go with another table's comes first:
+the cascade would delete them too, but uncounted.
 """
 
 from weather_plugin.database import WeatherDatabase
 
 DELETE_ORGANIZATION_ROWS = (
+    "DELETE FROM weather.place_conditions WHERE org_id = %s",
     "DELETE FROM weather.saved_places WHERE org_id = %s",
     "DELETE FROM weather.forecast_runs WHERE org_id = %s",
     "DELETE FROM weather.popup_results WHERE org_id = %s",

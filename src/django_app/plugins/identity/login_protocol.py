@@ -29,7 +29,9 @@ PROMPT_VALUES = (PROMPT_NONE,)
 LOGIN_REQUIRED = "login_required"
 ACCESS_DENIED = "access_denied"
 INTERACTION_REQUIRED = "interaction_required"
-CALLBACK_ERRORS = (LOGIN_REQUIRED, ACCESS_DENIED, INTERACTION_REQUIRED)
+# The person may use the plugin once its upgrade, or their organization's, has finished.
+TEMPORARILY_UNAVAILABLE = "temporarily_unavailable"
+CALLBACK_ERRORS = (LOGIN_REQUIRED, ACCESS_DENIED, INTERACTION_REQUIRED, TEMPORARILY_UNAVAILABLE)
 
 STATE_PATTERN = r"^[A-Za-z0-9_-]{43,128}$"
 CODE_PATTERN = r"^[A-Za-z0-9_-]{43}$"

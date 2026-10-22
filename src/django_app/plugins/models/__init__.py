@@ -1,16 +1,24 @@
 from plugins.models.activity import ActivityAction, ActorKind, PluginActivityEvent
-from plugins.models.database import PluginDatabase, PluginDatabaseServer
+from plugins.models.database import (
+    PluginDatabase,
+    PluginDatabaseBackup,
+    PluginDatabaseRestore,
+    PluginDatabaseServer,
+)
 from plugins.models.enums import (
+    BackupReason,
     GrantState,
     PlacementHealth,
     PlacementObservedState,
     PlacementRemovalState,
     PluginDatabaseState,
     PluginState,
+    RestoreState,
     ReviewState,
     SignatureStatus,
     SuspensionCause,
     Trust,
+    UpgradeStage,
 )
 from plugins.models.grant import PluginGrant
 from plugins.models.hook_job import HookJobKind, HookJobState, PluginHookJob
@@ -25,11 +33,13 @@ from plugins.models.service_account import (
 )
 from plugins.models.settings import PluginSettingValue
 from plugins.models.signing import PluginSigningKey
+from plugins.models.upgrade import PluginUpgrade
 
 __all__ = [
     "KEY_HOLDING_GRANT_STATES",
     "ActivityAction",
     "ActorKind",
+    "BackupReason",
     "GrantState",
     "HookJobKind",
     "HookJobState",
@@ -39,6 +49,8 @@ __all__ = [
     "Plugin",
     "PluginActivityEvent",
     "PluginDatabase",
+    "PluginDatabaseBackup",
+    "PluginDatabaseRestore",
     "PluginDatabaseServer",
     "PluginDatabaseState",
     "PluginGrant",
@@ -53,8 +65,11 @@ __all__ = [
     "PluginSettingValue",
     "PluginSigningKey",
     "PluginState",
+    "PluginUpgrade",
+    "RestoreState",
     "ReviewState",
     "SignatureStatus",
     "SuspensionCause",
     "Trust",
+    "UpgradeStage",
 ]

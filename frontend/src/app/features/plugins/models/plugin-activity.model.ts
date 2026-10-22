@@ -27,7 +27,20 @@ export type PluginActivityAction =
     | 'org_removed_hook_succeeded'
     | 'org_removed_hook_failed'
     | 'org_removed_hook_retried'
-    | 'org_removed_hook_skipped';
+    | 'org_removed_hook_skipped'
+    | 'plugin_upgrade_started'
+    | 'plugin_maintenance_started'
+    | 'plugin_upgrade_failed'
+    | 'plugin_upgrade_retried'
+    | 'plugin_upgrade_cancelled'
+    | 'plugin_upgraded'
+    | 'database_backed_up'
+    | 'database_restore_requested'
+    | 'database_restored'
+    | 'database_restore_failed'
+    | 'upgrade_hook_succeeded'
+    | 'upgrade_hook_failed'
+    | 'upgrade_hook_retried';
 
 /** Why a deletion began (`detail.reason` of `grant_purge_started` and `plugin_purge_started`). */
 export type PluginPurgeReason = 'requested' | 'grace_period_over' | 'plugin_deleted';
@@ -54,8 +67,10 @@ export interface PluginActivityEvent {
     target: { resource_type: string | null; id: string | null; label: string | null } | null;
     /**
      * Never holds a secret. `limits_changed`: the overrides in force after the change, one per limit (`{}` when none
-     * is left); `install_hook_failed`, `database_failed`, `plugin_removal_failed` and `org_removed_hook_failed`:
-     * `error`; `grant_purge_started` and `plugin_purge_started`: `reason`.
+     * is left); the failures (`install_hook_failed`, `database_failed`, `plugin_removal_failed`,
+     * `org_removed_hook_failed`, `plugin_upgrade_failed`, `upgrade_hook_failed`, `database_restore_failed`): `error`;
+     * `grant_purge_started` and `plugin_purge_started`: `reason`; the upgrade events: `from_version`, `to_version`
+     * and the like.
      */
     detail: Record<string, PluginActivityDetailValue>;
 }

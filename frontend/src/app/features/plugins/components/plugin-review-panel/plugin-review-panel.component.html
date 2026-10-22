@@ -49,6 +49,26 @@
         </ul>
     }
 
+    @if (upgrade(); as upgradeReview) {
+        <app-plugin-upgrade-review
+            [upgrade]="upgradeReview"
+            [accessGrowth]="reviewed.access_growth"
+            [pluginName]="reviewed.name"
+            [showAcknowledgement]="isPending()"
+            [disabled]="busy()"
+            [(growthAcknowledged)]="growthAcknowledged"
+        />
+        @if (isPending() && neededSettings().length > 0) {
+            <section class="review__section">
+                <h4 class="review__section-title text-body-bold">Settings this version needs</h4>
+                <app-plugin-needed-settings
+                    [settings]="neededSettings()"
+                    [form]="neededForm()"
+                />
+            </section>
+        }
+    }
+
     <section class="review__section">
         <h4 class="review__section-title text-body-bold">Signature</h4>
         <dl class="review__facts">
@@ -276,7 +296,7 @@
                     [disabled]="!canApprove()"
                     (click)="approve()"
                 >
-                    Approve
+                    {{ approveLabel() }}
                 </app-button>
             </div>
         </footer>

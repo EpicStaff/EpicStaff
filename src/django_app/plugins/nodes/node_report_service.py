@@ -1,25 +1,30 @@
 """What a node reports about its plugin processes, and the plugin states that follow from it."""
 
 from django.db import transaction
+from django.db.models import Exists, OuterRef
 from django.utils import timezone
 from epicstaff_plugin.problems import Problem, format_loc
 from pydantic import ValidationError
 from src.shared.models.plugin_nodes import NodeReport, PlacementReport
 from utils.logger import logger
 
+from plugins.databases.backup_records import BackupRecorder, mark_unlisted_deleted
 from plugins.databases.database_reports import DatabaseReportRecorder
 from plugins.exceptions import InvalidNodeReportError
 from plugins.lifecycle.hook_job_service import HookJobService
 from plugins.lifecycle.plugin_purge_service import PluginPurgeService
+from plugins.lifecycle.upgrade_service import PluginUpgradeService
 from plugins.models import (
     PlacementHealth,
     PlacementObservedState,
-    Plugin,
     PluginDatabase,
+    PluginDatabaseBackup,
     PluginNode,
     PluginPlacement,
     PluginState,
+    PluginUpgrade,
 )
+from plugins.models.upgrade import OPEN_UPGRADE_STAGES
 
 REPORT_LOC = "report"
 
@@ -44,21 +49,28 @@ class NodeReportService:
     """Records a node's report: when it was seen, each placement's process, the plugin states."""
 
     def record(self, node: PluginNode, report: NodeReport) -> None:
-        """Store `report` for `node`.
+        """Store `report` for `node`, then apply what it means for each plugin.
 
-        A placement of another node, or one that no longer exists, is skipped. For the
-        current package of a plugin, a process reported running and healthy makes a
-        `provisioning` or `failed` plugin `running`; one reported failed makes a
-        `provisioning` or `running` plugin `failed`; anything else leaves the state. A report
-        about a process older than the latest restart or settings change is stored for the
-        Runtime tab but moves no state; an uninstalled or deleting plugin never moves. What it
-        says about a plugin's database goes to the database's record
-        (`DatabaseReportRecorder`), in one more query for all of them. Each removal it reports
-        is applied on its own (`PluginPurgeService.apply_removal_report`). A running hook job
-        of the node whose result is overdue fails.
+        A placement of another node, or one that no longer exists, is skipped. The report's
+        observations are stored in one transaction that locks placements, then database
+        records, then backups, and never a plugin: each placement's process, what it says
+        about the plugin's database (`DatabaseReportRecorder`) and the backups its node holds
+        (`BackupRecorder`).
+
+        Then, for each placement whose plugin may move or has an open upgrade, a transaction
+        of its own locks that plugin first and applies the rest (`PluginUpgradeService.
+        follow_report`): a process of the current version reported running and healthy
+        makes a `provisioning` or `failed` plugin `running`, one reported failed makes a
+        `provisioning` or `running` plugin `failed` while no upgrade is open, and an open
+        upgrade records the node's progress, fails, or completes. A report about a process
+        older than the latest restart or settings change is stored for the Runtime tab but
+        moves no state. Each removal it reports is applied on its own
+        (`PluginPurgeService.apply_removal_report`). A running hook job of the node whose
+        result is overdue fails.
         """
         now = timezone.now()
         by_id = {placement.placement_id: placement for placement in report.placements}
+        reported = dict(by_id)
         with transaction.atomic():
             PluginNode.objects.filter(pk=node.pk).update(
                 last_seen_at=now, agent_version=report.agent_version
@@ -71,15 +83,26 @@ class NodeReportService:
                 .order_by("pk")
             )
             databases = _locked_reported_databases(placements, by_id)
+            listed_by_database: dict[int, set[str]] = {}
             for placement in placements:
                 observed = by_id.pop(placement.pk)
                 _store_observation(placement, observed, now)
-                _follow_plugin_state(placement, observed)
                 record = databases.get(placement.plugin_id)
-                if record is not None:
-                    DatabaseReportRecorder().apply(
-                        record, placement.plugin.identifier, observed.database, now
-                    )
+                if record is None:
+                    continue
+                listed = _store_database_observations(record, placement, observed, node, now)
+                # Only a node that reports the database knows its backups: a report without
+                # it (an older node, or one that could not read its state) lists none, which
+                # says nothing.
+                if observed.database is not None and record.has_present_backups:
+                    listed_by_database[record.pk] = listed
+            mark_unlisted_deleted(listed_by_database, now)
+        upgrading = _plugins_with_an_open_upgrade(placements)
+        upgrades = PluginUpgradeService()
+        for placement in placements:
+            observed = reported[placement.pk]
+            if placement.plugin_id in upgrading or _may_move(placement, observed):
+                upgrades.follow_report(node, placement.pk, observed, now)
         purge = PluginPurgeService()
         for removal in report.removals:
             purge.apply_removal_report(node, removal)
@@ -92,22 +115,78 @@ class NodeReportService:
             )
 
 
+def _store_database_observations(
+    record: PluginDatabase,
+    placement: PluginPlacement,
+    observed: PlacementReport,
+    node: PluginNode,
+    now,
+) -> set[str]:
+    """Apply the report's database section and backups to `record`; returns the backups it
+    listed."""
+    identifier = placement.plugin.identifier
+    if observed.database is not None:
+        DatabaseReportRecorder().apply(record, identifier, observed.database, now)
+    return BackupRecorder().apply_inventory(
+        record, observed.backups, identifier=identifier, node=node
+    )
+
+
 def _locked_reported_databases(
     placements: list[PluginPlacement], by_id: dict[int, PlacementReport]
 ) -> dict[int, PluginDatabase]:
-    """The database records of the plugins whose report has a database section, locked, by
-    plugin id; no query when no report has one."""
+    """The database records of the plugins whose report has a database section or backups,
+    locked, by plugin id, each with `has_present_backups`; no query when no report has one."""
     plugin_ids = [
-        placement.plugin_id for placement in placements if by_id[placement.pk].database is not None
+        placement.plugin_id
+        for placement in placements
+        if by_id[placement.pk].database is not None or by_id[placement.pk].backups
     ]
     if not plugin_ids:
         return {}
     return {
         record.plugin_id: record
-        for record in PluginDatabase.objects.select_for_update()
+        for record in PluginDatabase.objects.select_for_update(of=("self",))
         .filter(plugin_id__in=plugin_ids)
+        .annotate(
+            has_present_backups=Exists(
+                PluginDatabaseBackup.objects.filter(
+                    plugin_database=OuterRef("pk"), deleted_at__isnull=True
+                )
+            )
+        )
         .order_by("pk")
     }
+
+
+def _plugins_with_an_open_upgrade(placements: list[PluginPlacement]) -> set[int]:
+    """The plugins among the placements' with an open upgrade; no query for no placement."""
+    if not placements:
+        return set()
+    return set(
+        PluginUpgrade.objects.filter(
+            plugin_id__in=[placement.plugin_id for placement in placements],
+            stage__in=OPEN_UPGRADE_STAGES,
+        ).values_list("plugin_id", flat=True)
+    )
+
+
+def _may_move(placement: PluginPlacement, observed: PlacementReport) -> bool:
+    """Whether the report could move the plugin's state, as the plugin read with its
+    placement says; the follow-up checks again under the plugin's lock."""
+    plugin = placement.plugin
+    package = plugin.current_package
+    if package is None:
+        return False
+    if (
+        observed.observed_state == PlacementObservedState.RUNNING
+        and observed.health == PlacementHealth.OK
+        and observed.observed_version == package.version
+    ):
+        return plugin.state in (PluginState.PROVISIONING, PluginState.FAILED)
+    if observed.observed_state == PlacementObservedState.FAILED:
+        return plugin.state in (PluginState.PROVISIONING, PluginState.RUNNING)
+    return False
 
 
 def _store_observation(placement: PluginPlacement, observed: PlacementReport, now) -> None:
@@ -134,50 +213,3 @@ def _store_observation(placement: PluginPlacement, observed: PlacementReport, no
             "updated_at",
         ]
     )
-
-
-def _follow_plugin_state(placement: PluginPlacement, observed: PlacementReport) -> None:
-    plugin = placement.plugin
-    package = plugin.current_package
-    if package is None or _is_stale(placement, observed):
-        return
-    if (
-        observed.observed_state == PlacementObservedState.RUNNING
-        and observed.health == PlacementHealth.OK
-        and observed.observed_version == package.version
-    ):
-        _move(plugin, (PluginState.PROVISIONING, PluginState.FAILED), PluginState.RUNNING)
-    elif observed.observed_state == PlacementObservedState.FAILED:
-        _move(plugin, (PluginState.PROVISIONING, PluginState.RUNNING), PluginState.FAILED)
-
-
-def _is_stale(placement: PluginPlacement, observed: PlacementReport) -> bool:
-    """Whether the report is about a process from before the latest restart or settings change.
-
-    Such a report, sent before the node picked up the new desired state, must not move the
-    plugin: a `failed` from before a restart would undo the restart. A report without the
-    applied values (no process started yet, a download that failed) is current.
-    """
-    return any(
-        applied is not None and applied < current
-        for applied, current in (
-            (observed.applied_restart_generation, placement.restart_generation),
-            (observed.applied_settings_revision, placement.settings_revision),
-        )
-    )
-
-
-def _move(plugin: Plugin, from_states: tuple[str, ...], to_state: str) -> None:
-    # The state was read with the placement's lock; a report that changes nothing (most of
-    # them) issues no UPDATE. The UPDATE still checks the state, for a change in between.
-    if plugin.state not in from_states:
-        return
-    moved = Plugin.objects.filter(pk=plugin.pk, state__in=from_states).update(
-        state=to_state, updated_at=timezone.now()
-    )
-    if moved:
-        logger.info(
-            "Plugin {identifier} is now {state}, as its node reports",
-            identifier=plugin.identifier,
-            state=to_state,
-        )

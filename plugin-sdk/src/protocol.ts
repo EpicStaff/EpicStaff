@@ -17,6 +17,7 @@ export const FRAME_MESSAGE_TYPES = {
     navChanged: 'nav.changed',
     navNavigate: 'nav.navigate',
     themeChanged: 'theme.changed',
+    availabilityChanged: 'availability.changed',
 } as const;
 
 export const FRAME_ERROR_CODES = ['unsupported_protocol'] as const;
@@ -31,6 +32,8 @@ export const FRAME_LIMITS = {
     maxNavChangesPerMinute: 120,
     /** How long the SDK waits for `es:init` before it runs unframed. */
     initTimeoutMs: 3000,
+    /** `availability.changed` messages EpicStaff accepts per frame in any 60-second window; the rest are dropped. */
+    maxAvailabilityChangesPerMinute: 6,
 } as const;
 
 /**
@@ -42,6 +45,14 @@ export const NAV_PATH_PATTERN = /^\/([A-Za-z0-9\-._~%]+(\/[A-Za-z0-9\-._~%]+)*)?
 export const THEME_MODES = ['dark', 'light'] as const;
 
 export type ThemeMode = (typeof THEME_MODES)[number];
+
+/**
+ * Whether the plugin's own API can be reached, as the page last saw it: `maintenance` while the plugin, or the
+ * organization, is being updated; `unavailable` while the plugin is not running or not answering.
+ */
+export const AVAILABILITY_STATES = ['available', 'maintenance', 'unavailable'] as const;
+
+export type PluginAvailability = (typeof AVAILABILITY_STATES)[number];
 
 /** The public theme tokens. EpicStaff only ever adds tokens; it never renames or removes one. */
 export const THEME_TOKENS = [
@@ -122,6 +133,12 @@ export interface NavNavigateMessage {
 export interface ThemeChangedMessage {
     type: typeof FRAME_MESSAGE_TYPES.themeChanged;
     theme: ThemeState;
+}
+
+/** The page tells EpicStaff its API answers `maintenance` or `unavailable`; EpicStaff then asks its own server. */
+export interface AvailabilityChangedMessage {
+    type: typeof FRAME_MESSAGE_TYPES.availabilityChanged;
+    state: PluginAvailability;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

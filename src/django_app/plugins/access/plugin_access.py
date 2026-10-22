@@ -48,29 +48,38 @@ class GatewayPersonFacts:
 
     `user` is None when the user no longer exists, `grant` when the token's grant is no longer
     a usable grant of this plugin to this organization, and `membership` when the person is no
-    member of it. `may_use` is the rule above for this grant; `actions` are the person's
-    plugin actions when they may use it, and empty otherwise.
+    member of it. `grant_state` is the state of the token's grant, usable or not (None once it
+    is gone), so the gateway can tell an organization still upgrading. `may_use` is the rule
+    above for this grant; `actions` are the person's plugin actions when they may use it, and
+    empty otherwise.
     """
 
     user: object | None
     grant: PluginGrant | None
+    grant_state: str | None
     membership: OrganizationUser | None
     actions: list[str]
     may_use: bool
 
 
 def loginable_plugin(identifier: str) -> Plugin:
-    """Return the running plugin `identifier` if people can log in to it: it has a backend.
+    """Return the plugin `identifier` if people can log in to it: it has a backend, and it is
+    running or stopped for an upgrade (its login then answers that it is being updated).
 
     A login token is only for the plugin's own `/api/`, so a plugin without a backend has none.
 
     Raises:
-        PluginNotFoundError: No such plugin, it is not running, or it has no backend.
+        PluginNotFoundError: No such plugin, it is neither running nor stopped for an upgrade,
+            or it has no backend.
     """
     plugin = (
         Plugin.objects.select_related("current_package")
         .defer("current_package__icon_bytes")
-        .filter(identifier=identifier, state=PluginState.RUNNING, current_package__isnull=False)
+        .filter(
+            identifier=identifier,
+            state__in=(PluginState.RUNNING, PluginState.MAINTENANCE),
+            current_package__isnull=False,
+        )
         .first()
     )
     if plugin is None or plugin.current_package.parsed_manifest.backend is None:
@@ -83,9 +92,10 @@ def accesses_in_organization(
 ) -> list[PersonPluginAccess]:
     """Return `user`'s access to each plugin of `grants` they may use in organization `org_id`.
 
-    `grants` are usable grants of that organization (`.usable()`), read only when the person
-    is an active member of it; the result keeps their order. At most three queries: the
-    membership, the grants, and the stored actions of a custom role.
+    `grants` are usable grants of that organization (`.usable()`), or the left bar's
+    (`.listed()`), read only when the person is an active member of it; the result keeps
+    their order. At most three queries: the membership, the grants, and the stored actions of
+    a custom role.
     """
     membership = _membership(user, org_id)
     if membership is None:
@@ -193,6 +203,35 @@ def eligible_accesses(user, plugin: Plugin) -> list[PersonPluginAccess]:
     return accesses
 
 
+def awaits_an_upgrade(user, plugin: Plugin, org_id: int | None = None) -> bool:
+    """Whether `user` may use `plugin` once its upgrade finishes: in `org_id`, or in any
+    organization when None.
+
+    The rule above, with the grants the left bar lists (`listed()`) that are not usable yet:
+    the plugin is stopped for its upgrade, or the organization's upgrade hook has not
+    finished. Two queries, plus one for a custom role.
+    """
+    if not _is_active_person(user):
+        return False
+    memberships = OrganizationUser.objects.select_related("role", "org").filter(
+        user=user, org__is_active=True
+    )
+    if org_id is not None:
+        memberships = memberships.filter(org_id=org_id)
+    memberships = list(memberships)
+    waiting = {
+        grant.org_id: grant
+        for grant in PluginGrant.objects.filter(
+            plugin=plugin, org_id__in=[membership.org_id for membership in memberships]
+        ).listed()
+        if not grant.is_usable
+    }
+    return any(
+        membership.org_id in waiting and _readable(user, membership, [waiting[membership.org_id]])
+        for membership in memberships
+    )
+
+
 def eligible_organizations(user, plugin: Plugin) -> list[Organization]:
     """Return the organizations `user` may use `plugin` in, sorted by name."""
     return [access.organization for access in eligible_accesses(user, plugin)]
@@ -208,11 +247,13 @@ def gateway_person_facts(
     four queries.
     """
     user = get_user_model().objects.filter(pk=user_id).first()
-    grant = (
+    token_grant = (
         PluginGrant.objects.filter(pk=grant_id, org_id=org_id, plugin__identifier=identifier)
-        .usable()
+        .select_related("plugin__current_package")
+        .defer("plugin__current_package__icon_bytes")
         .first()
     )
+    grant = token_grant if token_grant is not None and token_grant.is_usable else None
     membership = _membership(user, org_id) if user is not None else None
     actions = (
         _usable_actions(
@@ -224,6 +265,7 @@ def gateway_person_facts(
     return GatewayPersonFacts(
         user=user,
         grant=grant,
+        grant_state=token_grant.state if token_grant is not None else None,
         membership=membership,
         actions=actions if actions is not None else [],
         may_use=actions is not None,

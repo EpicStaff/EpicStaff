@@ -1,5 +1,6 @@
 import { loadPlatformConfig, type PlatformConfig } from './config.js';
 import {
+    AvailabilityReporter,
     FrameChannel,
     type HandshakeOutcome,
     isFramed,
@@ -9,7 +10,7 @@ import {
 } from './frame.js';
 import type { RoutingMode } from './nav-path.js';
 import { installNavSync, type NavSync } from './nav-sync.js';
-import type { OrgContext, ThemeState } from './protocol.js';
+import type { OrgContext, PluginAvailability, ThemeState } from './protocol.js';
 import { applyTheme } from './theme.js';
 
 export {
@@ -29,6 +30,7 @@ export {
     type PlatformLogin,
 } from './config.js';
 export {
+    AVAILABILITY_REPORT_INTERVAL_MS,
     type FrameInit,
     type HandshakeOutcome,
     isFramed,
@@ -36,6 +38,7 @@ export {
     takeOrgHint,
     type UnframedReason,
 } from './frame.js';
+export { gatewayRefusal, type GatewayRefusal } from './gateway.js';
 export {
     addressToNavPath,
     canonicalNavPath,
@@ -71,6 +74,7 @@ export {
     type PopupResult,
 } from './popup.js';
 export {
+    AVAILABILITY_STATES,
     FRAME_ERROR_CODES,
     FRAME_LIMITS,
     FRAME_MESSAGE_TYPES,
@@ -79,6 +83,7 @@ export {
     NAV_PATH_PATTERN,
     ORG_HINT_PARAMETER,
     type OrgContext,
+    type PluginAvailability,
     THEME_MODES,
     THEME_TOKENS,
     type ThemeMode,
@@ -119,6 +124,12 @@ export interface EpicStaffPlugin {
     theme(): ThemeState | null;
     /** Calls `listener` on every theme change. Returns the function that stops it. */
     onThemeChange(listener: (theme: ThemeState) => void): () => void;
+    /**
+     * Tells EpicStaff that the plugin's API now answers `maintenance` or `unavailable`, so it checks with its own
+     * server and shows its maintenance page or "not available" instead of the plugin. At most once per 30 seconds;
+     * `available` is never sent. Does nothing unframed. `PluginLogin.fetch` calls it by itself.
+     */
+    reportAvailability(availability: PluginAvailability): void;
     /** Closes the port and restores `history`. */
     close(): void;
 }
@@ -169,6 +180,7 @@ function unframedPlugin(config: PlatformConfig, orgHint: number | null, reason: 
         orgHint,
         theme: () => null,
         onThemeChange: () => () => undefined,
+        reportAvailability: () => undefined,
         close: () => undefined,
     };
 }
@@ -194,6 +206,7 @@ function framedPlugin(
         },
     });
     navSync?.connect((report) => channel.reportNavigation(report.path, report.replace), outcome.init.navPath);
+    const availability = new AvailabilityReporter((state) => channel.reportAvailability(state));
 
     return {
         config,
@@ -206,7 +219,11 @@ function framedPlugin(
             listeners.add(listener);
             return () => listeners.delete(listener);
         },
+        reportAvailability(state) {
+            availability.report(state);
+        },
         close() {
+            availability.close();
             channel.close();
             navSync?.uninstall();
             listeners.clear();

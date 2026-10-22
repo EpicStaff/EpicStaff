@@ -62,8 +62,9 @@ class ServiceAccountInfo(_ServiceAccountContractModel):
     plugin: PluginIdentity
     organization: OrganizationRef
     grant_state: Annotated[str, StringConstraints(min_length=1, max_length=32)]
-    """The grant's state, `granting` while the install hook runs and `active` after it. Read as
-    text: a newer EpicStaff may add states."""
+    """The grant's state: `granting` while the install hook runs, `active` after it, and
+    `upgrading` while the organization's upgrade hook runs. Read as text: a newer EpicStaff may
+    add states."""
 
     access: dict[ResourceType, list[Action]]
     """The plugin's declared access: resource type to actions, in EpicStaff's catalog order."""

@@ -27,7 +27,7 @@ from plugins.exceptions import (
     OrgRemovedHookNotRetryableError,
     OrgRemovedHookNotSkippableError,
 )
-from plugins.lifecycle.hook_job_service import hook_timeout_seconds
+from plugins.lifecycle.hook_timeouts import hook_timeout_seconds
 from plugins.lifecycle.lifecycle_locks import lock_existing_plugin
 from plugins.models import HookJobKind, HookJobState, Plugin, PluginGrant, PluginHookJob
 from plugins.models.hook_job import ONE_OPEN_ORG_REMOVED_JOB_CONSTRAINT
@@ -137,7 +137,7 @@ class OrgRemovedHookService:
 
     def retry(self, identifier: str, job_id: int, actor) -> PluginHookJob:
         """Put an organization removed job back to pending, due now, with a new retry window
-        from its next attempt; its last error stays until then.
+        and retry schedule from its next attempt; its last error stays until then.
 
         Raises:
             PluginNotFoundError: No such plugin.
@@ -152,6 +152,7 @@ class OrgRemovedHookService:
             job.state = HookJobState.PENDING
             job.next_attempt_at = None
             job.first_attempt_at = None
+            job.failures_in_series = 0
             job.claimed_at = None
             job.deadline_at = None
             job.finished_at = None
@@ -160,6 +161,7 @@ class OrgRemovedHookService:
                     "state",
                     "next_attempt_at",
                     "first_attempt_at",
+                    "failures_in_series",
                     "claimed_at",
                     "deadline_at",
                     "finished_at",

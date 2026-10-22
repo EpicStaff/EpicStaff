@@ -3,8 +3,10 @@
 # (capabilities, read-only root, tmpfs modes, no-new-privileges, plugins-network only) against a
 # stand-in for django_app's node API, installs two probe plugins packed with real wheels (and
 # refuses a third, hostile one), and checks from inside them what a plugin process can and cannot
-# do. One `ok -` / `not ok -` line
-# per check; removes every container, volume, network and image it made.
+# do. Then it backs up and restores a plugin database on the lab's plugins_db, as the node does
+# during an upgrade. One `ok -` / `not ok -` line per check. Every run has a Compose project and
+# container and image names of its own, so runs never collide; it removes every container,
+# volume, network and image it made.
 #
 # Needs Docker, network access (the packer downloads the probe plugins' wheels), and python3 with
 # PyYAML (scripts/envtool.py writes the env file the extended service needs).
@@ -14,7 +16,11 @@ set -euo pipefail
 lab_dir=$(cd "$(dirname "$0")" && pwd)
 repository=$(cd "$lab_dir/../../.." && pwd)
 work=$(mktemp -d)
-node=es-plugins-lab-node
+run_id=$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
+run_name="es-plugins-lab-$run_id"
+node="$run_name-node"
+database="$run_name-db"
+export ES_PLUGINS_LAB_RUN=$run_id ES_PLUGINS_LAB_NODE=$node ES_PLUGINS_LAB_DATABASE=$database
 
 python3 "$repository/scripts/envtool.py" --dev --env-file "$work/lab.env" > /dev/null
 # The shell's values win over the env file's: the node talks to the lab's control service.
@@ -23,12 +29,15 @@ export IMAGE_TAG=lab ES_PLUGINS_CPUS=2 ES_PLUGINS_MEMORY=2g PLUGINS_NODE_NAME=la
   PLUGINS_NODE_UID_RANGE=20000-20999 PLUGINS_INTERNAL_API_URL=http://control:8000/api/ \
   ES_PLUGINS_DISK_MB_PER_PLUGIN=64 ES_PLUGINS_FILES_PER_PLUGIN=5000 PLUGINS_MAX_DB_CONNECTIONS=20
 PLUGINS_NODE_KEY="lab-$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
-# The lab runs no plugins_db and no plugin with a database; the agent still requires the password.
-PLUGINS_DB_ADMIN_PASSWORD=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
-export PLUGINS_NODE_KEY PLUGINS_DB_ADMIN_PASSWORD
+random_password() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
+PLUGINS_DB_SUPERUSER_PASSWORD=$(random_password)
+PLUGINS_DB_ADMIN_PASSWORD=$(random_password)
+PLUGINS_DB_BACKUP_PASSWORD=$(random_password)
+export PLUGINS_NODE_KEY PLUGINS_DB_SUPERUSER_PASSWORD PLUGINS_DB_ADMIN_PASSWORD PLUGINS_DB_BACKUP_PASSWORD
+export PLUGINS_DB_MAX_CONNECTIONS=100
 
 compose() {
-  docker compose -p es-plugins-lab -f "$lab_dir/compose.yaml" --env-file "$work/lab.env" \
+  docker compose -p "$run_name" -f "$lab_dir/compose.yaml" --env-file "$work/lab.env" \
     --profile plugins --profile pack "$@"
 }
 cleanup() {
@@ -89,7 +98,7 @@ contains() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 echo "# build, pack the probe plugins, start the node"
 compose build --quiet
 compose run --rm packer
-compose up -d control es_plugins tools > /dev/null 2>&1
+compose up -d control plugins_db es_plugins tools > /dev/null 2>&1
 if wait_for 300 running 1 && wait_for 60 running 2; then
   pass "both probe plugins are installed from their packages and run healthy"
 else
@@ -109,8 +118,8 @@ echo "# the container and the two privileged processes"
 
 inspected=$(docker inspect "$node" --format \
   '{{.HostConfig.Privileged}} {{.HostConfig.CapAdd}} {{.HostConfig.CapDrop}} {{.HostConfig.ReadonlyRootfs}} {{.HostConfig.SecurityOpt}} {{.HostConfig.UsernsMode}}|')
-check "the container has SETUID SETGID CHOWN, and NET_ADMIN SETPCAP for its entrypoint only, a read-only root and no-new-privileges ($inspected)" \
-  test "$inspected" = "false [CAP_CHOWN CAP_NET_ADMIN CAP_SETGID CAP_SETPCAP CAP_SETUID] [ALL] true [no-new-privileges:true] |"
+check "the container has SETUID SETGID CHOWN, and NET_ADMIN BPF SETPCAP for its entrypoint only, a read-only root and no-new-privileges ($inspected)" \
+  test "$inspected" = "false [CAP_BPF CAP_CHOWN CAP_NET_ADMIN CAP_SETGID CAP_SETPCAP CAP_SETUID] [ALL] true [no-new-privileges:true] |"
 launcher_status=$(as_root grep -E '^(Uid|CapInh|CapPrm|CapEff|CapBnd|CapAmb):' /proc/1/status | tr -s '\t' ' ' | tr '\n' ' ')
 check "the launcher (PID 1) is root with exactly SETUID SETGID CHOWN in every set: the entrypoint dropped the rest" \
   test "$launcher_status" = "Uid: 0 0 0 0 CapInh: 0000000000000000 CapPrm: 00000000000000c1 CapEff: 00000000000000c1 CapBnd: 00000000000000c1 CapAmb: 0000000000000000 "
@@ -134,8 +143,8 @@ check "probe-a runs as 20001:20001 without groups, capabilities or new privilege
   .identity == {"Uid": ["20001","20001","20001","20001"], "Gid": ["20001","20001","20001","20001"], "Groups": []}
   and .capabilities.CapEff == "0000000000000000" and .capabilities.CapPrm == "0000000000000000"
   and .capabilities.CapAmb == "0000000000000000" and .no_new_privs == "1"' "$work/a.json"
-check "its limits: NPROC 64, NOFILE 1024, no core dumps, oom_score_adj 800, its own session" jq -e '
-  .rlimit_nproc == [64,64] and .rlimit_nofile == [1024,1024] and .rlimit_core == [0,0]
+check "its limits: NPROC 64, NOFILE 256, no core dumps, oom_score_adj 800, its own session" jq -e '
+  .rlimit_nproc == [64,64] and .rlimit_nofile == [256,256] and .rlimit_core == [0,0]
   and .oom_score_adj == 800 and .pid == .sid and .pid == .pgid' "$work/a.json"
 check "cpu_priority normal is nice 0, low is nice 10" \
   test "$(jq .nice "$work/a.json") $(jq .nice "$work/b.json")" = "0 10"
@@ -272,18 +281,19 @@ check "probe-b was not touched (same pid)" test "$(placement 2 .pid)" = "$b_pid"
 echo "# ports: the agent holds every port of the node's range"
 
 # 20002 is probe-b's, 20001 probe-a's own, 20003 the hostile package's (whose install failed),
-# 20500 and 20999 are assigned to no placement.
-for port in 20002 20001 20003 20500 20999; do
+# 20500 and 20999 are assigned to no placement; 0 is any free port, 30000 one outside the range.
+bind_ports="20002 20001 20003 20500 20999 0 30000"
+for port in $bind_ports; do
   call probe-a 20001 /api/bind "port=$port" > "$work/bind-$port.json"
 done
-check "probe-a can take no port of the range, its own, another plugin's or a free one, listening or only bound, on 0.0.0.0 or 127.0.0.1, with or without SO_REUSEADDR/SO_REUSEPORT" \
-  sh -c "for port in 20002 20001 20003 20500 20999; do jq -e 'length == 8 and all(.[]; startswith(\"DENIED\") and contains(\"Address already in use\"))' \"$work/bind-\$port.json\" > /dev/null || exit 1; done"
+check "probe-a can bind no inet socket: no port of the range, its own, another plugin's, a free one, any port (0) or one outside the range, listening or only bound, on 0.0.0.0 or 127.0.0.1, with or without SO_REUSEADDR/SO_REUSEPORT (EPERM)" \
+  sh -c "for port in $bind_ports; do jq -e 'length == 8 and all(.[]; startswith(\"DENIED\") and contains(\"Operation not permitted\"))' \"$work/bind-\$port.json\" > /dev/null || exit 1; done"
 check "probe-a still serves: on the socket the agent holds and hands it as fd 3" running 1
 
 echo "# connection limits: each plugin UID's open connections and new ones a second"
 
 check "the entrypoint set the limits before the launcher started" \
-  sh -c "docker logs $node 2>&1 | grep -q 'plugins.node.connection_limits uids=20000-20999 database=20 proxy=64 new_per_second=200'"
+  sh -c "docker logs $node 2>&1 | grep -q 'plugins.node.connection_limits uids=20000-20999 database=20 proxy=64 tcp=512 new_per_second=200 bind=refused'"
 # The agent's UID, from the node's own interpreter: opens `count` connections and holds them.
 as_agent_connect() { # host, port, count, then hold or churn
   docker exec --user 10000:10000 "$node" python -c "
@@ -438,12 +448,12 @@ check "the node reports its agent version and all three placements ($reported)" 
 check "plugin output reaches the node's log, prefixed with the plugin" \
   sh -c "docker logs $node 2>&1 | grep -q '^\[probe-a\] '"
 # Searched for with -F -f, so no secret is on a command line of its own.
-printf '%s\n' "$PLUGINS_NODE_KEY" "$PLUGINS_DB_ADMIN_PASSWORD" > "$work/node-secrets"
+printf '%s\n' "$PLUGINS_NODE_KEY" "$PLUGINS_DB_ADMIN_PASSWORD" "$PLUGINS_DB_BACKUP_PASSWORD" > "$work/node-secrets"
 { cat "$work/node-secrets"; echo secret-token; } > "$work/all-secrets"
 chmod 600 "$work/node-secrets" "$work/all-secrets"
 check "no secret is in any process's command line" \
   sh -c "! docker exec $node sh -c 'cat /proc/[0-9]*/cmdline' | tr '\0' ' ' | grep -q -F -f '$work/all-secrets'"
-check "no plugin process gets the node key or the database admin password" \
+check "no plugin process gets the node key or a database password" \
   sh -c "! grep -q -F -f '$work/node-secrets' '$work/a.json' '$work/b.json'"
 check "no proxy password and no policy path reaches the node's log" \
   sh -c "! docker logs $node 2>&1 | grep -q -e 'plugins_egress:3128' -e '\$2b\$'"
@@ -459,8 +469,14 @@ if wait_for 90 running 2; then
   call probe-b 20002 /api/traces > "$work/traces.json"
   check "a plugin cannot create a POSIX message queue (RLIMIT_MSGQUEUE 0, EMFILE): $(jq -c .mq_open "$work/traces.json")" \
     jq -e '.mq_open == [-1, 24]' "$work/traces.json"
-  check "it can create System V IPC objects, which outlive its process: $(jq -c .sysv "$work/traces.json")" \
-    jq -e '.sysv.shm >= 0 and .sysv.msg >= 0 and .sysv.sem >= 0' "$work/traces.json"
+  check "a plugin cannot create System V IPC objects (its seccomp filter): $(jq -c .sysv "$work/traces.json")" \
+    jq -e '.sysv == {"shm": -1, "msg": -1, "sem": -1}' "$work/traces.json"
+  # Made outside the plugin's process tree (a shell as its UID), so the removal has some to delete.
+  docker exec --user 20002:20002 "$node" python -c "
+import ctypes
+libc = ctypes.CDLL(None, use_errno=True)
+assert libc.shmget(0, 4096, 0o1600) >= 0 and libc.msgget(0, 0o1600) >= 0 and libc.semget(0, 1, 0o1600) >= 0
+"
   call probe-b 20002 /api/daemons "count=2" > /dev/null
   change 2 '{"desired_state": "stopped"}'
   wait_for 60 field_is 2 .observed_state stopped || true
@@ -499,6 +515,32 @@ for directory in range(100):
 else
   fail "probe-b did not run again for the removal: $(placement 2 '[.observed_state, .last_error] | tostring')"
 fi
+
+echo "# backups: as the node takes them before an upgrade, and a restore"
+
+check "no plugin UID can enter the backups directory" \
+  sh -c "! docker exec --user 20001:20001 $node ls /var/lib/es_plugins/backups 2> '$work/denied' && grep -q 'Permission denied' '$work/denied'"
+check "the backups directory is 0700, the agent's" \
+  test "$(as_root stat -c '%a %u:%g' /var/lib/es_plugins/backups)" = "700 10000:10000"
+client_major=$(as_root sh -c 'LD_LIBRARY_PATH=/opt/postgresql-client/17/lib /opt/postgresql-client/17/bin/pg_dump --version' | sed -E 's/.*\(PostgreSQL\) ([0-9]+)\..*/\1/')
+server_major=$(docker exec -u postgres "$database" psql -X -At -c 'SHOW server_version_num' | cut -c1-2)
+check "the node's pg_dump is plugins_db's major version (client $client_major, server $server_major)" \
+  sh -c "[ -n '$client_major' ] && [ '$client_major' = '$server_major' ]"
+if docker exec -i --user 10000:10000 -e PLUGINS_DB_ADMIN_PASSWORD -e PLUGINS_DB_BACKUP_PASSWORD "$node" \
+  python - < "$lab_dir/backup_restore.py" > "$work/backup.json" 2> "$work/backup.err"; then
+  check "a backup of a database with rows behind FORCE ROW LEVEL SECURITY, as plugins_backup: $(jq -c .backup "$work/backup.json" | cut -c1-300)" \
+    jq -e '.rows_before == 300 and .backup.size_bytes > 0 and .backup.directory == "0o700"
+      and (.backup.files | length == 2) and all(.backup.files[]; endswith(" 0o600"))
+      and .backup.ledger == ["001_schema.sql"] and (.backup.pg_dump | startswith("pg_dump (PostgreSQL) 17."))' "$work/backup.json"
+  check "a restore with the owner as session user brings every row and the ledger back: $(jq -c .restore "$work/backup.json")" \
+    jq -e '.rows_after_the_change == 100 and .rows_after_the_restore == 300
+      and .restore.steps == ["verify","backup","close","recreate","restore","settings","assert"]
+      and .restore.ledger == ["001_schema.sql"] and (.restore.pre_restore | endswith("-u1-pre_restore.dump"))' "$work/backup.json"
+else
+  fail "the backup and restore did not run: $(tail -n 5 "$work/backup.err")"
+fi
+check "no database password reaches the node's or the server's log" \
+  sh -c "! { docker logs $node 2>&1; docker logs $database 2>&1; } | grep -q -F -f '$work/node-secrets'"
 
 if [ "$failures" -ne 0 ]; then
   echo "FAILED: $failures check(s)"

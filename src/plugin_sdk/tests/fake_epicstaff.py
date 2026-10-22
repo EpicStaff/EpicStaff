@@ -3,6 +3,9 @@
 Serves an `httpx.MockTransport`. It keeps one organization's flows, files, secrets, LLM
 configs and sessions, records every request, and answers in EpicStaff's shapes (DRF
 limit/offset pages, the `{status_code, code, message}` error envelope).
+
+A flow's bulk save works as EpicStaff's does: a node without an `id` is added and gets one, a
+node with an `id` replaces that node whole, and nodes the save does not name stay.
 """
 
 import json
@@ -38,6 +41,8 @@ class FakeEpicStaff:
     refusals: dict = field(default_factory=dict)
     requests: list = field(default_factory=list)
     _next_id: int = 100
+    # Nodes count apart, so a flow's nodes never shift the ids of what a test creates next.
+    _next_node_id: int = 1000
 
     def transport(self):
         return httpx.MockTransport(self)
@@ -68,6 +73,7 @@ class FakeEpicStaff:
             (("GET", r"graph-light/"), self._list_graphs),
             (("POST", r"graphs/"), self._create_graph),
             (("GET", r"graphs/(\d+)/"), self._get_graph),
+            (("PATCH", r"graphs/(\d+)/"), self._patch_graph),
             (("POST", r"graphs/(\d+)/save/"), self._save_graph),
             (("GET", r"storage/info/"), self._file_info),
             (("POST", r"storage/upload/stream"), self._upload),
@@ -130,16 +136,42 @@ class FakeEpicStaff:
             json={
                 "id": int(graph_id),
                 "name": graph["name"],
+                "description": graph["description"],
                 "save_version": graph["save_version"],
                 "python_node_list": contents.get("python_node_list", []),
             },
         )
 
+    def _patch_graph(self, request, body, graph_id):
+        graph = self.graphs.get(int(graph_id))
+        if graph is None:
+            return _error(404, "not_found", "Not found.")
+        for name in ("name", "description"):
+            if name in body:
+                graph[name] = body[name]
+        return httpx.Response(200, json={"id": int(graph_id), "name": graph["name"], "description": graph["description"]})
+
     def _save_graph(self, request, body, graph_id):
         graph = self.graphs[int(graph_id)]
         if body["save_version"] != graph["save_version"]:
             return _error(409, "conflict", "The flow was saved meanwhile.")
-        graph["contents"] = body
+        contents = graph["contents"] or {}
+        node_lists = {key: items for key, items in body.items() if key.endswith("_node_list")}
+        for key, items in node_lists.items():
+            known = {node["id"] for node in contents.get(key, [])}
+            missing = [item["id"] for item in items if item.get("id") is not None and item["id"] not in known]
+            if missing:
+                return _error(400, "invalid", f"{key}: id={missing[0]} not found in graph {graph_id}")
+        for key, items in node_lists.items():
+            nodes = contents.setdefault(key, [])
+            for item in items:
+                if item.get("id") is None:
+                    self._next_node_id += 1
+                    nodes.append({**item, "id": self._next_node_id})
+                else:
+                    nodes[[node["id"] for node in nodes].index(item["id"])] = dict(item)
+        contents.setdefault("edge_list", []).extend(body.get("edge_list", []))
+        graph["contents"] = contents
         graph["save_version"] += 1
         return httpx.Response(200, json={"id": int(graph_id)})
 

@@ -16,7 +16,9 @@ synchronous views. A plugin's static data (version, upstream, public paths) is k
 the process for 10 s; whether it is in service and its process up is read fresh on every
 check, in one query by primary key, so a plugin uninstalled, being deleted or deleted answers
 `not_found` on every path at once, a stopped one is refused at once and a started one served
-at once.
+at once. A plugin stopped for an upgrade answers `maintenance` on every path, public ones
+included; once it is back, a person of an organization whose upgrade hook has not finished
+gets `maintenance` too, and one whose upgrade failed gets `unavailable`.
 """
 
 import threading
@@ -42,6 +44,7 @@ from plugins.identity.plugin_login_tokens import (
     verify_plugin_login_token,
 )
 from plugins.models import (
+    GrantState,
     PlacementHealth,
     PlacementObservedState,
     Plugin,
@@ -62,6 +65,7 @@ FORWARD_AUTHORIZATION_HEADER = "X-Plugin-Forward-Authorization"
 
 DENY_FORBIDDEN = "forbidden"
 DENY_LOGIN = "login"
+DENY_MAINTENANCE = "maintenance"
 DENY_NOT_FOUND = "not_found"
 DENY_RATE_LIMITED = "rate_limited"
 DENY_TOO_LARGE = "too_large"
@@ -69,6 +73,14 @@ DENY_UNAVAILABLE = "unavailable"
 # A body may come without a length over HTTP/2 even when it is not chunked; on these
 # methods the check cannot tell an empty body from an unbounded one.
 BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+# The plugin states the gateway answers for: in service, or stopped for an upgrade.
+GATEWAY_PLUGIN_STATES = (*PLACED_PLUGIN_STATES, PluginState.MAINTENANCE)
+# How a person of an organization whose grant is in these states is answered, once the token
+# and the person hold.
+_GRANT_STATE_DENIES = {
+    GrantState.UPGRADING: DENY_MAINTENANCE,
+    GrantState.UPGRADE_FAILED: DENY_UNAVAILABLE,
+}
 
 
 @dataclass(frozen=True)
@@ -150,7 +162,7 @@ def _load_snapshot(identifier: str) -> PluginSnapshot | None:
         .defer("plugin__current_package__icon_bytes")
         .filter(
             plugin__identifier=identifier,
-            plugin__state__in=PLACED_PLUGIN_STATES,
+            plugin__state__in=GATEWAY_PLUGIN_STATES,
             plugin__current_package__isnull=False,
         )
         .first()
@@ -176,15 +188,18 @@ def availability_refusal(plugin_id: int) -> str | None:
 
     `not_found` once the plugin is out of service (uninstalled, being deleted, or deleted),
     so every path of it, public ones included, answers as an unknown plugin's would, from
-    the moment the change commits; `unavailable` while it is in service but not up.
+    the moment the change commits; `maintenance` while it is stopped for an upgrade;
+    `unavailable` while it is in service but not up.
     """
     row = (
         Plugin.objects.filter(pk=plugin_id)
         .values_list("state", "placement__observed_state", "placement__health")
         .first()
     )
-    if row is None or row[0] not in PLACED_PLUGIN_STATES:
+    if row is None or row[0] not in GATEWAY_PLUGIN_STATES:
         return DENY_NOT_FOUND
+    if row[0] == PluginState.MAINTENANCE:
+        return DENY_MAINTENANCE
     if row != (PluginState.RUNNING, PlacementObservedState.RUNNING, PlacementHealth.OK):
         return DENY_UNAVAILABLE
     return None
@@ -266,7 +281,11 @@ def _logged_in_decision(
     except PluginLoginTokenRejected:
         return _deny(401, DENY_LOGIN)
     person = person_for(claims)
-    if not person.accepts(claims):
+    if not person.holds(claims):
+        return _deny(401, DENY_LOGIN)
+    if (refusal := _GRANT_STATE_DENIES.get(person.grant_state)) is not None:
+        return _deny(403, refusal)
+    if not person.grant_usable:
         return _deny(401, DENY_LOGIN)
     if not person.may_use:
         return _deny(403, DENY_FORBIDDEN)

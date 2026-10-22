@@ -1,7 +1,8 @@
 """Public plugin endpoints: what a running plugin's SPA and its left-bar icon need.
 
 No login: the SPA must load before anyone can log in, and an `<img>` sends no token. They
-answer only for running plugins and reveal nothing beyond what the public SPA shows.
+answer only for running plugins, and plugins stopped for an upgrade (whose left-bar icon
+stays), and reveal nothing beyond what the public SPA shows.
 """
 
 from django.http import HttpResponse
@@ -25,7 +26,11 @@ def _running_plugin(identifier: str, *deferred_fields: str) -> Plugin:
     plugin = (
         Plugin.objects.select_related("current_package")
         .defer(*(f"current_package__{field}" for field in deferred_fields))
-        .filter(identifier=identifier, state=PluginState.RUNNING, current_package__isnull=False)
+        .filter(
+            identifier=identifier,
+            state__in=(PluginState.RUNNING, PluginState.MAINTENANCE),
+            current_package__isnull=False,
+        )
         .first()
     )
     if plugin is None:

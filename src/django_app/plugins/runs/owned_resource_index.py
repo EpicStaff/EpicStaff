@@ -21,9 +21,15 @@ from tables.services.run_resources import ResourceRef, RunResources
 from plugins.models import GrantState, Plugin, PluginGrant, PluginOwnedResource
 from plugins.ownership.ownership_recorder import ownable_models
 
+# A run that uses a row owned under a grant in one of these states is refused.
 INACTIVE_GRANT_STATES = tuple(state for state in GrantState if state != GrantState.ACTIVE)
-# Owned rows that refuse runs: their grant is not active, or gone.
-_INACTIVE_Q = Q(grant__isnull=True) | Q(grant__state__in=INACTIVE_GRANT_STATES)
+# A session already running that uses such a row is stopped, except while the organization is
+# upgraded: an upgrade refuses new runs and lets running sessions finish.
+RUN_STOPPING_GRANT_STATES = tuple(
+    state
+    for state in INACTIVE_GRANT_STATES
+    if state not in (GrantState.UPGRADING, GrantState.UPGRADE_FAILED)
+)
 _OWNER_FIELDS = (
     "plugin_identifier",
     "grant_id",
@@ -68,14 +74,21 @@ class OwnedResourceIndex:
 
     @classmethod
     def for_inactive_grants(
-        cls, organization_id: int, resources: RunResources
+        cls,
+        organization_id: int,
+        resources: RunResources,
+        *,
+        grant_states: tuple[str, ...] = INACTIVE_GRANT_STATES,
     ) -> "OwnedResourceIndex":
-        """The rows of `resources` the organization's non-active or removed grants own.
+        """The rows of `resources` the organization's removed grants own, or its grants in
+        `grant_states` (every state but `active` by default).
 
         One query for the rows the refs name, and one more for files under the storage
         folders when there are any; none when `resources` reaches no ownable row.
         """
-        candidates = PluginOwnedResource.objects.filter(org_id=organization_id).filter(_INACTIVE_Q)
+        candidates = PluginOwnedResource.objects.filter(org_id=organization_id).filter(
+            Q(grant__isnull=True) | Q(grant__state__in=grant_states)
+        )
         ownable_labels = _ownable_labels()
         pks_by_label: dict[str, list[int]] = {}
         for ref in resources.refs:

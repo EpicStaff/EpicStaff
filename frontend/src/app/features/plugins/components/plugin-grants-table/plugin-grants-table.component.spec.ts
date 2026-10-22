@@ -9,7 +9,7 @@ import { ToastService } from '../../../../services/notifications';
 import { PluginGrant, PluginOrgRemovedJob, PluginState } from '../../models/plugin-admin.model';
 import { PluginDialogsService } from '../../services/plugin-dialogs.service';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
-import { buildOrgRemovedJob, buildPluginGrant } from '../../testing/plugin-fixtures';
+import { buildOrgRemovedJob, buildPluginGrant, buildUpgradeHook } from '../../testing/plugin-fixtures';
 import { PLUGIN_ERROR_MESSAGES } from '../../utils/plugin-error-message.util';
 import { PluginGrantPurgeTarget } from '../plugin-purge-dialog/plugin-purge-dialog.component';
 import { PluginSuspendDialogData } from '../plugin-suspend-dialog/plugin-suspend-dialog.component';
@@ -73,6 +73,32 @@ const DELETING = buildPluginGrant({
     org_removed_hook: buildOrgRemovedJob({ error: 'Weather answered 500: database is locked' }),
 });
 
+/** Foxtrot's upgrade hook failed once; it is tried again by itself in a minute. */
+const UPGRADING = buildPluginGrant({
+    id: 10,
+    organization: { id: 8, name: 'Foxtrot' },
+    state: 'upgrading',
+    allowed_actions: ['suspend', 'purge'],
+    installed_version: '0.6.0',
+    upgrade_hook: buildUpgradeHook(),
+});
+/** Golf's upgrade hook ran out of automatic retries. */
+const UPGRADE_FAILED = buildPluginGrant({
+    id: 11,
+    organization: { id: 9, name: 'Golf' },
+    state: 'upgrade_failed',
+    allowed_actions: ['retry_upgrade', 'suspend', 'purge'],
+    installed_version: '0.6.0',
+    last_hook_error: 'The upgrade hook did not answer in time',
+    upgrade_hook: buildUpgradeHook({
+        state: 'failed',
+        attempt: 3,
+        next_attempt_at: null,
+        finished_at: '2026-10-21T10:11:00Z',
+        error: 'Weather answered HTTP 500.',
+    }),
+});
+
 /** The grant as the server answers once its install runs again. */
 function installing(grant: PluginGrant): PluginGrant {
     return {
@@ -94,7 +120,7 @@ describe('PluginGrantsTableComponent', () => {
         listGrants: Mock<
             (identifier: string, page: number, pageSize: number) => Observable<ApiGetRequest<PluginGrant>>
         >;
-        retryInstallHook: Mock<(identifier: string, grantId: number) => Observable<PluginGrant>>;
+        retryHook: Mock<(identifier: string, grantId: number) => Observable<PluginGrant>>;
         resumeGrant: Mock<(identifier: string, grantId: number) => Observable<PluginGrant>>;
         retryOrgRemovedJob: Mock<(identifier: string, jobId: number) => Observable<PluginOrgRemovedJob>>;
         skipOrgRemovedJob: Mock<(identifier: string, jobId: number) => Observable<PluginOrgRemovedJob>>;
@@ -161,7 +187,7 @@ describe('PluginGrantsTableComponent', () => {
         changes = 0;
         storage = {
             listGrants: vi.fn(() => of(page([ACTIVE]))),
-            retryInstallHook: vi.fn(() => of(installing(FAILED))),
+            retryHook: vi.fn(() => of(installing(FAILED))),
             resumeGrant: vi.fn(() => of({ ...SUSPENDED, state: 'active' as const, allowed_actions: ['suspend'] })),
             retryOrgRemovedJob: vi.fn(() =>
                 of(buildOrgRemovedJob({ next_attempt_at: null, allowed_actions: ['skip'] }))
@@ -258,11 +284,11 @@ describe('PluginGrantsTableComponent', () => {
             Array.from(rowOf(organization).querySelectorAll('.table-cell')).map((cell) =>
                 cell.textContent?.replace(/\s+/g, ' ').trim()
             );
-        expect(cells('Acme')[2]).toBe('Created Oct 21, 2026 Key used 5m ago');
-        expect(cells('Acme')[3]).toBe('2');
-        expect(cells('Bravo')[2]).toBe('Created Oct 21, 2026 Key never used');
-        expect(cells('Bravo')[3]).toBe('0');
-        expect(cells('Delta')[2]).toBe('—');
+        expect(cells('Acme')[3]).toBe('Created Oct 21, 2026 Key used 5m ago');
+        expect(cells('Acme')[4]).toBe('2');
+        expect(cells('Bravo')[3]).toBe('Created Oct 21, 2026 Key never used');
+        expect(cells('Bravo')[4]).toBe('0');
+        expect(cells('Delta')[3]).toBe('—');
         expect(element.querySelector('.table-header')?.textContent).toContain('Service account');
         expect(element.querySelector('.table-header')?.textContent).toContain('Owned resources');
     });
@@ -275,13 +301,13 @@ describe('PluginGrantsTableComponent', () => {
 
         confirm.mockReturnValueOnce(of(false));
         retryButton('Charlie')!.click();
-        expect(storage.retryInstallHook).not.toHaveBeenCalled();
+        expect(storage.retryHook).not.toHaveBeenCalled();
 
         retryButton('Charlie')!.click();
         refresh();
 
         expect(confirm).toHaveBeenCalledTimes(2);
-        expect(storage.retryInstallHook).toHaveBeenCalledWith('weather', FAILED.id);
+        expect(storage.retryHook).toHaveBeenCalledWith('weather', FAILED.id);
         expect(toast.success).toHaveBeenCalledWith('Weather is installing in Charlie again.');
         expect(rowOf('Charlie').textContent).toContain('Waiting for the plugin to start');
         expect(retryButton('Charlie')).toBeUndefined();
@@ -289,7 +315,7 @@ describe('PluginGrantsTableComponent', () => {
 
     it('says why a retry was refused and shows the grant as it is now', () => {
         storage.listGrants.mockReturnValue(of(page([FAILED])));
-        storage.retryInstallHook.mockReturnValue(
+        storage.retryHook.mockReturnValue(
             throwError(
                 () =>
                     new HttpErrorResponse({
@@ -391,11 +417,163 @@ describe('PluginGrantsTableComponent', () => {
         }
     });
 
-    it('announces a state change in its cell', () => {
-        storage.listGrants.mockReturnValue(of(page([INSTALLING])));
+    it('announces a state change with its badge or its progress line, not the whole cell', () => {
+        storage.listGrants.mockReturnValue(of(page([ACTIVE, INSTALLING])));
         render();
 
-        expect(rowOf('Bravo').querySelector('.grants__state')?.getAttribute('aria-live')).toBe('polite');
+        expect(rowOf('Bravo').querySelector('.grants__state')?.hasAttribute('aria-live')).toBe(false);
+        expect(rowOf('Bravo').querySelector('.grants__installing')?.getAttribute('aria-live')).toBe('polite');
+        expect(rowOf('Acme').querySelector('app-plugin-badge')?.getAttribute('aria-live')).toBe('polite');
+    });
+
+    describe('upgrades', () => {
+        function cells(organization: string): (string | undefined)[] {
+            return Array.from(rowOf(organization).querySelectorAll('.table-cell')).map((cell) =>
+                cell.textContent?.replace(/\s+/g, ' ').trim()
+            );
+        }
+
+        it('shows the version each organization was last brought to, and none before its install finished', () => {
+            storage.listGrants.mockReturnValue(
+                of(
+                    page([
+                        { ...ACTIVE, installed_version: '0.7.0' },
+                        { ...INSTALLING, installed_version: null },
+                    ])
+                )
+            );
+            render();
+
+            expect(element.querySelector('.table-header')?.textContent).toContain('Version');
+            expect(cells('Acme')[2]).toBe('0.7.0');
+            expect(cells('Bravo')[2]).toBe('—');
+        });
+
+        it('shows an upgrading organization with its attempt, its next try and the error of the last one', () => {
+            storage.listGrants.mockReturnValue(of(page([UPGRADING])));
+            render();
+
+            const row = rowOf('Foxtrot');
+            expect(row.querySelector('.grants__upgrading')?.textContent?.trim()).toBe('Upgrading…');
+            expect(row.querySelector('app-spinner2')).not.toBeNull();
+            expect(row.querySelector('.grants__upgrade-progress')?.textContent?.trim()).toMatch(
+                /^Attempt 1 · next try \d{1,2}:\d{2}\s?[AP]M$/
+            );
+            expect(row.querySelector('.grants__upgrade-last-error')?.textContent?.trim()).toBe(
+                'Last attempt failed: Weather answered HTTP 500.'
+            );
+            expect(cells('Foxtrot')[2]).toBe('0.6.0');
+        });
+
+        it('does not show an earlier upgrade’s hook as this one’s progress', () => {
+            storage.listGrants.mockReturnValue(
+                of(
+                    page([
+                        {
+                            ...UPGRADING,
+                            upgrade_hook: buildUpgradeHook({
+                                state: 'succeeded',
+                                from_version: '0.5.0',
+                                next_attempt_at: null,
+                                error: null,
+                            }),
+                        },
+                        { ...UPGRADING, id: 12, organization: { id: 10, name: 'Hotel' }, upgrade_hook: null },
+                    ])
+                )
+            );
+            render();
+
+            for (const organization of ['Foxtrot', 'Hotel']) {
+                expect(rowOf(organization).querySelector('.grants__upgrade-progress')?.textContent?.trim()).toBe(
+                    'Waiting for the new version to start'
+                );
+                expect(rowOf(organization).querySelector('.grants__upgrade-last-error')).toBeNull();
+            }
+        });
+
+        it('says when the upgrade hook runs, and when it waits for the plugin to claim it', () => {
+            storage.listGrants.mockReturnValue(
+                of(
+                    page([
+                        { ...UPGRADING, upgrade_hook: buildUpgradeHook({ state: 'running', attempt: 1, error: null }) },
+                        {
+                            ...UPGRADING,
+                            id: 12,
+                            organization: { id: 10, name: 'Hotel' },
+                            upgrade_hook: buildUpgradeHook({ attempt: 0, next_attempt_at: null, error: null }),
+                        },
+                    ])
+                )
+            );
+            render();
+
+            expect(rowOf('Foxtrot').querySelector('.grants__upgrade-progress')?.textContent?.trim()).toBe(
+                'Running its upgrade'
+            );
+            expect(rowOf('Hotel').querySelector('.grants__upgrade-progress')?.textContent?.trim()).toBe(
+                'Waiting for the plugin to start'
+            );
+        });
+
+        it('shows a failed upgrade with its error and Retry upgrade from the actions it allows', () => {
+            storage.listGrants.mockReturnValue(of(page([UPGRADE_FAILED])));
+            render();
+
+            const row = rowOf('Golf');
+            expect(row.querySelector('app-plugin-badge')?.textContent?.trim()).toBe('Upgrade failed');
+            expect(row.querySelector('.grants__upgrade-error')?.textContent?.trim()).toBe('Weather answered HTTP 500.');
+            expect(actionLabels('Golf')).toEqual(['Retry upgrade', 'Suspend…', 'Delete data…']);
+        });
+
+        it("falls back to the grant's copy of the hook error when the job has none", () => {
+            storage.listGrants.mockReturnValue(of(page([{ ...UPGRADE_FAILED, upgrade_hook: null }])));
+            render();
+
+            expect(rowOf('Golf').querySelector('.grants__upgrade-error')?.textContent?.trim()).toBe(
+                'The upgrade hook did not answer in time'
+            );
+        });
+
+        it('retries a failed upgrade only after confirmation, then shows it upgrading', () => {
+            storage.listGrants.mockReturnValue(of(page([UPGRADE_FAILED])));
+            storage.retryHook.mockReturnValue(
+                of({ ...UPGRADE_FAILED, state: 'upgrading', allowed_actions: ['suspend', 'purge'] })
+            );
+            render();
+            storage.listGrants.mockReturnValue(of(page([UPGRADING])));
+
+            confirm.mockReturnValueOnce(of(false));
+            actionButton('Golf', 'Retry upgrade')!.click();
+            expect(storage.retryHook).not.toHaveBeenCalled();
+
+            actionButton('Golf', 'Retry upgrade')!.click();
+            refresh();
+
+            expect(confirm).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    message: 'Weather runs its upgrade hook in Golf again.',
+                    confirmText: 'Retry upgrade',
+                })
+            );
+            expect(storage.retryHook).toHaveBeenCalledWith('weather', UPGRADE_FAILED.id);
+            expect(toast.success).toHaveBeenCalledWith('Weather is upgrading in Golf again.');
+            expect(changes).toBe(0);
+        });
+
+        it('polls while an organization is upgrading, and stops once none is', () => {
+            storage.listGrants.mockReturnValue(of(page([UPGRADING])));
+            render();
+
+            storage.listGrants.mockReturnValue(
+                of(page([{ ...UPGRADING, state: 'active', installed_version: '0.7.0' }]))
+            );
+            poll();
+            poll();
+
+            expect(storage.listGrants).toHaveBeenCalledTimes(2);
+            expect(changes).toBe(1);
+        });
     });
 
     it('never polls when no grant installs', () => {
@@ -653,6 +831,7 @@ describe('PluginGrantsTableComponent', () => {
         const row = rowOf('Acme');
         expect(row.querySelector('.grants__deleting')?.textContent?.trim()).toBe('Deleting data…');
         expect(row.querySelector('.grants__data-removal')?.textContent?.trim()).toBe('Weather is deleting its data');
+        expect(row.querySelector('.grants__data-removal')?.hasAttribute('tabindex')).toBe(false);
         expect(row.querySelector('.grants__data-removal-progress')?.textContent?.trim()).toMatch(
             /^Attempt 1 · next try \d{1,2}:\d{2}\s?[AP]M$/
         );
@@ -687,6 +866,7 @@ describe('PluginGrantsTableComponent', () => {
             'Weather could not delete its data: Weather answered 500: database is locked'
         );
         expect(row.querySelector('.grants__data-removal')?.classList).toContain('grants__hook-error');
+        expect(row.querySelector('.grants__data-removal')?.getAttribute('tabindex')).toBe('0');
         expect(row.querySelector('.grants__data-removal-progress')).toBeNull();
         expect(row.querySelector('.grants__purge-error')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
             'Some resources could not be deleted yet: Flow "Daily digest" is linked to another organization; ' +

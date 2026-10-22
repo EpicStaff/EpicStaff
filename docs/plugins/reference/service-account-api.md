@@ -17,8 +17,10 @@ organization id as text ([Runtime](runtime.md)):
 "service_accounts": { "3": { "key": "esp-…", "org_name": "Acme", "grant_state": "active" } }
 ```
 
-- An organization is listed while its grant holds a key: `granting` (the install hook runs) and
-  `active`. Read `grant_state` as text; a later EpicStaff may add states.
+- An organization is listed while its grant holds a key: `granting` (the install hook runs),
+  `active`, and `upgrading` (the plugin is being upgraded, or its upgrade hook has not finished
+  there). Do an organization's background work only while its `grant_state` is `active`. Read
+  `grant_state` as text; a later EpicStaff may add states.
 - EpicStaff stores only a key's hash, so it mints a new key every time the plugin node fetches the
   runtime file: at every start or restart of your process, and whenever the list of
   organizations changes (a grant created, a grant entering or leaving a key-holding state, an
@@ -167,7 +169,7 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 | `install_hook_succeeded`, `install_hook_failed` | The install hook reported (`job_id`, `attempt`, and `error` when it failed) | Platform | the grant's |
 | `install_hook_retried` | A SuperAdmin retried a failed install hook (`job_id`) | SuperAdmin | the grant's |
 | `grant_suspended` | A SuperAdmin suspended the plugin in the organization, or uninstalled it (`previous_state`, `purge_after`, `cause`: `grant` or `uninstall`) | SuperAdmin | the grant's |
-| `grant_resumed` | A SuperAdmin resumed it, or reinstalled the plugin (`state`: `active`, or `install_failed` when its install hook never succeeded; `cause`: the suspension's) | SuperAdmin | the grant's |
+| `grant_resumed` | A SuperAdmin resumed it, or reinstalled the plugin (`state`: `active`; `install_failed` when its install hook never succeeded; `upgrading` when the plugin's version changed meanwhile; `cause`: the suspension's) | SuperAdmin | the grant's |
 | `grant_purge_started` | Deleting the plugin's data in the organization began (`reason`: `requested`, `grace_period_over` or `plugin_deleted`; `previous_state`; `owned_resources`, how many resources it owned) | SuperAdmin or Platform | the grant's |
 | `grant_purged` | The plugin's data in the organization is deleted, and the grant with it | Platform | the grant's |
 | `org_removed_hook_succeeded`, `org_removed_hook_failed` | The organization removed hook reported success, or failed for good after its retries (`job_id`, `attempt`, and `error` when it failed); a failed attempt that is retried records nothing | Platform | the job's |
@@ -185,6 +187,17 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 | `database_ready` | The plugin's database is ready: the first time, again after a failure, and after new migrations ran (`migrations_applied`, the number of migrations applied so far) | Platform | none |
 | `database_failed` | Setting up the plugin's database failed (`error`); recorded when it starts failing, not again while it keeps failing | Platform | none |
 | `database_limit_restored` | The plugin node put back a database limit the plugin's role had changed (`setting`: `statement_timeout`); at most once an hour | Platform | none |
+| `plugin_upgrade_started` | A SuperAdmin approved a newer version (`from_version`, `to_version`, `access_growth_acknowledged`, `untrusted_acknowledged`; `replaced_version` when it took a failed version's place) | SuperAdmin | none |
+| `plugin_maintenance_started` | The plugin went offline for its upgrade (`to_version`; `organizations`, how many went offline) | Platform | none |
+| `plugin_upgrade_failed` | The upgrade failed (`to_version`, `stage`, `step`, `error`) | Platform | none |
+| `plugin_upgrade_retried` | A SuperAdmin retried the failed upgrade (`to_version`) | SuperAdmin | none |
+| `plugin_upgrade_cancelled` | A SuperAdmin cancelled the upgrade (`to_version`, `stage`) | SuperAdmin | none |
+| `plugin_upgraded` | The new version runs (`from_version`, `to_version`, `maintenance_seconds`) | Platform | none |
+| `database_backed_up` | The plugin node backed up the database (`file_name`, `reason`: `pre_upgrade` or `pre_restore`, `size_bytes`, `version`) | Platform | none |
+| `database_restore_requested` | A SuperAdmin asked to restore a backup (`file_name`) | SuperAdmin | none |
+| `database_restored`, `database_restore_failed` | The restore finished (`file_name`, `pre_restore_file_name`), or failed (`step`, `error`) | Platform | none |
+| `upgrade_hook_succeeded`, `upgrade_hook_failed` | The upgrade hook reported (`job_id`, `attempt`; `from_version` and `to_version` on success; `error` and `next_attempt_at` on failure, `next_attempt_at` null once the automatic retries are used up) | Platform | the grant's |
+| `upgrade_hook_retried` | A SuperAdmin retried a failed upgrade hook (`job_id`) | SuperAdmin | the grant's |
 
 Events name the plugin by its identifier and the organization by its id, so they outlive the
 plugin, its grants and the organization. Once an organization is deleted, only SuperAdmins see its

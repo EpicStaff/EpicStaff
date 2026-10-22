@@ -1,0 +1,21 @@
+:host {
+    display: block;
+}
+
+.needed {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 480px;
+
+    &__field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    &__muted {
+        margin: 0;
+        color: var(--color-text-secondary);
+    }
+}

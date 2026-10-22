@@ -9,6 +9,10 @@
 #     drops the Cookie header and the upstream's Set-Cookie and Clear-Site-Data, and that nginx's
 #     X-Frame-Options is the only one (read from the rendered configuration, includes expanded);
 #   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse;
+#   - the maintenance answers: the flag test in both SPA locations and the page's named location
+#     with its headers, the gateway's maintenance refusal (its map entries and JSON), no
+#     open_file_cache (the flag must count from the next request on), and that the committed
+#     maintenance page is static (no script, nothing loaded);
 #   - that only the internal API listener's /api/ sets X-Plugin-Network-Secret (from
 #     PLUGINS_GATEWAY_SECRET, never from the caller) and X-EpicStaff-On-Behalf-Of, that every
 #     other location that passes a caller's headers on to Django blanks both in every spelling,
@@ -61,6 +65,9 @@ gateway_secret=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
 # The policy of the two login callback pages, next to the plugin hosts' frame-ancestors.
 platform_page_policy="default-src 'none'; script-src 'self'; base-uri 'none'; form-action 'none'"
+# The maintenance page's: no script at all, only its own inline style.
+maintenance_page_policy="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+maintenance_body='{"status_code":503,"code":"plugin_maintenance","message":"The plugin is being updated. Try again in a few minutes."}'
 
 failures=0
 pass() { echo "ok - $1"; }
@@ -306,10 +313,10 @@ expect_only_django_cookies() {
 
 # Reads the flattened configuration twice (the file name, twice) and checks the plugin hosts'
 # server (the one whose server_name captures plugin_identifier): every answer the gateway gives
-# itself instead of the plugin's carries X-EpicStaff-Gateway-Deny, set with `always` (each error
-# page of /api/, and each named location that returns 4xx or 5xx), and /api/ hides the header
-# from the plugin's own answers. Prints one line per problem, then "checked <n>": the answering
-# locations it found.
+# itself instead of the plugin's carries X-EpicStaff-Gateway-Deny, set with `always` (each named
+# error page of any of its locations, and each named location that returns 4xx or 5xx), and /api/
+# hides the header from the plugin's own answers. Prints one line per problem, then "checked <n>":
+# the answering locations it found.
 read -r -d '' gateway_deny_check_program << 'AWK' || :
 BEGIN { FS = "\t" }
 NR == FNR {
@@ -319,7 +326,7 @@ NR == FNR {
 $1 != plugin_server { next }
 {
   last = split($3, word, " ")
-  if ($2 == "^~ /api/" && word[1] == "error_page") answering[word[last]] = 1
+  if (word[1] == "error_page" && substr(word[last], 1, 1) == "@") answering[word[last]] = 1
   if (substr($2, 1, 1) == "@" && word[1] == "return" && word[2] ~ /^[45][0-9][0-9]$/) answering[$2] = 1
   if (word[1] == "add_header" && tolower(word[2]) == "x-epicstaff-gateway-deny" && word[last] == "always") marked[$2] = 1
   if ($2 == "^~ /api/" && word[1] == "proxy_hide_header" && tolower(word[2]) == "x-epicstaff-gateway-deny") hidden = 1
@@ -348,7 +355,7 @@ expect_gateway_denies_marked() {
   answering=$(awk "$gateway_deny_check_program" "$work_dir/flat" "$work_dir/flat" | sed -n 's/^checked //p')
   if [ -n "$problems" ]; then
     fail "$1: $(printf '%s\n' "$problems" | paste -sd ';' -)"
-  elif [ "$answering" -lt 3 ]; then
+  elif [ "$answering" -lt 4 ]; then
     fail "$1: found only $answering locations that answer for the gateway"
   else
     pass "$1 ($answering locations answer for the gateway, all marked; hidden from the plugin)"
@@ -539,7 +546,8 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       /_plugin_gateway_check X-Plugin-Gateway-Secret "listen 8081" "$gateway_secret" \
       '$http_x_epicstaff_on_behalf_of' \
       plugin_network_caller 10.235.0.0/24 /.well-known/epicstaff/callback \
-      /usr/share/nginx/plugin-platform X-EpicStaff-Gateway-Deny; do
+      /usr/share/nginx/plugin-platform X-EpicStaff-Gateway-Deny @plugin_maintenance_page \
+      maintenance.html plugin_maintenance; do
       if has_directive "$text"; then
         leaked="$leaked [$text]"
       fi
@@ -582,6 +590,45 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       'default_type application/javascript;' \
       "add_header Content-Security-Policy \"$platform_page_policy\" always;" \
       'limit_except GET HEAD {'
+    # The SPA paths answer with the maintenance page while the flag file exists; the named
+    # location keeps the 503 (error_page without "=") and marks it as the gateway's.
+    flag_test='if (-f /srv/plugin-spa/$plugin_identifier/maintenance) {'
+    if [ "$(directives | grep -cF "$flag_test")" = 2 ]; then
+      pass "PLUGINS_ENABLED=true $flags tests the maintenance flag twice (both SPA locations)"
+    else
+      fail "PLUGINS_ENABLED=true $flags tests the maintenance flag $(directives | grep -cF "$flag_test") time(s), not 2"
+    fi
+    for location in "= /index.html" "/"; do
+      expect_location_directive "PLUGINS_ENABLED=true $flags: [$location] answers 503 while the flag exists" \
+        "$location" "return 503"
+      expect_location_directive "PLUGINS_ENABLED=true $flags: [$location] answers its 503 with the maintenance page" \
+        "$location" "error_page 503 @plugin_maintenance_page"
+    done
+    for directive in \
+      "add_header Content-Security-Policy \"frame-ancestors 'self' https://epicstaff.test\" always" \
+      "add_header Content-Security-Policy \"$maintenance_page_policy\" always" \
+      "add_header Cache-Control no-store always" \
+      "add_header Retry-After 30 always" \
+      "add_header X-EpicStaff-Gateway-Deny maintenance always" \
+      "add_header X-Content-Type-Options nosniff always" \
+      "default_type text/html" \
+      "root /usr/share/nginx/plugin-platform" \
+      "try_files /maintenance.html =503"; do
+      expect_location_directive "PLUGINS_ENABLED=true $flags: the maintenance page has [$directive]" \
+        "@plugin_maintenance_page" "$directive"
+    done
+    # Map entries are printed outside any server and location; each text is unique to its map.
+    expect_location_directive "PLUGINS_ENABLED=true $flags: a maintenance refusal comes with Retry-After: 30" \
+      "" "maintenance 30"
+    expect_location_directive "PLUGINS_ENABLED=true $flags: a maintenance refusal is marked as such" \
+      "" "maintenance maintenance"
+    expect_location_directive "PLUGINS_ENABLED=true $flags: a maintenance refusal gets the plugin_maintenance JSON" \
+      "@plugin_denied" "return 503 '$maintenance_body'"
+    if has_directive open_file_cache; then
+      fail "PLUGINS_ENABLED=true $flags sets open_file_cache: the maintenance flag would be seen late"
+    else
+      pass "PLUGINS_ENABLED=true $flags keeps no open_file_cache, so the maintenance flag counts at once"
+    fi
     expect_directives "PLUGINS_ENABLED=true $flags refuses the plugins subnet on 80/443" \
       'geo $plugin_network_caller {' \
       '10.235.0.0/24  1;' \
@@ -739,12 +786,13 @@ if expect_valid "nginx -t: CHAT_ENABLED=true PLUGINS_ENABLED=true, for the cooki
 fi
 
 # The gateway deny check itself: with every X-EpicStaff-Gateway-Deny line deleted it must name
-# exactly the three locations that answer for the gateway, and /api/.
+# exactly the four locations that answer for the gateway, and /api/.
 if expect_valid "nginx -t: PLUGINS_ENABLED=true, for the gateway deny check's self-test" \
   PLUGINS_ENABLED=true; then
   grep -vF 'X-EpicStaff-Gateway-Deny' "$work_dir/out" > "$work_dir/out-without-deny-header"
   found=$(gateway_deny_problems "$work_dir/out-without-deny-header")
   expected=$(printf '%s\n' "@plugin_denied: answers without X-EpicStaff-Gateway-Deny" \
+    "@plugin_maintenance_page: answers without X-EpicStaff-Gateway-Deny" \
     "@plugin_request_too_large: answers without X-EpicStaff-Gateway-Deny" \
     "@plugin_unavailable: answers without X-EpicStaff-Gateway-Deny" \
     "^~ /api/: passes a plugin's X-EpicStaff-Gateway-Deny on" | LC_ALL=C sort)
@@ -752,6 +800,29 @@ if expect_valid "nginx -t: PLUGINS_ENABLED=true, for the gateway deny check's se
     pass "the gateway deny check finds every location that answers for the gateway"
   else
     fail "the gateway deny check, with the header deleted, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+fi
+
+# The maintenance page as committed: static, so it runs nothing and loads nothing from anywhere
+# (its policy allows only inline style), reloads itself, and says what is happening.
+maintenance_page="$platform_dir/maintenance.html"
+if [ ! -f "$maintenance_page" ]; then
+  fail "$maintenance_page is missing: the plugin hosts have no maintenance page to serve"
+else
+  loads=$(grep -noiE '<script|<link|<img|<iframe|<object|<embed|<form|src=|href=|url\(|@import|[[:space:]]on[a-z]+=' \
+    "$maintenance_page" | paste -sd ' ' - || true)
+  if [ -z "$loads" ]; then
+    pass "the maintenance page has no script, link, image, frame, form or handler"
+  else
+    fail "the maintenance page runs or loads something: $loads"
+  fi
+  if grep -qF '<meta http-equiv="refresh" content="30">' "$maintenance_page" \
+    && grep -qF 'This plugin is being updated.' "$maintenance_page" \
+    && grep -qF 'It will be back in a few minutes. This page reloads by itself.' "$maintenance_page" \
+    && grep -qF '@media (prefers-color-scheme: dark)' "$maintenance_page"; then
+    pass "the maintenance page reloads every 30 s, says so, and follows the colour scheme"
+  else
+    fail "the maintenance page lacks its refresh, its text or its dark colours"
   fi
 fi
 

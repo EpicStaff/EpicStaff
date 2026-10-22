@@ -35,7 +35,8 @@ not ask for; use `location.replace` when you must. The SDK's sign-in does.
 
 - Show the sign-in states: "Signing in…", "You do not have access to … in this organization" (`access-denied`),
   "Your EpicStaff session has ended" with a "Sign in again" button (`session-ended`, which inside EpicStaff never
-  navigates on its own), and an error with "Try again" (`failed`). See [JS SDK](../reference/js-sdk.md#pluginlogin).
+  navigates on its own), "… is being updated. It will be back in a few minutes." (`maintenance`), and an error with
+  "Try again" (`failed`). See [JS SDK](../reference/js-sdk.md#pluginlogin).
 - Call your own API only through `login.fetch('/api/…')`. It adds the person's token, renews it when the gateway asks,
   and never sends it anywhere else.
 - Keep the token where the SDK keeps it: in memory. Do not copy it into `localStorage`, `sessionStorage`, cookies or
@@ -47,6 +48,24 @@ not ask for; use `location.replace` when you must. The SDK's sign-in does.
 
 The person's token works only on your plugin's `/api/` through EpicStaff's gateway. A plugin page cannot use
 EpicStaff's own API: EpicStaff refuses every request from a plugin origin except the token exchange.
+
+## While your plugin is being updated
+
+During an upgrade the gateway answers your `/api/` with `503` and `X-EpicStaff-Gateway-Deny: maintenance`: while the
+plugin itself is offline, and, once it is back, for the people of each organization until that organization's upgrade
+hook has finished. EpicStaff also signs nobody in to the plugin in such an organization, so `login.state` can be
+`maintenance` too.
+
+- **Inside EpicStaff** there is nothing to build. `login.fetch` tells EpicStaff (`availability.changed`), and EpicStaff
+  shows its own maintenance panel instead of your page, then opens your page again once the plugin is back.
+- **On your own address**, show "… is being updated. It will be back in a few minutes." while `login.availability` is
+  `maintenance`, and check again every 30 seconds: `renew()` when `login.state` is `maintenance`, then any route behind
+  the sign-in through `login.fetch`. Ask such a route, not a public path, which answers as soon as the plugin runs. See
+  [Availability](../reference/js-sdk.md#availability).
+- Pages already loaded keep their state, so reload what they show once `availability` is `available` again: an answer
+  that came during the update was a refusal.
+
+The [Weather sample](../../../plugin-samples/weather/spa/src/availability.ts) does exactly this.
 
 ## Streaming and WebSockets
 

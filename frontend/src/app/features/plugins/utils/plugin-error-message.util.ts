@@ -16,7 +16,8 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
     invalid_signature:
         'The package signature does not match its contents. The package may have been changed after it was signed.',
     package_too_large: 'The package is larger than this deployment accepts.',
-    plugin_upgrade_unavailable: 'This plugin is already installed. Installing a new version is not available yet.',
+    plugin_upgrade_unavailable:
+        'This package cannot upgrade the installed plugin. Fix the problems listed and upload a newer version.',
     plugin_package_not_found: 'This package no longer exists. It may have been rejected or replaced.',
     package_not_pending: 'This package was already approved or rejected.',
     package_file_mismatch:
@@ -36,7 +37,7 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
     no_plugin_database_server:
         'EpicStaff has no plugin database server registered. Check that plugins are enabled, then restart django_app.',
     grant_not_found: 'This grant no longer exists.',
-    hook_not_retryable: 'The install has not failed, so there is nothing to retry.',
+    hook_not_retryable: 'The install or upgrade has not failed, so there is nothing to retry.',
     grant_not_suspendable: "This organization's grant cannot be suspended in its current state. Reload the list.",
     grant_not_suspended: 'This grant is not suspended. Reload the list.',
     // Shown only when the server sends no message of its own (see SERVER_MESSAGE_CODES).
@@ -53,11 +54,32 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
     org_removed_hook_not_retryable: 'This data removal cannot be retried now. Reload the list.',
     org_removed_hook_not_skippable:
         'This data removal is running or has finished, so it cannot be skipped. Reload the list.',
+    // Shown only when the server sends no message of its own (see SERVER_MESSAGE_CODES).
+    plugin_version_not_newer:
+        'This version is not newer than the one installed or being upgraded to. Upload a newer one.',
+    plugin_not_upgradable:
+        'The plugin cannot be upgraded right now. Wait until its open upgrade finishes or fails, then try again.',
+    review_outdated:
+        'The installed version or the upgrade under way changed since this review was loaded. Check the review again.',
+    access_growth_not_acknowledged: 'Approve the new access this version asks for before you upgrade.',
+    upgrade_not_cancellable: 'This upgrade cannot be cancelled in its current state. Reload the page.',
+    upgrade_not_retryable: 'The upgrade has not failed, so there is nothing to retry. Reload the page.',
+    plugin_upgrade_open: 'An upgrade of this plugin is under way. Cancel it or let it finish first.',
+    backup_not_found: 'This backup no longer exists. Reload the list.',
+    restore_not_allowed:
+        'This backup cannot be restored now: only a backup of the failed upgrade under way can. Reload the list.',
+    invalid_restore_phrase: 'The confirmation text does not match. Type it exactly as shown.',
     throttled: 'Too many requests. Wait a moment and try again.',
 };
 
-/** Codes whose server message is what the UI shows, because it names what only the server knows (the plugin). */
-const SERVER_MESSAGE_CODES: ReadonlySet<PluginErrorCode> = new Set<PluginErrorCode>(['plugin_suspended']);
+/**
+ * Codes whose server message is what the UI shows, because it names what only the server knows: the plugin, or the
+ * versions it compared.
+ */
+const SERVER_MESSAGE_CODES: ReadonlySet<PluginErrorCode> = new Set<PluginErrorCode>([
+    'plugin_suspended',
+    'plugin_version_not_newer',
+]);
 
 function isPluginErrorCode(code: unknown): code is PluginErrorCode {
     return typeof code === 'string' && Object.hasOwn(PLUGIN_ERROR_MESSAGES, code);

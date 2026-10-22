@@ -26,26 +26,26 @@ class GatewayPerson:
     """What the gateway knows about a token's person, organization and grant.
 
     `grant_usable` is false once the token's grant is suspended, deleted or re-created, or
-    the plugin stops running. `may_use` is the `plugin_access` rule: an active member of an
-    active organization whose role has `read` on the plugin.
+    the plugin stops running; `grant_state` is that grant's state (None once it is gone), so
+    an organization being upgraded gets its own answer. `may_use` is the `plugin_access` rule:
+    an active member of an active organization whose role has `read` on the plugin.
     """
 
     user_active: bool
     password_fingerprint: str
     grant_usable: bool
+    grant_state: str | None
     may_use: bool
     organization_name: str
     email: str
     name: str
     actions: list[str]
 
-    def accepts(self, claims: PluginLoginClaims) -> bool:
-        """Whether the token may still be used at all: its user is active, its password is the
-        current one and its grant is usable. A token that is not accepted gets 401."""
-        return (
-            self.user_active
-            and self.grant_usable
-            and hmac.compare_digest(self.password_fingerprint, claims.password_fingerprint)
+    def holds(self, claims: PluginLoginClaims) -> bool:
+        """Whether the token's person still holds: their user is active and their password is
+        the one the token was issued with."""
+        return self.user_active and hmac.compare_digest(
+            self.password_fingerprint, claims.password_fingerprint
         )
 
 
@@ -79,6 +79,7 @@ def _build(claims: PluginLoginClaims) -> GatewayPerson:
         user_active=user is not None and user.is_active,
         password_fingerprint=password_fingerprint(user.password) if user is not None else "",
         grant_usable=facts.grant is not None,
+        grant_state=facts.grant_state,
         may_use=facts.may_use,
         organization_name=facts.membership.org.name if facts.membership is not None else "",
         email=user.email if user is not None else "",

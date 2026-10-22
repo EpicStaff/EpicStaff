@@ -5,7 +5,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from epicstaff_plugin.client.epicstaff_client import EpicStaffClient, OrgClient
-from epicstaff_plugin.contracts.hook_api import HOOK_KINDS, HookKind, HookRequest
+from epicstaff_plugin.contracts.hook_api import (
+    HOOK_KINDS,
+    KEYLESS_HOOK_KINDS,
+    HookKind,
+    HookRequest,
+)
 
 OrgHookHandler = Callable[[HookRequest, OrgClient], Awaitable[None]]
 """An install or upgrade handler: the verified request, and a client for its organization."""
@@ -15,10 +20,6 @@ OrgRemovedHookHandler = Callable[[HookRequest], Awaitable[None]]
 account any more, so there is no client to call EpicStaff with."""
 
 HookHandler = OrgHookHandler | OrgRemovedHookHandler
-
-# The kinds whose handler gets no EpicStaff client: their organization holds no key any more.
-# Every other kind's handler gets the request and an `OrgClient` for its organization.
-_KINDS_WITHOUT_CLIENT = frozenset({"org_removed"})
 
 
 @dataclass(frozen=True)
@@ -77,7 +78,7 @@ class HookRegistry:
             raise ValueError(f"{kind!r} is not a hook kind: one of {', '.join(HOOK_KINDS)}")
         if not _is_async_callable(handler):
             raise TypeError("a hook handler is an async function")
-        takes_client = kind not in _KINDS_WITHOUT_CLIENT
+        takes_client = kind not in KEYLESS_HOOK_KINDS
         if not _accepts(handler, 2 if takes_client else 1):
             arguments = "(request, epicstaff)" if takes_client else "(request)"
             raise TypeError(f"the {kind} hook's handler is called with {arguments}")

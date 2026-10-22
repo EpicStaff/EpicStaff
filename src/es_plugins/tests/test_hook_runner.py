@@ -514,3 +514,44 @@ async def test_a_refused_result_is_not_retried(hooks):
     assert await deliver_result(hooks.client, 41, result) is False
 
     assert hooks.django.requests_to("result") == [41]
+
+
+async def test_a_drain_with_no_hook_in_flight_returns_at_once(hooks):
+    runner = hooks.runner(jobs=())
+
+    await asyncio.wait_for(runner.drain(), 1)
+
+
+async def test_a_drain_waits_for_the_hook_in_flight_to_finish(hooks):
+    release = asyncio.Event()
+
+    async def after_release(writer):
+        await release.wait()
+        await answering(200, '{"status":"done"}')(writer)
+
+    hooks.plugin.answer = after_release
+    hooks.django.hook_invocations[41] = hook_invocation()
+    runner = hooks.runner()
+    await asyncio.wait_for(hooks.plugin.received.wait(), 5)
+
+    drain = asyncio.create_task(runner.drain())
+    await asyncio.sleep(0.2)
+    assert not drain.done()
+    release.set()
+    await asyncio.wait_for(drain, 5)
+
+    await wait_until(lambda: hooks.django.hook_results)
+    assert hooks.django.hook_results[0][1]["outcome"] == "succeeded"
+
+
+async def test_a_drain_stops_waiting_once_the_calls_timeout_and_the_margin_have_passed(hooks, monkeypatch):
+    monkeypatch.setattr(hook_runner_module, "DRAIN_MARGIN_SECONDS", 0.3)
+    hooks.plugin.answer = never_answering
+    hooks.django.hook_invocations[41] = hook_invocation(timeout_seconds=1)
+    runner = hooks.runner()
+    await asyncio.wait_for(hooks.plugin.received.wait(), 5)
+
+    started = asyncio.get_running_loop().time()
+    await asyncio.wait_for(runner.drain(), 5)
+
+    assert asyncio.get_running_loop().time() - started < 1.5

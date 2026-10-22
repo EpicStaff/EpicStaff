@@ -6,6 +6,7 @@ import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@
 import { filter, finalize } from 'rxjs';
 
 import { PluginDetail } from '../../models/plugin-admin.model';
+import { PluginPreviewListView } from '../../models/plugin-preview-view.model';
 import { PluginPurgePreview } from '../../models/plugin-purge-preview.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
@@ -14,10 +15,7 @@ import {
     previewOrganizationItem,
     toPreviewListView,
 } from '../../utils/plugin-preview-view.util';
-import {
-    PluginPreviewListView,
-    PluginPreviewSectionComponent,
-} from '../plugin-preview-section/plugin-preview-section.component';
+import { PluginPreviewSectionComponent } from '../plugin-preview-section/plugin-preview-section.component';
 
 export interface PluginUninstallDialogData {
     identifier: string;

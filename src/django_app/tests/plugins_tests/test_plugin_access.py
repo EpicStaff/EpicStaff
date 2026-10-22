@@ -91,7 +91,7 @@ def _suspended_grant(context):
 
 
 def _plugin_not_running(context):
-    context["weather"].__class__.objects.filter(pk=context["weather"].pk).update(state=PluginState.MAINTENANCE)
+    context["weather"].__class__.objects.filter(pk=context["weather"].pk).update(state=PluginState.FAILED)
     return context["member_only"]
 
 

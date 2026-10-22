@@ -1,6 +1,9 @@
-import { PLUGIN_THEME_MODES } from '../constants/plugin-frame-protocol.constants';
+import { PLUGIN_FRAME_AVAILABILITY_STATES, PLUGIN_THEME_MODES } from '../constants/plugin-frame-protocol.constants';
 
 export type PluginThemeMode = (typeof PLUGIN_THEME_MODES)[number];
+
+/** A framed plugin page's view of its own API; never trusted, only a reason to ask EpicStaff's server again. */
+export type PluginFrameAvailability = (typeof PLUGIN_FRAME_AVAILABILITY_STATES)[number];
 
 /** EpicStaff's theme as a plugin page sees it: the mode and the `--es-*` tokens EpicStaff defines. */
 export interface PluginTheme {

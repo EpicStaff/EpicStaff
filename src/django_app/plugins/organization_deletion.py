@@ -20,12 +20,10 @@ from plugins.lifecycle.org_removed_hooks import (
     OrgRemovedHookService,
     has_org_removed_hook,
 )
-from plugins.models import HookJobKind, HookJobState, PluginGrant, PluginHookJob
-from plugins.models.hook_job import OPEN_HOOK_JOB_STATES
+from plugins.models import GrantState, HookJobKind, HookJobState, PluginGrant, PluginHookJob
+from plugins.models.hook_job import GRANT_STEP_HOOK_KINDS, OPEN_HOOK_JOB_STATES
 
 ORGANIZATION_DELETED = "Organization deleted."
-# The kinds whose job is a step of its grant, which the organization's deletion ends.
-_GRANT_STEP_KINDS = (HookJobKind.INSTALL, HookJobKind.UPGRADE)
 
 
 class PluginsOrganizationDeletion:
@@ -47,10 +45,10 @@ class PluginsOrganizationDeletion:
 
     def count_external_artifacts(self, organization: Organization) -> dict[str, int]:
         """`plugin_data`: the plugins that will be asked to delete their data for the
-        organization, leaving out those that already did or were skipped. Never raises: a
+        organization, by the sweep's own rule (`grants_needing_a_job`). Never raises: a
         failure is logged and counts nothing."""
         try:
-            return {"plugin_data": _plugins_holding_data(organization)}
+            return {"plugin_data": len(grants_needing_a_job(list(_grants_of(organization))))}
         except Exception:  # the delete report must not fail over a count
             logger.exception("Could not count the plugin data of organization {}", organization.pk)
             return {}
@@ -63,13 +61,20 @@ class PluginsOrganizationDeletion:
     def sweep(self, organization: Organization) -> PostCommitCleanup | None:
         """Fail the grants' open install and upgrade jobs, and create (or keep) one
         organization removed job per plugin with the hook; runs before the cascade, with the
-        organization locked. Never locks a plugin row.
+        organization locked.
+
+        It takes no plugin lock itself, but each job it inserts makes Postgres take `FOR KEY
+        SHARE` on that plugin's row at commit. Lifecycle paths lock plugins `FOR NO KEY
+        UPDATE` (`lifecycle_locks`), which does not conflict with it, so they never deadlock
+        with this sweep over a grant of the organization.
         """
         now = timezone.now()
         grants = list(_grants_of(organization).select_for_update(of=("self",)).order_by("pk"))
         open_steps = list(
             PluginHookJob.objects.select_for_update()
-            .filter(grant__in=grants, kind__in=_GRANT_STEP_KINDS, state__in=OPEN_HOOK_JOB_STATES)
+            .filter(
+                grant__in=grants, kind__in=GRANT_STEP_HOOK_KINDS, state__in=OPEN_HOOK_JOB_STATES
+            )
             .order_by("pk")
             .values_list("pk", flat=True)
         )
@@ -85,7 +90,7 @@ class PluginsOrganizationDeletion:
                 grant=grant,
             )
             is not None
-            for grant in grants
+            for grant in grants_needing_a_job(grants)
         )
         organization_id = organization.pk
         grant_count = len(grants)
@@ -106,23 +111,28 @@ def _grants_of(organization: Organization) -> QuerySet[PluginGrant]:
     )
 
 
-def _plugins_holding_data(organization: Organization) -> int:
-    """How many of the organization's grants are of a plugin with the hook whose latest job for
-    the organization has not succeeded or been skipped: two queries."""
-    hooked = {
-        grant.plugin_id for grant in _grants_of(organization) if has_org_removed_hook(grant.plugin)
-    }
+def grants_needing_a_job(grants: list[PluginGrant]) -> list[PluginGrant]:
+    """The grants whose plugin must still be asked to delete its data for the organization.
+
+    Every grant of a plugin with the hook, except one already being purged whose own latest
+    organization removed job succeeded or was skipped: its data is gone. One query; the
+    deletion preview and the sweep both count by it.
+    """
+    hooked = [grant for grant in grants if has_org_removed_hook(grant.plugin)]
     if not hooked:
-        return 0
+        return []
     latest_state: dict[int, str] = {}
-    for plugin_id, state in (
-        PluginHookJob.objects.filter(
-            plugin_id__in=hooked, organization_id=organization.pk, kind=HookJobKind.ORG_REMOVED
-        )
-        .order_by("plugin_id", "-created_at", "-pk")
-        .values_list("plugin_id", "state")
+    for grant_id, state in (
+        PluginHookJob.objects.filter(grant__in=hooked, kind=HookJobKind.ORG_REMOVED)
+        .order_by("grant_id", "-created_at", "-pk")
+        .values_list("grant_id", "state")
     ):
-        latest_state.setdefault(plugin_id, state)
-    return sum(
-        1 for plugin_id in hooked if latest_state.get(plugin_id) not in SETTLED_ORG_REMOVED_STATES
-    )
+        latest_state.setdefault(grant_id, state)
+    return [
+        grant
+        for grant in hooked
+        if not (
+            grant.state == GrantState.PURGING
+            and latest_state.get(grant.pk) in SETTLED_ORG_REMOVED_STATES
+        )
+    ]

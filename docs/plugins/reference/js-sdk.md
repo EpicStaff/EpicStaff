@@ -11,8 +11,8 @@ runs in every current browser.
 | `createPluginLogin` | Sign-in through EpicStaff, renewal, and `fetch` for the plugin's own API |
 | `createPopupState`, `PluginLogin.openPopup`, `PluginLogin.completePopup` | An external provider's sign-in in a popup; see [External callbacks](../how-to/external-callbacks.md) |
 | `loadPlatformConfig`, `parsePlatformConfig` | The platform config on its own |
-| `LOGIN_*`, `FRAME_*`, `THEME_*` constants | The protocol values, equal to `contracts/login-protocol.json` and `contracts/frame-protocol.json` |
-| `GATEWAY_DENY_HEADER`, `GATEWAY_DENY_REASONS` | The header that marks a [refusal by EpicStaff's gateway](#gateway-refusals), and its values |
+| `LOGIN_*`, `FRAME_*`, `THEME_*`, `AVAILABILITY_STATES` constants | The protocol values, equal to `contracts/login-protocol.json` and `contracts/frame-protocol.json` |
+| `GATEWAY_DENY_HEADER`, `GATEWAY_DENY_REASONS`, `gatewayRefusal` | The header that marks a [refusal by EpicStaff's gateway](#gateway-refusals), its values, and reading one from a response |
 
 Until the package is published, a plugin takes it from the repository (`"@epicstaff/plugin-sdk":
 "file:<path to>/plugin-sdk"`), as the [Weather sample](../../../plugin-samples/weather/spa/) does.
@@ -65,7 +65,9 @@ It throws `PluginLoginError` with `code`:
 | `state` | Where the sign-in stands; see below |
 | `session` | `{plugin, org, user, permissions, expiresAt}` while `state` is `signed-in`, else `null`. `permissions` are the person's actions on the plugin in this organization, in manifest order, always with `read`. `expiresAt` is in milliseconds since the epoch, by the browser's clock |
 | `error` | A `PluginLoginError` while `state` is `failed`, else `null` |
+| `availability` | Whether the plugin's API can be reached: `available`, `maintenance` or `unavailable`; see [Availability](#availability) |
 | `onChange(listener)` | Calls `listener(state)` on every state change and on every renewed token. Returns the function that stops it |
+| `onAvailabilityChange(listener)` | Calls `listener(availability)` on every change of `availability`. Returns the function that stops it |
 | `start()` | Signs the person in (below). Resolves with the state it reached. Runs once; later calls share the first |
 | `renew()` | Gets a new token for the same organization, silently. Never navigates |
 | `signIn()` | Sends the page to EpicStaff to sign in, and back to the same address. For a "Sign in again" button |
@@ -81,6 +83,7 @@ It throws `PluginLoginError` with `code`:
 | `signed-in` | There is a token | The page |
 | `access-denied` | The person may not use the plugin in this organization (or in any of theirs). Also after the gateway refuses the person (`403` with `X-EpicStaff-Gateway-Deny: forbidden`) | "You do not have access to … in this organization" |
 | `session-ended` | The EpicStaff session ended while the page was open (a renewal got `login_required`) | Inside EpicStaff: "Sign in again" (`signIn()`). On its own address the SDK goes to EpicStaff's login at once |
+| `maintenance` | The plugin is being updated in the person's organization, so EpicStaff signs nobody in to it there for now (the authorize step answered `temporarily_unavailable`). `availability` is `maintenance` too | "… is being updated. It will be back in a few minutes.", and `renew()` now and then (every 30 seconds) to try again |
 | `failed` | Something unexpected: the token endpoint refused the code or could not be reached, or an answer was malformed. `error` says what | The message and "Try again" (`signIn()`) |
 
 ### What `start()` does
@@ -96,6 +99,9 @@ It throws `PluginLoginError` with `code`:
    organization chooser, then answers on `/.well-known/epicstaff/callback.html`, which stores the answer and returns to
    the page's address (path, query and fragment). `start()` then finishes step 1.
 4. `access_denied` at any step is the `access-denied` state, without navigating.
+5. `temporarily_unavailable` at any step is the `maintenance` state, without navigating: the page does not loop
+   through EpicStaff's login while the plugin is updated. A later `renew()` that gets a code signs the person in and
+   ends the maintenance.
 
 Every navigation is a `location.replace`: inside EpicStaff a frame navigation would otherwise add entries to
 EpicStaff's history, and Back would step through the sign-in instead of leaving the plugin.
@@ -136,6 +142,8 @@ const response = await login.fetch('/api/whoami');
     retries once. If the renewal ends the session, the original response is returned.
   - `403` with `X-EpicStaff-Gateway-Deny: forbidden` (the token is fine, but the person may no longer use the
     plugin): the state becomes `access-denied`; no retry.
+- A `503` from the gateway with `maintenance` or `unavailable` sets [`availability`](#availability), is returned as it
+  is, and never renews.
 - Every other response, including your backend's own `401` and `403` whatever their body says, is returned as it is
   and changes nothing.
 - A request that may be retried must have a body that can be sent twice (a string, `Blob`, `FormData`, …, not a
@@ -153,11 +161,58 @@ Every refusal the gateway answers itself, before your backend sees the request, 
 | 404 | `not_found` | `not_found` | Not a path the gateway forwards |
 | 413 | `too_large` | `request_too_large` | The body is over the limit |
 | 429 | `rate_limited` | `rate_limited` | A public path's rate limit |
-| 503 | `unavailable` | `plugin_unavailable` | The plugin's process is not running or not answering |
+| 503 | `unavailable` | `plugin_unavailable` | The plugin's process is not running or not answering, or the person's organization could not be upgraded |
+| 503 | `maintenance` | `plugin_maintenance` | The plugin is being updated, on every path, public ones included; or the person's organization still is |
 
-The gateway removes the header from your backend's responses, so your backend cannot fake a gateway refusal, and its
-own `401` and `403` never end or renew the sign-in. The page reads the header without any CORS setting: the request
-goes to the page's own origin.
+The `503` answers carry `Retry-After` (seconds). The gateway removes the header from your backend's responses, so your
+backend cannot fake a gateway refusal, and its own `401` and `403` never end or renew the sign-in. The page reads the
+header without any CORS setting: the request goes to the page's own origin.
+
+`gatewayRefusal(response)` reads a refusal from any response, for requests your page sends with its own `fetch`:
+
+```ts
+const refusal = gatewayRefusal(response); // { reason: 'maintenance', retryAfterSeconds: 30 }, or null
+```
+
+It is `null` for a response that passed the gateway, and for a reason this version of the SDK does not know.
+`retryAfterSeconds` is `null` when `Retry-After` is not a whole number of seconds.
+
+### Availability
+
+`login.availability` follows the answers `login.fetch` gets from the plugin's own API:
+
+| Answer | `availability` |
+|---|---|
+| `503` with `X-EpicStaff-Gateway-Deny: maintenance` | `maintenance` |
+| `503` with `X-EpicStaff-Gateway-Deny: unavailable` | `unavailable` |
+| Any response without the header (it passed the gateway), your backend's own `503` included | `available` |
+| The gateway's other refusals (`login`, `forbidden`, `not_found`, `too_large`, `rate_limited`) | Unchanged |
+
+A sign-in refused with `temporarily_unavailable` sets `maintenance` as well, and a sign-in that succeeds afterwards
+clears it. It starts as `available`.
+
+**Inside EpicStaff** you need not show anything for it: on a change to `maintenance` or `unavailable` the SDK tells
+EpicStaff with the frame message [`availability.changed`](frame-protocol.md#messages), at most once every 30 seconds
+(a change inside that window is sent when it ends). EpicStaff then asks its own server and shows its maintenance panel,
+or "not available", instead of your page. `plugin.reportAvailability(state)` sends the same message for a page that
+calls its API without `login.fetch`; it does nothing unframed.
+
+**On its own address** the page decides: show "… is being updated. It will be back in a few minutes." while
+`availability` is `maintenance`, and check again every 30 seconds (`Retry-After`). While the plugin itself is being
+updated, the gateway answers the page's own address with EpicStaff's maintenance page, so a page loaded now sees it
+only through its API; a page already open sees it through `availability`.
+
+```ts
+login.onAvailabilityChange(render);
+
+async function checkAgain(): Promise<void> {
+    if (login.state === 'maintenance') await login.renew(); // the sign-in was refused while the update runs
+    if (login.state === 'signed-in') await login.fetch('/api/whoami'); // any route behind the sign-in
+}
+```
+
+Ask a route behind the sign-in, not a public one: a public path answers as soon as the plugin runs, while the person's
+organization may still be being upgraded.
 
 ## Errors
 

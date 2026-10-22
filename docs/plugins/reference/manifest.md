@@ -23,11 +23,16 @@ A backend runs as its own process on the deployment's plugin node ([Runtime](run
 this version it serves its `public_paths` and the requests of people logged in to the plugin
 through EpicStaff's gateway, reads its `settings` and `limits`, calls EpicStaff's API within its
 `access` ([Service account API](service-account-api.md)), runs its `install` hook when an
-organization is granted the plugin and its `org_removed` hook when an organization's data is
-deleted ([Hook API](hook-api.md)), keeps its data in its [database](database.md), and calls the
-hosts in its `outbound_hosts` through the egress proxy
-([Call the internet from your backend](../how-to/outbound-hosts.md)). The `upgrade` hook is
-accepted and shown at review, but nothing calls it yet.
+organization is granted the plugin, its `upgrade` hook when an organization moves to a new
+version, and its `org_removed` hook when an organization's data is deleted
+([Hook API](hook-api.md)), keeps its data in its [database](database.md), and calls the hosts in
+its `outbound_hosts` through the egress proxy
+([Call the internet from your backend](../how-to/outbound-hosts.md)).
+
+A package for a plugin that is already installed is a new version of it: a SuperAdmin reviews
+it, and approving it upgrades the plugin. [Compatibility and versioning](compatibility-and-versioning.md)
+says what a new version must and may not change; the rows of `version`, `backend` and `database`
+below list the rules checked at upload.
 
 ## Example
 
@@ -114,22 +119,22 @@ A manifest with every section filled in:
 |---|---|---|---|
 | `manifest_version` | `1` | yes | Only `1`. |
 | `id` | string | yes | `^[a-z][a-z0-9-]{0,30}[a-z0-9]$` (2–32 characters). Reserved: `www`, `api`, `admin`, `plugins`, `epicstaff`, `static`, `postgres`, `public`, `packages`, and anything starting with `pg`. The plugin's address is `<id>.<plugin base domain>`, so the id never changes between versions. |
-| `version` | string | yes | [SemVer 2.0](https://semver.org/) with ASCII digits, at most 64 characters: `1.2.3`, `1.0.0-beta.1`, `1.0.0+build.5`. |
+| `version` | string | yes | [SemVer 2.0](https://semver.org/) with ASCII digits, at most 64 characters: `1.2.3`, `1.0.0-beta.1`, `1.0.0+build.5`. For an installed plugin, it must be newer than the latest approved version, in SemVer order: build metadata does not count, so `1.0.0+build.6` is not newer than `1.0.0+build.5`. Otherwise the upload is refused with 409 `plugin_version_not_newer`; there are no downgrades. `epicstaff_plugin.versions` compares versions the same way. |
 | `name` | string | yes | 1–64 characters. Shown in the left bar. |
 | `description` | string | yes | 1–500 characters. |
 | `publisher` | object | yes | `name` (1–64 characters, required) and `url` (optional, `https://` only, no credentials). Shown as *claimed* unless the package is Trusted. |
 | `icon` | string | yes | `icon.svg` or `icon.png`, a file at the package root. See [Icon](#icon). |
 | `platform` | object | yes | `frame_protocol`, `gateway_context` and `hook_api`, each `1`: the versions of the platform contracts the plugin is written for. |
 | `spa` | object | no | The plugin's single-page app. `entry` (default `index.html`) is a path inside `spa/` that must exist in the package. |
-| `backend` | object | no | `python`: `"3.12"` or `"3.13"`; `entrypoint`: `module.path:attribute` of an ASGI app, whose module is `backend/src/<module/path>.py` or `backend/src/<module/path>/__init__.py`. Its files are under `backend/` ([backend/requirements.lock](#backendrequirementslock)); [Runtime](runtime.md) says how it is run. |
-| `database` | `{}` | no | Present when the plugin needs its own database; takes no fields. Its migrations are `database/migrations/NNN_<name>.sql` in the package ([Plugin database](database.md), [Write database migrations](../how-to/database-migrations.md)). *Cross-field:* needs `backend`. |
+| `backend` | object | no | `python`: `"3.12"` or `"3.13"`; `entrypoint`: `module.path:attribute` of an ASGI app, whose module is `backend/src/<module/path>.py` or `backend/src/<module/path>/__init__.py`. Its files are under `backend/` ([backend/requirements.lock](#backendrequirementslock)); [Runtime](runtime.md) says how it is run. A new version of a plugin with a backend keeps one: dropping it is refused with 409 `plugin_upgrade_unavailable`. A new version may add one. |
+| `database` | `{}` | no | Present when the plugin needs its own database; takes no fields. Its migrations are `database/migrations/NNN_<name>.sql` in the package ([Plugin database](database.md), [Write database migrations](../how-to/database-migrations.md)). A new version of a plugin with a database keeps it, and keeps every migration file that already ran unchanged; it adds new files. Dropping the database, or changing an applied file, is refused with 409 `plugin_upgrade_unavailable`. *Cross-field:* needs `backend`. |
 | `access` | array | no (default `[]`) | What the plugin's backend may do in EpicStaff; see [access](#access). *Cross-field:* non-empty `access` needs `backend`. |
 | `user_permissions` | array | yes | What people may do with the plugin; see [user_permissions](#user_permissions). |
 | `public_paths` | array | no (default `[]`) | Backend paths reached without an EpicStaff login. Each: `path` under `/api/` (`/api/<segment>[/…]`, no `.` or `..` segment, at most 512 characters, distinct), `match` `exact` or `prefix`, `methods` (distinct, from `GET HEAD POST PUT PATCH DELETE OPTIONS`), `rate_limit_per_minute` 1–6000, `max_body_kb` 0–20480, each at most the deployment's maximum ([Platform maximums](#platform-maximums)). *Cross-field:* needs `backend`. |
 | `outbound_hosts` | array | no (default `[]`) | Hosts the backend may call, over HTTPS on port 443 only, through the egress proxy; at most 100. Each: `host` is a lower-case DNS name, or `*.` and a name for every name below it (no IP address, no port, distinct), and `reason` (1–200 characters). See [Call the internet from your backend](../how-to/outbound-hosts.md). *Cross-field:* needs `backend`. |
 | `settings` | array | no (default `[]`) | Deployment-wide settings a SuperAdmin fills in; see [settings](#settings). *Cross-field:* needs `backend`. |
 | `limits` | object | no | `memory_mb` 64–8192, `db_connections` 1–100 and `statement_timeout_seconds` 1–600 (both used only with a `database` section), `requests_per_minute` 1–6000, `cpu_priority` `normal` or `low`. Each is optional: one left out (or `null`) gets the platform default, and each is at most the deployment's maximum ([Platform maximums](#platform-maximums)). A SuperAdmin may lower them per plugin. *Cross-field:* needs `backend`. |
-| `hooks` | object | no (default all off) | `install`, `upgrade`, `org_removed` (booleans) and optional `timeouts_seconds` with `install` ≤ 900, `upgrade` ≤ 1800, `org_removed` ≤ 900. A hook without a timeout gets that maximum. This version runs the `install` hook ([Run code when an organization gets your plugin](../how-to/install-hook.md)) and the `org_removed` hook ([Delete your data when an organization leaves](../how-to/org-removed-hook.md)); `upgrade` is reserved. *Cross-field:* any hook turned on needs `backend`. |
+| `hooks` | object | no (default all off) | `install`, `upgrade`, `org_removed` (booleans) and optional `timeouts_seconds` with `install` ≤ 900, `upgrade` ≤ 1800, `org_removed` ≤ 900. A hook without a timeout gets that maximum. This version runs the `install` hook ([Run code when an organization gets your plugin](../how-to/install-hook.md)), the `upgrade` hook ([Write an upgrade hook](../how-to/upgrade-hook.md)) and the `org_removed` hook ([Delete your data when an organization leaves](../how-to/org-removed-hook.md)). A new version's own `hooks` decide whether its upgrade runs an upgrade hook. *Cross-field:* any hook turned on needs `backend`. |
 
 ### access
 

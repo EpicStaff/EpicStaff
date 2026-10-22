@@ -202,7 +202,12 @@ class PluginLimitsService:
             InvalidPluginLimitsError: An unknown limit, a value that is not a positive
                 integer or is above `min(requested, platform maximum)`, or a `cpu_priority`
                 other than `low`.
+            PluginUninstallingError: The plugin is being deleted.
         """
+        # Imported here: the lifecycle modules import this one.
+        from plugins.lifecycle.lifecycle_locks import lock_existing_plugin
+        from plugins.lifecycle.plugin_actions import assert_plugin_not_purging
+
         current = plugin_limits(plugin, manifest)
         problems = []
         for name, value in changes.items():
@@ -221,7 +226,8 @@ class PluginLimitsService:
         if problems:
             raise InvalidPluginLimitsError(problems)
         with transaction.atomic():
-            locked = Plugin.objects.select_for_update().get(pk=plugin.pk)
+            locked = lock_existing_plugin(plugin.identifier)
+            assert_plugin_not_purging(locked)
             overrides = dict(locked.limit_overrides or {})
             for name, value in changes.items():
                 if value is None:

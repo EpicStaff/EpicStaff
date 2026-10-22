@@ -34,7 +34,7 @@ from typing import Literal
 import psycopg
 from loguru import logger
 from psycopg import sql
-from src.shared.models.plugin_nodes import DesiredDatabase
+from src.shared.models.plugin_nodes import DesiredDatabase, LedgerEntry
 
 from es_plugins.database.app_role_limits import apply_app_limits
 from es_plugins.database.connections import (
@@ -69,8 +69,8 @@ class ProvisionedDatabase:
     created: bool
     """Whether this call created the database (rather than finding it)."""
 
-    ledger: tuple[str, ...]
-    """The migrations applied to it, in the order they were applied."""
+    ledger: tuple[LedgerEntry, ...]
+    """The migrations applied to it, with their digests, in the order they were applied."""
 
     applied: int
     """How many migrations this call applied."""
@@ -162,7 +162,7 @@ class DatabaseProvisioner:
                         sql.Identifier(desired.owner_role),
                     )
                 )
-            await _grant_connect(admin, desired)
+            await grant_connect(admin, desired)
             await apply_app_limits(admin, desired)
             await self._assertions.check(admin, desired)
             run = await self._runner.run(admin, desired, migrations)
@@ -245,7 +245,8 @@ async def _ensure_roles(
         await admin.execute(sql.SQL("GRANT {} TO {} WITH INHERIT FALSE, SET TRUE").format(job, app))
 
 
-async def _grant_connect(admin: psycopg.AsyncConnection, desired: DesiredDatabase) -> None:
+async def grant_connect(admin: psycopg.AsyncConnection, desired: DesiredDatabase) -> None:
+    """Only the five roles of `connect_holders` may connect to the database; PUBLIC may not."""
     database = sql.Identifier(desired.database_name)
     holders = sql.SQL(", ").join(sql.Identifier(name) for name in sorted(connect_holders(desired)))
     # As the owner: privileges on its database are the owner's to revoke. SET LOCAL ends with

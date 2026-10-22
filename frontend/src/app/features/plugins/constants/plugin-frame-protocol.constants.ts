@@ -12,6 +12,7 @@ export const PLUGIN_FRAME_MESSAGE_TYPES = {
     navChanged: 'nav.changed',
     navNavigate: 'nav.navigate',
     themeChanged: 'theme.changed',
+    availabilityChanged: 'availability.changed',
 } as const;
 
 export const PLUGIN_FRAME_ERROR_CODES = {
@@ -23,6 +24,8 @@ export const PLUGIN_FRAME_LIMITS = {
     maxNavPathLength: 1024,
     /** `nav.changed` messages accepted per frame in any 60-second window; the rest are dropped. */
     maxNavChangesPerMinute: 120,
+    /** `availability.changed` messages accepted per frame in any 60-second window; the rest are dropped. */
+    maxAvailabilityChangesPerMinute: 6,
 } as const;
 
 /**
@@ -33,6 +36,9 @@ export const PLUGIN_FRAME_LIMITS = {
 export const PLUGIN_NAV_PATH_PATTERN = /^\/([A-Za-z0-9\-._~%]+(\/[A-Za-z0-9\-._~%]+)*)?(\?[A-Za-z0-9\-._~%=&+]*)?$/;
 
 export const PLUGIN_THEME_MODES = ['dark', 'light'] as const;
+
+/** What a plugin page may say about its own API in `availability.changed`. EpicStaff only re-reads its server then. */
+export const PLUGIN_FRAME_AVAILABILITY_STATES = ['available', 'maintenance', 'unavailable'] as const;
 
 /** The query parameter of the frame URL that carries the active organization id. Reserved: never a page's own. */
 export const PLUGIN_ORG_HINT_PARAMETER = 'es_org';

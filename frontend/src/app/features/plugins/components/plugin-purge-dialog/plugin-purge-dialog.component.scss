@@ -1,6 +1,7 @@
 @use '../plugin-dialog' as plugin-dialog;
 
 @include plugin-dialog.plugin-dialog(600px);
+@include plugin-dialog.plugin-phrase-confirmation(purge);
 
 .purge__summary {
     margin: 0;
@@ -22,37 +23,5 @@
 
     p {
         margin: 0;
-    }
-}
-
-.purge__verification {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding-top: 12px;
-    border-top: 1px solid var(--color-divider-subtle);
-}
-
-.purge__verification-label {
-    color: var(--color-text-secondary);
-    overflow-wrap: anywhere;
-}
-
-.purge__phrase {
-    color: var(--color-text-primary);
-    white-space: pre-wrap;
-}
-
-.purge__verification-input {
-    height: 40px;
-    padding: 0 12px;
-    border: 1px solid var(--color-input-border);
-    border-radius: 4px;
-    background: var(--color-input-background);
-    color: var(--color-text-primary);
-
-    &:focus-visible {
-        outline: none;
-        border-color: var(--accent-color);
     }
 }

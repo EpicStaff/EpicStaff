@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from plugins.access.plugin_access import (
     PersonPluginAccess,
+    awaits_an_upgrade,
     eligible_accesses,
     resolve_person_plugin_access,
 )
@@ -29,6 +30,7 @@ from plugins.identity.login_protocol import (
     LOGIN_REQUIRED,
     PROMPT_NONE,
     SILENT_CALLBACK_PATH,
+    TEMPORARILY_UNAVAILABLE,
 )
 from plugins.identity.plugin_login_tokens import password_fingerprint
 from plugins.models import Plugin
@@ -80,8 +82,9 @@ class PluginAuthorizationService:
         browser goes to EpicStaff's login (or, for a silent request, back with
         `login_required`). With one, the organization is the one named, else the only one the
         person may use the plugin in; with several, EpicStaff's chooser (or
-        `interaction_required`). A person who may use it nowhere asked gets `access_denied`.
-        Otherwise a code is issued for the plugin's callback.
+        `interaction_required`). A person who may use it nowhere asked gets
+        `temporarily_unavailable` when they may once an upgrade there finishes, else
+        `access_denied`. Otherwise a code is issued for the plugin's callback.
         """
         origins = PluginOrigins()
         if user is None:
@@ -91,10 +94,14 @@ class PluginAuthorizationService:
         if query.org is not None:
             access = resolve_person_plugin_access(user, query.org, plugin)
             if access is None:
+                if awaits_an_upgrade(user, plugin, query.org):
+                    return _callback_url(origins, query, error=TEMPORARILY_UNAVAILABLE)
                 return _denied(origins, query, user, ORG_NOT_ELIGIBLE)
         else:
             accesses = eligible_accesses(user, plugin)
             if not accesses:
+                if awaits_an_upgrade(user, plugin):
+                    return _callback_url(origins, query, error=TEMPORARILY_UNAVAILABLE)
                 return _denied(origins, query, user, NO_ELIGIBLE_ORG)
             if len(accesses) > 1:
                 if query.silent:

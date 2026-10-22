@@ -42,6 +42,8 @@ export function renderLoginState(login: PluginLogin, pluginName: string): HTMLEl
             return [element('p', 'muted', 'Signing in…')];
         case 'access-denied':
             return [element('p', 'note', `You do not have access to ${pluginName} in this organization.`)];
+        case 'maintenance':
+            return [maintenanceNote(pluginName)];
         case 'session-ended':
             return [
                 element('p', 'note', 'Your EpicStaff session has ended.'),
@@ -53,6 +55,13 @@ export function renderLoginState(login: PluginLogin, pluginName: string): HTMLEl
                 button('Try again', () => void login.signIn()),
             ];
     }
+}
+
+/** What the page says while Weather is being updated in the person's organization. */
+export function maintenanceNote(pluginName: string): HTMLElement {
+    const note = element('p', 'note', `${pluginName} is being updated. It will be back in a few minutes.`);
+    note.setAttribute('role', 'status');
+    return note;
 }
 
 /** The "Who am I" page: what the backend's gateway context says, the token's expiry, and "Renew now". */

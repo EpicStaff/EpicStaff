@@ -3,8 +3,9 @@
 The placement's controller provisions it, and the limits watchdog checks it, each while holding
 `lock`: the watchdog skips a database whose lock is taken, so it never works on one that is
 being provisioned. A removal holds the same lock while it drops the database, and retires it
-first, so a watchdog pass that began before the placement went never checks it again. The
-report says what the last attempt came to.
+first, so a watchdog pass that began before the placement went never checks it again. A backup
+or a restore holds it too. The report says what the last attempt came to, and the ledger as the
+node last read it: None until it has, in this agent's life.
 """
 
 import asyncio
@@ -16,7 +17,7 @@ from src.shared.models.plugin_nodes import (
     MAX_LAST_ERROR_LENGTH,
     DatabaseReport,
     DesiredDatabase,
-    is_reportable_migration_name,
+    LedgerEntry,
 )
 
 from es_plugins.database.provisioner import ProvisionedDatabase
@@ -32,7 +33,7 @@ class PlacementDatabase:
         """When the watchdog last put the app role's limits back, in this agent's life."""
 
         self._state: Literal["provisioning", "ready", "failed"] = "provisioning"
-        self._ledger: tuple[str, ...] = ()
+        self._ledger: tuple[LedgerEntry, ...] | None = None
         self._last_error: str | None = None
         self._retired = False
 
@@ -57,19 +58,22 @@ class PlacementDatabase:
         self.size_bytes = outcome.size_bytes
         self._last_error = None
 
-    def failed(self, error: str) -> None:
+    def failed(self, error: str, *, ledger: tuple[LedgerEntry, ...] | None = None) -> None:
+        """The attempt failed; `ledger` is what a failed migration run left, when it was read."""
         self._state = "failed"
         self._last_error = error
+        if ledger is not None:
+            self._ledger = ledger
 
     def report(self) -> DatabaseReport:
-        # The owner owns the ledger, so a migration may have written rows the report cannot
-        # carry; only names a migration file can have are reported.
-        ledger = [name for name in self._ledger if is_reportable_migration_name(name)]
+        # Every entry passed is_reportable_ledger_entry when it was read.
+        ledger = None if self._ledger is None else list(self._ledger[:MAX_APPLIED_MIGRATIONS])
         return DatabaseReport(
             installation_id=self.desired.installation_id,
             state=self._state,
-            applied_migrations=ledger[:MAX_APPLIED_MIGRATIONS],
+            applied_migrations=[entry.name for entry in ledger or ()],
             size_bytes=self.size_bytes,
             last_error=self._last_error[:MAX_LAST_ERROR_LENGTH] if self._last_error else None,
             limits_restored_at=self.limits_restored_at,
+            ledger=ledger,
         )

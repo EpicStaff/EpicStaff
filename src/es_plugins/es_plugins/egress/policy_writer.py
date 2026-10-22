@@ -137,12 +137,14 @@ class EgressPolicyWriter:
         """The plugin is being removed from the node: drop its password and its host list.
 
         Doing it again changes nothing. `Reconciler.apply` already leaves a removed plugin out of
-        `hosts.json`; this also covers a removal the agent resumes after a restart.
+        `hosts.json`; this also covers a removal the agent resumes after a restart. The password
+        file is written every time, so a retry after a write that failed writes it.
 
         Raises:
             EgressPolicyError: A policy file could not be replaced.
         """
-        await self.remove_password(identifier)
+        self.forget_password(identifier)
+        await self.write_passwords()
         async with self._write_lock:
             # Taken from the current list under the lock, so a newer list is never overwritten.
             if identifier in self._hosts:

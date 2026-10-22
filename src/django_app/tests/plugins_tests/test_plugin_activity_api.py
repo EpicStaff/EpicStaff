@@ -486,3 +486,30 @@ def test_a_router_route_is_recorded_as_a_path_pattern(principal, acme):
 )
 def test_every_route_takes_the_same_path_pattern_form(route, pattern):
     assert url_path_pattern(route) == pattern
+
+
+def test_an_org_admin_sees_the_organization_s_upgrade_hooks_and_never_the_deployment_wide_upgrade(
+    org_admin_client, acme, beta, weather, superadmin_client
+):
+    for organization_id, action in (
+        (acme.pk, "upgrade_hook_succeeded"),
+        (beta.pk, "upgrade_hook_failed"),
+        (None, "plugin_upgraded"),
+        (None, "database_backed_up"),
+    ):
+        PluginActivityEvent.objects.create(
+            plugin_identifier="weather",
+            organization_id=organization_id,
+            actor_kind="platform",
+            actor_label="Platform",
+            action=action,
+            detail={"job_id": 1},
+        )
+
+    body = org_admin_client.get(ACTIVITY_URL, {"action": "upgrade_hook_succeeded"}).json()
+    everything = org_admin_client.get(ACTIVITY_URL).json()
+    admin = superadmin_client.get(ADMIN_ACTIVITY_URL, {"action": "plugin_upgraded"}).json()
+
+    assert [event["action"] for event in body["results"]] == ["upgrade_hook_succeeded"]
+    assert {event["action"] for event in everything["results"]} <= {"upgrade_hook_succeeded", "grant_created", "api_request"}
+    assert [event["action"] for event in admin["results"]] == ["plugin_upgraded"]

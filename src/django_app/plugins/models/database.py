@@ -1,8 +1,20 @@
-from django.db import models
-from src.shared.models.plugin_nodes import MAX_LAST_ERROR_LENGTH
+from typing import get_args
 
-from plugins.models.enums import PluginDatabaseState
+from django.conf import settings
+from django.db import models
+from django.db.models import Q
+from django.utils import timezone
+from src.shared.models.plugin_nodes import MAX_LAST_ERROR_LENGTH, RestoreStep
+
+from plugins.models.enums import BackupReason, PluginDatabaseState, RestoreState
+from plugins.models.node import PluginNode
 from plugins.models.plugin import Plugin
+
+ONE_OPEN_RESTORE_CONSTRAINT = "plugins_restore_one_open"
+OPEN_RESTORE_STATES = (RestoreState.PENDING, RestoreState.RUNNING)
+RESTORE_STEP_CHOICES = [(step, step) for step in get_args(RestoreStep)]
+# A backup's file name is at most 54 characters (`BACKUP_FILE_NAME_PATTERN`).
+BACKUP_FILE_NAME_LENGTH = 64
 
 # Postgres keeps at most 63 characters of an identifier.
 DATABASE_OBJECT_NAME_LENGTH = 63
@@ -54,6 +66,9 @@ class PluginDatabase(models.Model):
         max_length=16, choices=PluginDatabaseState.choices, default=PluginDatabaseState.PENDING
     )
     applied_migrations = models.JSONField(default=list, blank=True)
+    # The ledger with each applied file's sha256 (`{name, sha256}`), as the node last read it,
+    # whatever state it reported: an upgrade's Cancel depends on it.
+    ledger = models.JSONField(default=list, blank=True)
     size_bytes = models.PositiveBigIntegerField(null=True, blank=True)
     last_error = models.CharField(max_length=MAX_LAST_ERROR_LENGTH, null=True, blank=True)
     ready_at = models.DateTimeField(null=True, blank=True)
@@ -82,3 +97,113 @@ class PluginDatabase(models.Model):
 
     def __str__(self) -> str:
         return f"{self.database_name} on {self.server_id}"
+
+
+class PluginDatabaseBackup(models.Model):
+    """A backup of a plugin's database that its node took during an upgrade, as it reported it.
+
+    The node holds the file; EpicStaff keeps this record and decides when the node deletes it
+    (`plugins.databases.backup_records.backup_retention`). `version` is the plugin version
+    whose migrations the database held when it was dumped. `created_at` is the node's clock.
+    `deleted_at` is set once the node no longer lists the file. A file the node lists with
+    another sha256 than the recorded one is `sha256_mismatch` and never restored.
+    """
+
+    # No index of its own: the file-name constraint and the retention index lead with it.
+    plugin_database = models.ForeignKey(
+        PluginDatabase, on_delete=models.CASCADE, related_name="backups", db_index=False
+    )
+    upgrade = models.ForeignKey(
+        "plugins.PluginUpgrade",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="backups",
+    )
+    # Which node holds the file; never looked up by it.
+    node = models.ForeignKey(
+        PluginNode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        db_index=False,
+    )
+    file_name = models.CharField(max_length=BACKUP_FILE_NAME_LENGTH)
+    reason = models.CharField(max_length=16, choices=BackupReason.choices)
+    version = models.CharField(max_length=64)
+    size_bytes = models.PositiveBigIntegerField()
+    sha256 = models.CharField(max_length=64)
+    sha256_mismatch = models.BooleanField(default=False)
+    created_at = models.DateTimeField()
+    recorded_at = models.DateTimeField(default=timezone.now)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["plugin_database", "file_name"], name="plugins_backup_file_uniq"
+            ),
+        ]
+        indexes = [
+            # Retention and the backups list read a database's present backups by reason,
+            # newest first.
+            models.Index(
+                fields=["plugin_database", "deleted_at", "reason", "created_at"],
+                name="plugins_backup_retention",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.file_name} of {self.plugin_database_id}"
+
+
+class PluginDatabaseRestore(models.Model):
+    """A SuperAdmin's request to restore a backup into a plugin's database, and how it went.
+
+    Only during a failed upgrade, from a backup that upgrade took; the node runs it. At most
+    one per database is pending or running. `backup_file_name` keeps the file's name after
+    the backup's record goes; `pre_restore_backup` is the backup the node took of the database
+    just before it was replaced, the way back.
+    """
+
+    plugin_database = models.ForeignKey(
+        PluginDatabase, on_delete=models.CASCADE, related_name="restores"
+    )
+    upgrade = models.ForeignKey(
+        "plugins.PluginUpgrade", on_delete=models.CASCADE, related_name="restores"
+    )
+    backup = models.ForeignKey(
+        PluginDatabaseBackup, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    backup_file_name = models.CharField(max_length=BACKUP_FILE_NAME_LENGTH)
+    pre_restore_backup = models.ForeignKey(
+        PluginDatabaseBackup, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    requested_at = models.DateTimeField(default=timezone.now)
+    state = models.CharField(
+        max_length=16, choices=RestoreState.choices, default=RestoreState.PENDING
+    )
+    step = models.CharField(max_length=16, choices=RESTORE_STEP_CHOICES, null=True, blank=True)
+    last_error = models.CharField(max_length=MAX_LAST_ERROR_LENGTH, null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["plugin_database"],
+                condition=Q(state__in=OPEN_RESTORE_STATES),
+                name=ONE_OPEN_RESTORE_CONSTRAINT,
+            ),
+        ]
+
+    @property
+    def is_open(self) -> bool:
+        return self.state in OPEN_RESTORE_STATES
+
+    def __str__(self) -> str:
+        return f"restore of {self.backup_file_name} ({self.state})"

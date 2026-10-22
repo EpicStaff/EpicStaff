@@ -4,10 +4,12 @@
 # pg_hba.conf), with random passwords, on a free loopback port. Then:
 #
 #   - runs every es_plugins and plugin_sdk test marked `postgres` against it, through
-#     ES_PLUGINS_TEST_PG_HOST, _PORT and _ADMIN_PASSWORD. ES_PLUGINS_TEST_ASG_MIGRATIONS_DIR is
-#     passed on when it is set; ASG's migrations are skipped without it;
+#     ES_PLUGINS_TEST_PG_HOST, _PORT, _ADMIN_PASSWORD and _BACKUP_PASSWORD.
+#     ES_PLUGINS_TEST_ASG_MIGRATIONS_DIR is passed on when it is set; ASG's migrations are skipped
+#     without it;
 #   - checks the server itself: the superuser is refused over TCP, nobody else gets in over the
-#     socket, plugins_backup is refused until backups use it, the attributes and memberships of
+#     socket, plugins_backup logs in over TCP with its password (SCRAM) to a database it may
+#     connect to and not to postgres, the attributes and memberships of
 #     plugins_admin and plugins_backup, that plugins_admin ends a plugin's session but not the
 #     superuser's, CONNECT on postgres and template1 closed to PUBLIC, the server settings, that
 #     a failing statement of plugins_admin reaches the log without its text (a superuser control
@@ -119,6 +121,7 @@ fi
 for service in es_plugins plugin_sdk; do
   if ES_PLUGINS_TEST_PG_HOST=127.0.0.1 ES_PLUGINS_TEST_PG_PORT=$port \
     ES_PLUGINS_TEST_PG_ADMIN_PASSWORD=$PLUGINS_DB_ADMIN_PASSWORD \
+    ES_PLUGINS_TEST_PG_BACKUP_PASSWORD=$PLUGINS_DB_BACKUP_PASSWORD \
     make -C "$repository" --no-print-directory "$service-tests" ARGS="-m postgres"; then
     pass "$service: every test marked postgres passes against plugins_db"
   else
@@ -134,32 +137,44 @@ for address in 127.0.0.1 "$container_address"; do
   check "the superuser is refused over TCP to $address, with its own password" \
     contains "$refused" 'pg_hba.conf rejects connection'
 done
-refused=$(docker exec -u postgres "$server" psql -X -U plugins_admin -d postgres -c 'SELECT 1' 2>&1 || true)
-check "no role but the superuser gets in over the socket" \
-  contains "$refused" 'pg_hba.conf rejects connection for host "[local]"'
-wrong_password=$(PGPASSWORD=not-the-password docker exec -e PGPASSWORD "$server" \
-  psql -X "host=127.0.0.1 user=plugins_admin dbname=postgres connect_timeout=5" -c 'SELECT 1' 2>&1 || true)
-check "plugins_admin with a wrong password is refused" \
-  contains "$wrong_password" 'password authentication failed for user "plugins_admin"'
+for role in plugins_admin plugins_backup; do
+  refused=$(docker exec -u postgres "$server" psql -X -U "$role" -d postgres -c 'SELECT 1' 2>&1 || true)
+  check "$role is refused over the socket, where only the superuser gets in" \
+    contains "$refused" 'pg_hba.conf rejects connection for host "[local]"'
+  wrong_password=$(PGPASSWORD=not-the-password docker exec -e PGPASSWORD "$server" \
+    psql -X "host=127.0.0.1 user=$role dbname=postgres connect_timeout=5" -c 'SELECT 1' 2>&1 || true)
+  check "$role with a wrong password is refused" \
+    contains "$wrong_password" "password authentication failed for user \"$role\""
+  check "$role's password is stored as a SCRAM verifier" \
+    equals "$(superuser_query "SELECT rolpassword LIKE 'SCRAM-SHA-256\$%' FROM pg_authid WHERE rolname = '$role'")" t
+done
 admin_over_tcp=$(PGPASSWORD=$PLUGINS_DB_ADMIN_PASSWORD docker exec -e PGPASSWORD "$server" \
   psql -X -At "host=127.0.0.1 user=plugins_admin dbname=postgres" -c 'SELECT current_user' 2>&1 || true)
 check "plugins_admin logs in over TCP with its password" equals "$admin_over_tcp" plugins_admin
-check "plugins_admin's password is stored as a SCRAM verifier" \
-  equals "$(superuser_query "SELECT rolpassword LIKE 'SCRAM-SHA-256\$%' FROM pg_authid WHERE rolname = 'plugins_admin'")" t
-backup_refused=$(PGPASSWORD=$PLUGINS_DB_BACKUP_PASSWORD docker exec -e PGPASSWORD "$server" \
-  psql -X "host=127.0.0.1 user=plugins_backup dbname=postgres connect_timeout=5" -c 'SELECT 1' 2>&1 || true)
-check "plugins_backup is refused over TCP with its own password, until backups use it" \
-  contains "$backup_refused" 'pg_hba.conf rejects connection for host "127.0.0.1", user "plugins_backup"'
-published_refused=$(PGPASSWORD=$PLUGINS_DB_BACKUP_PASSWORD "$repository/src/es_plugins/.venv/bin/python" -I -c '
+# A database plugins_backup may connect to, as provisioning grants it on every plugin database.
+backup_database=$(random_name backup_probe)
+admin_query "CREATE DATABASE $backup_database" > /dev/null
+admin_query "GRANT CONNECT ON DATABASE $backup_database TO plugins_backup" > /dev/null
+backup_over_tcp=$(PGPASSWORD=$PLUGINS_DB_BACKUP_PASSWORD docker exec -e PGPASSWORD "$server" \
+  psql -X -At "host=127.0.0.1 user=plugins_backup dbname=$backup_database connect_timeout=5" \
+  -c 'SELECT current_user' 2>&1 || true)
+check "plugins_backup logs in over TCP with its password, to a database it may connect to" \
+  equals "$backup_over_tcp" plugins_backup
+backup_published=$(PGPASSWORD=$PLUGINS_DB_BACKUP_PASSWORD "$repository/src/es_plugins/.venv/bin/python" -I -c '
 import sys
 import psycopg
 try:
-    psycopg.connect(host="127.0.0.1", port=int(sys.argv[1]), user="plugins_backup", dbname="postgres", connect_timeout=5).close()
-    print("connected")
+    with psycopg.connect(host="127.0.0.1", port=int(sys.argv[1]), user="plugins_backup", dbname=sys.argv[2], connect_timeout=5) as connection:
+        print(connection.execute("SELECT current_user").fetchone()[0])
 except psycopg.OperationalError as error:
     print(error)
-' "$port" 2>&1 || true)
-check "... and through the published port" contains "$published_refused" 'pg_hba.conf rejects connection'
+' "$port" "$backup_database" 2>&1 || true)
+check "... and through the published port" equals "$backup_published" plugins_backup
+backup_to_postgres=$(PGPASSWORD=$PLUGINS_DB_BACKUP_PASSWORD docker exec -e PGPASSWORD "$server" \
+  psql -X "host=127.0.0.1 user=plugins_backup dbname=postgres connect_timeout=5" -c 'SELECT 1' 2>&1 || true)
+check "... but not to postgres, which is closed to it" \
+  contains "$backup_to_postgres" 'permission denied for database "postgres"'
+admin_query "DROP DATABASE IF EXISTS $backup_database" > /dev/null
 
 echo "# the roles the init script made"
 roles="SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls FROM pg_roles WHERE rolname ="

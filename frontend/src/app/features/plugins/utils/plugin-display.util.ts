@@ -1,7 +1,10 @@
+import { formatDate } from '@angular/common';
 import { daysUntil } from '@shared/utils';
 
 import {
     PluginAction,
+    PluginBackup,
+    PluginBackupReason,
     PluginGrant,
     PluginGrantAction,
     PluginGrantState,
@@ -9,10 +12,14 @@ import {
     PluginLifecycleAction,
     PluginOrgRemovedJob,
     PluginOrgRemovedJobAction,
+    PluginPendingPackage,
     PluginPurgeNodeState,
+    PluginRestoreStep,
     PluginSignatureStatus,
     PluginState,
+    PluginSummary,
     PluginTrust,
+    PluginUpgradeStep,
 } from '../models/plugin-admin.model';
 import {
     PluginCpuPriority,
@@ -57,7 +64,87 @@ export const PLUGIN_LIFECYCLE_ACTION_LABELS: Readonly<Record<PluginLifecycleActi
     reinstall: 'Reinstall',
     purge: 'Delete permanently…',
     retry_removal: 'Retry removal',
+    upgrade: 'Upgrade…',
+    cancel_upgrade: 'Cancel upgrade',
+    retry_upgrade: 'Retry',
+    restore_backup: 'Restore backup…',
 };
+
+/** A header button's label; "Upgrade to 0.7.0…" names the version waiting for review. */
+export function pluginLifecycleActionLabel(
+    action: PluginLifecycleAction,
+    pendingPackage: PluginPendingPackage | null
+): string {
+    if (action === 'upgrade' && pendingPackage) return `Upgrade to ${pendingPackage.version}…`;
+    return PLUGIN_LIFECYCLE_ACTION_LABELS[action];
+}
+
+/** What the plugin node is doing at each step of an upgrade. Lower-cased, it ends "The upgrade failed while …". */
+export const PLUGIN_UPGRADE_STEP_LABELS: Readonly<Record<PluginUpgradeStep, string>> = {
+    download: 'Downloading the package',
+    verify: 'Verifying the package',
+    build: 'Building the new version',
+    drain: 'Waiting for running hooks to finish',
+    stop: 'Stopping the plugin',
+    backup: 'Backing up the database',
+    migrate: 'Running migrations',
+    start: 'Starting the new version',
+};
+
+/** What the plugin node is doing at each step of a restore. Lower-cased, it ends "The restore failed while …". */
+export const PLUGIN_RESTORE_STEP_LABELS: Readonly<Record<PluginRestoreStep, string>> = {
+    verify: 'Checking the backup',
+    backup: 'Backing up the current database',
+    close: 'Closing the connections',
+    recreate: 'Recreating the database',
+    restore: 'Restoring the backup',
+    settings: 'Restoring the database settings',
+    assert: 'Checking the database',
+};
+
+export const PLUGIN_BACKUP_REASON_LABELS: Readonly<Record<PluginBackupReason, string>> = {
+    pre_upgrade: 'Before upgrade',
+    pre_restore: 'Before restore',
+};
+
+/** Why a backup cannot be restored, after "Not restorable: ". */
+export const PLUGIN_BACKUP_NOT_RESTORABLE_LABELS: Readonly<
+    Record<NonNullable<PluginBackup['not_restorable_reason']>, string>
+> = {
+    earlier_upgrade: 'from an earlier upgrade',
+    not_now: 'only while an upgrade has failed',
+    mismatch: 'its file changed on the plugin node',
+};
+
+/** "Before upgrade to 0.7.0" or "Before restore · during the upgrade to 0.7.1"; without the version when unknown. */
+export function pluginBackupTitle(backup: Pick<PluginBackup, 'reason' | 'upgrade'>): string {
+    const toVersion = backup.upgrade?.to_version;
+    if (!toVersion) return PLUGIN_BACKUP_REASON_LABELS[backup.reason];
+    return backup.reason === 'pre_upgrade'
+        ? `Before upgrade to ${toVersion}`
+        : `Before restore · during the upgrade to ${toVersion}`;
+}
+
+/**
+ * The plugin list's badge for an open upgrade: "Preparing 0.7.0", "Upgrading to 0.7.0" (while the plugin keeps
+ * running, as when a version adds its first backend) or "Upgrade failed"; `null` without one, and while the plugin is
+ * in maintenance, which its state badge says.
+ */
+export function pluginUpgradeBadge(
+    plugin: Pick<PluginSummary, 'state' | 'upgrade'>
+): { label: string; tone: PluginBadgeTone } | null {
+    const upgrade = plugin.upgrade;
+    if (!upgrade) return null;
+    if (upgrade.failed) return { label: 'Upgrade failed', tone: 'danger' };
+    if (upgrade.stage === 'preparing') return { label: `Preparing ${upgrade.to_version}`, tone: 'neutral' };
+    if (plugin.state === 'maintenance') return null;
+    return { label: `Upgrading to ${upgrade.to_version}`, tone: 'neutral' };
+}
+
+/** A sentence's first letter lower-cased, so a label can follow "while". */
+export function lowerFirst(text: string): string {
+    return text.charAt(0).toLowerCase() + text.slice(1);
+}
 
 export const PLUGIN_GRANT_STATE_LABELS: Readonly<Record<PluginGrantState, string>> = {
     granting: 'Installing',
@@ -80,6 +167,7 @@ export const PLUGIN_GRANT_ACTION_LABELS: Readonly<Record<PluginGrantAction, stri
     suspend: 'Suspend…',
     resume: 'Resume',
     retry_install: 'Retry install',
+    retry_upgrade: 'Retry upgrade',
     purge: 'Delete data…',
 };
 
@@ -108,6 +196,64 @@ export const PLUGIN_DATA_REMOVAL_ACTION_LABELS: Readonly<Record<PluginOrgRemoved
     retry: 'Retry',
     skip: 'Skip',
 };
+
+/** How a deleting row tells where the plugin is with deleting its own data in the organization. */
+export interface PluginDataRemovalLine {
+    job: PluginOrgRemovedJob;
+    message: string;
+    /** "Attempt 2 · next try 10:42"; `null` when there is nothing to add. */
+    progress: string | null;
+    /** The error of the last failed attempt while the job retries by itself. */
+    lastError: string | null;
+    failed: boolean;
+}
+
+/** Nothing for a grant without a data removal, or once the plugin has finished or skipped it. */
+export function pluginDataRemovalLine(
+    job: PluginOrgRemovedJob | null,
+    pluginName: string,
+    locale: string
+): PluginDataRemovalLine | null {
+    if (!job) return null;
+    switch (job.state) {
+        case 'pending':
+        case 'running':
+            return {
+                job,
+                message: `${pluginName} is deleting its data`,
+                progress: pluginRetryProgress(job, locale),
+                lastError: job.error,
+                failed: false,
+            };
+        case 'failed':
+            return {
+                job,
+                message: `${pluginName} could not delete its data: ${job.error ?? 'no reason was given'}`,
+                progress: null,
+                lastError: null,
+                failed: true,
+            };
+        case 'succeeded':
+        case 'skipped':
+            return null;
+    }
+}
+
+/**
+ * "Attempt 2 · next try 10:42" for a hook that tries again by itself: the attempt once one was made, the next try
+ * while one is planned; `null` when there is nothing to say.
+ */
+export function pluginRetryProgress(
+    job: { state: PluginHookJobState; attempt: number; next_attempt_at: string | null },
+    locale: string
+): string | null {
+    const parts: string[] = [];
+    if (job.attempt > 0) parts.push(`Attempt ${job.attempt}`);
+    if (job.state === 'pending' && job.next_attempt_at) {
+        parts.push(`next try ${formatDate(job.next_attempt_at, 'shortTime', locale)}`);
+    }
+    return parts.length > 0 ? parts.join(' · ') : null;
+}
 
 /** The organization of a data removal: its name when the job was made, marked once the organization is deleted. */
 export function pluginDataRemovalOrganizationText(job: PluginOrgRemovedJob): string {
@@ -191,6 +337,15 @@ export function pluginGrantStateTone(state: PluginGrantState): PluginBadgeTone {
 
 export function pluginTrustTone(trust: PluginTrust): PluginBadgeTone {
     return trust === 'trusted' ? 'success' : 'danger';
+}
+
+/** A plugin's trust as its badge names it; "No package" for a plugin that has none left. */
+export function pluginTrustLabel(trust: PluginTrust | null): string {
+    return trust ? PLUGIN_TRUST_LABELS[trust] : 'No package';
+}
+
+export function pluginTrustBadgeTone(trust: PluginTrust | null): PluginBadgeTone {
+    return trust ? pluginTrustTone(trust) : 'neutral';
 }
 
 /** The labels of a list of actions, in the order given: `View, Edit`. */

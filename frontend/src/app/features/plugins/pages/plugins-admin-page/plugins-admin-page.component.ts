@@ -19,10 +19,11 @@ import { PluginDialogsService } from '../../services/plugin-dialogs.service';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import {
     PLUGIN_STATE_LABELS,
-    PLUGIN_TRUST_LABELS,
     PluginBadgeTone,
     pluginStateTone,
-    pluginTrustTone,
+    pluginTrustBadgeTone,
+    pluginTrustLabel,
+    pluginUpgradeBadge,
 } from '../../utils/plugin-display.util';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
 
@@ -96,11 +97,16 @@ export class PluginsAdminPageComponent implements OnInit {
     }
 
     protected trustLabel(plugin: PluginSummary): string {
-        return PLUGIN_TRUST_LABELS[plugin.trust];
+        return pluginTrustLabel(plugin.trust);
     }
 
     protected trustTone(plugin: PluginSummary): PluginBadgeTone {
-        return pluginTrustTone(plugin.trust);
+        return pluginTrustBadgeTone(plugin.trust);
+    }
+
+    /** "Preparing 0.7.0", "Upgrading to 0.7.0" or "Upgrade failed" while an upgrade is open; else `null`. */
+    protected upgradeBadge(plugin: PluginSummary): { label: string; tone: PluginBadgeTone } | null {
+        return pluginUpgradeBadge(plugin);
     }
 
     protected reviewLabel(plugin: PluginSummary, pending: PluginPendingPackage): string {

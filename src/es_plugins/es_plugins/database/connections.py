@@ -7,11 +7,21 @@ holding it open:
 
 - **admin**: `plugins_admin` on the `postgres` database, never on a plugin's own database, so
   no trigger, operator or `search_path` entry a plugin plants can run with its privileges. Its
-  `search_path` is `pg_catalog` from the start-up packet on, and `createrole_self_grant` is
-  empty, so a role it creates never makes it a member of that role.
+  `search_path` is `pg_catalog` from the start-up packet on. A role it creates always makes it
+  that role's ADMIN; an empty `createrole_self_grant` keeps it from also getting SET and
+  INHERIT on it.
 - **owner**: a plugin's owner role on that plugin's own database, logged in with the one-time
-  password the migration runner gives it for one run. SQL a plugin wrote runs only here: with
-  the owner as the session user, no `RESET ROLE` can lead back to `plugins_admin`.
+  password the migration runner (or a restore) gives it for one run. SQL a plugin wrote runs
+  only here: with the owner as the session user, no `RESET ROLE` can lead back to
+  `plugins_admin`.
+
+Every session the node opens on a plugin's own database (the owner's here, `pg_dump`'s and
+`pg_restore`'s in `postgres_client`) names the settings that decide how it behaves in its
+start-up packet. Those take precedence over what a plugin stored for its database or its owner
+role (`ALTER DATABASE … SET`, `ALTER ROLE … SET`), which the owner may do and which outlives a
+restore: a stored `default_transaction_read_only` or `transaction_timeout` could otherwise
+block every later migration and restore, and a stored `role` could make a backup run as another
+role.
 
 A session either opens or raises `DatabaseUnreachableError`; inside it, an error raised by
 psycopg leaves as `DatabaseUnreachableError` when the connection was lost, and as
@@ -27,7 +37,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from typing import Literal
 
 import psycopg
-from src.shared.models.plugin_nodes import DesiredDatabaseServer
+from src.shared.models.plugin_nodes import DesiredDatabaseServer, LedgerEntry
 
 ADMIN_ROLE = "plugins_admin"
 BACKUP_ROLE = "plugins_backup"
@@ -38,7 +48,47 @@ APPLICATION_NAME = "epicstaff-node"
 ADMIN_SESSION_OPTIONS = (
     "-c search_path=pg_catalog -c statement_timeout=30000 -c createrole_self_grant="
 )
-OWNER_SESSION_OPTIONS = "-c statement_timeout=900000 -c lock_timeout=60000"
+
+
+def session_options(settings: dict[str, str]) -> str:
+    """libpq's `options` (or `PGOPTIONS`): `-c name=value` for each, spaces in a value escaped."""
+    return " ".join(f"-c {name}={value.replace(' ', '\\ ')}" for name, value in settings.items())
+
+
+OWNER_SESSION_SETTINGS = {
+    "role": "none",
+    "default_transaction_read_only": "off",
+    "default_transaction_isolation": "read committed",
+    "default_transaction_deferrable": "off",
+    "idle_in_transaction_session_timeout": "0",
+    "idle_session_timeout": "0",
+    "transaction_timeout": "0",
+    "lock_timeout": "60000",
+}
+"""What an owner session (a migration run, a restore) forces over the plugin's stored settings."""
+
+OWNER_SESSION_OPTIONS = session_options({**OWNER_SESSION_SETTINGS, "statement_timeout": "900000"})
+# A restore is bounded by the size of the backup, not by one statement's time.
+RESTORE_SESSION_OPTIONS = session_options({**OWNER_SESSION_SETTINGS, "statement_timeout": "0"})
+BACKUP_SESSION_OPTIONS = session_options(
+    {
+        # The backup role may read everything (pg_read_all_data, BYPASSRLS) and nothing else: it
+        # never switches role, never writes, and fails rather than skip a row a policy hides.
+        "role": "none",
+        "search_path": "pg_catalog",
+        "default_transaction_read_only": "on",
+        "default_transaction_isolation": "repeatable read",
+        "default_transaction_deferrable": "off",
+        "row_security": "off",
+        "statement_timeout": "0",
+        # pg_dump's own --lock-wait-timeout bounds the wait for each table's lock.
+        "lock_timeout": "0",
+        "idle_in_transaction_session_timeout": "0",
+        "idle_session_timeout": "0",
+        "transaction_timeout": "0",
+        "bytea_output": "hex",
+    }
+)
 # A dead peer is noticed within about a minute: keepalives after 30 s idle, every 10 s, three
 # missed; unacknowledged data gives up after 60 s.
 _TCP_SETTINGS = {
@@ -63,11 +113,16 @@ class DatabaseUnreachableError(Exception):
 
 
 class DatabaseProvisioningError(Exception):
-    """A permanent failure: the same attempt would fail the same way. The message is reported."""
+    """A permanent failure: the same attempt would fail the same way. The message is reported.
+
+    `ledger` is the migration ledger as it was read after a failed migration run: the files
+    applied before the failure. None when it was not read.
+    """
 
     def __init__(self, reason: FailureReason, message: str):
         super().__init__(message)
         self.reason = reason
+        self.ledger: tuple[LedgerEntry, ...] | None = None
 
 
 def describe_error(error: psycopg.Error) -> str:
@@ -80,6 +135,11 @@ def describe_error(error: psycopg.Error) -> str:
         text = f"[{error.sqlstate}] {error.diag.message_primary or ''}"
     else:
         text = str(error)
+    return describe_text(text)
+
+
+def describe_text(text: str) -> str:
+    """Server text on one line: control characters become spaces, runs of spaces one, cut short."""
     spaced = "".join(
         " " if unicodedata.category(character) in ("Cc", "Cs") else character for character in text
     )

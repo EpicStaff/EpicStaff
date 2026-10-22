@@ -24,6 +24,16 @@ A plugin can see the other plugins' processes, the ports they listen on and thei
 It cannot read their files, their environment, their keys or their data, in their directories or
 in their databases.
 
+Two things they still share:
+
+- **UNIX sockets in the abstract namespace.** These have no file, so file permissions do not
+  apply: a socket one plugin opens there can be reached by every other plugin on the node. Use a
+  socket in your own directory instead, or none.
+- **The node's ephemeral ports.** Each plugin holds at most 256 open descriptors, and its new
+  connections are capped and rate-limited, but several plugins together could still use up the
+  node's ephemeral ports with UDP sockets that are connected and never send. The other plugins
+  on the node would then fail to open outbound connections until those sockets close.
+
 ## Keeping organizations apart inside a plugin is the plugin's job
 
 EpicStaff keeps each organization's data apart in EpicStaff, and gives a plugin a key per
@@ -67,6 +77,34 @@ up to about a minute before it is stopped. The full list is in
 When an organization's plugin data is deleted, EpicStaff deletes everything the plugin created in
 EpicStaff, but the plugin deletes its own data. Its organization removed hook can fail, or a
 SuperAdmin can skip it: that data then stays where the plugin keeps it until the plugin itself is
-deleted. Deleting a plugin deletes its database without a backup; back up the database volume
+deleted. Deleting a plugin deletes its database and its upgrade backups; back up the database volume
 first if the data may be needed. Plugin activity is kept after its plugin and its organizations
 are gone.
+
+What a plugin created stays the plugin's, even after people in the organization edited it, and
+a file a person overwrote under the plugin's name stays the plugin's file. Deleting the plugin's
+data in the organization deletes them all, people's edits included: EpicStaff does not hand a
+resource over to the organization when someone changes it. Copy what should outlive the plugin.
+
+## Backups hold every organization's data
+
+Before an upgrade runs migrations, the plugin node backs up the plugin's whole database: every
+organization's data in it, organizations whose data was deleted since included. That data stays
+in the backups until they are deleted: at most the grace period, and only the three latest
+upgrades' backups are kept. Backups are deleted with the plugin. They are not encrypted on the
+node; the volume and a directory only the node agent can open are the boundary. Copy them off
+the host only as carefully as the database itself.
+
+## No automatic rollback, no downgrade
+
+EpicStaff never rolls an upgrade back by itself, and never installs an older version over a
+newer one. A failed upgrade waits for a SuperAdmin: retry it, approve a newer version, cancel it
+while the database holds no change of the new version, or restore the backup the upgrade took. A
+restore loses every change made to the database since that backup.
+
+## Cancel trusts the plugin's own migration ledger
+
+Whether an upgrade can still be cancelled is decided from the migration ledger in the plugin's
+database. The plugin's migrations can write to that table, so a plugin can make EpicStaff think
+its database holds no change of the new version when it does. Cancelling then starts the old
+version on that database.

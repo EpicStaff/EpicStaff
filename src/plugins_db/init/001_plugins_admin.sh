@@ -56,7 +56,7 @@ SET log_min_error_statement = panic;
 CREATE ROLE plugins_admin LOGIN CREATEDB CREATEROLE NOSUPERUSER NOREPLICATION NOBYPASSRLS PASSWORD :'admin_password';
 ALTER ROLE plugins_admin SET log_min_error_statement = panic;
 ALTER ROLE plugins_admin SET log_statement = 'none';
--- pg_hba.conf refuses its logins until backups use it.
+-- The plugin node's login for the backups it takes before upgrades.
 CREATE ROLE plugins_backup LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD :'backup_password';
 GRANT pg_read_all_data TO plugins_backup;
 -- Connection slots no plugin can take, so plugins cannot lock the node out.

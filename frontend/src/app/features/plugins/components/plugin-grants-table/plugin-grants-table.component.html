@@ -44,20 +44,62 @@
         let-row
     >
         @if (grantOf(row); as grant) {
-            <div
-                class="grants__state"
-                aria-live="polite"
-            >
+            <div class="grants__state">
                 @switch (grant.state) {
                     @case ('granting') {
-                        <span class="grants__installing text-body">
+                        <span
+                            class="grants__installing text-body"
+                            aria-live="polite"
+                        >
                             <app-spinner2 [size]="16" />
                             {{ installProgress(grant) }}
                         </span>
                     }
+                    @case ('upgrading') {
+                        <div class="grants__stacked">
+                            <span
+                                class="grants__upgrading text-body"
+                                aria-live="polite"
+                            >
+                                <app-spinner2 [size]="16" />
+                                Upgrading…
+                            </span>
+                            <span class="grants__upgrade-progress grants__muted text-body-small">
+                                {{ upgradeProgress(grant) }}
+                            </span>
+                            @if (upgradeRetryError(grant); as retryError) {
+                                <span
+                                    class="grants__upgrade-last-error grants__muted text-body-small"
+                                    tabindex="0"
+                                    [matTooltip]="retryError"
+                                    matTooltipPosition="above"
+                                >
+                                    Last attempt failed: {{ retryError }}
+                                </span>
+                            }
+                        </div>
+                    }
+                    @case ('upgrade_failed') {
+                        <div class="grants__stacked">
+                            <app-plugin-badge
+                                aria-live="polite"
+                                [label]="stateLabel(grant)"
+                                [tone]="stateTone(grant)"
+                            />
+                            <span
+                                class="grants__upgrade-error grants__hook-error text-body-small"
+                                tabindex="0"
+                                [matTooltip]="upgradeError(grant)"
+                                matTooltipPosition="above"
+                            >
+                                {{ upgradeError(grant) }}
+                            </span>
+                        </div>
+                    }
                     @case ('install_failed') {
                         <div class="grants__stacked">
                             <app-plugin-badge
+                                aria-live="polite"
                                 [label]="stateLabel(grant)"
                                 [tone]="stateTone(grant)"
                             />
@@ -74,6 +116,7 @@
                     @case ('suspended') {
                         <div class="grants__stacked">
                             <app-plugin-badge
+                                aria-live="polite"
                                 [label]="stateLabel(grant)"
                                 [tone]="stateTone(grant)"
                             />
@@ -91,7 +134,10 @@
                     }
                     @case ('purging') {
                         <div class="grants__stacked">
-                            <span class="grants__deleting text-body">
+                            <span
+                                class="grants__deleting text-body"
+                                aria-live="polite"
+                            >
                                 <app-spinner2 [size]="16" />
                                 Deleting data…
                             </span>
@@ -100,6 +146,7 @@
                                     class="grants__data-removal text-body-small"
                                     [class.grants__hook-error]="removal.failed"
                                     [class.grants__muted]="!removal.failed"
+                                    [attr.tabindex]="removal.failed ? 0 : null"
                                     [matTooltip]="removal.message"
                                     [matTooltipDisabled]="!removal.failed"
                                     matTooltipPosition="above"
@@ -143,12 +190,21 @@
                     }
                     @default {
                         <app-plugin-badge
+                            aria-live="polite"
                             [label]="stateLabel(grant)"
                             [tone]="stateTone(grant)"
                         />
                     }
                 }
             </div>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="version"
+        let-row
+    >
+        @if (grantOf(row); as grant) {
+            <span class="grants__cell">{{ grant.installed_version ?? '—' }}</span>
         }
     </ng-template>
     <ng-template

@@ -51,7 +51,10 @@
             }
         </header>
 
-        <app-plugin-lifecycle-banner [plugin]="current" />
+        <app-plugin-lifecycle-banner
+            [plugin]="current"
+            [pollError]="pollError()"
+        />
 
         <div
             class="detail__tabs"
@@ -141,6 +144,7 @@
                     <app-plugin-data-removals
                         [identifier]="current.identifier"
                         [pluginName]="current.name"
+                        [pluginState]="current.state"
                     />
                 }
             }
@@ -160,6 +164,8 @@
                 <app-plugin-runtime-panel
                     [identifier]="current.identifier"
                     [pluginName]="current.name"
+                    [openUpgrade]="current.open_upgrade"
+                    [revealBackups]="revealBackups()"
                     (runtimeChanged)="refreshPlugin()"
                 />
             }

@@ -1,11 +1,19 @@
 """The row locks the plugin lifecycle takes, in the one order all of it follows.
 
-Every lifecycle action locks the plugin first, then its grants (in ascending pk), then hook
-jobs, then ownership rows. A per-grant action (suspend, resume, retry an install, delete a
-grant's data) therefore never races an uninstall or a plugin's deletion, and none of them can
-deadlock another. Two paths keep an order of their own: the node's claim and result lock a
-job's grant, then the job, never the plugin; an organization's deletion locks organizations,
-then their grants.
+Every lifecycle action locks the plugin first, then its open upgrade, then that upgrade's
+restore, then the placement, then the plugin's database record, then its grants (in ascending
+pk), then hook jobs, then backups, then ownership rows. Package rows are locked only under the
+plugin's lock. A per-grant action (suspend, resume, retry a hook, delete a grant's data)
+therefore never races an uninstall, an upgrade or a plugin's deletion, and none of them can
+deadlock another. Paths that keep an order of their own: the node's claim and result lock a
+job's grant, then the job, never the plugin; a node report locks placements, then database
+records, then backups, and takes the plugin only in its follow-up transaction, which locks
+nothing before it; an organization's deletion locks organizations, then their grants.
+
+The plugin row is locked `FOR NO KEY UPDATE`: an organization's deletion inserts hook jobs
+that point at the plugin, and Postgres takes `FOR KEY SHARE` on the plugin for each at
+commit. A full `FOR UPDATE` here would wait on that commit while it waits on a grant this
+path holds.
 """
 
 from plugins.exceptions import GrantNotFoundError, PluginNotFoundError
@@ -16,7 +24,7 @@ def lock_plugin(identifier: str, *, skip_locked: bool = False) -> Plugin | None:
     """Lock the plugin row, with its current package (not locked, without its icon); None
     when there is none, or when `skip_locked` and another process holds it."""
     return (
-        Plugin.objects.select_for_update(of=("self",), skip_locked=skip_locked)
+        Plugin.objects.select_for_update(of=("self",), no_key=True, skip_locked=skip_locked)
         .select_related("current_package")
         .defer("current_package__icon_bytes")
         .filter(identifier=identifier)

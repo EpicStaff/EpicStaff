@@ -61,6 +61,11 @@
         color: var(--color-text-secondary);
     }
 
+    &__upgrade {
+        margin: 0;
+        color: var(--accent-color);
+    }
+
     // A short warning: a refresh that failed, why the process is held stopped, a limit the platform set back.
     &__callout {
         margin: 0;

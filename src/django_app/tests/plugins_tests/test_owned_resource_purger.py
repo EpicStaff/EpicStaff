@@ -450,3 +450,64 @@ def test_rows_are_purged_in_the_order_users_before_what_they_use(grant, acme, st
     order = list(owned_resource_purger._in_purge_order(PluginOwnedResource.objects.filter(grant=grant)))
 
     assert order == [flow_ownership.pk, secret_ownership.pk]
+
+
+# ---- a failure that holds a row back ----
+
+from django.contrib.contenttypes.models import ContentType  # noqa: E402
+
+
+def test_a_purge_error_stands_while_its_row_is_held_back_and_clears_once_it_is_purged(grant, acme, storage):
+    from plugins.lifecycle.grant_purge_service import GrantPurgeService
+    from plugins.models import Plugin, PluginGrant
+
+    readme = _file(storage, acme, "README.md")
+    own(readme, grant)
+    service = GrantPurgeService()
+
+    with mock.patch.object(storage, "delete_trash_batch", side_effect=OSError("storage down")):
+        first = service.advance(grant, time.monotonic() + 60)
+    second = service.advance(grant, time.monotonic() + 60)
+
+    assert (first.failed, second.failed, second.held_back) == (1, 0, 1)
+    assert PluginGrant.objects.get(pk=grant.pk).last_purge_error == f"Storage file {readme.pk}: OSError"
+    assert Plugin.objects.with_summary().get(pk=grant.plugin_id).needs_attention
+
+    cache.delete_pattern("plugins:purge:failed:*")
+    third = service.advance(grant, time.monotonic() + 60)
+
+    assert (third.purged, third.held_back) == (1, 0)
+    assert PluginGrant.objects.get(pk=grant.pk).last_purge_error is None
+    assert not Plugin.objects.with_summary().get(pk=grant.plugin_id).needs_attention
+
+
+def test_an_ownership_row_naming_another_organization_s_resource_never_deletes_it(grant, acme, beta, log_messages):
+    theirs = secret_row(beta, "Beta's key")
+    PluginOwnedResource.objects.create(
+        org=acme,
+        grant=grant,
+        plugin_identifier=grant.plugin.identifier,
+        content_type=ContentType.objects.get_for_model(type(theirs)),
+        object_id=theirs.pk,
+    )
+
+    result = _purge(grant)
+
+    assert _exists(theirs)
+    assert not PluginOwnedResource.objects.filter(object_id=theirs.pk).exists()
+    assert result.failed == 0
+    assert any(
+        message.startswith("plugins.purge.foreign_root ") and f"org={acme.pk}" in message for message in log_messages
+    )
+
+
+def test_the_purge_takes_the_organization_s_lock_without_its_key(grant, acme):
+    own(secret_row(acme, "Weather · LLM key"), grant)
+
+    with CaptureQueriesContext(connection) as captured:
+        _purge(grant)
+
+    organization_locks = [
+        query["sql"] for query in captured.captured_queries if 'FROM "rbac_organization"' in query["sql"] and "FOR " in query["sql"]
+    ]
+    assert organization_locks and all("FOR NO KEY UPDATE" in sql for sql in organization_locks)

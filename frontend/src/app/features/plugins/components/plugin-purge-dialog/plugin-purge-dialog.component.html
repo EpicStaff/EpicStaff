@@ -4,7 +4,7 @@
             class="dialog__title text-h3"
             [id]="titleId"
         >
-            {{ texts.title }}
+            {{ texts().title }}
         </h2>
         <button
             class="dialog__close"
@@ -21,7 +21,7 @@
     </div>
 
     <div class="dialog__body">
-        <p class="purge__summary text-body"><strong>This cannot be undone.</strong> {{ texts.summary }}</p>
+        <p class="purge__summary text-body"><strong>This cannot be undone.</strong> {{ texts().summary }}</p>
 
         @if (isLoading()) {
             <app-loading-spinner size="sm" />
@@ -42,20 +42,20 @@
         } @else if (view(); as preview) {
             @if (preview.scope === 'grant') {
                 <app-plugin-preview-section
-                    [heading]="texts.ownedHeading"
+                    [heading]="texts().ownedHeading"
                     [list]="preview.owned"
-                    [emptyText]="texts.ownedEmptyText"
+                    [emptyText]="texts().ownedEmptyText"
                 />
                 <app-plugin-preview-section
                     heading="Flows of this organization that use them"
                     [list]="preview.organizationFlows"
-                    [emptyText]="texts.organizationFlowsEmptyText"
+                    [emptyText]="texts().organizationFlowsEmptyText"
                     [emphasised]="true"
                     [hint]="preview.organizationFlowsHint"
                 />
                 @if (preview.pluginFlows.items.length > 0) {
                     <app-plugin-preview-section
-                        [heading]="texts.pluginFlowsHeading"
+                        [heading]="texts().pluginFlowsHeading"
                         [list]="preview.pluginFlows"
                     />
                 }
@@ -78,11 +78,11 @@
                 <app-plugin-preview-section
                     heading="Organizations"
                     [list]="preview.organizations"
-                    [emptyText]="texts.organizationsEmptyText"
+                    [emptyText]="texts().organizationsEmptyText"
                 />
                 @if (preview.owned.items.length > 0) {
                     <app-plugin-preview-section
-                        [heading]="texts.ownedHeading"
+                        [heading]="texts().ownedHeading"
                         [list]="preview.owned"
                     />
                 }
@@ -111,6 +111,8 @@
                     class="purge__verification-input text-body"
                     type="text"
                     autocomplete="off"
+                    autocapitalize="off"
+                    autocorrect="off"
                     spellcheck="false"
                     [formControl]="phraseControl"
                 />

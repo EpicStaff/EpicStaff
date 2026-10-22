@@ -19,10 +19,13 @@ from es_plugins.network_limits import (
     NEW_CONNECTIONS_PER_SECOND,
     PLUGINS_DB_PORT,
     PROXY_CONNECTIONS_PER_PLUGIN,
+    TCP_CONNECTIONS_PER_PLUGIN,
     NetworkLimitsError,
     connection_limits_ruleset,
     database_connections_from,
+    expected_rules,
     install_connection_limits,
+    installed_rules,
 )
 from es_plugins.uid_range import UidRange
 
@@ -268,3 +271,76 @@ def test_the_kernel_holds_each_plugin_uid_to_its_caps_and_leaves_the_agent_alone
         "another_plugin_during_the_flood": 20,
         "agent_during_the_flood": flood_size,
     }
+
+
+def test_the_ruleset_caps_every_open_tcp_connection_of_a_plugin():
+    assert (
+        "meta skuid 20000-20009 meta l4proto tcp ct state new "
+        f"add @tcp_connections {{ meta skuid ct count over {TCP_CONNECTIONS_PER_PLUGIN} }} "
+        "counter reject with tcp reset"
+    ) in connection_limits_ruleset(UIDS, 7)
+
+
+def _listed_rule(port, set_name, statement) -> dict:
+    """One rule as `nft -j list table` shows it (libnftables' JSON)."""
+    destination = (
+        {"match": {"op": "==", "left": {"payload": {"protocol": "tcp", "field": "dport"}}, "right": port}}
+        if port is not None
+        else {"match": {"op": "==", "left": {"meta": {"key": "l4proto"}}, "right": "tcp"}}
+    )
+    return {
+        "rule": {
+            "family": "inet",
+            "table": "es_plugins_limits",
+            "chain": "output",
+            "expr": [
+                {"match": {"op": "==", "left": {"meta": {"key": "skuid"}}, "right": {"range": [20000, 20009]}}},
+                destination,
+                {"match": {"op": "in", "left": {"ct": {"key": "state"}}, "right": "new"}},
+                {"set": {"op": "add", "elem": {"meta": {"key": "skuid"}}, "set": f"@{set_name}", "stmt": [statement]}},
+                {"counter": {"packets": 0, "bytes": 0}},
+                {"reject": {"type": "tcp reset"}},
+            ],
+        }
+    }
+
+
+def _listing(database_connections=7, *, drop=None) -> dict:
+    rate = {"limit": {"rate": NEW_CONNECTIONS_PER_SECOND, "burst": NEW_CONNECTIONS_BURST, "per": "second", "inv": True}}
+    rules = {
+        "new_connections": _listed_rule(None, "new_connections", rate),
+        "tcp_connections": _listed_rule(None, "tcp_connections", {"ct count": {"val": TCP_CONNECTIONS_PER_PLUGIN, "inv": True}}),
+        "database_connections": _listed_rule(PLUGINS_DB_PORT, "database_connections", {"ct count": {"val": database_connections, "inv": True}}),
+        "proxy_connections": _listed_rule(3128, "proxy_connections", {"ct count": {"val": PROXY_CONNECTIONS_PER_PLUGIN, "inv": True}}),
+    }
+    return {
+        "nftables": [
+            {"metainfo": {"version": "1.0.6", "json_schema_version": 1}},
+            {"table": {"family": "inet", "name": "es_plugins_limits"}},
+            *(rule for name, rule in rules.items() if name != drop),
+        ]
+    }
+
+
+def test_the_listed_table_reads_as_exactly_the_caps_installed():
+    assert installed_rules(_listing()) == expected_rules(UIDS, 7)
+
+
+@pytest.mark.parametrize("drop", ["new_connections", "tcp_connections", "database_connections", "proxy_connections"])
+def test_a_table_missing_a_cap_is_not_the_one_installed(drop):
+    assert installed_rules(_listing(drop=drop)) != expected_rules(UIDS, 7)
+
+
+def test_a_cap_with_another_limit_is_refused_at_start(monkeypatch):
+    import subprocess
+
+    def fake_nft(nft, arguments, script=None):
+        output = json.dumps(_listing(database_connections=99)) if "-j" in arguments else ""
+        return subprocess.CompletedProcess([nft, *arguments], 0, stdout=output, stderr="")
+
+    monkeypatch.setattr(network_limits.shutil, "which", lambda name: "/usr/sbin/nft")
+    monkeypatch.setattr(network_limits, "_run_nft", fake_nft)
+
+    with pytest.raises(NetworkLimitsError, match="the connection caps are not as installed: missing"):
+        install_connection_limits(UIDS, 7)
+

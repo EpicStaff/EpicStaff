@@ -92,6 +92,7 @@ messages without breaking older pages.
 | page → EpicStaff | port | `{"type":"nav.changed","path":"/forecast?city=Paris","replace":false}` |
 | EpicStaff → page | port | `{"type":"nav.navigate","path":"/about"}` |
 | EpicStaff → page | port | `{"type":"theme.changed","theme":{"mode":"light","tokens":{"…":"…"}}}` |
+| page → EpicStaff | port | `{"type":"availability.changed","state":"maintenance"}` |
 
 | Field | Meaning |
 |---|---|
@@ -99,6 +100,7 @@ messages without breaking older pages.
 | `org` | The organization the page was opened in. It is a display hint, not proof of anything: a plugin backend checks the organization itself |
 | `replace` | `true`: replace EpicStaff's history entry; `false`: add one |
 | `code` | Only `unsupported_protocol` in protocol 1 |
+| `state` in `availability.changed` | What the page's API answers now: one of `availability_states` (`available`, `maintenance`, `unavailable`). EpicStaff acts only on `maintenance` and `unavailable` |
 
 ## Navigation
 
@@ -131,6 +133,22 @@ is refused); the SDK and EpicStaff are both tested against it.
 
 EpicStaff accepts at most **120** `nav.changed` messages per frame in any 60 seconds and drops the rest. Reloading the
 page does not reset the count. The SDK stays below the limit and sends the latest path once the window allows.
+
+## Availability
+
+When the plugin's own API answers that the plugin is being updated (`maintenance`) or not running (`unavailable`),
+the page sends `availability.changed`. EpicStaff **never trusts the message**: it only asks its own server again
+whether the person may open the plugin in this organization, at most once every 10 seconds, and shows what the server
+says: the plugin's page, EpicStaff's maintenance panel ("… is being updated. It will be back in a few minutes."), or
+"not available". While it shows the maintenance panel it asks the server every 15 seconds and loads the page again
+once the plugin is ready.
+
+EpicStaff accepts at most **6** `availability.changed` messages per frame in any 60 seconds
+(`limits.max_availability_changes_per_minute`) and drops the rest; reloading the page does not reset the count. The JS
+SDK sends one at most every 30 seconds, and the latest state when that window ends.
+
+A page opened while the plugin is in maintenance is not loaded at all: the gateway answers its address with
+EpicStaff's own maintenance page, which reloads itself.
 
 ### Organization switch
 
@@ -182,6 +200,7 @@ plugin.framed; // true inside EpicStaff
 plugin.org; // { id, name } from es:init, or null
 plugin.orgHint; // the es_org value, kept even unframed
 plugin.onThemeChange((theme) => console.log(theme.mode));
+plugin.reportAvailability('maintenance'); // availability.changed; PluginLogin.fetch sends it by itself
 ```
 
 `startPlugin` loads the platform config, runs the handshake, applies the theme to `<html>` (the tokens,

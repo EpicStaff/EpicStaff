@@ -6,9 +6,9 @@ import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@
 import { filter, finalize } from 'rxjs';
 
 import { PluginGrant } from '../../models/plugin-admin.model';
+import { PluginPreviewItemView, PluginPreviewListView } from '../../models/plugin-preview-view.model';
 import {
     PluginDefaultModelReference,
-    PluginPreviewNamedItem,
     PluginPreviewTrigger,
     PluginSuspendPreview,
 } from '../../models/plugin-suspend-preview.model';
@@ -21,15 +21,11 @@ import { toPluginErrorView } from '../../utils/plugin-error-message.util';
 import {
     defaultModelsListView,
     ownedResourcesListView,
-    previewFlowItem,
+    previewNamedItem,
     previewSessionItem,
     toPreviewListView,
 } from '../../utils/plugin-preview-view.util';
-import {
-    PluginPreviewItemView,
-    PluginPreviewListView,
-    PluginPreviewSectionComponent,
-} from '../plugin-preview-section/plugin-preview-section.component';
+import { PluginPreviewSectionComponent } from '../plugin-preview-section/plugin-preview-section.component';
 
 export interface PluginSuspendDialogData {
     identifier: string;
@@ -154,12 +150,12 @@ export class PluginSuspendDialogComponent implements OnInit {
 function toPreviewView(preview: PluginSuspendPreview): SuspendPreviewView {
     return {
         owned: ownedResourcesListView(preview.owned_resources),
-        organizationFlows: toPreviewListView(preview.flows.organization, previewFlowItem),
-        pluginFlows: toPreviewListView(preview.flows.plugin, previewFlowItem),
+        organizationFlows: toPreviewListView(preview.flows.organization, previewNamedItem),
+        pluginFlows: toPreviewListView(preview.flows.plugin, previewNamedItem),
         sessions: toPreviewListView(preview.running_sessions, previewSessionItem),
         triggers: toPreviewListView(preview.triggers, triggerItem),
-        realtimeAgents: toPreviewListView(preview.realtime_agents, namedItem),
-        voiceChannels: toPreviewListView(preview.voice_channels, namedItem),
+        realtimeAgents: toPreviewListView(preview.realtime_agents, previewNamedItem),
+        voiceChannels: toPreviewListView(preview.voice_channels, previewNamedItem),
         defaultModels: defaultModelsListView(preview.default_models),
         defaultModelsHint: defaultModelsHint(preview.default_models),
         dataKeptUntil: preview.data_kept_until,
@@ -183,8 +179,4 @@ function triggerItem(trigger: PluginPreviewTrigger): PluginPreviewItemView {
         name: trigger.flow.name,
         detail: `${kind}: ${trigger.node_name}`,
     };
-}
-
-function namedItem(item: PluginPreviewNamedItem): PluginPreviewItemView {
-    return { key: String(item.id), name: item.name, detail: null };
 }

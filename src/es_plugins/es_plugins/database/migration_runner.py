@@ -22,9 +22,11 @@ package (`read_migrations`: every file checked against `CONTENTS.json`), applied
    first.
 
 The ledger guards against mistakes, not attacks: the owner owns it, so a migration can rewrite
-it. It is read bounded (at most `MAX_APPLIED_MIGRATIONS + 1` rows, names cut at
-`MAX_MIGRATION_NAME_LENGTH`) and only entries `is_reportable_migration_name` accepts are kept,
-so no row a migration writes can exhaust the agent's memory or make its report invalid.
+it. It is read bounded (at most `MAX_APPLIED_MIGRATIONS + 1` rows, every column cut at
+`MAX_MIGRATION_NAME_LENGTH + 1` characters) and only entries `is_reportable_ledger_entry` accepts
+are kept, so no row a migration writes can exhaust the agent's memory or make its report
+invalid. A run reads it again when a migration fails, so the failure carries what the database
+now holds: EpicStaff decides from it whether an upgrade can still be cancelled.
 """
 
 import asyncio
@@ -42,7 +44,8 @@ from psycopg.pq import TransactionStatus
 from src.shared.models.plugin_nodes import (
     MAX_APPLIED_MIGRATIONS,
     DesiredDatabase,
-    is_reportable_migration_name,
+    LedgerEntry,
+    is_reportable_ledger_entry,
 )
 
 from es_plugins.database.connections import (
@@ -90,8 +93,9 @@ class Migration:
 
 @dataclass(frozen=True)
 class MigrationRun:
-    ledger: tuple[str, ...]
-    """Every migration the ledger lists after the run, in the order they were applied."""
+    ledger: tuple[LedgerEntry, ...]
+    """Every migration the ledger lists after the run, with its digest, in the order they were
+    applied."""
 
     applied: int
     """How many of them this run applied."""
@@ -200,16 +204,23 @@ class MigrationRunner:
             for name in MIGRATION_PLACEHOLDERS
         }
         applied = 0
-        for migration in sorted(migrations, key=lambda migration: migration.name):
-            if migration.name in recorded:
-                if recorded[migration.name] != migration.sha256:
-                    raise DatabaseProvisioningError(
-                        "migration", f"{migration.name} changed after it was applied"
-                    )
-                continue
-            await self._apply_one(owner, migration, _migration_text(migration, replacements))
-            applied += 1
-        return MigrationRun(ledger=await _reportable_ledger(owner), applied=applied)
+        try:
+            for migration in sorted(migrations, key=lambda migration: migration.name):
+                if migration.name in recorded:
+                    if recorded[migration.name] != migration.sha256:
+                        raise DatabaseProvisioningError(
+                            "migration", f"{migration.name} changed after it was applied"
+                        )
+                    continue
+                await self._apply_one(owner, migration, _migration_text(migration, replacements))
+                applied += 1
+        except DatabaseProvisioningError as failure:
+            # The files applied before this one stay applied. Unknown (None) if the session
+            # cannot read the ledger any more.
+            with contextlib.suppress(psycopg.Error):
+                failure.ledger = await reportable_ledger(owner)
+            raise
+        return MigrationRun(ledger=await reportable_ledger(owner), applied=applied)
 
     @staticmethod
     async def _apply_one(owner: psycopg.AsyncConnection, migration: Migration, text: str) -> None:
@@ -272,9 +283,14 @@ async def _read_ledger(owner: psycopg.AsyncConnection, columns: list[str]) -> li
     return await cursor.fetchall()
 
 
-async def _reportable_ledger(owner: psycopg.AsyncConnection) -> tuple[str, ...]:
-    rows = await _read_ledger(owner, ["name"])
-    ledger = tuple(row[0] for row in rows if is_reportable_migration_name(row[0]))
+async def reportable_ledger(owner: psycopg.AsyncConnection) -> tuple[LedgerEntry, ...]:
+    """The ledger as a report may carry it, read on an owner session of the plugin's database."""
+    rows = await _read_ledger(owner, ["name", "sha256"])
+    ledger = tuple(
+        LedgerEntry(name=name, sha256=sha256)
+        for name, sha256 in rows
+        if is_reportable_ledger_entry(name, sha256)
+    )
     dropped = len(rows) - len(ledger)
     if dropped or len(rows) > MAX_APPLIED_MIGRATIONS:
         # Counts only: a row's content is the plugin's.

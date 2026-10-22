@@ -34,6 +34,14 @@ for up to 5 minutes: each fetch mints new service-account keys, and an outage ma
 A process stopped for good (stopped, failed, its placement gone, the agent stopping) loses its
 egress proxy password.
 
+While the desired placement has an `upgrade`, the controller follows its stage (see
+`es_plugins.agent.upgrade`): in `preparing` it keeps the running version as above and installs the
+target next to it; in `maintenance` it only drains, stops and backs up; in `migrating` the
+placement's package is the target and the start above runs its migrations. A desired `restore`
+replaces the database and starts nothing. With no upgrade open, every version but the desired
+one is deleted once it is installed. The desired placement's `backups_to_delete` are deleted
+(`BackupStore`), and the report lists every complete backup.
+
 A placement in the desired state's `removals` has its controller closed first, like any placement
 that left `placements`; `PlacementRemover` then drops its database and deletes everything the node
 keeps for it (see `es_plugins.agent.removal`), and the node's report carries the removal's state.
@@ -52,8 +60,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
+from pydantic import ValidationError
 from src.shared.models.plugin_nodes import (
     MAX_LAST_ERROR_LENGTH,
+    BackupFileReport,
     DesiredDatabase,
     DesiredPackage,
     DesiredPlacement,
@@ -63,17 +73,28 @@ from src.shared.models.plugin_nodes import (
     PlacementReport,
     RemovalReport,
     RuntimeCredentials,
+    UpgradeStep,
 )
 
+from es_plugins.agent.agent_trees import prune_agent_trees
 from es_plugins.agent.django_client import DjangoNodeClient, FetchedCredentials, NodeApiError
 from es_plugins.agent.launcher_client import LauncherClient, LauncherError
 from es_plugins.agent.port_reservation import PortReservation, PortUnavailableError
 from es_plugins.agent.removal import PlacementRemover, RemovalServices
+from es_plugins.agent.upgrade import (
+    PlacementRestore,
+    UpgradeServices,
+    UpgradeStages,
+    UpgradeStepError,
+)
+from es_plugins.database.backup_service import BackupService
+from es_plugins.database.backup_store import BackupStore
 from es_plugins.database.connections import DatabaseProvisioningError, DatabaseUnreachableError
 from es_plugins.database.drop_sequence import DatabaseDropper
 from es_plugins.database.migration_runner import Migration
 from es_plugins.database.placement_database import PlacementDatabase
 from es_plugins.database.provisioner import DatabaseProvisioner
+from es_plugins.database.restore_service import RestoreService
 from es_plugins.egress.policy_writer import EgressPolicyError, EgressPolicyWriter
 from es_plugins.health.health_checker import HealthChecker
 from es_plugins.hooks.hook_caller import PluginHookCaller
@@ -133,8 +154,14 @@ class AgentServices:
     provisioner: DatabaseProvisioner
     dropper: DatabaseDropper
     egress: EgressPolicyWriter
+    backup_store: BackupStore
+    backups: BackupService
+    restores: RestoreService
     on_change: Callable[[], None]
     """Called whenever something a report shows changed."""
+
+    request_desired_state: Callable[[], None]
+    """Fetch the desired state now, not at the next poll (an upgrade was granted its next stage)."""
 
     interpreter_for: Callable[[str], Path] = plugin_interpreter
     venv_builder: Callable[[VenvRequest], Awaitable[Path]] = build_venv
@@ -154,6 +181,14 @@ class _StartedWith:
         return cls(
             placement.restart_generation, placement.runtime, placement.package, placement.database
         )
+
+
+@dataclass(frozen=True)
+class _Installation:
+    """A version of the plugin installed in this agent's life."""
+
+    venv: Path
+    migrations: tuple[Migration, ...]
 
 
 @dataclass(frozen=True)
@@ -188,9 +223,20 @@ class PlacementController:
         self._hook_runner = HookRunner(
             placement, self.supervisor, services.django, services.hook_caller
         )
-        self._installed_package: DesiredPackage | None = None
-        self._venv: Path | None = None
-        self._migrations: tuple[Migration, ...] = ()
+        upgrade_services = UpgradeServices(
+            django=services.django,
+            disk=services.disk,
+            backups=services.backups,
+            backup_store=services.backup_store,
+            restores=services.restores,
+            request_desired_state=services.request_desired_state,
+            on_change=services.on_change,
+        )
+        self._upgrade = UpgradeStages(placement.plugin_identifier, upgrade_services, self)
+        self._restore = PlacementRestore(placement.plugin_identifier, upgrade_services, self)
+        # The versions installed in this agent's life: the running one, and an upgrade's target.
+        self._installed: dict[DesiredPackage, _Installation] = {}
+        self._pruned_for: DesiredPackage | None = None
         # None until the node first tries to provision the placement's database.
         self._database: PlacementDatabase | None = None
         self._provisioned_for: tuple[DesiredPackage, DesiredDatabase] | None = None
@@ -202,7 +248,9 @@ class PlacementController:
         self._running_settings_revision: int | None = None
         self._failed_for: tuple[int, DesiredPackage] | None = None
         self._failure: str | None = None
+        self._unreportable_backups = False
         self._task: asyncio.Task | None = None
+        self._converging: asyncio.Task | None = None
 
     @property
     def desired(self) -> DesiredPlacement:
@@ -222,6 +270,10 @@ class PlacementController:
     def update(self, placement: DesiredPlacement) -> None:
         if placement != self._desired:
             self._desired = placement
+            if self._converging is not None and self._upgrade.moot(placement):
+                # A download, build, drain or backup for a stage EpicStaff no longer asks for
+                # (cancelled, or a newer target): cut it short.
+                self._converging.cancel()
             self._wake.set()
             self._hook_runner.update(placement)
 
@@ -242,8 +294,9 @@ class PlacementController:
         status = self.supervisor.status()
         last_error = status.last_error[:MAX_LAST_ERROR_LENGTH] if status.last_error else None
         started = self._started_with
+        desired = self._desired
         return PlacementReport(
-            placement_id=self._desired.placement_id,
+            placement_id=desired.placement_id,
             observed_state=status.observed_state,
             observed_version=status.version,
             health=status.health,
@@ -256,6 +309,9 @@ class PlacementController:
             applied_settings_revision=self._running_settings_revision,
             applied_restart_generation=started.restart_generation if started else None,
             database=self._database.report() if self._database is not None else None,
+            upgrade=self._upgrade.report(desired),
+            restore=self._restore.report(desired),
+            backups=self._backup_reports(),
         )
 
     async def fail_database(self, error: str) -> None:
@@ -268,18 +324,131 @@ class PlacementController:
         self._provisioned_for = None
         await self._fail(self._desired, error)
 
+    # What the upgrade stages use (`UpgradeHost`).
+
+    async def install(
+        self,
+        package: DesiredPackage,
+        runtime: DesiredRuntime,
+        on_step: Callable[[UpgradeStep], None],
+    ) -> None:
+        """Download, verify and build `package` into its own version directories, unless done.
+
+        The process is not touched, so an upgrade's target is installed next to the running
+        version. No download and no venv build starts below the install reserve.
+        """
+        if package in self._installed:
+            return
+        services = self._services
+        layout = services.layout
+        identifier = self._desired.plugin_identifier
+        uid = runtime.unix_uid
+        version = package.version
+        on_step("download")
+        if not services.fetcher.holds(package):
+            services.disk.check_room_for_install()
+        package_path = await services.fetcher.fetch(package)
+        on_step("verify")
+        archive = await asyncio.to_thread(
+            verify_package, package_path, identifier, package, runtime
+        )
+        migrations = await asyncio.to_thread(read_migrations, package_path, archive)
+        on_step("build")
+        unpacked = layout.unpacked_package(identifier, version)
+        await asyncio.to_thread(unpack_backend, package_path, archive, unpacked)
+        try:
+            await services.launcher.prepare_plugin(identifier, uid)
+            venv = layout.plugin_venv(identifier, version)
+            request = VenvRequest(
+                interpreter=services.interpreter_for(runtime.python),
+                venv=venv,
+                backend=unpacked / "backend",
+                source_path=layout.plugin_source(identifier, version),
+                temporary_directory=layout.agent_temporary_directory,
+            )
+            if not venv_is_current(request):
+                services.disk.check_room_for_install()
+            await services.venv_builder(request)
+            await services.launcher.install_code(identifier, uid, version)
+        finally:
+            await asyncio.to_thread(shutil.rmtree, unpacked, True)
+        self._installed[package] = _Installation(venv=venv, migrations=migrations)
+        # Another version is on the node now: once no upgrade is open, prune again.
+        self._pruned_for = None
+        logger.info("Installed plugin {} {}", identifier, version)
+
+    async def drain_hooks(self) -> None:
+        await self._hook_runner.drain()
+
+    async def stop_for_upgrade(self) -> None:
+        await self.supervisor.stop()
+        remaining = await self._services.launcher.kill_uid(self._desired.runtime.unix_uid)
+        if remaining:
+            raise UpgradeStepError(
+                f"{len(remaining)} process(es) of the plugin's user id survived being killed"
+            )
+        await self._withdraw_egress()
+
+    def database_lock(self, database: DesiredDatabase) -> asyncio.Lock:
+        record = self._database
+        if record is not None and record.desired.installation_id == database.installation_id:
+            return record.lock
+        # Not provisioned in this agent's life: neither provisioning nor the watchdog has it.
+        return asyncio.Lock()
+
+    def database_for(self, database: DesiredDatabase) -> PlacementDatabase:
+        record = self._database
+        if record is None or record.desired.installation_id != database.installation_id:
+            record = self._database = PlacementDatabase(self._desired.plugin_identifier, database)
+        return record
+
+    def database_replaced(self) -> None:
+        self._provisioned_for = None
+
+    async def app_password(self, desired: DesiredPlacement) -> str:
+        fetched = await self._fetch_credentials(desired)
+        if fetched.credentials.database is None:
+            raise NodeApiError(
+                "django_app sent no database credentials for a placement with a database",
+                transient=False,
+            )
+        return fetched.credentials.database.app_password
+
+    # The controller's own loop.
+
     def _process_changed(self) -> None:
         self._services.on_change()
         self._hook_runner.notice_change()
         if self.supervisor.failed:
             # The supervisor gave up on its own (too many restarts, over its disk cap).
             self._in_background(self._withdraw_egress_if_still_failed())
+            desired = self._desired
+            started = self._started_with
+            if (
+                _upgrade_stage(desired) == "migrating"
+                and started is not None
+                and started.package == desired.upgrade.target
+            ):
+                status = self.supervisor.status()
+                self._upgrade.fail(
+                    desired, status.last_error or "the new version did not start", step="start"
+                )
 
     async def _loop(self) -> None:
         while True:
             await self._wake.wait()
             self._wake.clear()
-            retry_after = await self._converge_safely(self._desired)
+            self._converging = asyncio.create_task(self._converge_safely(self._desired))
+            try:
+                retry_after = await self._converging
+            except asyncio.CancelledError:
+                if asyncio.current_task().cancelling():
+                    raise
+                # `update` cut short upgrade work the desired state no longer asks for.
+                self._wake.set()
+                continue
+            finally:
+                self._converging = None
             if retry_after is not None:
                 asyncio.get_running_loop().call_later(retry_after, self._wake.set)
 
@@ -291,30 +460,58 @@ class PlacementController:
         return retry_after
 
     async def _converge_once(self, desired: DesiredPlacement) -> float | None:
+        stage = _upgrade_stage(desired)
+        # EpicStaff marks a stage failed once the node reported it so: none of its steps runs
+        # again, after an agent restart too, until a Retry or a newer target. A restore still runs.
+        failed = desired.upgrade is not None and desired.upgrade.failed
+        if stage == "maintenance":
+            return None if failed else await self._upgrade.maintain(desired)
+        if desired.restore is not None:
+            return await self._restore.run(desired)
+        if stage == "migrating" and failed:
+            # Its steps are the migrations and the start: the process stays stopped.
+            return None
+        retry_after = await self._converge_running(desired)
+        if stage == "preparing":
+            # The running version is kept running either way.
+            if failed:
+                return retry_after
+            return _sooner(retry_after, await self._upgrade.prepare(desired))
+        if stage is None and retry_after is None:
+            await self._prune(desired)
+        return retry_after
+
+    async def _converge_running(self, desired: DesiredPlacement) -> float | None:
+        """Bring the process to the desired package; see the module. Upgrade-stage work aside."""
         try:
             await self._converge(desired)
         except PortUnavailableError as error:
             # Normally a placement that is being removed still uses the port: retry.
             logger.warning("Plugin {}: {}", desired.plugin_identifier, error)
-            self.supervisor.note_error(str(error))
+            self._note_retry(desired, str(error))
             return TRANSIENT_RETRY_SECONDS
         except NodeApiError as error:
             if error.transient:
                 logger.warning("Plugin {}: {}", desired.plugin_identifier, error)
-                self.supervisor.note_error(str(error))
+                self._note_retry(desired, str(error))
                 return TRANSIENT_RETRY_SECONDS
             await self._fail(desired, str(error))
         except DatabaseUnreachableError as error:
-            self.supervisor.note_error(str(error))
+            self._note_retry(desired, str(error))
             return TRANSIENT_RETRY_SECONDS
         except _PERMANENT_ERRORS as error:
             await self._fail(desired, str(error))
         except Exception as error:
             # The agent supervises every plugin: one plugin's unexpected error must not stop it.
             logger.exception("Plugin {}: unexpected error", desired.plugin_identifier)
-            self.supervisor.note_error(f"internal error of the node agent: {error}")
+            self._note_retry(desired, f"internal error of the node agent: {error}")
             return TRANSIENT_RETRY_SECONDS
         return None
+
+    def _note_retry(self, desired: DesiredPlacement, error: str) -> None:
+        self.supervisor.note_error(error)
+        if _upgrade_stage(desired) == "migrating":
+            self._upgrade.retrying(desired, error)
 
     async def _converge(self, desired: DesiredPlacement) -> None:
         supervisor = self.supervisor
@@ -335,8 +532,7 @@ class PlacementController:
         ):
             return
         self._take_port(desired)
-        if self._installed_package != desired.package:
-            await self._install(desired)
+        await self.install(desired.package, desired.runtime, self._show_install_phase)
         must_start = (
             not supervisor.watching
             or started is None
@@ -351,8 +547,13 @@ class PlacementController:
                 await self._write_runtime_file(desired, await self._fetch_credentials(desired))
             self._services.on_change()
             return
+        migrating = _upgrade_stage(desired) == "migrating"
         fetched = await self._fetch_credentials(desired)
+        if migrating:
+            self._upgrade.step(desired, "migrate")
         await self._provision_database(desired, fetched.credentials)
+        if migrating:
+            self._upgrade.step(desired, "start")
         egress_password = await self._services.egress.issue_password(desired.plugin_identifier)
         await self._write_runtime_file(desired, fetched)
         if self._failed_for is not None:
@@ -372,6 +573,9 @@ class PlacementController:
         self._running_settings_revision = fetched.credentials.settings_revision
         self._services.on_change()
 
+    def _show_install_phase(self, step: UpgradeStep) -> None:
+        self.supervisor.show_phase("building" if step == "build" else "downloading")
+
     def _take_port(self, desired: DesiredPlacement) -> None:
         """Take the placement's port from the agent's reservation and hand it to the supervisor.
 
@@ -383,42 +587,6 @@ class PlacementController:
         port = desired.runtime.port
         self.supervisor.set_listen_fd(self._services.ports.take(port, desired.placement_id))
         self._taken_port = port
-
-    async def _install(self, desired: DesiredPlacement) -> None:
-        services = self._services
-        layout = services.layout
-        identifier = desired.plugin_identifier
-        uid = desired.runtime.unix_uid
-        version = desired.package.version
-        self.supervisor.show_phase("downloading")
-        if not services.fetcher.holds(desired.package):
-            services.disk.check_room_for_install()
-        package_path = await services.fetcher.fetch(desired.package)
-        archive = await asyncio.to_thread(verify_package, package_path, desired)
-        migrations = await asyncio.to_thread(read_migrations, package_path, archive)
-        self.supervisor.show_phase("building")
-        unpacked = layout.unpacked_package(identifier, version)
-        await asyncio.to_thread(unpack_backend, package_path, archive, unpacked)
-        try:
-            await services.launcher.prepare_plugin(identifier, uid)
-            venv = layout.plugin_venv(identifier, version)
-            request = VenvRequest(
-                interpreter=services.interpreter_for(desired.runtime.python),
-                venv=venv,
-                backend=unpacked / "backend",
-                source_path=layout.plugin_source(identifier, version),
-                temporary_directory=layout.agent_temporary_directory,
-            )
-            if not venv_is_current(request):
-                services.disk.check_room_for_install()
-            await services.venv_builder(request)
-            await services.launcher.install_code(identifier, uid, version)
-        finally:
-            await asyncio.to_thread(shutil.rmtree, unpacked, True)
-        self._installed_package = desired.package
-        self._venv = venv
-        self._migrations = migrations
-        logger.info("Installed plugin {} {}", identifier, version)
 
     async def _fetch_credentials(self, desired: DesiredPlacement) -> FetchedCredentials:
         """The placement's runtime credentials, fetched unless a retry may reuse the last ones.
@@ -460,9 +628,7 @@ class PlacementController:
                 "django_app sent no database credentials for a placement with a database",
                 transient=False,
             )
-        database = self._database
-        if database is None or database.desired.installation_id != wanted.installation_id:
-            database = self._database = PlacementDatabase(desired.plugin_identifier, wanted)
+        database = self.database_for(wanted)
         async with database.lock:
             database.provisioning(wanted)
             self._services.on_change()
@@ -471,13 +637,13 @@ class PlacementController:
                     desired.plugin_identifier,
                     wanted,
                     credentials.database.app_password,
-                    self._migrations,
+                    self._installed[desired.package].migrations,
                 )
             except DatabaseUnreachableError as error:
                 database.provisioning(wanted, str(error))
                 raise
             except DatabaseProvisioningError as error:
-                database.failed(str(error))
+                database.failed(str(error), ledger=error.ledger)
                 raise
             database.provisioned(outcome)
         self._provisioned_for = (desired.package, wanted)
@@ -515,15 +681,16 @@ class PlacementController:
         database_password = None
         if desired.database is not None and credentials.database is not None:
             database_password = credentials.database.app_password
+        venv = self._installed[desired.package].venv
         return ProcessSpec(
             plugin=desired.plugin_identifier,
             uid=desired.runtime.unix_uid,
             version=desired.package.version,
-            argv=plugin_command(self._venv),
+            argv=plugin_command(venv),
             environment=plugin_environment(
                 self._services.layout,
                 desired,
-                self._venv,
+                venv,
                 credentials.runtime_file,
                 PlatformCredentials(egress_password, database_password),
             ),
@@ -532,6 +699,56 @@ class PlacementController:
             memory_mb=desired.runtime.memory_mb,
         )
 
+    async def _prune(self, desired: DesiredPlacement) -> None:
+        """With no upgrade open, delete every installed version of the plugin but the desired one.
+
+        Done once per package in this agent's life; a failure is logged and tried again at the
+        next converge.
+        """
+        package = desired.package
+        if self._pruned_for == package or package not in self._installed:
+            return
+        identifier = desired.plugin_identifier
+        try:
+            code = await self._services.launcher.prune_code(
+                identifier, desired.runtime.unix_uid, package.version
+            )
+            venvs = await asyncio.to_thread(
+                prune_agent_trees, self._services.layout, identifier, package.version
+            )
+        except (LauncherError, OSError) as error:
+            logger.warning("Plugin {}: could not delete its other versions: {}", identifier, error)
+            return
+        self._installed = {package: self._installed[package]}
+        self._pruned_for = package
+        if code or venvs:
+            logger.info(
+                "plugins.upgrade.pruned plugin={} kept={} removed={}",
+                identifier,
+                package.version,
+                ",".join(sorted(set(code) | set(venvs))),
+            )
+
+    def _backup_reports(self) -> list[BackupFileReport]:
+        """Every complete backup of the plugin; one that cannot be reported is left out."""
+        try:
+            stored = self._services.backup_store.inventory(self._desired.plugin_identifier)
+        except OSError as error:
+            self._log_unreportable_backups(f"the backups cannot be listed: {error}")
+            return []
+        reports = []
+        for backup in stored:
+            try:
+                reports.append(backup.report())
+            except ValidationError:
+                self._log_unreportable_backups(f"backup {backup.file_name} cannot be reported")
+        return reports
+
+    def _log_unreportable_backups(self, message: str) -> None:
+        if not self._unreportable_backups:
+            self._unreportable_backups = True
+            logger.warning("Plugin {}: {}", self._desired.plugin_identifier, message)
+
     async def _fail(self, desired: DesiredPlacement, error: str) -> None:
         logger.error("Plugin {} failed: {}", desired.plugin_identifier, error)
         await self.supervisor.stop()
@@ -539,6 +756,8 @@ class PlacementController:
         self._failure = error
         self.supervisor.fail(error)
         await self._withdraw_egress()
+        if _upgrade_stage(desired) == "migrating":
+            self._upgrade.fail(desired, error)
 
     async def _withdraw_egress(self) -> None:
         """The process is stopped for good: its proxy password stops working."""
@@ -561,6 +780,15 @@ class PlacementController:
         task = asyncio.create_task(coroutine)
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
+
+
+def _upgrade_stage(desired: DesiredPlacement) -> str | None:
+    return desired.upgrade.stage if desired.upgrade is not None else None
+
+
+def _sooner(first: float | None, second: float | None) -> float | None:
+    waits = [wait for wait in (first, second) if wait is not None]
+    return min(waits) if waits else None
 
 
 class Reconciler:
@@ -622,8 +850,25 @@ class Reconciler:
                 controller.update(placement)
         self._placements = list(desired_state.placements)
         self._prune_downloads()
+        await self._delete_backups(desired_state.placements)
         self._remover.apply(desired_state.removals, closed_databases)
         self._services.on_change()
+
+    async def _delete_backups(self, placements: list[DesiredPlacement]) -> None:
+        """Delete the backups EpicStaff no longer keeps; a failure is tried at the next apply."""
+        for placement in placements:
+            if not placement.backups_to_delete:
+                continue
+            try:
+                await asyncio.to_thread(
+                    self._services.backup_store.delete,
+                    placement.plugin_identifier,
+                    list(placement.backups_to_delete),
+                )
+            except OSError as error:
+                logger.warning(
+                    "Plugin {}: could not delete backups: {}", placement.plugin_identifier, error
+                )
 
     def supervisors(self) -> list[ProcessSupervisor]:
         return [controller.supervisor for controller in self._controllers.values()]
@@ -669,7 +914,10 @@ class Reconciler:
         self._controllers.clear()
 
     def _prune_downloads(self) -> None:
-        self._services.fetcher.prune(placement.package for placement in self._placements)
+        """Keep the packages placements run, and the targets of their open upgrades."""
+        kept = [placement.package for placement in self._placements]
+        kept += [placement.upgrade.target for placement in self._placements if placement.upgrade]
+        self._services.fetcher.prune(kept)
 
     def _blocking_placement(self, removal: DesiredRemoval) -> int | None:
         """A controller that still has the placement, or any of its plugin, UID and port."""

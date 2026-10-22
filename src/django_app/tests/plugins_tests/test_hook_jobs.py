@@ -399,11 +399,11 @@ def test_a_job_of_a_suspended_grant_cannot_be_claimed(job, node_client, superadm
 
 
 def _locked_tables(captured):
-    """The tables each `SELECT ... FOR UPDATE` locked, in order."""
+    """The tables each `SELECT ... FOR UPDATE` (or `FOR NO KEY UPDATE`) locked, in order."""
     tables = []
     for query in captured.captured_queries:
         sql = query["sql"]
-        if "FOR UPDATE" not in sql:
+        if "FOR UPDATE" not in sql and "FOR NO KEY UPDATE" not in sql:
             continue
         from_clause = sql.split(" FROM ", 1)[1]
         if from_clause.startswith('"plugins_plugin" '):

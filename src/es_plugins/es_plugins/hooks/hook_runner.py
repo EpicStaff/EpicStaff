@@ -8,6 +8,10 @@ One `HookRunner` per placement takes the oldest listed job once the plugin is re
   the plugin holds the service-account key the hook's work needs. An `org_removed` job does not
   wait for one: the organization's data is being deleted, and it has no key any more.
 
+A desired placement whose upgrade is in `maintenance` or `migrating` lists no hook jobs (the node
+contract refuses one that does), so nothing is claimed then; `drain` waits for the call in
+flight, so the node can stop the plugin for an upgrade without cutting a hook short.
+
 Until then the job waits; the runner looks again whenever the desired placement, the runtime
 file or the process's state changes. When it is ready, the runner claims the job from
 django_app, which answers with an assertion signed for this one call and bound to its body,
@@ -32,6 +36,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
+from epicstaff_plugin.contracts.hook_api import KEYLESS_HOOK_KINDS
 from loguru import logger
 from src.shared.models.plugin_nodes import (
     DesiredHookJob,
@@ -53,8 +58,10 @@ RESULT_LONGEST_RETRY_SECONDS = 15.0
 STOPPED_RESULT_SECONDS = 2.0
 RESTARTED_DURING_HOOK = "the plugin restarted during the hook"
 STOPPED_DURING_HOOK = "the plugin stopped during the hook"
-# The hooks whose organization has no service-account key while they run.
-KINDS_WITHOUT_A_KEY = frozenset({"org_removed"})
+# How much longer than a call's own timeout a drain waits for it.
+DRAIN_MARGIN_SECONDS = 60.0
+# Longer than a claim request may take (django_client's timeout).
+CLAIM_SECONDS = 40.0
 
 
 @dataclass(frozen=True)
@@ -83,6 +90,10 @@ class HookRunner:
         self._tried_at: dict[int, float] = {}
         self._changed = asyncio.Event()
         self._task: asyncio.Task | None = None
+        self._idle = asyncio.Event()
+        self._idle.set()
+        # Monotonic time by which the call in flight must be over.
+        self._call_deadline: float | None = None
 
     def start(self) -> None:
         self._changed.set()
@@ -112,6 +123,19 @@ class HookRunner:
     def notice_change(self) -> None:
         """Something about the placement changed (its process's state): look at the jobs again."""
         self._changed.set()
+
+    async def drain(self) -> None:
+        """Wait until no hook call is in flight, at most its timeout plus `DRAIN_MARGIN_SECONDS`.
+
+        The caller has made sure no new job is claimed (an upgrade in `maintenance`). A call
+        still running afterwards is cut short when the process stops, and reported as stopped.
+        """
+        while not self._idle.is_set() and self._call_deadline is not None:
+            remaining = self._call_deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._idle.wait(), remaining)
 
     async def _loop(self) -> None:
         while True:
@@ -171,7 +195,7 @@ class HookRunner:
         if written is None or written.credentials_revision != placement.credentials_revision:
             return None
         if (
-            job.kind not in KINDS_WITHOUT_A_KEY
+            job.kind not in KEYLESS_HOOK_KINDS
             and job.organization_id not in written.organization_ids
         ):
             return None
@@ -182,31 +206,18 @@ class HookRunner:
 
     async def _run(self, job: DesiredHookJob, process: int) -> None:
         self._tried_at[job.job_id] = time.monotonic()
+        # Busy from the claim on: a drain waits for the claim's answer, then for the call.
+        self._idle.clear()
+        self._call_deadline = time.monotonic() + CLAIM_SECONDS
+        try:
+            called = await self._claim_and_call(job)
+        finally:
+            self._idle.set()
+            self._call_deadline = None
+        if called is None:
+            return
+        invocation, outcome = called
         identifier = self._placement.plugin_identifier
-        port = self._placement.runtime.port
-        try:
-            invocation = await self._django.claim_hook_job(job.job_id)
-        except NodeApiError as error:
-            logger.warning(
-                "Plugin {}: could not claim hook job {}: {}", identifier, job.job_id, error
-            )
-            return
-        if invocation is None:
-            return
-        logger.info(
-            "Plugin {}: calling its {} hook, job {} attempt {}, organization {}",
-            identifier,
-            invocation.kind,
-            invocation.job_id,
-            invocation.attempt,
-            invocation.organization_id,
-        )
-        started = time.monotonic()
-        try:
-            outcome = await self._caller.call(port, invocation)
-        except asyncio.CancelledError:
-            await self._report_stopped(invocation, started)
-            raise
         if not outcome.succeeded and self._supervisor.running_process() != process:
             outcome = replace(outcome, error=self._why_the_process_went())
         if outcome.succeeded:
@@ -227,6 +238,35 @@ class HookRunner:
                 outcome.error,
             )
         await deliver_result(self._django, invocation.job_id, result_of(invocation, outcome))
+
+    async def _claim_and_call(
+        self, job: DesiredHookJob
+    ) -> tuple[HookInvocation, HookOutcome] | None:
+        identifier = self._placement.plugin_identifier
+        try:
+            invocation = await self._django.claim_hook_job(job.job_id)
+        except NodeApiError as error:
+            logger.warning(
+                "Plugin {}: could not claim hook job {}: {}", identifier, job.job_id, error
+            )
+            return None
+        if invocation is None:
+            return None
+        logger.info(
+            "Plugin {}: calling its {} hook, job {} attempt {}, organization {}",
+            identifier,
+            invocation.kind,
+            invocation.job_id,
+            invocation.attempt,
+            invocation.organization_id,
+        )
+        started = time.monotonic()
+        self._call_deadline = started + invocation.timeout_seconds + DRAIN_MARGIN_SECONDS
+        try:
+            return invocation, await self._caller.call(self._placement.runtime.port, invocation)
+        except asyncio.CancelledError:
+            await self._report_stopped(invocation, started)
+            raise
 
     def _why_the_process_went(self) -> str:
         # update() has the new desired placement before converge acts on it, so a stop that

@@ -26,11 +26,11 @@ from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import log_grant_resumed, log_grant_suspended
 from plugins.configuration.grace_period import grace_period
 from plugins.lifecycle.grant_actions import GrantAction, assert_grant_action
+from plugins.lifecycle.grant_settling import SETTLED_FIELDS, settle_grant
 from plugins.lifecycle.lifecycle_locks import lock_grant
 from plugins.lifecycle.suspended_run_stopper import SuspendedRunStopper
 from plugins.models import (
     GrantState,
-    HookJobKind,
     HookJobState,
     PluginGrant,
     PluginHookJob,
@@ -38,7 +38,7 @@ from plugins.models import (
     PluginServiceAccountKey,
     SuspensionCause,
 )
-from plugins.models.hook_job import OPEN_HOOK_JOB_STATES
+from plugins.models.hook_job import GRANT_STEP_HOOK_KINDS, OPEN_HOOK_JOB_STATES
 
 SUSPENDED_BEFORE_HOOK_FINISHED = "Suspended before the hook finished."
 
@@ -74,9 +74,10 @@ class PluginSuspensionService:
     def resume(self, identifier: str, grant_id: int, actor) -> PluginGrant:
         """Resume a suspended grant, in one transaction.
 
-        The grant goes back to `active`, or to `install_failed` when its install hook never
-        succeeded. Every key of its service account is revoked again, closing a key minted
-        while the suspension committed; the node's next credentials fetch mints new ones.
+        The grant goes where `settle_grant` says: `install_failed` when its install hook never
+        succeeded, `upgrading` when its plugin's version changed meanwhile, else `active`.
+        Every key of its service account is revoked again, closing a key minted while the
+        suspension committed; the node's next credentials fetch mints new ones.
         `last_hook_error` stays.
 
         Raises:
@@ -126,12 +127,12 @@ class PluginSuspensionService:
         """
         cause = grant.suspension_cause
         _revoke_keys(grant, now)
-        grant.state = resume_target_state(grant)
+        settle_grant(grant, resuming=True)
         grant.suspended_at = None
         grant.suspension_cause = None
         grant.purge_after = None
         grant.save(
-            update_fields=["state", "suspended_at", "suspension_cause", "purge_after", "updated_at"]
+            update_fields=[*SETTLED_FIELDS, "suspended_at", "suspension_cause", "purge_after"]
         )
         ActivityRecorder().grant_resumed(actor, grant, cause)
 
@@ -139,8 +140,9 @@ class PluginSuspensionService:
 def withdraw_access(grant: PluginGrant, now: datetime, *, hook_error: str) -> None:
     """Take away what a grant gives its plugin: the steps every suspension starts with.
 
-    Fails the grant's pending and running hook jobs with `hook_error` (an install job's error
-    also becomes the grant's `last_hook_error`), revokes every key of its service account and
+    Fails the grant's pending and running hook jobs with `hook_error` (an install or upgrade
+    job's error also becomes the grant's `last_hook_error`), revokes every key of its service
+    account and
     sets `suspended_at`. The caller holds the grant's lock and saves `suspended_at` and
     `last_hook_error` with its own changes.
     """
@@ -166,20 +168,6 @@ def stop_sessions_on_commit(grant: PluginGrant) -> None:
     transaction.on_commit(stop_affected_sessions, robust=True)
 
 
-def resume_target_state(grant: PluginGrant) -> str:
-    """The state a suspended grant resumes to: `install_failed` while its install hook has
-    not succeeded (it was suspended during or after a failed install), else `active`."""
-    latest_install = (
-        grant.hook_jobs.filter(kind=HookJobKind.INSTALL)
-        .order_by("-created_at", "-pk")
-        .values_list("state", flat=True)
-        .first()
-    )
-    if latest_install is not None and latest_install != HookJobState.SUCCEEDED:
-        return GrantState.INSTALL_FAILED
-    return GrantState.ACTIVE
-
-
 def _fail_open_hook_jobs(grant: PluginGrant, now: datetime, error: str) -> None:
     """Fail the grant's pending and running hook jobs; locked after the grant."""
     open_jobs = list(
@@ -193,7 +181,7 @@ def _fail_open_hook_jobs(grant: PluginGrant, now: datetime, error: str) -> None:
     PluginHookJob.objects.filter(pk__in=[job.pk for job in open_jobs]).update(
         state=HookJobState.FAILED, finished_at=now, error=error, updated_at=now
     )
-    if any(job.kind == HookJobKind.INSTALL for job in open_jobs):
+    if any(job.kind in GRANT_STEP_HOOK_KINDS for job in open_jobs):
         grant.last_hook_error = error
 
 

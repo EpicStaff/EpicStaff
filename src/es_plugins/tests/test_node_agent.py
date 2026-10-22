@@ -17,6 +17,7 @@ from tests.helpers import API_URL, NODE_KEY, FakeDjango, desired_state, placemen
 from tests.test_supervisor_backoff import wait_until
 
 DATABASE_ADMIN_PASSWORD = "d" * 64
+DATABASE_BACKUP_PASSWORD = "b" * 64
 
 
 def test_the_reported_agent_version_is_the_projects():
@@ -36,6 +37,7 @@ def environment(monkeypatch):
             "ES_PLUGINS_DISK_MB_PER_PLUGIN": "2048",
             "ES_PLUGINS_FILES_PER_PLUGIN": "100000",
             "PLUGINS_DB_ADMIN_PASSWORD": DATABASE_ADMIN_PASSWORD,
+            "PLUGINS_DB_BACKUP_PASSWORD": DATABASE_BACKUP_PASSWORD,
             **overrides,
         }
         for name, value in variables.items():
@@ -52,27 +54,31 @@ def test_the_settings_come_from_the_node_variables(environment):
     assert settings.uid_range == UidRange(20000, 20999)
     assert (settings.disk_megabytes_per_plugin, settings.files_per_plugin) == (2048, 100000)
     assert settings.database_admin_password == DATABASE_ADMIN_PASSWORD
+    assert settings.database_backup_password == DATABASE_BACKUP_PASSWORD
 
 
-def test_the_settings_never_show_the_node_key_or_the_database_admin_password(environment):
+def test_the_settings_never_show_the_node_key_or_a_database_password(environment):
     shown = repr(AgentSettings.from_environment(environment()))
 
-    assert NODE_KEY not in shown and DATABASE_ADMIN_PASSWORD not in shown
+    assert NODE_KEY not in shown
+    assert DATABASE_ADMIN_PASSWORD not in shown and DATABASE_BACKUP_PASSWORD not in shown
 
 
+@pytest.mark.parametrize("variable", ["PLUGINS_DB_ADMIN_PASSWORD", "PLUGINS_DB_BACKUP_PASSWORD"])
 @pytest.mark.parametrize("password", ["none", "too-short-for-a-password", ""])
-def test_a_node_without_a_usable_database_admin_password_refuses_to_start(environment, password):
-    with pytest.raises(AgentSettingsError, match="PLUGINS_DB_ADMIN_PASSWORD") as refused:
-        AgentSettings.from_environment(environment(PLUGINS_DB_ADMIN_PASSWORD=password))
+def test_a_node_without_a_usable_database_password_refuses_to_start(environment, variable, password):
+    with pytest.raises(AgentSettingsError, match=variable) as refused:
+        AgentSettings.from_environment(environment(**{variable: password}))
 
     assert password == "" or password not in str(refused.value)
 
 
-def test_a_node_without_the_database_admin_password_refuses_to_start(environment, monkeypatch):
+@pytest.mark.parametrize("variable", ["PLUGINS_DB_ADMIN_PASSWORD", "PLUGINS_DB_BACKUP_PASSWORD"])
+def test_a_node_without_a_database_password_refuses_to_start(environment, monkeypatch, variable):
     environment()
-    monkeypatch.delenv("PLUGINS_DB_ADMIN_PASSWORD")
+    monkeypatch.delenv(variable)
 
-    with pytest.raises(AgentSettingsError, match="PLUGINS_DB_ADMIN_PASSWORD"):
+    with pytest.raises(AgentSettingsError, match=variable):
         AgentSettings.from_environment(Env())
 
 

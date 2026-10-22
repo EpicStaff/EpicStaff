@@ -1,14 +1,10 @@
 import { getRelativeTime } from '@shared/utils';
 
-import {
-    PluginPreviewItemView,
-    PluginPreviewListView,
-} from '../components/plugin-preview-section/plugin-preview-section.component';
+import { PluginPreviewItemView, PluginPreviewListView } from '../models/plugin-preview-view.model';
 import { PluginPurgePreviewOrganization } from '../models/plugin-purge-preview.model';
 import {
     PluginDefaultModelReference,
     PluginOwnedResourceCount,
-    PluginPreviewFlow,
     PluginPreviewList,
     PluginPreviewSession,
 } from '../models/plugin-suspend-preview.model';
@@ -42,8 +38,9 @@ export function defaultModelsListView(references: readonly PluginDefaultModelRef
     return { items: references.map(defaultModelItem), moreCount: 0 };
 }
 
-export function previewFlowItem(flow: PluginPreviewFlow): PluginPreviewItemView {
-    return { key: String(flow.id), name: flow.name, detail: null };
+/** Anything listed by its id and name alone: a flow, a realtime agent, a voice channel. */
+export function previewNamedItem(item: { id: number; name: string }): PluginPreviewItemView {
+    return { key: String(item.id), name: item.name, detail: null };
 }
 
 /** A running session: its flow, its status and when it started. */

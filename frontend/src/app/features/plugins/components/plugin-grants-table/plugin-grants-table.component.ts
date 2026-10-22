@@ -1,4 +1,4 @@
-import { DatePipe, DOCUMENT, formatDate } from '@angular/common';
+import { DatePipe, DOCUMENT } from '@angular/common';
 import { Component, computed, DestroyRef, inject, input, LOCALE_ID, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -19,14 +19,17 @@ import { catchError, EMPTY, expand, filter, finalize, Observable, of, switchMap,
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ToastService } from '../../../../services/notifications';
-import { PluginGrant, PluginGrantAction, PluginOrgRemovedJob, PluginState } from '../../models/plugin-admin.model';
+import { PluginGrant, PluginGrantAction, PluginState } from '../../models/plugin-admin.model';
 import { PluginDialogsService } from '../../services/plugin-dialogs.service';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import {
     PLUGIN_GRANT_ACTION_LABELS,
     PluginBadgeTone,
+    PluginDataRemovalLine,
+    pluginDataRemovalLine,
     pluginGrantStateLabel,
     pluginGrantStateTone,
+    pluginRetryProgress,
 } from '../../utils/plugin-display.util';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
 import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
@@ -34,12 +37,13 @@ import { PluginDataRemovalActionsComponent } from '../plugin-data-removal-action
 
 export const PLUGIN_GRANTS_PAGE_SIZE = 20;
 
-/** How often the table asks again while one of its rows installs or deletes its data. */
+/** How often the table asks again while one of its rows installs, upgrades or deletes its data. */
 export const PLUGIN_GRANTS_POLL_MS = 5000;
 
 const COLUMNS: AppTableColumnDef[] = [
     { key: 'organization', label: 'Organization', width: 'minmax(160px, 2fr)' },
     { key: 'state', label: 'State', width: 'minmax(200px, 2.5fr)' },
+    { key: 'version', label: 'Version', width: 'minmax(80px, 0.7fr)' },
     { key: 'serviceAccount', label: 'Service account', width: 'minmax(170px, 2fr)' },
     { key: 'ownedResources', label: 'Owned resources', width: 'minmax(120px, 1fr)' },
     { key: 'grantedBy', label: 'Granted by', width: 'minmax(160px, 2fr)' },
@@ -58,19 +62,9 @@ const GRANT_ACTION_BUTTON_TYPES: Readonly<Record<PluginGrantAction, GrantActionB
     suspend: 'outline-danger',
     resume: 'outline-primary',
     retry_install: 'outline-primary',
+    retry_upgrade: 'outline-primary',
     purge: 'outline-danger',
 };
-
-/** How a deleting row tells where the plugin is with deleting its own data in the organization. */
-interface DataRemovalLine {
-    job: PluginOrgRemovedJob;
-    message: string;
-    /** "Attempt 2 · next try 10:42"; `null` when there is nothing to add. */
-    progress: string | null;
-    /** The error of the last failed attempt while the job retries by itself. */
-    lastError: string | null;
-    failed: boolean;
-}
 
 /** What the table says once a grant action went through: `warning` when the grant still needs something done. */
 interface GrantActionToast {
@@ -93,15 +87,18 @@ interface ConfirmedGrantAction {
  * The organizations a plugin is granted to, a page at a time, and the Grant action.
  *
  * A grant whose install hook runs shows "Installing…" ("Waiting for the plugin to start" until the plugin claims the
- * hook); a grant whose data is being deleted shows "Deleting data…", where the plugin is with deleting its own data
- * (with Retry and Skip as that job allows), and what EpicStaff could not delete yet. The table asks for its page again
- * every few seconds (not while the browser tab is hidden) until no row installs or deletes any more. Loads and polls
+ * hook); one being upgraded shows "Upgrading…" with its upgrade hook's attempt, next try and last error; a grant whose
+ * data is being deleted shows "Deleting data…", where the plugin is with deleting its own data (with Retry and Skip as
+ * that job allows), and what EpicStaff could not delete yet. The Version column is the version each organization was
+ * last brought to. The table asks for its page again every few seconds (not while the browser tab is hidden) until no
+ * row installs, upgrades or deletes any more. Loads and polls
  * are one pipeline: a new page, a reload (after a grant or a lifecycle action) or a change of the plugin's state
  * (which changes what every grant allows) restarts it, so an answer still on its way never overwrites a newer one. A
- * failed install shows the hook's error; a suspended grant shows since when and until when its data is kept.
+ * failed install or upgrade shows the hook's error; a suspended grant shows since when and until when its data is kept.
  *
  * A row's buttons are exactly the grant's `allowed_actions`, in the server's order: the server owns the state machine.
- * "Suspend…" and "Delete data…" open their previews; "Resume" and "Retry install" ask for confirmation first.
+ * "Suspend…" and "Delete data…" open their previews; "Resume", "Retry install" and "Retry upgrade" ask for
+ * confirmation first.
  */
 @Component({
     selector: 'app-plugin-grants-table',
@@ -144,9 +141,12 @@ export class PluginGrantsTableComponent {
     );
     private readonly dataRemovalsById = computed(() => {
         const pluginName = this.pluginName();
-        const lines = new Map<number, DataRemovalLine>();
+        const lines = new Map<number, PluginDataRemovalLine>();
         for (const grant of this.grants()) {
-            const line = grant.state === 'purging' ? this.toDataRemovalLine(grant, pluginName) : null;
+            const line =
+                grant.state === 'purging'
+                    ? pluginDataRemovalLine(grant.org_removed_hook, pluginName, this.locale)
+                    : null;
             if (line) lines.set(grant.id, line);
         }
         return lines;
@@ -174,6 +174,7 @@ export class PluginGrantsTableComponent {
         suspend: (grant) => this.openSuspend(grant),
         resume: (grant) => this.resume(grant),
         retry_install: (grant) => this.retryInstall(grant),
+        retry_upgrade: (grant) => this.retryUpgrade(grant),
         purge: (grant) => this.openPurge(grant),
     };
 
@@ -239,8 +240,32 @@ export class PluginGrantsTableComponent {
         return grant.install_hook?.error ?? grant.last_hook_error ?? 'The install hook failed.';
     }
 
+    /**
+     * Where an upgrading organization is: its upgrade hook's attempt and next try while it waits or runs. The latest
+     * upgrade hook may be an earlier upgrade's; then the organization waits for the new version to start.
+     */
+    protected upgradeProgress(grant: PluginGrant): string {
+        const hook = grant.upgrade_hook;
+        if (hook?.state === 'running')
+            return hook.attempt > 1 ? `Attempt ${hook.attempt} running` : 'Running its upgrade';
+        if (hook?.state !== 'pending') return 'Waiting for the new version to start';
+        return pluginRetryProgress(hook, this.locale) ?? 'Waiting for the plugin to start';
+    }
+
+    /** The error of the attempt that failed while the upgrade hook tries again by itself; else `null`. */
+    protected upgradeRetryError(grant: PluginGrant): string | null {
+        const hook = grant.upgrade_hook;
+        return hook?.state === 'pending' && hook.attempt > 0 ? hook.error : null;
+    }
+
+    /** The upgrade hook's own error; the grant's copy of it when the job has none. */
+    protected upgradeError(grant: PluginGrant): string {
+        const hook = grant.upgrade_hook;
+        return (hook?.state === 'failed' ? hook.error : null) ?? grant.last_hook_error ?? 'The upgrade hook failed.';
+    }
+
     /** Where the plugin is with deleting its own data for a deleting grant; `null` when it has nothing to delete. */
-    protected dataRemovalOf(grant: PluginGrant): DataRemovalLine | null {
+    protected dataRemovalOf(grant: PluginGrant): PluginDataRemovalLine | null {
         return this.dataRemovalsById().get(grant.id) ?? null;
     }
 
@@ -356,12 +381,34 @@ export class PluginGrantsTableComponent {
                 confirmText: 'Retry install',
                 cancelText: 'Cancel',
             },
-            request: () => this.storage.retryInstallHook(this.identifier(), grant.id),
+            request: () => this.storage.retryHook(this.identifier(), grant.id),
             resultToast: () => ({
                 tone: 'success',
                 message: `${pluginName} is installing in ${organizationName} again.`,
             }),
             failureFallback: "Couldn't retry the install.",
+            // The grant stays out of the active count until the hook succeeds.
+            changesActiveCount: false,
+        });
+    }
+
+    private retryUpgrade(grant: PluginGrant): void {
+        const pluginName = this.pluginName();
+        const organizationName = grant.organization.name;
+        this.confirmAndRun(grant, {
+            confirmation: {
+                title: 'Retry the upgrade?',
+                message: `${escapeHtml(pluginName)} runs its upgrade hook in ${escapeHtml(organizationName)} again.`,
+                type: 'warning',
+                confirmText: 'Retry upgrade',
+                cancelText: 'Cancel',
+            },
+            request: () => this.storage.retryHook(this.identifier(), grant.id),
+            resultToast: () => ({
+                tone: 'success',
+                message: `${pluginName} is upgrading in ${organizationName} again.`,
+            }),
+            failureFallback: "Couldn't retry the upgrade.",
             // The grant stays out of the active count until the hook succeeds.
             changesActiveCount: false,
         });
@@ -416,44 +463,6 @@ export class PluginGrantsTableComponent {
         if (stateChanged || purgeFinished) this.grantsChanged.emit();
     }
 
-    /** Nothing for a grant without a data removal, or once the plugin has finished or skipped it. */
-    private toDataRemovalLine(grant: PluginGrant, pluginName: string): DataRemovalLine | null {
-        const job = grant.org_removed_hook;
-        if (!job) return null;
-        switch (job.state) {
-            case 'pending':
-            case 'running':
-                return {
-                    job,
-                    message: `${pluginName} is deleting its data`,
-                    progress: this.dataRemovalProgress(job),
-                    lastError: job.error,
-                    failed: false,
-                };
-            case 'failed':
-                return {
-                    job,
-                    message: `${pluginName} could not delete its data: ${job.error ?? 'no reason was given'}`,
-                    progress: null,
-                    lastError: null,
-                    failed: true,
-                };
-            case 'succeeded':
-            case 'skipped':
-                return null;
-        }
-    }
-
-    /** "Attempt 2 · next try 10:42": the attempt once one was made, the next try while one is planned. */
-    private dataRemovalProgress(job: PluginOrgRemovedJob): string | null {
-        const parts: string[] = [];
-        if (job.attempt > 0) parts.push(`Attempt ${job.attempt}`);
-        if (job.state === 'pending' && job.next_attempt_at) {
-            parts.push(`next try ${formatDate(job.next_attempt_at, 'shortTime', this.locale)}`);
-        }
-        return parts.length > 0 ? parts.join(' · ') : null;
-    }
-
     private replaceGrant(updated: PluginGrant): void {
         this.grants.update((grants) => grants.map((grant) => (grant.id === updated.id ? updated : grant)));
     }
@@ -468,9 +477,11 @@ export class PluginGrantsTableComponent {
     }
 }
 
-/** A row is installing or deleting its data, which the server finishes on its own. */
+/** A row is installing, upgrading or deleting its data, which the server finishes on its own. */
 function needsPolling(grants: readonly PluginGrant[]): boolean {
-    return grants.some((grant) => grant.state === 'granting' || grant.state === 'purging');
+    return grants.some(
+        (grant) => grant.state === 'granting' || grant.state === 'upgrading' || grant.state === 'purging'
+    );
 }
 
 /** The grant's allowed actions as buttons, in the server's order; an action this page does not know is left out. */

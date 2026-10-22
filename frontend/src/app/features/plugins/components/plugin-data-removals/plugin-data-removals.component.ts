@@ -15,7 +15,7 @@ import {
 import { catchError, EMPTY, expand, filter, of, switchMap, take, tap, timer } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
-import { PluginOrgRemovedJob } from '../../models/plugin-admin.model';
+import { PluginOrgRemovedJob, PluginState } from '../../models/plugin-admin.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import {
     PLUGIN_DATA_REMOVAL_STATE_LABELS,
@@ -45,9 +45,10 @@ const COLUMNS: AppTableColumnDef[] = [
  * "Deleted organizations": the data removals (runs of the plugin's organization removed hook) of organizations deleted
  * while they had the plugin, a page at a time, newest first. Open ones by default; "Show finished" adds those done or
  * skipped. Each shows the organization's name as it was, its state, attempts, next try and error, with Retry and Skip
- * as the job allows. While one waits or runs, the list asks again every few seconds (not while the browser tab is
- * hidden); a new page, the toggle or an action restarts loading and polling, so an older answer never overwrites a
- * newer one.
+ * as the job allows. While one waits or runs, or while the plugin is being deleted (which gives up on failed ones by
+ * itself), the list asks again every few seconds (not while the browser tab is hidden); a new page, the toggle, a
+ * change of the plugin's state or an action restarts loading and polling, so an older answer never overwrites a newer
+ * one.
  */
 @Component({
     selector: 'app-plugin-data-removals',
@@ -69,6 +70,8 @@ const COLUMNS: AppTableColumnDef[] = [
 export class PluginDataRemovalsComponent {
     readonly identifier = input.required<string>();
     readonly pluginName = input.required<string>();
+    /** While the plugin is being deleted, failed removals are skipped by the platform: the list keeps asking. */
+    readonly pluginState = input<PluginState | null>(null);
 
     protected readonly page = signal(1);
     protected readonly showFinished = signal(false);
@@ -88,6 +91,7 @@ export class PluginDataRemovalsComponent {
         identifier: this.identifier(),
         page: this.page(),
         showFinished: this.showFinished(),
+        pluginState: this.pluginState(),
         reload: this.reloads(),
     }));
 
@@ -104,7 +108,7 @@ export class PluginDataRemovalsComponent {
                     this.isLoading.set(true);
                     this.loadError.set(null);
                 }),
-                switchMap(({ identifier, page, showFinished }) => {
+                switchMap(({ identifier, page, showFinished, pluginState }) => {
                     const fetchPage = () =>
                         this.storage
                             .listOrgRemovedJobs(identifier, {
@@ -131,7 +135,11 @@ export class PluginDataRemovalsComponent {
                     return fetchPage().pipe(
                         tap(() => this.isLoading.set(false)),
                         // After a failed answer the rows shown decide, so one failure does not stop the polling.
-                        expand((response) => (isUnderWay(response?.results ?? this.jobs()) ? nextPoll() : EMPTY))
+                        expand((response) =>
+                            pluginState === 'purging' || isUnderWay(response?.results ?? this.jobs())
+                                ? nextPoll()
+                                : EMPTY
+                        )
                     );
                 }),
                 takeUntilDestroyed()

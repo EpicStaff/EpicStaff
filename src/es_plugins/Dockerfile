@@ -8,6 +8,16 @@
 FROM python:3.13.16-slim-bookworm@sha256:a1165e272e578941b84abc79e4ab38a0305cd12803a5c4247979ac7655f4d641 AS plugin-python-3-13
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS plugin-python-3-12
 
+# pg_dump and pg_restore of plugins_db's major version (17), with their libpq, for the backups
+# taken before upgrades. From the official image's bookworm build: the node's base is bookworm, so
+# they find the same glibc (plugins_db runs the trixie build of the same release, which needs a
+# newer one). This digest moves together with plugins_db's image in docker-compose.yaml.
+FROM postgres:17.11-bookworm@sha256:858bb5e98eed02eb8cafbcdc007f9a65d1b613972028944a8ec2133ccaf80d27 AS postgres-client
+RUN mkdir -p /opt/postgresql-client/17/bin /opt/postgresql-client/17/lib \
+    && cp /usr/lib/postgresql/17/bin/pg_dump /usr/lib/postgresql/17/bin/pg_restore /opt/postgresql-client/17/bin/ \
+    && cp -L "$(ldd /usr/lib/postgresql/17/bin/pg_dump | awk '$1 == "libpq.so.5" { print $3 }')" \
+        /opt/postgresql-client/17/lib/libpq.so.5
+
 # --- Builder: the agent's venv ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
@@ -43,9 +53,27 @@ COPY ./shared /app/src/shared
 # --- Runtime ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
 
+# Before the COPYs, so a change of the code reuses this layer. nftables for the per-plugin
+# connection caps the entrypoint installs; setpriv (util-linux, in the base image) starts the
+# launcher without the capabilities that installed them; libldap (with libsasl2) is the one
+# library of the PostgreSQL client's libpq the base image lacks.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nftables libldap-2.5-0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && nft --version \
+    && command -v setpriv
+
 COPY --from=plugin-python-3-13 /usr/local/ /opt/plugin-python/3.13/
 COPY --from=plugin-python-3-12 /usr/local/ /opt/plugin-python/3.12/
+COPY --from=postgres-client /opt/postgresql-client/ /opt/postgresql-client/
 COPY --from=builder /app /app
+
+# The client runs here, and is plugins_db's major version: the agent runs it with this
+# LD_LIBRARY_PATH (es_plugins.database.postgres_client), and pg_dump refuses a newer server.
+RUN export LD_LIBRARY_PATH=/opt/postgresql-client/17/lib \
+    && ! ldd /opt/postgresql-client/17/bin/pg_dump /opt/postgresql-client/17/bin/pg_restore | grep -q "not found" \
+    && /opt/postgresql-client/17/bin/pg_dump --version | grep -q "(PostgreSQL) 17\." \
+    && /opt/postgresql-client/17/bin/pg_restore --version | grep -q "(PostgreSQL) 17\."
 
 # The node's volume is mounted at /var/lib/es_plugins; the launcher sets the owners and modes
 # at start-up. The egress policy volume is mounted below /var/lib/es_plugins_egress, which only
@@ -53,13 +81,6 @@ COPY --from=builder /app /app
 RUN mkdir -p /var/lib/es_plugins \
     && install -d -m 0710 -o root -g 10000 /var/lib/es_plugins_egress
 
-# nftables for the per-plugin connection caps the entrypoint installs; setpriv (util-linux, in
-# the base image) starts the launcher without the capabilities that installed them.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends nftables \
-    && rm -rf /var/lib/apt/lists/* \
-    && nft --version \
-    && command -v setpriv
 COPY --chmod=0755 ./es_plugins/entrypoint.sh /usr/local/bin/es-plugins-entrypoint
 
 # `src.shared` resolves from /app and the service's own package from /app/src/es_plugins.

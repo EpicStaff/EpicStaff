@@ -5,13 +5,17 @@ key only (`PluginNodeAuthentication`); each node sees only its own placements an
 packages, and anything else answers 404.
 """
 
+from django.db.models import Exists, OuterRef
 from django.http import FileResponse, HttpResponse
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.views import APIView
 
 from plugins.exceptions import PluginPackageNotFoundError
 from plugins.lifecycle.hook_job_service import HookJobService, parse_hook_result
-from plugins.models import PluginPackage
+from plugins.lifecycle.upgrade_service import PluginUpgradeService, parse_upgrade_advance
+from plugins.models import Plugin, PluginPackage, PluginUpgrade
+from plugins.models.upgrade import OPEN_UPGRADE_STAGES
 from plugins.nodes.desired_state_builder import DesiredStateBuilder, placements_to_run
 from plugins.nodes.node_authentication import IsPluginNode, PluginNodeAuthentication
 from plugins.nodes.node_report_service import NodeReportService, parse_node_report
@@ -54,10 +58,27 @@ class NodePackageView(PluginNodeView):
 
     @staticmethod
     def _package_of_node(node, package_id: int) -> PluginPackage:
-        placement = placements_to_run(node).filter(plugin__current_package_id=package_id).first()
-        if placement is None:
+        """The package if it is the current package or an open upgrade's target of a plugin
+        placed on `node`; any other answers 404."""
+        plugins = placements_to_run(node).values("plugin_id")
+        package = (
+            PluginPackage.objects.filter(pk=package_id)
+            .filter(
+                Exists(Plugin.objects.filter(pk__in=plugins, current_package_id=OuterRef("pk")))
+                | Exists(
+                    PluginUpgrade.objects.filter(
+                        plugin_id__in=plugins,
+                        to_package_id=OuterRef("pk"),
+                        stage__in=OPEN_UPGRADE_STAGES,
+                    )
+                )
+            )
+            .only("pk", "storage_key", "sha256")
+            .first()
+        )
+        if package is None:
             raise PluginPackageNotFoundError()
-        return placement.plugin.current_package
+        return package
 
 
 class RuntimeCredentialsView(PluginNodeView):
@@ -87,4 +108,15 @@ class HookJobClaimView(PluginNodeView):
 class HookJobResultView(PluginNodeView):
     def post(self, request, job_id: int):
         HookJobService().record_result(request.auth, job_id, parse_hook_result(request.body))
+        return HttpResponse(status=status.HTTP_204_NO_CONTENT)
+
+
+class UpgradeAdvanceView(PluginNodeView):
+    """The node asking to take an upgrade of one of its placements to its next stage."""
+
+    @extend_schema(request=None, responses={204: None})
+    def post(self, request, upgrade_id: int):
+        PluginUpgradeService().advance(
+            request.auth, upgrade_id, parse_upgrade_advance(request.body)
+        )
         return HttpResponse(status=status.HTTP_204_NO_CONTENT)

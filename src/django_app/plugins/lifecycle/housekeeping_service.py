@@ -19,22 +19,19 @@ from django.contrib.contenttypes.models import ContentType
 from django.db.models import Exists, OuterRef
 from django.utils import timezone
 
-from plugins.audit import log_retention_tick
+from plugins.audit import log_housekeeping
 from plugins.models import (
-    HookJobKind,
     HookJobState,
     PluginHookJob,
     PluginOwnedResource,
     PluginServiceAccountKey,
 )
-from plugins.models.hook_job import OPEN_HOOK_JOB_STATES
+from plugins.models.hook_job import GRANT_STEP_HOOK_KINDS, OPEN_HOOK_JOB_STATES
 from plugins.ownership.ownership_recorder import ownable_models
 
 REVOKED_KEY_RETENTION_DAYS = 30
 HOUSEKEEPING_BATCH_SIZE = 1000
 GRANT_DELETED_BEFORE_HOOK_FINISHED = "The grant was deleted before the hook finished."
-# The kinds whose job is a step of its grant: without the grant it can never run.
-_GRANT_STEP_KINDS = (HookJobKind.INSTALL, HookJobKind.UPGRADE)
 
 
 @dataclass
@@ -53,7 +50,7 @@ class HousekeepingService:
             revoked_keys_removed=self._remove_revoked_keys(now),
             orphaned_hook_jobs_failed=self._fail_orphaned_hook_jobs(now),
         )
-        log_retention_tick(asdict(report))
+        log_housekeeping(asdict(report))
         return report
 
     @staticmethod
@@ -77,7 +74,7 @@ class HousekeepingService:
     @staticmethod
     def _fail_orphaned_hook_jobs(now: datetime) -> int:
         return PluginHookJob.objects.filter(
-            grant__isnull=True, kind__in=_GRANT_STEP_KINDS, state__in=OPEN_HOOK_JOB_STATES
+            grant__isnull=True, kind__in=GRANT_STEP_HOOK_KINDS, state__in=OPEN_HOOK_JOB_STATES
         ).update(
             state=HookJobState.FAILED,
             finished_at=now,

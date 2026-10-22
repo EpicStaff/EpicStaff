@@ -112,7 +112,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 |---|---|---|
 | `PLUGINS_DB_SUPERUSER_PASSWORD` | `none` | `openssl rand -hex 32`. The `postgres` superuser's password, used once, when `plugins_db` first initializes its volume. The superuser works only over the container's own socket, never over the network. |
 | `PLUGINS_DB_ADMIN_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_admin`, the plugin node's login on `plugins_db`, which creates every plugin's database and roles. `plugins_db` sets it at its first start and es_plugins logs in with it, so both must have the same value. It can read every plugin's data: keep it like a root password. |
-| `PLUGINS_DB_BACKUP_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_backup`, which may read every plugin's data for backups before upgrades. `plugins_db` creates it at its first start; nothing logs in with it in this version. |
+| `PLUGINS_DB_BACKUP_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_backup`, the login the plugin node backs plugin databases up with before an upgrade (see [Backups](#backups)). `plugins_db` sets it at its first start and es_plugins logs in with it, so both must have the same value. It can read every plugin's data: keep it like a root password. |
 | `PLUGINS_DB_MAX_CONNECTIONS` | `200` | `plugins_db`'s connection limit: at least the number of plugin backends times `PLUGINS_MAX_DB_CONNECTIONS`, plus 10. 5 of these are kept for the plugin node (see [Plugin databases](#plugin-databases)). |
 
 The three passwords must each be at least 32 characters, and `none` is refused, whenever the
@@ -189,9 +189,13 @@ plugins off nginx does not read the plugin values at all.
 
 **es_plugins** exits when `PLUGINS_NODE_UID_RANGE` is not a valid range, `PLUGINS_NODE_KEY` is
 `none` or shorter than 32 characters, or `ES_PLUGINS_DISK_MB_PER_PLUGIN` or
-`ES_PLUGINS_FILES_PER_PLUGIN` is not a whole number above 0, `PLUGINS_DB_ADMIN_PASSWORD` is
-`none` or shorter than 32 characters, the egress policy volume cannot be written, and when a port of its range (20001–20999) cannot be bound
-at start-up; Docker then restarts it, and its log names the variable or the port.
+`ES_PLUGINS_FILES_PER_PLUGIN` is not a whole number above 0, `PLUGINS_DB_ADMIN_PASSWORD` or
+`PLUGINS_DB_BACKUP_PASSWORD` is `none` or shorter than 32 characters, the egress policy volume
+cannot be written, a port of its range (20001–20999) cannot be bound, or the per-plugin
+connection limits or the refusal of `bind()` cannot be set at start-up (`The per-plugin connection
+limits could not be set`: the container lacks `NET_ADMIN` or `BPF`, or the Docker host gives it no
+cgroup v2, which needs Linux 5.8 or later and Docker's default cgroup setup); Docker then restarts
+it, and its log names the variable, the port or the step.
 
 **plugins_db**, when it initializes an empty volume, refuses a password variable that is `none`
 or shorter than 32 characters. Its log names the variables, never their values, and it removes the
@@ -366,15 +370,17 @@ Nothing needs configuring for it, but EpicStaff's login cookie changed with it, 
 
 The node container runs with a read-only root file system and `no-new-privileges`. Its launcher
 process has the `SETUID`, `SETGID` and `CHOWN` capabilities and no other. The container also has
-`NET_ADMIN` and `SETPCAP` for its entrypoint only: before the launcher starts, the entrypoint
-installs the per-plugin connection limits below in the container's network namespace, then starts
-the launcher with nothing but those three capabilities left in any capability set, so nothing on
-the node can change the limits afterwards. A shell you open in the container with `docker exec`
-gets the container's capabilities, `NET_ADMIN` included; no plugin process does. Each plugin
-backend runs as its own user id from `PLUGINS_NODE_UID_RANGE`, without any capability, with at
-most 64 processes and 1024 open files and no POSIX message queues, in its own session. Its secret settings reach it only in a file
-that only its own user id can read; its database URL and its proxy URL, credentials included, are
-in its environment, which only its own user id can read too.
+`NET_ADMIN`, `BPF` and `SETPCAP` for its entrypoint only: before the launcher starts, the
+entrypoint installs the per-plugin connection limits below in the container's network namespace
+and the refusal of `bind()` in its cgroup, then starts the launcher with nothing but those three
+capabilities left in any capability set, so nothing on the node can change them afterwards. A
+shell you open in the container with `docker exec` gets the container's capabilities, `NET_ADMIN`
+and `BPF` included; no plugin process does. Each plugin backend runs as its own user id from
+`PLUGINS_NODE_UID_RANGE`, without any capability, with at most 64 processes and 256 open files
+each, no POSIX message queues and no System V IPC objects (a seccomp filter refuses to make or
+open them), in its own session. Its secret settings reach it only in a file that only its own user
+id can read; its database URL and its proxy URL, credentials included, are in its environment,
+which only its own user id can read too.
 
 A plugin **cannot** read another plugin's settings, environment, code, data or Python
 environment, signal or trace its processes, or reach the node's launcher. A plugin **can** see
@@ -386,14 +392,18 @@ EpicStaff. That is why no secret is ever put on a command line.
 A plugin cannot take another plugin's port either, nor one a plugin installed later will get.
 When it starts, the node binds every port of its range (20001–20999) and keeps them all; it hands
 each plugin's process the listening socket of that plugin's port, and `epicstaff-plugin` serves
-on it. No plugin can bind a port of the range at all.
+on it. No plugin can bind an inet socket at all: `bind()` answers "Operation not permitted" to
+every plugin user id.
 
 Plugin backends and the node share the container's network namespace, and with it its local
-ports. So that one plugin cannot use them up, or the connection slots of `plugins_db` and the
-egress proxy, each plugin backend may open at most 200 new TCP connections a second (after a burst
-of 200), and have at most `PLUGINS_MAX_DB_CONNECTIONS` connections open to `plugins_db` and 64 to
-the egress proxy at once. A connection over a limit is refused at once. The node's own connections
-are never limited.
+ports (21000–65535 for outbound connections). So that one plugin cannot use them up, or the
+connection slots of `plugins_db` and the egress proxy, each plugin backend may open at most 200
+new TCP connections a second (after a burst of 200), and have at most 512 TCP connections open at
+once, `PLUGINS_MAX_DB_CONNECTIONS` of them to `plugins_db` and 64 to the egress proxy. A
+connection over a limit is refused at once. The node's own connections are never limited. Two
+ways of sharing the namespace remain, which several plugins together could use: UDP sockets
+connected without sending (each holds a local port; the descriptor limit bounds one plugin's),
+and UNIX sockets in the abstract namespace, which every process in the container can reach.
 
 The node is on two internal Docker networks only: `plugins-network`, which it shares with nothing
 but nginx and the egress proxy, and `plugins-db-network`, which it shares with nothing but
@@ -617,6 +627,120 @@ the operator:
 - **Resume mints new keys.** The organization's keys are revoked at suspension; the next credentials
   refresh of the node, within seconds of the resume, writes a new one.
 
+## Upgrading plugins
+
+A SuperAdmin starts each upgrade. Uploading a newer version of an installed plugin only puts it up
+for review: the review shows what the new version may do that the installed one may not (new
+access, which the SuperAdmin approves explicitly), its database migrations, and how big the
+database's backup will be. "Upgrade to <version>" then runs it:
+
+1. **Preparing.** The plugin keeps running while the node downloads, checks and builds the new
+   version next to the installed one. Most failures happen here (a package without wheels for the
+   node's platform, not enough disk space), and cost no downtime.
+2. **Maintenance.** The plugin goes offline: its pages show "This plugin is being updated", its
+   API answers `503`, and runs that use its resources are refused (sessions already running go
+   on). The node waits for an organization's hook that is still running, stops the plugin, and
+   backs its database up.
+3. **Migrations and start.** The node applies the new version's migrations and starts it. Then
+   each organization's upgrade hook runs; an organization is offline until its own hook has
+   succeeded, and a failing hook is tried again after 1 and 5 minutes.
+
+A backup takes time and room in proportion to the database: the review shows the database's last
+size, and the node refuses to stop the plugin when the `es_plugins_data` volume lacks that much
+free space above its floor (see [Disk](#disk)). The backups are on that volume (see
+[Backups](#backups)).
+
+### When an upgrade fails
+
+The plugin's page shows where the upgrade stopped and the error. EpicStaff never rolls back by
+itself.
+
+| Failed while | Options |
+|---|---|
+| Preparing | The plugin is still running. Fix the cause (disk space, wheels for the node's platform) and Retry, upload a newer version, or Cancel |
+| Backing up | Free disk space or fix `plugins_db`, then Retry, or Cancel |
+| Running migrations | When the database holds no change of the new version: Cancel. Otherwise: Restore the backup, then Cancel; or upload a newer version that keeps the files already applied; or Retry an error that has passed |
+| Starting | Upload a newer version, or Restore, then Cancel |
+| An organization's upgrade hook | That organization stays offline. After the automatic retries, Retry on its row, or upload a newer version |
+
+### Backups
+
+- **Before the first migration of an upgrade** the node backs the plugin's database up with
+  `pg_dump`, logged in as `plugins_backup`, which reads every table and runs nothing of the
+  plugin's. It also backs the database up before each restore, so a restore can be undone.
+- **What is kept:** the backups of the three latest upgrades, none older than
+  `PLUGINS_GRACE_PERIOD_DAYS`, and every backup an open upgrade or restore still needs. EpicStaff
+  decides, and the node deletes only the backups EpicStaff no longer keeps.
+- **They hold every organization's data of that plugin**, deleted organizations' included until
+  they age out. They are not encrypted: the volume and a directory only the node's agent may
+  read (no plugin can) are their protection. Copy them off the host only as carefully as the
+  database itself.
+- **Where:** `backups/<identifier>/` on the `es_plugins_data` volume, one `.dump` and one
+  `.json` each. They go with the plugin when it is deleted.
+- **`PLUGINS_DB_BACKUP_PASSWORD`** is read by es_plugins now, as well as by `plugins_db`.
+- **EpicStaff restores only during an upgrade that failed**, and only a backup that upgrade took
+  (Restore… on the Runtime tab). It replaces the database, after backing up the database as it
+  is.
+- **A plugin database with large objects cannot be backed up** (`plugins_backup` may not read
+  them): such a plugin's upgrades stop at the backup, and can be cancelled. Plugins store binary
+  data in `bytea` columns instead.
+- **The node carries PostgreSQL 17's `pg_dump` and `pg_restore`**, the major version of
+  `plugins_db`. Run the `plugins_db` image this version's compose file names: `pg_dump` refuses
+  a server of a newer major version.
+
+### Inspecting an older backup by hand
+
+Restoring an older backup is not offered in EpicStaff. To look at one, first read it without any
+database, which runs nothing at all:
+
+```bash
+docker compose cp es_plugins:/var/lib/es_plugins/backups/<identifier>/<file>.dump ./
+docker compose cp ./<file>.dump plugins_db:/tmp/<file>.dump
+docker compose exec plugins_db pg_restore --list /tmp/<file>.dump
+docker compose exec plugins_db pg_restore --data-only --table=<table> --file=- /tmp/<file>.dump
+```
+
+To query it, restore it **only as the plugin's owner role, into a new database**. Never as
+`postgres` or `plugins_admin`: a plugin's functions and triggers in the dump run with the rights of
+whoever restores it.
+
+1. Create the database, owned by the owner, and let the owner log in for 10 minutes over the
+   socket (the password is asked for, never on a command line):
+
+   ```bash
+   docker compose exec -T -u postgres plugins_db psql <<'SQL'
+   CREATE DATABASE "inspect_<id>" OWNER "<id>_owner" TEMPLATE template0;
+   SELECT format('ALTER ROLE %I LOGIN CONNECTION LIMIT 1 VALID UNTIL %L', '<id>_owner', now() + interval '10 minutes') \gexec
+   SQL
+   docker compose exec -it -u postgres plugins_db psql -c '\password "<id>_owner"'
+   ```
+
+2. Restore as the owner over TCP, giving that password:
+
+   ```bash
+   docker compose exec -it plugins_db pg_restore --no-owner --single-transaction --enable-row-security \
+     -W -h 127.0.0.1 -U "<id>_owner" -d "inspect_<id>" /tmp/<file>.dump
+   ```
+
+   Query it the same way (`psql -W -h 127.0.0.1 -U "<id>_owner" -d "inspect_<id>"`). Tables
+   with `FORCE ROW LEVEL SECURITY` show the owner no rows; in this copy, `ALTER TABLE … NO FORCE
+   ROW LEVEL SECURITY` lifts that.
+3. Close the owner again:
+
+   ```bash
+   docker compose exec -u postgres plugins_db psql \
+     -c "ALTER ROLE \"<id>_owner\" NOLOGIN PASSWORD NULL CONNECTION LIMIT -1 VALID UNTIL 'infinity'" \
+     -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = '<id>_owner'"
+   ```
+
+   The node closes it within a minute anyway, if you forget.
+4. When done, drop the copy and delete the file:
+
+   ```bash
+   docker compose exec -u postgres plugins_db psql -c 'DROP DATABASE "inspect_<id>"'
+   docker compose exec plugins_db rm /tmp/<file>.dump
+   ```
+
 ## Uninstalling and deleting plugins
 
 A SuperAdmin uninstalls a plugin, reinstalls it, or deletes it permanently on the plugin's page
@@ -636,7 +760,8 @@ the operator:
   3. then EpicStaff deletes its frontend and package files.
 
   The plugin's activity stays, for SuperAdmins.
-- **No backup is taken.** Back up the `plugins_pgdata` volume first if you may need the data (see
+- **No backup is taken, and the backups the node took before upgrades are deleted with the
+  plugin.** Back up the `plugins_pgdata` volume first if you may need the data (see
   [Backing up plugin databases](#backing-up-plugin-databases)).
 - **The plugin node must be running** for a deletion to finish. Until the node reports the plugin
   removed, its page shows "Deleting"; an error the node cannot get past shows there too, with
@@ -649,6 +774,21 @@ the operator:
 - **A backup session holds a deletion.** The node ends only the plugin's own sessions; while
   another session, a backup's, is connected to the plugin's database, it tries again every 30
   seconds.
+- **Another plugin's database referring to this plugin's roles stops the deletion for good.** The
+  deletion stops with "database "plugin_<other>" still refer to this plugin's roles": the plugin
+  `<other>` granted access to one of its own tables to this plugin's role, or named it in a
+  policy (role names are visible to every plugin). The node also stops `<other>` itself at its
+  next check, with "objects in database plugin_<other> refer to role(s) …". Either delete the
+  plugin `<other>` first, or remove the references from its database over the socket (this
+  changes nothing of `<other>`'s data, only its grants and policies naming those roles):
+
+  ```bash
+  docker compose exec -u postgres plugins_db psql -d plugin_<other> \
+    -c 'DROP OWNED BY "<id>_app", "<id>_job", "<id>_owner"'
+  ```
+
+  Then press Retry removal on this plugin, and Restart on `<other>`. Tell the publisher of
+  `<other>`: a new version that grants to another plugin's role would be stopped again.
 - **The plugin's user id and port are reused only after the node has removed everything**, so a
   plugin approved later never finds anything of a deleted one.
 - **With plugins switched off**, EpicStaff still deletes the plugins' EpicStaff resources when a
@@ -684,7 +824,10 @@ its ownership kept (`docker run --rm -v <project>_es_plugins_data:/from -v /srv/
 alpine cp -a /from/. /to/`; `docker volume ls` shows the volume's full name), remove the old
 volume, and start the node again. Size the file system for at least
 `ES_PLUGINS_DISK_MB_PER_PLUGIN` × the number of plugin backends, plus a few hundred MB per plugin
-for its code and Python environment, plus the 2 GiB install reserve below.
+for its code and Python environment, plus the 2 GiB install reserve below, plus room for the
+backups taken before upgrades: up to three per plugin with a database, each about its database's
+size or less (see [Backups](#backups)). During an upgrade a plugin's old and new versions are on
+the volume together; the old one goes when the upgrade is done.
 
 **The cap per plugin.** Every 30 s the node measures each running plugin's HOME (TMPDIR is inside
 it): the blocks its files take, so a sparse file counts what it really uses, and its files,
@@ -726,7 +869,7 @@ memory, the last error and, for a failed plugin, the end of its log.
 | The plugin stays `provisioning`, the node is not online | The node is not running or cannot authenticate: `docker compose ps es_plugins`, `docker compose logs es_plugins`. `PLUGINS_NODE_KEY` must be the same for django_app and es_plugins; recreate django_app after changing it. |
 | `<project> <version> has no wheel for this node (its wheels are built for …)` | The package has no wheel of that project for this host's architecture. The publisher packs again for it (`epicstaff-plugin pack --download-wheels`, which by default packs for both `x86_64` and `aarch64`). |
 | `failed` after repeated restarts | The backend kept stopping: it was restarted ten times in a row without once staying healthy for a minute in between (the node waits 1 s before the first restart, doubling up to 5 minutes, so this takes at least 13.5 minutes). Read the log on the Runtime tab, fix the cause (often a setting), then press Restart. |
-| The backend exits at once with `Address already in use` in its log | It opens a server socket itself instead of serving on the socket the node hands it (`EPICSTAFF_PLUGIN_LISTEN_FD`, which `epicstaff-plugin` uses); every port of the node's range is the node's. The publisher must fix the backend. |
+| The backend exits at once with `Operation not permitted` or `Address already in use` in its log | It opens a server socket itself instead of serving on the socket the node hands it (`EPICSTAFF_PLUGIN_LISTEN_FD`, which `epicstaff-plugin` uses); no plugin may bind a socket, and every port of the node's range is the node's. The publisher must fix the backend. |
 | `port … is still in use by placement …` | The plugin got a port another plugin on the node is just giving up (EpicStaff moved them). The node tries again every 30 s; it passes once the other is stopped. |
 | `port … is not one of this node's ports` | The node and django_app disagree about the port range: they are of different versions. Run the same version of both. |
 | `bin/python is not a symlink; a wheel may have replaced it` | A wheel in the package installs a program of its own over the plugin's Python. The node refuses to install the package; the publisher must remove that wheel. |
@@ -747,7 +890,11 @@ memory, the last error and, for a failed plugin, the end of its log.
 
 A backend's output is also in the node's log, each line prefixed with `[<identifier>]`
 (`docker compose logs es_plugins`), and in `/var/lib/es_plugins/logs/<identifier>/` inside the
-`es_plugins_data` volume (10 MB, three files).
+`es_plugins_data` volume (10 MB, three files). The compose file gives es_plugins, plugins_db and
+plugins_egress Docker's `json-file` log driver with a size limit, so one plugin cannot fill the
+host's disk through the node's log. That overrides a log driver you set for the Docker daemon;
+to send these logs elsewhere, set their `logging:` in a `docker-compose.override.yaml`, with a
+size limit of its own.
 
 ## Local development
 
@@ -778,6 +925,7 @@ differently, so test Safari against a real domain over HTTPS, or against `*.test
 | Approved plugins' web files, as served | The `plugin_spa` Docker volume: django_app writes it, epicstaff-nginx reads it |
 | Plugins, approvals, grants, settings (secrets encrypted) and limits | EpicStaff's database |
 | Plugin backends' own files, their installed code and Python environments, their logs | The `es_plugins_data` Docker volume |
+| The backups the node takes before upgrades | `backups/<identifier>/` on the `es_plugins_data` volume, which only the node's agent may read |
 | Plugin databases | The `plugins_pgdata` Docker volume (`plugins_db`) |
 | The egress proxy's host lists and password hashes | The `plugin_egress_policy` Docker volume, rebuilt at every start of the node |
 
@@ -861,10 +1009,15 @@ docker compose exec -u postgres plugins_db psql \
 ```
 
 Either way, then run `docker compose up -d plugins_db`. It recreates the container, so the new
-server command (a cap on each session's temporary files) and the new `pg_hba.conf` (which refuses
-`plugins_backup` until backups use it) apply. `docker compose restart` keeps the old command, and a
-reload alone may not see a replaced `pg_hba.conf` on a Linux host, where a mounted file stays the
-one the container started with.
+server command (a cap on each session's temporary files) and the new `pg_hba.conf` (which lets
+`plugins_backup` log in to plugin databases, for the backups taken before upgrades) apply. `docker
+compose restart` keeps the old command, and a reload alone may not see a replaced `pg_hba.conf`
+on a Linux host, where a mounted file stays the one the container started with.
+
+es_plugins now needs the `BPF` capability for its entrypoint, which the compose file gives it,
+and a Docker host with cgroup v2 (Linux 5.8 or later, Docker's default cgroup setup): recreate it
+with `docker compose up -d es_plugins`. It also reads `PLUGINS_DB_BACKUP_PASSWORD`, which must be
+the value `plugins_db` was first started with.
 
 On HTTPS deployments everyone is signed out once after this upgrade, plugins on or off: EpicStaff's
 login cookie is now `__Host-auth.refresh` (see

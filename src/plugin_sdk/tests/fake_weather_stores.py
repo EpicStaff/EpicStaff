@@ -19,17 +19,29 @@ class FakeSavedPlaces:
         self._places = places_module
         # id -> (org_id, created_by, SavedPlace)
         self.rows = {}
+        # Each store_conditions call: (org_id, {place_id: PlaceConditions}).
+        self.stored_conditions = []
         self._next_id = 1
 
-    def seed(self, org_id, user_id, name, country, latitude=0.0, longitude=0.0, admin1=None):
-        place = self._places.SavedPlace(
-            id=self._next_id,
-            name=name,
-            admin1=admin1,
-            country=country,
-            latitude=latitude,
-            longitude=longitude,
-            created_at=SAVED_AT,
+    def seed(self, org_id, user_id, name, country, latitude=0.0, longitude=0.0, admin1=None, conditions=None):
+        """Save a place at the end of the organization's list, as the store's add does.
+
+        `conditions` takes what the database gives, a Decimal temperature and a timestamp in the
+        session's time zone, and goes through the model as the store's rows do.
+        """
+        position = 1 + max((place.position for owner, _, place in self.rows.values() if owner == org_id), default=0)
+        place = self._places.SavedPlace.model_validate(
+            {
+                "id": self._next_id,
+                "name": name,
+                "admin1": admin1,
+                "country": country,
+                "latitude": latitude,
+                "longitude": longitude,
+                "created_at": SAVED_AT,
+                "position": position,
+                "conditions": conditions,
+            }
         )
         self.rows[place.id] = (org_id, user_id, place)
         self._next_id += 1
@@ -37,10 +49,16 @@ class FakeSavedPlaces:
 
     async def list(self, org_id):
         places = [place for owner, _, place in self.rows.values() if owner == org_id]
-        # The store's ORDER BY name, country, admin1 NULLS FIRST, id.
-        return sorted(
-            places, key=lambda place: (place.name, place.country, place.admin1 is not None, place.admin1 or "", place.id)
-        )
+        # The store's ORDER BY position, id.
+        return sorted(places, key=lambda place: (place.position, place.id))
+
+    async def store_conditions(self, org_id, conditions):
+        self.stored_conditions.append((org_id, dict(conditions)))
+        for place_id, value in conditions.items():
+            # The store skips a place that is gone, or another organization's.
+            if place_id in self.rows and self.rows[place_id][0] == org_id:
+                owner, created_by, place = self.rows[place_id]
+                self.rows[place_id] = (owner, created_by, place.model_copy(update={"conditions": value}))
 
     async def add(self, org_id, user_id, candidate):
         # The table's UNIQUE NULLS NOT DISTINCT (org_id, name, admin1, country).
@@ -97,17 +115,20 @@ class _RecordingConnectionInfo:
 class RecordingConnection:
     """A psycopg-shaped connection that records each statement with the transaction it ran in.
 
-    `rowcounts(query)` gives the row count of each statement; `error` makes every statement
-    after the first (the transaction's own setting) raise it.
+    `rowcounts(query)` gives the row count of each statement, and `rows(query)` the row its
+    `fetchone()` returns (None by default); `error` makes every statement after the first (the
+    transaction's own setting) raise it. Parameters are recorded as given: a tuple, or a dict
+    of named ones.
     """
 
-    def __init__(self, rowcounts=None, error=None):
+    def __init__(self, rowcounts=None, error=None, rows=None):
         self.statements = []
         self.depth = 0
         self.transactions = 0
         self.committed = []
         self.info = _RecordingConnectionInfo(self)
         self._rowcounts = rowcounts or (lambda query: 1)
+        self._rows = rows or (lambda query: None)
         self._error = error
 
     @asynccontextmanager
@@ -124,8 +145,13 @@ class RecordingConnection:
     async def execute(self, query, params=()):
         if self._error is not None and not query.startswith("SELECT pg_catalog.set_config"):
             raise self._error
-        self.statements.append((self.transactions, query, tuple(params)))
-        return SimpleNamespace(rowcount=self._rowcounts(query))
+        self.statements.append((self.transactions, query, dict(params) if isinstance(params, dict) else tuple(params)))
+        row = self._rows(query)
+
+        async def fetchone():
+            return row
+
+        return SimpleNamespace(rowcount=self._rowcounts(query), fetchone=fetchone)
 
 
 class RecordingPool:
