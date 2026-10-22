@@ -44,6 +44,10 @@ from tables.services.graph_bulk_save_service.factories import (
     KnowledgeNodeSaveableFactory,
     NodeSaveableFactory,
 )
+from tables.services.secrets.secret_use_checks import (
+    SecretUseCheck,
+    check_telegram_trigger_node_write,
+)
 
 # Singletons — factories are stateless.
 _DEFAULT_FACTORY = DefaultNodeSaveableFactory()
@@ -64,6 +68,9 @@ class NodeTypeConfig:
     # A trigger node: it starts flow runs on its own (webhook call, Telegram
     # message, schedule), so creating or editing one requires FLOWS.USE.
     starts_runs: bool = False
+    # The node's `check_<entity>_write` from secret_use_checks, for a node type whose
+    # writes can need secrets:USE. Called with the validated data before the save.
+    secret_use_check: SecretUseCheck | None = None
 
     def __post_init__(self):
         if self.saveable_factory is None:
@@ -84,7 +91,8 @@ NODE_TYPE_REGISTRY — single source of truth for all node types
 To add a new node type:
   1. Add one BulkSerializer class in graph_bulk_save_serializers.py.
   2. Add one NodeTypeConfig line here; set starts_runs=True if the node
-     starts flow runs by itself (a trigger).
+     starts flow runs by itself (a trigger), and secret_use_check if it
+     references secrets.
   Everything else (service loop, serializer fields, deletions, temp_id
   scan) updates automatically.
 """
@@ -172,6 +180,7 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         TelegramTriggerNode,
         TelegramTriggerNodeBulkSerializer,
         starts_runs=True,
+        secret_use_check=check_telegram_trigger_node_write,
     ),
     NodeTypeConfig(
         "schedule_trigger_node_list",

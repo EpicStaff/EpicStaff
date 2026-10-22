@@ -54,3 +54,14 @@ class SecretUseDeniedError(Exception):
         super().__init__(message)
         self.field_path = field_path
         self.message = message
+
+    def field_errors(self) -> dict:
+        """Return the message nested along `field_path`, shaped like a serializer's `errors`.
+
+        `("python_code", "secret_ids")` gives `{"python_code": {"secret_ids": [message]}}`,
+        what the nested PythonCode serializer would report for that field.
+        """
+        errors = [self.message]
+        for segment in reversed(self.field_path):
+            errors = {segment: errors}
+        return errors

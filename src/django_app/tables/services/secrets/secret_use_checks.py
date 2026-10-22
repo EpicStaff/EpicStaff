@@ -6,11 +6,15 @@ so the persisted value stands in for it. Each check raises SecretUseDeniedError
 when the write needs secrets:USE and `actor` lacks it.
 """
 
+from collections.abc import Callable
+
 from django.db import models
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.llm_models import LLMConfig
 from tables.services.secrets.secret_resolver import extract_secret_marker_names
 from tables.services.secrets.secret_use_service import SecretActor, secret_use_service
+
+SecretUseCheck = Callable[[SecretActor | None, object, dict], None]
 
 
 def check_llm_config_write(actor: SecretActor | None, instance, data: dict) -> None:
@@ -156,6 +160,15 @@ def check_webhook_trigger_write(actor: SecretActor | None, instance, data: dict)
         current=current_token_secret_id,
         incoming=ngrok_data.get("auth_token_secret", current_token_secret_id),
     )
+
+
+def check_telegram_trigger_node_write(actor: SecretActor | None, instance, data: dict) -> None:
+    """Gate a change of a TelegramTriggerNode's bot API-key secret.
+
+    The node has no destination field: the bot key is only ever sent to the
+    Telegram Bot API at its fixed host.
+    """
+    _check_secret_reference(actor, instance, data, attribute="telegram_bot_api_key_secret")
 
 
 def _check_api_key_and_header_markers(actor: SecretActor | None, instance, data: dict) -> None:

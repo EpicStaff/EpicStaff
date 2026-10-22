@@ -288,6 +288,7 @@ from tables.services.secrets.secret_use_checks import (
     check_openai_realtime_config_write,
     check_realtime_config_write,
     check_realtime_transcription_config_write,
+    check_telegram_trigger_node_write,
     check_twilio_channel_write,
     check_webhook_trigger_write,
 )
@@ -2610,6 +2611,7 @@ class WebhookTriggerViewSet(
     partial_update=extend_schema(**TELEGRAM_TRIGGER_NODE_WRITE),
 )
 class TelegramTriggerNodeViewSet(
+    SecretUseCheckedViewSetMixin,
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
@@ -2633,6 +2635,7 @@ class TelegramTriggerNodeViewSet(
         *authorship_prefetches("webhook_trigger"),
     )
     serializer_class = TelegramTriggerNodeSerializer
+    secret_use_check = check_telegram_trigger_node_write
 
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:

@@ -25,6 +25,8 @@ from tables.services.graph_bulk_save_service.saveables import (
     _NodeSaveable,
 )
 from tables.services.node_number_service import NodeNumberService
+from tables.services.secrets import SecretUseDeniedError
+from tables.services.secrets.request_actor import actor_from_request
 
 
 class GraphBulkSaveService:
@@ -251,6 +253,14 @@ class GraphBulkSaveService:
         )
         if not s.is_valid():
             return BuildSaveableResult(error={"index": index, "errors": s.errors})
+
+        if config.secret_use_check is not None:
+            try:
+                config.secret_use_check(
+                    actor_from_request(self._request), instance, s.validated_data
+                )
+            except SecretUseDeniedError as denial:
+                return BuildSaveableResult(error={"index": index, "errors": denial.field_errors()})
 
         inner = config.saveable_factory.build(s, extra, instance)
         deferred = config.saveable_factory.build_deferred(inner, extra)
