@@ -203,6 +203,7 @@ class JobOrchestrator:
         storage_org_prefix: str | None,
         storage_credentials: StorageCredentials | None,
         timeout: float | None,
+        reply_to_crew_channel: bool,
     ) -> Job:
         venv = await self._resolve_venv(venv_id)
 
@@ -222,12 +223,13 @@ class JobOrchestrator:
             storage_org_prefix=storage_org_prefix,
             storage_credentials=storage_credentials,
             timeout=timeout,
+            reply_to_crew_channel=reply_to_crew_channel,
             error=None,
         )
 
         if venv.status is VenvStatus.FAILED:
             logger.warning("Execution {} rejected: venv {} failed to build", execution_id, venv.id)
-            await self.failure_sink.fail(execution_id, _VENV_BUILD_FAILED_MESSAGE)
+            await self._fail(job, _VENV_BUILD_FAILED_MESSAGE)
         elif venv.status is VenvStatus.COMPLETED:
             await self._dispatch(job)
         else:
@@ -244,7 +246,7 @@ class JobOrchestrator:
 
             if venv is None or venv.status is VenvStatus.FAILED:
                 for job in self.holding.release(venv_id):
-                    await self.failure_sink.fail(job.execution_id, _VENV_BUILD_FAILED_MESSAGE)
+                    await self._fail(job, _VENV_BUILD_FAILED_MESSAGE)
                 continue
 
             if venv.status is VenvStatus.COMPLETED:
@@ -264,7 +266,14 @@ class JobOrchestrator:
             await self.dispatcher.dispatch(job)
         except Exception:
             logger.exception("Failed to dispatch job {}", job.execution_id)
-            await self.failure_sink.fail(job.execution_id, _DISPATCH_FAILED_MESSAGE)
+            await self._fail(job, _DISPATCH_FAILED_MESSAGE)
+
+    async def _fail(self, job: Job, message: str) -> None:
+        await self.failure_sink.fail(
+            job.execution_id,
+            message,
+            reply_to_crew_channel=job.reply_to_crew_channel,
+        )
 
     async def _resolve_venv(self, venv_id: int | None) -> Venv:
         async with self.uow:

@@ -114,7 +114,7 @@ def build_worker(runtime) -> ExecutionOrchestrator:
                 storage_port=9000,
             )
         )
-        .register(LaunchStep(default_timeout=30))
+        .register(LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None))
         .register(CaptureMutationsStep())
         .register(CaptureResultStep())
     )
@@ -150,6 +150,7 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
         storage_org_prefix=None,
         storage_credentials=None,
         timeout=None,
+        reply_to_crew_channel=False,
     )
 
     job = await QueueJobSource(runtime["job_queue"]).get()
@@ -190,6 +191,7 @@ async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uo
         storage_org_prefix=None,
         storage_credentials=None,
         timeout=None,
+        reply_to_crew_channel=False,
     )
 
     assert runtime["job_queue"].empty()
@@ -223,8 +225,79 @@ async def test_storage_credentials_reach_the_worker_unchanged(uow, runtime):
         storage_org_prefix="org1",
         storage_credentials=StorageCredentials(access_key="AK123", secret_key="SK456"),
         timeout=None,
+        reply_to_crew_channel=False,
     )
 
     job = await QueueJobSource(runtime["job_queue"]).get()
     assert job.storage_credentials.access_key == "AK123"
     assert job.storage_credentials.secret_key == "SK456"
+
+
+async def test_a_crew_submission_is_still_flagged_on_the_result_that_comes_back(uow, runtime):
+    """The routing flag has to survive the manager, the worker and the way back.
+
+    The manager is what publishes, so a flag that got lost anywhere along this path
+    would send crew's result to the shared channel and leave crew waiting.
+    """
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash=VENV_HASH))[0]
+    manager = JobOrchestrator(
+        uow,
+        QueueJobDispatcher(runtime["job_queue"]),
+        JobHoldingRegistry(),
+        QueueJobFailureSink(runtime["result_queue"]),
+    )
+
+    await manager.submit(
+        execution_id=EXECUTION_ID,
+        session_id=7,
+        code=CODE,
+        entrypoint="main",
+        global_kwargs={"LIMIT": 3},
+        func_kwargs={"value": "x"},
+        secrets={},
+        venv_id=venv.id,
+        use_storage=False,
+        storage_allowed_paths=[],
+        storage_org_prefix=None,
+        storage_credentials=None,
+        timeout=None,
+        reply_to_crew_channel=True,
+    )
+
+    job = await QueueJobSource(runtime["job_queue"]).get()
+    await build_worker(runtime).execute(job)
+
+    message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
+    assert message.returncode == 0
+    assert message.reply_to_crew_channel is True
+
+
+async def test_a_crew_submission_whose_venv_failed_is_still_flagged(uow, runtime):
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.FAILED, error="uv blew up"))[0]
+    manager = JobOrchestrator(
+        uow,
+        QueueJobDispatcher(runtime["job_queue"]),
+        JobHoldingRegistry(),
+        QueueJobFailureSink(runtime["result_queue"]),
+    )
+
+    await manager.submit(
+        execution_id=EXECUTION_ID,
+        session_id=7,
+        code=CODE,
+        entrypoint="main",
+        global_kwargs={},
+        func_kwargs={},
+        secrets={},
+        venv_id=venv.id,
+        use_storage=False,
+        storage_allowed_paths=[],
+        storage_org_prefix=None,
+        storage_credentials=None,
+        timeout=None,
+        reply_to_crew_channel=True,
+    )
+
+    message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
+    assert message.returncode == 1
+    assert message.reply_to_crew_channel is True

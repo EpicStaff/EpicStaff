@@ -78,10 +78,30 @@ async def test_dispatch_does_not_put_the_venv_id_on_the_wire():
 async def test_the_failure_sink_produces_a_failed_result_message():
     queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
 
-    await QueueJobFailureSink(queue).fail("exec-9", "the venv failed to build")
+    await QueueJobFailureSink(queue).fail(
+        "exec-9", "the venv failed to build", reply_to_crew_channel=False
+    )
 
     message = queue.get_nowait()
     assert message.execution_id == "exec-9"
     assert message.stderr == "the venv failed to build"
     assert message.returncode == 1
     assert message.result is None
+
+
+async def test_dispatch_carries_the_crew_reply_flag_to_the_worker():
+    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
+
+    await QueueJobDispatcher(queue).dispatch(make_manager_job(reply_to_crew_channel=True))
+
+    assert queue.get_nowait().reply_to_crew_channel is True
+
+
+async def test_a_job_that_never_ran_keeps_the_crew_reply_flag_on_its_failed_result():
+    queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
+
+    await QueueJobFailureSink(queue).fail(
+        "exec-9", "the venv failed to build", reply_to_crew_channel=True
+    )
+
+    assert queue.get_nowait().reply_to_crew_channel is True

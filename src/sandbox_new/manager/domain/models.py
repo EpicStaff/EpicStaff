@@ -163,4 +163,7 @@ class Job(Entity):
     # Held jobs are dispatched later, so the manager carries these until then.
     storage_credentials: StorageCredentials | None = None
     timeout: float | None = None
+    # Crew subscribes to a channel of its own; this asks for the result to go there
+    # instead of the shared one. The channel name is the sandbox's, not the caller's.
+    reply_to_crew_channel: bool = False
     error: str | None = None

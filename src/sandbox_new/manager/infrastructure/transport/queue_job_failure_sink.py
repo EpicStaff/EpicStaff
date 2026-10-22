@@ -18,7 +18,12 @@ class QueueJobFailureSink(AbstractJobFailureSink):
     def __init__(self, queue: asyncio.Queue[ExecutionResultMessage]):
         self._queue = queue
 
-    async def fail(self, execution_id: str, message: str) -> None:
+    async def fail(self, execution_id: str, message: str, *, reply_to_crew_channel: bool) -> None:
         await self._queue.put(
-            ExecutionResultMessage(execution_id=execution_id, stderr=message, returncode=1)
+            ExecutionResultMessage(
+                execution_id=execution_id,
+                stderr=message,
+                returncode=1,
+                reply_to_crew_channel=reply_to_crew_channel,
+            )
         )

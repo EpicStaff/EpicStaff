@@ -36,10 +36,12 @@ class FakeJobDispatcher(AbstractJobDispatcher):
 
 class FakeJobFailureSink(AbstractJobFailureSink):
     def __init__(self) -> None:
-        self.failures: list[tuple[str, str]] = []
+        self.failures: list[tuple[str, str, bool]] = []
 
-    async def fail(self, execution_id: str, message: str) -> None:
-        self.failures.append((execution_id, message))
+    async def fail(
+        self, execution_id: str, message: str, *, reply_to_crew_channel: bool
+    ) -> None:
+        self.failures.append((execution_id, message, reply_to_crew_channel))
 
 
 class FakeJobSource(AbstractJobSource):

@@ -48,6 +48,9 @@ class ExecutionJobMessage(Schema):
     session_id: int | None = None
     # Per-job override; the worker falls back to its configured default when None.
     timeout: float | None = None
+    # Routing hint only, echoed back on the result so the manager can publish it to the
+    # channel crew alone reads. The worker never acts on it.
+    reply_to_crew_channel: bool = False
 
 
 class StorageMutationsMessage(Schema):
@@ -67,3 +70,5 @@ class ExecutionResultMessage(Schema):
     stderr: str = ""
     returncode: int = 0
     mutations: StorageMutationsMessage | None = None
+    # Echoed from the job so the publisher knows which result channel this one belongs on.
+    reply_to_crew_channel: bool = False

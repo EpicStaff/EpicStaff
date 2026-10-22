@@ -69,6 +69,7 @@ def make_manager_job(**overrides: Any) -> ManagerJob:
         "storage_org_prefix": None,
         "storage_credentials": None,
         "timeout": None,
+        "reply_to_crew_channel": False,
         "error": None,
     }
     fields.update(overrides)
@@ -90,6 +91,7 @@ def make_worker_job(**overrides: Any) -> WorkerJob:
         "storage_credentials": None,
         "session_id": 7,
         "timeout": None,
+        "reply_to_crew_channel": False,
     }
     fields.update(overrides)
     return WorkerJob(**fields)

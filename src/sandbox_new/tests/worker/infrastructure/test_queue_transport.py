@@ -70,6 +70,7 @@ async def test_a_minimal_wire_job_decodes_with_its_defaults():
     assert job.storage_credentials is None
     assert job.timeout is None
     assert job.session_id is None
+    assert job.reply_to_crew_channel is False
 
 
 async def test_a_result_without_mutations_encodes_onto_the_wire():
@@ -107,3 +108,30 @@ async def test_mutations_are_carried_onto_the_wire():
     assert message.mutations.org_prefix == "org1"
     assert message.mutations.session_id == 7
     assert message.mutations.mutations == [{"path": "docs/a.txt"}]
+
+
+async def test_the_crew_reply_flag_decodes_onto_the_worker_job():
+    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
+    queue.put_nowait(
+        ExecutionJobMessage(
+            execution_id="exec-1",
+            venv_hash="1abc",
+            code="",
+            entrypoint="main",
+            reply_to_crew_channel=True,
+        )
+    )
+
+    job = await QueueJobSource(queue).get()
+
+    assert job.reply_to_crew_channel is True
+
+
+async def test_the_crew_reply_flag_is_encoded_back_onto_the_wire_result():
+    queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
+
+    await QueueResultSink(queue).send(
+        ExecutionResult(execution_id="exec-1", reply_to_crew_channel=True)
+    )
+
+    assert queue.get_nowait().reply_to_crew_channel is True

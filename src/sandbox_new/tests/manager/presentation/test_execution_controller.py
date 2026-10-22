@@ -159,3 +159,24 @@ def test_submit_without_storage_needs_no_credentials(client, venv_repository, di
 
     assert response.status_code == status_codes.HTTP_202_ACCEPTED
     assert dispatcher.dispatched[0].storage_credentials is None
+
+
+def test_submit_asking_for_the_crew_channel_marks_the_job(client, venv_repository, dispatcher):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={**SUBMISSION, "venv_id": venv.id, "reply_to_crew_channel": True},
+    )
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    assert dispatcher.dispatched[0].reply_to_crew_channel is True
+
+
+def test_submit_defaults_to_the_shared_result_channel(client, venv_repository, dispatcher):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post("/executions", json={**SUBMISSION, "venv_id": venv.id})
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    assert dispatcher.dispatched[0].reply_to_crew_channel is False

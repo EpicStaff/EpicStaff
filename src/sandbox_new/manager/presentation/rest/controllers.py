@@ -210,5 +210,6 @@ class ExecutionController(Controller):
                 None if data.storage_credentials is None else data.storage_credentials.to_domain()
             ),
             timeout=data.timeout,
+            reply_to_crew_channel=data.reply_to_crew_channel,
         )
         return schemas.ExecutionAcceptedSchema(execution_id=job.execution_id, status=job.status)

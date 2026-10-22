@@ -124,6 +124,10 @@ class ExecutionSubmitSchema(Schema):
     # The sandbox never mints these: the caller issues them and hands them over.
     storage_credentials: StorageCredentialsSchema | None = None
     timeout: float | None = None
+    # Asks for the result on crew's private result channel instead of the shared one.
+    # A flag, not a channel name: the sandbox derives the name from its own setting, so a
+    # caller cannot redirect results at another service's channel.
+    reply_to_crew_channel: bool = False
 
     @model_validator(mode="after")
     def require_everything_storage_needs(self) -> Self:

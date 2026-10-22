@@ -61,6 +61,7 @@ class ExecutionOrchestrator:
             stdout=stdout,
             stderr=stderr,
             returncode=context.returncode if context.returncode is not None else 1,
+            reply_to_crew_channel=context.job.reply_to_crew_channel,
         )
 
     async def _finalize(self, context: ExecutionContext) -> None:

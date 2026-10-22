@@ -74,6 +74,7 @@ async def start_runtime(app: Litestar) -> None:
             RedisResultPublisher(
                 redis,
                 result_channel=settings.JOB_RESULT_CHANNEL,
+                crew_result_channel=settings.CREW_JOB_RESULT_CHANNEL,
                 mutation_channel=settings.STORAGE_MUTATION_CHANNEL,
             ),
         ),

@@ -54,6 +54,9 @@ class Job(ValueObject):
     session_id: int | None = None
     # None means "use the worker's configured default timeout".
     timeout: float | None = None
+    # Carried for the manager's benefit only: the worker echoes it onto the result so the
+    # manager can publish to the channel the submitter listens on. Nothing here reads it.
+    reply_to_crew_channel: bool = False
 
 
 class Jail(ValueObject):
@@ -77,6 +80,8 @@ class ExecutionResult(ValueObject):
     stdout: str = ""
     stderr: str = ""
     returncode: int = 0
+    # Echoed from the job; see ``Job.reply_to_crew_channel``.
+    reply_to_crew_channel: bool = False
 
 
 class StorageMutations(ValueObject):

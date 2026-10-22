@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from foundation.utils.env import Env
+from src.shared.redis_keys import crew_code_result_channel
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -45,6 +46,9 @@ DB_NAME = env.str("DB_NAME")
 DB_SCHEMA = env.str("SANDBOX_DB_SCHEMA", "sandbox")
 
 JOB_RESULT_CHANNEL = env.str("CODE_RESULT_CHANNEL")
+# Crew reads only this channel, so it never parses results meant for django_app, agent or
+# realtime. Derived from our own CODE_RESULT_CHANNEL, never from a submission payload.
+CREW_JOB_RESULT_CHANNEL = crew_code_result_channel(JOB_RESULT_CHANNEL)
 STORAGE_MUTATION_CHANNEL = env.str("STORAGE_MUTATION_CHANNEL")
 
 REDIS_HOST = env.str("REDIS_HOST")
@@ -52,7 +56,25 @@ REDIS_PORT = env.int("REDIS_PORT")
 REDIS_USER = env.str("REDIS_USER", "")
 REDIS_PASSWORD = env.str("REDIS_PASSWORD", "")
 
-EXECUTION_TIMEOUT = env.time("SANDBOX_EXECUTION_TIMEOUT")
+# NOTE: must equal MIN_EXECUTION_TIMEOUT_SECONDS in
+# src/django_app/django_app/settings/execution_timeout.py, which is the lowest timeout the
+# frontend lets a user pick.
+MIN_EXECUTION_TIMEOUT = 3
+# Seconds. None means no upper limit.
+MAX_EXECUTION_TIMEOUT = env.time("SANDBOX_MAX_EXECUTION_TIMEOUT")
+DEFAULT_EXECUTION_TIMEOUT = env.time("SANDBOX_DEFAULT_EXECUTION_TIMEOUT")
+
+# Same rules django_app enforces on startup: a job without a timeout of its own must still
+# get a bounded one, so the default is never none and always within [MIN, MAX].
+if DEFAULT_EXECUTION_TIMEOUT is None:
+    raise ValueError("SANDBOX_DEFAULT_EXECUTION_TIMEOUT cannot be none.")
+if DEFAULT_EXECUTION_TIMEOUT < MIN_EXECUTION_TIMEOUT or (
+    MAX_EXECUTION_TIMEOUT is not None and DEFAULT_EXECUTION_TIMEOUT > MAX_EXECUTION_TIMEOUT
+):
+    raise ValueError(
+        f"SANDBOX_DEFAULT_EXECUTION_TIMEOUT must be at least {MIN_EXECUTION_TIMEOUT}s "
+        "and not above SANDBOX_MAX_EXECUTION_TIMEOUT."
+    )
 
 # Defaults are the confining value: a missing setting must not unconfine the sandbox.
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET", True)

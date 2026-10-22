@@ -26,6 +26,7 @@ SUBMISSION = {
     "storage_org_prefix": None,
     "storage_credentials": None,
     "timeout": None,
+    "reply_to_crew_channel": False,
 }
 
 
@@ -75,7 +76,7 @@ async def test_submit_against_a_failed_venv_reports_a_failure(
 
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
-    execution_id, message = failure_sink.failures[0]
+    execution_id, message, _ = failure_sink.failures[0]
     assert execution_id == "exec-1"
     assert "failed to build" in message
 
@@ -119,7 +120,7 @@ async def test_a_dispatch_failure_is_reported_as_a_failed_run(
 
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
 
-    [(execution_id, message)] = failure_sink.failures
+    [(execution_id, message, _)] = failure_sink.failures
     assert execution_id == "exec-1"
     assert message == "The job could not be handed to the worker and was not run."
 
