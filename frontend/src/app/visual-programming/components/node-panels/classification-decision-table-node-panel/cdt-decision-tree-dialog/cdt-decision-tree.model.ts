@@ -80,6 +80,8 @@ export interface CdtDecisionTreeInput {
      */
     readonly backendId: number | null;
     readonly nodeName: string;
+    /** The table's own node number, shown beside its name in the diagram title only. */
+    readonly nodeNumber?: number;
     readonly preCode: string;
     readonly postCode: string;
     readonly preInputMap: Readonly<Record<string, string>>;
@@ -160,7 +162,11 @@ export interface CdtTreeDetail {
  * means rather than how it is phrased.
  */
 export type CdtTreeTarget =
-    | { readonly state: 'node'; readonly label: string }
+    /**
+     * `label` is drawn ("Name #N", so same-named nodes are told apart); `name` is the
+     * plain node name the explain request sends, which a renumbering never changes.
+     */
+    | { readonly state: 'node'; readonly label: string; readonly name: string }
     /** Has a route code, but no target is set anywhere — the table default applies. */
     | { readonly state: 'no-capture' }
     /** No route code at all, so the target is never persisted (see `payload.ts`). */

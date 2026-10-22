@@ -60,7 +60,10 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)
-        node = serializer.save(created_by=resolve_author(kwargs.get("user")))
+        node = serializer.save(
+            created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
+        )
 
         for key, model in self._CONFIG_MODELS.items():
             config_data = configs.get(key)

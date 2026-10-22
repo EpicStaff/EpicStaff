@@ -53,6 +53,7 @@ import {
     extractHttpErrorMessage,
     ImportFileData,
     JsonObject,
+    showExportExclusionWarning,
 } from '@shared/utils';
 import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, map, switchMap, take } from 'rxjs/operators';
@@ -62,6 +63,7 @@ import {
     FlowNodesByFile,
     hasReviewableItems,
     ImportReviewDialogCloseResult,
+    toFileNodeId,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications';
@@ -570,6 +572,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 .filter((node): node is JsonObject => typeof node === 'object' && node !== null && !Array.isArray(node))
                 .filter((node) => !FlowsListPageComponent.EXCLUDED_NODE_TYPES.has(String(node['node_type'] ?? '')))
                 .map((node) => ({
+                    id: toFileNodeId(node['id']),
                     name: String(node['node_name'] ?? node['node_type'] ?? 'Node'),
                     node_type: String(node['node_type'] ?? ''),
                 }));
@@ -592,7 +595,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         }
 
         this.importExportService.bulkExportFlow(ids).subscribe({
-            next: (blob) => {
+            next: ({ blob, excluded }) => {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -601,6 +604,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 window.URL.revokeObjectURL(url);
 
                 this.flowStorageService.setSelectMode(false);
+
+                showExportExclusionWarning(this.toastService, excluded);
             },
             error: (error) => {
                 console.error('Bulk export failed:', error);

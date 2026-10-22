@@ -213,6 +213,8 @@ class TestScheduleManagerToolCreate:
         _configure(schedule_module)
 
         def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET":
+                return httpx.Response(200, json={"count": 0, "results": []})
             return httpx.Response(201, json=_schedule_with_authorship(55))
 
         _mock_httpx_client(monkeypatch, handler)
@@ -227,6 +229,157 @@ class TestScheduleManagerToolCreate:
         returned = json.loads(result)
         _assert_no_authorship_anywhere(returned)
         _assert_schedule_fields_kept(returned["created"], 55)
+
+
+class _FakeScheduleApi:
+    """In-memory stand-in for /schedule-trigger-nodes/ behind httpx.MockTransport.
+
+    Records every request so tests can assert which writes happened. The list
+    endpoint is paginated like the real one (limit/offset, `next`).
+    """
+
+    def __init__(self, existing=()):
+        self.existing = list(existing)
+        self.requests = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if request.method == "GET":
+            assert request.url.params["graph"] == "7"
+            limit = int(request.url.params.get("limit", 50))
+            offset = int(request.url.params.get("offset", 0))
+            page = self.existing[offset : offset + limit]
+            has_next = offset + limit < len(self.existing)
+            return httpx.Response(
+                200,
+                json={
+                    "count": len(self.existing),
+                    "next": "http://djangoapp:8000/api/next-page" if has_next else None,
+                    "results": page,
+                },
+            )
+        payload = json.loads(request.content)
+        if request.method == "POST":
+            return httpx.Response(201, json={"id": 900, **payload})
+        if request.method == "PUT":
+            return httpx.Response(
+                200, json={"id": int(request.url.path.rstrip("/").split("/")[-1]), **payload}
+            )
+        raise AssertionError(f"unexpected {request.method} {request.url}")
+
+    def writes(self):
+        return [
+            (request.method, request.url.path)
+            for request in self.requests
+            if request.method != "GET"
+        ]
+
+
+def _named_schedule(schedule_id, node_name):
+    return {"id": schedule_id, "graph": 7, "node_name": node_name, "is_active": True}
+
+
+_CREATE_KWARGS = {
+    "action": "create",
+    "run_mode": "once",
+    "start_date_time": "2026-07-06T09:15:00",
+}
+
+
+class TestScheduleManagerToolCreateIsIdempotentByName:
+    def test_no_same_named_schedule_creates_a_new_one(self, monkeypatch):
+        _configure(schedule_module)
+        api = _FakeScheduleApi([_named_schedule(1, "other"), _named_schedule(2, "nightly-2")])
+        _mock_httpx_client(monkeypatch, api)
+
+        result = schedule_main(node_name="nightly", **_CREATE_KWARGS)
+
+        assert api.writes() == [("POST", "/api/schedule-trigger-nodes/")]
+        created = json.loads(result)["created"]
+        assert created["id"] == 900
+        assert created["node_name"] == "nightly"
+
+    def test_one_same_named_schedule_is_updated_by_id_with_the_full_payload(self, monkeypatch):
+        _configure(schedule_module)
+        api = _FakeScheduleApi([_named_schedule(1, "other"), _named_schedule(2, "nightly")])
+        _mock_httpx_client(monkeypatch, api)
+
+        result = schedule_main(
+            node_name="nightly", is_active=False, apply_jitter=False, **_CREATE_KWARGS
+        )
+
+        assert api.writes() == [("PUT", "/api/schedule-trigger-nodes/2/")]
+        sent = json.loads(api.requests[-1].content)
+        assert sent == {
+            "graph": 7,
+            "node_name": "nightly",
+            "is_active": False,
+            "schedule": _SCHEDULE_BLOCK,
+        }
+        returned = json.loads(result)
+        assert returned["created"]["id"] == 2
+        assert returned["note"] is None
+
+    def test_requested_name_is_stripped_before_matching_and_sending(self, monkeypatch):
+        _configure(schedule_module)
+        api = _FakeScheduleApi([_named_schedule(2, "nightly")])
+        _mock_httpx_client(monkeypatch, api)
+
+        schedule_main(node_name="  nightly \n", **_CREATE_KWARGS)
+
+        assert api.writes() == [("PUT", "/api/schedule-trigger-nodes/2/")]
+        assert json.loads(api.requests[-1].content)["node_name"] == "nightly"
+
+    def test_several_same_named_schedules_are_reported_and_nothing_is_written(self, monkeypatch):
+        _configure(schedule_module)
+        api = _FakeScheduleApi(
+            [_named_schedule(5, "nightly"), _named_schedule(6, "other"), _named_schedule(9, "nightly")]
+        )
+        _mock_httpx_client(monkeypatch, api)
+
+        result = schedule_main(node_name="nightly", **_CREATE_KWARGS)
+
+        assert api.writes() == []
+        assert result.startswith("Error:")
+        assert "[5, 9]" in result
+        assert "action='update'" in result
+        assert "schedule_id" in result
+
+    def test_same_named_schedule_on_a_later_page_is_found(self, monkeypatch):
+        _configure(schedule_module)
+        filler = [_named_schedule(index, f"filler-{index}") for index in range(1, 151)]
+        api = _FakeScheduleApi([*filler, _named_schedule(777, "nightly")])
+        _mock_httpx_client(monkeypatch, api)
+
+        schedule_main(node_name="nightly", **_CREATE_KWARGS)
+
+        assert api.writes() == [("PUT", "/api/schedule-trigger-nodes/777/")]
+
+    def test_omitted_name_always_creates_without_looking_anything_up(self, monkeypatch):
+        _configure(schedule_module)
+        api = _FakeScheduleApi([_named_schedule(1, "nightly")])
+        _mock_httpx_client(monkeypatch, api)
+
+        result = schedule_main(**_CREATE_KWARGS)
+
+        assert [request.method for request in api.requests] == ["POST"]
+        assert json.loads(result)["created"]["node_name"].startswith("agent_schedule_")
+
+    def test_failed_lookup_is_an_error_and_nothing_is_written(self, monkeypatch):
+        _configure(schedule_module)
+        requests_seen = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests_seen.append(request.method)
+            return httpx.Response(500, text="boom")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = schedule_main(node_name="nightly", **_CREATE_KWARGS)
+
+        assert result.startswith("Error:")
+        assert "500" in result
+        assert requests_seen == ["GET"]
 
 
 class TestScheduleManagerToolList:

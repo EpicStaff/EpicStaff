@@ -15,9 +15,14 @@ export interface ActionDropdownItem {
     templateUrl: './action-dropdown-button.component.html',
     styleUrls: ['./action-dropdown-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '[class.small]': "mod() === 'small'",
+    },
 })
 export class ActionDropdownButtonComponent {
     label = input.required<string>();
+    /** `small`: 28px tall, 12px label, 28x28 chevron. */
+    mod = input<'default' | 'small'>('default');
     leftIcon = input<string | undefined>(undefined);
     items = input.required<ActionDropdownItem[]>();
     disabled = input<boolean>(false);

@@ -60,3 +60,26 @@
         }
     }
 }
+
+:host(.small) {
+    // inline-block would wrap the button in a line box that adds descender space below it.
+    display: inline-flex;
+
+    .adb {
+        height: 28px;
+    }
+
+    .adb__main {
+        padding: 0 12px 0 8px;
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
+        // body-small-large with the design's 100% line-height: the label is centred in a fixed 28px row.
+        line-height: 1;
+        color: var(--color-text-primary);
+    }
+
+    .adb__chevron {
+        flex-basis: 28px;
+        padding: 0;
+    }
+}

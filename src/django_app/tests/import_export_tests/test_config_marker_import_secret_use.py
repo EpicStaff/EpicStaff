@@ -17,7 +17,7 @@ from tables.import_export.services.partial_export_service import (
 from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
 from tables.models import Graph, LLMConfig
 from tables.models.llm_models import LLMModel
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 MARKER_HEADERS = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}
@@ -58,9 +58,13 @@ class TestGraphImportEndpoint:
         self, importer_without_use, exportable_graph_with_agent_node
     ):
         export_data = _with_new_model_and_marked_config(
-            ExportService(entity_registry).export_entities(
-                EntityType.GRAPH, [exportable_graph_with_agent_node.id]
+            ExportService(entity_registry)
+            .export_entities(
+                EntityType.GRAPH,
+                [exportable_graph_with_agent_node.id],
+                policy=UNRESTRICTED_EXPORT_POLICY,
             )
+            .data
         )
         graphs_before = Graph.objects.count()
         configs_before = LLMConfig.objects.count()
@@ -85,8 +89,14 @@ class TestGraphImportEndpoint:
         source_config = agent_node.agent_definition.llm_config
         source_config.extra_headers = MARKER_HEADERS
         source_config.save(update_fields=["extra_headers"])
-        export_data = ExportService(entity_registry).export_entities(
-            EntityType.GRAPH, [exportable_graph_with_agent_node.id]
+        export_data = (
+            ExportService(entity_registry)
+            .export_entities(
+                EntityType.GRAPH,
+                [exportable_graph_with_agent_node.id],
+                policy=UNRESTRICTED_EXPORT_POLICY,
+            )
+            .data
         )
         graphs_before = Graph.objects.count()
         configs_before = LLMConfig.objects.count()
@@ -117,6 +127,7 @@ def test_partial_import_of_a_new_marker_without_use_is_rejected_and_rolled_back(
                 )
             ],
             org_id=default_org.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
         )
         .data
     )

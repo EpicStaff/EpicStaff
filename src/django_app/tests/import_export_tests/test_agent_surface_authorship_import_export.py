@@ -15,7 +15,7 @@ from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.models import Graph
 from tables.models.graph_models import AgentNode
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 AUTHOR_KEY = "created_by"
@@ -55,7 +55,11 @@ def source_flow(acme, member_only):
 
 
 def _export(graph: Graph) -> dict:
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _keys_named(value, key: str) -> list[str]:

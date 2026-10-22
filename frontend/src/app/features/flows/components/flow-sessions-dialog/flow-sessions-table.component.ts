@@ -5,8 +5,8 @@ import {
     Component,
     EventEmitter,
     Input,
+    input,
     OnChanges,
-    OnDestroy,
     Output,
     signal,
     SimpleChanges,
@@ -129,14 +129,17 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                 Created At
                             }
                         </th>
+                        @if (!showDurationFilter()) {
+                            <th class="col-finished">Finished At</th>
+                        }
                         <th class="col-duration">
-                            @if (showDuration) {
+                            @if (showDurationFilter()) {
                                 <app-duration-filter-dropdown
                                     [value]="durationFilter"
                                     (valueChange)="durationFilterChange.emit($event)"
                                 ></app-duration-filter-dropdown>
                             } @else {
-                                Finished At
+                                Duration
                             }
                         </th>
                         <th class="col-actions actions">Actions</th>
@@ -224,21 +227,19 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                         session.created_at | date: TIME_FORMAT_24H
                                     }}</span>
                                 </td>
-                                <td
-                                    class="col-duration"
-                                    [class.cell-date]="!showDuration"
-                                >
-                                    @if (showDuration) {
-                                        {{ getDuration(session) }}
-                                    } @else if (session.finished_at) {
-                                        {{ session.finished_at | date: DATE_FORMAT }},
-                                        <span class="cell-date__time">{{
-                                            session.finished_at | date: TIME_FORMAT_24H
-                                        }}</span>
-                                    } @else {
-                                        Active
-                                    }
-                                </td>
+                                @if (!showDurationFilter()) {
+                                    <td class="col-finished cell-date">
+                                        @if (session.finished_at) {
+                                            {{ session.finished_at | date: DATE_FORMAT }},
+                                            <span class="cell-date__time">{{
+                                                session.finished_at | date: TIME_FORMAT_24H
+                                            }}</span>
+                                        } @else {
+                                            Active
+                                        }
+                                    </td>
+                                }
+                                <td class="col-duration">{{ getDuration(session) }}</td>
                                 <td class="col-actions">
                                     <div class="actions-container">
                                         <app-button
@@ -309,13 +310,13 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
     styleUrls: ['./flow-sessions-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
+export class FlowSessionsTableComponent implements OnChanges {
     @Input() sessions: GraphSessionLight[] = [];
     @Input() flow?: GraphDto;
     @Input() isLoading: boolean = false;
     @Input() showEmptyState: boolean = false;
     @Input() showFlowName: boolean = false;
-    @Input() showDuration: boolean = false;
+    public readonly showDurationFilter = input(false);
     @Input() sortable: boolean = false;
     @Input() sortOrder: 'asc' | 'desc' = 'desc';
     @Input() statusFilter: string[] = ['all'];
@@ -349,8 +350,6 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     public readonly GraphSessionStatus = GraphSessionStatus;
 
-    private durationInterval: ReturnType<typeof setInterval> | null = null;
-
     constructor(
         private readonly cdr: ChangeDetectorRef,
         private router: Router,
@@ -359,33 +358,13 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     public get colspan(): number {
         const canSelect = this.perms.canAny(ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]);
-        return 7 + (this.showFlowName ? 1 : 0) + (canSelect ? 1 : 0);
+        return 7 + (this.showFlowName ? 1 : 0) + (this.showDurationFilter() ? 0 : 1) + (canSelect ? 1 : 0);
     }
 
     public ngOnChanges(changes: SimpleChanges): void {
-        if (changes['sessions'] || changes['showDuration']) {
-            this.manageDurationInterval();
-        }
         if (changes['activePreviewId'] && this.externalPreview) {
             this.expandedSessionId.set(this.activePreviewId);
             this.cdr.markForCheck();
-        }
-    }
-
-    public ngOnDestroy(): void {
-        if (this.durationInterval) {
-            clearInterval(this.durationInterval);
-            this.durationInterval = null;
-        }
-    }
-
-    private manageDurationInterval(): void {
-        const needsTimer = this.showDuration && this.sessions.some((s) => s.finished_at === null);
-        if (needsTimer && !this.durationInterval) {
-            this.durationInterval = setInterval(() => this.cdr.markForCheck(), 1000);
-        } else if (!needsTimer && this.durationInterval) {
-            clearInterval(this.durationInterval);
-            this.durationInterval = null;
         }
     }
 
@@ -440,9 +419,13 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
         this.sortChange.emit(this.sortOrder === 'desc' ? 'asc' : 'desc');
     }
 
+    // An unfinished session shows no running count: the table learns about the finish only from
+    // the parent's periodic status polling, so a count against the browser clock overshoots and
+    // then jumps back once finished_at arrives.
     public getDuration(session: GraphSessionLight): string {
+        if (!session.finished_at) return 'Ongoing';
         const start = new Date(session.created_at).getTime();
-        const end = session.finished_at ? new Date(session.finished_at).getTime() : Date.now();
+        const end = new Date(session.finished_at).getTime();
         const diffMs = Math.max(0, end - start);
         const totalSeconds = Math.floor(diffMs / 1000);
         const hours = Math.floor(totalSeconds / 3600);

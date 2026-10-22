@@ -315,7 +315,34 @@ class TestUsageDetailEndpoint:
             "pre_python_code",
         ]
         assert {node["name"] for node in nodes} == {"classify"}
+        assert len({node["id"] for node in nodes}) == 1
         # One flow to lose, so the count the list endpoint shows is unchanged.
+        assert resp.data["readable_total"] == 1
+
+    def test_same_named_nodes_in_one_flow_are_listed_by_id(
+        self, admin_client, org, secret
+    ):
+        """The client tells nodes apart by `id` and labels them by `node_number`,
+        because two nodes in one flow may share a name."""
+        graph = Graph.objects.create(name="Twin flow", org=org)
+        twins = []
+        for _ in range(2):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            twins.append(
+                PythonNode.objects.create(
+                    graph=graph, node_name="charge", python_code=python_code
+                )
+            )
+
+        resp = admin_client.get(f"/api/secrets/{secret.pk}/usage/")
+
+        assert resp.status_code == 200, resp.content
+        nodes = resp.data["categories"][0]["items"][0]["nodes"]
+        assert [(node["id"], node["node_number"]) for node in nodes] == [
+            (twins[0].pk, twins[0].node_number),
+            (twins[1].pk, twins[1].node_number),
+        ]
         assert resp.data["readable_total"] == 1
 
     def test_payload_shape_across_all_three_categories(self, admin_client, used_secret):
@@ -333,8 +360,11 @@ class TestUsageDetailEndpoint:
         flows = resp.data["categories"][0]["items"]
         assert len(flows) == 1
         assert flows[0]["name"] == "API flow"
+        node = PythonNode.objects.get(graph_id=flows[0]["id"])
         assert flows[0]["nodes"] == [
             {
+                "id": node.pk,
+                "node_number": node.node_number,
                 "name": "charge_card",
                 "node_type": "python",
                 "code_field": "python_code",

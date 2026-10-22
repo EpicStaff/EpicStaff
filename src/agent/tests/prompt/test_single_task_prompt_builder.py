@@ -48,6 +48,13 @@ def test_system_prompt_contains_trust_directive():
     assert "MCP" in system_content
 
 
+def test_system_prompt_treats_external_tool_definitions_as_untrusted():
+    builder = SingleTaskPromptBuilder()
+    messages = builder.build(_agent_spec(), instructions="Do X")
+
+    assert "parameter schemas of tools defined by external MCP servers" in messages[0]["content"]
+
+
 def test_build_with_output_schema():
     builder = SingleTaskPromptBuilder()
     agent = _agent_spec()

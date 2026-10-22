@@ -5,7 +5,7 @@
     "action": {
       "type": "string",
       "enum": ["create", "list", "update", "delete"],
-      "description": "Which operation to perform: 'create' a new schedule, 'list' this tool's schedules (always scoped to the configured graph_id), 'update' an existing schedule (requires schedule_id), or 'delete' an existing schedule (requires schedule_id)."
+      "description": "Which operation to perform: 'create' a schedule (if this graph already has exactly one schedule with the same node_name, that schedule is updated instead of creating a duplicate; if several share the name, nothing is created and an error asks you to use 'update' with an explicit schedule_id), 'list' this tool's schedules (always scoped to the configured graph_id), 'update' an existing schedule (requires schedule_id), or 'delete' an existing schedule (requires schedule_id)."
     },
     "schedule_id": {
       "type": "integer",
@@ -13,7 +13,7 @@
     },
     "node_name": {
       "type": "string",
-      "description": "Human-readable name for the schedule. Optional for 'create' — an auto-generated unique name is used if omitted. Optional for 'update' to rename."
+      "description": "Human-readable name for the schedule. Optional for 'create' — an auto-generated unique name is used if omitted; when given, an existing schedule of this graph with the same name is reused (updated) rather than duplicated. Optional for 'update' to rename."
     },
     "run_mode": {
       "type": "string",

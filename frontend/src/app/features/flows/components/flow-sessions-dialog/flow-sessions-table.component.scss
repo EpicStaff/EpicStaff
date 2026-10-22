@@ -44,20 +44,18 @@
         min-width: 120px;
     }
 
-    .col-created {
-        width: 300px;
-        min-width: 300px;
-    }
-
-    // the Flow column takes the leftover width here, not Duration
+    // The Flow column takes the leftover width here, not Duration: at the table's min-width that
+    // leaves it 215px of content, enough for the Flow Name filter header not to run into Trigger.
     .col-duration {
-        width: 160px;
+        // "Duration" plus the filter chevron, plus the 16px right padding every cell carries
+        width: calc(110px + 16px);
     }
 }
 
 table {
     width: 100%;
-    min-width: 1090px;
+    // fixed columns of the flow's own Sessions dialog plus room for the Duration text
+    min-width: 1210px;
     border-collapse: collapse;
     margin-bottom: 0;
     table-layout: fixed;
@@ -135,14 +133,16 @@ table {
 
     // 180px of content plus the 16px right padding every cell carries
     th.col-created,
-    td.col-created {
+    td.col-created,
+    th.col-finished,
+    td.col-finished {
         width: calc(180px + 16px);
         min-width: calc(180px + 16px);
     }
 
     // Without a Flow column (the flow's own Sessions dialog) this is the only auto column, so it
     // takes the leftover width and the gap sits before Actions. table-layout: fixed ignores
-    // min-width on cells; the table's own min-width keeps it wide enough for a date.
+    // min-width on cells; the table's own min-width keeps it wide enough for the duration.
     th.col-duration,
     td.col-duration {
         width: auto;

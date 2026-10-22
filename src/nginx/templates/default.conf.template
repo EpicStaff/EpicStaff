@@ -53,6 +53,10 @@ server {
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
 
+    # Strict-Transport-Security is decided separately from NGINX_SSL_MODE: a load
+    # balancer in front of nginx can terminate TLS while nginx serves plain HTTP.
+    include /etc/nginx/conf.d/hsts-${NGINX_HSTS_ENABLED}.snippet;
+
     # Report-only: the SPA is built from a separate repository, so this policy
     # has not been verified against it. Violations surface in the browser
     # console; there is no report collector in this stack. Promote to
@@ -225,5 +229,21 @@ server {
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Liveness for the compose healthcheck only: bound to the container's loopback and
+# never published, it answers without proxying, so it reports nginx itself and not
+# the backends, and it is outside the TLS server's http->https redirect.
+server {
+    listen 127.0.0.1:8081;
+
+    location = /nginx-health {
+        access_log off;
+        return 204;
+    }
+
+    location / {
+        return 404;
     }
 }

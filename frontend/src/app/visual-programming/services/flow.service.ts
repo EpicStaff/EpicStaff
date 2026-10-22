@@ -38,6 +38,8 @@ export class FlowService {
     });
 
     private _lastIssuedNumber = 0;
+    /** The loaded graph's `node_number_seq`: numbers up to it were issued by the backend, maybe to deleted nodes. */
+    private nodeNumberFloor = 0;
 
     // Subject to request canvas redraw (e.g., after port reordering)
     private canvasRedrawRequest$ = new Subject<void>();
@@ -123,8 +125,17 @@ export class FlowService {
         this._lastIssuedNumber = 0;
     }
 
+    /**
+     * Takes the graph counter (`GraphDto.node_number_seq`) of the graph just loaded or saved, so a new node
+     * is not shown a number the backend already gave out. Replaces the previous value: a different graph
+     * may have a lower counter. `setFlow` keeps it.
+     */
+    public setNodeNumberFloor(nodeNumberSeq: number): void {
+        this.nodeNumberFloor = nodeNumberSeq;
+    }
+
     public getNextNodeNumber(): number {
-        const next = Math.max(this.highestNodeNumber(), this._lastIssuedNumber) + 1;
+        const next = Math.max(this.nodeNumberFloor, this.highestNodeNumber(), this._lastIssuedNumber) + 1;
         this._lastIssuedNumber = next;
         return next;
     }

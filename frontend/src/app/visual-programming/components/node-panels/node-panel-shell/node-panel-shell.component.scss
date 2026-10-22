@@ -44,12 +44,30 @@ header {
             flex-shrink: 0;
         }
 
+        // The #N sits on the name's text baseline; the pair as a whole stays centred next to the icon.
+        .title-with-number {
+            display: flex;
+            align-items: baseline;
+            min-width: 0;
+        }
+
         .title {
             font-size: 1.125rem;
             font-weight: 400;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        // Same look as the #N under a canvas node's name; never cut short, the name ellipsizes instead.
+        .node-number {
+            flex-shrink: 0;
+            margin-left: 0.5rem;
+            font-size: var(--text-body-small-size);
+            font-weight: var(--text-body-small-weight);
+            line-height: var(--text-body-small-line-height);
+            color: var(--color-text-secondary);
+            white-space: nowrap;
         }
     }
 
@@ -164,6 +182,37 @@ header {
                     background-color: var(--white-alpha-10);
                 }
             }
+        }
+    }
+}
+
+// The header content (inside the regular padding) is a 28px row, so the shell's own controls
+// are 28px too; panels pass 28px-tall actions of their own.
+header.dialog-header--compact {
+    box-sizing: content-box;
+    height: 28px;
+
+    .header-actions {
+        gap: 0.5rem;
+
+        .save-btn {
+            height: 28px;
+        }
+
+        // The ESC + close group sits 16px from the buttons before it (the 8px gap + 8px).
+        .close-action {
+            margin-left: 0.5rem;
+        }
+
+        // An outlined 28x28 square around a 16px icon, matching the panels' outlined buttons.
+        .details-btn {
+            box-sizing: border-box;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid var(--color-input-border);
+            border-radius: 4px;
+            color: var(--color-ks-transparent-text-60);
         }
     }
 }

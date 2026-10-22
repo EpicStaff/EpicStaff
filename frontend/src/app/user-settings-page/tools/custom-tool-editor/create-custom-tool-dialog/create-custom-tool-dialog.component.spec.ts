@@ -179,7 +179,7 @@ describe('CreateCustomToolDialogComponent execution timeout', () => {
     it('refuses to save a timeout below the minimum, and says why', () => {
         open(STORED_TOOL);
 
-        typeTimeout('3');
+        typeTimeout('00:00:03');
         fixture.componentInstance.submit();
 
         expect(customTools.updatePythonCodeToolV2).not.toHaveBeenCalled();

@@ -265,11 +265,18 @@ class GraphSerializer(
             "label_ids",
             "graph_note_list",
             "save_version",
+            "node_number_seq",
             "created_by",
             "created_at",
         ]
         # Derived on Domain save — never set directly by the client.
-        read_only_fields = ["enable_persistent_variables", "created_by", "created_at"]
+        # node_number_seq is the node-number counter, advanced only by NodeNumberService.
+        read_only_fields = [
+            "enable_persistent_variables",
+            "node_number_seq",
+            "created_by",
+            "created_at",
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -328,5 +335,6 @@ class GraphSerializer(
         if labels is not None:
             instance.labels.set(labels)
 
-        instance.refresh_from_db(fields=["save_version"])
+        # The counter may have moved since this instance was loaded; return the stored one.
+        instance.refresh_from_db(fields=["save_version", "node_number_seq"])
         return instance

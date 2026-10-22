@@ -8,6 +8,7 @@ from tables.import_export.serializers.classification_decision_table_node import 
 )
 from tables.models import PythonCode
 from tables.models.graph_models import ClassificationDecisionTableNode, Graph
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 VICTIM_CODE = "def main():\n    return 'shared tool code'"
 IMPORTED_CODE = "def main():\n    return 'imported code'"
@@ -26,7 +27,11 @@ def exported_cdt_graph(default_org, export_service):
     graph = Graph.objects.create(name="cdt-python-code-src", org=default_org)
     ClassificationDecisionTableNode.objects.create(graph=graph, node_name="cdt")
     export_data = json.loads(
-        json.dumps(export_service.export_entities(EntityType.GRAPH, [graph.id]))
+        json.dumps(
+            export_service.export_entities(
+                EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
+        )
     )
     yield export_data
 
@@ -120,7 +125,11 @@ def test_round_trip_creates_fresh_pre_and_post_python_code(
         post_python_code=source_post_code,
     )
     export_data = json.loads(
-        json.dumps(export_service.export_entities(EntityType.GRAPH, [graph.id]))
+        json.dumps(
+            export_service.export_entities(
+                EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
+        )
     )
 
     new_node = _imported_cdt_node(import_service, export_data)

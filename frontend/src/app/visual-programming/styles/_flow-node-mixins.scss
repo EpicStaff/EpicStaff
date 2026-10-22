@@ -206,6 +206,8 @@
 // ====================
 $node-actions-fade-duration: 0.2s;
 $node-actions-hide-delay: 0.4s;
+// Every node box and the summary tab that continues its outline share one corner radius.
+$node-border-radius: var(--radius-3xl);
 
 // Hover-revealed node actions hide only after a delay, so a pointer that slips off the node
 // on its way to a button still finds the button there. Gated by visibility, not pointer-events:
@@ -231,23 +233,49 @@ $node-actions-hide-delay: 0.4s;
     pointer-events: none;
 }
 
-@mixin node-action-bar-number-badge($border-color) {
-    position: absolute;
-    left: 0;
-    top: 0;
-    height: 28px;
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    background-color: var(--color-nodes-background);
-    border: 2px solid #{$border-color};
-    border-bottom: none;
-    color: var(--gray-204);
-    font-size: 0.75rem;
-    padding: 0 13px;
-    border-radius: 6px 6px 0 0;
-    white-space: nowrap;
-    pointer-events: none;
+// ====================
+// Node title with its #N line
+// ====================
+$node-number-gap: 2px;
+// Half of what the #N line adds under the name: lifting the name by it centres name and number together.
+$node-title-lift: calc((#{$node-number-gap} + var(--text-body-small-size) * var(--text-body-small-line-height)) / -2);
+
+// The number shown. Include it from the node's hover rule on `.has-node-number`, at least as deep as
+// the rule that includes node-title-with-number (below), so it wins on specificity.
+@mixin node-title-with-number-shown {
+    transform: translateY($node-title-lift);
+    transition-delay: 0s;
+
+    .node-number-line {
+        @include node-actions-shown;
+    }
+}
+
+// On the element wrapping a node's title and its `.node-number-line`. The line sits out of flow under
+// the title and the wrapper glides up with a transform, so neither the node nor its header row ever
+// changes size and the badges beside the title stay where they are. `.has-node-number` marks a
+// numbered node; `.is-number-pinned` keeps the number shown. Fades with the node actions' timing.
+@mixin node-title-with-number {
+    position: relative;
+    min-width: 0;
+    transition: transform $node-actions-fade-duration ease $node-actions-hide-delay;
+
+    .node-number-line {
+        @include node-actions-hidden;
+        position: absolute;
+        top: calc(100% + #{$node-number-gap});
+        left: 0;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-text-secondary);
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    &.has-node-number.is-number-pinned {
+        @include node-title-with-number-shown;
+    }
 }
 
 @mixin node-action-bar-delete-chip($border-color, $bottom-offset: 0) {

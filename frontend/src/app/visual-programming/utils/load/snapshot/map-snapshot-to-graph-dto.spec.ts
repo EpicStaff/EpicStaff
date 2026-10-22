@@ -97,6 +97,7 @@ const snapshot: GraphVersionSnapshot = {
             id: ID.schedule,
             node_type: 'ScheduleTriggerNode',
             node_name: 'Schedule',
+            node_number: 9,
             metadata: {},
             is_active: true,
             timezone: 'Europe/Kyiv',
@@ -345,6 +346,72 @@ describe('mapNodeAuthorshipToCanvas', () => {
         expect(mapNodeAuthorshipToCanvas({ '2': withExtra }, snapshotIdToNodeUuid).get('python-canvas-id')).toEqual(
             recorded
         );
+    });
+});
+
+describe('buildPreviewFlowModel (node numbers)', () => {
+    // A version keeps the numbers its nodes had in the source graph, gaps included, and restoring
+    // it keeps them too, so the preview shows the stored numbers as they are.
+    const version: GraphVersionSnapshot = {
+        nodes: [
+            exported('StartNode', liveStart),
+            exported('PythonNode', {
+                ...livePython,
+                node_number: 5,
+                python_code: { code: 'def main(): pass', entrypoint: 'main', libraries: '' },
+            }),
+            exported('TaskNode', { ...liveTask, node_number: 1, inline_surface: null }),
+            exported('AgentNode', { ...liveAgent, node_number: 4 }),
+            exported('GraphNote', liveNote),
+        ],
+    };
+    const numberOf = (snapshot: GraphVersionSnapshot, id: number): number | undefined => {
+        const { flow, snapshotIdToNodeUuid } = buildPreviewFlowModel(snapshot, secretsByName, availableFlows);
+        return nodeWithSnapshotId(flow, snapshotIdToNodeUuid, id).nodeNumber;
+    };
+
+    it('keeps the stored numbers #1, #4 and #5, gaps included', () => {
+        expect(numberOf(version, ID.task)).toBe(1);
+        expect(numberOf(version, ID.agent)).toBe(4);
+        expect(numberOf(version, ID.python)).toBe(5);
+    });
+
+    it('leaves Start and Note unnumbered', () => {
+        expect(numberOf(version, ID.start)).toBeUndefined();
+        expect(numberOf(version, ID.note)).toBeUndefined();
+    });
+
+    it.each([1, 1_000_000])('shows the boundary number %s as stored', (stored) => {
+        const boundary: GraphVersionSnapshot = {
+            nodes: [exported('TaskNode', { ...liveTask, node_number: stored, inline_surface: null })],
+        };
+
+        expect(numberOf(boundary, ID.task)).toBe(stored);
+    });
+
+    it.each([0, -1, 1_000_001, 4.5, null])('does not show the unusable stored number %s as stored', (stored) => {
+        const unusable: GraphVersionSnapshot = {
+            nodes: [exported('TaskNode', { ...liveTask, node_number: stored, inline_surface: null })],
+        };
+        const [adaptedTask] = mapSnapshotToGraphDto(unusable, secretsByName).task_node_list ?? [];
+
+        expect(adaptedTask.node_number).toBeNull();
+        expect(numberOf(unusable, ID.task)).not.toBe(stored);
+    });
+
+    it('sets the counter floor to the highest usable stored number', () => {
+        expect(mapSnapshotToGraphDto(version, secretsByName).node_number_seq).toBe(5);
+    });
+
+    it('ignores an unusable stored number when setting the counter floor', () => {
+        const withUnusable: GraphVersionSnapshot = {
+            nodes: [
+                exported('TaskNode', { ...liveTask, node_number: 2, inline_surface: null }),
+                exported('AgentNode', { ...liveAgent, node_number: 1_000_001 }),
+            ],
+        };
+
+        expect(mapSnapshotToGraphDto(withUnusable, secretsByName).node_number_seq).toBe(2);
     });
 });
 
