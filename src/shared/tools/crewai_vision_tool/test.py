@@ -3,7 +3,7 @@ from main import main
 
 def test_vision_tool():
     # Ask user for input
-    image_path_url = input("Enter local image path or URL: ").strip()
+    image_path_url = input("Enter image URL: ").strip()
     openai_api_key = input("Enter OpenAI API key: ").strip()
 
     args = {
