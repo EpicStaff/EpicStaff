@@ -1,5 +1,5 @@
 import { AuditSessionEvent } from '../models/audit-session.models';
-import { auditEventLabel, auditNameLabel, auditRunTypeLabel } from './audit-event-label.util';
+import { auditEventLabel, auditNameLabel } from './audit-event-label.util';
 
 function event(overrides: Partial<AuditSessionEvent>): AuditSessionEvent {
     return {
@@ -12,7 +12,6 @@ function event(overrides: Partial<AuditSessionEvent>): AuditSessionEvent {
         name: '',
         flow_name: '',
         node_type: '',
-        run_type: '',
         input: null,
         output: null,
         error: null,
@@ -51,15 +50,6 @@ describe('auditNameLabel', () => {
     });
 
     it('gives a session row no name label', () => {
-        expect(auditNameLabel(event({ kind: 'session', run_type: 'manual' }))).toBeNull();
-    });
-});
-
-describe('auditRunTypeLabel', () => {
-    it('labels known and unknown run types', () => {
-        expect(auditRunTypeLabel('manual')).toBe('Manual');
-        expect(auditRunTypeLabel('parent_flow')).toBe('Parent flow');
-        expect(auditRunTypeLabel('api_call')).toBe('Api call');
-        expect(auditRunTypeLabel('')).toBeNull();
+        expect(auditNameLabel(event({ kind: 'session' }))).toBeNull();
     });
 });

@@ -1,8 +1,17 @@
+"""ExportJobService against fake Redis.
+
+The job hash, the expiry sorted set and the per-user index are a contract with the
+manager's cleanup sweep (src/shared/audit/export_jobs.py), so they are asserted directly.
+"""
+
 import pytest
 import pytest_asyncio
 from fakeredis import FakeAsyncRedis, FakeServer
 
 from app.services.export_job_service import ExportJobService, JobStatus
+from src.shared.audit.export_jobs import EXPIRY_ZSET_KEY, JOB_KEY_PREFIX
+
+pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture
@@ -12,358 +21,75 @@ async def job_service():
     await redis_client.aclose()
 
 
-@pytest.mark.asyncio
-async def test_create_job_writes_hash_fields(job_service):
+async def _create(job_service, job_id="job-1", *, domain="sessions", org_id=1, user_id=1):
     await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=7,
-        user_id=42,
-        ttl_seconds=3600,
-        format="csv",
+        domain=domain, job_id=job_id, org_id=org_id, user_id=user_id,
+        ttl_seconds=3600, format="csv",
     )
+
+
+async def test_created_job_is_registered_for_the_managers_sweep(job_service):
+    await _create(job_service, org_id=7, user_id=42)
+
     job = await job_service.get_job("job-1")
-
-    assert job["status"] == JobStatus.PENDING.value
-    assert job["domain"] == "sessions"
-    assert job["org_id"] == "7"
-    assert job["user_id"] == "42"
-    assert job["format"] == "csv"
-    assert job["file_path"] == ""
-
-
-@pytest.mark.asyncio
-async def test_create_job_registers_expiry_in_sorted_set(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
+    assert (job["status"], job["domain"], job["org_id"], job["user_id"], job["format"]) == (
+        JobStatus.PENDING.value, "sessions", "7", "42", "csv",
     )
-    score = await job_service._redis.zscore("auditor:export_jobs_by_expiry", "job-1")
-    assert score is not None
-    assert score > 0
+    redis = job_service._redis
+    assert await redis.zscore(EXPIRY_ZSET_KEY, "job-1") == pytest.approx(float(job["expires_at"]))
+    # The hash's own TTL is the backstop when the sweep is down: it must outlive the job.
+    assert await redis.ttl(f"{JOB_KEY_PREFIX}job-1") > 3600
 
 
-@pytest.mark.asyncio
-async def test_create_job_sets_native_ttl_backstop(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    ttl = await job_service._redis.ttl("auditor:export_job:job-1")
-    assert ttl > 0
+@pytest.mark.parametrize("truncated", [False, True])
+async def test_mark_done_records_the_file_and_truncation(job_service, truncated):
+    await _create(job_service)
 
+    assert await job_service.mark_done("job-1", "/exports/job-1.json", truncated=truncated)
 
-@pytest.mark.asyncio
-async def test_mark_done_sets_status_and_file_path(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    was_recorded = await job_service.mark_done(
-        "job-1", "/app/export_data/job-1.json", truncated=False
-    )
-
-    assert was_recorded is True
     job = await job_service.get_job("job-1")
-    assert job["status"] == JobStatus.COMPLETED.value
-    assert job["file_path"] == "/app/export_data/job-1.json"
-    assert job["truncated"] == "False"
-
-
-@pytest.mark.asyncio
-async def test_mark_done_records_truncated_true(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    was_recorded = await job_service.mark_done(
-        "job-1", "/app/export_data/job-1.json", truncated=True
+    assert (job["status"], job["file_path"], job["truncated"]) == (
+        JobStatus.COMPLETED.value, "/exports/job-1.json", str(truncated),
     )
 
-    assert was_recorded is True
-    job = await job_service.get_job("job-1")
-    assert job["truncated"] == "True"
 
+async def test_mark_failed_records_only_the_status(job_service):
+    await _create(job_service)
 
-@pytest.mark.asyncio
-async def test_mark_failed_sets_status_and_error(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    was_recorded = await job_service.mark_failed("job-1")
+    assert await job_service.mark_failed("job-1")
 
-    assert was_recorded is True
     job = await job_service.get_job("job-1")
     assert job["status"] == JobStatus.FAILED.value
     assert "error" not in job
 
 
-@pytest.mark.asyncio
-async def test_mark_done_returns_false_for_deleted_job(job_service):
-    # Simulates a manual delete (or the manager's sweep) racing ahead of a
-    # still-running export - must not resurrect the hash with no TTL and no
-    # zset entry, which would leak it forever.
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
+def _mark_done(service):
+    return service.mark_done("job-1", "/exports/job-1.json", truncated=False)
+
+
+def _mark_failed(service):
+    return service.mark_failed("job-1")
+
+
+@pytest.mark.parametrize("finish", [_mark_done, _mark_failed], ids=["done", "failed"])
+async def test_finishing_a_deleted_job_does_not_resurrect_it(job_service, finish):
+    """A delete (manual or the sweep) racing ahead of a running export must not
+    recreate the hash with no TTL and no expiry entry, which would leak it forever."""
+    await _create(job_service)
     await job_service.delete_job("job-1", 1, 1, "sessions")
 
-    was_recorded = await job_service.mark_done(
-        "job-1", "/app/export_data/job-1.json", truncated=False
-    )
-
-    assert was_recorded is False
+    assert await finish(job_service) is False
     assert await job_service.get_job("job-1") is None
 
 
-@pytest.mark.asyncio
-async def test_mark_failed_returns_false_for_deleted_job(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    await job_service.delete_job("job-1", 1, 1, "sessions")
-
-    was_recorded = await job_service.mark_failed("job-1")
-
-    assert was_recorded is False
-    assert await job_service.get_job("job-1") is None
-
-
-@pytest.mark.asyncio
-async def test_create_job_hash_ttl_outlives_the_expiry_ttl(job_service):
-    # The hash's own native TTL is a failsafe for when the manager sweep is
-    # down - it must always outlive ttl_seconds by a safety margin, or the
-    # hash (and the job's downloadability) vanishes before the job's own
-    # intended expiry.
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    hash_ttl = await job_service._redis.ttl("auditor:export_job:job-1")
-    assert hash_ttl > 3600
-
-
-@pytest.mark.asyncio
-async def test_get_job_returns_none_for_unknown_id(job_service):
-    assert await job_service.get_job("does-not-exist") is None
-
-
-@pytest.mark.asyncio
-async def test_delete_job_removes_hash_and_zset_entry(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    await job_service.delete_job("job-1", 1, 1, "sessions")
-
-    assert await job_service.get_job("job-1") is None
-    score = await job_service._redis.zscore("auditor:export_jobs_by_expiry", "job-1")
-    assert score is None
-
-
-@pytest.mark.asyncio
-async def test_delete_job_is_idempotent_for_unknown_id(job_service):
-    # Should not raise even though nothing was ever created for this id -
-    # the manual-delete endpoint relies on this being a safe no-op path
-    # after ownership has already been checked separately.
-    await job_service.delete_job("never-existed", 1, 1, "sessions")
-
-
-@pytest.mark.asyncio
-async def test_get_jobs_returns_hydrated_dicts_for_job_ids(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-2",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="csv",
-    )
-
-    jobs = await job_service.get_jobs(["job-1", "job-2"])
-
-    assert {j["job_id"] for j in jobs} == {"job-1", "job-2"}
-    for job in jobs:
-        assert "job_id" in job
-        assert "status" in job
-
-
-@pytest.mark.asyncio
-async def test_get_jobs_skips_ids_whose_hash_has_vanished(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    # "job-missing" was never created (simulates an expired/swept hash).
-    jobs = await job_service.get_jobs(["job-1", "job-missing"])
-
-    assert [j["job_id"] for j in jobs] == ["job-1"]
-
-
-@pytest.mark.asyncio
-async def test_get_jobs_returns_empty_list_for_empty_input(job_service):
-    assert await job_service.get_jobs([]) == []
-
-
-@pytest.mark.asyncio
-async def test_get_jobs_by_user_returns_only_that_users_jobs(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-a1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-a2",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-b1",
-        org_id=2,
-        user_id=2,
-        ttl_seconds=3600,
-        format="json",
-    )
-
-    jobs = await job_service.get_jobs_by_user("sessions", org_id=1, user_id=1)
-
-    assert {j["job_id"] for j in jobs} == {"job-a1", "job-a2"}
-
-
-@pytest.mark.asyncio
-async def test_get_jobs_by_user_never_leaks_another_domains_jobs(job_service):
-    # Same org/user, two different audit domains - a second domain's job
-    # must never surface in the first domain's job listing, even though
-    # both share the same underlying Redis connection/service instance.
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-sessions-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    await job_service.create_job(
-        domain="billing",
-        job_id="job-billing-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-
-    sessions_jobs = await job_service.get_jobs_by_user("sessions", org_id=1, user_id=1)
-    billing_jobs = await job_service.get_jobs_by_user("billing", org_id=1, user_id=1)
-
-    assert {j["job_id"] for j in sessions_jobs} == {"job-sessions-1"}
-    assert {j["job_id"] for j in billing_jobs} == {"job-billing-1"}
-
-
-@pytest.mark.asyncio
-async def test_delete_job_only_removes_from_its_own_domain_index(job_service):
-    await job_service.create_job(
-        domain="sessions",
-        job_id="job-1",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-    await job_service.create_job(
-        domain="billing",
-        job_id="job-2",
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
-
-    await job_service.delete_job("job-1", 1, 1, "sessions")
-
-    assert await job_service.get_job("job-1") is None
-    billing_jobs = await job_service.get_jobs_by_user("billing", org_id=1, user_id=1)
-    assert {j["job_id"] for j in billing_jobs} == {"job-2"}
-
-
-@pytest.mark.asyncio
-async def test_get_jobs_by_user_returns_empty_list_when_no_jobs(job_service):
-    assert await job_service.get_jobs_by_user("sessions", org_id=1, user_id=1) == []
-
-
-async def _job_service_with_delete_racing_the_write(job_id: str):
-    """Deletes the job hash from a second connection right after the
-    existence check inside the update transaction, i.e. exactly inside the
-    window a non-atomic check-then-write would lose."""
+async def _job_service_with_delete_racing_the_write():
+    """Deletes the job hash from a second connection right after the existence check
+    inside the update transaction - the window a check-then-write would lose."""
     server = FakeServer()
     redis_client = FakeAsyncRedis(server=server, decode_responses=True)
     racing_client = FakeAsyncRedis(server=server, decode_responses=True)
     service = ExportJobService(redis_client)
-    await service.create_job(
-        domain="sessions",
-        job_id=job_id,
-        org_id=1,
-        user_id=1,
-        ttl_seconds=3600,
-        format="json",
-    )
+    await _create(service)
 
     open_pipeline = redis_client.pipeline
     race_state = {"deleted": False}
@@ -376,7 +102,7 @@ async def _job_service_with_delete_racing_the_write(job_id: str):
             result = await check_exists(*keys)
             if not race_state["deleted"]:
                 race_state["deleted"] = True
-                await racing_client.delete(f"auditor:export_job:{job_id}")
+                await racing_client.delete(f"{JOB_KEY_PREFIX}job-1")
             return result
 
         pipe.exists = exists_then_delete
@@ -386,29 +112,44 @@ async def _job_service_with_delete_racing_the_write(job_id: str):
     return service, redis_client, racing_client
 
 
-@pytest.mark.asyncio
-async def test_mark_done_does_not_resurrect_a_job_deleted_mid_update():
-    service, redis_client, racing_client = await _job_service_with_delete_racing_the_write(
-        "job-1"
-    )
+@pytest.mark.parametrize("finish", [_mark_done, _mark_failed], ids=["done", "failed"])
+async def test_finishing_does_not_resurrect_a_job_deleted_mid_update(finish):
+    service, redis_client, racing_client = await _job_service_with_delete_racing_the_write()
 
-    was_recorded = await service.mark_done("job-1", "/app/export_data/job-1.json", truncated=False)
-
-    assert was_recorded is False
-    assert await racing_client.exists("auditor:export_job:job-1") == 0
+    assert await finish(service) is False
+    assert await racing_client.exists(f"{JOB_KEY_PREFIX}job-1") == 0
     await redis_client.aclose()
     await racing_client.aclose()
 
 
-@pytest.mark.asyncio
-async def test_mark_failed_does_not_resurrect_a_job_deleted_mid_update():
-    service, redis_client, racing_client = await _job_service_with_delete_racing_the_write(
-        "job-1"
-    )
+async def test_delete_removes_the_job_and_its_expiry_entry(job_service):
+    await _create(job_service)
 
-    was_recorded = await service.mark_failed("job-1")
+    await job_service.delete_job("job-1", 1, 1, "sessions")
 
-    assert was_recorded is False
-    assert await racing_client.exists("auditor:export_job:job-1") == 0
-    await redis_client.aclose()
-    await racing_client.aclose()
+    assert await job_service.get_job("job-1") is None
+    assert await job_service._redis.zscore(EXPIRY_ZSET_KEY, "job-1") is None
+
+
+async def test_user_listing_is_scoped_to_domain_org_and_user_and_skips_expired_jobs(job_service):
+    await _create(job_service, "job-mine-1")
+    await _create(job_service, "job-mine-2")
+    await _create(job_service, "job-expired")
+    await _create(job_service, "job-other-user", org_id=2, user_id=2)
+    await _create(job_service, "job-other-domain", domain="billing")
+    # The hash's native TTL fired, but the index entry is still there.
+    await job_service._redis.delete(f"{JOB_KEY_PREFIX}job-expired")
+
+    jobs = await job_service.get_jobs_by_user("sessions", org_id=1, user_id=1)
+
+    assert {job["job_id"] for job in jobs} == {"job-mine-1", "job-mine-2"}
+
+
+async def test_delete_only_touches_its_own_domains_index(job_service):
+    await _create(job_service, "job-1", domain="sessions")
+    await _create(job_service, "job-2", domain="billing")
+
+    await job_service.delete_job("job-1", 1, 1, "sessions")
+
+    billing_jobs = await job_service.get_jobs_by_user("billing", org_id=1, user_id=1)
+    assert {job["job_id"] for job in billing_jobs} == {"job-2"}

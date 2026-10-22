@@ -5,34 +5,15 @@
 
     background: var(--color-nodes-background);
 
-    border-radius: 16px;
+    border-radius: mixins.$node-border-radius;
 
-    .node-name-wrapper {
-        position: absolute;
-        top: -24px;
-        width: 100%;
-        display: flex;
-        pointer-events: none;
-    }
-
-    .node-name-label {
-        background-color: var(--color-nodes-actionbar-bg);
-        color: var(--gray-204);
-        font-size: 0.75rem;
-        padding: 2px 6px;
-        border-radius: 3px;
-        white-space: nowrap;
-        opacity: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    // Outside-the-box bar, only used by NOTE/EDGE (no header row to embed into).
+    // Outside-the-box bar, only used by NOTE (no header row to embed into).
     // Header-based node types reuse this class inside .node-action-bar (see below).
     .actions {
+        @include mixins.node-actions-hidden;
         display: flex;
-        opacity: 0;
-        pointer-events: none;
+        // Clickability is gated by visibility; auto overrides the none inherited from .node-action-bar.
+        pointer-events: auto;
         position: absolute;
         right: 0;
         top: -45px;
@@ -40,7 +21,6 @@
         z-index: 11;
         padding: 8px;
         border-radius: 8px;
-        transition: opacity 0.2s ease;
 
         // Create a larger hit area before the actions
         &::before {
@@ -149,7 +129,7 @@
         border: 2px solid var(--color-divider-subtle);
         cursor: pointer;
         padding: 1rem;
-        border-radius: 16px;
+        border-radius: mixins.$node-border-radius;
         .header {
             display: flex;
             align-items: center;
@@ -167,6 +147,11 @@
                 }
             }
 
+            .title-column {
+                @include mixins.node-title-with-number;
+                flex: 1 1 auto;
+            }
+
             .title {
                 display: flex;
                 align-items: center;
@@ -178,8 +163,6 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
-                flex: 1 1 auto;
-                min-width: 0;
 
                 .active-dot {
                     display: inline-block;
@@ -223,36 +206,37 @@
             right: -2px;
             bottom: calc(100% - 1px);
 
-            .node-number-badge {
-                @include mixins.node-action-bar-number-badge(var(--color-divider-regular));
-                // The tab continues the node's outline, so its corners match the node's.
-                border-radius: 16px 16px 0 0;
+            // A Key-Value node's "Mode / Table / N keys", continuing the node's outline upwards. It stops
+            // short of the delete chip (26px + 4px gap) and ends in "…"; block, since ellipsis skips flex text.
+            .key-value-summary-tab {
+                position: absolute;
+                left: 0;
+                top: 0;
+                height: 28px;
+                box-sizing: border-box;
+                display: block;
+                max-width: calc(100% - 30px);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                // Centres the text in the 28px tab (its 2px top border taken off).
+                line-height: 26px;
+                padding: 0 13px;
+                background-color: var(--color-nodes-background);
+                border: 2px solid var(--color-divider-regular);
+                border-bottom: none;
+                border-radius: mixins.$node-border-radius mixins.$node-border-radius 0 0;
+                // Carries the node's mode stripe up through the tab, so it reads as one line.
+                box-shadow: inset 3px 0 0 0 var(--key-value-accent);
+                color: var(--gray-204);
+                font-size: var(--text-body-small-size);
+                font-weight: var(--text-body-small-weight);
+                pointer-events: none;
 
-                // A Key-Value node's summary rides in the tab: it stops short of the delete chip
-                // (26px + 4px gap) and ends in "…"; block, since ellipsis skips flex text.
-                &.has-summary {
-                    display: block;
-                    max-width: calc(100% - 30px);
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    line-height: 26px;
-                    // Carries the node's mode stripe up through the tab, so it reads as one line.
-                    box-shadow: inset 3px 0 0 0 var(--key-value-accent);
-
-                    // "#N - Mode / Table / N keys": the parts keep the chip's text colour, the number
-                    // and the separators step down so the summary reads first.
-                    .node-number {
-                        color: var(--color-text-secondary);
-                    }
-
-                    .summary-separator {
-                        color: var(--color-text-tertiary);
-                        margin: 0 4px;
-                    }
-
-                    .summary-separator--number {
-                        margin: 0 8px;
-                    }
+                // The parts keep the tab's text colour; the separators step down so the summary reads first.
+                .summary-separator {
+                    color: var(--color-text-tertiary);
+                    margin: 0 4px;
                 }
             }
 
@@ -268,6 +252,13 @@
 
         .node-details {
             margin-top: 1rem;
+        }
+
+        // The corner under the summary tab squares while the tab shows, and re-rounds only once
+        // the tab has faded out.
+        &.has-summary-tab {
+            transition: border-top-left-radius 0s linear
+                (mixins.$node-actions-hide-delay + mixins.$node-actions-fade-duration);
         }
 
         &.is-blocked-llm {
@@ -287,10 +278,6 @@
         right: 0;
         bottom: calc(100% - 3px);
 
-        .node-number-badge {
-            @include mixins.node-action-bar-number-badge(var(--color-divider-subtle));
-        }
-
         .actions {
             @include mixins.node-action-bar-delete-chip(var(--color-divider-subtle), 4px);
             right: 0;
@@ -306,31 +293,33 @@
         //       display: block;
         // }
 
-        .node-name-label {
-            opacity: 1;
-        }
-
         .port-wrapper .port-label {
             opacity: 1;
         }
 
         .actions {
-            opacity: 1;
-            pointer-events: auto;
+            @include mixins.node-actions-shown;
         }
 
         .interactive-node-body .node-action-bar,
         .node-action-bar--table {
-            opacity: 1;
+            @include mixins.node-actions-shown;
+        }
+
+        // As deep as the rule that hides the number, so :hover wins.
+        .interactive-node-body .header .title-column.has-node-number {
+            @include mixins.node-title-with-number-shown;
         }
 
         // Only while shown, so the hidden tab is no hit zone; the pointer is what lets its title appear.
-        .node-number-badge.has-summary {
+        // As deep as the rule that sets pointer-events: none, so :hover wins.
+        .interactive-node-body .node-action-bar .key-value-summary-tab {
             pointer-events: auto;
         }
 
-        .interactive-node-body.has-number-chip {
+        .interactive-node-body.has-summary-tab {
             border-top-left-radius: 0;
+            transition-delay: 0s;
         }
     }
 
@@ -349,9 +338,6 @@
     &.f-selected {
         z-index: 1000 !important;
 
-        .node-name-label {
-            opacity: 1;
-        }
         .port-wrapper .port-label {
             opacity: 1;
         }
@@ -364,30 +350,26 @@
         }
 
         .actions {
-            opacity: 1;
-            pointer-events: auto;
+            @include mixins.node-actions-shown;
         }
 
         .interactive-node-body .node-action-bar,
         .node-action-bar--table {
-            opacity: 1;
-
-            .node-number-badge {
-                border-color: var(--vp-selected-node-border-color);
-                border-bottom: none;
-
-                &.has-summary {
-                    pointer-events: auto;
-                }
-            }
+            @include mixins.node-actions-shown;
 
             .actions {
                 border: 2px solid var(--vp-selected-node-border-color);
             }
         }
 
-        .interactive-node-body.has-number-chip {
+        .interactive-node-body .node-action-bar .key-value-summary-tab {
+            border-color: var(--vp-selected-node-border-color);
+            pointer-events: auto;
+        }
+
+        .interactive-node-body.has-summary-tab {
             border-top-left-radius: 0;
+            transition-delay: 0s;
         }
     }
 
@@ -464,37 +446,6 @@
     min-height: fit-content;
 }
 
-:host(.type-edge) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    --edge-node-border-color: var(--color-divider-subtle);
-
-    .port-position-left {
-        left: 8px !important;
-        top: 50%;
-        transform: translateY(-50%);
-    }
-
-    .port-position-right {
-        right: 8px !important;
-        top: 50%;
-        transform: translateY(-50%);
-    }
-
-    background-color: transparent;
-    border: none;
-    border-radius: 0;
-    padding: 0;
-    width: auto;
-    height: auto;
-
-    &.f-selected {
-        --edge-node-border-color: var(--vp-selected-node-border-color);
-    }
-}
-
 :host(.type-note) {
     // Make the node container fit the note component
     display: flex;
@@ -517,16 +468,14 @@
     // Make sure edit button is visible on hover
     &:hover {
         .actions {
-            opacity: 1;
-            pointer-events: auto;
+            @include mixins.node-actions-shown;
         }
     }
 
     // Keep edit button visible when selected
     &.f-selected {
         .actions {
-            opacity: 1;
-            pointer-events: auto;
+            @include mixins.node-actions-shown;
         }
     }
 }

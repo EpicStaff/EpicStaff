@@ -1,15 +1,13 @@
 from functools import lru_cache
 
 from django.apps import apps
-from django.db import connection, transaction
+from django.db import transaction
+from rbac.authorship import LAST_EDIT_TRACKER_CONTEXT_KEY, LastEditTracker
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
 from tables.models import Graph
 from tables.models.base_models import BaseGlobalNode
-from tables.models.graph_models import ConditionalEdge, Edge
-from tables.serializers.graph_bulk_save_serializers import (
-    ConditionalEdgeBulkSerializer,
-    EdgeBulkSerializer,
-)
+from tables.models.graph_models import Edge
+from tables.serializers.graph_bulk_save_serializers import EdgeBulkSerializer
 from tables.services.graph_bulk_save_service.data_types import (
     BuildSaveableResult,
     EdgeListValidationResult,
@@ -23,10 +21,10 @@ from tables.services.graph_bulk_save_service.registry import (
     NodeTypeConfig,
 )
 from tables.services.graph_bulk_save_service.saveables import (
-    _ConditionalEdgeSaveable,
     _EdgeSaveable,
     _NodeSaveable,
 )
+from tables.services.node_number_service import NodeNumberService
 
 
 class GraphBulkSaveService:
@@ -37,13 +35,21 @@ class GraphBulkSaveService:
               so the temp_id -> real_id map is ready when edges are written.
 
     Raises BulkSaveValidationError with a structured error dict if any entity
-    fails validation. No DB writes happen in that case.
+    fails validation. No DB writes happen in that case. An item error that can
+    only be detected during Pass 2 (a node's nested child reference) is raised in
+    the same shape, and the whole transaction is rolled back.
+
+    A node gets a last edit only when its own state changed (a move is not a node
+    edit); the graph gets one when anything in it changed, moves included.
     """
 
     # The active request, set per-invocation in save(). Threaded into every
     # node/edge serializer's context so org-scoped fields can resolve the active
     # org. Defaults to None so a helper called without save() denies (fail-safe).
     _request = None
+    # Shared by every node/edge serializer of one save(); None without a request,
+    # because a save without an acting user records no last edit.
+    _last_edit_tracker: LastEditTracker | None = None
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -65,6 +71,9 @@ class GraphBulkSaveService:
         node_saveables: list[_NodeSaveable] = []
         edge_saveables: list = []
         self._serializer_context = {"request": self._request}
+        self._last_edit_tracker = LastEditTracker(request.user) if request is not None else None
+        if self._last_edit_tracker is not None:
+            self._serializer_context[LAST_EDIT_TRACKER_CONTEXT_KEY] = self._last_edit_tracker
 
         payload_temp_ids: set[str] = self._collect_payload_temp_ids(validated_input)
 
@@ -78,7 +87,9 @@ class GraphBulkSaveService:
             all_errors["deleted"] = deletion_errors
 
         # Pass 1: validate nodes (driven by registry — no hardcoded lists)
-        routing_refs_to_validate: set[int] = set()
+        # {list_key: {item index: real routing target ids}}, so a bad routing ref is
+        # reported on the decision table item that holds it.
+        routing_refs_by_item: dict[str, dict[int, set[int]]] = {}
         for config in NODE_TYPE_REGISTRY:
             incoming = validated_input.get(config.list_key, [])
             if not incoming:
@@ -90,7 +101,8 @@ class GraphBulkSaveService:
             else:
                 node_saveables.extend(result.node_saveables)
                 edge_saveables.extend(result.deferred_saveables)
-                routing_refs_to_validate |= result.real_routing_node_ids
+                if result.real_routing_node_ids_by_index:
+                    routing_refs_by_item[config.list_key] = result.real_routing_node_ids_by_index
 
         # Pass 1: validate edges
         existing_node_ref_errors = []
@@ -109,35 +121,38 @@ class GraphBulkSaveService:
             edge_saveables.extend(edge_result.saveables)
             edge_refs_to_validate |= edge_result.real_node_ids
 
-        cond_result = self._validate_conditional_edge_list(
-            graph,
-            validated_input.get("conditional_edge_list", []),
-            payload_temp_ids,
+        # Batch-validate that every real (non-temp) edge endpoint and decision table
+        # routing ref belongs to this graph. The message is the
+        # same for a nonexistent and a foreign id, so existence never leaks.
+        # A node deleted by this request still exists now but not after Pass 2,
+        # so a reference to it counts as outside the graph too.
+        all_real_refs = edge_refs_to_validate.union(
+            *(
+                refs
+                for refs_by_index in routing_refs_by_item.values()
+                for refs in refs_by_index.values()
+            )
         )
-        if cond_result.errors:
-            all_errors["conditional_edge_list"] = cond_result.errors
-        else:
-            edge_saveables.extend(cond_result.saveables)
-            edge_refs_to_validate |= cond_result.real_node_ids
-
-        # Batch-validate all real (non-temp) node refs across edge types and
-        # decision table routing fields combined.
-        all_real_refs = edge_refs_to_validate | routing_refs_to_validate
         if all_real_refs:
-            invalid_ids = self._find_nonexistent_global_node_ids(all_real_refs)
-            if invalid_ids:
-                # Partition errors by source for clearer attribution.
-                invalid_edge_refs = invalid_ids & edge_refs_to_validate
-                invalid_routing_refs = invalid_ids & routing_refs_to_validate
-                if invalid_edge_refs:
-                    existing_node_ref_errors.append(
-                        f"Edge references node IDs that do not exist: {sorted(invalid_edge_refs)}"
-                    )
-                if invalid_routing_refs:
-                    existing_node_ref_errors.append(
-                        f"DecisionTableNode routing references node IDs that do not exist: "
-                        f"{sorted(invalid_routing_refs)}"
-                    )
+            invalid_ids = self._find_node_ids_outside_graph(all_real_refs, graph.id) | (
+                all_real_refs & self._collect_deleted_node_ids(deleted_data)
+            )
+            invalid_edge_refs = invalid_ids & edge_refs_to_validate
+            if invalid_edge_refs:
+                existing_node_ref_errors.append(
+                    f"Edge references node IDs not found in this graph: {sorted(invalid_edge_refs)}"
+                )
+            for list_key, refs_by_index in routing_refs_by_item.items():
+                for index, refs in refs_by_index.items():
+                    invalid_routing_refs = invalid_ids & refs
+                    if invalid_routing_refs:
+                        message = (
+                            "Decision table routing references node IDs not found in this graph: "
+                            f"{sorted(invalid_routing_refs)}"
+                        )
+                        all_errors.setdefault(list_key, []).append(
+                            {"index": index, "errors": [message]}
+                        )
         if existing_node_ref_errors:
             all_errors.setdefault("edge_list", []).extend(existing_node_ref_errors)
 
@@ -167,6 +182,9 @@ class GraphBulkSaveService:
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
+            # The URL graph is the authority: a per-item graph would let an item
+            # be written into (or moved to) another graph that skips the checks below.
+            item_data["graph"] = graph.id
             item_id = item_data.get("id")
             temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
@@ -192,12 +210,20 @@ class GraphBulkSaveService:
             if build.error:
                 result.errors.append(build.error)
             else:
-                result.node_saveables.append(_NodeSaveable(build.inner_saveable, temp_id or None))
+                result.node_saveables.append(
+                    _NodeSaveable(
+                        build.inner_saveable,
+                        temp_id or None,
+                        config.list_key,
+                        index,
+                        config.model_class,
+                    )
+                )
                 if build.deferred_saveable is not None:
                     result.deferred_saveables.append(build.deferred_saveable)
-                    result.real_routing_node_ids |= self._collect_real_routing_refs(
-                        build.deferred_saveable
-                    )
+                    routing_refs = self._collect_real_routing_refs(build.deferred_saveable)
+                    if routing_refs:
+                        result.real_routing_node_ids_by_index[index] = routing_refs
 
         return result
 
@@ -212,11 +238,11 @@ class GraphBulkSaveService:
         """Build one saveable via the config factory."""
         data, extra = config.saveable_factory.preprocess_data(data, payload_temp_ids)
 
-        # Surface routing validation errors collected by preprocess_data before
-        # attempting serializer construction.
-        routing_errors = extra.get("routing_errors", [])
-        if routing_errors:
-            return BuildSaveableResult(error={"index": index, "errors": routing_errors})
+        # Surface validation errors collected by preprocess_data (routing refs,
+        # nested configs, ...) before attempting serializer construction.
+        preprocess_errors = extra.get("preprocess_errors", [])
+        if preprocess_errors:
+            return BuildSaveableResult(error={"index": index, "errors": preprocess_errors})
 
         s = (
             config.serializer_class(instance, data=data, context=self._serializer_context)
@@ -232,8 +258,8 @@ class GraphBulkSaveService:
 
     @staticmethod
     def _collect_real_routing_refs(deferred) -> set[int]:
-        """Extract real (non-temp) node IDs from a _DecisionTableNodeRefsSaveable
-        for batch existence validation in Pass 1."""
+        """Extract real (non-temp) node IDs from a decision table or classification
+        decision table refs saveable for the batch same-graph check in Pass 1."""
         refs: set[int] = set()
         for attr in ("_default_next_ref", "_next_error_ref"):
             ref = getattr(deferred, attr, None)
@@ -259,6 +285,7 @@ class GraphBulkSaveService:
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
+            item_data["graph"] = graph.id
             item_id = item_data.get("id")
 
             start_parsed = self._parse_node_ref(
@@ -305,64 +332,6 @@ class GraphBulkSaveService:
                     continue
                 result.saveables.append(
                     _EdgeSaveable(s, start_parsed.ref, end_parsed.ref, instance=db_instance)
-                )
-
-        return result
-
-    def _validate_conditional_edge_list(
-        self,
-        graph: Graph,
-        incoming_list: list[dict],
-        payload_temp_ids: set[str],
-    ) -> EdgeListValidationResult:
-        """Validate all ConditionalEdge items."""
-        result = EdgeListValidationResult()
-
-        db_map = {obj.id: obj for obj in ConditionalEdge.objects.filter(graph=graph)}
-
-        for index, item_data in enumerate(incoming_list):
-            item_data = dict(item_data)
-            item_id = item_data.get("id")
-
-            source_parsed = self._parse_node_ref(
-                item_data, "source_node_id", "source_temp_id", payload_temp_ids, index
-            )
-            if source_parsed.error:
-                result.errors.append(source_parsed.error)
-                continue
-
-            if source_parsed.ref and not source_parsed.ref.is_temp:
-                result.real_node_ids.add(source_parsed.ref.value)
-
-            if item_id is None:
-                item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(data=item_data, context=self._serializer_context)
-                if not s.is_valid():
-                    result.errors.append({"index": index, "errors": s.errors})
-                    continue
-                result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=None)
-                )
-            else:
-                db_instance = db_map.get(item_id)
-                if db_instance is None:
-                    result.errors.append(
-                        {
-                            "index": index,
-                            "errors": f"id={item_id} not found in graph {graph.id}",
-                        }
-                    )
-                    continue
-
-                item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(
-                    db_instance, data=item_data, context=self._serializer_context
-                )
-                if not s.is_valid():
-                    result.errors.append({"index": index, "errors": s.errors})
-                    continue
-                result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=db_instance)
                 )
 
         return result
@@ -445,8 +414,22 @@ class GraphBulkSaveService:
         return temp_ids
 
     @staticmethod
-    def _find_nonexistent_global_node_ids(node_ids: set[int]) -> set[int]:
-        """Return the subset of node_ids that do not exist in any BaseGlobalNode table."""
+    def _collect_deleted_node_ids(deleted_data: dict) -> set[int]:
+        """Return the node ids this request deletes, across every node type."""
+        return {
+            node_id
+            for config in NODE_TYPE_REGISTRY
+            for node_id in deleted_data.get(config.delete_key) or []
+        }
+
+    @staticmethod
+    def _find_node_ids_outside_graph(node_ids: set[int], graph_id: int) -> set[int]:
+        """Return the subset of node_ids that are not a live BaseGlobalNode of graph_id.
+
+        A nonexistent id, a node in the recycle bin and an id belonging to another
+        graph (or organization) all count as outside, so callers cannot tell them
+        apart. One query: a UNION over every node model's live `objects` manager.
+        """
         if not node_ids:
             return set()
 
@@ -454,17 +437,14 @@ class GraphBulkSaveService:
         if not node_models:
             return node_ids
 
-        id_list = list(node_ids)
-        placeholders = ",".join(["%s"] * len(id_list))
-        union_parts = [
-            f"SELECT id FROM {m._meta.db_table} WHERE id IN ({placeholders})" for m in node_models
+        # order_by() drops any Meta.ordering, which a UNION's parts can't carry.
+        live_ids = [
+            model.objects.filter(graph_id=graph_id, pk__in=node_ids)
+            .order_by()
+            .values_list("pk", flat=True)
+            for model in node_models
         ]
-        query = " UNION ALL ".join(union_parts)
-        params = id_list * len(node_models)
-
-        with connection.cursor() as cursor:
-            cursor.execute(query, params)
-            found_ids = {row[0] for row in cursor.fetchall()}
+        found_ids = set(live_ids[0].union(*live_ids[1:], all=True))
 
         return node_ids - found_ids
 
@@ -480,10 +460,11 @@ class GraphBulkSaveService:
 
         # check if graph was changed meanwhile editing
         Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
+        self._assign_node_numbers(graph, node_saveables)
 
         temp_id_map: dict[str, int] = {}
 
-        self._execute_deletions(graph, deleted_data)
+        deleted_count = self._execute_deletions(graph, deleted_data)
 
         # Nodes first — populates temp_id_map for new nodes.
         for ns in node_saveables:
@@ -493,9 +474,44 @@ class GraphBulkSaveService:
         for es in edge_saveables:
             es.resolve_and_save(temp_id_map)
 
-    def _execute_deletions(self, graph: Graph, deleted_data: dict):
-        """Delete all requested entities in edges-before-nodes order."""
+        self._record_last_edits(graph, deleted_count)
+
+    @staticmethod
+    def _assign_node_numbers(graph: Graph, node_saveables: list[_NodeSaveable]) -> None:
+        """Give created numbered nodes one contiguous block above the counter.
+
+        The client's optimistic badge (node_number_hint) is only an ordering key: the
+        nodes are sorted by it (unhinted last, ties in registry then payload order) and
+        take the block's numbers in that order. A hint never sets a number, so numbers
+        stay contiguous from the counter and badges keep their relative order even when
+        the registry saves node types in a fixed order or the editor deleted unsaved nodes.
+        """
+        created = [
+            saveable for saveable in node_saveables if saveable.is_create and saveable.is_numbered
+        ]
+        created.sort(
+            key=lambda saveable: (saveable.node_number_hint is None, saveable.node_number_hint or 0)
+        )
+        for saveable, number in zip(
+            created, NodeNumberService().reserve(graph.id, len(created)), strict=True
+        ):
+            saveable.assigned_node_number = number
+
+    def _execute_deletions(self, graph: Graph, deleted_data: dict) -> int:
+        """Delete all requested entities in edges-before-nodes order; return the rows deleted."""
+        deleted_count = 0
         for config in [*EDGE_DELETE_CONFIGS, *NODE_TYPE_REGISTRY]:
             ids = deleted_data.get(config.delete_key) or []
             if ids:
-                config.model_class.objects.filter(id__in=ids, graph=graph).delete()
+                deleted, _ = config.model_class.objects.filter(id__in=ids, graph=graph).delete()
+                deleted_count += deleted
+        return deleted_count
+
+    def _record_last_edits(self, graph: Graph, deleted_count: int) -> None:
+        # Runs after every node, edge and deferred routing write, so nested child
+        # rows and routing refs are part of each node's comparison.
+        if self._last_edit_tracker is None:
+            return
+        if deleted_count:
+            self._last_edit_tracker.mark_edited(graph)
+        self._last_edit_tracker.finish()

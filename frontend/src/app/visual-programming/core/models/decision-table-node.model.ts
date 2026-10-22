@@ -1,3 +1,7 @@
+import { AuthorshipFields } from '@shared/models';
+
+import { NumberedNodeDto } from './numbered-node-dto.model';
+
 export interface ConditionGroupBackend {
     id: number;
     decision_table_node: number;
@@ -32,8 +36,9 @@ export interface CreateConditionRequest {
     condition: string;
 }
 
-export interface GetDecisionTableNodeRequest {
+export interface GetDecisionTableNodeRequest extends AuthorshipFields, NumberedNodeDto {
     id: number;
+    created_at: string;
     graph: number;
     node_name: string;
     condition_groups: ConditionGroupBackend[];

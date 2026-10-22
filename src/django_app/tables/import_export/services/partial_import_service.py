@@ -1,15 +1,22 @@
+from copy import deepcopy
+
 from django.db import transaction
 from loguru import logger
+from rbac.authorship import record_last_edits
+from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from tables.import_export.constants import DEPENDENCY_ORDER
+from tables.import_export.constants import DEPENDENCY_ORDER, NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
+from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.strategies.graph import GraphStrategy
 from tables.models import Graph
+from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
+from tables.utils.legacy_node_number import move_legacy_badge_into_node_number
 
 # Node entity types that belong to a graph — handled via recreate_graph_children.
 # Start/end nodes are intentionally excluded: they are structural and every
@@ -55,16 +62,29 @@ class PartialImportService:
         user=None,
         effective_permissions=None,
     ) -> IDMapper:
+        """Append the file's nodes and edges to `graph`.
+
+        `effective_permissions=None` means a trusted internal caller: both permission
+        checks (CREATE on new dependencies, and USE for trigger nodes) are skipped.
+        """
         nodes_data = self._collect_nodes(export_data)
         if not nodes_data:
             raise ValidationError({"detail": "No nodes found in the import file."})
 
         id_mapper = IDMapper()
+        export_data = prepare_import_data(export_data)
+        # A trigger node among the imported nodes is live once created, so the import
+        # needs flows:USE; refused here, before the transaction opens, so nothing is
+        # written. Only the collected node entries are imported, so only they count.
+        if effective_permissions is not None and TriggerNodeInspector.has_any_in_node_entries(
+            nodes_data
+        ):
+            trigger_node_access.assert_may_recreate(effective_permissions)
 
         with transaction.atomic():
             # Step 1: import non-node dependencies (LLM configs, crews, etc.)
             # into the active org, enforcing per-resource CREATE permission.
-            self._import_dependencies(
+            created_dependencies = self._import_dependencies(
                 export_data,
                 id_mapper,
                 org_id=org_id,
@@ -80,7 +100,7 @@ class PartialImportService:
 
             edges_data = export_data.get("edge_list", [])
 
-            graph_strategy.recreate_graph_children(
+            node_mapper = graph_strategy.recreate_graph_children(
                 graph,
                 {
                     "nodes": nodes_data,
@@ -90,6 +110,10 @@ class PartialImportService:
                 is_partial=True,
                 user=user,
             )
+            # Only an added node edits the graph; every node can be skipped (unsupported
+            # type), and new dependencies are rows of their own, not graph content.
+            edited_graph = [graph] if node_mapper.get_new_ids(NODE_MAPPING_KEY) else []
+            record_last_edits([*created_dependencies, *edited_graph], user)
 
         return id_mapper
 
@@ -100,13 +124,12 @@ class PartialImportService:
         org_id: int | None = None,
         user=None,
         effective_permissions=None,
-    ) -> None:
+    ) -> list[LastEditTrackedModel]:
         """Import all non-node, non-graph entity types in dependency order.
 
-        Mirrors ImportService: each genuinely-new create is gated on CREATE
-        for the mapped ResourceType; org_id is stamped on created rows and
-        scopes find_existing reuse to the active org. Denials are collected
-        and raised once, inside the caller's atomic block, so nothing persists.
+        Each new row needs CREATE on its ResourceType, gets the active org, and existing
+        rows of that org are reused; denials are raised once, inside the caller's atomic
+        block, so nothing persists. Returns the created rows that record their last edit.
         """
         dep_types = [
             et
@@ -115,6 +138,7 @@ class PartialImportService:
         ]
 
         denied_resources = set()
+        created_resources: list[LastEditTrackedModel] = []
 
         for entity_type in dep_types:
             if not self.registry.has_strategy(entity_type):
@@ -132,31 +156,42 @@ class PartialImportService:
                 was_created = existing is None
 
                 if was_created and effective_permissions is not None:
-                    resource = ENTITY_RESOURCE_MAP.get(entity_type)
-                    if resource is not None and not effective_permissions.can(
-                        resource, Permission.CREATE
+                    for created_type in (
+                        entity_type,
+                        *strategy.nested_entity_types(entity_data),
                     ):
-                        denied_resources.add(resource)
+                        resource = ENTITY_RESOURCE_MAP.get(created_type)
+                        if resource is not None and not effective_permissions.can(
+                            resource, Permission.CREATE
+                        ):
+                            denied_resources.add(resource)
 
                 instance = strategy.import_entity(
                     entity_data, id_mapper, is_main=False, org_id=org_id, user=user
                 )
                 if instance is not None:
                     id_mapper.map(entity_type, old_id, instance.id, was_created)
+                if was_created and isinstance(instance, LastEditTrackedModel):
+                    created_resources.append(instance)
 
         if denied_resources:
             names = ", ".join(sorted(r.value for r in denied_resources))
             raise PermissionDenied(f"Missing CREATE permission on: {names}. No changes were made.")
+        return created_resources
 
     def _collect_nodes(self, export_data: dict) -> list:
         """
         Gather node dicts from all node entity types and tag each with
         node_type so GraphStrategy._create_nodes can dispatch correctly.
+
+        Partial files carry no version, so VersionConverter never sees them; a
+        file written before node_number existed gets its "#N" badges moved here.
         """
         nodes = []
         for entity_type in _NODE_ENTITY_TYPES:
             for node_data in export_data.get(entity_type, []):
-                node_copy = dict(node_data)
+                node_copy = deepcopy(node_data)
                 node_copy["node_type"] = entity_type
+                move_legacy_badge_into_node_number(node_copy)
                 nodes.append(node_copy)
         return nodes

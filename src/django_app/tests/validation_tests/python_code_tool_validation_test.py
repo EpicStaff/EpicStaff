@@ -1,288 +1,92 @@
+from types import SimpleNamespace
+
 import pytest
-from unittest.mock import MagicMock
+
 from tables.exceptions import PythonCodeToolConfigSerializerError
-from tables.models.python_models import PythonCodeTool
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
 
-# All tools here are MagicMock instances, so nothing below queries the ORM. But
-# tests/conftest.py has an autouse `heal_builtin_roles` fixture that queries the
-# Role table before every db test, and without a test that pulls in the `db`
-# fixture, pytest-django never swaps the connection to the test database, so
-# that query would hit the real dev database instead.
+# Nothing below queries the ORM. But tests/conftest.py has an autouse
+# `heal_builtin_roles` fixture that queries the Role table before every db test, and
+# without a test that pulls in the `db` fixture, pytest-django never swaps the
+# connection to the test database, so that query would hit the real dev database.
 pytestmark = pytest.mark.django_db
 
 
-def make_tool(variables):
-    tool = MagicMock(spec=PythonCodeTool)
-    tool.variables = variables
-    return tool
+def variable(name, var_type="string", input_type="user_input", required=True, **schema):
+    return {"name": name, "type": var_type, "input_type": input_type, "required": required, **schema}
 
 
-@pytest.fixture
-def validator():
-    return PythonCodeToolConfigValidator()
+SETTINGS = variable(
+    "settings", "object",
+    properties={"api_key": {"type": "string"}, "timeout": {"type": "integer"}},
+    required_properties=["api_key"],
+)
+DEEP_CONFIG = variable(
+    "config", "object",
+    properties={"db": {"type": "object", "properties": {"port": {"type": "integer"}}, "required": ["port"]}},
+    required_properties=["db"],
+)
 
 
-def test_validate_invalid_configuration_type(validator):
-    tool = make_tool([])
-    with pytest.raises(PythonCodeToolConfigSerializerError, match="must be an object"):
-        validator.validate("test_tool", tool, configuration=[1, 2, 3])
-
-
-def test_validate_happy_path_string(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "api_key",
-                "type": "string",
-                "input_type": "user_input",
-                "required": True,
-            }
-        ]
-    )
-    result = validator.validate("tool", tool, {"api_key": "secret_123"})
-    assert result["api_key"] == "secret_123"
-
-
-def test_validate_missing_required_field_raises_error(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "api_key",
-                "type": "string",
-                "input_type": "user_input",
-                "required": True,
-            }
-        ]
-    )
-    with pytest.raises(
-        PythonCodeToolConfigSerializerError, match="Field 'api_key' is required"
-    ):
-        validator.validate("tool", tool, {})
-
-
-def test_validate_missing_required_field_allowed_flag():
-    validator = PythonCodeToolConfigValidator(validate_missing_required_fields=False)
-    tool = make_tool(
-        [
-            {
-                "name": "api_key",
-                "type": "string",
-                "input_type": "user_input",
-                "required": True,
-            }
-        ]
-    )
-    result = validator.validate("tool", tool, {})
-    assert result["api_key"] is None
-
-
-def test_validate_ignores_extra_config_fields(validator):
-    tool = make_tool([])
-    result = validator.validate(
-        "tool", tool, {"random_extra_field": "should_be_ignored"}
-    )
-    assert "random_extra_field" not in result
-    assert result == {}
-
-
-def test_validate_rejects_agent_input_field(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "query",
-                "type": "string",
-                "input_type": "agent_input",
-                "required": True,
-            }
-        ]
-    )
-    with pytest.raises(PythonCodeToolConfigSerializerError, match="set by the agent"):
-        validator.validate("tool", tool, {"query": "something"})
-
-
-def test_validate_mixed_variable_accepted(validator):
-    tool = make_tool(
-        [{"name": "limit", "type": "integer", "input_type": "mixed", "required": False}]
-    )
-    result = validator.validate("tool", tool, {"limit": 5})
-    assert result["limit"] == 5
+def validate(variables, configuration, **options):
+    tool = SimpleNamespace(variables=variables)
+    return PythonCodeToolConfigValidator(**options).validate("tool", tool, configuration)
 
 
 @pytest.mark.parametrize(
-    "var_type, input_val, expected_val",
+    ("variables", "configuration", "expected"),
     [
-        ("integer", "10", 10),
-        ("integer", 10, 10),
-        ("number", "10.5", 10.5),
-        ("number", 10, 10.0),
-        ("string", 123, "123"),
-        ("boolean", True, True),
-        ("boolean", False, False),
-        ("any", {"a": 1}, {"a": 1}),
+        ([variable("api_key")], {"api_key": "secret_123"}, {"api_key": "secret_123"}),
+        ([], {"random_extra_field": "ignored"}, {}),
+        ([variable("limit", "integer", "mixed", required=False)], {"limit": 5}, {"limit": 5}),
+        ([variable("field", "integer")], {"field": "10"}, {"field": 10}),
+        ([variable("field", "integer")], {"field": 10}, {"field": 10}),
+        ([variable("field", "number")], {"field": "10.5"}, {"field": 10.5}),
+        ([variable("field", "number")], {"field": 10}, {"field": 10.0}),
+        ([variable("field", "string")], {"field": 123}, {"field": "123"}),
+        ([variable("field", "boolean")], {"field": True}, {"field": True}),
+        ([variable("field", "boolean")], {"field": False}, {"field": False}),
+        ([variable("field", "any")], {"field": {"a": 1}}, {"field": {"a": 1}}),
+        ([SETTINGS], {"settings": {"api_key": "abc", "timeout": "30"}}, {"settings": {"api_key": "abc", "timeout": 30}}),
+        ([variable("tags", "array", required=False, items={"type": "string"})], {"tags": ["a", "b"]}, {"tags": ["a", "b"]}),
+        ([DEEP_CONFIG], {"config": {"db": {"port": "5432"}}}, {"config": {"db": {"port": 5432}}}),
+    ],
+    ids=[
+        "string", "extra-field-dropped", "mixed-input", "integer-from-string", "integer", "number-from-string",
+        "number-from-int", "string-from-int", "true", "false", "any", "nested-object-cast", "array", "deeply-nested-cast",
     ],
 )
-def test_casting_success(validator, var_type, input_val, expected_val):
-    tool = make_tool(
-        [
-            {
-                "name": "field",
-                "type": var_type,
-                "input_type": "user_input",
-                "required": True,
-            }
-        ]
+def test_a_valid_configuration_is_cast_to_the_declared_types(variables, configuration, expected):
+    assert validate(variables, configuration) == expected
+
+
+def test_missing_required_fields_can_be_left_for_later():
+    """Drafts may be saved before every required field is filled in."""
+    result = validate(
+        [variable("api_key"), variable("count", "integer")], {}, validate_missing_required_fields=False
     )
-    result = validator.validate("tool", tool, {"field": input_val})
-    assert result["field"] == expected_val
+
+    assert result == {"api_key": None, "count": None}
 
 
-def test_casting_failure_raises_error(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "max_tokens",
-                "type": "integer",
-                "input_type": "user_input",
-                "required": True,
-            }
-        ]
-    )
-    with pytest.raises(
-        PythonCodeToolConfigSerializerError, match="Error casting value"
-    ):
-        validator.validate("tool", tool, {"max_tokens": "not_a_number"})
-
-
-def test_validate_none_value_not_cast():
-    validator = PythonCodeToolConfigValidator(validate_missing_required_fields=False)
-    tool = make_tool(
-        [
-            {
-                "name": "count",
-                "type": "integer",
-                "input_type": "user_input",
-                "required": True,
-            }
-        ]
-    )
-    result = validator.validate("tool", tool, {})
-    assert result["count"] is None
-
-
-def test_validate_nested_object(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "settings",
-                "type": "object",
-                "input_type": "user_input",
-                "required": True,
-                "properties": {
-                    "api_key": {"type": "string"},
-                    "timeout": {"type": "integer"},
-                },
-                "required_properties": ["api_key"],
-            }
-        ]
-    )
-    result = validator.validate(
-        "tool", tool, {"settings": {"api_key": "abc", "timeout": "30"}}
-    )
-    assert result["settings"]["api_key"] == "abc"
-    assert result["settings"]["timeout"] == 30
-
-
-def test_validate_nested_object_missing_required(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "settings",
-                "type": "object",
-                "input_type": "user_input",
-                "required": True,
-                "properties": {
-                    "api_key": {"type": "string"},
-                },
-                "required_properties": ["api_key"],
-            }
-        ]
-    )
-    with pytest.raises(PythonCodeToolConfigSerializerError, match="api_key.*required"):
-        validator.validate("tool", tool, {"settings": {}})
-
-
-def test_validate_nested_object_wrong_type(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "settings",
-                "type": "object",
-                "input_type": "user_input",
-                "required": True,
-                "properties": {"count": {"type": "integer"}},
-                "required_properties": [],
-            }
-        ]
-    )
-    with pytest.raises(PythonCodeToolConfigSerializerError, match="Expected an object"):
-        validator.validate("tool", tool, {"settings": "not_an_object"})
-
-
-def test_validate_array_with_items(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "tags",
-                "type": "array",
-                "input_type": "user_input",
-                "required": False,
-                "items": {"type": "string"},
-            }
-        ]
-    )
-    result = validator.validate("tool", tool, {"tags": ["a", "b", "c"]})
-    assert result["tags"] == ["a", "b", "c"]
-
-
-def test_validate_array_wrong_type(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "ids",
-                "type": "array",
-                "input_type": "user_input",
-                "required": False,
-                "items": {"type": "integer"},
-            }
-        ]
-    )
-    with pytest.raises(PythonCodeToolConfigSerializerError, match="Expected an array"):
-        validator.validate("tool", tool, {"ids": "not_an_array"})
-
-
-def test_validate_deeply_nested_object(validator):
-    tool = make_tool(
-        [
-            {
-                "name": "config",
-                "type": "object",
-                "input_type": "user_input",
-                "required": True,
-                "properties": {
-                    "db": {
-                        "type": "object",
-                        "properties": {
-                            "port": {"type": "integer"},
-                        },
-                        "required": ["port"],
-                    },
-                },
-                "required_properties": ["db"],
-            }
-        ]
-    )
-    result = validator.validate("tool", tool, {"config": {"db": {"port": "5432"}}})
-    assert result["config"]["db"]["port"] == 5432
+@pytest.mark.parametrize(
+    ("variables", "configuration", "message"),
+    [
+        ([], [1, 2, 3], "must be an object"),
+        ([variable("api_key")], {}, "Field 'api_key' is required"),
+        ([variable("query", input_type="agent_input")], {"query": "something"}, "set by the agent"),
+        ([variable("max_tokens", "integer")], {"max_tokens": "not_a_number"}, "Error casting value"),
+        ([SETTINGS], {"settings": {}}, "api_key.*required"),
+        ([SETTINGS], {"settings": "not_an_object"}, "Expected an object"),
+        ([variable("ids", "array", required=False, items={"type": "integer"})], {"ids": "nope"}, "Expected an array"),
+    ],
+    ids=[
+        "not-an-object", "missing-required", "agent-input-set-by-user", "uncastable",
+        "nested-missing-required", "nested-wrong-type", "array-wrong-type",
+    ],
+)
+def test_an_invalid_configuration_is_rejected(variables, configuration, message):
+    with pytest.raises(PythonCodeToolConfigSerializerError, match=message):
+        validate(variables, configuration)

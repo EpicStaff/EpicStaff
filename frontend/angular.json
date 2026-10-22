@@ -57,6 +57,7 @@
             "styles": [
               "@angular/material/prebuilt-themes/cyan-orange.css",
               "node_modules/@tabler/icons-webfont/dist/tabler-icons.min.css",
+              "node_modules/driver.js/dist/driver.css",
               "src/styles.scss"
             ],
             "scripts": [],
@@ -160,7 +161,7 @@
     }
   },
   "cli": {
-    "analytics": "3178af77-cc96-4364-8f39-fa855869adce"
+    "analytics": "false"
   },
   "schematics": {
     "@schematics/angular:component": {

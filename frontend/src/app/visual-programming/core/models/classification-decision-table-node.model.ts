@@ -1,4 +1,7 @@
-import { DeclaredSecretRef } from '@shared/models';
+import { AuthorshipFields, DeclaredSecretRef } from '@shared/models';
+
+import { NumberedNodeDto } from './numbered-node-dto.model';
+
 export interface PromptConfigBackend {
     id: number;
     prompt_key: string;
@@ -67,10 +70,13 @@ export interface CDTPythonCodeBlock {
     content_hash?: string;
     secret_ids?: number[];
     secrets?: DeclaredSecretRef[];
+    /** Seconds one run of the code may take; the backend applies its default when it is left out. */
+    execution_timeout?: number;
 }
 
-export interface GetClassificationDecisionTableNodeRequest {
+export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NumberedNodeDto {
     id: number;
+    created_at: string;
     graph: number;
     node_name: string;
     pre_python_code: CDTPythonCodeBlock | null;

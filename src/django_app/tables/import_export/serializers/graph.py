@@ -3,10 +3,7 @@ from rest_framework import serializers
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.models import (
     AudioTranscriptionNode,
-    ClassificationConditionGroup,
-    ClassificationDecisionTableNode,
     Condition,
-    ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
     Edge,
@@ -22,26 +19,27 @@ from tables.models import (
     WebhookTrigger,
     WebhookTriggerNode,
 )
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.graph_models import (
-    ClassificationDecisionTablePrompt,
     GraphNote,
     ScheduleTriggerNode,
 )
+from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
-class BaseNodeImportSerializer(serializers.ModelSerializer):
+class BaseNodeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     node_type = serializers.CharField(required=False)
     graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all(), write_only=True)
 
     class Meta:
         model = None
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class StartNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = StartNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class WebhookTriggerNodeImportSerializer(BaseNodeImportSerializer):
@@ -61,10 +59,10 @@ class WebhookTriggerNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = WebhookTriggerNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
-class ConditionImportSerializer(serializers.ModelSerializer):
+class ConditionImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     condition_group = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -72,7 +70,7 @@ class ConditionImportSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class ConditionGroupImportSerializer(serializers.ModelSerializer):
+class ConditionGroupImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     conditions = ConditionImportSerializer(many=True, required=False, read_only=True)
     decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
     decision_table_node_id = serializers.PrimaryKeyRelatedField(
@@ -91,66 +89,12 @@ class DecisionTableNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = DecisionTableNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
-class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
-    classification_decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
-    classification_decision_table_node_id = serializers.PrimaryKeyRelatedField(
-        queryset=ClassificationDecisionTableNode.objects.all(),
-        source="classification_decision_table_node",
-        write_only=True,
-    )
-
-    class Meta:
-        model = ClassificationConditionGroup
-        exclude = ["created_at", "updated_at"]
-
-
-class ClassificationDecisionTablePromptImportSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ClassificationDecisionTablePrompt
-        fields = [
-            "id",
-            "prompt_key",
-            "prompt_text",
-            "llm_config",
-            "output_schema",
-            "result_variable",
-            "variable_mappings",
-        ]
-
-
-class ClassificationDecisionTableNodeImportSerializer(BaseNodeImportSerializer):
-    condition_groups = ClassificationConditionGroupImportSerializer(
-        many=True, required=False, read_only=True
-    )
-    prompt_configs = ClassificationDecisionTablePromptImportSerializer(
-        many=True, required=False, read_only=True
-    )
-    pre_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
-    pre_python_code_id = serializers.PrimaryKeyRelatedField(
-        queryset=PythonCode.objects.all(),
-        source="pre_python_code",
-        write_only=True,
-        required=False,
-        allow_null=True,
-    )
-    post_python_code = PythonCodeImportSerializer(read_only=True, required=False, allow_null=True)
-    post_python_code_id = serializers.PrimaryKeyRelatedField(
-        queryset=PythonCode.objects.all(),
-        source="post_python_code",
-        write_only=True,
-        required=False,
-        allow_null=True,
-    )
-
-    class Meta(BaseNodeImportSerializer.Meta):
-        model = ClassificationDecisionTableNode
-        exclude = ["created_at", "updated_at", "prompts"]
-
-
-class TelegramTriggerNodeFieldImportSerializer(serializers.ModelSerializer):
+class TelegramTriggerNodeFieldImportSerializer(
+    ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer
+):
     class Meta:
         model = TelegramTriggerNodeField
         exclude = ["telegram_trigger_node"]
@@ -161,7 +105,7 @@ class TelegramTriggerNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta:
         model = TelegramTriggerNode
-        exclude = ["created_at", "updated_at", "telegram_bot_api_key_secret"]
+        exclude = ["created_at", "updated_at", "created_by", "telegram_bot_api_key_secret"]
 
 
 class PythonNodeImportSerializer(BaseNodeImportSerializer):
@@ -174,61 +118,47 @@ class PythonNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = PythonNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class EndNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = EndNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class FileExtractorNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = FileExtractorNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class AudioTranscriptionNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = AudioTranscriptionNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class SubgraphNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = SubGraphNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
 class GraphNoteImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = GraphNote
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
 
-class EdgeImportSerializer(serializers.ModelSerializer):
+class EdgeImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSerializer):
     class Meta:
         model = Edge
         exclude = ["created_at", "updated_at", "graph"]
 
 
-class ConditionalEdgeImportSerializer(serializers.ModelSerializer):
-    python_code = PythonCodeImportSerializer(read_only=True)
-    python_code_id = serializers.PrimaryKeyRelatedField(
-        queryset=PythonCode.objects.all(),
-        source="python_code",
-        write_only=True,
-    )
-
-    class Meta:
-        model = ConditionalEdge
-        exclude = ["created_at", "updated_at"]
-
-
 class GraphImportSerializer(serializers.ModelSerializer):
     edge_list = EdgeImportSerializer(many=True, read_only=True)
-    conditional_edge_list = ConditionalEdgeImportSerializer(many=True, read_only=True)
     nodes = serializers.JSONField(required=False)
 
     class Meta:
@@ -240,16 +170,17 @@ class GraphImportSerializer(serializers.ModelSerializer):
             "labels",
             "save_version",
             "created_by",
+            # The node-number counter belongs to the target graph, never to a file.
+            "node_number_seq",
             # Deletion goes through DeleteService, never through a crafted import file.
-            "is_soft_deleted",
-            "soft_deleted_at",
+            *SOFT_DELETE_FIELD_NAMES,
         ]
 
 
 class ScheduleTriggerNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = ScheduleTriggerNode
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "created_by"]
 
     def create(self, validated_data):
         # Schedule config is preserved verbatim; activation state is reset so

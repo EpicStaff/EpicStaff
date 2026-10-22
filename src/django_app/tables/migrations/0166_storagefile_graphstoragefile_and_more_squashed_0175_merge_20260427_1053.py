@@ -7,42 +7,10 @@ import tables.models.knowledge_models.graphrag_models
 from django.db import migrations, models
 
 
-# Functions from the following migrations need manual copying.
-# Move them and any dependencies into this file, then update the
-# RunPython operations to refer to the local versions:
-# tables.migrations.0173_storagefile_name
-
-
 class Migration(migrations.Migration):
-    replaces = [
-        ("tables", "0166_storagefile_graphstoragefile_and_more"),
-        ("tables", "0167_merge_20260409_2043"),
-        ("tables", "0168_merge_20260410_1548"),
-        ("tables", "0169_sessionstoragefile"),
-        ("tables", "0137_graphragindexconfig_agentgraphrag_graphrag_and_more"),
-        ("tables", "0138_graph_rag_search_methods"),
-        ("tables", "0139_merge_graph_rag_migrations"),
-        ("tables", "0148_merge_graph_ragmigrations_2"),
-        ("tables", "0164_merge_graph_rag_migrations_3"),
-        ("tables", "0168_merge_graph_rag_migrations_4"),
-        ("tables", "0170_merge_20260417_1811"),
-        ("tables", "0171_alter_storagefile_path"),
-        ("tables", "0172_enable_pgtrgm"),
-        ("tables", "0173_storagefile_name"),
-        ("tables", "0174_storagefile_name_trgm_index"),
-        ("tables", "0137_apikey"),
-        (
-            "tables",
-            "0138_rename_tables_apik_prefix_3f7e47_idx_tables_apik_prefix_fbdead_idx",
-        ),
-        ("tables", "0155_merge_20260317_1513"),
-        ("tables", "0169_merge_imp_auth"),
-        ("tables", "0170_graphversion"),
-        ("tables", "0175_merge_20260427_1053"),
-    ]
-
     dependencies = [
         ("tables", "0165_codeagentnode_use_storage_pythonnode_use_storage"),
+        ("tables", "0167_merge_20260410_1240"),
     ]
 
     operations = [

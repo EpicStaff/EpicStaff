@@ -1,19 +1,32 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
-from tables.serializers.model_serializers import TelegramWebhookInfoSerializer
+from tables.serializers.model_serializers import (
+    TelegramWebhookInfoSerializer,
+    WebhookTriggerFlowsSerializer,
+)
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+
+_TRIGGER_NODE_USE_PERMISSION_DESCRIPTION = (
+    "Requires USE on flows besides the action's own flows permission: a trigger node "
+    "starts flow runs by itself. Without it the response is 403 "
+    "`trigger_nodes_require_use_permission` and nothing is written."
+)
 
 WEBHOOK_TRIGGER_NODE_CREATE = {
     "description": (
         "Auth for this node's inbound webhook is not configured here -- it "
         "lives on the linked `webhook_trigger` (see `/webhook-triggers/`), "
-        "not on the node."
+        "not on the node. " + _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION
     ),
 }
 
-WEBHOOK_TRIGGER_NODE_UPDATE = {}
+WEBHOOK_TRIGGER_NODE_UPDATE = {"description": _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION}
 
-WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = {}
+WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE = {"description": _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION}
+
+TELEGRAM_TRIGGER_NODE_WRITE = {"description": _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION}
+
+SCHEDULE_TRIGGER_NODE_WRITE = {"description": _TRIGGER_NODE_USE_PERMISSION_DESCRIPTION}
 
 _WEBHOOK_TRIGGER_AUTH_DESCRIPTION = (
     "`auth_secret_id` sets/updates this trigger's user-settable auth "
@@ -42,9 +55,61 @@ _WEBHOOK_TRIGGER_AUTH_DESCRIPTION = (
 
 WEBHOOK_TRIGGER_CREATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
 
-WEBHOOK_TRIGGER_UPDATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
+_ATTACHED_TRIGGER_USE_DESCRIPTION = (
+    " Updating a trigger that a live webhook or Telegram trigger node is attached to "
+    "also requires USE on flows, since its auth, path or tunnel decides whether those "
+    "nodes receive deliveries; without it the response is 403 "
+    "`trigger_nodes_require_use_permission` and nothing is written. A trigger with no "
+    "attached nodes needs only the webhooks permission."
+)
 
-WEBHOOK_TRIGGER_PARTIAL_UPDATE = {"description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION}
+WEBHOOK_TRIGGER_UPDATE = {
+    "description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION + _ATTACHED_TRIGGER_USE_DESCRIPTION
+}
+
+WEBHOOK_TRIGGER_PARTIAL_UPDATE = {
+    "description": _WEBHOOK_TRIGGER_AUTH_DESCRIPTION + _ATTACHED_TRIGGER_USE_DESCRIPTION
+}
+
+WEBHOOK_TRIGGER_FLOWS_GET = {
+    "summary": "List the flows that hold a trigger node on this webhook trigger.",
+    "description": (
+        "The live flows of the active organization with at least one live webhook or "
+        "Telegram trigger node attached to this trigger -- the trigger nodes that make "
+        "updating the trigger require USE on flows. `flow_count` is the number of such "
+        "flows, each counted once. `flows` lists them by name, then id, at most 50; it "
+        "is empty when the caller lacks READ on flows, while `flow_count` stays the "
+        "true total."
+    ),
+    "responses": {
+        200: OpenApiResponse(
+            response=WebhookTriggerFlowsSerializer,
+            examples=[
+                OpenApiExample(
+                    "Used by two flows",
+                    value={
+                        "flow_count": 2,
+                        "flows": [
+                            {"id": 12, "name": "Inbound orders"},
+                            {"id": 7, "name": "Support bot"},
+                        ],
+                    },
+                    response_only=True,
+                    status_codes=["200"],
+                ),
+                OpenApiExample(
+                    "Caller cannot read flows",
+                    value={"flow_count": 2, "flows": []},
+                    response_only=True,
+                    status_codes=["200"],
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(description="The caller lacks read permission on webhooks."),
+        404: OpenApiResponse(description="No such webhook trigger in the active organization."),
+    },
+}
 
 
 _TELEGRAM_BOT_KEY_REJECTED_422 = OpenApiResponse(
@@ -79,15 +144,16 @@ TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET = {
         "per bot key, so when several Telegram trigger nodes share a key only one of "
         "them receives messages -- `is_match: false` flags a node that is not it. "
         "`registered_url` is null when Telegram has no webhook set. `expected_url` is "
-        "null when the node has no webhook trigger, the trigger has no tunnel "
+        "null when the node has no webhook trigger, the trigger is in the recycle bin, has no tunnel "
         "provider, uses the localhost provider, or its tunnel URL is not currently "
         "available. `is_match` is false when Telegram has no webhook set, and null "
         "only when `expected_url` is null (the match cannot be determined); the "
         "comparison ignores a trailing slash. `last_error_date` is ISO-8601 UTC. "
         "`registration_blocker` is `{code, message}` when this node's configuration makes "
         "registration impossible (checked without calling Telegram, by the same rules "
-        "registration applies), else null. Codes: `no_webhook_trigger`, "
-        "`no_tunnel_provider`, `localhost_provider`, `auth_kind_conflict`, "
+        "registration applies), else null. Codes: `bot_key_in_recycle_bin` (then "
+        "Telegram is not asked, so its fields are null), `no_webhook_trigger`, "
+        "`webhook_trigger_in_recycle_bin`, `no_tunnel_provider`, `localhost_provider`, `auth_kind_conflict`, "
         "`no_telegram_secret`, `invalid_telegram_secret`, `unresolvable_telegram_secret` "
         "(`no_bot_key` is answered with the 400 below instead). The bot key is never "
         "returned."
@@ -168,7 +234,12 @@ TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST = {
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        403: OpenApiResponse(description="The caller lacks update permission on flows."),
+        403: OpenApiResponse(
+            description=(
+                "The caller lacks UPDATE on flows (`permission_denied`) or USE on flows "
+                "(`trigger_nodes_require_use_permission`)."
+            )
+        ),
         404: OpenApiResponse(description="No such node in the active organization."),
         409: OpenApiResponse(
             description=(

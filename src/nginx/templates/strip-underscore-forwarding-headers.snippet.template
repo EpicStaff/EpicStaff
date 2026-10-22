@@ -1,0 +1,18 @@
+# With underscores_in_headers on, a client can send a forwarding header with
+# underscores in place of any of its dashes (X_Forwarded_For, X-Forwarded_For,
+# ...). nginx treats each as a different header from the dash spelling it sets,
+# so it passes them through; Django then normalises all of them to the same
+# META key and joins the values, putting the client's address last, where
+# NUM_PROXIES reads it. An empty value makes nginx drop the header.
+proxy_set_header X_Forwarded_For "";
+proxy_set_header X_Forwarded-For "";
+proxy_set_header X-Forwarded_For "";
+proxy_set_header X_Forwarded_Proto "";
+proxy_set_header X_Forwarded-Proto "";
+proxy_set_header X-Forwarded_Proto "";
+proxy_set_header X_Forwarded_Host "";
+proxy_set_header X_Forwarded-Host "";
+proxy_set_header X-Forwarded_Host "";
+proxy_set_header X_Real_IP "";
+proxy_set_header X_Real-IP "";
+proxy_set_header X-Real_IP "";

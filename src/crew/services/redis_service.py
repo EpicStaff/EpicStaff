@@ -6,12 +6,18 @@ import time
 
 import redis
 import redis.asyncio as aioredis
-import settings
 from loguru import logger
 from redis import Redis
 from redis.backoff import ExponentialBackoff
 from redis.client import PubSub
 from redis.retry import Retry
+from settings import GRAPH_MESSAGE_STREAM_MAXLEN
+from src.shared.redis_keys import (
+    SESSION_FINAL_VARIABLES_TTL_SECONDS,
+    session_final_variables_key,
+    session_status_channel,
+)
+from src.shared.redis_streams import GRAPH_MESSAGE_STREAM, graph_message_fields
 from utils.singleton_meta import SingletonMeta
 
 
@@ -43,13 +49,19 @@ class AsyncPubSubGroup:
                     self._pubsub = self._redis.pubsub()
                     await self._pubsub.subscribe(self._channel)
 
-                msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=0.01)
+                # Subscribe confirmations and health-check replies come back as None.
+                msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=None)
                 if msg is None:
-                    await asyncio.sleep(0.01)
                     continue
 
+                # A failing callback must not count as a disconnect: reconnecting
+                # drops this message for the other subscribers and every message
+                # published during the reconnect.
                 for sub in self._subscribers:
-                    await sub.update(msg)
+                    try:
+                        await sub.update(msg)
+                    except Exception:
+                        logger.exception("Subscriber callback failed on channel {}", self._channel)
             except Exception as e:
                 logger.error(f"AsyncPubSubGroup reader disconnected, reconnecting in 1s: {e}")
                 with contextlib.suppress(Exception):
@@ -73,13 +85,6 @@ class AsyncPubSubGroup:
                 await self._reader_task
         if self._redis:
             await self._redis.close()
-
-    def unsubscribe(self, subscriber: AsyncPubsubSubscriber):
-        if subscriber in self._subscribers:
-            self._subscribers.remove(subscriber)
-            logger.info(f"Unsubscribed from channel {self._channel}")
-        else:
-            logger.warning(f"Subscriber not found in channel {self._channel}")
 
 
 class SyncPubsubSubscriber:
@@ -129,12 +134,10 @@ class SyncPubSubGroup:
         self._pubsub.unsubscribe(self._channel)
         self._pubsub.close()
 
-    def unsubscribe(self, subscriber: SyncPubsubSubscriber):
-        if subscriber in self._subscribers:
-            self._subscribers.remove(subscriber)
-            logger.info(f"Unsubscribed from channel {self._channel}")
-        else:
-            logger.warning(f"Subscriber not found in channel {self._channel}")
+
+def _encode(message: dict | str) -> str:
+    # A str must already be JSON (e.g. from model_dump_json); it is sent as is.
+    return message if isinstance(message, str) else json.dumps(message)
 
 
 class RedisService(metaclass=SingletonMeta):
@@ -227,13 +230,23 @@ class RedisService(metaclass=SingletonMeta):
                 self._sync_pubsub_groups[channel].subscribe(subscriber)
             logger.info(f"Subscribed to channels: {', '.join(channels)}")
 
-    async def apublish(self, channel: str, message: object):
-        await self.aioredis_client.publish(channel=channel, message=json.dumps(message))
-        logger.info(f"Message published to channel '{channel}'.")
+    async def apublish(self, channel: str, message: dict | str):
+        await self.aioredis_client.publish(channel=channel, message=_encode(message))
+        logger.debug("Message published to channel {}", channel)
 
-    def publish(self, channel: str, message: object):
-        self.sync_redis_client.publish(channel=channel, message=json.dumps(message))
-        logger.info(f"Message published to channel '{channel}'.")
+    async def aadd_graph_message(self, message_uuid: str, encoded_message: str) -> None:
+        """Append a graph session message, already encoded as JSON, to the stream
+        django_app persists from.
+
+        Unlike a publish, the entry waits in Redis until django_app has stored it.
+        """
+        await self.aioredis_client.xadd(
+            GRAPH_MESSAGE_STREAM,
+            graph_message_fields(message_uuid, encoded_message),
+            maxlen=GRAPH_MESSAGE_STREAM_MAXLEN,
+            approximate=True,
+        )
+        logger.debug("Graph message {} added to {}", message_uuid, GRAPH_MESSAGE_STREAM)
 
     async def aupdate_session_status(self, session_id: int, status: str, **kwargs):
         message = {
@@ -241,27 +254,16 @@ class RedisService(metaclass=SingletonMeta):
             "status": status,
             "status_data": kwargs,
         }
-        await self.apublish(settings.SESSION_STATUS_CHANNEL, message)
+        await self.apublish(session_status_channel(session_id), message)
 
-    def update_session_status(self, session_id: int, status: str, **kwargs):
-        message = {
-            "session_id": session_id,
-            "status": status,
-            "status_data": kwargs,
-        }
+    async def aset_session_final_variables(self, session_id: int, variables: dict) -> None:
+        """Store a session's final variables under the shared key, with a TTL.
 
-        self.publish(channel=settings.SESSION_STATUS_CHANNEL, message=message)
-
-    def unsubscribe(self, channel: str, subscriber: SyncPubsubSubscriber | AsyncPubsubSubscriber):
-        if isinstance(subscriber, AsyncPubsubSubscriber):
-            if channel in self._async_pubsub_groups:
-                self._async_pubsub_groups[channel].unsubscribe(subscriber)
-                logger.info(f"Unsubscribed from channel {channel}")
-            else:
-                logger.warning(f"Channel {channel} not found for unsubscribe operation.")
-        elif isinstance(subscriber, SyncPubsubSubscriber):
-            if channel in self._sync_pubsub_groups:
-                self._sync_pubsub_groups[channel].unsubscribe(subscriber)
-                logger.info(f"Unsubscribed from channel {channel}")
-            else:
-                logger.warning(f"Channel {channel} not found for unsubscribe operation.")
+        The ``end`` status carries no variables; django_app reads them from this
+        key, so it must be written before ``end`` is published.
+        """
+        await self.aioredis_client.set(
+            session_final_variables_key(session_id),
+            json.dumps(variables),
+            ex=SESSION_FINAL_VARIABLES_TTL_SECONDS,
+        )

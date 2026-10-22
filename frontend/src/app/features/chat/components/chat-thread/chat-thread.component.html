@@ -1,0 +1,126 @@
+<app-chat-thread-header
+    [conversation]="conversation()"
+    [binding]="binding()"
+    [listTitle]="listTitle()"
+    [isAllBindings]="isAllBindings()"
+/>
+
+<div
+    #threadScroller
+    class="thread"
+    (scroll)="onThreadScroll()"
+>
+    <div class="thread__messages">
+        <!-- Scrolling it into view loads the next older page; the button does the same from the keyboard. -->
+        @if (hasOlderMessages()) {
+            <div
+                #olderSentinel
+                class="thread__older"
+            >
+                <!-- Never swapped or disabled while loading: either would drop the keyboard focus on it. -->
+                <app-button
+                    type="ghost"
+                    mod="small"
+                    (click)="loadOlderMessages()"
+                >
+                    {{ isLoadingOlder() ? 'Loading older messages…' : 'Load older messages' }}
+                </app-button>
+                <span
+                    class="thread__older-status"
+                    role="status"
+                >
+                    @if (isLoadingOlder()) {
+                        <app-spinner [size]="16" />
+                        <span class="visually-hidden">Loading older messages…</span>
+                    }
+                </span>
+            </div>
+        }
+        @for (message of messages(); track message.id) {
+            <div
+                class="message"
+                [class]="'message--' + message.role"
+            >
+                @if (message.role !== 'system') {
+                    <div class="message__author">
+                        {{ message.role === 'operator' ? operatorLabel(message) : message.role }}
+                    </div>
+                }
+                @if (message.content) {
+                    @if (message.role === 'assistant' || message.role === 'operator') {
+                        <div
+                            class="message__content message__content--markdown"
+                            [innerHTML]="message.content | chatMarkdown"
+                        ></div>
+                    } @else {
+                        <div class="message__content">{{ message.content }}</div>
+                    }
+                }
+                <!-- Test conversations only: what the widget sent with the message, or what the bot sent to it. -->
+                @if (conversation().is_test && rawData(message); as raw) {
+                    <details
+                        class="message__raw"
+                        (toggle)="onRawToggle(message.id, $event)"
+                    >
+                        <summary>Raw data</summary>
+                        <!-- Mounted on open only: one Monaco editor per message would be heavy. -->
+                        @if (openRawIds().has(message.id)) {
+                            <app-json-editor
+                                [jsonData]="raw"
+                                [readonly]="true"
+                                [showHeader]="false"
+                                [editorHeight]="160"
+                            />
+                        }
+                    </details>
+                }
+                <div class="message__time">
+                    {{ message.created_at | date: 'mediumTime' }}
+                    @if (message.session_id) {
+                        ·
+                        <!-- Plain text without flows read: the run page would refuse them, the id is still worth sharing. -->
+                        @if (sessionLink(message); as link) {
+                            <a
+                                class="message__session"
+                                [routerLink]="link"
+                                >run #{{ message.session_id }}</a
+                            >
+                        } @else {
+                            run #{{ message.session_id }}
+                        }
+                    }
+                </div>
+            </div>
+        } @empty {
+            <div class="thread__empty">No messages.</div>
+        }
+    </div>
+</div>
+
+@if (isClosed()) {
+    <!-- Read-only from here: why it closed, where the composer was. A close moves the focus here. -->
+    <div
+        #closedBannerElement
+        class="thread-closed text-body-small"
+        role="status"
+        tabindex="-1"
+    >
+        <app-svg-icon
+            icon="circle-check"
+            size="1rem"
+        />
+        <span>{{ closedBanner() }}</span>
+    </div>
+} @else if (canUse()) {
+    <app-chat-thread-composer
+        [conversation]="conversation()"
+        [visitorToken]="visitorTokens.tokens()[conversation().id]"
+        [visitorTokenPending]="visitorTokens.pendingFor() === conversation().id"
+        [visitorTokenError]="visitorTokens.errors()[conversation().id]"
+        [isClaimedByMe]="isClaimedByMe()"
+        [isActionPending]="isActionPending()"
+        [visibleName]="myNameOnConversationDesk()"
+        (claimRequested)="claim(conversation())"
+        (operatorMessageSent)="onOperatorMessageSent($event)"
+    />
+}

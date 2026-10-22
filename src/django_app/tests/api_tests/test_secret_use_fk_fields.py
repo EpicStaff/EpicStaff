@@ -71,26 +71,9 @@ def use_client(db, django_user_model, default_org):
 
 
 @pytest.fixture
-def secret_a(default_org):
-    return secret_service.create(
-        text="sk-fkuse-a", org=default_org, name="FKUSE_SECRET_A"
-    )
-
-
-@pytest.fixture
 def secret_b(default_org):
     return secret_service.create(
         text="sk-fkuse-b", org=default_org, name="FKUSE_SECRET_B"
-    )
-
-
-@pytest.fixture
-def llm_config_pointing_at_secret_a(gpt_4o_llm, default_org, secret_a) -> LLMConfig:
-    return LLMConfig.objects.create(
-        custom_name="fkuse-llm-config",
-        model=gpt_4o_llm,
-        api_key_secret=secret_a,
-        org=default_org,
     )
 
 
@@ -226,14 +209,17 @@ class TestFkFieldsAreGated:
 # Task 6b: OpenAIRealtimeConfigSerializer (two guarded fields), McpToolSerializer,
 # TwilioChannelSerializer, TelegramTriggerNodeSerializer, and the quickstart
 # serializer. `no_use_client`/`use_client` above only grant LLM_CONFIGS, so 6b
-# builds its own clients that additionally cover VOICE (Twilio/RealtimeChannel),
-# TOOLS (McpTool) and FLOWS (TelegramTriggerNode) -- each viewset's
-# `rbac_resource_type`, verified against tables/views/model_view_sets.py.
+# uses its own clients (`no_use_client_6b`/`use_client_6b` in conftest.py) that
+# additionally cover VOICE (Twilio/RealtimeChannel), TOOLS (McpTool) and FLOWS
+# (TelegramTriggerNode) -- each viewset's `rbac_resource_type`, verified against
+# tables/views/model_view_sets.py.
 # ---------------------------------------------------------------------------
 
 _FULL_CRUD = int(
     Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
 )
+# Editing a Telegram trigger node also needs flows:use (a trigger node starts runs).
+_FLOWS_FULL = _FULL_CRUD | int(Permission.USE)
 
 
 def _client_with_grants(
@@ -265,7 +251,7 @@ def no_use_client_6b(db, django_user_model, default_org):
             ResourceType.LLM_CONFIGS.value: _FULL_CRUD,
             ResourceType.VOICE.value: _FULL_CRUD,
             ResourceType.TOOLS.value: _FULL_CRUD,
-            ResourceType.FLOWS.value: _FULL_CRUD,
+            ResourceType.FLOWS.value: _FLOWS_FULL,
         },
     )
 
@@ -282,7 +268,7 @@ def use_client_6b(db, django_user_model, default_org):
             ResourceType.LLM_CONFIGS.value: _FULL_CRUD,
             ResourceType.VOICE.value: _FULL_CRUD,
             ResourceType.TOOLS.value: _FULL_CRUD,
-            ResourceType.FLOWS.value: _FULL_CRUD,
+            ResourceType.FLOWS.value: _FLOWS_FULL,
         },
     )
 
@@ -531,23 +517,6 @@ def test_use_holder_can_remove_the_fk_secret(
     assert response.status_code == 200, response.json()
     instance.refresh_from_db()
     assert instance.api_key_secret_id is None
-
-
-@pytest.fixture
-def python_code_tool_pointing_at_secret_a(default_org, secret_a) -> PythonCodeTool:
-    python_code = PythonCode.objects.create(
-        code="def main(**kwargs):\n    return 1\n",
-        entrypoint="main",
-        libraries="",
-        global_kwargs={},
-    )
-    python_code.secrets.set([secret_a])
-    return PythonCodeTool.objects.create(
-        name="fkuse-python-code-tool",
-        description="fkuse python code tool",
-        python_code=python_code,
-        org=default_org,
-    )
 
 
 def _resend_python_code_payload(*, python_code: PythonCode, secret_ids: list[int]):

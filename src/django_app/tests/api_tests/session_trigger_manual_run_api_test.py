@@ -2,7 +2,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from tables.models.graph_models import GraphOrganizationUser
+from tables.models.graph_models import Edge, EndNode, GraphOrganizationUser, StartNode
 from rbac.models import OrganizationUser
 from tables.models.session_models import Session, SessionTrigger
 from tests.fixtures import *  # noqa: F401,F403
@@ -12,6 +12,15 @@ from tests.fixtures import *  # noqa: F401,F403
 def test_manual_run_via_api_creates_manual_trigger_with_triggered_by_user(
     api_client, redis_client_mock, session_data, default_org, regular_user
 ):
+    # run_session rejects a graph whose start node leads nowhere; the shared
+    # `session_data` fixture only creates the start node.
+    graph_id = session_data["graph_id"]
+    start_node = StartNode.objects.get(graph_id=graph_id)
+    end_node = EndNode.objects.create(graph_id=graph_id, output_map={})
+    Edge.objects.create(
+        graph_id=graph_id, start_node_id=start_node.id, end_node_id=end_node.id
+    )
+
     url = reverse("run-session")
     api_client.force_authenticate(user=regular_user)
     api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))

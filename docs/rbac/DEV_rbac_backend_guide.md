@@ -107,6 +107,7 @@ class Permission(IntFlag):
     EXPORT = 16  # 32 retired (was DOWNLOAD, folded into EXPORT)
     USE = 64  # catalog action of `secrets` only; enforced by SecretReferenceGuard
     LIST = 128  # reserved — not in the catalog, checked nowhere
+    RUN = 256  # catalog action of `flows` only; start/stop runs and write trigger nodes
 ```
 
 ### 2.2 Built-in roles (declared in `rbac/access/builtin_roles.json`)
@@ -120,7 +121,7 @@ after `migrate`) makes the database match it exactly.
 "Member": {
   "description": "Builds and edits workspace resources; no organization administration.",
   "permissions": {
-    "flows": ["create", "read", "update"],
+    "flows": ["create", "read", "update", "run"],
     "knowledge_sources": ["read"]
   }
 }
@@ -164,7 +165,7 @@ change applies on the first request after the container restarts.
 
 ## 3. Authentication layer
 
-Global defaults (`django_app/settings.py`):
+Global defaults (`django_app/settings/rest_framework.py`):
 
 ```python
 REST_FRAMEWORK = {
@@ -184,7 +185,8 @@ first-setup, login, refresh, password-reset request/confirm, swagger-token).
 
 Two authentication classes (`rbac/identity/authentication.py`), both global defaults:
 - `JwtAuthentication` — `Authorization: Bearer <jwt>` → simplejwt (HS256, access 15 min,
-  refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`.
+  refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`,
+  `hash_password` (`CHECK_REVOKE_TOKEN=True`: binds the token to the password hash).
 - `ApiKeyAuthentication` — `X-Api-Key: <key>` or `Authorization: ApiKey <key>` → delegates to
   `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row, then hands it to
   `PrincipalResolver` (`rbac/identity/api_keys/principals.py`): a `system`-type key
@@ -211,21 +213,35 @@ or `/api/auth/ws-ticket/` with JWT → 30 s single-use ticket consumed atomicall
 `GETDEL`, passed as `?ticket=` on the stream URL. Redis stores only
 `sha256(ticket)` as the key, so Redis read access yields no replayable ticket.
 
-Throttling (`tables/throttles.py`) — every anonymous credential-adjacent endpoint is covered:
+Throttling (`rbac/throttles.py`; `NotifyEmailThrottle` lives in `tables/throttles.py`) — every
+anonymous credential-adjacent endpoint is covered. Exceeding any bucket returns `429` with
+`Retry-After`; where a view lists two throttles, a request must pass both.
 
 | Throttle | Endpoint(s) | Bucket | Default rate |
 |---|---|---|---|
-| `LoginThrottle` | login, swagger-token, profile password-change request | `ip\|email` | 5/min |
+| `LoginThrottle` | login, swagger-token | `ip\|email` | 5/min |
+| `LoginThrottle` | profile password-change request | `ip` (the body has no `email`) | 5/min |
+| `LoginIpThrottle` | login, swagger-token | `ip` | 20/min |
 | `PasswordResetRequestThrottle` | password-reset request | `ip\|email` | 5/hour |
+| `PasswordResetRequestIpThrottle` | password-reset request | `ip` | 20/hour |
 | `PasswordResetConfirmThrottle` | password-reset confirm | `ip` | 10/hour |
 | `TokenRefreshThrottle` | token refresh | `ip` | 30/min |
 | `NotifyEmailThrottle` | notify/email | authenticated user id | 10/hour |
 
-The last two key on IP alone because their requests carry no identifier to compose with — the
-refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the
-token being guessed, so keying on it would give an attacker a fresh bucket per attempt. Both
-subclass DRF's `AnonRateThrottle`, which supplies the IP key; their views set
-`authentication_classes = []`, so every caller is anonymous and the throttle always applies.
+The `ip|email` buckets limit what one address can do to one account without one user's attempts
+using up the allowance of everyone behind the same NAT. They never stop an address that names a
+new email on each request, since every email is a fresh bucket; that is what `LoginIpThrottle` and
+`PasswordResetRequestIpThrottle` cap. `LoginThrottle` takes the email from the request body
+whatever the view, so on the password-change request, whose body carries only
+`current_password`, its key is the caller's IP alone, in the same `login` scope as logins that
+send no email. A caller who adds an `email` field there picks the bucket instead.
+
+`PasswordResetConfirmThrottle` and `TokenRefreshThrottle` key on IP alone because their requests
+carry no identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on
+confirm the only caller-supplied value is the token being guessed, so keying on it would give an
+attacker a fresh bucket per attempt. All four IP-only throttles subclass DRF's `AnonRateThrottle`,
+which supplies the IP key and skips authenticated callers; their views set no authentication
+classes, so every caller is anonymous and the throttle always applies.
 
 HTTP first-setup (`POST /api/auth/first-setup/`) is itself gated by
 `settings.FIRST_SETUP_MODE` (default `cli_only`): it returns `403
@@ -313,7 +329,43 @@ surfaces (SSE stream, get-updates, stop) authorize via
 `assert_session_org_access(user, session, action)`
 (`tables/services/session_access.py`): 404 when the session has no graph, then
 membership + FLOWS bit check against `session.graph.org_id`. SSE resolves the user from
-the single-use ticket first, then calls this.
+the single-use ticket first, then calls this. Reading a session (SSE, get-updates) needs
+`READ`; stopping one needs `RUN`, as starting one does (`get_runnable_graph`).
+
+`RUN` also gates writing a trigger node (webhook, Telegram, schedule), because one starts
+runs by itself. Which node types are triggers is declared once, by `starts_runs=True` on
+their `NodeTypeConfig` in `tables/services/graph_bulk_save_service/registry.py`
+(`TRIGGER_NODE_LIST_KEYS`, `TRIGGER_NODE_MODELS`); `tables/services/trigger_nodes.py`
+derives everything else from them:
+
+- Writing one trigger node — the bulk save and `TriggerNodeRunPermissionMixin`
+  (`tables/views/mixins.py`) — calls `trigger_node_access.assert_may_write`, which raises
+  `TriggerNodesRequireRunPermissionError` (403 `trigger_nodes_require_run_permission`).
+  `trigger_node_access` is the shared `TriggerNodeAccess` instance.
+  Updating a `WebhookTrigger` that a live trigger node is attached to
+  (`TriggerNodeInspector.has_any_attached_to_webhook_trigger`) goes through the same
+  check in `WebhookTriggerViewSet.update`, since re-keying, re-pathing or re-tunnelling
+  it can bring those nodes live. `GET /api/webhook-triggers/{id}/flows/`
+  (`flows_using_trigger`, webhooks READ) names those flows in advance, from
+  `TriggerNodeInspector.graphs_attached_to_webhook_trigger`; it lists their names only
+  when the caller also holds READ on flows, and always returns the count.
+- Recreating trigger nodes by copy, import, partial import or version create-graph /
+  restore raises `FlowWithTriggerNodesRequiresRunPermissionError`
+  (403 `flow_with_trigger_nodes_requires_run_permission`) through
+  `trigger_node_access.assert_user_may_recreate` (views) or `assert_may_recreate` (the
+  import services, with the `effective_permissions` the caller passes in). One "holds a
+  trigger node" decision per source shape, on `TriggerNodeInspector`:
+  `has_any_in_graph` (stored flow, copy), `has_any_in_export` (full import file),
+  `has_any_in_node_entries` (the nodes a partial import creates) and
+  `has_any_in_flow_entry` (version snapshot). The views check after the org-scoped
+  fetch, so another org's id stays a 404; the import services check before their
+  transaction opens.
+- `run-python-code` needs RUN for code a trigger node owns, named by target
+  (`CodeRunTarget.owner_is_trigger_node`) or by `python_code_id`
+  (`trigger_node_owns_python_code`).
+
+A new trigger node type only needs the flag.
+See `roles_and_permissions.md` → "Running flows: the `run` action" for the endpoint list.
 
 ### 5.4 Superadmin-only and global surfaces
 

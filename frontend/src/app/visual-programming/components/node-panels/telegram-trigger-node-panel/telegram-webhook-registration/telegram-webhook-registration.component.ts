@@ -29,9 +29,17 @@ import {
  * cannot pick or edit anything. Keyed on the full union, so a new code without copy fails the build.
  */
 const BLOCKER_DESCRIPTIONS: Readonly<Record<TelegramRegistrationBlockerCode, { problem: string; fix: string }>> = {
+    bot_key_in_recycle_bin: {
+        problem: "This node's bot key secret is in the recycle bin, so its webhook cannot be registered.",
+        fix: 'Restore it from the Recycle Bin, or pick another bot key above and save the flow.',
+    },
     no_webhook_trigger: {
         problem: 'This node has no webhook trigger, so its webhook cannot be registered.',
         fix: 'Pick or create a webhook trigger above and save the flow.',
+    },
+    webhook_trigger_in_recycle_bin: {
+        problem: "This node's webhook trigger is in the recycle bin, so its webhook cannot be registered.",
+        fix: 'Restore it from the Recycle Bin, or pick another webhook trigger above and save the flow.',
     },
     no_tunnel_provider: {
         problem: 'This webhook trigger has no tunnel provider, so Telegram has no public URL to deliver to.',
@@ -159,7 +167,10 @@ export class TelegramWebhookRegistrationComponent {
     readonly botKeySecretId = input<number | null>(null);
     /** The panel form has a bot key or webhook trigger that is not saved yet. */
     readonly hasUnsavedConnectionChanges = input<boolean>(false);
-    /** The user cannot change the flow: Register (an UPDATE) is hidden and blockers get no how-to. */
+    /**
+     * The user cannot change this node (no Flows:Update, a version preview, or no Flows:Use for a trigger
+     * node): Register (a trigger node write) is hidden and blockers get no how-to.
+     */
     readonly readonly = input<boolean>(false);
 
     protected readonly canCheck = computed(() => this.backendId() != null && this.botKeySecretId() != null);
@@ -273,6 +284,7 @@ export class TelegramWebhookRegistrationComponent {
     }
 
     protected registerWebhook(): void {
+        if (this.readonly()) return;
         this.registerRequests.next();
     }
 

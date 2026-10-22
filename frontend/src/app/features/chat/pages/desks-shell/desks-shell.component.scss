@@ -1,0 +1,118 @@
+@use '../../../../../styles/header-layout' as header;
+@use '../../../../../styles/touch';
+
+// The page header across the whole width; below it the rail and the routed page, each scrolling inside itself.
+:host {
+    @include header.headerLayout();
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    // The rail's header and the page's desk toolbar share it, so their bottom lines meet.
+    --desk-toolbar-height: 52px;
+
+    // Nested beside `headerLayout()`, as on the Agents page, so the two cascade the same way.
+    .header {
+        @include header.pageHeader();
+    }
+}
+
+.desks-shell__body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.desks-shell__page {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+// Phones: the desks over the page from the left edge, over a dimmed backdrop. Above the page, below the CDK overlay
+// container (1100): New desk's dialog opens above the drawer.
+.desk-drawer__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background-color: var(--color-backdrop);
+}
+
+.desk-drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    width: min(85vw, 320px);
+    box-sizing: border-box;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    background-color: var(--color-background-body);
+    box-shadow: var(--shadow-panel-elevated);
+}
+
+// The way out to the rest of the app, which the chat area hides on phones.
+.desk-drawer__app-menu {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    min-height: touch.$target-size;
+    margin: 8px;
+    padding: 0 8px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--color-text-secondary);
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+        color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: -1px;
+    }
+
+    // Lines its icon up with the desk avatars above.
+    app-svg-icon {
+        width: 36px;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .desk-drawer--entering {
+        animation: desk-drawer-slide touch.$push-duration touch.$push-easing;
+    }
+
+    .desk-drawer--leaving {
+        animation: desk-drawer-slide touch.$push-duration touch.$push-easing reverse forwards;
+    }
+
+    .desk-drawer__backdrop--entering {
+        animation: desk-drawer-fade touch.$push-duration touch.$push-easing;
+    }
+
+    .desk-drawer__backdrop--leaving {
+        animation: desk-drawer-fade touch.$push-duration touch.$push-easing reverse forwards;
+    }
+}
+
+@keyframes desk-drawer-slide {
+    from {
+        transform: translateX(-100%);
+    }
+}
+
+@keyframes desk-drawer-fade {
+    from {
+        opacity: 0;
+    }
+}

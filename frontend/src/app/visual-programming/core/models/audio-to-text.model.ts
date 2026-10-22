@@ -1,5 +1,10 @@
-export interface GetAudioToTextNodeRequest {
+import { AuthorshipFields } from '@shared/models';
+
+import { NumberedNodeDto } from './numbered-node-dto.model';
+
+export interface GetAudioToTextNodeRequest extends AuthorshipFields, NumberedNodeDto {
     id: number;
+    created_at: string;
     node_name: string;
     graph: number;
     input_map: Record<string, unknown>;

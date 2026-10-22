@@ -1,4 +1,5 @@
 import { GraphDto } from '../../../features/flows/models/graph.model';
+import { isNumberedNodeType } from '../../core/helpers/node-number.util';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { NodeModel } from '../../core/models/node.model';
@@ -14,7 +15,6 @@ import { mapFileExtractorNodeToModel } from './nodes/file-extractor-node.mapper'
 import { mapGraphNoteToModel } from './nodes/graph-note.mapper';
 import { mapKeyValueNodeToModel } from './nodes/key-value-node.mapper';
 import { mapKnowledgeRetrieverNodeToModel } from './nodes/knowledge-retriever-node.mapper';
-import { mapLLMNodeToModel } from './nodes/llm-node.mapper';
 import { mapPythonNodeToModel } from './nodes/python-node.mapper';
 import { mapScheduleTriggerNodeToModel } from './nodes/schedule-trigger-node.mapper';
 import { mapStartNodeToModel } from './nodes/start-node.mapper';
@@ -26,22 +26,31 @@ import { resolveClassificationDecisionTableNodeRefs } from './ref-resolvers/clas
 import { resolveDecisionTableNodeRefs } from './ref-resolvers/decision-table-refs';
 
 /**
- * Reassigns colliding/missing nodeNumbers to the next free integers.
- * BE-imported nodes keep their source graph's nodeNumber, which can duplicate
- * existing ones — this guarantees a unique #N badge per node after load.
+ * Gives a numbered node whose number is missing or already taken the next free one. The backend
+ * keeps numbers unique per graph, so this only fires on data it should never send; it is logged.
+ * Start, End and Note nodes are never numbered.
  */
-function deduplicateNodeNumbers(nodes: NodeModel[]): NodeModel[] {
+function deduplicateNodeNumbers(nodes: NodeModel[], graphId: number): NodeModel[] {
     const seen = new Set<number>();
-    let next = Math.max(0, ...nodes.map((n) => n.nodeNumber ?? 0)) + 1;
-    return nodes.map((n) => {
-        if (n.nodeNumber == null || seen.has(n.nodeNumber)) {
-            const num = next++;
-            seen.add(num);
-            return { ...n, nodeNumber: num };
+    const reassigned: string[] = [];
+    let next = Math.max(0, ...nodes.map((node) => node.nodeNumber ?? 0)) + 1;
+    const result = nodes.map((node) => {
+        if (!isNumberedNodeType(node.type)) return node;
+        if (node.nodeNumber == null || seen.has(node.nodeNumber)) {
+            const nodeNumber = next++;
+            seen.add(nodeNumber);
+            reassigned.push(`backendId=${node.backendId} ${node.nodeNumber ?? 'none'}->${nodeNumber}`);
+            return { ...node, nodeNumber };
         }
-        seen.add(n.nodeNumber);
-        return n;
+        seen.add(node.nodeNumber);
+        return node;
     });
+    if (reassigned.length > 0) {
+        console.warn(
+            `[load][node-number] graphId=${graphId} reassigned missing/duplicate numbers: ${reassigned.join(', ')}`
+        );
+    }
+    return result;
 }
 
 export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
@@ -50,7 +59,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const pythonNodes = (graph.python_node_list ?? []).map((n) => mapPythonNodeToModel(n));
     const taskNodes = (graph.task_node_list ?? []).map((n) => mapTaskNodeToModel(n));
     const agentNodes = (graph.agent_node_list ?? []).map((n) => mapAgentNodeToModel(n));
-    const llmNodes = (graph.llm_node_list ?? []).map((n) => mapLLMNodeToModel(n));
     const fileExtractorNodes = (graph.file_extractor_node_list ?? []).map((n) => mapFileExtractorNodeToModel(n));
     const audioToTextNodes = (graph.audio_transcription_node_list ?? []).map((n) => mapAudioToTextNodeToModel(n));
     const subGraphNodes = (graph.subgraph_node_list ?? []).map((n) => mapSubGraphNodeToModel(n));
@@ -72,7 +80,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...pythonNodes,
         ...taskNodes,
         ...agentNodes,
-        ...llmNodes,
         ...fileExtractorNodes,
         ...audioToTextNodes,
         ...subGraphNodes,
@@ -141,5 +148,5 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         );
     }
 
-    return { nodes: deduplicateNodeNumbers(allNodes), connections: allConnections };
+    return { nodes: deduplicateNodeNumbers(allNodes, graph.id), connections: allConnections };
 }

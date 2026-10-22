@@ -9,8 +9,9 @@ tests/api_tests/test_secret_selection_cross_org.py.
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from rbac.models import Organization, OrganizationUser, Role
+from rbac.models.enums import BuiltInRole
 from rest_framework.test import APIClient
-
 from tables.models import LLMConfig, McpTool, PythonCode
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
@@ -18,8 +19,6 @@ from tables.models.graph_models import (
     PythonNode,
 )
 from tables.models.llm_models import LLMModel
-from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole
 from tables.services.secrets import secret_service
 
 DECLARING_CODE = 'def main(**kwargs):\n    return get_secret("USAGE_KEY")\n'
@@ -104,13 +103,13 @@ class TestUsageCountOnList:
 
         assert resp.status_code == 200, resp.content
         row = next(item for item in _results(resp) if item["id"] == secret.pk)
-        assert row["usage_count"] == 0
+        assert row["usage_count"] == {"readable": 0, "hidden": 0}
 
     def test_used_secret_reports_its_resource_count(self, admin_client, used_secret):
         resp = admin_client.get("/api/secrets/")
 
         row = next(item for item in _results(resp) if item["id"] == used_secret.pk)
-        assert row["usage_count"] == 3
+        assert row["usage_count"] == {"readable": 3, "hidden": 0}
 
     def test_usage_count_is_read_only(self, admin_client, org):
         """A client-supplied value must be ignored, not stored or echoed back."""
@@ -121,7 +120,7 @@ class TestUsageCountOnList:
         )
 
         assert resp.status_code == 201, resp.content
-        assert resp.data["usage_count"] == 0
+        assert resp.data["usage_count"] == {"readable": 0, "hidden": 0}
 
     def test_query_count_does_not_grow_with_the_number_of_secrets(
         self, admin_client, org
@@ -206,7 +205,7 @@ class TestSingleObjectResponsesDoNotSweepTheOrg:
             resp = admin_client.get(f"/api/secrets/{used_secret.pk}/")
 
         assert resp.status_code == 200, resp.content
-        assert resp.data["usage_count"] == 3
+        assert resp.data["usage_count"] == {"readable": 3, "hidden": 0}
         assert len(_unions(captured)) == 1
 
     def test_retrieve_is_cheaper_than_list(self, admin_client, org, used_secret):
@@ -232,7 +231,7 @@ class TestSingleObjectResponsesDoNotSweepTheOrg:
         row = next(item for item in _results(listed) if item["id"] == used_secret.pk)
         retrieved = admin_client.get(f"/api/secrets/{used_secret.pk}/")
 
-        assert retrieved.data["usage_count"] == row["usage_count"] == 3
+        assert retrieved.data["usage_count"] == row["usage_count"] == {"readable": 3, "hidden": 0}
 
     def test_create_counts_its_own_secret_rather_than_assuming_zero(
         self, admin_client, org
@@ -250,7 +249,7 @@ class TestSingleObjectResponsesDoNotSweepTheOrg:
             )
 
         assert resp.status_code == 201, resp.content
-        assert resp.data["usage_count"] == 0
+        assert resp.data["usage_count"] == {"readable": 0, "hidden": 0}
         assert len(_unions(captured)) == 1
 
     def test_delete_computes_no_usage_at_all(self, admin_client, used_secret):
@@ -288,7 +287,7 @@ class TestUsageDetailEndpoint:
         resp = admin_client.get(f"/api/secrets/{secret.pk}/usage/")
 
         assert resp.status_code == 200, resp.content
-        assert resp.data == {"total": 0, "categories": []}
+        assert resp.data == {"readable_total": 0, "hidden_total": 0, "categories": []}
 
     def test_a_decision_table_reports_pre_and_post_as_separate_blocks(
         self, admin_client, org, secret
@@ -316,14 +315,42 @@ class TestUsageDetailEndpoint:
             "pre_python_code",
         ]
         assert {node["name"] for node in nodes} == {"classify"}
+        assert len({node["id"] for node in nodes}) == 1
         # One flow to lose, so the count the list endpoint shows is unchanged.
-        assert resp.data["total"] == 1
+        assert resp.data["readable_total"] == 1
+
+    def test_same_named_nodes_in_one_flow_are_listed_by_id(
+        self, admin_client, org, secret
+    ):
+        """The client tells nodes apart by `id` and labels them by `node_number`,
+        because two nodes in one flow may share a name."""
+        graph = Graph.objects.create(name="Twin flow", org=org)
+        twins = []
+        for _ in range(2):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            twins.append(
+                PythonNode.objects.create(
+                    graph=graph, node_name="charge", python_code=python_code
+                )
+            )
+
+        resp = admin_client.get(f"/api/secrets/{secret.pk}/usage/")
+
+        assert resp.status_code == 200, resp.content
+        nodes = resp.data["categories"][0]["items"][0]["nodes"]
+        assert [(node["id"], node["node_number"]) for node in nodes] == [
+            (twins[0].pk, twins[0].node_number),
+            (twins[1].pk, twins[1].node_number),
+        ]
+        assert resp.data["readable_total"] == 1
 
     def test_payload_shape_across_all_three_categories(self, admin_client, used_secret):
         resp = admin_client.get(f"/api/secrets/{used_secret.pk}/usage/")
 
         assert resp.status_code == 200, resp.content
-        assert resp.data["total"] == 3
+        assert resp.data["readable_total"] == 3
+        assert resp.data["hidden_total"] == 0
         assert [category["key"] for category in resp.data["categories"]] == [
             "flows",
             "tools",
@@ -333,8 +360,11 @@ class TestUsageDetailEndpoint:
         flows = resp.data["categories"][0]["items"]
         assert len(flows) == 1
         assert flows[0]["name"] == "API flow"
+        node = PythonNode.objects.get(graph_id=flows[0]["id"])
         assert flows[0]["nodes"] == [
             {
+                "id": node.pk,
+                "node_number": node.node_number,
                 "name": "charge_card",
                 "node_type": "python",
                 "code_field": "python_code",
@@ -354,7 +384,10 @@ class TestUsageDetailEndpoint:
         row = next(item for item in _results(listed) if item["id"] == used_secret.pk)
         detail = admin_client.get(f"/api/secrets/{used_secret.pk}/usage/")
 
-        assert row["usage_count"] == detail.data["total"]
+        assert row["usage_count"] == {
+            "readable": detail.data["readable_total"],
+            "hidden": detail.data["hidden_total"],
+        }
 
     def test_another_orgs_secret_is_404_not_403(self, admin_client, other_org):
         """403 would confirm the row exists. Queryset scoping must make it a 404."""

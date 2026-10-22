@@ -73,6 +73,13 @@ class GraphRag(SoftDeleteFields, models.Model):
     )
     outdated_reasons = models.JSONField(default=dict, blank=True)
     error_message = models.TextField(null=True, blank=True)
+    indexing_usage = models.JSONField(
+        default=dict,
+        db_default={},
+        blank=True,
+        editable=False,
+        help_text="Token usage and cost of indexing runs, written by the knowledge service.",
+    )
 
     indexing_document_config_ids = ArrayField(
         base_field=PositiveIntegerField(),
@@ -137,6 +144,8 @@ class AgentGraphRag(SoftDeleteFields, models.Model):
     - Agent accesses via reverse relation: agent.graph_rags.all()
     - Keeps Agent model clean and unchanged when adding new RAG types
     """
+
+    soft_delete_reference_fields = ("graph_rag",)
 
     class SearchMethod(models.TextChoices):
         BASIC = "basic", "Basic Search"
@@ -416,7 +425,7 @@ class GraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
         return f"GraphRagLocalSearchConfig({self.pk})"
 
 
-class KnowledgeNodeGraphRagBasicSearchConfig(GraphRagBasicSearchConfigBase):
+class KnowledgeNodeGraphRagBasicSearchConfig(GraphRagBasicSearchConfigBase, SoftDeleteFields):
     knowledge_node = models.OneToOneField(
         "KnowledgeNode",
         on_delete=models.CASCADE,
@@ -424,10 +433,13 @@ class KnowledgeNodeGraphRagBasicSearchConfig(GraphRagBasicSearchConfigBase):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         db_table = "knowledge_node_graph_basic_search_config"
+        constraints = [soft_delete_consistency_constraint()]
 
 
-class KnowledgeNodeGraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
+class KnowledgeNodeGraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase, SoftDeleteFields):
     knowledge_node = models.OneToOneField(
         "KnowledgeNode",
         on_delete=models.CASCADE,
@@ -435,7 +447,10 @@ class KnowledgeNodeGraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         db_table = "knowledge_node_graph_local_search_config"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class GraphRagGlobalSearchConfigBase(models.Model):
@@ -530,7 +545,7 @@ class GraphRagGlobalSearchConfig(GraphRagGlobalSearchConfigBase):
         return f"GraphRagGlobalSearchConfig({self.pk})"
 
 
-class KnowledgeNodeGraphRagGlobalSearchConfig(GraphRagGlobalSearchConfigBase):
+class KnowledgeNodeGraphRagGlobalSearchConfig(GraphRagGlobalSearchConfigBase, SoftDeleteFields):
     knowledge_node = models.OneToOneField(
         "KnowledgeNode",
         on_delete=models.CASCADE,
@@ -538,7 +553,10 @@ class KnowledgeNodeGraphRagGlobalSearchConfig(GraphRagGlobalSearchConfigBase):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         db_table = "knowledge_node_graph_global_search_config"
+        constraints = [soft_delete_consistency_constraint()]
 
 
 class GraphRagDriftSearchConfigBase(models.Model):
@@ -677,7 +695,7 @@ class GraphRagDriftSearchConfig(GraphRagDriftSearchConfigBase):
         return f"GraphRagDriftSearchConfig({self.pk})"
 
 
-class KnowledgeNodeGraphRagDriftSearchConfig(GraphRagDriftSearchConfigBase):
+class KnowledgeNodeGraphRagDriftSearchConfig(GraphRagDriftSearchConfigBase, SoftDeleteFields):
     knowledge_node = models.OneToOneField(
         "KnowledgeNode",
         on_delete=models.CASCADE,
@@ -685,4 +703,7 @@ class KnowledgeNodeGraphRagDriftSearchConfig(GraphRagDriftSearchConfigBase):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         db_table = "knowledge_node_graph_drift_search_config"
+        constraints = [soft_delete_consistency_constraint()]

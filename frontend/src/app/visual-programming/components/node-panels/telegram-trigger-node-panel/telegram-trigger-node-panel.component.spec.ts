@@ -13,7 +13,7 @@ import {
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ConfirmationDialogService, ConfirmationResult, JsonEditorComponent } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { ActionCode, NodeType } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { of } from 'rxjs';
 
@@ -23,7 +23,6 @@ import { ToastService } from '../../../../services/notifications';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { GetTelegramTriggerNodeRequest, TelegramTriggerNodeField } from '../../../core/models/telegram-trigger.model';
 import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview.token';
-import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { FlowTestRunService } from '../../../services/flow-test-run.service';
 import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { mapTelegramTriggerNodeToModel } from '../../../utils/load/nodes/telegram-trigger-node.mapper';
@@ -44,6 +43,7 @@ import {
     INSERT_EXAMPLE_PAYLOAD_LABEL,
     TelegramTriggerNodePanelComponent,
 } from './telegram-trigger-node-panel.component';
+import { WebhookStatus } from './webhook-status.model';
 
 function registrationNode(
     overrides: Partial<TelegramTriggerNodeModel['data']> = {},
@@ -90,7 +90,13 @@ function configure({ isPreview = false }: { isPreview?: boolean } = {}): void {
             { provide: FlowsApiService, useValue: { getTelegramTriggerWebhookInfo: vi.fn() } },
             {
                 provide: SecretsStorageService,
-                useValue: { getSecrets: () => of([]), secrets: () => [], maskTail: (tail: string) => tail },
+                useValue: {
+                    getSecrets: () => of([]),
+                    selectItems: () => [],
+                    isBinned: () => false,
+                    secrets: () => [],
+                    maskTail: (tail: string) => tail,
+                },
             },
         ],
     });
@@ -161,6 +167,52 @@ describe('TelegramTriggerNodePanelComponent', () => {
         panel.form.get('node_name')!.setValue('Renamed trigger');
 
         expect(hasUnsavedConnectionChanges()).toBe(false);
+    });
+
+    it('shows the tunnel status only for a resolved trigger, never for a missing or binned one', () => {
+        const { panel } = openSaved(registrationNode());
+
+        panel.onTriggerResolved(null);
+        expect(panel.webhookStatusDisplay()).toBeNull();
+
+        panel.onTriggerResolved({
+            id: 3,
+            path: 'bot',
+            provider_type: 'ngrok',
+            ngrok_config: null,
+            localhost_config: null,
+            live_url: 'https://bot.ngrok.app',
+        });
+        expect(panel.webhookStatusDisplay()).toBe(WebhookStatus.SUCCESS);
+
+        panel.onTriggerResolved({
+            id: 3,
+            path: 'bot',
+            provider_type: 'ngrok',
+            ngrok_config: null,
+            localhost_config: null,
+            live_url: null,
+        });
+        expect(panel.webhookStatusDisplay()).toBe(WebhookStatus.FAIL);
+    });
+
+    it('keeps offering the bot key when its secret is in the recycle bin', () => {
+        configure();
+        TestBed.overrideProvider(SecretsStorageService, {
+            useValue: {
+                getSecrets: () => of([]),
+                secrets: () => [],
+                maskTail: (tail: string) => tail,
+                isBinned: (id: number) => id === 5,
+                selectItems: (selected: number[]) =>
+                    selected.includes(5) ? [{ name: 'Old bot key (in the recycle bin)', value: 5 }] : [],
+            },
+        });
+        const node = registrationNode({ telegram_bot_api_key_secret_id: 5 });
+        markSaved(node);
+        const { panel } = open(node);
+
+        expect(panel.secretItems()).toEqual([{ name: 'Old bot key (in the recycle bin)', value: 5 }]);
     });
 
     it('passes the saved backendId and bot key to the registration check', () => {
@@ -239,19 +291,29 @@ class TelegramWebhookRegistrationStubComponent {
 
 describe('TelegramTriggerNodePanelComponent template', () => {
     // Real panel template; every other child is left unrendered by NO_ERRORS_SCHEMA.
-    function renderWithReadOnly(
-        isReadOnly: WritableSignal<boolean>
+    function render(
+        canUpdateFlows: WritableSignal<boolean>,
+        canRunFlows: WritableSignal<boolean> = signal(true)
     ): ComponentFixture<TelegramTriggerNodePanelComponent> {
         TestBed.configureTestingModule({
             providers: [
                 { provide: FLOW_EDITOR_PREVIEW, useValue: false },
                 {
-                    provide: FlowReadOnlyService,
-                    useValue: { isPreview: false, isReadOnly, notifyBlocked: vi.fn() },
+                    provide: PermissionsService,
+                    useValue: {
+                        can: (_resource: unknown, action: ActionCode) =>
+                            action === ActionCode.Use ? canRunFlows() : canUpdateFlows(),
+                    },
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { getSecrets: () => of([]), secrets: () => [], maskTail: (tail: string) => tail },
+                    useValue: {
+                        getSecrets: () => of([]),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                        secrets: () => [],
+                        maskTail: (tail: string) => tail,
+                    },
                 },
             ],
         });
@@ -273,12 +335,26 @@ describe('TelegramTriggerNodePanelComponent template', () => {
             .readonly();
     }
 
-    it('passes FlowReadOnlyService.isReadOnly() to the registration check as readonly', () => {
-        const isReadOnly = signal(false);
-        const fixture = renderWithReadOnly(isReadOnly);
+    function hasEditingButton(fixture: ComponentFixture<TelegramTriggerNodePanelComponent>): boolean {
+        const buttons = Array.from<Element>(fixture.nativeElement.querySelectorAll('app-button'));
+        return buttons.some((button) => button.textContent?.trim() === 'Editing');
+    }
+
+    /** What the panel shell would render in its header from the panel's template. */
+    function headerActionTags(fixture: ComponentFixture<TelegramTriggerNodePanelComponent>): string[] {
+        const view = fixture.componentInstance.headerActionsTemplate()!.createEmbeddedView({});
+        view.detectChanges();
+        return view.rootNodes
+            .filter((rootNode): rootNode is Element => rootNode instanceof Element)
+            .map((element) => element.tagName.toLowerCase());
+    }
+
+    it("passes the panel's read-only state to the registration check as readonly", () => {
+        const canUpdateFlows = signal(true);
+        const fixture = render(canUpdateFlows);
         expect(registrationReadonly(fixture)).toBe(false);
 
-        isReadOnly.set(true);
+        canUpdateFlows.set(false);
         fixture.detectChanges();
 
         expect(registrationReadonly(fixture)).toBe(true);
@@ -286,9 +362,30 @@ describe('TelegramTriggerNodePanelComponent template', () => {
     });
 
     it('starts read-only when the user cannot change the flow', () => {
-        const fixture = renderWithReadOnly(signal(true));
+        const fixture = render(signal(false));
 
         expect(registrationReadonly(fixture)).toBe(true);
+        fixture.destroy();
+    });
+
+    it('offers editing, Register and a test run to a user who may update and run flows', () => {
+        const fixture = render(signal(true), signal(true));
+
+        expect(fixture.componentInstance.form.enabled).toBe(true);
+        expect(hasEditingButton(fixture)).toBe(true);
+        expect(registrationReadonly(fixture)).toBe(false);
+        expect(headerActionTags(fixture)).toContain('app-run-test-payload-button');
+        fixture.destroy();
+    });
+
+    it('is read-only without Flows:Use: no field editing, no Register, no test run', () => {
+        const fixture = render(signal(true), signal(false));
+
+        expect(fixture.componentInstance.form.disabled).toBe(true);
+        expect(hasEditingButton(fixture)).toBe(false);
+        expect(registrationReadonly(fixture)).toBe(true);
+        expect(headerActionTags(fixture)).not.toContain('app-run-test-payload-button');
+        expect(fixture.componentInstance.onSave()).toBeNull();
         fixture.destroy();
     });
 });
@@ -310,12 +407,17 @@ function telegramNode(testPayload: Record<string, unknown> = {}): TelegramTrigge
     const dto: GetTelegramTriggerNodeRequest = {
         id: 31,
         graph: 1,
+        node_number: 1,
         node_name: 'Telegram Trigger #1',
         telegram_bot_api_key_secret_id: 7,
         fields: [MESSAGE_ID],
         metadata: {},
         webhook_trigger: null,
         test_payload: testPayload,
+        created_at: '2026-01-01T00:00:00Z',
+        created_by: null,
+        last_edited_by: null,
+        last_edited_at: null,
     };
     return mapTelegramTriggerNodeToModel(dto);
 }
@@ -354,7 +456,13 @@ describe('TelegramTriggerNodePanelComponent test payload', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), maskTail: () => '', getSecrets: () => of([]) },
+                    useValue: {
+                        secrets: signal([]),
+                        maskTail: () => '',
+                        getSecrets: () => of([]),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: Dialog, useValue: { open: () => ({ closed: of(dialogResult) }) } },
                 { provide: ConfirmationDialogService, useValue: { confirm } },
@@ -709,7 +817,13 @@ describe('TelegramTriggerNodePanelComponent field models info', () => {
                 },
                 {
                     provide: SecretsStorageService,
-                    useValue: { secrets: signal([]), maskTail: () => '', getSecrets: () => of([]) },
+                    useValue: {
+                        secrets: signal([]),
+                        maskTail: () => '',
+                        getSecrets: () => of([]),
+                        selectItems: () => [],
+                        isBinned: () => false,
+                    },
                 },
                 { provide: Dialog, useValue: { open: () => ({ closed: of(undefined) }) } },
             ],

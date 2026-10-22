@@ -21,15 +21,21 @@
             class="filters-panel__tab"
             type="button"
             [class.is-active]="activeTab() === 'builder'"
+            [attr.aria-pressed]="activeTab() === 'builder'"
             (click)="setActiveTab('builder')"
         >
             Builder
         </button>
-        <span class="filters-panel__tab-sep">/</span>
+        <span
+            class="filters-panel__tab-sep"
+            aria-hidden="true"
+            >/</span
+        >
         <button
             class="filters-panel__tab"
             type="button"
             [class.is-active]="activeTab() === 'query'"
+            [attr.aria-pressed]="activeTab() === 'query'"
             (click)="setActiveTab('query')"
         >
             Query Code
@@ -38,10 +44,25 @@
         <button
             class="filters-panel__tab"
             type="button"
-            [class.is-active]="activeTab() === 'presets'"
-            (click)="setActiveTab('presets')"
+            [class.is-active]="activeTab() === 'mine'"
+            [attr.aria-pressed]="activeTab() === 'mine'"
+            (click)="setActiveTab('mine')"
         >
-            Presets
+            My Presets <span class="filters-panel__tab-count">({{ myPresetsCount() }})</span>
+        </button>
+        <span
+            class="filters-panel__tab-sep"
+            aria-hidden="true"
+            >/</span
+        >
+        <button
+            class="filters-panel__tab"
+            type="button"
+            [class.is-active]="activeTab() === 'shared'"
+            [attr.aria-pressed]="activeTab() === 'shared'"
+            (click)="setActiveTab('shared')"
+        >
+            Shared Presets <span class="filters-panel__tab-count">({{ sharedPresetsCount() }})</span>
         </button>
     </div>
 
@@ -53,7 +74,13 @@
                     (scopeChange)="setMatchScope($event)"
                 />
 
-                <app-audit-filter-group label="Kind">
+                <p class="filters-panel__section">Quick filters</p>
+
+                <app-audit-filter-group
+                    label="Kind"
+                    [summary]="summaryOf('kind')"
+                    (cleared)="clearField('kind')"
+                >
                     <app-audit-checkbox-enum
                         [options]="kindOptions"
                         [value]="filter().kinds"
@@ -63,14 +90,22 @@
                     />
                 </app-audit-filter-group>
 
-                <app-audit-filter-group label="ID">
+                <app-audit-filter-group
+                    label="ID"
+                    [summary]="summaryOf('id')"
+                    (cleared)="clearField('id')"
+                >
                     <app-audit-id-filter
                         [filter]="filter().id"
                         (filterChange)="setId($event)"
                     />
                 </app-audit-filter-group>
 
-                <app-audit-filter-group label="Flow">
+                <app-audit-filter-group
+                    label="Flow"
+                    [summary]="summaryOf('flow')"
+                    (cleared)="clearField('flow')"
+                >
                     <app-audit-flow-filter
                         [options]="flowOptions()"
                         [filter]="filter().flow"
@@ -80,6 +115,8 @@
 
                 <app-audit-filter-group
                     label="Status"
+                    [summary]="summaryOf('status')"
+                    (cleared)="clearField('status')"
                     [disabled]="!isStatusEnabled()"
                     [class.is-disabled]="!isStatusEnabled()"
                     [hint]="isStatusEnabled() ? '' : 'Only events carry a status'"
@@ -95,6 +132,8 @@
 
                 <app-audit-filter-group
                     label="Node Type"
+                    [summary]="summaryOf('nodeType')"
+                    (cleared)="clearField('nodeType')"
                     [disabled]="!isNodeTypeEnabled()"
                     [class.is-disabled]="!isNodeTypeEnabled()"
                     [hint]="isNodeTypeEnabled() ? '' : 'Only nodes and events carry a node type'"
@@ -109,22 +148,9 @@
                 </app-audit-filter-group>
 
                 <app-audit-filter-group
-                    label="Run"
-                    [disabled]="!isRunTypeEnabled()"
-                    [class.is-disabled]="!isRunTypeEnabled()"
-                    [hint]="isRunTypeEnabled() ? '' : 'Only sessions carry a run type'"
-                >
-                    <app-audit-checkbox-enum
-                        [options]="runTypeOptions"
-                        [value]="filter().runTypes"
-                        [disabledValues]="disabledRunTypes()"
-                        disabledHint="Only sessions carry a run type"
-                        (valueChange)="setRunTypes($event)"
-                    />
-                </app-audit-filter-group>
-
-                <app-audit-filter-group
                     label="Input"
+                    [summary]="summaryOf('input')"
+                    (cleared)="clearField('input')"
                     [disabled]="!isInputEnabled()"
                     [class.is-disabled]="!isInputEnabled()"
                     [hint]="isInputEnabled() ? '' : 'Only events carry input'"
@@ -138,6 +164,8 @@
 
                 <app-audit-filter-group
                     label="Output"
+                    [summary]="summaryOf('output')"
+                    (cleared)="clearField('output')"
                     [disabled]="!isOutputEnabled()"
                     [class.is-disabled]="!isOutputEnabled()"
                     [hint]="isOutputEnabled() ? '' : 'Only events carry output'"
@@ -151,6 +179,8 @@
 
                 <app-audit-filter-group
                     label="Error"
+                    [summary]="summaryOf('error')"
+                    (cleared)="clearField('error')"
                     [disabled]="!isErrorEnabled()"
                     [class.is-disabled]="!isErrorEnabled()"
                     [hint]="isErrorEnabled() ? '' : 'Only events carry an error'"
@@ -165,6 +195,8 @@
 
                 <app-audit-filter-group
                     label="Details"
+                    [summary]="summaryOf('details')"
+                    (cleared)="clearField('details')"
                     [disabled]="!isDetailsEnabled()"
                     [class.is-disabled]="!isDetailsEnabled()"
                     [hint]="isDetailsEnabled() ? '' : 'Only events carry details'"
@@ -176,7 +208,11 @@
                     />
                 </app-audit-filter-group>
 
-                <app-audit-filter-group label="Date">
+                <app-audit-filter-group
+                    label="Date"
+                    [summary]="summaryOf('date')"
+                    (cleared)="clearField('date')"
+                >
                     <app-audit-date-filter
                         [range]="dateRange()"
                         (rangeChange)="setDateRange($event)"
@@ -187,6 +223,8 @@
 
                 <app-audit-filter-group
                     label="Agent"
+                    [summary]="summaryOf('agent')"
+                    (cleared)="clearField('agent')"
                     [disabled]="!isAgentEnabled()"
                     [class.is-disabled]="!isAgentEnabled()"
                     [hint]="agentHint()"
@@ -200,6 +238,8 @@
 
                 <app-audit-filter-group
                     label="Tool"
+                    [summary]="summaryOf('tool')"
+                    (cleared)="clearField('tool')"
                     [disabled]="!isToolEnabled()"
                     [class.is-disabled]="!isToolEnabled()"
                     [hint]="toolHint()"
@@ -213,6 +253,8 @@
 
                 <app-audit-filter-group
                     label="Tokens"
+                    [summary]="summaryOf('tokens')"
+                    (cleared)="clearField('tokens')"
                     [disabled]="!isTokensEnabled()"
                     [class.is-disabled]="!isTokensEnabled()"
                     [hint]="isTokensEnabled() ? '' : 'Only events carry token usage'"
@@ -225,6 +267,8 @@
 
                 <app-audit-filter-group
                     label="Task"
+                    [summary]="summaryOf('task')"
+                    (cleared)="clearField('task')"
                     [disabled]="!isTaskEnabled()"
                     [class.is-disabled]="!isTaskEnabled()"
                     [hint]="isTaskEnabled() ? '' : 'Only events carry a task'"
@@ -239,6 +283,8 @@
 
                 <app-audit-filter-group
                     label="Prompt"
+                    [summary]="summaryOf('prompt')"
+                    (cleared)="clearField('prompt')"
                     [disabled]="!isPromptEnabled()"
                     [class.is-disabled]="!isPromptEnabled()"
                     [hint]="isPromptEnabled() ? '' : 'Only events carry a prompt'"
@@ -253,6 +299,8 @@
 
                 <app-audit-filter-group
                     label="Message text"
+                    [summary]="summaryOf('messageText')"
+                    (cleared)="clearField('messageText')"
                     [disabled]="!isMessageTextEnabled()"
                     [class.is-disabled]="!isMessageTextEnabled()"
                     [hint]="isMessageTextEnabled() ? '' : 'Only events carry a message'"
@@ -267,12 +315,42 @@
             </div>
         } @else if (activeTab() === 'query') {
             <div class="filters-panel__query">
-                <label
-                    class="filters-panel__section"
-                    for="audit-query"
-                >
-                    Query
-                </label>
+                <app-audit-match-scope
+                    [scope]="filter().matchScope"
+                    (scopeChange)="setMatchScope($event)"
+                />
+
+                <div class="filters-panel__query-header">
+                    <label
+                        class="filters-panel__section"
+                        for="audit-query"
+                    >
+                        Query
+                    </label>
+                    <button
+                        class="filters-panel__copy"
+                        type="button"
+                        [disabled]="isQueryEmpty()"
+                        (click)="copyQuery()"
+                    >
+                        <app-svg-icon
+                            icon="copy"
+                            size="14px"
+                        />
+                        Copy
+                    </button>
+                </div>
+                <div class="filters-panel__operators">
+                    @for (operator of queryOperators; track operator.label) {
+                        <button
+                            class="filters-panel__operator"
+                            type="button"
+                            (click)="insertField(queryInput, operator.text, operator.caretFromEnd)"
+                        >
+                            {{ operator.label }}
+                        </button>
+                    }
+                </div>
                 <textarea
                     #queryInput
                     id="audit-query"
@@ -344,8 +422,9 @@
                     </div>
                 </details>
             </div>
-        } @else if (activeTab() === 'presets') {
+        } @else if (activeTab() === 'mine') {
             <app-audit-presets
+                scope="mine"
                 [currentFilter]="filter()"
                 [agentOptions]="agentOptions()"
                 [toolOptions]="toolOptions()"
@@ -353,10 +432,19 @@
                 (presetApplied)="presetApplied.emit($event)"
                 (queryCopied)="openQuery($event)"
             />
+        } @else {
+            <app-audit-presets
+                scope="shared"
+                [currentFilter]="filter()"
+                [agentOptions]="agentOptions()"
+                [toolOptions]="toolOptions()"
+                (presetApplied)="presetApplied.emit($event)"
+                (queryCopied)="openQuery($event)"
+            />
         }
     </div>
 
-    @if (activeTab() !== 'presets') {
+    @if (!isPresetsTab()) {
         <div class="filters-panel__footer">
             <button
                 class="filters-panel__btn"

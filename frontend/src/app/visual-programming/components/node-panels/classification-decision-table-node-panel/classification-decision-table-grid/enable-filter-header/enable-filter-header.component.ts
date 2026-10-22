@@ -87,7 +87,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
             }
             .enable-label {
                 color: rgba(255, 255, 255, 0.9);
-                font-size: 0.85rem;
+                font-size: 0.875rem;
                 font-weight: 500;
             }
             .enable-filter-btn {

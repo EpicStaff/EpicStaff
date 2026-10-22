@@ -18,7 +18,7 @@ GraphBulkSaveService (Pass 2)  — iterates configs for deletions
 _collect_payload_temp_ids      — iterates configs for temp_id scan
 ```
 
-Edges (`edge_list`, `conditional_edge_list`) are **not** in the registry. They have their own validation path in the service. This guide only covers regular node types.
+Edges (`edge_list`) are **not** in the registry. They have their own validation path in the service. This guide only covers regular node types.
 
 ---
 
@@ -32,6 +32,7 @@ File: `tables/serializers/graph_bulk_save_serializers.py`
 
 ```python
 from tables.serializers.model_serializers import YourNewNodeSerializer
+
 
 class YourNewNodeBulkSerializer(BulkSaveEntityMixin, YourNewNodeSerializer):
     pass
@@ -61,10 +62,10 @@ Add one entry to `NODE_TYPE_REGISTRY`:
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
     # ... existing entries ...
     NodeTypeConfig(
-        "your_new_node_list",      # list_key  — key in the request payload
-        "your_new_node_ids",       # delete_key — key in deleted{}
-        YourNewNode,               # model_class
-        YourNewNodeBulkSerializer, # serializer_class
+        "your_new_node_list",  # list_key  — key in the request payload
+        "your_new_node_ids",  # delete_key — key in deleted{}
+        YourNewNode,  # model_class
+        YourNewNodeBulkSerializer,  # serializer_class
     ),
 ]
 ```
@@ -78,7 +79,7 @@ File: `tables/views/model_view_sets.py`, method `GraphViewSet.get_queryset()`
 The graph read serializer returns all node lists. Add a `Prefetch` so the refreshed graph returned after a save includes the new node type:
 
 ```python
-Prefetch("your_new_node_list", queryset=YourNewNode.objects.all()),
+(Prefetch("your_new_node_list", queryset=YourNewNode.objects.all()),)
 ```
 
 The `related_name` on the `graph` FK of your model must match the first argument — by convention `{snake_case_model_name}_list`.
@@ -143,11 +144,7 @@ class YourNewNodeSaveable:
         validated = dict(s.validated_data)
         _clean_for_write(validated)
 
-        node = (
-            s.create(validated)
-            if s.instance is None
-            else s.update(s.instance, validated)
-        )
+        node = s.create(validated) if s.instance is None else s.update(s.instance, validated)
 
         # Replace nested relations (delete old, bulk-create new).
         if self._instance is not None:
@@ -170,6 +167,7 @@ File: `tables/services/graph_bulk_save_service/factories/your_new_node.py`
 from tables.services.graph_bulk_save_service.factories.base import NodeSaveableFactory
 from tables.services.graph_bulk_save_service.saveables import YourNewNodeSaveable
 
+
 class YourNewNodeSaveableFactory(NodeSaveableFactory):
     def preprocess_data(self, data: dict, payload_temp_ids: set) -> tuple[dict, dict]:
         # Pop nested fields the serializer must not see.
@@ -177,9 +175,7 @@ class YourNewNodeSaveableFactory(NodeSaveableFactory):
         return data, {"your_nested_field": nested}
 
     def build(self, serializer, extra: dict, instance=None):
-        return YourNewNodeSaveable(
-            serializer, extra.get("your_nested_field"), instance
-        )
+        return YourNewNodeSaveable(serializer, extra.get("your_nested_field"), instance)
 ```
 
 Re-export from `tables/services/graph_bulk_save_service/factories/__init__.py`:
@@ -197,13 +193,15 @@ _YOUR_NEW_FACTORY = YourNewNodeSaveableFactory()
 ### Step 4 — Register with the custom factory
 
 ```python
-NodeTypeConfig(
-    "your_new_node_list",
-    "your_new_node_ids",
-    YourNewNode,
-    YourNewNodeBulkSerializer,
-    saveable_factory=_YOUR_NEW_FACTORY,
-),
+(
+    NodeTypeConfig(
+        "your_new_node_list",
+        "your_new_node_ids",
+        YourNewNode,
+        YourNewNodeBulkSerializer,
+        saveable_factory=_YOUR_NEW_FACTORY,
+    ),
+)
 ```
 
 ### Steps 5 & 6 — Prefetch + Swagger
@@ -244,17 +242,19 @@ from tables.models.graph_models import CommentNode
 from tables.serializers.graph_bulk_save_serializers import CommentNodeBulkSerializer
 
 # Inside NODE_TYPE_REGISTRY:
-NodeTypeConfig(
-    "comment_node_list",
-    "comment_node_ids",
-    CommentNode,
-    CommentNodeBulkSerializer,
-),
+(
+    NodeTypeConfig(
+        "comment_node_list",
+        "comment_node_ids",
+        CommentNode,
+        CommentNodeBulkSerializer,
+    ),
+)
 ```
 
 **`model_view_sets.py`** (inside `get_queryset` prefetch list)
 ```python
-Prefetch("comment_node_list", queryset=CommentNode.objects.all()),
+(Prefetch("comment_node_list", queryset=CommentNode.objects.all()),)
 ```
 
 **`graph_bulk_save_schema.py`**
@@ -278,7 +278,7 @@ After these four changes the new node type is fully integrated: it can be create
 | `tables/services/graph_bulk_save_service/registry.py` | `NODE_TYPE_REGISTRY`, `NodeTypeConfig`, factory singletons |
 | `tables/services/graph_bulk_save_service/factories/base.py` | `NodeSaveableFactory` ABC, `DefaultNodeSaveableFactory` |
 | `tables/services/graph_bulk_save_service/factories/decision_table.py` | `DecisionTableNodeSaveableFactory` |
-| `tables/services/graph_bulk_save_service/saveables.py` | `_SerializerSaveable`, `DecisionTableNodeSaveable`, `_NodeSaveable`, `_EdgeSaveable`, `_ConditionalEdgeSaveable` |
+| `tables/services/graph_bulk_save_service/saveables.py` | `_SerializerSaveable`, `DecisionTableNodeSaveable`, `_NodeSaveable`, `_EdgeSaveable` |
 | `tables/services/graph_bulk_save_service/service.py` | `GraphBulkSaveService` — two-pass validation and atomic write orchestration |
 | `tables/views/model_view_sets.py` | `GraphViewSet.get_queryset()` — prefetch for the read response after save |
 | `tables/swagger_schemas/graph_bulk_save_schema.py` | Swagger schema for the `POST /api/graphs/{pk}/save/` endpoint |

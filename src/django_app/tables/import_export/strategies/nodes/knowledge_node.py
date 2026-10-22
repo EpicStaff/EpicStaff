@@ -1,3 +1,5 @@
+from rbac.authorship import resolve_author
+
 from tables.exceptions import RagException
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -6,6 +8,7 @@ from tables.import_export.serializers.knowledge_node import (
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.models import KnowledgeNode
+from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.knowledge_models import (
     KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS,
     SourceCollection,
@@ -57,11 +60,20 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)
-        node = serializer.save()
+        node = serializer.save(
+            created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
+        )
 
         for key, model in self._CONFIG_MODELS.items():
             config_data = configs.get(key)
             if config_data:
-                model.objects.create(knowledge_node=node, **config_data)
+                # Deletion goes through DeleteService, never through an import file.
+                config_fields = {
+                    name: value
+                    for name, value in config_data.items()
+                    if name not in SOFT_DELETE_FIELD_NAMES
+                }
+                model.objects.create(knowledge_node=node, **config_fields)
 
         return node

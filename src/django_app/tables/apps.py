@@ -11,6 +11,7 @@ class TablesConfig(AppConfig):
 
     def ready(self):
         # ruff: noqa: F401
+        from rbac.governance.authorship import register_snapshot_scrubber
         from rbac.governance.organization_deletion import register_participant
 
         import tables.import_export.version_conversions.convertions
@@ -23,6 +24,7 @@ class TablesConfig(AppConfig):
         import tables.signals.session_signals
         import tables.signals.telegram_signals
         import tables.signals.webhook_signals
+        from tables.graph_versioning.snapshot_authorship import VersionSnapshotAuthorshipScrubber
         from tables.import_export.registry import entity_registry
         from tables.import_export.strategies import (
             agent_definition,
@@ -83,6 +85,10 @@ class TablesConfig(AppConfig):
 
             start_litellm_refresh_if_owner()
 
+            from tables.utils.recycle_bin_scheduler import start_recycle_bin_purge_if_owner
+
+            start_recycle_bin_purge_if_owner()
+
         redis_service = RedisService()
         converter_service = ConverterService()
         session_manager_service = SessionManagerService(
@@ -103,6 +109,7 @@ class TablesConfig(AppConfig):
         ScheduleTriggerService(session_manager_service=session_manager_service)
 
         register_participant(TablesOrganizationDeletion())
+        register_snapshot_scrubber(VersionSnapshotAuthorshipScrubber())
 
         # Register strategies for import/export entities
         entity_registry.register(llm_models.LLMModelStrategy())

@@ -23,6 +23,5 @@ export function mapNodeDtoMetadataToFlowNodeMetadata(
             width: size?.width ?? DEFAULT_SIZE.width,
             height: size?.height ?? DEFAULT_SIZE.height,
         },
-        nodeNumber: typeof m['nodeNumber'] === 'number' ? m['nodeNumber'] : undefined,
     };
 }

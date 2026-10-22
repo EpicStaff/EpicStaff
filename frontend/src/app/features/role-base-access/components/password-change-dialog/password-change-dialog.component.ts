@@ -7,10 +7,11 @@ import {
     AppSvgIconComponent,
     ButtonComponent,
     CustomInputComponent,
+    HintMessageComponent,
     PasswordStrengthComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
+import { EnterSubmitDirective, ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { notNumericOnlyValidator } from '@shared/form-validators';
 import { finalize } from 'rxjs/operators';
 
@@ -29,9 +30,11 @@ type DialogStep = 'verify' | 'new-password';
         AppSvgIconComponent,
         ButtonComponent,
         CustomInputComponent,
+        HintMessageComponent,
+        EnterSubmitDirective,
         PasswordStrengthComponent,
-        ValidationErrorsComponent,
         ServerErrorsDirective,
+        ValidationErrorsComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -45,6 +48,8 @@ export class PasswordChangeDialogComponent {
 
     readonly step = signal<DialogStep>('verify');
     readonly loading = signal(false);
+
+    readonly isEnterSubmitDisabled = this.loading;
 
     private ticket = '';
 
@@ -130,6 +135,14 @@ export class PasswordChangeDialogComponent {
                     }
                 },
             });
+    }
+
+    onEnterSubmit(): void {
+        if (this.step() === 'verify') {
+            this.onVerify();
+        } else {
+            this.onSubmit();
+        }
     }
 
     onCancel(): void {

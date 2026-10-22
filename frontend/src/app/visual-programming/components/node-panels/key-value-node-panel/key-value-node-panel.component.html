@@ -7,7 +7,7 @@
             <div class="field-isolated">
                 <app-custom-input
                     label="Node Name"
-                    tooltipText="The unique identifier used to reference this Key-Value node. This name must be unique within the flow."
+                    tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
                     formControlName="node_name"
                     placeholder="Enter node name"
                     [activeColor]="activeColor"
@@ -127,9 +127,9 @@
                                             [attr.aria-activedescendant]="keyVariablePicker.activeDescendantFor(i)"
                                             (input)="onKeyInput(i, $event)"
                                             (keydown)="onKeyKeydown(i, $event)"
-                                            (focus)="onKeyFocus(i)"
+                                            (focus)="onKeyFocus(i, $event)"
                                             (blur)="onKeyBlur(i, $event)"
-                                            (click)="onKeyCaretMove(i, $event)"
+                                            (click)="onKeyClick(i, $event)"
                                             (keyup)="onKeyCaretMove(i, $event)"
                                             (scroll)="keyBackdrop.scrollLeft = keyInput.scrollLeft"
                                         />

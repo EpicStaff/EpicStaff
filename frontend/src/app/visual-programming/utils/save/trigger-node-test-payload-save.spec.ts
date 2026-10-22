@@ -10,6 +10,7 @@ import { buildBulkSavePayload } from './payload';
 const webhookDto: GetWebhookTriggerNodeRequest = {
     id: 21,
     graph: 1,
+    node_number: 1,
     node_name: 'Webhook Trigger #1',
     python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
     input_map: {},
@@ -18,17 +19,27 @@ const webhookDto: GetWebhookTriggerNodeRequest = {
     metadata: {},
     webhook_trigger: 3,
     test_payload: { id: '104', text: 'hello' },
+    use_storage: false,
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 const telegramDto: GetTelegramTriggerNodeRequest = {
     id: 22,
     graph: 1,
+    node_number: 1,
     node_name: 'Telegram Trigger #1',
     telegram_bot_api_key_secret_id: 9,
     fields: [{ id: 1, parent: 'message', field_name: 'text', variable_path: 'variables.text' }],
     metadata: {},
     webhook_trigger: 4,
     test_payload: { message: { text: 'hello' } },
+    created_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 const emptyFlow = { nodes: [], connections: [] } as unknown as FlowModel;
@@ -93,6 +104,31 @@ describe('trigger node test_payload save/load', () => {
 
         expect(diff.webhookNodes.toUpdate).toEqual([]);
         expect(diff.telegramNodes.toUpdate).toEqual([]);
+    });
+
+    it('maps the webhook storage flag and turns it off when the DTO has none', () => {
+        const legacyWebhook = { ...webhookDto, use_storage: undefined } as unknown as GetWebhookTriggerNodeRequest;
+
+        expect(mapWebhookTriggerNodeToModel({ ...webhookDto, use_storage: true }).data.use_storage).toBe(true);
+        expect(mapWebhookTriggerNodeToModel(legacyWebhook).data.use_storage).toBe(false);
+    });
+
+    it('marks a webhook node dirty when only its storage flag changes', () => {
+        const before = mapWebhookTriggerNodeToModel(webhookDto);
+        const after: WebhookTriggerNodeModel = { ...before, data: { ...before.data, use_storage: true } };
+
+        const diff = getNodeDiff(flowOf(before), flowOf(after));
+
+        expect(diff.webhookNodes.toUpdate.map((update) => update.current.backendId)).toEqual([21]);
+    });
+
+    it('sends the storage flag in the webhook bulk-save node list', () => {
+        const webhook = mapWebhookTriggerNodeToModel({ ...webhookDto, use_storage: true });
+        const changed: WebhookTriggerNodeModel = { ...webhook, node_name: 'Renamed' };
+
+        const payload = buildPayload(flowOf(webhook), flowOf(changed));
+
+        expect(payload['webhook_trigger_node_list']).toEqual([expect.objectContaining({ id: 21, use_storage: true })]);
     });
 
     it('sends test_payload in both bulk-save node lists', () => {

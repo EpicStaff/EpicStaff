@@ -29,30 +29,40 @@ from tables.models.graph_models import (
 )
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
 
-# Fields bulk_update is allowed to write back on an existing condition group.
-_GROUP_UPDATE_FIELDS = [
-    "group_name",
-    "order",
-    "expression",
-    "prompt",
-    "manipulation",
-    "continue_flag",
-    "next_node_id",
-    "dock_visible",
-    "field_expressions",
-    "field_manipulations",
-    "section",
-]
+# Columns a condition group takes directly from input; shared with graph bulk save, which
+# builds groups from request dicts no serializer has validated. `prompt` and `section`
+# are not here: both are resolved among the node's own rows. An allow-list rather than a
+# denylist, so an FK attname (`classification_decision_table_node_id`, `prompt_id`,
+# `section_id`) can never be mass-assigned from the request.
+CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS = frozenset(
+    {
+        "group_name",
+        "order",
+        "expression",
+        "manipulation",
+        "continue_flag",
+        "next_node_id",
+        "dock_visible",
+        "field_expressions",
+        "field_manipulations",
+        "route_code",
+        "metadata",
+    }
+)
 
-# Keys never written as-is; `prompt_id`/`section` are resolved node-locally instead.
-_GROUP_EXCLUDED_INPUT = {
-    "id",
-    "classification_decision_table_node",
-    "classification_decision_table_node_id",
-    "prompt_key",
-    "prompt_id",
-    "section",
-}
+# Input columns written only when a group is created: `route_code` is the key an existing
+# group is matched on, so an update never changes it.
+CLASSIFICATION_CONDITION_GROUP_CREATE_ONLY_FIELDS = frozenset({"route_code"})
+
+# Fields bulk_update writes back on an existing condition group. Derived from the input
+# allow-list, so a new input column is updatable unless it is declared create-only above.
+CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS = sorted(
+    (
+        CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS
+        - CLASSIFICATION_CONDITION_GROUP_CREATE_ONLY_FIELDS
+    )
+    | {"prompt", "section"}
+)
 
 
 def sync_classification_decision_table_children(
@@ -97,13 +107,16 @@ def _sync_condition_group_sections(node, sections_data):
     referenced by a condition group in the same payload can be resolved
     before it's ever been queried from the DB. ``id`` collisions across
     nodes are surfaced as ``SectionIdConflictError`` rather than a raw
-    ``IntegrityError``.
+    ``IntegrityError``. The lookup includes soft-deleted rows: their ids still
+    occupy the primary key.
     """
     incoming_ids = {s["id"] for s in sections_data}
     node.sections.exclude(id__in=incoming_ids).delete()
     sections_by_id = {}
     for section_data in sections_data:
-        existing = ClassificationConditionGroupSection.objects.filter(id=section_data["id"]).first()
+        existing = ClassificationConditionGroupSection.all_objects.filter(
+            id=section_data["id"]
+        ).first()
         if existing is not None and existing.classification_decision_table_node_id != node.id:
             raise SectionIdConflictError(section_data["id"])
 
@@ -137,30 +150,40 @@ def _resolve_group_section(
     return section
 
 
-def _resolve_group_prompt(
-    group_data: dict[str, Any],
-    prompt_by_id: dict[int, ClassificationDecisionTablePrompt],
+def resolve_group_prompt(
+    prompt_key: str | None,
+    prompt_id: int | None,
     prompt_by_key: dict[str, ClassificationDecisionTablePrompt],
+    prompt_by_id: dict[int, ClassificationDecisionTablePrompt],
 ) -> ClassificationDecisionTablePrompt | None:
     """Resolve a condition group's prompt among this node's prompts.
 
-    Checks ``prompt_id`` first, falling back to ``prompt_key`` (needed to
-    link a prompt created in the same payload). Raises
-    ``PromptNotFoundError`` if a reference is given but not found; returns
-    ``None`` if neither is given.
+    Shared by the single-node sync and graph bulk save so both resolve alike.
+    ``prompt_key`` wins over ``prompt_id``: it is the only reference that can
+    link a prompt created in the same payload, and it survives the prompt
+    being re-created under a new pk.
+
+    A key that matches none of this node's prompts unlinks the group instead of
+    failing: the flow editor keeps a group's key after its prompt is deleted or
+    renamed (the grid shows it as deleted) and sends it on every save. That
+    matches the FK's ``on_delete=SET_NULL``. Both lookups are node-local, so
+    another node's prompt is never attached.
+
+    Returns:
+        The prompt, or ``None`` when no reference is given or the key is unknown,
+        which clears the group's prompt.
+
+    Raises:
+        PromptNotFoundError: No key is given and ``prompt_id`` is not one of this
+            node's prompts.
     """
-    prompt_id = group_data.get("prompt_id")
+    if prompt_key:
+        return prompt_by_key.get(prompt_key)
+
     if prompt_id is not None:
         prompt = prompt_by_id.get(prompt_id)
         if prompt is None:
             raise PromptNotFoundError(prompt_id)
-        return prompt
-
-    key = group_data.get("prompt_key")
-    if key:
-        prompt = prompt_by_key.get(key)
-        if prompt is None:
-            raise PromptNotFoundError(key)
         return prompt
 
     return None
@@ -172,16 +195,20 @@ def _sync_condition_groups(node, condition_groups_data, sections_by_id):
     prompt_by_id = {p.id: p for p in node_prompts}
     prompt_by_key = {p.prompt_key: p for p in node_prompts}
 
-    # Normalize payload rows once: strip non-column keys, resolve prompt/section FKs.
+    # Normalize payload rows once: keep input columns only, resolve prompt/section FKs.
     rows = []
     for group_data in condition_groups_data:
-        gd = {k: v for k, v in group_data.items() if k not in _GROUP_EXCLUDED_INPUT}
+        gd = {
+            k: v for k, v in group_data.items() if k in CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS
+        }
         assert_node_ref_in_graph(
             node_id=gd.get("next_node_id"),
             graph=graph,
             field="condition_groups.next_node_id",
         )
-        gd["prompt"] = _resolve_group_prompt(group_data, prompt_by_id, prompt_by_key)
+        gd["prompt"] = resolve_group_prompt(
+            group_data.get("prompt_key"), group_data.get("prompt_id"), prompt_by_key, prompt_by_id
+        )
         gd["section"] = _resolve_group_section(group_data, sections_by_id)
         rows.append(gd)
 
@@ -230,6 +257,8 @@ def _sync_condition_groups(node, condition_groups_data, sections_by_id):
     if surplus_ids:
         ClassificationConditionGroup.objects.filter(id__in=surplus_ids).delete()
     if to_update:
-        ClassificationConditionGroup.objects.bulk_update(to_update, _GROUP_UPDATE_FIELDS)
+        ClassificationConditionGroup.objects.bulk_update(
+            to_update, CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS
+        )
     if to_create:
         ClassificationConditionGroup.objects.bulk_create(to_create)

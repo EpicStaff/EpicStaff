@@ -1,0 +1,170 @@
+:host {
+    display: block;
+}
+
+.execution-timeout {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+
+    // As wide as the control: a message wraps under it rather than widening it.
+    &__group {
+        display: flex;
+        flex-direction: column;
+        width: min-content;
+    }
+
+    &__control {
+        display: flex;
+        align-items: stretch;
+        box-sizing: border-box;
+        width: 160px;
+        background-color: var(--color-input-background);
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        overflow: hidden;
+        transition: border-color 0.2s ease;
+
+        &:has(.execution-timeout__input:focus) {
+            border-color: var(--accent-color);
+        }
+    }
+
+    // The input and the mirror under it lay out the same text the same way, so the input's caret and selection sit
+    // on the digits the mirror draws.
+    &__field {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+    }
+
+    &__mirror,
+    &__input {
+        padding: 8px 4px;
+        font-variant-numeric: tabular-nums;
+        // Each mirror character is its own box: kerning in the input's single text run would shift its caret.
+        font-kerning: none;
+    }
+
+    &__mirror {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-text-primary);
+        white-space: pre;
+        pointer-events: none;
+
+        &:has(+ .execution-timeout__input:disabled) {
+            opacity: 0.6;
+        }
+    }
+
+    &__cell--untyped {
+        color: var(--color-input-text-placeholder);
+    }
+
+    &__cell--separator {
+        color: var(--color-text-tertiary);
+    }
+
+    // Above the mirror, its own text transparent: only the caret and the selection show.
+    &__input {
+        position: relative;
+        box-sizing: border-box;
+        width: 100%;
+        background-color: transparent;
+        border: none;
+        color: transparent;
+        caret-color: var(--color-text-primary);
+        text-align: center;
+
+        &::selection {
+            background-color: var(--color-ghost-btn-active);
+        }
+
+        &:focus {
+            outline: none;
+        }
+
+        &:disabled {
+            cursor: not-allowed;
+        }
+    }
+
+    // Forced colors override the input's transparent text, which would then draw over the mirror: show the input
+    // alone. After the rules above, so it wins over their `color: transparent`.
+    @media (forced-colors: active) {
+        &__mirror {
+            display: none;
+        }
+
+        &__input {
+            color: FieldText;
+        }
+    }
+
+    &__step {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        width: 2.25rem;
+        padding: 0;
+        background-color: var(--color-input-background-hover);
+        border: none;
+        color: var(--color-text-primary);
+        cursor: pointer;
+        transition:
+            background-color 0.2s ease,
+            color 0.2s ease;
+
+        &:hover:not(:disabled, .execution-timeout__step--unavailable) {
+            background-color: var(--color-secondary-btn-background-hover);
+        }
+
+        &:active:not(:disabled, .execution-timeout__step--unavailable) {
+            background-color: var(--accent-color);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
+        }
+
+        // Read-only disables the button natively; a limit only marks it, so it keeps the keyboard focus.
+        &:disabled,
+        &--unavailable {
+            color: var(--color-text-disabled);
+            cursor: not-allowed;
+        }
+    }
+
+    // Read by screen readers only.
+    &__visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    &__message {
+        margin: 4px 0 0;
+        padding: 4px 8px;
+        background-color: var(--color-status-error-subtle);
+        border-left: 2px solid var(--color-status-error);
+        border-radius: 4px;
+        color: var(--color-status-error);
+    }
+
+    &__hint {
+        margin: 4px 0 0;
+        color: var(--color-text-secondary);
+    }
+}

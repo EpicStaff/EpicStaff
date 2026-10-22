@@ -1,40 +1,19 @@
-<!-- Node badge number: EDGE has no header row to embed into, so it keeps the outside treatment. Other types render their badge inside .header below. -->
-@if (
-    !noteNode &&
-    node.nodeNumber != null &&
-    node.type !== NodeType.CLASSIFICATION_TABLE &&
-    node.type !== NodeType.START &&
-    node.type !== NodeType.END &&
-    node.type === NodeType.EDGE
-) {
-    <div class="node-name-wrapper">
-        <div class="node-name-label">#{{ node.nodeNumber }}</div>
-    </div>
-}
-
-<!-- Control buttons positioned above the node: only NOTE/EDGE still use this outside bar, since they have no header row. Other types render actions inside .header below. -->
-@if (
-    node.type !== NodeType.TABLE &&
-    node.type !== NodeType.CLASSIFICATION_TABLE &&
-    (node.type === NodeType.NOTE || node.type === NodeType.EDGE) &&
-    !isReadOnly()
-) {
+<!-- Control buttons positioned above the node: only NOTE still uses this outside bar, since it has no header row. Other types render actions inside .header below. -->
+@if (node.type === NodeType.NOTE && !isReadOnly()) {
     <div
         class="actions"
         (mousedown)="$event.stopPropagation()"
     >
         <!-- Edit Button for Note -->
-        @if (node.type === NodeType.NOTE && !isReadOnly()) {
-            <div
-                class="action-button edit-button"
-                matTooltip="Edit note"
-                matTooltipPosition="above"
-                (click)="onEditClick($event)"
-            >
-                <app-svg-icon icon="edit"></app-svg-icon>
-            </div>
-        }
-        <!-- Delete Button (NOTE/EDGE only here - neither is ever START) -->
+        <div
+            class="action-button edit-button"
+            matTooltip="Edit note"
+            matTooltipPosition="above"
+            (click)="onEditClick($event)"
+        >
+            <app-svg-icon icon="edit"></app-svg-icon>
+        </div>
+        <!-- Delete Button (NOTE only here - never START) -->
         <div
             class="action-button delete-button"
             matTooltip="Delete node"
@@ -92,7 +71,7 @@
     <div
         class="interactive-node-body"
         [class.is-blocked-llm]="hasMissingAgentLlm || hasMissingAgent"
-        [class.has-number-chip]="hasNumberChip"
+        [class.has-summary-tab]="keyValueSummaryValue"
         [class.has-delete-chip]="hasDeleteChip"
         [class.has-key-value-accent]="keyValueStripeColor"
         [style.--key-value-accent]="keyValueStripeColor"
@@ -104,7 +83,7 @@
             <div class="header">
                 <div class="icon-wrapper">
                     @if (keyValueHeader; as header) {
-                        <!-- Screen readers get the summary here, with the table name in full; the #N tab's cut-short copy is aria-hidden. -->
+                        <!-- Screen readers get the summary here, with the table name in full; the summary tab's cut-short copy is aria-hidden. -->
                         <i
                             [class]="header.icon"
                             [style.color]="header.color"
@@ -118,11 +97,20 @@
                         ></i>
                     }
                 </div>
-                <div class="title">
-                    @if (isScheduleTriggerActive) {
-                        <span class="active-dot"></span>
+                <div
+                    class="title-column"
+                    [class.has-node-number]="isNumberedNode"
+                    [class.is-number-pinned]="isNodeNumberPinned"
+                >
+                    <div class="title">
+                        @if (isScheduleTriggerActive) {
+                            <span class="active-dot"></span>
+                        }
+                        {{ getNodeTitle() }}
+                    </div>
+                    @if (isNumberedNode) {
+                        <div class="node-number-line">#{{ node.nodeNumber }}</div>
                     }
-                    {{ getNodeTitle() }}
                 </div>
                 @if (node.type === NodeType.SUBGRAPH && !isBlockedSubgraph && getSelectedFlowUrl()) {
                     <div
@@ -184,30 +172,25 @@
                     </div>
                 }
             </div>
-            <!-- Action bar above the node box, hover/selected-only: #N chip (plus a Key-Value node's summary) at left, delete chip at right -->
-            @if (hasNumberChip || hasDeleteChip) {
+            <!-- Action bar above the node box, hover/selected-only: a Key-Value node's summary tab at left, unpack and delete chips at right -->
+            @if (keyValueSummaryValue || hasDeleteChip) {
                 <div class="node-action-bar">
-                    @if (hasNumberChip) {
+                    @if (keyValueSummaryValue) {
                         <div
-                            class="node-number-badge"
-                            [class.has-summary]="keyValueSummaryValue"
-                            [attr.title]="keyValueSummaryValue?.full"
+                            class="key-value-summary-tab"
+                            [attr.title]="keyValueSummaryValue.full"
                         >
-                            <span class="node-number">#{{ node.nodeNumber }}</span>
-                            @if (keyValueSummaryValue) {
-                                <span
-                                    class="summary"
-                                    aria-hidden="true"
-                                >
-                                    <span class="summary-separator summary-separator--number">-</span>
-                                    @for (part of keyValueSummaryValue.captionParts; track $index) {
-                                        @if (!$first) {
-                                            <span class="summary-separator">/</span>
-                                        }
-                                        <span>{{ part }}</span>
+                            <span
+                                class="summary"
+                                aria-hidden="true"
+                            >
+                                @for (part of keyValueSummaryValue.captionParts; track $index) {
+                                    @if (!$first) {
+                                        <span class="summary-separator">/</span>
                                     }
-                                </span>
-                            }
+                                    <span>{{ part }}</span>
+                                }
+                            </span>
                         </div>
                     }
                     @if (node.type === NodeType.SUBGRAPH && !isReadOnly()) {
@@ -254,12 +237,6 @@
     </div>
 </ng-template>
 @switch (node.type) {
-    @case (NodeType.EDGE) {
-        <app-conditional-edge-node
-            appClickOrDrag
-            (actualClick)="onEditClick()"
-        ></app-conditional-edge-node>
-    }
     @case (NodeType.NOTE) {
         <app-graph-note [node]="noteNode!"></app-graph-note>
     }
@@ -280,29 +257,22 @@
     }
 }
 <!-- Table roots draw their outline as an inset box-shadow (no header row), so they get their own action bar here instead of inside .interactive-node-body. -->
-@if (
-    (node.type === NodeType.TABLE || node.type === NodeType.CLASSIFICATION_TABLE) && (hasNumberChip || hasDeleteChip)
-) {
+@if ((node.type === NodeType.TABLE || node.type === NodeType.CLASSIFICATION_TABLE) && hasDeleteChip) {
     <div class="node-action-bar node-action-bar--table">
-        @if (hasNumberChip) {
-            <div class="node-number-badge">#{{ node.nodeNumber }}</div>
-        }
-        @if (hasDeleteChip) {
+        <div
+            class="actions"
+            (mousedown)="$event.stopPropagation()"
+            (mouseup)="$event.stopPropagation()"
+            (click)="$event.stopPropagation()"
+        >
             <div
-                class="actions"
-                (mousedown)="$event.stopPropagation()"
-                (mouseup)="$event.stopPropagation()"
-                (click)="$event.stopPropagation()"
+                class="action-button delete-button"
+                matTooltip="Delete node"
+                matTooltipPosition="above"
+                (click)="onDeleteClick($event)"
             >
-                <div
-                    class="action-button delete-button"
-                    matTooltip="Delete node"
-                    matTooltipPosition="above"
-                    (click)="onDeleteClick($event)"
-                >
-                    <i class="ti ti-trash"></i>
-                </div>
+                <i class="ti ti-trash"></i>
             </div>
-        }
+        </div>
     </div>
 }

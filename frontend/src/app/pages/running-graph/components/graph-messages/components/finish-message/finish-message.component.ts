@@ -8,10 +8,11 @@ import {
     GraphMessage,
     MessageType,
 } from '../../../../models/graph-session-message.model';
+import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe';
 
 @Component({
     selector: 'app-finish-message',
-    imports: [CommonModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, RuntimeNodeLabelPipe],
     template: `
         <div class="finish-container">
             <!-- Finish Message Header with Toggle -->
@@ -33,7 +34,7 @@ import {
                 </div>
                 <h3>
                     @if (nodeName) {
-                        <span class="node-name">{{ nodeName }}</span>
+                        <span class="node-name">{{ nodeName | runtimeNodeLabel }}</span>
                     } @else {
                         <span>Flow</span>
                     }

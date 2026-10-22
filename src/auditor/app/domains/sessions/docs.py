@@ -28,7 +28,7 @@ so `filters` and `query` are two front-ends for one identical AST:
 
     {{"op": "and" | "or", "children": [FilterNode, ...]}}
   | {{"op": "not", "child": FilterNode}}
-  | {{"field": str, "op": str, "value": Any}}   # leaf - "value" omitted for is_empty/is_not_empty
+  | {{"field": str, "op": str, "value": Any}}   # leaf - "value" omitted for is_empty/is_not_empty/key_exists/key_not_exists/null/not_null
 
 **`filters` and `query` are mutually exclusive** - send exactly one, or neither for no filtering.
 
@@ -176,13 +176,21 @@ SEARCH_REQUEST_EXAMPLES = {
         "summary": "op: not_contains",
         "value": {"filters": {"field": "output", "op": "not_contains", "value": "timeout"}},
     },
-    # --- starts_with / ends_with (filters-only - no query symbol) -------
-    "starts_with (filters only)": {
-        "summary": "op: starts_with - no query-language symbol, use filters",
+    # --- starts_with / ends_with ----------------------------------------
+    "starts_with (query)": {
+        "summary": "op: starts_with - `starts with`",
+        "value": {"query": 'name starts with "Session"'},
+    },
+    "starts_with (filters)": {
+        "summary": "op: starts_with",
         "value": {"filters": {"field": "name", "op": "starts_with", "value": "Session"}},
     },
-    "ends_with (filters only)": {
-        "summary": "op: ends_with - no query-language symbol, use filters",
+    "ends_with (query)": {
+        "summary": "op: ends_with - `ends with`",
+        "value": {"query": 'name ends with "Finish"'},
+    },
+    "ends_with (filters)": {
+        "summary": "op: ends_with",
         "value": {"filters": {"field": "name", "op": "ends_with", "value": "Finish"}},
     },
     # --- is_empty / is_not_empty -----------------------------------------
@@ -274,13 +282,21 @@ SEARCH_REQUEST_EXAMPLES = {
         "summary": "Deep filter alias `prompt` -> details.prompt_text (free text)",
         "value": {"query": 'prompt : "summarize"'},
     },
-    # --- flattened input/output/details paths (filters-only ops) --------
-    "key_exists (filters only)": {
-        "summary": "op: key_exists - a specific key under a flattened blob",
+    # --- flattened input/output/details paths --------------------------
+    "key_exists (query)": {
+        "summary": "op: key_exists - `exists`, a specific key under a flattened blob",
+        "value": {"query": "details.retry_count exists"},
+    },
+    "key_exists (filters)": {
+        "summary": "op: key_exists (no 'value' key)",
         "value": {"filters": {"field": "details.retry_count", "op": "key_exists"}},
     },
-    "key_not_exists (filters only)": {
-        "summary": "op: key_not_exists",
+    "key_not_exists (query)": {
+        "summary": "op: key_not_exists - `not exists`",
+        "value": {"query": "details.retry_count not exists"},
+    },
+    "key_not_exists (filters)": {
+        "summary": "op: key_not_exists (no 'value' key)",
         "value": {"filters": {"field": "details.retry_count", "op": "key_not_exists"}},
     },
     "key_equals_value (filters only)": {
@@ -293,7 +309,11 @@ SEARCH_REQUEST_EXAMPLES = {
             }
         },
     },
-    "key_not_equals (filters only)": {
+    "key_not_equals (query)": {
+        "summary": "op: key_not_equals - write `!=`; it parses to not_equal, which matches identically",
+        "value": {"query": "details.retry_count != 3"},
+    },
+    "key_not_equals (filters)": {
         "summary": "op: key_not_equals",
         "value": {
             "filters": {

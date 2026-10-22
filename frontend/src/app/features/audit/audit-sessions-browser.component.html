@@ -3,77 +3,78 @@
         <h1 class="audit-browser__title">Audit</h1>
     </header>
 
-    <div
-        class="audit-browser__toolbar"
-        [class.audit-browser__toolbar--panel-open]="isFiltersPanelOpen()"
-    >
-        <input
-            #searchInput
-            class="audit-browser__search"
-            type="text"
-            placeholder="Search every field, every level..."
-            aria-label="Search every field"
-            [value]="appliedSearchText()"
-            (input)="onSearchInput(searchInput.value)"
-            (keydown.enter)="applySearch(searchInput.value)"
-        />
-        <button
-            class="audit-browser__tool-btn"
-            type="button"
-            [class.is-active]="isFiltersPanelOpen()"
-            (click)="toggleFiltersPanel()"
-        >
-            Filters
-            @if (activeFilterCount() > 0) {
-                <span class="audit-browser__filter-badge">{{ activeFilterCount() }}</span>
-            }
-        </button>
-        <button
-            class="audit-browser__tool-btn"
-            type="button"
-            [class.is-active]="areColumnsExpanded()"
-            (click)="setColumnsExpanded(!areColumnsExpanded())"
-        >
-            {{ areColumnsExpanded() ? 'Collapse All Rows' : 'Expand All Rows' }}
-        </button>
-        <button
-            class="audit-browser__tool-btn"
-            type="button"
-            [disabled]="!hasCollapsibleRows()"
-            (click)="toggleAllRows()"
-        >
-            {{ areAllRowsExpanded() ? 'Collapse Tree' : 'Expand Tree' }}
-        </button>
-        <span class="audit-browser__toolbar-spacer"></span>
-        <app-action-dropdown-button
-            *appHasPermission="[ResourceCode.Audit, ActionCode.Export]"
-            [label]="exportLabel()"
-            [buttonWidth]="null"
-            [items]="exportItems"
-            [loading]="exportingFormat() !== null"
-            [disabled]="isLoading() || loadError() || counts().rows === 0"
-            (mainClick)="exportFiltered('json')"
-            (itemClick)="onExportItemSelected($event)"
-        />
-    </div>
-
-    @if (appliedChips().length > 0) {
-        <div class="audit-browser__subbar">
-            <app-audit-filter-chips
-                class="audit-browser__chips"
-                [chips]="appliedChips()"
-                (removed)="removeFilter($event)"
-                (cleared)="clearFilters()"
-            />
-        </div>
-    }
-
-    @if (isPartial()) {
-        <p class="audit-browser__notice">Results are partial — narrow the search to see everything.</p>
-    }
-
     <div class="audit-browser__body">
         <div class="audit-browser__main">
+            <div class="audit-browser__toolbar">
+                <input
+                    #searchInput
+                    class="audit-browser__search"
+                    type="text"
+                    placeholder="Search every field, every level..."
+                    aria-label="Search every field"
+                    [value]="appliedSearchText()"
+                    (input)="onSearchInput(searchInput.value)"
+                    (keydown.enter)="applySearch(searchInput.value)"
+                />
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    [class.is-active]="isFiltersPanelOpen()"
+                    (click)="toggleFiltersPanel()"
+                >
+                    <app-svg-icon
+                        icon="filter"
+                        size="14px"
+                    />
+                    Filters
+                    @if (activeFilterCount() > 0) {
+                        <span class="audit-browser__filter-count">({{ activeFilterCount() }})</span>
+                    }
+                </button>
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    [class.is-active]="areColumnsExpanded()"
+                    (click)="setColumnsExpanded(!areColumnsExpanded())"
+                >
+                    {{ areColumnsExpanded() ? 'Collapse All Rows' : 'Expand All Rows' }}
+                </button>
+                <button
+                    class="audit-browser__tool-btn"
+                    type="button"
+                    [disabled]="!hasCollapsibleRows()"
+                    (click)="toggleAllRows()"
+                >
+                    {{ areAllRowsExpanded() ? 'Collapse Tree' : 'Expand Tree' }}
+                </button>
+                <span class="audit-browser__toolbar-spacer"></span>
+                <app-action-dropdown-button
+                    *appHasPermission="[ResourceCode.Audit, ActionCode.Export]"
+                    [label]="exportLabel()"
+                    [buttonWidth]="null"
+                    [items]="exportItems"
+                    [loading]="exportingFormat() !== null"
+                    [disabled]="isLoading() || loadError() || counts().rows === 0"
+                    (mainClick)="exportFiltered('json')"
+                    (itemClick)="onExportItemSelected($event)"
+                />
+            </div>
+
+            @if (appliedChips().length > 0) {
+                <div class="audit-browser__subbar">
+                    <app-audit-filter-chips
+                        class="audit-browser__chips"
+                        [chips]="appliedChips()"
+                        (removed)="removeFilter($event)"
+                        (cleared)="clearFilters()"
+                    />
+                </div>
+            }
+
+            @if (isPartial()) {
+                <p class="audit-browser__notice">Results are partial — narrow the search to see everything.</p>
+            }
+
             <div class="audit-browser__table-wrap">
                 @if (isLoading()) {
                     <p class="audit-browser__state">Loading...</p>
@@ -91,46 +92,36 @@
                     <table
                         class="audit-table"
                         [class.audit-table--expanded]="areColumnsExpanded()"
+                        [style.width.px]="tableWidth()"
                     >
                         <colgroup>
-                            <col style="width: 56px" />
-                            <col style="width: 80px" />
-                            <col style="width: 60px" />
-                            <col style="width: 182px" />
-                            <col style="width: 140px" />
-                            <col style="width: 120px" />
-                            <col style="width: 96px" />
-                            <col style="width: 90px" />
-                            <col style="width: 150px" />
-                            <col style="width: 110px" />
-                            <col style="width: 110px" />
-                            <col style="width: 110px" />
-                            <col style="width: 96px" />
+                            @for (width of columnWidths(); track $index) {
+                                <!-- the last column is left auto so it absorbs any width the viewport has to spare -->
+                                <col [style.width.px]="$last ? null : width" />
+                            }
                         </colgroup>
                         <thead>
                             <tr>
-                                <th class="audit-table__gutter"></th>
-                                <th class="audit-table__kind">Kind</th>
-                                <th>ID</th>
-                                <th>Name</th>
-                                <th>Flow</th>
-                                <th>Node Type</th>
-                                <th>Status</th>
-                                <th>Run Type</th>
-                                <th>Date</th>
-                                <th>Input</th>
-                                <th>Output</th>
-                                <th>Error</th>
-                                <th>Details</th>
+                                @for (column of columns; track $index; let index = $index, isLast = $last) {
+                                    <th [class]="column.className">
+                                        {{ column.label }}
+                                        <!-- the gutter holds the tree lines and the last column stays flexible, so neither resizes -->
+                                        @if (column.label && !isLast) {
+                                            <span
+                                                class="audit-table__resize-handle"
+                                                aria-hidden="true"
+                                                (pointerdown)="startColumnResize($event, index)"
+                                                (pointermove)="resizeColumn($event)"
+                                                (lostpointercapture)="stopColumnResize()"
+                                            ></span>
+                                        }
+                                    </th>
+                                }
                             </tr>
                         </thead>
                         <tbody>
                             @for (row of rows(); track row.event.id) {
-                                <tr
-                                    [class]="'audit-row--' + row.event.kind"
-                                    [class.audit-row--matched]="row.event.filter_matched"
-                                    [class.audit-row--context]="!row.event.filter_matched"
-                                >
+                                <tr [class]="'audit-row--' + row.event.kind">
                                     <td class="audit-table__gutter">
                                         <span class="audit-tree">
                                             @for (line of row.ancestorLines; track $index) {
@@ -173,7 +164,7 @@
                                     <td class="audit-table__kind">
                                         <span class="audit-kind">{{ row.event.kind | titlecase }}</span>
                                     </td>
-                                    <td>{{ row.event.session_id }}</td>
+                                    <td>{{ row.event.kind === 'session' ? row.event.session_id : '' }}</td>
                                     <td>
                                         <app-audit-highlight
                                             [text]="row.event.name"
@@ -199,7 +190,7 @@
                                     </td>
                                     <td>
                                         <app-audit-highlight
-                                            [text]="row.event.node_type"
+                                            [text]="row.nodeTypeLabel"
                                             [term]="highlightTerm()"
                                         />
                                     </td>
@@ -209,36 +200,68 @@
                                                 class="audit-status"
                                                 [class]="'audit-status--' + status"
                                             >
+                                                @if (status !== 'running') {
+                                                    <app-svg-icon
+                                                        [icon]="status === 'completed' ? 'check' : 'x'"
+                                                        size="14px"
+                                                    />
+                                                }
                                                 {{ status | titlecase }}
                                             </span>
                                         }
                                     </td>
-                                    <td>{{ row.runLabel }}</td>
                                     <td class="audit-table__date">
                                         {{ row.event.event_time | date: 'MMM dd yyyy HH:mm:ss' }}
                                     </td>
+                                    @let input = row.event.input | auditJson;
+                                    @let output = row.event.output | auditJson;
+                                    @let error = row.event.error ?? '';
+                                    @let details = row.event.details | auditJson;
+                                    <ng-template
+                                        #valueCell
+                                        let-field="field"
+                                        let-text="text"
+                                        let-isPlainText="isPlainText"
+                                    >
+                                        @if (text) {
+                                            @let isViewed = isValueViewed(field, row);
+                                            <button
+                                                #valueButton
+                                                class="audit-value-cell"
+                                                type="button"
+                                                aria-controls="audit-value-viewer"
+                                                [attr.aria-expanded]="isViewed"
+                                                [class.is-viewed]="isViewed"
+                                                (click)="openValue(valueButton, field, row, text, isPlainText)"
+                                            >
+                                                <app-audit-highlight
+                                                    [text]="text"
+                                                    [term]="highlightTerm()"
+                                                />
+                                            </button>
+                                        }
+                                    </ng-template>
                                     <td>
-                                        <app-audit-highlight
-                                            [text]="row.event.input | auditJson"
-                                            [term]="highlightTerm()"
+                                        <ng-container
+                                            *ngTemplateOutlet="valueCell; context: { field: 'Input', text: input }"
                                         />
                                     </td>
                                     <td>
-                                        <app-audit-highlight
-                                            [text]="row.event.output | auditJson"
-                                            [term]="highlightTerm()"
+                                        <ng-container
+                                            *ngTemplateOutlet="valueCell; context: { field: 'Output', text: output }"
                                         />
                                     </td>
                                     <td>
-                                        <app-audit-highlight
-                                            [text]="row.event.error ?? ''"
-                                            [term]="highlightTerm()"
+                                        <ng-container
+                                            *ngTemplateOutlet="
+                                                valueCell;
+                                                context: { field: 'Error', text: error, isPlainText: true }
+                                            "
                                         />
                                     </td>
                                     <td>
-                                        <app-audit-highlight
-                                            [text]="row.event.details | auditJson"
-                                            [term]="highlightTerm()"
+                                        <ng-container
+                                            *ngTemplateOutlet="valueCell; context: { field: 'Details', text: details }"
                                         />
                                     </td>
                                 </tr>
@@ -251,25 +274,18 @@
             <footer class="audit-browser__footer">
                 <div class="audit-pager">
                     <span class="audit-pager__label">Matches per page:</span>
-                    <button
-                        class="audit-pager__step"
-                        type="button"
-                        [disabled]="!canDecreasePageSize()"
-                        (click)="stepPageSize(-1)"
-                        aria-label="Fewer matches per page"
-                    >
-                        −
-                    </button>
-                    <span class="audit-pager__size">{{ pageSize() }}</span>
-                    <button
-                        class="audit-pager__step"
-                        type="button"
-                        [disabled]="!canIncreasePageSize()"
-                        (click)="stepPageSize(1)"
-                        aria-label="More matches per page"
-                    >
-                        +
-                    </button>
+                    <app-number-stepper
+                        class="audit-pager__size"
+                        size="sm"
+                        ariaLabel="Matches per page"
+                        [alwaysShowButtons]="true"
+                        [integer]="true"
+                        [min]="minPageSize"
+                        [max]="maxPageSize"
+                        [step]="pageSizeStep"
+                        [value]="pageSize()"
+                        (changed)="setPageSize($event)"
+                    />
 
                     <button
                         class="audit-pager__nav"
@@ -313,19 +329,46 @@
             </footer>
         </div>
 
-        @if (isFiltersPanelOpen()) {
-            <aside class="audit-browser__panel">
-                <app-audit-filters-panel
-                    [flowNames]="flowNames()"
-                    [agentOptions]="agentOptions()"
-                    [toolOptions]="toolOptions()"
-                    [(filter)]="draftFilter"
-                    (closed)="closeFiltersPanel()"
-                    (applied)="applyFilters()"
-                    (cleared)="clearFilters()"
-                    (presetApplied)="applyFilters($event)"
-                    [queryError]="queryError()"
-                />
+        @if (isFiltersPanelOpen() || viewedValue()) {
+            <aside
+                #panel
+                class="audit-browser__panel"
+                [style.flex-basis.px]="panelWidth()"
+            >
+                <div
+                    class="resizable-sidebar-handle audit-browser__panel-handle"
+                    sidebarAriaLabel="Resize side panel"
+                    [sidebarSide]="'right'"
+                    [appResizableSidebar]="panelWidthKey"
+                    [sidebarTarget]="panel"
+                    [sidebarMinWidth]="panelWidthOptions.minWidth"
+                    [sidebarMaxWidth]="panelWidthOptions.maxWidth"
+                ></div>
+                @if (isFiltersPanelOpen()) {
+                    <app-audit-filters-panel
+                        [flowNames]="flowNames()"
+                        [agentOptions]="agentOptions()"
+                        [toolOptions]="toolOptions()"
+                        [(filter)]="draftFilter"
+                        (closed)="closeFiltersPanel()"
+                        (applied)="applyFilters()"
+                        (cleared)="clearFilters()"
+                        (presetApplied)="applyFilters($event)"
+                        [queryError]="queryError()"
+                    />
+                }
+                @if (viewedValue(); as viewed) {
+                    <!-- covers the filters panel instead of replacing it, so the panel keeps its tabs, scroll and open groups -->
+                    <app-audit-value-viewer
+                        id="audit-value-viewer"
+                        class="audit-browser__viewer"
+                        [field]="viewed.field"
+                        [rowName]="viewed.rowName"
+                        [value]="viewed.value"
+                        [isPlainText]="viewed.isPlainText"
+                        (closed)="closeValueViewer()"
+                    />
+                }
             </aside>
         }
     </div>

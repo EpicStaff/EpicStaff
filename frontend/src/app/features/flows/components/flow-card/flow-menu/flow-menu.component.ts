@@ -10,7 +10,9 @@ import {
     Input,
     OnDestroy,
     Output,
+    output,
     signal,
+    viewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
@@ -18,6 +20,15 @@ import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { FlowMenuItemComponent } from './flow-menu-item/flow-menu-item.component';
+
+/** What each ⋮ menu item stands for; the template passes these literals, so a typo fails the build. */
+export type FlowMenuAction = 'viewSessions' | 'run' | 'rename' | 'copy' | 'export' | 'viewDetails' | 'delete';
+
+/** A menu item was chosen; `trigger` is the ⋮ button a dialog opened from it should close back to. */
+export interface FlowMenuSelection {
+    action: FlowMenuAction;
+    trigger: HTMLElement;
+}
 
 @Component({
     selector: 'app-flow-menu',
@@ -29,7 +40,10 @@ import { FlowMenuItemComponent } from './flow-menu-item/flow-menu-item.component
 export class FlowMenuComponent implements OnDestroy {
     @Input() public isOpen = false;
     @Output() public menuToggle = new EventEmitter<boolean>();
-    @Output() public actionSelected = new EventEmitter<string>();
+    public readonly actionSelected = output<FlowMenuSelection>();
+
+    // The menu items are destroyed with the menu, so focus goes back to this button instead.
+    private readonly menuTriggerButton = viewChild.required<ElementRef<HTMLButtonElement>>('menuTrigger');
 
     private readonly elementRef = inject(ElementRef);
     private readonly isMouseOnButton = signal<boolean>(false);
@@ -37,9 +51,9 @@ export class FlowMenuComponent implements OnDestroy {
     public readonly isMenuOpen = signal<boolean>(false);
     public readonly openUpwards = signal<boolean>(false);
     private closeTimeout: ReturnType<typeof setTimeout> | null = null;
-    // Approximate menu height (6 items * ~36px + paddings/divider). Used before the menu is rendered
+    // Approximate menu height (7 items * ~36px + paddings/divider). Used before the menu is rendered
     // so we can decide the open direction without a flash of mis-positioned content.
-    private static readonly ESTIMATED_MENU_HEIGHT = 240;
+    private static readonly ESTIMATED_MENU_HEIGHT = 276;
 
     constructor() {
         effect(() => {
@@ -126,10 +140,10 @@ export class FlowMenuComponent implements OnDestroy {
         this.close();
     }
 
-    public onActionClick(event: MouseEvent, action: string): void {
+    public onActionClick(event: MouseEvent, action: FlowMenuAction): void {
         event.stopPropagation();
         if (this.isMenuOpen()) {
-            this.actionSelected.emit(action);
+            this.actionSelected.emit({ action, trigger: this.menuTriggerButton().nativeElement });
             this.close();
         }
     }

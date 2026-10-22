@@ -181,12 +181,22 @@ def test_collection_documents_cross_org_404(client_member, org_b):
 # ---- ProcessRagIndexing (3e) ----
 
 
+def _index_body(naive_rag):
+    # The body is validated before the org check, so it must be complete.
+    # The view reads document_config_ids only after the org and permission checks.
+    return {
+        "rag_id": naive_rag.naive_rag_id,
+        "rag_type": "naive",
+        "document_config_ids": [],
+    }
+
+
 @pytest.mark.django_db
 def test_process_rag_indexing_cross_org_404(client_admin, org_b):
     nr, _ = _naive_rag(org_b)
     resp = client_admin.post(
         "/api/process-rag-indexing/",
-        {"rag_id": nr.naive_rag_id, "rag_type": "naive"},
+        _index_body(nr),
         format="json",
     )
     assert resp.status_code == 404
@@ -197,7 +207,7 @@ def test_process_rag_indexing_denied_for_member(client_member, org_a):
     nr, _ = _naive_rag(org_a)
     resp = client_member.post(
         "/api/process-rag-indexing/",
-        {"rag_id": nr.naive_rag_id, "rag_type": "naive"},
+        _index_body(nr),
         format="json",
     )
     assert resp.status_code == 403  # indexing requires UPDATE; Member is READ only

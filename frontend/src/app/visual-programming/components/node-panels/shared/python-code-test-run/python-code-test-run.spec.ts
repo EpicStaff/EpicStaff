@@ -11,12 +11,11 @@ import {
 import { parseTestInputValues, PythonCodeTestRun } from './python-code-test-run';
 
 const REQUEST: RunPythonCodeRequest = {
-    python_code_id: 5,
-    code: 'def main(trigger_payload): pass',
-    entrypoint: 'main',
-    libraries: [],
+    target: { type: 'webhook_trigger_node', id: 21 },
     variables: { trigger_payload: { order: 1 } },
 };
+/** The stored code's execution timeout, in seconds. */
+const EXECUTION_TIMEOUT_SECONDS = 90;
 
 function result(overrides: Partial<PythonCodeResult>): PythonCodeResult {
     return {
@@ -52,7 +51,7 @@ describe('PythonCodeTestRun', () => {
     }
 
     function startAndPoll(): void {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
         start$.next({ execution_id: 'exec-1' });
     }
 
@@ -64,9 +63,12 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('sends the request as is and logs its parameters', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
 
-        expect(service.runPythonCode).toHaveBeenCalledWith(REQUEST);
+        expect(service.runPythonCode).toHaveBeenCalledWith({
+            target: { type: 'webhook_trigger_node', id: 21 },
+            variables: { trigger_payload: { order: 1 } },
+        });
         expect(codeRun.status()).toBe('processing');
         expect(messages()).toEqual([
             'info: Starting function main()...',
@@ -74,12 +76,12 @@ describe('PythonCodeTestRun', () => {
         ]);
     });
 
-    it('polls the execution, logging the first polling attempt once', () => {
+    it("polls the execution against the stored code's execution timeout, logging the first polling attempt once", () => {
         startAndPoll();
         poll$.next({ type: 'polling', attempt: 1 });
         poll$.next({ type: 'polling', attempt: 2 });
 
-        expect(service.pollResultWithEvents).toHaveBeenCalledWith('exec-1');
+        expect(service.pollResultWithEvents).toHaveBeenCalledWith('exec-1', EXECUTION_TIMEOUT_SECONDS);
         expect(messages().slice(2)).toEqual(['polling: Processing...']);
         expect(codeRun.isRunning()).toBe(true);
     });
@@ -109,7 +111,7 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('logs an HTTP error of the run request', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
         const httpError = new HttpErrorResponse({ status: 400, url: '/run-python-code/' });
         start$.error(httpError);
 
@@ -120,8 +122,8 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('ignores a run while one is in flight', () => {
-        codeRun.run(REQUEST);
-        codeRun.run({ ...REQUEST, python_code_id: 6 });
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
+        codeRun.run({ target: { type: 'python_node', id: 6 }, variables: {} }, EXECUTION_TIMEOUT_SECONDS);
 
         expect(service.runPythonCode).toHaveBeenCalledTimes(1);
     });
@@ -140,7 +142,7 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('reset stops a run in flight and returns to idle with an empty terminal', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
 
         codeRun.reset();
         start$.next({ execution_id: 'exec-1' });
@@ -150,12 +152,12 @@ describe('PythonCodeTestRun', () => {
         expect(codeRun.logs()).toEqual([]);
         expect(codeRun.status()).toBe('idle');
 
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
         expect(service.runPythonCode).toHaveBeenCalledTimes(2);
     });
 
     it('reset clears the result and error of a finished run', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
         start$.error(new Error('boom'));
         expect(codeRun.status()).toBe('error');
 
@@ -167,7 +169,7 @@ describe('PythonCodeTestRun', () => {
     });
 
     it('clears the logs and keeps a resized terminal height', () => {
-        codeRun.run(REQUEST);
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
         codeRun.clearLogs();
         codeRun.setTerminalHeight(320);
 

@@ -1,0 +1,139 @@
+<section
+    class="basics"
+    aria-labelledby="collection-basics-title"
+>
+    <div class="basics__header">
+        <h2
+            id="collection-basics-title"
+            class="basics__title"
+        >
+            Basics
+        </h2>
+        <button
+            #menuTrigger="cdkMenuTriggerFor"
+            type="button"
+            class="basics__menu-trigger"
+            aria-label="More actions"
+            matTooltip="More"
+            matTooltipPosition="left"
+            [cdkMenuTriggerFor]="menu"
+            [cdkMenuPosition]="menuPositions"
+            [class.basics__menu-trigger--active]="menuTrigger.isOpen()"
+        >
+            <app-svg-icon
+                icon="dots-vertical"
+                size="1rem"
+            />
+        </button>
+        <ng-template #menu>
+            <div
+                cdkMenu
+                class="basics-menu"
+            >
+                <button
+                    cdkMenuItem
+                    type="button"
+                    class="basics-menu__item"
+                    (cdkMenuItemTriggered)="onViewDetails()"
+                >
+                    View Details
+                </button>
+                <button
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
+                    cdkMenuItem
+                    type="button"
+                    class="basics-menu__item"
+                    (cdkMenuItemTriggered)="onDelete()"
+                >
+                    Delete
+                </button>
+            </div>
+        </ng-template>
+    </div>
+
+    <div class="basics__field">
+        <label
+            class="basics__label"
+            [attr.for]="canEdit() ? 'collection-name' : null"
+        >
+            Collection Name<span
+                class="basics__required"
+                aria-hidden="true"
+                >*</span
+            >
+        </label>
+        @if (canEdit()) {
+            <input
+                id="collection-name"
+                class="basics__input"
+                type="text"
+                placeholder="Enter collection name"
+                aria-required="true"
+                [formControl]="nameControl"
+            />
+            <app-validation-errors [control]="nameControl" />
+        } @else {
+            <span class="basics__readonly">{{ collection().collection_name }}</span>
+        }
+    </div>
+
+    <div class="basics__field">
+        <div class="basics__label-row">
+            <label
+                class="basics__label"
+                [attr.for]="editingGuidance() ? 'collection-guidance' : null"
+            >
+                Guidance for Agents
+            </label>
+            @if (editingGuidance()) {
+                <div class="basics__guidance-actions">
+                    <app-button-round
+                        variant="secondary"
+                        icon="x-tight"
+                        [size]="28"
+                        [iconSize]="10"
+                        ariaLabel="Cancel"
+                        (click)="cancelEditGuidance()"
+                    />
+                    <app-button-round
+                        variant="primary"
+                        icon="check-tight"
+                        [size]="28"
+                        [iconSize]="10"
+                        [disabled]="guidanceControl.invalid"
+                        ariaLabel="Save guidance"
+                        (click)="saveGuidance()"
+                    />
+                </div>
+            } @else if (canEdit()) {
+                <button
+                    type="button"
+                    class="basics__guidance-edit"
+                    aria-label="Edit guidance"
+                    matTooltip="Edit"
+                    matTooltipPosition="above"
+                    (click)="startEditGuidance()"
+                >
+                    <app-svg-icon
+                        icon="guidance-edit"
+                        size="12px"
+                    />
+                </button>
+            }
+        </div>
+        @if (editingGuidance()) {
+            <textarea
+                id="collection-guidance"
+                class="basics__input basics__textarea"
+                rows="4"
+                placeholder="Describe what's inside and which questions this collection can answer..."
+                [formControl]="guidanceControl"
+            ></textarea>
+            <app-validation-errors [control]="guidanceControl" />
+        } @else if (collection().description) {
+            <p class="basics__readonly basics__readonly--guidance">{{ collection().description }}</p>
+        } @else {
+            <p class="basics__readonly basics__readonly--empty">No guidance provided.</p>
+        }
+    </div>
+</section>

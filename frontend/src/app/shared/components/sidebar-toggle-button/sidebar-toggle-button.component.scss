@@ -1,0 +1,32 @@
+:host {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.sidebar-toggle-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--graphite-750);
+    border-radius: 8px;
+    color: var(--accent-color);
+    // In the icon's 13-unit viewBox drawn at 16px: 1.3 units render as a 1.6px stroke.
+    --expand-sidebar-stroke-width: 1.3;
+    opacity: 0.8;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+
+    &:hover {
+        opacity: 1;
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}

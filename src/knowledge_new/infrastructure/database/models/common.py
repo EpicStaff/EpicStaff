@@ -10,7 +10,6 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -75,7 +74,6 @@ class SourceCollection(BaseModel):
     collection_id = Column(Integer, primary_key=True, autoincrement=True)
     collection_name = Column(String(255), nullable=True)
     collection_origin = Column(String(20), default="user")
-    user_id = Column(String(120), default="dummy_user", nullable=True)
     status = Column(String(20), default="empty")
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
@@ -92,9 +90,6 @@ class SourceCollection(BaseModel):
     )
 
     __tablename__ = "tables_sourcecollection"
-    __table_args__ = (
-        UniqueConstraint("user_id", "collection_name", name="unique_collection_name_per_user"),
-    )
 
     def __str__(self):
         return self.collection_name or "Unnamed Collection"

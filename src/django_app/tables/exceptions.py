@@ -42,6 +42,46 @@ class ParentSessionNotFoundError(CustomAPIExeption):
     default_code = "parent_session_not_found"
 
 
+class TriggerNodesRequireUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on flows would create or edit a trigger node.
+
+    Trigger nodes (webhook, Telegram, schedule) start flow runs by themselves, so
+    writing one is gated on the same permission as running the flow.
+    """
+
+    status_code = 403
+    default_detail = (
+        "Trigger nodes (webhook, Telegram, schedule) start flow runs, so creating or "
+        "editing them requires the Use permission on flows."
+    )
+    default_code = "trigger_nodes_require_use_permission"
+
+
+class FlowWithTriggerNodesRequiresUsePermissionError(CustomAPIExeption):
+    """Raised when a caller without USE on flows would copy, import or restore trigger nodes.
+
+    Distinct from TriggerNodesRequireUsePermissionError (editing one trigger node) so a
+    client can tell a refused copy/import/restore from a refused edit.
+    """
+
+    status_code = 403
+    default_detail = (
+        "This flow contains trigger nodes (webhook, Telegram, schedule). Copying, "
+        "importing or restoring it requires the Use permission on flows."
+    )
+    default_code = "flow_with_trigger_nodes_requires_use_permission"
+
+
+class CodeRunTargetNotFoundError(Exception):
+    """Raised for a test-run target that is missing, deleted, owned by another org,
+    or whose code slot is empty. The caller maps it to the same error as a missing
+    id, so none of these cases is distinguishable from outside."""
+
+    def __init__(self, target_id: int):
+        super().__init__(f"Code run target {target_id} does not exist.")
+        self.target_id = target_id
+
+
 class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"
@@ -110,6 +150,53 @@ class BuiltInToolModificationError(CustomAPIExeption):
 
     def __init__(self, detail="Unable to remove built-in tools", code=None):
         super().__init__(detail=detail, code=code, status_code=400)
+
+
+class NotInRecycleBinError(CustomAPIExeption):
+    """The row isn't in the recycle bin (it's live, or was binned before batches existed)."""
+
+    status_code = 404
+    # The exception handler renders the class's default_code, not a per-instance code.
+    default_code = "not_in_recycle_bin"
+    default_detail = "Not found in the recycle bin."
+
+
+class RestoreConflictError(CustomAPIExeption):
+    """A restore picked a free name or number, and something else took it before the restore committed."""
+
+    status_code = 409
+    default_code = "restore_conflict"
+    default_detail = "Something else just took this item's name. Try the restore again."
+
+
+class CrossOrgCascadeError(CustomAPIExeption):
+    """A delete would change a row of another organization than the one it started in.
+
+    409, not 500: the request is valid and the caller did nothing wrong; the data
+    holds a link no API path creates, and the delete can't go ahead while it's there.
+    The message names neither the row nor its organization, so it can't be used to
+    learn what another organization holds; the server log has the details.
+    """
+
+    status_code = 409
+    default_code = "cross_org_cascade"
+    default_detail = (
+        "This item is linked to data it can't be deleted with. Nothing was deleted. "
+        "Contact an administrator."
+    )
+
+
+class StorageRestoreConflictError(CustomAPIExeption):
+    """An object nobody indexed already sits where a restored storage item would go."""
+
+    status_code = 409
+    default_code = "storage_restore_conflict"
+
+    def __init__(self, path: str):
+        super().__init__(
+            detail=f"Can't restore to '{path}': storage already holds a file there that isn't listed. "
+            "Ask an administrator to re-index storage, then try again."
+        )
 
 
 class RegisterTelegramTriggerError(CustomAPIExeption):
@@ -576,6 +663,23 @@ class LLMConfigInvalidError(CustomAPIExeption):
     default_code = "flow_assistant_llm_config_invalid"
 
 
+class UnsupportedReasoningEffortError(CustomAPIExeption):
+    """Raised when an LLM config's reasoning effort is one its model cannot take.
+
+    The response carries `errors=[{"field", "value", "reason"}]` for the client to mark
+    the field. Deliberately not a ValidationError: DRF's Serializer.run_validation
+    re-raises a ValidationError from validate() as a new one, which drops `errors`.
+    """
+
+    status_code = 400
+    default_detail = "The reasoning effort is not supported."
+    default_code = "unsupported_reasoning_effort"
+
+    def __init__(self, reasoning_effort: str, reason: str):
+        self.errors = [{"field": "reasoning_effort", "value": reasoning_effort, "reason": reason}]
+        super().__init__(detail=reason)
+
+
 class ToolExecutionError(CustomAPIExeption):
     """Raised when a tool callable raises during execution."""
 
@@ -584,10 +688,20 @@ class ToolExecutionError(CustomAPIExeption):
     default_code = "flow_assistant_tool_execution_failed"
 
 
-class PromptNotFoundError(CustomAPIExeption):
-    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+class NodeChildValidationError(CustomAPIExeption):
+    """Base for a node's nested child row that is invalid but can only be detected
+    while the node's children are written.
+
+    Graph bulk save reports a subclass under the failing item's list key and index,
+    like any other item error; the single-node API returns it as a plain 400.
+    """
 
     status_code = 400
+
+
+class PromptNotFoundError(NodeChildValidationError):
+    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+
     default_code = "prompt_not_found"
 
     def __init__(self, value: int | str):
@@ -598,10 +712,9 @@ class PromptNotFoundError(CustomAPIExeption):
         )
 
 
-class SectionIdConflictError(CustomAPIExeption):
+class SectionIdConflictError(NodeChildValidationError):
     """Raised when a section id in the payload already belongs to a different CDT node."""
 
-    status_code = 400
     default_code = "section_id_conflict"
 
     def __init__(self, value: str):
@@ -612,10 +725,9 @@ class SectionIdConflictError(CustomAPIExeption):
         )
 
 
-class SectionNotFoundError(CustomAPIExeption):
+class SectionNotFoundError(NodeChildValidationError):
     """Raised when a condition group references a section id not present among this node's sections."""
 
-    status_code = 400
     default_code = "section_not_found"
 
     def __init__(self, value: str):
@@ -655,12 +767,39 @@ class CdtExplainLLMConfigNotFoundError(CustomAPIExeption):
         )
 
 
+class CdtExplainLLMConfigInvalidError(CustomAPIExeption):
+    """Raised when the explain endpoint's llm_config holds a value no client can send."""
+
+    status_code = 400
+    default_code = "cdt_explain_llm_config_invalid"
+
+
 class CdtExplainUpstreamError(CustomAPIExeption):
     """Raised when every batch of the explain request failed upstream."""
 
     status_code = 502
     default_detail = "The explanation could not be generated. Please try again."
     default_code = "cdt_explain_upstream_failed"
+
+
+class CdtExplainLLMConfigMissingKeyError(CustomAPIExeption):
+    """Raised instead of `CdtExplainUpstreamError` when the LLM config has no API key.
+
+    Decided after the calls, not before: keyless providers (Ollama, vLLM) are
+    legitimate, and nothing knows reliably which providers need a key — litellm
+    even reports a missing key as a different exception class per provider.
+    """
+
+    status_code = 422
+    default_code = "cdt_explain_llm_config_missing_key"
+
+    def __init__(self, llm_config_id):
+        self.llm_config_id = llm_config_id
+        super().__init__(
+            f"LLM config {llm_config_id} has no API key, and no explanation could be "
+            "generated with it. Add an API key to the config, or choose another one.",
+            code=self.default_code,
+        )
 
 
 class StorageQuotaExceeded(CustomAPIExeption):

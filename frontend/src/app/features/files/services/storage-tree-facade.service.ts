@@ -2,11 +2,12 @@ import { Dialog } from '@angular/cdk/dialog';
 import { computed, DestroyRef, effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService } from '@shared/components';
-import { downloadBlob } from '@shared/utils';
-import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
+import { downloadBlob, recycleBinNotice } from '@shared/utils';
+import { EMPTY, forkJoin, from, Observable, of, Subject, Subscription } from 'rxjs';
 import { catchError, concatMap, finalize, map, switchMap, toArray } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../services/recycle-bin';
 import {
     ADD_TO_COLLECTION_DIALOG_TITLE_ID,
     AddToCollectionDialogComponent,
@@ -31,7 +32,9 @@ import {
 } from '../components/create-folder-dialog/create-folder-dialog.component';
 import { StorageDetailsDialogComponent } from '../components/storage-details-dialog/storage-details-dialog.component';
 import { StorageItem, StorageItemInfo } from '../models/storage.models';
+import { recycleBinPurgeMessage } from '../utils/recycle-bin-purge.utils';
 import { getFileExtension } from '../utils/storage-file.utils';
+import { toStorageItems } from '../utils/storage-tree.utils';
 import { describeUploadFailures } from '../utils/upload-error.utils';
 import { StorageApiService } from './storage-api.service';
 import { StorageUploadService } from './storage-upload.service';
@@ -63,6 +66,7 @@ export class StorageTreeFacade {
     private storageUploadService = inject(StorageUploadService);
     private toastService = inject(ToastService);
     private confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly recycleBinSettings = inject(RecycleBinSettingsService);
     private dialog = inject(Dialog);
 
     readonly isLoading = signal<boolean>(true);
@@ -72,6 +76,7 @@ export class StorageTreeFacade {
     readonly treeData = signal<StorageItem[]>([]);
     readonly selectedFile = signal<StorageItem | null>(null);
     readonly selectedItems = signal<StorageItem[]>([]);
+    readonly searchTreeData = signal<StorageItem[] | null>(null);
 
     readonly selectInTree = new Subject<StorageItem>();
     readonly renameInTree = new Subject<StorageItem>();
@@ -82,6 +87,7 @@ export class StorageTreeFacade {
     private readonly refreshRequests = new Subject<TreeRefreshRequest>();
     private watchRefreshTick = false;
     private suppressNextTick = false;
+    private searchTreeRequest: Subscription | null = null;
 
     private readonly blockedUploadExtensions = new Set([
         'exe',
@@ -184,6 +190,7 @@ export class StorageTreeFacade {
             )
             .subscribe(({ request, roots }) => {
                 this.treeData.set(roots);
+                this.invalidateSearchTree();
                 this.hasLoadedOnce.set(true);
                 this.isLoading.set(false);
                 if (request.kind === 'initial') {
@@ -193,6 +200,25 @@ export class StorageTreeFacade {
                 this.notifyStorageChanged();
                 this.restoreExpandedPaths(request.extraPathsToExpand.filter(Boolean), () => request.onDone?.());
             });
+    }
+
+    loadSearchTree(): void {
+        if (this.searchTreeRequest && !this.searchTreeRequest.closed) return;
+        this.searchTreeRequest = this.storageApiService
+            .tree()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                // Search covers at most the 50 000 entries the tree endpoint returns; beyond that it is truncated.
+                next: (response) => this.searchTreeData.set(toStorageItems(response.tree.children)),
+                error: () => this.toastService.error('Failed to search storage files'),
+            });
+    }
+
+    /** Drops the search tree, and any request for it sent before the change, which may answer with the old tree.
+     *  Called right after treeData is reloaded; the page reloads the search tree only while a search is active. */
+    private invalidateSearchTree(): void {
+        this.searchTreeRequest?.unsubscribe();
+        this.searchTreeData.set(null);
     }
 
     /**
@@ -503,8 +529,10 @@ export class StorageTreeFacade {
                 .copy(item.path, result.toPath)
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe({
-                    next: () => {
+                    next: (response) => {
                         this.toastService.success(`"${item.name}" copied`);
+                        const purgeMessage = recycleBinPurgeMessage(response.recycle_bin_purged);
+                        if (purgeMessage) this.toastService.warning(purgeMessage);
                         this.reloadTreePreservingExpansion(result.toPath ? [result.toPath] : []);
                     },
                     error: () => this.toastService.error(`Failed to copy "${item.name}"`),
@@ -901,6 +929,7 @@ export class StorageTreeFacade {
         } else {
             message = `Are you sure you want to delete ${this.formatCount(folderCount, 'folder', 'folders')}?`;
         }
+        message += ` ${recycleBinNotice(this.recycleBinSettings.retentionDays(), items.length)}`;
 
         return this.confirmationDialogService.confirm({
             title,

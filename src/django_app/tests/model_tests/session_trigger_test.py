@@ -38,66 +38,34 @@ def telegram_trigger_node(graph) -> TelegramTriggerNode:
     return TelegramTriggerNode.objects.create(graph=graph, node_name="telegram_node")
 
 
+@pytest.mark.parametrize(
+    ("trigger_type", "source_field", "source"),
+    [
+        (SessionTrigger.TriggerType.SCHEDULE, "schedule_trigger_node", "schedule_trigger_node"),
+        (SessionTrigger.TriggerType.WEBHOOK, "webhook_trigger_node", "webhook_trigger_node"),
+        (SessionTrigger.TriggerType.TELEGRAM, "telegram_trigger_node", "telegram_trigger_node"),
+        (SessionTrigger.TriggerType.PARENT_FLOW, "triggered_by_session", "parent_session"),
+        (SessionTrigger.TriggerType.MANUAL, None, None),
+    ],
+    ids=["schedule", "webhook", "telegram", "parent-flow", "manual"],
+)
 @pytest.mark.django_db
-def test_trigger_id_returns_schedule_node_id_for_schedule_trigger(
-    session, schedule_trigger_node
+def test_trigger_id_is_the_id_of_what_started_the_session(
+    session, graph, schedule_trigger_node, webhook_trigger_node, telegram_trigger_node, trigger_type, source_field, source
 ):
+    sources = {
+        "schedule_trigger_node": schedule_trigger_node,
+        "webhook_trigger_node": webhook_trigger_node,
+        "telegram_trigger_node": telegram_trigger_node,
+        "parent_session": Session.objects.create(graph=graph, status=Session.SessionStatus.END, variables={}),
+    }
+    started_by = sources.get(source)
+
     trigger = SessionTrigger.objects.create(
-        session=session,
-        trigger_type=SessionTrigger.TriggerType.SCHEDULE,
-        schedule_trigger_node=schedule_trigger_node,
+        session=session, trigger_type=trigger_type, **({source_field: started_by} if source_field else {})
     )
 
-    assert trigger.trigger_id == schedule_trigger_node.id
-
-
-@pytest.mark.django_db
-def test_trigger_id_returns_webhook_node_id_for_webhook_trigger(
-    session, webhook_trigger_node
-):
-    trigger = SessionTrigger.objects.create(
-        session=session,
-        trigger_type=SessionTrigger.TriggerType.WEBHOOK,
-        webhook_trigger_node=webhook_trigger_node,
-    )
-
-    assert trigger.trigger_id == webhook_trigger_node.id
-
-
-@pytest.mark.django_db
-def test_trigger_id_returns_telegram_node_id_for_telegram_trigger(
-    session, telegram_trigger_node
-):
-    trigger = SessionTrigger.objects.create(
-        session=session,
-        trigger_type=SessionTrigger.TriggerType.TELEGRAM,
-        telegram_trigger_node=telegram_trigger_node,
-    )
-
-    assert trigger.trigger_id == telegram_trigger_node.id
-
-
-@pytest.mark.django_db
-def test_trigger_id_returns_parent_session_id_for_parent_flow_trigger(session, graph):
-    parent_session = Session.objects.create(
-        graph=graph, status=Session.SessionStatus.END, variables={}
-    )
-    trigger = SessionTrigger.objects.create(
-        session=session,
-        trigger_type=SessionTrigger.TriggerType.PARENT_FLOW,
-        triggered_by_session=parent_session,
-    )
-
-    assert trigger.trigger_id == parent_session.id
-
-
-@pytest.mark.django_db
-def test_trigger_id_is_none_for_manual_trigger(session):
-    trigger = SessionTrigger.objects.create(
-        session=session, trigger_type=SessionTrigger.TriggerType.MANUAL
-    )
-
-    assert trigger.trigger_id is None
+    assert trigger.trigger_id == (started_by.id if started_by else None)
 
 
 @pytest.mark.django_db

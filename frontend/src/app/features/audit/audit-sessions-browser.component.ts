@@ -6,14 +6,22 @@ import {
     computed,
     DestroyRef,
     DOCUMENT,
+    effect,
     inject,
     OnInit,
     signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActionDropdownButtonComponent, ActionDropdownItem, AppSvgIconComponent } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import {
+    ActionDropdownButtonComponent,
+    ActionDropdownItem,
+    AppSvgIconComponent,
+    normalizeIana,
+    NumberStepperComponent,
+} from '@shared/components';
+import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { SidebarWidthOptions, SidebarWidthService } from '@shared/services';
 import { downloadBlob } from '@shared/utils';
 import {
     catchError,
@@ -35,6 +43,7 @@ import {
 } from 'rxjs';
 
 import { ExportFormat } from '../../core/services/import-export.service';
+import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { ToastService } from '../../services/notifications';
 import { AgentDefinitionsApiService } from '../agent-definitions/services/agent-definitions-api.service';
 import { FlowsApiService } from '../flows/services/flows-api.service';
@@ -43,20 +52,67 @@ import { McpToolsService } from '../tools/services/mcp-tools/mcp-tools.service';
 import { AuditFilterChipsComponent } from './components/audit-filter-chips/audit-filter-chips.component';
 import { AuditFiltersPanelComponent } from './components/audit-filters-panel/audit-filters-panel.component';
 import { AuditHighlightComponent } from './components/audit-highlight/audit-highlight.component';
+import { AuditValueViewerComponent } from './components/audit-value-viewer/audit-value-viewer.component';
 import { AuditEnumOption, AuditFilterState, EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
 import { AuditExportRequest, AuditSessionEvent } from './models/audit-session.models';
 import { AuditJsonPipe } from './pipes/audit-json.pipe';
 import { AuditApiService } from './services/audit-api.service';
-import { buildAuditRows } from './utils/build-audit-rows.util';
+import {
+    auditFilterStorageKey,
+    readStoredAuditFilter,
+    writeStoredAuditFilter,
+} from './utils/audit-filter-storage.util';
+import { AuditRow, buildAuditRows } from './utils/build-audit-rows.util';
 import { compileAuditFilter } from './utils/compile-audit-filter.util';
 import { clearAuditFilterField, describeAuditFilter } from './utils/describe-audit-filter.util';
 import { sanitizeToolName } from './utils/sanitize-tool-name.util';
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const MIN_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
+const PAGE_SIZE_STEP = 10;
 const POLL_INTERVAL_MS = 10_000;
 const SEARCH_DEBOUNCE_MS = 400;
 const EXPORT_POLL_INTERVAL_MS = 1_000;
 const EXPORT_TIMEOUT_MS = 5 * 60_000;
+// narrow enough to tuck a column away, wide enough to keep its handle and an ellipsis grabbable
+const COLUMN_MIN_WIDTH = 48;
+const PANEL_WIDTH_KEY = 'audit-side-panel';
+const PANEL_WIDTH_OPTIONS = { defaultWidth: 480, minWidth: 360, maxWidth: 960 } satisfies SidebarWidthOptions;
+
+interface AuditTableColumn {
+    label: string;
+    className: string;
+    defaultWidth: number;
+}
+
+const AUDIT_TABLE_COLUMNS: AuditTableColumn[] = [
+    { label: '', className: 'audit-table__gutter', defaultWidth: 36 },
+    { label: 'Kind', className: 'audit-table__kind', defaultWidth: 80 },
+    { label: 'Session ID', className: '', defaultWidth: 100 },
+    { label: 'Name', className: '', defaultWidth: 182 },
+    { label: 'Flow', className: '', defaultWidth: 140 },
+    { label: 'Node Type', className: '', defaultWidth: 120 },
+    { label: 'Status', className: '', defaultWidth: 111 },
+    { label: 'Date', className: '', defaultWidth: 150 },
+    { label: 'Input', className: '', defaultWidth: 110 },
+    { label: 'Output', className: '', defaultWidth: 110 },
+    { label: 'Error', className: '', defaultWidth: 110 },
+    { label: 'Details', className: '', defaultWidth: 96 },
+];
+
+interface ColumnResize {
+    index: number;
+    startX: number;
+    startWidth: number;
+}
+
+interface ViewedValue {
+    rowId: string;
+    field: string;
+    rowName: string;
+    value: string;
+    isPlainText: boolean;
+}
 
 @Component({
     selector: 'app-audit-sessions-browser',
@@ -64,12 +120,15 @@ const EXPORT_TIMEOUT_MS = 5 * 60_000;
     imports: [
         CommonModule,
         AppSvgIconComponent,
+        NumberStepperComponent,
         AuditFiltersPanelComponent,
         AuditFilterChipsComponent,
         AuditHighlightComponent,
         AuditJsonPipe,
+        AuditValueViewerComponent,
         ActionDropdownButtonComponent,
         HasPermissionDirective,
+        ResizableSidebarDirective,
     ],
     templateUrl: './audit-sessions-browser.component.html',
     styleUrls: ['./audit-sessions-browser.component.scss'],
@@ -84,6 +143,10 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private document = inject(DOCUMENT);
     private toastService = inject(ToastService);
+    // Read once: an org switch remounts this page, so a later org change must not redirect writes.
+    private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
+    private readonly appliedFilterStorageKey = auditFilterStorageKey(this.activeOrgId, 'applied');
+    private readonly draftFilterStorageKey = auditFilterStorageKey(this.activeOrgId, 'draft');
     private searchSubscription: Subscription | null = null;
     private searchInput = new Subject<string>();
     public readonly timeZoneLabel = buildTimeZoneLabel();
@@ -94,13 +157,31 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public isPartial = signal<boolean>(false);
     public pageSize = signal<number>(20);
     public areColumnsExpanded = signal<boolean>(false);
+    protected readonly columns = AUDIT_TABLE_COLUMNS;
+    protected readonly columnWidths = signal<number[]>(AUDIT_TABLE_COLUMNS.map((column) => column.defaultWidth));
+    // the table is at least as wide as its columns, so widening one scrolls the table instead of squeezing the rest
+    protected readonly tableWidth = computed(() => this.columnWidths().reduce((total, width) => total + width, 0));
     public isFiltersPanelOpen = signal<boolean>(false);
+    protected readonly panelWidthKey = PANEL_WIDTH_KEY;
+    protected readonly panelWidthOptions = PANEL_WIDTH_OPTIONS;
+    protected readonly panelWidth = inject(SidebarWidthService).getWidth(PANEL_WIDTH_KEY, PANEL_WIDTH_OPTIONS);
+    protected viewedValue = signal<ViewedValue | null>(null);
+    private valueViewerTrigger: HTMLElement | null = null;
     private rawEvents = signal<AuditSessionEvent[]>([]);
     private cursorStack = signal<(string | null)[]>([null]);
     private nextCursor = signal<string | null>(null);
-    protected draftFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
-    private appliedFilter = signal<AuditFilterState>(EMPTY_AUDIT_FILTER);
+    private appliedFilter = signal<AuditFilterState>(readStoredAuditFilter(this.appliedFilterStorageKey));
+    // a selection made in the panel but not applied yet also survives a reload
+    protected draftFilter = signal<AuditFilterState>(
+        readStoredAuditFilter(this.draftFilterStorageKey, this.appliedFilter())
+    );
     private collapsedIds = signal<ReadonlySet<string>>(new Set());
+    private readonly persistAppliedFilter = effect(() =>
+        writeStoredAuditFilter(this.appliedFilterStorageKey, this.appliedFilter())
+    );
+    private readonly persistDraftFilter = effect(() =>
+        writeStoredAuditFilter(this.draftFilterStorageKey, this.draftFilter())
+    );
     public flowNames = signal<string[]>([]);
     public exportingFormat = signal<ExportFormat | null>(null);
     public allRows = computed(() => buildAuditRows(this.rawEvents()));
@@ -117,6 +198,10 @@ export class AuditSessionsBrowserComponent implements OnInit {
     ];
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+    protected readonly minPageSize = MIN_PAGE_SIZE;
+    protected readonly maxPageSize = MAX_PAGE_SIZE;
+    protected readonly pageSizeStep = PAGE_SIZE_STEP;
+    private columnResize: ColumnResize | null = null;
 
     public hasCollapsibleRows = computed(() => this.allRows().some((row) => row.hasChildren));
     public areAllRowsExpanded = computed(() => this.collapsedIds().size === 0);
@@ -174,11 +259,6 @@ export class AuditSessionsBrowserComponent implements OnInit {
         });
     }
 
-    public canDecreasePageSize = computed(() => PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) > 0);
-    public canIncreasePageSize = computed(
-        () => PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) < PAGE_SIZE_OPTIONS.length - 1
-    );
-
     public ngOnInit(): void {
         this.loadSessions();
         this.loadFlowNames();
@@ -203,12 +283,12 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.loadSessions();
     }
 
-    public stepPageSize(delta: number): void {
-        const next = PAGE_SIZE_OPTIONS[PAGE_SIZE_OPTIONS.indexOf(this.pageSize()) + delta];
-        if (next === undefined) {
+    // the stepper emits on every keystroke, so a half-typed or out-of-range number is ignored until it is valid
+    public setPageSize(size: number | null): void {
+        if (size === null || size < MIN_PAGE_SIZE || size > MAX_PAGE_SIZE || size === this.pageSize()) {
             return;
         }
-        this.pageSize.set(next);
+        this.pageSize.set(size);
         this.cursorStack.set([null]);
         this.loadSessions();
     }
@@ -242,7 +322,41 @@ export class AuditSessionsBrowserComponent implements OnInit {
         this.areColumnsExpanded.set(expanded);
     }
 
+    protected startColumnResize(event: PointerEvent, index: number): void {
+        if (event.button !== 0) {
+            return;
+        }
+        event.preventDefault();
+        const handle = event.currentTarget as HTMLElement;
+        // capture keeps the drag alive when the pointer leaves the narrow handle
+        handle.setPointerCapture(event.pointerId);
+        // start from where the column actually is on screen, so the drag never jumps
+        const startWidth = handle.parentElement?.getBoundingClientRect().width ?? this.columnWidths()[index];
+        this.columnResize = { index, startX: event.clientX, startWidth };
+    }
+
+    protected resizeColumn(event: PointerEvent): void {
+        const resize = this.columnResize;
+        if (resize === null) {
+            return;
+        }
+        const width = Math.max(COLUMN_MIN_WIDTH, Math.round(resize.startWidth + event.clientX - resize.startX));
+        this.columnWidths.update((widths) =>
+            widths.map((current, index) => (index === resize.index ? width : current))
+        );
+    }
+
+    protected stopColumnResize(): void {
+        this.columnResize = null;
+    }
+
     public toggleFiltersPanel(): void {
+        if (this.viewedValue()) {
+            this.viewedValue.set(null);
+            this.valueViewerTrigger = null;
+            this.isFiltersPanelOpen.set(true);
+            return;
+        }
         this.isFiltersPanelOpen.update((isOpen) => !isOpen);
     }
 
@@ -426,10 +540,29 @@ export class AuditSessionsBrowserComponent implements OnInit {
     public onExportItemSelected(item: ActionDropdownItem): void {
         this.exportFiltered(item.value as ExportFormat);
     }
+
+    protected openValue(trigger: HTMLElement, field: string, row: AuditRow, value: string, isPlainText = false): void {
+        const rowName = row.event.name || row.nameLabel || '';
+        this.valueViewerTrigger = trigger;
+        this.viewedValue.set({ rowId: row.event.id, field, rowName, value, isPlainText });
+    }
+
+    protected isValueViewed(field: string, row: AuditRow): boolean {
+        const viewed = this.viewedValue();
+        return viewed?.rowId === row.event.id && viewed.field === field;
+    }
+
+    // the panel is not a dialog, so focus is handed back to the cell by hand instead of falling to <body>
+    protected closeValueViewer(): void {
+        this.viewedValue.set(null);
+        this.valueViewerTrigger?.focus();
+        this.valueViewerTrigger = null;
+    }
 }
 
 function buildTimeZoneLabel(): string {
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // some browsers still report the legacy 'Europe/Kiev' name
+    const zone = normalizeIana(Intl.DateTimeFormat().resolvedOptions().timeZone);
     const offsetMinutes = -new Date().getTimezoneOffset();
     const sign = offsetMinutes < 0 ? '-' : '+';
     const absolute = Math.abs(offsetMinutes);

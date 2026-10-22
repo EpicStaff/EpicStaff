@@ -2,15 +2,17 @@ import { CommonModule, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
+import { formatNodeLabel } from '@shared/utils';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
+import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { DT_HEADER_HEIGHT, DT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
-import { splitNodeTitleBadge } from '../../../core/helpers/split-node-title.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
 import { FlowService } from '../../../services/flow.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
+import { FlowSettingsService } from '../../../services/flow-settings.service';
 @Component({
     selector: 'app-decision-table-node',
     templateUrl: './decision-table-node.component.html',
@@ -23,6 +25,7 @@ export class DecisionTableNodeComponent {
     @Output() actualClick = new EventEmitter<MouseEvent>();
 
     private flowService = inject(FlowService);
+    private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
 
     public readonly headerHeightPx = DT_HEADER_HEIGHT;
@@ -48,7 +51,7 @@ export class DecisionTableNodeComponent {
         if (!idOrName) return null;
         const nodes = this.flowService.nodes();
         const node = nodes.find((n) => n.id === idOrName || n.node_name === idOrName);
-        return node ? node.node_name : idOrName;
+        return node ? formatNodeLabel(node) : idOrName;
     }
 
     get nextErrorNode() {
@@ -60,11 +63,21 @@ export class DecisionTableNodeComponent {
         if (!idOrName) return null;
         const nodes = this.flowService.nodes();
         const node = nodes.find((n) => n.id === idOrName || n.node_name === idOrName);
-        return node ? node.node_name : idOrName;
+        return node ? formatNodeLabel(node) : idOrName;
     }
 
-    get titleParts(): { label: string; badge: string | null } {
-        return splitNodeTitleBadge(this.node.node_name || 'Decision Table', this.node.nodeNumber);
+    get title(): string {
+        return this.node.node_name || 'Decision Table';
+    }
+
+    /** Whether the header shows the node's "#N" under the title. */
+    protected get isNumberedNode(): boolean {
+        return showsNodeNumber(this.node);
+    }
+
+    /** The "#N" stays shown under the title; otherwise it appears on hover. */
+    protected get isNodeNumberPinned(): boolean {
+        return this.isNumberedNode && this.flowSettings.alwaysShowNodeNumbers();
     }
 
     get inputPort() {

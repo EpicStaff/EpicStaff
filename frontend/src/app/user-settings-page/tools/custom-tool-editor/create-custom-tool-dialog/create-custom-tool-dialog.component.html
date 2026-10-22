@@ -1,4 +1,8 @@
-<div class="create-custom-tool-dialog">
+<div
+    class="create-custom-tool-dialog"
+    (appEnterSubmit)="submit()"
+    [appEnterSubmitDisabled]="isSaving()"
+>
     <form
         [formGroup]="form"
         (ngSubmit)="submit()"
@@ -327,6 +331,16 @@
                         formControlName="libraries"
                     ></app-chips-input>
                 </div>
+
+                @if (executionTimeout(); as executionTimeoutField) {
+                    <div class="form-section">
+                        <app-execution-timeout-field
+                            [field]="executionTimeoutField"
+                            [readonly]="isBuiltIn()"
+                            [hint]="executionTimeoutHint"
+                        />
+                    </div>
+                }
             </section>
 
             @if (activeEditor() !== ActiveEditor.None) {

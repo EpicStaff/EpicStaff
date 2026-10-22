@@ -16,6 +16,14 @@
                 size="14px"
             />
         }
+        @if (option.iconClass) {
+            <i
+                class="checkbox-enum__icon checkbox-enum__font-icon"
+                [class]="option.iconClass"
+                [style.color]="option.iconColor"
+                aria-hidden="true"
+            ></i>
+        }
         <span>{{ option.label }}</span>
     </label>
 }

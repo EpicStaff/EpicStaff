@@ -1,4 +1,9 @@
 from django.db import transaction
+from rbac.authorship import (
+    AuthorStampingSerializerMixin,
+    AuthorSummarySerializerMixin,
+    LastEditFieldsSerializerMixin,
+)
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -21,17 +26,22 @@ from tables.models.python_models import (
 from tables.models.secret_models import Secret
 from tables.serializers.base_serializer import ContentHashWritableMixin
 from tables.serializers.model_serializers.secret_serializers import SecretNameSerializer
-from tables.serializers.utils.description_sanitizer import sanitize_description
+from tables.serializers.utils.description_sanitizer import validate_tool_description
 from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
 )
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
+from tables.serializers.utils.soft_delete_fields import (
+    ExcludeSoftDeleteFieldsMixin,
+    KeptLinkPrimaryKeyRelatedField,
+)
 from tables.services.copy_services.helpers import (
     apply_python_code_fields,
     create_python_code,
 )
 from tables.services.secrets.parse_code import parse_secret_names
+from tables.validators.execution_timeout_validator import normalize_execution_timeout
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
@@ -51,11 +61,15 @@ class PythonCodeSerializer(
     secrets = SecretNameSerializer(
         many=True,
         read_only=True,
-        help_text="Secrets this code is allowed to read, by name.",
+        source="linked_secrets",
+        help_text=(
+            "Secrets this code is allowed to read, by name. Includes a secret in the "
+            "recycle bin, which stays linked until it's purged."
+        ),
     )
-    secret_ids = OrgScopedPrimaryKeyRelatedField(
+    secret_ids = KeptLinkPrimaryKeyRelatedField(
         many=True,
-        queryset=Secret.objects.all(),
+        queryset=Secret.all_objects.all(),
         source="secrets",
         write_only=True,
         required=False,
@@ -72,12 +86,16 @@ class PythonCodeSerializer(
             "global_kwargs",
             "secrets",
             "secret_ids",
+            "execution_timeout",
         ]
         read_only_fields = ["id"]
         extra_kwargs = {
             "code": {"allow_blank": True},
             "entrypoint": {"allow_blank": True},
         }
+
+    def validate_execution_timeout(self, value: int) -> int:
+        return normalize_execution_timeout(value)
 
     def to_representation(self, instance):
         """Convert 'libraries' string to a list of strings for output."""
@@ -122,7 +140,7 @@ class PythonCodeSerializer(
         else:
             current = self._current_python_code()
             declared = (
-                set(current.secrets.values_list("name", flat=True))
+                {secret.name for secret in current.linked_secrets()}
                 if current is not None
                 else set()
             )
@@ -163,7 +181,9 @@ class PythonCodeSerializer(
         return sorted(Secret.objects.filter(org_id=org_id).values_list("name", flat=True))
 
 
-class PythonCodeToolSerializer(serializers.ModelSerializer):
+class PythonCodeToolSerializer(
+    AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin, serializers.ModelSerializer
+):
     python_code = PythonCodeSerializer()
     built_in = serializers.ReadOnlyField()
     is_favorite = serializers.BooleanField(read_only=True, default=False)
@@ -196,14 +216,15 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "built_in",
             "use_storage",
             "labels",
+            "created_by",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "built_in", "created_at", "updated_at"]
+        read_only_fields = ["id", "built_in", "created_by", "created_at", "updated_at"]
 
     def validate_description(self, value: str) -> str:
-        """Strip control chars / cap length — this reaches the LLM tool schema verbatim."""
-        return sanitize_description(value)
+        """See validate_tool_description: this text reaches the LLM tool schema verbatim."""
+        return validate_tool_description(value)
 
     def to_representation(self, instance):
         """Scope the serialized `labels` to the active org.
@@ -255,7 +276,9 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         return instance
 
 
-class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
+class PythonCodeToolConfigSerializer(
+    ExcludeSoftDeleteFieldsMixin, AuthorSummarySerializerMixin, serializers.ModelSerializer
+):
     # Org isolation (hybrid): built-in tools OR the caller's active-org custom ones.
     tool = OrgVisiblePrimaryKeyRelatedField(queryset=PythonCodeTool.objects.all())
 

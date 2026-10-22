@@ -42,7 +42,7 @@ def _assert_invalid(response, field_name, code="invalid"):
 @pytest.mark.django_db
 class TestAgentDefinitionNameUniqueness:
     def test_create_duplicate_name_returns_400(self, client, acme):
-        AgentDefinition.objects.create(organization=acme, name="duplicate-agent")
+        AgentDefinition.objects.create(org=acme, name="duplicate-agent")
 
         response = _create(client, name="duplicate-agent")
 
@@ -50,8 +50,8 @@ class TestAgentDefinitionNameUniqueness:
         assert AgentDefinition.objects.filter(name="duplicate-agent").count() == 1
 
     def test_put_duplicate_name_returns_400(self, client, acme):
-        AgentDefinition.objects.create(organization=acme, name="existing-agent")
-        other_agent = AgentDefinition.objects.create(organization=acme, name="other-agent")
+        AgentDefinition.objects.create(org=acme, name="existing-agent")
+        other_agent = AgentDefinition.objects.create(org=acme, name="other-agent")
 
         response = client.put(
             reverse("agentdefinition-detail", args=[other_agent.id]),
@@ -64,7 +64,7 @@ class TestAgentDefinitionNameUniqueness:
         assert other_agent.name == "other-agent"
 
     def test_patch_keeping_own_name_returns_200(self, client, acme):
-        agent = AgentDefinition.objects.create(organization=acme, name="same-agent")
+        agent = AgentDefinition.objects.create(org=acme, name="same-agent")
 
         response = client.patch(
             reverse("agentdefinition-detail", args=[agent.id]),
@@ -75,36 +75,31 @@ class TestAgentDefinitionNameUniqueness:
         assert response.status_code == 200, response.json()
         assert response.json()["description"] == "changed"
 
-    def test_same_name_in_other_organization_returns_201(self, client, beta):
-        AgentDefinition.objects.create(organization=beta, name="shared-name")
+    @pytest.mark.parametrize(
+        ("name", "stored"),
+        [
+            ("new-agent", "new-agent"),
+            ("  padded-agent  ", "padded-agent"),
+            ("x" * 255, "x" * 255),
+            # Names are unique per organization only.
+            ("shared-name", "shared-name"),
+        ],
+        ids=["plain", "trimmed", "255-characters", "taken-in-another-org"],
+    )
+    def test_valid_name_is_created(self, client, beta, name, stored):
+        AgentDefinition.objects.create(org=beta, name="shared-name")
 
-        response = _create(client, name="shared-name")
+        response = _create(client, name=name)
 
         assert response.status_code == 201, response.json()
-
-    def test_create_success_returns_201(self, client):
-        response = _create(client, name="new-agent")
-
-        assert response.status_code == 201
-        assert response.json()["name"] == "new-agent"
-
-    def test_name_is_trimmed(self, client):
-        response = _create(client, name="  padded-agent  ")
-
-        assert response.status_code == 201, response.json()
-        assert response.json()["name"] == "padded-agent"
+        assert response.json()["name"] == stored
 
     @pytest.mark.parametrize("name", ["", "   ", "x" * 256])
     def test_invalid_name_returns_400(self, client, name):
         _assert_invalid(_create(client, name=name), "name")
 
-    def test_name_of_255_characters_returns_201(self, client):
-        response = _create(client, name="x" * 255)
-
-        assert response.status_code == 201, response.json()
-
     def test_other_organization_agent_is_not_found(self, client, beta):
-        foreign_agent = AgentDefinition.objects.create(organization=beta, name="foreign")
+        foreign_agent = AgentDefinition.objects.create(org=beta, name="foreign")
 
         response = client.patch(
             reverse("agentdefinition-detail", args=[foreign_agent.id]),
@@ -155,7 +150,7 @@ class TestAgentDefinitionExecutionFieldBounds:
         assert body["default_temperature"] is None
 
     def test_patch_out_of_range_value_returns_400(self, client, acme):
-        agent = AgentDefinition.objects.create(organization=acme, name="patched")
+        agent = AgentDefinition.objects.create(org=acme, name="patched")
 
         response = client.patch(
             reverse("agentdefinition-detail", args=[agent.id]),
@@ -182,7 +177,7 @@ class TestAgentDefinitionExecutionFieldBounds:
 @pytest.mark.django_db
 class TestAgentDefinitionDefaultSurfaces:
     def test_duplicate_surface_and_place_returns_400(self, client, acme):
-        surface = Surface.objects.create(organization=acme, name="shared-surface")
+        surface = Surface.objects.create(org=acme, name="shared-surface")
 
         response = _create(
             client,
@@ -196,7 +191,7 @@ class TestAgentDefinitionDefaultSurfaces:
         assert not AgentDefinition.objects.exists()
 
     def test_same_surface_in_different_places_returns_201(self, client, acme):
-        surface = Surface.objects.create(organization=acme, name="shared-surface")
+        surface = Surface.objects.create(org=acme, name="shared-surface")
 
         response = _create(
             client,
@@ -307,7 +302,7 @@ class TestAgentDefinitionInstructionList:
 
     def test_partial_update_replaces_instruction_list_in_new_order(self, client, acme):
         agent_definition = AgentDefinition.objects.create(
-            organization=acme,
+            org=acme,
             name="reorder-agent",
             instruction_list=[
                 {"name": "First.md", "content": "one"},

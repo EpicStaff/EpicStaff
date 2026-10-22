@@ -20,7 +20,7 @@ export function mapSubGraphNodeToModel(sn: SubGraphNode): SubGraphNodeModel {
         backendId: sn.id,
         type: NodeType.SUBGRAPH,
         node_name: sn.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: sn.node_number ?? undefined,
         data: subgraphDetail,
         position: ui.position,
         ports: null,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from collections import defaultdict
 from typing import Any
 
@@ -9,9 +10,23 @@ from django.db.models.deletion import (
     ProtectedError,
     RestrictedError,
 )
+from django.db.models.fields.reverse_related import ManyToManyRel
 from django.db.models.signals import post_save
 from django.utils import timezone
 from tables.models.base_models import SoftDeleteFields
+from tables.services.cascade_org_guard import CascadeOrgGuard
+
+
+def keeps_references(model: type[models.Model]) -> bool:
+    """Rows of `model` keep the links pointing at them while they're binned.
+
+    Set by the model's `soft_delete_keeps_references`. Settings items (a secret, a
+    webhook trigger, a voice channel) are used by rows elsewhere. Clearing those
+    links on delete would make a restore bring back an item nothing uses any more.
+    The links stay; a lookup through the filtered `objects` manager treats the
+    binned row as missing, and a purge (Django's Collector) clears the links then.
+    """
+    return getattr(model, "soft_delete_keeps_references", False)
 
 
 class DeleteService:
@@ -26,8 +41,15 @@ class DeleteService:
     Normal model + RESTRICT
         -> RestrictedError
 
+    Child reached through a field in its soft_delete_reference_fields
+        -> hard delete at the end of the call, unless the same child was
+           soft-deleted into this batch through its owner, or the link model's
+           soft_delete_owned_references() says it still belongs to the target
+
     Normal model + SET_NULL
-        -> set FK to NULL
+        -> set FK to NULL, unless the deleted row's model sets
+           soft_delete_keeps_references: then SET_NULL / SET_DEFAULT / SET(...)
+           links and incoming M2M links stay until a purge
 
     Normal model + SET_DEFAULT
         -> set FK to default
@@ -52,12 +74,20 @@ class DeleteService:
     receiver also wins over SoftDeleteFields batching, since it must be
     soft-deleted per-object so that signal still fires.
 
-    M2M:
-        implicit through
-            -> delete only relationship rows
+    M2M (implicit through):
+        the deleted row's own links -> kept (a restore needs them)
+        links from rows outside this delete's batch -> removed at the end,
+            so live rows don't point into the recycle bin
+        links between rows of the same batch -> kept
 
-        explicit through
-            -> process through model normally
+    M2M (explicit through):
+        -> process through model normally
+
+    Organization (fail closed, see tables/services/cascade_org_guard.py):
+        a delete that would bin, null, reset or unlink a row of another
+        organization than the root's raises CrossOrgCascadeError, and the
+        whole delete rolls back. Checked before each reverse relation is acted
+        on and before incoming M2M links are removed.
     """
 
     @classmethod
@@ -65,10 +95,40 @@ class DeleteService:
         cls,
         obj: models.Model,
         using: str | None = None,
-    ):
+    ) -> uuid.UUID | None:
+        """Delete `obj` and its dependents.
+
+        Returns:
+            The batch id stamped on every row this call soft-deleted, or None
+            when `obj` was already in the recycle bin and nothing changed.
+
+        Raises:
+            CrossOrgCascadeError: The delete reaches a row of another
+                organization; nothing is changed.
+        """
         with transaction.atomic(using=using):
-            context = _DeleteContext(using=using)
+            # Lock the root and read its flag from the database, not from the
+            # caller's copy: two requests deleting the same item at once would
+            # otherwise give the root the second batch and its children the first.
+            if isinstance(obj, SoftDeleteFields):
+                stored_active = (
+                    type(obj)
+                    .all_objects.using(using)
+                    .select_for_update()
+                    .filter(pk=obj.pk)
+                    .values_list("active", flat=True)
+                    .first()
+                )
+                if stored_active is False:
+                    return None
+                if stored_active is not None:
+                    # The walk trusts `obj.active`; a copy loaded while the row
+                    # was binned (and since restored) must not skip it.
+                    obj.active = stored_active
+            context = _DeleteContext(org_guard=CascadeOrgGuard.for_root(obj, using), using=using)
             context.delete(obj)
+            context.finish()
+            return context.batch
 
 
 class _DeleteContext:
@@ -95,9 +155,19 @@ class _DeleteContext:
         models.DO_NOTHING: "_handle_do_nothing",
     }
 
-    def __init__(self, using: str | None = None):
+    def __init__(self, org_guard: CascadeOrgGuard, using: str | None = None):
+        self.org_guard = org_guard
         self.using = using
         self.visited: set[tuple[type[models.Model], Any]] = set()
+        # One batch id and one timestamp for the whole call, so every row it
+        # bins can be found and restored together.
+        self.batch = uuid.uuid4()
+        self.deleted_at = timezone.now()
+        # Reverse auto-through M2M relation -> pks of visited rows it points at,
+        # resolved in finish(), once the whole batch is known.
+        self.incoming_m2m: defaultdict[ManyToManyRel, list[Any]] = defaultdict(list)
+        # Reference link rows to hard-delete in finish(), by model.
+        self.reference_children: defaultdict[type[models.Model], set[Any]] = defaultdict(set)
 
     # ==========================================================
     # Main entry point
@@ -110,6 +180,11 @@ class _DeleteContext:
             return
 
         self.visited.add(key)
+
+        # Binned earlier on its own: its subtree was handled then, so walking
+        # it again would only cost queries that grow with the recycle bin.
+        if isinstance(obj, SoftDeleteFields) and not obj.active:
+            return
 
         # Process relations first.
         self._process_reverse_relations(obj)
@@ -129,16 +204,18 @@ class _DeleteContext:
             self._hard_delete(obj)
 
     def _soft_delete(self, obj: SoftDeleteFields):
-        if obj.is_soft_deleted:
+        if not obj.active:
             return
 
-        obj.is_soft_deleted = True
-        obj.soft_deleted_at = timezone.now()
+        obj.active = False
+        obj.soft_deleted_at = self.deleted_at
+        obj.soft_delete_batch = self.batch
 
         obj.save(
             update_fields=[
-                "is_soft_deleted",
+                "active",
                 "soft_deleted_at",
+                "soft_delete_batch",
             ],
             using=self.using,
         )
@@ -150,7 +227,20 @@ class _DeleteContext:
         We deliberately call Django's Model.delete(),
         not obj.delete(), because obj.delete() may be
         overridden by SoftDeleteFields.
+
+        Its reverse relations were walked already, so what Django's Collector
+        still removes is `obj`'s own M2M links, its ResourceLastEdit rows and
+        the M2M links pointing at `obj` from other rows. The first two describe
+        `obj` itself and are in its organization; only the incoming links can
+        come from another organization's row, so those are checked against the
+        root's organization first.
         """
+        for relation in self._incoming_auto_m2m_relations(obj):
+            field = relation.field
+            links = field.remote_field.through._default_manager.using(self.using).filter(
+                **{f"{field.m2m_reverse_field_name()}_id": obj.pk}
+            )
+            self.org_guard.check_incoming_links(links, field.m2m_field_name(), field.model)
 
         models.Model.delete(
             obj,
@@ -170,10 +260,22 @@ class _DeleteContext:
         obj: models.Model,
     ):
         for relation in self._get_reverse_relations(obj):
+            if self._may_change_children(obj, relation):
+                self.org_guard.check_reverse_relation(obj, relation)
+
             children = self._get_related_objects(
                 obj,
                 relation,
             )
+
+            if self._is_reference_relation(relation):
+                owned_children, reference_children = self._split_owned_references(
+                    obj, relation, children
+                )
+                if owned_children is not None:
+                    self._batch_soft_delete_cascade(owned_children)
+                self._queue_reference_children(reference_children)
+                continue
 
             if self._is_soft_delete_cascade_relation(relation):
                 self._batch_soft_delete_cascade(children)
@@ -186,13 +288,31 @@ class _DeleteContext:
                     relation=relation,
                 )
 
+    @classmethod
+    def _may_change_children(cls, parent, relation) -> bool:
+        """
+        False when the delete never writes to the rows of `relation`: PROTECT
+        and RESTRICT only refuse, and a kept reference stays as it is (see
+        keeps_references). Their rows need no organization check.
+        """
+        on_delete = relation.field.remote_field.on_delete
+        if on_delete in (models.PROTECT, models.RESTRICT):
+            return False
+        return not cls._is_kept_reference(parent, on_delete)
+
+    @classmethod
+    def _is_kept_reference(cls, parent, on_delete) -> bool:
+        return keeps_references(type(parent)) and (
+            on_delete in (models.SET_NULL, models.SET_DEFAULT) or cls._is_set_callable(on_delete)
+        )
+
     @staticmethod
     def _get_reverse_relations(obj):
         """
         Yield every reverse FK/OneToOne relation of `obj`, including
-        hidden ones (related_name="+"). Hidden relations have no reverse
-        accessor, so _get_related_objects fetches their children through
-        a direct queryset filter instead of getattr(obj, accessor).
+        hidden ones (related_name="+"). _get_related_objects fetches the
+        children of every relation, hidden or not, with a direct queryset
+        filter, since hidden relations have no reverse accessor.
         """
         for relation in obj._meta.get_fields(include_hidden=True):
             if not relation.auto_created:
@@ -205,35 +325,87 @@ class _DeleteContext:
             if relation.many_to_many:
                 continue
 
+            # The hidden reverse FK of an auto-created M2M through table: its
+            # rows are M2M links, handled by _process_m2m_relations/finish().
+            if relation.related_model._meta.auto_created:
+                continue
+
             if not (relation.one_to_many or relation.one_to_one):
                 continue
 
             yield relation
 
-    @staticmethod
     def _get_related_objects(
+        self,
         obj,
         relation,
     ):
-        if relation.hidden:
-            queryset = relation.related_model._default_manager.filter(**{relation.field.name: obj})
+        """
+        Every row of `relation` that points at `obj`, binned rows included.
 
-            if relation.one_to_one:
-                return list(queryset[:1])
-
-            return queryset
-
-        accessor = relation.get_accessor_name()
+        Read through the unfiltered base manager, not the reverse accessor
+        (the active-only default manager): a binned row must still lose its
+        reference through SET_NULL/SET_DEFAULT/SET(...), or a restore brings
+        it back pointing at a deleted row. CASCADE children that are already
+        binned are marked visited and not walked into (see delete() and
+        _batch_soft_delete_cascade).
+        """
+        queryset = relation.related_model._base_manager.using(self.using).filter(
+            **{relation.field.name: obj}
+        )
 
         if relation.one_to_one:
-            try:
-                return [getattr(obj, accessor)]
-            except relation.related_model.DoesNotExist:
-                return []
+            return list(queryset[:1])
 
-        manager = getattr(obj, accessor)
+        return queryset
 
-        return manager.all()
+    # ==========================================================
+    # Reference links
+    # ==========================================================
+
+    @staticmethod
+    def _is_reference_relation(relation) -> bool:
+        """
+        True when the child only points at the row being deleted (a surface
+        using a tool) instead of belonging to it. Every field listed in
+        soft_delete_reference_fields must be a CASCADE FK.
+        """
+        reference_fields = getattr(relation.related_model, "soft_delete_reference_fields", ())
+        return relation.field.name in reference_fields
+
+    @staticmethod
+    def _split_owned_references(obj, relation, children):
+        """
+        Split the children of a reference relation into the rows that still
+        belong to `obj` (binned with it) and true references (removed for good).
+        A link model opts in with a `soft_delete_owned_references(field_name,
+        target)` classmethod returning a Q for its owned rows, or None.
+        """
+        owned_references = getattr(relation.related_model, "soft_delete_owned_references", None)
+        condition = owned_references(relation.field.name, obj) if owned_references else None
+        # A one-to-one reference comes back as a list; the hook doesn't apply there.
+        if condition is None or isinstance(children, list):
+            return None, children
+        return children.filter(condition), children.exclude(condition)
+
+    def _queue_reference_children(self, children):
+        for child in children:
+            self.reference_children[type(child)].add(child.pk)
+
+    def _hard_delete_reference_children(self):
+        """
+        Hard-delete the queued reference link rows. A row that was also
+        soft-deleted into this batch through its owner (an inline surface's
+        tool link, when one call reaches it through both its flow and its
+        tool) is kept, so it comes back when the owner is restored.
+        """
+        for model_class, pks in self.reference_children.items():
+            links = model_class._base_manager.using(self.using).filter(pk__in=pks)
+
+            if issubclass(model_class, SoftDeleteFields):
+                links = links.exclude(soft_delete_batch=self.batch)
+
+            links.delete()
 
     # ==========================================================
     # Relation-level CASCADE / SoftDeleteFields batching
@@ -285,7 +457,7 @@ class _DeleteContext:
         write goes out), and the visited-set guard is still applied per
         object, before it is touched at all, exactly as delete() does
         for the non-batched path. Only the terminal
-        is_soft_deleted/soft_deleted_at write is batched.
+        active/soft_deleted_at write is batched.
 
         Children are grouped by their actual class before the write:
         a single reverse relation is expected to yield children of one
@@ -305,14 +477,16 @@ class _DeleteContext:
 
             self.visited.add(key)
 
+            # Binned earlier on its own: skipped without descending, as in
+            # delete(). It keeps its batch and its subtree stays as it was.
+            if not child.active:
+                continue
+
             # Descend into this child's own reverse/M2M relations before
             # closing it off with the batched write below — identical
             # ordering to delete()'s single-object recursive path.
             self._process_reverse_relations(child)
             self._process_m2m_relations(child)
-
-            if child.is_soft_deleted:
-                continue
 
             pks_to_soft_delete_by_model[type(child)].append(child.pk)
 
@@ -322,10 +496,11 @@ class _DeleteContext:
             # which manager ends up being the model's default.
             model_class.all_objects.using(self.using).filter(
                 pk__in=pks_to_soft_delete,
-                is_soft_deleted=False,
+                active=True,
             ).update(
-                is_soft_deleted=True,
-                soft_deleted_at=timezone.now(),
+                active=False,
+                soft_deleted_at=self.deleted_at,
+                soft_delete_batch=self.batch,
             )
 
     # ==========================================================
@@ -350,6 +525,9 @@ class _DeleteContext:
 
         field = relation.field
         on_delete = field.remote_field.on_delete
+
+        if self._is_kept_reference(parent, on_delete):
+            return
 
         # ------------------------------------------------------
         # PROTECT / RESTRICT / SET_NULL / SET_DEFAULT
@@ -528,56 +706,58 @@ class _DeleteContext:
         obj: models.Model,
     ):
         """
-        M2M deletion only removes relationship rows.
+        Record the reverse auto-through M2M relations of `obj` for finish().
 
-        The other side of the M2M is NOT deleted.
+        `obj`'s own (forward) M2M links are left alone: they travel with it
+        into the recycle bin and come back on restore. Explicit through models
+        are real rows, walked by _process_reverse_relations instead.
         """
+        if keeps_references(type(obj)):
+            return
+        for relation in self._incoming_auto_m2m_relations(obj):
+            self.incoming_m2m[relation].append(obj.pk)
 
-        # Forward M2M fields.
-        for field in obj._meta.many_to_many:
-            self._clear_m2m(obj, field)
-
-        # Reverse M2M fields.
+    @staticmethod
+    def _incoming_auto_m2m_relations(obj: models.Model):
         for relation in obj._meta.get_fields(include_hidden=True):
-            if not relation.auto_created:
-                continue
+            if (
+                relation.auto_created
+                and relation.many_to_many
+                and relation.through._meta.auto_created
+            ):
+                yield relation
 
-            if not relation.many_to_many:
-                continue
+    def finish(self):
+        """
+        Run the writes that can only happen once the whole subtree is known:
+        only then can we tell which link rows belong to this batch.
+        """
+        self._clear_incoming_m2m()
+        self._hard_delete_reference_children()
 
-            self._clear_reverse_m2m(
-                obj,
-                relation,
+    def _clear_incoming_m2m(self):
+        """
+        Remove M2M links that point at a binned row from a live row outside
+        this batch, so live rows don't point into the recycle bin. One DELETE
+        per relation, whatever the batch size.
+
+        Kept: links from any binned row, which covers rows of this batch (e.g.
+        context links between tasks of one flow) and rows binned earlier on
+        their own; a restore of that row brings the link back.
+        """
+        for relation, target_pks in self.incoming_m2m.items():
+            field = relation.field
+            source_name = field.m2m_field_name()
+            links = field.remote_field.through._default_manager.using(self.using).filter(
+                **{f"{field.m2m_reverse_field_name()}_id__in": target_pks}
             )
-
-    @staticmethod
-    def _clear_m2m(
-        obj,
-        field,
-    ):
-        manager = getattr(
-            obj,
-            field.name,
-        )
-
-        manager.clear()
-
-    @staticmethod
-    def _clear_reverse_m2m(
-        obj,
-        relation,
-    ):
-        """
-        Remove reverse M2M rows without deleting
-        objects on the other side.
-        """
-
-        manager = getattr(
-            obj,
-            relation.get_accessor_name(),
-        )
-
-        manager.clear()
+            # finish() runs after every visited row is written, so a binned
+            # source here is inactive. A plain source has no bin: if it was in
+            # this delete it was hard-deleted, and its links went with it.
+            if issubclass(field.model, SoftDeleteFields):
+                links = links.exclude(**{f"{source_name}__active": False})
+            self.org_guard.check_incoming_links(links, source_name, field.model)
+            links.delete()
 
     # ==========================================================
     # Helpers

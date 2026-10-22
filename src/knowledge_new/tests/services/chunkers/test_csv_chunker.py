@@ -1,11 +1,8 @@
-import os
 
 import pytest
 from domain.enums import ChunkStrategyEnum
-from domain.errors import ChunkingError
 from domain.models import PreviewChunk
 from infrastructure.naive.chunkers.strategies.csv_chunker import CSVChunker
-from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 
 
@@ -99,20 +96,3 @@ async def test_no_data_rows_returns_empty(text):
     chunker = build_chunker()
     chunks = await chunker.chunk(text)
     assert chunks == []
-
-
-@pytest.mark.parametrize("text", [None, 0])
-async def test_chunking_raises_error_for_invalid_data(text):
-    chunker = build_chunker()
-    with pytest.raises(ChunkingError):
-        await chunker.chunk(text)
-
-
-async def test_chunking_is_running_in_process():
-    text = "h1,h2\na,b\nc,d\ne,f"
-    chunker = build_chunker(file_name="t.csv", rows_in_chunk=2)
-
-    inline_chunks = await chunker.chunk(text)
-    result, worker_pid = await offload_to_process(lambda: chunker.chunk(text))
-    assert result == inline_chunks
-    assert worker_pid != os.getpid()

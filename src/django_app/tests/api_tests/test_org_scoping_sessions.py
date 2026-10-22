@@ -186,13 +186,16 @@ def test_bulk_delete_excludes_other_org_sessions(admin_client_a, org_a, org_b):
 
 
 @pytest.mark.django_db
-def test_bulk_delete_fires_pre_delete_signal_per_session(admin_client_a, org_a):
+def test_bulk_delete_fires_pre_delete_signal_per_session(
+    admin_client_a, org_a, django_capture_on_commit_callbacks
+):
     s1 = _make_session(org_a, "flow 1")
     s2 = _make_session(org_a, "flow 2")
 
+    # The pre_delete receiver defers stop_session until the delete commits.
     with patch(
         "tables.signals.session_signals.SessionManagerService.stop_session"
-    ) as mock_stop_session:
+    ) as mock_stop_session, django_capture_on_commit_callbacks(execute=True):
         resp = admin_client_a.post(
             "/api/sessions/bulk_delete/", {"ids": [s1.id, s2.id]}, format="json"
         )
@@ -214,3 +217,35 @@ def test_session_export_requires_export_permission(
     assert member_client_a.get(f"/api/sessions/{session.id}/export/").status_code == 403
     # Org Admin does.
     assert admin_client_a.get(f"/api/sessions/{session.id}/export/").status_code == 200
+
+
+# ---- stop ----
+
+
+@pytest.mark.django_db
+def test_stop_session_publishes_stop_and_keeps_status(member_client_a, org_a):
+    session = _make_session(org_a, "running flow")
+
+    with patch(
+        "tables.services.session_manager_service.SessionManagerService.stop_session",
+        return_value=1,
+    ) as mock_stop_session:
+        resp = member_client_a.post(f"/api/sessions/{session.id}/stop/")
+
+    assert resp.status_code == 204
+    mock_stop_session.assert_called_once_with(session_id=session.id)
+    session.refresh_from_db()
+    assert session.status == Session.SessionStatus.PENDING
+
+
+@pytest.mark.django_db
+def test_stop_session_cross_org_returns_404_and_publishes_nothing(member_client_a, org_b):
+    session = _make_session(org_b, "other org flow")
+
+    with patch(
+        "tables.services.session_manager_service.SessionManagerService.stop_session"
+    ) as mock_stop_session:
+        resp = member_client_a.post(f"/api/sessions/{session.id}/stop/")
+
+    assert resp.status_code == 404
+    mock_stop_session.assert_not_called()

@@ -23,7 +23,7 @@ def default_org(db):
 def agent_definition(default_org):
     """Dependency target for the AgentNode/TaskNode versioning tests."""
     return AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="versioned-agent",
         description="agent used by the versioning tests",
         instruction_list=[{"name": "Instruction_1.md", "content": "be brief"}],

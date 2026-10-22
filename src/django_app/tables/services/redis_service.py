@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import json
-import os
 from threading import Lock
 
 import redis
@@ -16,8 +15,11 @@ from src.shared.models import (
     RealtimeAgentChatData,
     SessionData,
     StopSessionMessage,
+    StorageCredentials,
 )
+from src.shared.redis_keys import session_messages_channel
 from tables.services.secrets import secret_resolver
+from tables.utils.base64_preview import trim_base64_file_data
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -75,10 +77,26 @@ class RedisService(metaclass=SingletonMeta):
             self._initialize_async()
         return self._async_redis_client
 
-    def publish_session_data(self, *, session_data: SessionData, org_id: int) -> int:
-        # Resolve here, not upstream: the caller's object is what gets persisted
-        # to Session.graph_schema, so plaintext must exist only on this copy.
+    def publish_session_data(
+        self,
+        *,
+        session_data: SessionData,
+        org_id: int,
+        storage_credentials: StorageCredentials | None = None,
+    ) -> int:
+        """Publish session data to crew, with every secret resolved on a copy.
+
+        The caller's `session_data` is what gets persisted to `Session.graph_schema`,
+        so neither resolved plaintext nor `storage_credentials` may touch it:
+        `resolve_payload` returns a deep copy and both live only on that copy.
+
+        `storage_credentials` is authoritative and unconditionally overwrites
+        whatever the copy carries -- `session_data.storage_credentials` is never
+        read here, by design (it must never reach the original object at all).
+        """
         resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
+        resolved.storage_credentials = storage_credentials
+
         return self.redis_client.publish(
             settings.SESSION_SCHEMA_CHANNEL,
             resolved.model_dump_json(),
@@ -142,9 +160,6 @@ class RedisService(metaclass=SingletonMeta):
             settings.REALTIME_AGENTS_SCHEMA_CHANNEL, resolved.model_dump_json()
         )
         logger.info("Sent realtime agent chat to: realtime_agents:schema.")
-        # Deliberately dumps the UNRESOLVED original: logging `resolved` would
-        # write plaintext credentials into the log stream.
-        logger.debug(f"Schema: {rt_agent_chat_data.model_dump()}.")
 
     def publish_channel_invalidation(self, token) -> None:
         """Tell the `realtime` service to drop its cached
@@ -163,32 +178,24 @@ class RedisService(metaclass=SingletonMeta):
             token,
         )
 
-    def publish_user_graph_message(self, session_id: int, uuid: str, data: dict) -> None:
-        channel = os.environ.get("GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update")
+    def publish_user_graph_message(self, session_id: int, data: dict) -> None:
+        """Send a stored user-created graph message to the session's SSE streams.
 
-        message = {
-            "uuid": str(uuid),
-            "session_id": session_id,
-        }
-
-        self.redis_client.setex(
-            name=f"graph:message:{session_id}:{uuid}",
-            time=60,
-            value=json.dumps(data),
+        The message must already be in the database: a stream that connects later
+        replays it from there.
+        """
+        self.redis_client.publish(
+            channel=session_messages_channel(session_id),
+            message=json.dumps(trim_base64_file_data(data)),
         )
-
-        self.redis_client.publish(channel=channel, message=json.dumps(message))
-        logger.info(
-            f"Cached for saving graph message data created by user unput: {uuid} in {session_id=}."
-        )
+        logger.info("Published user graph message {} of session {}", data.get("uuid"), session_id)
 
     async def redis_get_message(self, channels: list, pubsub):
         try:
             async for message in pubsub.listen():
                 if message["type"] == "message":
-                    logger.debug(f"message from redis_get_message {message['data']}")
+                    logger.debug("message from redis_get_message {}", message["data"])
                     yield message
-                    await asyncio.sleep(0.01)
 
         except Exception as e:
             # TODO: fix reconection logic

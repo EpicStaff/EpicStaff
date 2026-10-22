@@ -1,1 +1,11 @@
 $breakpoint-shortcuts: 1200px;
+
+// Phones. The same width as `BREAKPOINTS.phone` in `app/core/constants/breakpoints.ts`, which switches the layouts
+// themselves from TypeScript; keep the two equal.
+$breakpoint-phone: 767.98px;
+
+@mixin phone {
+    @media (max-width: $breakpoint-phone) {
+        @content;
+    }
+}

@@ -18,6 +18,7 @@ const ALL_RUN_TYPES: SessionRunType[] = ['test', 'live'];
                 min-width: unset !important;
                 width: auto !important;
                 justify-content: flex-start !important;
+                font: inherit !important;
             }
             :host .dropdown-panel {
                 z-index: 9999 !important;

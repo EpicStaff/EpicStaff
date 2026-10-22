@@ -98,7 +98,6 @@ FLOW_EXPORT = {
                     "node_type": "DecisionTableNode",
                 },
             ],
-            "conditional_edge_list": [],
         }
     ],
     "main_entity": "Flow",
@@ -129,14 +128,13 @@ FLOW_WITH_CLASSIFICATION_NODE_EXPORT = {
                     "node_type": "ClassificationDecisionTableNode",
                 },
             ],
-            "conditional_edge_list": [],
         }
     ],
     "main_entity": "Flow",
     "version": 2,
 }
 
-FLOW_WITH_CONDITIONAL_EDGE_EXPORT = {
+LEGACY_FLOW_WITH_CONDITIONAL_EDGE_EXPORT = {
     "Flow": [
         {
             "id": 4,
@@ -177,7 +175,6 @@ FLOW_WITH_NESTED_PYTHON_TOOL_EXPORT = {
                     "node_type": "PythonNode",
                 }
             ],
-            "conditional_edge_list": [],
         }
     ],
     "PythonCodeTool": [
@@ -278,6 +275,74 @@ class TestInspectServiceFlowNodes:
         result = InspectService().inspect(FLOW_EXPORT)
         assert len(result["review_items"]) == 2
 
+    def test_nodes_sharing_a_name_are_told_apart_by_file_node_id(self):
+        python_code = {
+            "code": "def main(): return {}",
+            "libraries": "",
+            "entrypoint": "main",
+            "global_kwargs": {},
+        }
+        data = {
+            "Flow": [
+                {
+                    "id": 1,
+                    "name": "duplicate_names",
+                    "nodes": [
+                        {
+                            "id": 31,
+                            "python_code": python_code,
+                            "node_name": "Python Node",
+                            "node_type": "PythonNode",
+                        },
+                        {
+                            "id": 58,
+                            "python_code": python_code,
+                            "node_name": "Python Node",
+                            "node_type": "PythonNode",
+                        },
+                    ],
+                }
+            ],
+            "main_entity": "Flow",
+            "version": 2,
+        }
+
+        items = InspectService().inspect(data)["review_items"]
+
+        assert [item["node_name"] for item in items] == ["Python Node", "Python Node"]
+        assert [item["node_id"] for item in items] == [31, 58]
+
+    @pytest.mark.parametrize("file_id", ["31", True, False, 31.0, None])
+    def test_node_id_is_none_when_file_id_is_not_an_integer(self, file_id):
+        data = {
+            "Flow": [
+                {
+                    "id": 1,
+                    "name": "hand_made",
+                    "nodes": [
+                        {
+                            "id": file_id,
+                            "python_code": {
+                                "code": "def main(): return {}",
+                                "libraries": "",
+                                "entrypoint": "main",
+                                "global_kwargs": {},
+                            },
+                            "node_name": "Python Node",
+                            "node_type": "PythonNode",
+                        },
+                    ],
+                }
+            ],
+            "main_entity": "Flow",
+            "version": 2,
+        }
+
+        items = InspectService().inspect(data)["review_items"]
+
+        assert len(items) == 1
+        assert items[0]["node_id"] is None
+
 
 class TestInspectServiceClassificationNode:
     def test_classification_node_carries_both_code_keys(self):
@@ -292,16 +357,11 @@ class TestInspectServiceClassificationNode:
         assert item["post_python_code"]["code"] == "def post(): return {}"
 
 
-class TestInspectServiceConditionalEdge:
-    def test_conditional_edge_surfaced(self):
-        result = InspectService().inspect(FLOW_WITH_CONDITIONAL_EDGE_EXPORT)
-        assert len(result["review_items"]) == 1
-        item = result["review_items"][0]
-        assert item["kind"] == "flow_node"
-        assert item["node_type"] == "ConditionalEdge"
-        assert item["node_name"] is None
-        assert item["flow_name"] == "conditional_flow"
-        assert "python_code" in item
+class TestInspectServiceLegacyConditionalEdge:
+    def test_conditional_edge_code_is_not_surfaced(self):
+        """Import discards conditional edges, so their code never runs and is not reviewed."""
+        result = InspectService().inspect(LEGACY_FLOW_WITH_CONDITIONAL_EDGE_EXPORT)
+        assert result["review_items"] == []
 
 
 class TestInspectServiceNestedEntities:
@@ -324,7 +384,7 @@ class TestInspectServiceNestedEntities:
 class TestInspectServiceEdgeCases:
     def test_empty_flow_returns_empty_list(self):
         data = {
-            "Flow": [{"id": 1, "name": "empty", "nodes": [], "conditional_edge_list": []}],
+            "Flow": [{"id": 1, "name": "empty", "nodes": []}],
             "main_entity": "Flow",
             "version": 2,
         }

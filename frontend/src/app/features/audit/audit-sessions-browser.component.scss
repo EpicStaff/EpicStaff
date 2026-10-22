@@ -1,5 +1,3 @@
-$panel-width: 480px;
-
 .audit-browser {
     display: flex;
     flex-direction: column;
@@ -39,21 +37,32 @@ $panel-width: 480px;
 }
 
 .audit-browser__panel {
-    flex: 0 0 $panel-width;
+    position: relative;
+    // the basis is bound to the user-resizable width
+    flex: 0 0 auto;
+    // without it a long unbreakable chip or value widens the panel past its width
+    min-width: 0;
     min-height: 0;
     border-left: 1px solid var(--color-divider-regular);
     background-color: var(--color-sidenav-background);
+}
+
+// the panel sits on the right, so its resize handle goes on its left edge
+.audit-browser__panel-handle {
+    right: auto;
+    left: 0;
+}
+
+.audit-browser__viewer {
+    position: absolute;
+    inset: 0;
 }
 
 .audit-browser__toolbar {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 0 20px 12px;
-}
-
-.audit-browser__toolbar--panel-open {
-    padding-right: calc(#{$panel-width} + 21px);
+    padding: 12px 20px;
 }
 
 .audit-browser__search {
@@ -65,6 +74,12 @@ $panel-width: 480px;
     background-color: var(--color-input-background);
     color: var(--color-text-primary);
     font-size: 13px;
+    transition: border-color 0.2s ease;
+
+    &:focus {
+        outline: none;
+        border-color: var(--accent-color);
+    }
 
     &::placeholder {
         color: var(--color-input-text-placeholder);
@@ -81,9 +96,9 @@ $panel-width: 480px;
     gap: 6px;
     height: 30px;
     padding: 0 12px;
-    border: 1px solid transparent;
+    border: 1px solid var(--color-ks-line);
     border-radius: 6px;
-    background-color: var(--color-secondary-btn-background);
+    background-color: transparent;
     color: var(--color-text-primary);
     font-size: 13px;
     cursor: pointer;
@@ -102,18 +117,8 @@ $panel-width: 480px;
     }
 }
 
-.audit-browser__filter-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    border-radius: 9px;
-    background-color: var(--accent-color);
-    color: var(--color-text-primary);
-    font-size: 11px;
-    line-height: 1;
+.audit-browser__filter-count {
+    color: var(--accent-color);
 }
 
 .audit-browser__subbar {
@@ -140,6 +145,7 @@ $panel-width: 480px;
     flex: 1;
     min-height: 0;
     overflow: auto;
+    border-top: 1px solid var(--color-divider-regular);
 }
 
 .audit-browser__state {
@@ -152,8 +158,8 @@ $panel-width: 480px;
 }
 
 .audit-table {
-    width: 100%;
-    min-width: 1400px;
+    // the width itself is bound to the column total; this only fills a viewport wider than the columns
+    min-width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
 
@@ -174,12 +180,27 @@ $panel-width: 480px;
         top: 0;
         z-index: 1;
         background-color: var(--color-sidenav-background);
-        color: var(--color-text-secondary);
+        color: var(--color-text-primary);
         font-weight: 500;
     }
 
     tbody tr:hover {
         background-color: var(--color-ghost-btn-hover);
+    }
+}
+
+.audit-table__resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    // keeps a touch drag resizing instead of scrolling the table
+    touch-action: none;
+
+    &:hover {
+        box-shadow: inset -2px 0 0 var(--accent-color);
     }
 }
 
@@ -209,7 +230,7 @@ $panel-width: 480px;
     position: absolute;
     top: 0;
     bottom: 0;
-    left: 12px;
+    left: 4px;
     display: flex;
     pointer-events: none;
 
@@ -222,7 +243,7 @@ $panel-width: 480px;
 .audit-tree__elbow,
 .audit-tree__node {
     position: relative;
-    flex: 0 0 22px;
+    flex: 0 0 14px;
 }
 
 .audit-tree__rail--line::before {
@@ -238,7 +259,7 @@ $panel-width: 480px;
     content: '';
     position: absolute;
     top: 0;
-    bottom: calc(50% + 8px);
+    bottom: calc(50% + 5px);
     left: 50%;
     border-left: 1px solid var(--audit-tree-color);
 }
@@ -246,12 +267,12 @@ $panel-width: 480px;
 .audit-tree__elbow::after {
     content: '';
     position: absolute;
-    top: calc(50% - 8px);
+    top: calc(50% - 5px);
     right: 0;
     bottom: 50%;
     left: 50%;
     border-bottom: 1px solid var(--audit-tree-color);
-    border-bottom-left-radius: 8px;
+    border-bottom-left-radius: 5px;
     border-left: 1px solid var(--audit-tree-color);
 }
 
@@ -268,6 +289,26 @@ $panel-width: 480px;
     border-left: 1px solid var(--audit-tree-color);
 }
 
+.audit-value-cell {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    white-space: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+
+    &:focus-visible,
+    &.is-viewed {
+        outline: 1px solid var(--accent-color);
+    }
+}
+
 .audit-table__date {
     color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
@@ -282,34 +323,23 @@ $panel-width: 480px;
     padding: 1px 6px;
     border-radius: 4px;
     background-color: var(--color-secondary-btn-background);
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
     font-size: 11px;
     white-space: nowrap;
 }
 
-.audit-row--session {
-    background-color: var(--color-flow-card-bg);
-
-    .audit-kind {
-        color: var(--color-text-primary);
-        border: 1px solid var(--color-divider-regular);
-    }
+.audit-row--node {
+    background-color: var(--color-ks-transparent-black-28);
 }
 
-.audit-row--node .audit-kind {
-    color: var(--color-nodes-flow-link);
-}
-
-.audit-row--matched td.audit-table__kind {
-    box-shadow: inset 2px 0 0 var(--accent-color);
-}
-
-.audit-row--context td:not(.audit-table__gutter) {
-    opacity: 0.55;
+.audit-row--event {
+    background-color: var(--color-ks-transparent-black-60);
 }
 
 .audit-status {
-    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .audit-status--completed {
@@ -344,7 +374,6 @@ $panel-width: 480px;
     margin-right: 4px;
 }
 
-.audit-pager__step,
 .audit-pager__nav {
     height: 26px;
     min-width: 26px;
@@ -376,9 +405,7 @@ $panel-width: 480px;
 }
 
 .audit-pager__size {
-    min-width: 28px;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
+    width: 110px;
 }
 
 .audit-summary {
@@ -403,8 +430,8 @@ $panel-width: 480px;
     top: 50%;
     left: 50%;
     display: flex;
-    width: 15px;
-    height: 15px;
+    width: 12px;
+    height: 12px;
     align-items: center;
     justify-content: center;
     transform: translate(-50%, -50%);

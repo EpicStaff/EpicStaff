@@ -40,7 +40,6 @@ from .graph_nodes import (
     AudioTranscriptionNodeData,
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
-    ConditionalEdgeData,
     ConditionData,
     ConditionGroupData,
     DecisionTableNodeData,
@@ -92,8 +91,10 @@ from .knowledge_new import (
     PrechunkResponse,
     PreviewChunk,
     SearchConfig,
+    SearchOutcome,
     SearchRequest,
     SearchResponse,
+    SearchUsage,
 )
 from .sessions import (
     GraphSessionMessageData,
@@ -104,6 +105,10 @@ from .sessions import (
     StorageMutationEvent,
     TokenUsage,
     WebhookEventData,
+)
+from .storage_scope import (
+    StorageCredentials,
+    StorageScopedData,
 )
 from .surfaces import (
     CombinedSurfaceData,
@@ -188,7 +193,6 @@ __all__ = [
     "CombinedSurfaceStorageItemData",
     "ConditionData",
     "ConditionGroupData",
-    "ConditionalEdgeData",
     "ContextAttachment",
     "DecisionTableNodeData",
     "EdgeData",
@@ -249,15 +253,19 @@ __all__ = [
     "ScheduleTriggerNodeUpdateMessage",
     "SearchConfig",
     "SearchConfigEntry",
+    "SearchOutcome",
     "SearchRequest",
     "SearchResponse",
+    "SearchUsage",
     "SessionAuditEvent",
     # sessions
     "SessionData",
     "StopSessionMessage",
     "StorageAccessLiteral",
+    "StorageCredentials",
     "StorageMutation",
     "StorageMutationEvent",
+    "StorageScopedData",
     "StringNestedVariable",
     "StringVariable",
     "SubGraphData",

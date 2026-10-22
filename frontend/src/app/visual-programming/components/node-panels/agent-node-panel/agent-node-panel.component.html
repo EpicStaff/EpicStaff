@@ -21,7 +21,7 @@
                             <app-custom-input
                                 label="Node Name"
                                 [required]="true"
-                                tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
+                                tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
                                 formControlName="node_name"
                                 placeholder="Enter node name"
                                 [activeColor]="activeColor"
@@ -251,7 +251,7 @@
                                     >
                                         <app-svg-icon
                                             icon="editor-expand"
-                                            size="0.85rem"
+                                            size="0.875rem"
                                         />
                                     </button>
                                 </div>
@@ -282,7 +282,7 @@
                         <app-custom-input
                             label="Node Name"
                             [required]="true"
-                            tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
+                            tooltipText="A label for this node. Names may repeat — the #N under the name identifies the node."
                             formControlName="node_name"
                             placeholder="Enter node name"
                             [activeColor]="activeColor"

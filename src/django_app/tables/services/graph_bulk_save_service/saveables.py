@@ -1,4 +1,14 @@
-from tables.exceptions import SectionIdConflictError, SectionNotFoundError
+from tables.constants.decision_table_constants import (
+    CONDITION_GROUP_INPUT_FIELDS,
+    CONDITION_INPUT_FIELDS,
+)
+from tables.exceptions import (
+    BulkSaveValidationError,
+    NodeChildValidationError,
+    SectionIdConflictError,
+    SectionNotFoundError,
+)
+from tables.models.base_models import NumberedNode
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationConditionGroupSection,
@@ -6,6 +16,11 @@ from tables.models.graph_models import (
     Condition,
     ConditionGroup,
     DecisionTableNode,
+)
+from tables.services.classification_decision_table_node_children import (
+    CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS,
+    CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS,
+    resolve_group_prompt,
 )
 from tables.services.graph_bulk_save_service.data_types import NodeRef
 from tables.services.rag_assignment_service import SearchConfigService
@@ -25,6 +40,7 @@ _WIRE_ONLY_FIELDS: frozenset[str] = frozenset(
         "default_next_node_temp_id",
         "next_error_node_temp_id",
         "next_node_temp_id",
+        "node_number_hint",
     }
 )
 
@@ -45,16 +61,31 @@ class _SerializerSaveable:
     in debug and production modes.
 
     Returns the saved model instance so callers can register temp_id mappings.
+
+    Node saveables with nested rows subclass it and write the node row through
+    super().save(), so every node type honours assigned_node_number on create.
     """
 
     def __init__(self, serializer):
-        self._s = serializer
+        self._serializer = serializer
+        # Set by the service before the write; None lets the model mint its own number.
+        self.assigned_node_number: int | None = None
+
+    @property
+    def is_create(self) -> bool:
+        return self._serializer.instance is None
+
+    @property
+    def node_number_hint(self) -> int | None:
+        return self._serializer.validated_data.get("node_number_hint")
 
     def save(self):
-        s = self._s
+        s = self._serializer
         validated = dict(s.validated_data)
         _clean_for_write(validated)
         if s.instance is None:
+            if self.assigned_node_number is not None:
+                validated["node_number"] = self.assigned_node_number
             return s.create(validated)
         return s.update(s.instance, validated)
 
@@ -180,7 +211,7 @@ class _ClassificationDecisionTableNodeRefsSaveable:
                 )
 
 
-class DecisionTableNodeSaveable:
+class DecisionTableNodeSaveable(_SerializerSaveable):
     """
     Wraps a validated DecisionTableNodeBulkSerializer and its condition_groups data.
 
@@ -201,16 +232,13 @@ class DecisionTableNodeSaveable:
         deferred_refs_saveable=None,
         instance=None,
     ):
-        self._serializer = serializer
+        super().__init__(serializer)
         self._condition_groups_data = condition_groups_data
         self._deferred = deferred_refs_saveable  # _DecisionTableNodeRefsSaveable | None
         self._instance = instance
 
     def save(self):
-        s = self._serializer
-        validated = dict(s.validated_data)
-        _clean_for_write(validated)
-        node = s.create(validated) if s.instance is None else s.update(s.instance, validated)
+        node = super().save()
 
         if self._instance is not None:
             Condition.objects.filter(condition_group__decision_table_node=node).delete()
@@ -230,29 +258,17 @@ class DecisionTableNodeSaveable:
 
         return node
 
-    _GROUP_EXCLUDED_FIELDS = frozenset(
-        {
-            "conditions",
-            "decision_table_node",
-            "id",
-            # Wire-only routing hint; never a DB model field.
-            "next_node_temp_id",
-        }
-    )
-    _CONDITION_EXCLUDED_FIELDS = frozenset({"condition_group", "id"})
-
     @staticmethod
     def _create_condition_groups(node, groups_data: list[dict]) -> list:
         """Create ConditionGroup and Condition records. Returns the created groups list."""
         groups_to_create = []
         conditions_map = []
 
-        excluded_group = DecisionTableNodeSaveable._GROUP_EXCLUDED_FIELDS
-        excluded_cond = DecisionTableNodeSaveable._CONDITION_EXCLUDED_FIELDS
-
         for group_data in groups_data:
-            group_copy = {k: v for k, v in group_data.items() if k not in excluded_group}
-            groups_to_create.append(ConditionGroup(decision_table_node=node, **group_copy))
+            group_fields = {
+                k: v for k, v in group_data.items() if k in CONDITION_GROUP_INPUT_FIELDS
+            }
+            groups_to_create.append(ConditionGroup(decision_table_node=node, **group_fields))
             conditions_map.append(group_data.get("conditions", []))
 
         created_groups = ConditionGroup.objects.bulk_create(groups_to_create)
@@ -260,8 +276,10 @@ class DecisionTableNodeSaveable:
         conditions_to_create = []
         for group, conditions_data in zip(created_groups, conditions_map, strict=False):
             for cond_data in conditions_data:
-                cond_copy = {k: v for k, v in cond_data.items() if k not in excluded_cond}
-                conditions_to_create.append(Condition(condition_group=group, **cond_copy))
+                condition_fields = {
+                    k: v for k, v in cond_data.items() if k in CONDITION_INPUT_FIELDS
+                }
+                conditions_to_create.append(Condition(condition_group=group, **condition_fields))
 
         if conditions_to_create:
             Condition.objects.bulk_create(conditions_to_create)
@@ -269,7 +287,7 @@ class DecisionTableNodeSaveable:
         return created_groups
 
 
-class ClassificationDecisionTableNodeSaveable:
+class ClassificationDecisionTableNodeSaveable(_SerializerSaveable):
     """
     Wraps a validated ClassificationDecisionTableNodeBulkSerializer and its condition_groups data.
     On update, deletes old ClassificationConditionGroup records and bulk_creates new ones.
@@ -283,7 +301,7 @@ class ClassificationDecisionTableNodeSaveable:
         deferred_refs_saveable=None,
         instance=None,
     ):
-        self._serializer = serializer
+        super().__init__(serializer)
         self._condition_groups_data = condition_groups_data
         self._sections_data = sections_data
         self._deferred = (
@@ -291,27 +309,9 @@ class ClassificationDecisionTableNodeSaveable:
         )
         self._instance = instance
 
-    _GROUP_EXCLUDED_FIELDS = frozenset(
-        {
-            "id",
-            "classification_decision_table_node",
-            "next_node_temp_id",
-            # Prompt reference forms — resolved to the `prompt` FK below (by
-            # prompt_key, or numeric pk fallback); never written as columns.
-            "prompt",
-            "prompt_key",
-            # section id is resolved to the `section` FK below; never written as-is.
-            "section",
-        }
-    )
-
     def save(self):
-        s = self._serializer
-        validated = dict(s.validated_data)
-        _clean_for_write(validated)
-
-        node = s.create(validated) if s.instance is None else s.update(s.instance, validated)
-        # NOTE: s.update() now upserts prompt_configs by prompt_key (stable IDs).
+        node = super().save()
+        # NOTE: the serializer's update upserts prompt_configs by prompt_key (stable IDs).
 
         if self._deferred is not None:
             self._deferred.set_node_id(node.id)
@@ -323,7 +323,8 @@ class ClassificationDecisionTableNodeSaveable:
             incoming_section_ids = {s["id"] for s in self._sections_data}
             node.sections.exclude(id__in=incoming_section_ids).delete()
             for section_data in self._sections_data:
-                existing_section = ClassificationConditionGroupSection.objects.filter(
+                # all_objects: a soft-deleted section's id still occupies the primary key.
+                existing_section = ClassificationConditionGroupSection.all_objects.filter(
                     id=section_data["id"]
                 ).first()
                 if (
@@ -346,7 +347,7 @@ class ClassificationDecisionTableNodeSaveable:
         if self._condition_groups_data is not None:
             # Build prompt map keyed by old prompt ID → new prompt instance,
             # using prompt_key as the stable bridge.
-            # After s.update() the prompts are upserted, so their IDs are stable
+            # The serializer's update upserts the prompts, so their IDs are stable
             # across saves. We still need to map the frontend's integer prompt PK
             # to the current DB instance in case this is a newly-created node.
             node_prompts = list(node.prompt_configs.all())
@@ -373,7 +374,6 @@ class ClassificationDecisionTableNodeSaveable:
                     group_name__in=incoming_names
                 ).delete()
 
-            excluded = self._GROUP_EXCLUDED_FIELDS
             # ordered_groups preserves input order for deferred ref resolution.
             ordered_groups: list = [None] * len(self._condition_groups_data)
             to_bulk_create: list[tuple[int, ClassificationConditionGroup]] = []
@@ -389,16 +389,22 @@ class ClassificationDecisionTableNodeSaveable:
                         existing_by_name[g.group_name] = g
 
             for idx, group_data in enumerate(self._condition_groups_data):
-                gd = {k: v for k, v in group_data.items() if k not in excluded}
+                gd = {
+                    k: v
+                    for k, v in group_data.items()
+                    if k in CLASSIFICATION_CONDITION_GROUP_INPUT_FIELDS
+                }
 
-                # Resolve the prompt FK node-locally: prefer prompt_key (works for
-                # a prompt created in this same payload), fall back to numeric pk.
-                key = group_data.get("prompt_key")
-                old_prompt_id = group_data.get("prompt")
-                if key:
-                    gd["prompt"] = prompt_by_key.get(key)
-                elif old_prompt_id is not None:
-                    gd["prompt"] = prompt_by_id.get(old_prompt_id)
+                # `prompt` and `section` are never input columns; both resolve among
+                # this node's own rows. The raw request dict carries the numeric
+                # prompt pk under `prompt` (the single-node serializer maps it to
+                # `prompt_id`).
+                gd["prompt"] = resolve_group_prompt(
+                    group_data.get("prompt_key"),
+                    group_data.get("prompt"),
+                    prompt_by_key,
+                    prompt_by_id,
+                )
 
                 # Resolve the section FK node-locally, mirroring the prompt
                 # resolution above: the section may have just been created in
@@ -431,20 +437,7 @@ class ClassificationDecisionTableNodeSaveable:
 
             if to_bulk_update:
                 ClassificationConditionGroup.objects.bulk_update(
-                    to_bulk_update,
-                    [
-                        "group_name",
-                        "order",
-                        "expression",
-                        "prompt",
-                        "manipulation",
-                        "continue_flag",
-                        "next_node_id",
-                        "dock_visible",
-                        "field_expressions",
-                        "field_manipulations",
-                        "section",
-                    ],
+                    to_bulk_update, CLASSIFICATION_CONDITION_GROUP_UPDATE_FIELDS
                 )
 
             if to_bulk_create:
@@ -462,7 +455,7 @@ class ClassificationDecisionTableNodeSaveable:
         return node
 
 
-class KnowledgeNodeSaveable:
+class KnowledgeNodeSaveable(_SerializerSaveable):
     """Wraps a validated KnowledgeNodeBulkSerializer plus the node's already
     validated nested search_configs (validated by the factory via
     NestedSearchConfigSerializer). Config rows are reverse OneToOne relations, not
@@ -471,16 +464,13 @@ class KnowledgeNodeSaveable:
     """
 
     def __init__(self, serializer, search_configs, instance=None):
-        self._serializer = serializer
+        super().__init__(serializer)
         self._search_configs = search_configs
         self._instance = instance
 
     def save(self):
-        s = self._serializer
-        KnowledgeNodeValidator().validate_serializer(s)
-        validated = dict(s.validated_data)
-        _clean_for_write(validated)
-        node = s.create(validated) if s.instance is None else s.update(s.instance, validated)
+        KnowledgeNodeValidator().validate_serializer(self._serializer)
+        node = super().save()
 
         if self._search_configs:
             SearchConfigService.apply_node_search_configs(node, self._search_configs)
@@ -494,14 +484,58 @@ class _NodeSaveable:
 
     After the inner save(), if temp_id is set the real DB id is registered
     in the shared temp_id_map so edge saveables can resolve it.
+
+    list_key and index locate the item in the request, so an error that can
+    only be detected while writing is reported like a Pass 1 item error.
+
+    model_class is the registry's model for the list, because not every node
+    serializer is a ModelSerializer that could name it.
     """
 
-    def __init__(self, inner, temp_id: str | None):
+    def __init__(
+        self,
+        inner: _SerializerSaveable,
+        temp_id: str | None,
+        list_key: str,
+        index: int,
+        model_class: type,
+    ):
         self._inner = inner
         self._temp_id = temp_id
+        self._list_key = list_key
+        self._index = index
+        self._model_class = model_class
+
+    @property
+    def is_create(self) -> bool:
+        return self._inner.is_create
+
+    @property
+    def is_numbered(self) -> bool:
+        return issubclass(self._model_class, NumberedNode)
+
+    @property
+    def node_number_hint(self) -> int | None:
+        return self._inner.node_number_hint
+
+    @property
+    def assigned_node_number(self) -> int | None:
+        return self._inner.assigned_node_number
+
+    @assigned_node_number.setter
+    def assigned_node_number(self, number: int) -> None:
+        self._inner.assigned_node_number = number
 
     def save(self, temp_id_map: dict):
-        instance = self._inner.save()
+        try:
+            instance = self._inner.save()
+        except NodeChildValidationError as exc:
+            # Nested child rows (e.g. a group's prompt or section) resolve against
+            # rows synced by this same save, so they cannot be checked before the
+            # write. Raising rolls the whole save back.
+            raise BulkSaveValidationError(
+                {self._list_key: [{"index": self._index, "errors": [str(exc.detail)]}]}
+            ) from exc
         if self._temp_id and instance is not None:
             temp_id_map[self._temp_id] = instance.id
 
@@ -533,37 +567,6 @@ class _EdgeSaveable:
         )
         validated["end_node_id"] = (
             temp_id_map[str(self._end_ref.value)] if self._end_ref.is_temp else self._end_ref.value
-        )
-
-        if self._instance is None:
-            s.create(validated)
-        else:
-            s.update(self._instance, validated)
-
-
-class _ConditionalEdgeSaveable:
-    """
-    Wraps a validated ConditionalEdgeBulkSerializer and the parsed source ref.
-
-    If source_temp_id was provided, it is resolved from temp_id_map at write time.
-    """
-
-    def __init__(self, serializer, source_ref: NodeRef, instance=None):
-        self._s = serializer
-        self._source_ref = source_ref
-        self._instance = instance
-
-    def resolve_and_save(self, temp_id_map: dict):
-        s = self._s
-        validated = dict(s.validated_data)
-
-        _clean_for_write(validated)
-        validated.pop("source_temp_id", None)
-
-        validated["source_node_id"] = (
-            temp_id_map[str(self._source_ref.value)]
-            if self._source_ref.is_temp
-            else self._source_ref.value
         )
 
         if self._instance is None:

@@ -1,26 +1,149 @@
 import { NodeType } from '@shared/models';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
-import { AgentNode } from '../../core/models/agent-node.model';
+import { AgentNode, AgentNodeTaskUi } from '../../core/models/agent-node.model';
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../core/models/classification-decision-table-node.model';
 import { ConditionGroup } from '../../core/models/decision-table.model';
 import { FlowModel } from '../../core/models/flow.model';
-import { ClassificationDecisionTableNodeModel } from '../../core/models/node.model';
+import { AgentNodeModel, ClassificationDecisionTableNodeModel } from '../../core/models/node.model';
 import { NodeDiffByType } from './types';
 
+/** The backend id an id-less task at `index` was given, if any. */
+type AgentTaskIdResolver = (task: AgentNodeTaskUi, index: number) => number | undefined;
+
+/** For one agent node, how its id-less tasks get their ids; null leaves its tasks as they are. */
+type AgentTaskIdLookup = (node: AgentNodeModel, backendId: number | null) => AgentTaskIdResolver | null;
+
+/**
+ * Patches the flow that was SENT with what the save response assigned: node ids,
+ * agent task ids, edges and the schedule-trigger fields. Agent task ids are matched
+ * by position, which only the sent flow can do — the response lists a node's tasks
+ * in the order they were sent.
+ */
 export function patchFlowStateWithBackendIds(
-    currentFlow: FlowModel,
+    sentFlow: FlowModel,
     previousFlow: FlowModel,
     nodeDiff: NodeDiffByType,
     responseGraph: GraphDto
 ): FlowModel {
-    const uiToBackendId = buildCreatedNodeIdMap(previousFlow, nodeDiff, responseGraph);
-
-    const pythonCodeIdByBackendId = new Map<number, number | null>();
-    for (const pn of responseGraph.python_node_list ?? []) {
-        pythonCodeIdByBackendId.set(pn.id, pn.python_code?.id ?? null);
+    const agentNodeByBackendId = new Map<number, AgentNode>();
+    for (const an of responseGraph.agent_node_list ?? []) {
+        agentNodeByBackendId.set(an.id, an);
     }
+
+    return patchWithBackendIds(sentFlow, previousFlow, nodeDiff, responseGraph, (_node, backendId) => {
+        const responseAgentNode = backendId != null ? agentNodeByBackendId.get(backendId) : undefined;
+        return responseAgentNode ? taskIdByPosition(responseAgentNode) : null;
+    });
+}
+
+/**
+ * The same patch for the LIVE canvas, which may have changed while the save was in
+ * flight: a task inserted, removed or moved meanwhile would take another task's id by
+ * position. So agent task ids are taken from `sentFlowPatched` — the sent flow, already
+ * patched — and matched by `tempId`; a task added since the save gets none.
+ */
+export function patchLiveFlowWithBackendIds(
+    liveFlow: FlowModel,
+    sentFlowPatched: FlowModel,
+    previousFlow: FlowModel,
+    nodeDiff: NodeDiffByType,
+    responseGraph: GraphDto
+): FlowModel {
+    const sentAgentNodes = new Map<string, AgentNodeModel>();
+    for (const node of sentFlowPatched.nodes) {
+        if (node.type === NodeType.AGENT) sentAgentNodes.set(node.id, node);
+    }
+
+    return patchWithBackendIds(liveFlow, previousFlow, nodeDiff, responseGraph, (node) => {
+        const sentNode = sentAgentNodes.get(node.id);
+        if (!sentNode) return null;
+        const idByTempId = new Map<string, number>();
+        for (const task of sentNode.data.tasks) {
+            if (task.tempId && task.id != null) idByTempId.set(task.tempId, task.id);
+        }
+        return (task) => (task.tempId ? idByTempId.get(task.tempId) : undefined);
+    });
+}
+
+/** New tasks' ids by position, which needs nothing else: the response's task `order` is the index as sent. */
+function taskIdByPosition(responseAgentNode: AgentNode): AgentTaskIdResolver {
+    const responseTasksByOrder = new Map<number, AgentNode['tasks'][number]>();
+    for (const t of responseAgentNode.tasks ?? []) {
+        responseTasksByOrder.set(t.order, t);
+    }
+    return (_task, index) => responseTasksByOrder.get(index)?.id;
+}
+
+/** Gives id-less tasks their ids, then resolves sibling `contextRefs` that named them by `tempId`. */
+function applyAgentTaskIds(node: AgentNodeModel, idFor: AgentTaskIdResolver): AgentNodeModel {
+    const patchedTasks = node.data.tasks.map((task, index) => {
+        if (task.id != null) return task;
+        const assignedId = idFor(task, index);
+        return assignedId != null ? { ...task, id: assignedId } : task;
+    });
+
+    const idByTempId = new Map<string, number>();
+    for (const sibling of patchedTasks) {
+        if (sibling.tempId && sibling.id != null) idByTempId.set(sibling.tempId, sibling.id);
+    }
+    const patchedTasksWithRefs = patchedTasks.map((task) => {
+        if (!task.contextRefs?.length) return task;
+        let changed = false;
+        const newRefs = task.contextRefs.map((ref) => {
+            if (ref.id == null && ref.tempId != null) {
+                const resolvedId = idByTempId.get(ref.tempId);
+                if (resolvedId != null) {
+                    changed = true;
+                    return { id: resolvedId };
+                }
+            }
+            return ref;
+        });
+        return changed ? { ...task, contextRefs: newRefs } : task;
+    });
+
+    return { ...node, data: { ...node.data, tasks: patchedTasksWithRefs } };
+}
+
+/** The `GraphDto` lists whose nodes the server numbers. */
+const NUMBERED_NODE_LISTS = [
+    'python_node_list',
+    'file_extractor_node_list',
+    'key_value_node_list',
+    'audio_transcription_node_list',
+    'subgraph_node_list',
+    'classification_decision_table_node_list',
+    'decision_table_node_list',
+    'knowledge_node_list',
+    'webhook_trigger_node_list',
+    'telegram_trigger_node_list',
+    'schedule_trigger_node_list',
+    'task_node_list',
+    'agent_node_list',
+] as const satisfies readonly (keyof GraphDto)[];
+
+/** The number the server gave each numbered node, by its backend id (unique across node tables). */
+function buildNodeNumberByBackendId(responseGraph: GraphDto): Map<number, number> {
+    const numberByBackendId = new Map<number, number>();
+    for (const list of NUMBERED_NODE_LISTS) {
+        for (const node of responseGraph[list] ?? []) {
+            if (node.node_number != null) numberByBackendId.set(node.id, node.node_number);
+        }
+    }
+    return numberByBackendId;
+}
+
+function patchWithBackendIds(
+    currentFlow: FlowModel,
+    previousFlow: FlowModel,
+    nodeDiff: NodeDiffByType,
+    responseGraph: GraphDto,
+    agentTaskIds: AgentTaskIdLookup
+): FlowModel {
+    const uiToBackendId = buildCreatedNodeIdMap(previousFlow, nodeDiff, responseGraph);
+    const numberByBackendId = buildNodeNumberByBackendId(responseGraph);
 
     const scheduleDataByBackendId = new Map<
         number,
@@ -34,59 +157,23 @@ export function patchFlowStateWithBackendIds(
         });
     }
 
-    const agentNodeByBackendId = new Map<number, AgentNode>();
-    for (const an of responseGraph.agent_node_list ?? []) {
-        agentNodeByBackendId.set(an.id, an);
-    }
-
     const patchedNodes = currentFlow.nodes.map((node) => {
         const mappedBackendId = uiToBackendId.get(node.id);
         let patched = mappedBackendId != null ? { ...node, backendId: mappedBackendId } : node;
 
-        if (patched.type === NodeType.PYTHON) {
-            const resolvedBackendId = mappedBackendId ?? patched.backendId;
-            if (resolvedBackendId != null && pythonCodeIdByBackendId.has(resolvedBackendId)) {
-                patched = { ...patched, python_code_id: pythonCodeIdByBackendId.get(resolvedBackendId) ?? null };
+        // Only a node this save created can have been numbered by it: the number it showed was a
+        // hint the server may have replaced. A saved node's number never changes, and renumbering
+        // one here would let the canvas drift from a baseline that patches only the nodes it sent.
+        if (mappedBackendId != null) {
+            const serverNumber = numberByBackendId.get(mappedBackendId);
+            if (serverNumber != null && serverNumber !== patched.nodeNumber) {
+                patched = { ...patched, nodeNumber: serverNumber };
             }
         }
 
         if (patched.type === NodeType.AGENT) {
-            const resolvedBackendId = mappedBackendId ?? patched.backendId;
-            const responseAgentNode =
-                resolvedBackendId != null ? agentNodeByBackendId.get(resolvedBackendId) : undefined;
-            if (responseAgentNode) {
-                const responseTasksByOrder = new Map<number, AgentNode['tasks'][number]>();
-                for (const t of responseAgentNode.tasks ?? []) {
-                    responseTasksByOrder.set(t.order, t);
-                }
-                const patchedTasks = patched.data.tasks.map((task, index) => {
-                    if (task.id != null) return task;
-                    const responseTask = responseTasksByOrder.get(index);
-                    return responseTask ? { ...task, id: responseTask.id } : task;
-                });
-
-                const idByTempId = new Map<string, number>();
-                for (const sibling of patchedTasks) {
-                    if (sibling.tempId && sibling.id != null) idByTempId.set(sibling.tempId, sibling.id);
-                }
-                const patchedTasksWithRefs = patchedTasks.map((task) => {
-                    if (!task.contextRefs?.length) return task;
-                    let changed = false;
-                    const newRefs = task.contextRefs.map((ref) => {
-                        if (ref.id == null && ref.tempId != null) {
-                            const resolvedId = idByTempId.get(ref.tempId);
-                            if (resolvedId != null) {
-                                changed = true;
-                                return { id: resolvedId };
-                            }
-                        }
-                        return ref;
-                    });
-                    return changed ? { ...task, contextRefs: newRefs } : task;
-                });
-
-                patched = { ...patched, data: { ...patched.data, tasks: patchedTasksWithRefs } };
-            }
+            const idFor = agentTaskIds(patched, mappedBackendId ?? patched.backendId);
+            if (idFor) patched = applyAgentTaskIds(patched, idFor);
         }
 
         if (patched.type === NodeType.SCHEDULE_TRIGGER) {
@@ -175,7 +262,6 @@ function buildCreatedNodeIdMap(
     );
     mapByNewIds(nodeDiff.taskNodes.toCreate, responseGraph.task_node_list ?? [], existingIdsByType(NodeType.TASK));
     mapByNewIds(nodeDiff.agentNodes.toCreate, responseGraph.agent_node_list ?? [], existingIdsByType(NodeType.AGENT));
-    mapByNewIds(nodeDiff.llmNodes.toCreate, responseGraph.llm_node_list ?? [], existingIdsByType(NodeType.LLM));
     mapByNewIds(
         nodeDiff.fileExtractorNodes.toCreate,
         responseGraph.file_extractor_node_list ?? [],
@@ -222,6 +308,11 @@ function buildCreatedNodeIdMap(
         nodeDiff.classificationDecisionTableNodes.toCreate,
         responseGraph.classification_decision_table_node_list ?? [],
         existingIdsByType(NodeType.CLASSIFICATION_TABLE)
+    );
+    mapByNewIds(
+        nodeDiff.knowledgeRetrieverNodes.toCreate,
+        responseGraph.knowledge_node_list ?? [],
+        existingIdsByType(NodeType.KNOWLEDGE_RETRIEVER)
     );
 
     return mapping;

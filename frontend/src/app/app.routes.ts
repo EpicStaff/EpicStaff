@@ -6,6 +6,7 @@ import { authGuard } from './core/guards/auth.guard';
 import { bootstrapGuard } from './core/guards/bootstrap.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
+import { secretsPermissionGuard, settingsGuard, settingsIndexGuard } from './core/guards/settings.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import {
     permissionGuard,
@@ -14,6 +15,9 @@ import {
     workspaceIndexGuard,
     workspacePermissionGuard,
 } from './core/guards/workspace.guard';
+import { HIDE_SIDENAV_ON_PHONE } from './core/services/app-navigation-drawer.service';
+import { auditTrailEnabledGuard } from './features/audit/guards/audit-trail-enabled.guard';
+import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
 import { FILES_TAB } from './features/files/constants/files-tabs';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
@@ -22,6 +26,7 @@ import { MainLayoutComponent } from './layouts/main-layout/main-layout.component
 import { RoutedAuthShellComponent } from './layouts/routed-auth-shell/routed-auth-shell.component';
 import { PermissionsService } from './services/auth/permissions.service';
 import { LastVisitedTabService } from './services/last-visited-tab.service';
+import { executionTimeoutLimitsResolver } from './visual-programming/services/execution-timeout-limits.resolver';
 
 export const routes: Routes = [
     {
@@ -191,6 +196,7 @@ export const routes: Routes = [
                             ),
                         canActivate: [permissionGuard],
                         data: { permission: [ResourceCode.Flows, ActionCode.Read] },
+                        resolve: { executionTimeoutLimits: executionTimeoutLimitsResolver },
                         canDeactivate: [UnsavedChangesGuard],
                     },
                     {
@@ -256,6 +262,39 @@ export const routes: Routes = [
                             import('./pages/chats-page/chats-page.component').then((m) => m.ChatsPageComponent),
                     },
                     {
+                        // Not under `/chat`: nginx sends every `/chat/<anything>` to the chat service.
+                        path: 'chat-bindings',
+                        canActivate: [chatEnabledGuard, permissionGuard],
+                        // On phones the chat area takes the whole width; its desk drawer opens the app navigation.
+                        data: { permission: [ResourceCode.Chats, ActionCode.Read], [HIDE_SIDENAV_ON_PHONE]: true },
+                        // The desk rail lives here, so moving between the pages below keeps it (and its focus).
+                        loadComponent: () =>
+                            import('./features/chat/pages/desks-shell/desks-shell.component').then(
+                                (m) => m.DesksShellComponent
+                            ),
+                        children: [
+                            // The desk rail lists every desk, so the bare path opens All desks.
+                            { path: '', redirectTo: 'all', pathMatch: 'full' },
+                            {
+                                // The inbox across every binding: the workspace without a binding.
+                                path: 'all',
+                                loadComponent: () =>
+                                    import('./features/chat/pages/chat-page/chat-page.component').then(
+                                        (m) => m.ChatPageComponent
+                                    ),
+                            },
+                            {
+                                path: ':bindingId',
+                                loadComponent: () =>
+                                    import('./features/chat/pages/chat-page/chat-page.component').then(
+                                        (m) => m.ChatPageComponent
+                                    ),
+                            },
+                        ],
+                    },
+                    // The page lived here before `/chat-bindings`; `/chat` itself still reaches the SPA.
+                    { path: 'chat', redirectTo: 'chat-bindings', pathMatch: 'full' },
+                    {
                         path: 'sessions',
                         loadComponent: () =>
                             import('./features/flows/pages/global-sessions-list/global-sessions-list.component').then(
@@ -265,13 +304,87 @@ export const routes: Routes = [
                         data: { permission: [ResourceCode.Flows, ActionCode.Read] },
                     },
                     {
+                        path: 'recycle-bin',
+                        loadChildren: () =>
+                            import('./features/recycle-bin/recycle-bin.routes').then((m) => m.RECYCLE_BIN_ROUTES),
+                    },
+                    {
                         path: 'audit',
                         loadComponent: () =>
                             import('./features/audit/audit-sessions-browser.component').then(
                                 (m) => m.AuditSessionsBrowserComponent
                             ),
-                        canActivate: [permissionGuard],
+                        canActivate: [auditTrailEnabledGuard, permissionGuard],
                         data: { permission: [ResourceCode.Audit, ActionCode.Read] },
+                    },
+                    {
+                        path: 'settings',
+                        loadComponent: () =>
+                            import('./features/configure-models/pages/settings-page/settings-page.component').then(
+                                (m) => m.SettingsPageComponent
+                            ),
+                        canActivate: [settingsGuard],
+                        children: [
+                            {
+                                path: '',
+                                pathMatch: 'full',
+                                canActivate: [settingsIndexGuard],
+                                children: [],
+                            },
+                            {
+                                path: 'quickstart',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/quickstart-section/quickstart-section.component').then(
+                                        (m) => m.QuickstartSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Create] },
+                            },
+                            {
+                                path: 'default-llms',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/default-llms-section/default-llms-section.component').then(
+                                        (m) => m.DefaultLlmsSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },
+                            },
+                            {
+                                path: 'llm-library',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/llm-library-section/llm-library-section.component').then(
+                                        (m) => m.LlmLibrarySectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },
+                            },
+                            {
+                                path: 'webhook-triggers',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/webhook-triggers-section/webhook-triggers-section.component').then(
+                                        (m) => m.WebhookTriggersSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.Webhooks, ActionCode.Read] },
+                            },
+                            {
+                                path: 'voice',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/voice-settings-section/voice-settings-section.component').then(
+                                        (m) => m.VoiceSettingsSectionComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.Voice, ActionCode.Read] },
+                            },
+                            {
+                                path: 'secrets',
+                                loadComponent: () =>
+                                    import('./features/configure-models/components/secrets-section/secrets-section.component').then(
+                                        (m) => m.SecretsSectionComponent
+                                    ),
+                                canActivate: [secretsPermissionGuard],
+                            },
+                        ],
                     },
                     {
                         path: 'workspace',

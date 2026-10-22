@@ -4,17 +4,19 @@
     [style.width]="width()"
 >
     <app-svg-icon
-        icon="search"
+        [icon]="icon()"
         class="search__icon"
-        size="1.1rem"
+        [size]="iconSize()"
     />
 
     <input
+        #searchInput
         type="text"
         class="search__input"
         [ngClass]="'search__input--' + mod()"
         [class.search__input--with-clear]="!!searchTerm()"
         [placeholder]="placeholder()"
+        [attr.aria-label]="ariaLabel()"
         [ngModel]="searchTerm()"
         (ngModelChange)="onSearchTermChange($event)"
     />

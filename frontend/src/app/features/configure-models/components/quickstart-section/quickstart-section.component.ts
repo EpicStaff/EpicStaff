@@ -1,16 +1,7 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    computed,
-    DestroyRef,
-    inject,
-    input,
-    OnInit,
-    signal,
-    WritableSignal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import {
     ButtonComponent,
     ConfirmationDialogData,
@@ -20,7 +11,7 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { ActionCode, LLMProvider, ModelTypes, ResourceCode } from '@shared/models';
+import { LLMProvider, ModelTypes } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
@@ -34,7 +25,7 @@ import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
-import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
+import { QUICK_START_TOUR_ANCHORS, QuickStartResultStatus } from '../../../quick-start-tour/quick-start-tour-anchors';
 import { CreateQuickstartRequest } from '../../models/quickstart.model';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
@@ -65,8 +56,7 @@ export class QuickstartSectionComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
     private readonly toast = inject(ToastService);
     private readonly permissionService = inject(PermissionsService);
-
-    public activeTabSignal = input.required<WritableSignal<ConfigureModelsTabId>>();
+    private readonly router = inject(Router);
 
     public readonly quickStartForm = this.fb.group({
         apiKey: ['', [Validators.required]],
@@ -115,11 +105,18 @@ export class QuickstartSectionComponent implements OnInit {
         }));
     });
 
-    protected readonly canApplyQuickstart = computed<boolean>(
-        () =>
-            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Create) &&
-            this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Update)
-    );
+    protected readonly canApplyQuickstart = computed<boolean>(() => this.permissionService.canApplyQuickstart());
+    /**
+     * Set only by a successful Activate on this visit to the tab (the component is created per route activation);
+     * exposes the result card to the Quick Start tour.
+     */
+    protected readonly hasActivatedInThisVisit = signal(false);
+    protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
+    /** The tour's status attribute on the result card; only the two states a successful Activate leads to. */
+    protected readonly tourResultStatus = computed<QuickStartResultStatus | null>(() => {
+        const status = this.quickstartStatus();
+        return this.hasActivatedInThisVisit() && (status === 'activated' || status === 'updated') ? status : null;
+    });
 
     protected readonly canRunActiveCardAction = computed<boolean>(() => {
         const status = this.quickstartStatus();
@@ -184,6 +181,7 @@ export class QuickstartSectionComponent implements OnInit {
                         return this.quickstartService.applyQuickstart();
                     }
                     this.quickstartStatus.set('updated');
+                    this.hasActivatedInThisVisit.set(true);
                     this.toast.success('Quickstart updated.');
                     this.onReset();
                     return EMPTY;
@@ -191,6 +189,7 @@ export class QuickstartSectionComponent implements OnInit {
                 tap(() => {
                     this.onReset();
                     this.quickstartStatus.set('activated');
+                    this.hasActivatedInThisVisit.set(true);
                     this.toast.success('Quickstart created successfully.');
                 }),
                 catchError((error) => {
@@ -244,7 +243,7 @@ export class QuickstartSectionComponent implements OnInit {
     }
 
     public onReviewDefaults(): void {
-        this.activeTabSignal().set(ConfigureModelsTabId.DEFAULT_LLMS);
+        this.router.navigate(['/settings/default-llms']);
     }
 
     public onUpdateDefaults(): void {

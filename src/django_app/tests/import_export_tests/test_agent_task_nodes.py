@@ -27,6 +27,7 @@ from tables.import_export.enums import EntityType
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.registry import entity_registry
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.fixture
@@ -62,7 +63,7 @@ def node_graph_seeded_db(rich_seeded_db, default_org, mcp_tool):
     first) and one TaskNode (with its own inline surface).
     """
     agent_definition = AgentDefinition.objects.create(
-        organization=default_org,
+        org=default_org,
         name="agent_def_1",
         description="description",
         instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
@@ -70,7 +71,7 @@ def node_graph_seeded_db(rich_seeded_db, default_org, mcp_tool):
     )
 
     shared_surface = Surface.objects.create(
-        organization=default_org,
+        org=default_org,
         name="shared_surface_1",
     )
 
@@ -190,7 +191,9 @@ class TestAgentTaskNodeRoundTrip:
     ):
         graph = node_graph_seeded_db["graph"]
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.GRAPH, org_id=default_org.id
         )
@@ -208,7 +211,9 @@ class TestAgentTaskNodeRoundTrip:
         agent_definition = node_graph_seeded_db["agent_definition"]
         agent_definition_count_before_import = AgentDefinition.objects.count()
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.GRAPH, org_id=default_org.id
         )
@@ -234,7 +239,9 @@ class TestAgentTaskNodeRoundTrip:
     ):
         graph = node_graph_seeded_db["graph"]
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.GRAPH, org_id=default_org.id
         )
@@ -252,7 +259,9 @@ class TestAgentTaskNodeRoundTrip:
     ):
         graph = node_graph_seeded_db["graph"]
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.GRAPH, org_id=default_org.id
         )
@@ -282,7 +291,9 @@ class TestAgentTaskNodeRoundTrip:
     ):
         graph = node_graph_seeded_db["graph"]
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.GRAPH, org_id=default_org.id
         )
@@ -323,7 +334,9 @@ class TestAgentTaskNodeRoundTrip:
         task_inline_storage_count_before = InlineSurfaceStorageItem.objects.count()
         task_inline_knowledge_count_before = InlineSurfaceKnowledge.objects.count()
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         import_service.import_data(export_data, EntityType.GRAPH, org_id=default_org.id)
 
         assert (
@@ -362,7 +375,9 @@ class TestGraphImportSurvivesRenamedDefaultOrg:
         default_org.is_default = True
         default_org.save(update_fields=["name", "is_default"])
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.GRAPH, org_id=default_org.id
@@ -384,7 +399,9 @@ class TestGraphImportSurvivesRenamedDefaultOrg:
         default_org.save(update_fields=["name", "is_default"])
         active_org = Organization.objects.create(name="Active Org")
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.GRAPH, org_id=active_org.id
@@ -398,8 +415,8 @@ class TestGraphImportSurvivesRenamedDefaultOrg:
 
         for agent_definition_id in new_agent_definition_ids:
             agent_definition = AgentDefinition.objects.get(id=agent_definition_id)
-            assert agent_definition.organization_id == active_org.id
+            assert agent_definition.org_id == active_org.id
 
         for surface_id in new_surface_ids:
             surface = Surface.objects.get(id=surface_id)
-            assert surface.organization_id == active_org.id
+            assert surface.org_id == active_org.id

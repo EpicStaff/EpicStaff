@@ -5,6 +5,7 @@ pytestmark = pytest.mark.skip(reason="pre-existing failure from before the tool-
 from tables.models import Crew, Graph
 from tables.import_export.enums import EntityType
 from tables.import_export.services.import_service import ImportSettings
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 # ──────────────────────────────────────────
@@ -19,7 +20,9 @@ class TestGraphRoundTrip:
     ):
         graph = rich_seeded_db["graph"]
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         graph_count_before = Graph.objects.count()
         crew_count_before = Crew.objects.count()
@@ -41,7 +44,9 @@ class TestGraphRoundTrip:
 
     def test_graph_name_collision(self, rich_seeded_db, export_service, import_service):
         graph = rich_seeded_db["graph"]
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)
 
@@ -53,7 +58,9 @@ class TestGraphRoundTrip:
         graph = rich_seeded_db["graph"]
         original_uuid = graph.uuid
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         # An active flow keeps its uuid unless replaced, so free it the way a delete would.
         graph.delete()
 
@@ -94,8 +101,10 @@ class TestImportSummary:
         self, exportable_agent_definition, export_service, import_service
     ):
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [exportable_agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         id_mapper, registry = import_service.import_data(
             export_data, EntityType.AGENT_DEFINITION

@@ -43,24 +43,15 @@ def _project_flow_nodes(graphs: list) -> list:
             code_fields = {key: node[key] for key in _CODE_KEYS if node.get(key)}
             if not code_fields:
                 continue
+            file_node_id = node.get("id")
             item = {
                 "kind": "flow_node",
                 "flow_name": flow_name,
+                # The review dialog matches nodes by integer id only; a hand-made
+                # file with string or bool ids must not produce an id that never matches.
+                "node_id": file_node_id if type(file_node_id) is int else None,
                 "node_name": node.get("node_name"),
                 "node_type": node.get("node_type"),
-            }
-            item.update(code_fields)
-            items.append(item)
-
-        for edge in graph.get("conditional_edge_list", []):
-            code_fields = {key: edge[key] for key in _CODE_KEYS if edge.get(key)}
-            if not code_fields:
-                continue
-            item = {
-                "kind": "flow_node",
-                "flow_name": flow_name,
-                "node_name": None,
-                "node_type": "ConditionalEdge",
             }
             item.update(code_fields)
             items.append(item)

@@ -1,4 +1,8 @@
-export interface StorageItem {
+import { AuthorshipFields } from '@shared/models';
+
+// Also built client-side from other shapes (e.g. picker tree nodes), so the read-only author,
+// creation time and last-edit fields are optional.
+export interface StorageItem extends Partial<AuthorshipFields> {
     id?: number | null;
     name: string;
     path: string;
@@ -8,9 +12,11 @@ export interface StorageItem {
     modified?: string;
     children?: StorageItem[];
     isExpanded?: boolean;
+    /** Read-only ISO 8601 creation time; null for implied folders and untracked entries. */
+    created_at?: string | null;
 }
 
-export interface StorageFileRecord {
+export interface StorageFileRecord extends AuthorshipFields {
     id: number;
     path: string;
     name: string;
@@ -23,7 +29,7 @@ export interface StorageFileRecord {
     updated_at: string;
 }
 
-export interface StorageTreeNode {
+export interface StorageTreeNode extends AuthorshipFields {
     id: number | null;
     name: string;
     path: string;
@@ -31,6 +37,8 @@ export interface StorageTreeNode {
     size: number;
     modified: string | null;
     children: StorageTreeNode[] | null;
+    /** Read-only ISO 8601 creation time; null for implied folders and untracked entries. */
+    created_at: string | null;
 }
 
 export interface StorageTreeResponse {
@@ -80,8 +88,27 @@ export interface StorageUploadBatchResult {
     failed: UploadFailure[];
 }
 
+/** A recycle-bin entry (a file, or a folder whose path ends with "/") the server permanently deleted to make room for a write. */
+export interface RecycleBinPurgedEntry {
+    /** Path of the purged bin entry; null when the user isn't allowed to read files. */
+    name: string | null;
+    /** Bytes freed. */
+    size: number;
+}
+
+/**
+ * Part of every storage write that can hit the quota: when the write didn't fit, the server purges
+ * the oldest recycle-bin entries and lists them here (empty when nothing was purged).
+ */
+export interface StorageWriteResponse {
+    recycle_bin_purged: RecycleBinPurgedEntry[];
+}
+
+/** Response of POST storage/copy/. */
+export type StorageCopyResponse = StorageWriteResponse;
+
 /** Response of POST storage/upload/stream: `size` for a file, `extracted` for an unpacked archive. */
-export interface StorageStreamUploadResponse {
+export interface StorageStreamUploadResponse extends StorageWriteResponse {
     status: 'DONE';
     path: string;
     size?: number;

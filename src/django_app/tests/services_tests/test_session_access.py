@@ -7,8 +7,9 @@ from tables.exceptions import GraphNotFoundError, SessionNotFoundError
 from tables.models import Graph
 from tables.models.session_models import Session
 from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.services.session_access import get_accessible_session, get_runnable_graph
+from tests.custom_role_fixtures import *  # noqa: F401,F403
 
 
 @pytest.fixture
@@ -46,6 +47,18 @@ def no_permissions_a(db, django_user_model, org_a):
 
 
 @pytest.fixture
+def flows_reader_a(custom_role_member, org_a):
+    return custom_role_member(org_a, {ResourceType.FLOWS: Permission.READ}, "h-reader")
+
+
+@pytest.fixture
+def flows_runner_a(custom_role_member, org_a):
+    return custom_role_member(
+        org_a, {ResourceType.FLOWS: Permission.READ | Permission.USE}, "h-runner"
+    )
+
+
+@pytest.fixture
 def superadmin(db, django_user_model):
     return django_user_model.objects.create_superuser(
         email="h_super@example.com", password="StrongPass123!"
@@ -59,89 +72,123 @@ def _session(org):
     )
 
 
-# ── get_accessible_session ───────────────────────────────────────────────────
+def _missing_session(org):
+    return 987654321
+
+
+def _graphless_session(org):
+    return Session.objects.create(graph=None, status=Session.SessionStatus.PENDING, variables={}).pk
 
 
 @pytest.mark.django_db
-def test_member_of_session_org_gets_session(member_a, org_a):
+@pytest.mark.parametrize(
+    ("caller", "target_org", "make_session", "outcome"),
+    [
+        ("member_a", "org_a", lambda org: _session(org).pk, "granted"),
+        # Another org's session looks exactly like a missing one.
+        ("member_a", "org_b", lambda org: _session(org).pk, SessionNotFoundError),
+        ("member_a", "org_a", _missing_session, SessionNotFoundError),
+        ("no_permissions_a", "org_a", lambda org: _session(org).pk, PermissionDenied),
+        ("superadmin", "org_b", lambda org: _session(org).pk, "granted"),
+        ("superadmin", "org_b", _graphless_session, SessionNotFoundError),
+    ],
+    ids=["own-org", "other-org", "missing", "no-flows-read", "superadmin-any-org", "no-graph"],
+)
+def test_get_accessible_session(request, caller, target_org, make_session, outcome):
+    user = request.getfixturevalue(caller)
+    session_id = make_session(request.getfixturevalue(target_org))
+
+    if outcome == "granted":
+        assert get_accessible_session(user, session_id).pk == session_id
+    else:
+        with pytest.raises(outcome):
+            get_accessible_session(user, session_id)
+
+
+@pytest.mark.django_db
+def test_accessible_session_loads_only_id_and_status(member_a, org_a):
     session = _session(org_a)
 
-    assert get_accessible_session(member_a, session.pk).pk == session.pk
+    accessible = get_accessible_session(member_a, session.pk)
+
+    assert accessible.status == Session.SessionStatus.PENDING
+    assert {"graph_schema", "variables", "status_data"} <= accessible.get_deferred_fields()
 
 
 @pytest.mark.django_db
-def test_non_member_gets_session_not_found(member_a, org_b):
-    with pytest.raises(SessionNotFoundError):
-        get_accessible_session(member_a, _session(org_b).pk)
+@pytest.mark.parametrize("lookup", ["graph_id", "graph_uuid"])
+@pytest.mark.parametrize(
+    ("caller", "target_org", "outcome"),
+    [
+        ("member_a", "org_a", "granted"),
+        ("member_a", "org_b", GraphNotFoundError),
+        ("member_a", None, GraphNotFoundError),
+        ("no_permissions_a", "org_a", PermissionDenied),
+        ("superadmin", "org_b", "granted"),
+    ],
+    ids=["own-org", "other-org", "missing", "no-flows-read", "superadmin-any-org"],
+)
+def test_get_runnable_graph(request, lookup, caller, target_org, outcome):
+    user = request.getfixturevalue(caller)
+    if target_org is None:
+        key = 987654321 if lookup == "graph_id" else uuid.uuid4()
+    else:
+        graph = Graph.objects.create(name="H run flow", org=request.getfixturevalue(target_org))
+        key = graph.pk if lookup == "graph_id" else graph.uuid
+
+    if outcome == "granted":
+        assert get_runnable_graph(user, **{lookup: key}).pk == graph.pk
+    else:
+        with pytest.raises(outcome):
+            get_runnable_graph(user, **{lookup: key})
+
+
+# ── flows:USE ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
-def test_missing_session_gets_session_not_found(member_a):
-    with pytest.raises(SessionNotFoundError):
-        get_accessible_session(member_a, 987654321)
+@pytest.mark.parametrize(
+    ("caller", "target_org", "outcome"),
+    [
+        ("flows_runner_a", "org_a", "granted"),
+        ("flows_reader_a", "org_a", PermissionDenied),
+        # Another org's graph is a 404 whether or not the caller holds USE.
+        ("flows_runner_a", "org_b", GraphNotFoundError),
+        ("flows_reader_a", "org_b", GraphNotFoundError),
+    ],
+    ids=["use", "read-without-use", "use-other-org", "read-other-org"],
+)
+def test_running_a_graph_needs_flows_use(request, caller, target_org, outcome):
+    user = request.getfixturevalue(caller)
+    graph = Graph.objects.create(name="H run flow", org=request.getfixturevalue(target_org))
+
+    if outcome == "granted":
+        assert get_runnable_graph(user, graph_id=graph.pk).pk == graph.pk
+    else:
+        with pytest.raises(outcome):
+            get_runnable_graph(user, graph_id=graph.pk)
 
 
 @pytest.mark.django_db
-def test_member_lacking_flows_read_is_denied(no_permissions_a, org_a):
-    with pytest.raises(PermissionDenied):
-        get_accessible_session(no_permissions_a, _session(org_a).pk)
+@pytest.mark.parametrize(
+    ("caller", "target_org", "action", "outcome"),
+    [
+        ("flows_reader_a", "org_a", None, "granted"),
+        ("flows_reader_a", "org_a", Permission.USE, PermissionDenied),
+        ("flows_runner_a", "org_a", Permission.USE, "granted"),
+        # Another org's session is a 404 whether or not the caller holds USE.
+        ("flows_runner_a", "org_b", Permission.USE, SessionNotFoundError),
+        ("flows_reader_a", "org_b", Permission.USE, SessionNotFoundError),
+    ],
+    ids=["read-default", "read-for-use", "use-for-use", "use-other-org", "read-other-org"],
+)
+def test_session_access_for_use_needs_flows_use(request, caller, target_org, action, outcome):
+    user = request.getfixturevalue(caller)
+    session_id = _session(request.getfixturevalue(target_org)).pk
+    arguments = (user, session_id) if action is None else (user, session_id, action)
 
-
-@pytest.mark.django_db
-def test_superadmin_gets_any_orgs_session(superadmin, org_b):
-    session = _session(org_b)
-
-    assert get_accessible_session(superadmin, session.pk).pk == session.pk
-
-
-@pytest.mark.django_db
-def test_session_without_graph_gets_session_not_found(superadmin):
-    session = Session.objects.create(
-        graph=None, status=Session.SessionStatus.PENDING, variables={}
-    )
-    with pytest.raises(SessionNotFoundError):
-        get_accessible_session(superadmin, session.pk)
-
-
-# ── get_runnable_graph ───────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-def test_member_gets_graph_by_id_and_by_uuid(member_a, org_a):
-    graph = Graph.objects.create(name="H run flow", org=org_a)
-
-    assert get_runnable_graph(member_a, graph_id=graph.pk).pk == graph.pk
-    assert get_runnable_graph(member_a, graph_uuid=graph.uuid).pk == graph.pk
-
-
-@pytest.mark.django_db
-def test_non_member_gets_graph_not_found(member_a, org_b):
-    graph = Graph.objects.create(name="H foreign flow", org=org_b)
-
-    with pytest.raises(GraphNotFoundError):
-        get_runnable_graph(member_a, graph_id=graph.pk)
-    with pytest.raises(GraphNotFoundError):
-        get_runnable_graph(member_a, graph_uuid=graph.uuid)
-
-
-@pytest.mark.django_db
-def test_missing_graph_gets_graph_not_found(member_a):
-    with pytest.raises(GraphNotFoundError):
-        get_runnable_graph(member_a, graph_id=987654321)
-    with pytest.raises(GraphNotFoundError):
-        get_runnable_graph(member_a, graph_uuid=uuid.uuid4())
-
-
-@pytest.mark.django_db
-def test_member_lacking_flows_read_cannot_run_graph(no_permissions_a, org_a):
-    graph = Graph.objects.create(name="H locked flow", org=org_a)
-
-    with pytest.raises(PermissionDenied):
-        get_runnable_graph(no_permissions_a, graph_id=graph.pk)
-
-
-@pytest.mark.django_db
-def test_superadmin_gets_any_orgs_graph(superadmin, org_b):
-    graph = Graph.objects.create(name="H super flow", org=org_b)
-
-    assert get_runnable_graph(superadmin, graph_id=graph.pk).pk == graph.pk
+    if outcome == "granted":
+        assert get_accessible_session(*arguments).pk == session_id
+    else:
+        with pytest.raises(outcome):
+            get_accessible_session(*arguments)

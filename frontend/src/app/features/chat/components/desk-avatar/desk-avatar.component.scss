@@ -1,0 +1,83 @@
+@use '../../../../../styles/count-badge';
+
+:host {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+}
+
+.desk-avatar__picture {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    color: var(--color-text-on-bright);
+    overflow: hidden;
+    user-select: none;
+
+    // Not a desk (All desks): the user avatar's neutral wash.
+    &--neutral {
+        background-color: var(--transparent-white-8);
+        color: var(--color-text-primary);
+    }
+}
+
+.desk-avatar__initials {
+    font-size: var(--text-body-bold-size);
+    font-weight: var(--text-body-bold-weight);
+    line-height: var(--text-body-bold-line-height);
+}
+
+// The mark sits in a page-coloured socket on the bottom-right corner, so every shape reads on every fill. The three
+// states differ in shape, not only colour: a filled dot (live), a hollow ring (paused), a triangle (broken).
+.desk-avatar__status {
+    position: absolute;
+    right: -4px;
+    bottom: -4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: var(--color-background-body);
+
+    &::before {
+        content: '';
+        display: block;
+        box-sizing: border-box;
+    }
+
+    &--live::before {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--success-color);
+    }
+
+    &--paused::before {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        border: 2px solid var(--color-text-secondary);
+    }
+
+    &--broken::before {
+        width: 10px;
+        height: 9px;
+        background-color: var(--color-status-failed);
+        clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    }
+}
+
+.desk-avatar__badge {
+    @include count-badge.pill;
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    box-shadow: 0 0 0 2px var(--color-background-body);
+}

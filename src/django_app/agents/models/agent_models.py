@@ -1,6 +1,13 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from tables.models.base_models import AbstractDefaultFillableModel
+from rbac.models.last_edit import LastEditTrackedModel
+from rbac.models.org_scoped import OrgScopedModel
+from tables.models.base_models import (
+    AbstractDefaultFillableModel,
+    SoftDeleteFields,
+    SoftDeleteMixin,
+    soft_delete_consistency_constraint,
+)
 from tables.validators.finite_number_validator import validate_finite_number
 
 
@@ -22,14 +29,10 @@ class DefaultAgentDefinitionConfig(models.Model):
         return f"DefaultAgentDefinitionConfig(pk={self.pk})"
 
 
-class AgentDefinition(AbstractDefaultFillableModel):
+class AgentDefinition(
+    OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableModel, SoftDeleteMixin
+):
     # Identity
-    organization = models.ForeignKey(
-        "rbac.Organization",
-        on_delete=models.CASCADE,
-        related_name="agent_definitions",
-        help_text="Organization this agent belongs to.",
-    )
     name = models.CharField(
         max_length=255,
         help_text="Stable identifier (slug-like) unique within an organization. Used to reference this agent from flows, code, and the UI.",
@@ -129,6 +132,14 @@ class AgentDefinition(AbstractDefaultFillableModel):
         help_text="Surfaces applied to this agent by default, per place (flow/chat/all). Managed via AgentDefaultSurface through table.",
     )
 
+    # Nullable because agents created before this column existed have no known
+    # creation time; they stay NULL rather than getting a guessed one.
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        help_text="When this agent definition was created. Null for agents created before creation times were recorded.",
+    )
+
     @property
     def instructions(self) -> str:
         """Return the non-blank instruction contents joined in application order."""
@@ -144,12 +155,16 @@ class AgentDefinition(AbstractDefaultFillableModel):
     def __repr__(self) -> str:
         return f"AgentDefinition(id={self.pk}, name={self.name!r})"
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
-                fields=["organization", "name"],
+                fields=["org", "name"],
+                condition=models.Q(active=True),
                 name="unique_agent_definition_name_per_organization",
-            )
+            ),
         ]
 
 
@@ -160,7 +175,8 @@ class SurfacePlace(models.TextChoices):
     REALTIME = "realtime", "Realtime"
 
 
-class AgentDefaultSurface(models.Model):
+class AgentDefaultSurface(SoftDeleteFields, models.Model):
+    soft_delete_reference_fields = ("surface",)
     agent_definition = models.ForeignKey(
         AgentDefinition,
         on_delete=models.CASCADE,
@@ -180,9 +196,26 @@ class AgentDefaultSurface(models.Model):
     )
 
     class Meta:
+        default_manager_name = "objects"
+        base_manager_name = "all_objects"
         constraints = [
+            soft_delete_consistency_constraint(),
             models.UniqueConstraint(
                 fields=["agent_definition", "surface", "place"],
                 name="uniq_agent_default_surface",
             ),
         ]
+
+    @classmethod
+    def soft_delete_owned_references(cls, field_name: str, target) -> models.Q | None:
+        """Rows reached through a reference field that still belong to the target.
+
+        A surface owns its owner agent's default-surface rows for it: they go to
+        the recycle bin with the surface, so a restore keeps the places the owner
+        chose instead of falling back to "applies everywhere". Other agents' rows
+        stay references and are removed. Restore is an undo: rows the owner adds
+        while the surface is binned stay next to the restored ones.
+        """
+        if field_name == "surface" and target.owner_agent_id is not None:
+            return models.Q(agent_definition_id=target.owner_agent_id)
+        return None

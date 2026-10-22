@@ -3,5 +3,8 @@ export const environment = {
     apiUrl: '/api/',
     realtimeApiUrl: '/realtime/',
     auditorUrl: '/auditor/',
-    isEpicChatEnabled: true,
+    // On by default so `ng serve` shows the Chats and Audit pages; they need the chat and auditor compose profiles running.
+    isChatEnabled: true,
+    chatApiUrl: '/chat/',
+    isAuditTrailEnabled: true,
 };

@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("tables", "0169_merge_20260416_1127"),
-        ("tables", "0169_merge_imp_auth"),
+        ("tables", "0166_storagefile_graphstoragefile_and_more_squashed_0175_merge_20260427_1053"),
     ]
 
     operations = []

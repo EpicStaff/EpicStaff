@@ -1,6 +1,9 @@
 import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { EnterSubmitDirective } from '@shared/directives';
+import { Observable } from 'rxjs';
 
 import { AppIconComponent } from '../app-icon/app-icon.component';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -42,12 +45,22 @@ export interface ConfirmationDialogData {
      *  cannot actually proceed with (e.g. blocked by a missing permission).
      *  The cancel button then acts as a plain close. */
     hideConfirm?: boolean;
+    /**
+     * `raised`: the lighter `--color-ks-background` surface, a slim rounded caution bar with
+     * secondary text, and a Cancel button in the accent colour. Defaults to `default`.
+     */
+    appearance?: 'default' | 'raised';
     /** Collapsible list of counted items shown under the message, with their total in the header. */
     breakdown?: ConfirmationBreakdown;
     /** Phrase the user must type exactly before the confirm button is enabled. */
     verification?: ConfirmationVerification;
     /** Optional checkbox shown above the action buttons. */
     checkbox?: ConfirmationCheckbox;
+    /** Optional HTML shown after the caution block, right above the action buttons. */
+    footerMessage?: string;
+    /** Optional stream of replacement footer messages, applied as they arrive after the dialog opened.
+     *  Unsubscribed when the dialog closes, so it can drive a cancellable request. */
+    footerMessageUpdates?: Observable<string>;
 }
 
 export interface ConfirmationCheckbox {
@@ -64,6 +77,7 @@ export interface ConfirmationCheckbox {
         AppSvgIconComponent,
         AppIconComponent,
         CheckboxComponent,
+        EnterSubmitDirective,
     ],
     templateUrl: './confirmation-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
@@ -75,6 +89,7 @@ export class ConfirmationDialogComponent {
 
     // `data` must stay above the fields below: they read it in their initializers.
     readonly data = inject<ConfirmationDialogData>(DIALOG_DATA);
+    protected readonly footerMessage = signal(this.data.footerMessage ?? '');
     protected readonly checkboxChecked = signal(this.data.checkbox?.checked ?? false);
     protected readonly breakdownListId = `confirmation-breakdown-list-${nextBreakdownListId++}`;
     protected readonly breakdown = this.data.breakdown?.items.length ? this.data.breakdown : null;
@@ -85,6 +100,13 @@ export class ConfirmationDialogComponent {
     );
 
     private readonly dialogRef = inject<DialogRef<DialogResult>>(DialogRef);
+    private readonly destroyRef = inject(DestroyRef);
+
+    constructor() {
+        this.data.footerMessageUpdates?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((message) => {
+            this.footerMessage.set(message);
+        });
+    }
 
     toggleBreakdown(): void {
         this.isBreakdownExpanded.update((isExpanded) => !isExpanded);
@@ -92,6 +114,12 @@ export class ConfirmationDialogComponent {
 
     onPhraseInput(event: Event): void {
         this.typedPhrase.set((event.target as HTMLInputElement).value);
+    }
+
+    protected onEnterSubmit(): void {
+        // prevent from performing actions like delete by pressing enter
+        if (this.data.type === 'danger') return;
+        this.onConfirm();
     }
 
     onCancel(): void {

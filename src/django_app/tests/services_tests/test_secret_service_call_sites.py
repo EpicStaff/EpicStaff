@@ -54,7 +54,7 @@ class TestQuickstartWrapsKeyInSecret:
         Provider.objects.get_or_create(name="openai")
 
         result = QuickstartService().quickstart(
-            provider="openai", api_key="sk-quickstart-test-9876", org_id=org.id
+            provider="openai", api_key="sk-quickstart-test-9876", org_id=org.id, user=None
         )
 
         assert result, "quickstart returned nothing"
@@ -86,10 +86,10 @@ class TestQuickstartWrapsKeyInSecret:
     def test_quickstart_secret_names_do_not_collide(self, org):
         Provider.objects.get_or_create(name="openai")
         QuickstartService().quickstart(
-            provider="openai", api_key="sk-first", org_id=org.id
+            provider="openai", api_key="sk-first", org_id=org.id, user=None
         )
         QuickstartService().quickstart(
-            provider="openai", api_key="sk-second", org_id=org.id
+            provider="openai", api_key="sk-second", org_id=org.id, user=None
         )
 
         names = list(
@@ -251,32 +251,37 @@ class TestPayloadAndInProcessConsumers:
 
         assert api_key == "sk-litellm-resolved"
 
-    def test_litellm_client_build_kwargs_includes_supplied_api_key(self, org):
+    @pytest.mark.parametrize("api_key", ["sk-litellm-resolved", None])
+    def test_litellm_client_sends_the_resolved_key_and_nothing_when_there_is_none(self, org, monkeypatch, api_key):
+        import asyncio
+
         from tables.models import LLMModel
-        from tables.services.llm_clients.litellm_client import LiteLLMClient
+        from tables.services.llm_clients import get_llm_client, litellm_client
 
         provider, _ = Provider.objects.get_or_create(name="openai")
         model = LLMModel.objects.create(name="gpt-4o-lite-test", llm_provider=provider)
         config = LLMConfig.objects.create(custom_name="lite-test", model=model, org=org)
+        sent = {}
 
-        kwargs = LiteLLMClient(
-            llm_config=config, api_key="sk-litellm-resolved"
-        )._build_kwargs(messages=[], tools=[])
+        class _Sent(Exception):
+            pass
 
-        assert kwargs["api_key"] == "sk-litellm-resolved"
+        async def acompletion(**kwargs):
+            sent.update(kwargs)
+            raise _Sent
 
-    def test_litellm_client_omits_api_key_when_none(self, org):
-        from tables.models import LLMModel
-        from tables.services.llm_clients.litellm_client import LiteLLMClient
+        monkeypatch.setattr(litellm_client.litellm, "acompletion", acompletion)
 
-        provider, _ = Provider.objects.get_or_create(name="openai")
-        model = LLMModel.objects.create(name="gpt-4o-lite-nokey", llm_provider=provider)
-        config = LLMConfig.objects.create(
-            custom_name="lite-no-key", model=model, org=org
-        )
+        async def call_the_llm():
+            with pytest.raises(_Sent):
+                async for _ in get_llm_client(config, api_key=api_key).stream_completion(
+                    messages=[{"role": "user", "content": "hi"}], tools=[]
+                ):
+                    pass
 
-        kwargs = LiteLLMClient(llm_config=config, api_key=None)._build_kwargs(
-            messages=[], tools=[]
-        )
+        asyncio.run(call_the_llm())
 
-        assert "api_key" not in kwargs
+        if api_key:
+            assert sent["api_key"] == api_key
+        else:
+            assert "api_key" not in sent

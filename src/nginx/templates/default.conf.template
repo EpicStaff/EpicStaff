@@ -4,25 +4,32 @@ map $http_upgrade $connection_upgrade {
 }
 
 upstream backend_server {
-    server ${DJANGO_HOST}:${DJANGO_PORT};
+    zone backend_server 64k;
+    server ${DJANGO_HOST}:${DJANGO_PORT} resolve;
 }
 
 upstream frontend_server {
-    server ${FRONTEND_HOST}:${FRONTEND_PORT};
+    zone frontend_server 64k;
+    server ${FRONTEND_HOST}:${FRONTEND_PORT} resolve;
 }
 
 upstream realtime_server {
-    server ${REALTIME_HOST}:${REALTIME_PORT};
+    zone realtime_server 64k;
+    server ${REALTIME_HOST}:${REALTIME_PORT} resolve;
 }
 
 upstream webhook_server {
-    server ${WEBHOOK_HOST}:${WEBHOOK_PORT};
+    zone webhook_server 64k;
+    server ${WEBHOOK_HOST}:${WEBHOOK_PORT} resolve;
 }
 
-# Docker's embedded DNS, used by the /auditor/ location to resolve the auditor
-# at request time.
+# Docker's embedded DNS. The upstreams above re-resolve through it (`resolve`), so a
+# recreated container's new IP is picked up without restarting nginx; the
+# /auditor/ location also resolves the auditor through it at request time.
 resolver 127.0.0.11 valid=10s ipv6=off;
 
+# Every location that proxies must include strip-underscore-forwarding-headers.snippet:
+# with this on, clients could otherwise forge the address Django throttles on.
 underscores_in_headers on;
 
 server {
@@ -46,6 +53,10 @@ server {
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
 
+    # Strict-Transport-Security is decided separately from NGINX_SSL_MODE: a load
+    # balancer in front of nginx can terminate TLS while nginx serves plain HTTP.
+    include /etc/nginx/conf.d/hsts-${NGINX_HSTS_ENABLED}.snippet;
+
     # Report-only: the SPA is built from a separate repository, so this policy
     # has not been verified against it. Violations surface in the browser
     # console; there is no report collector in this stack. Promote to
@@ -54,6 +65,7 @@ server {
 
     location / {
         proxy_pass http://frontend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -64,6 +76,7 @@ server {
     }
     location ^~ /api/run-session/subscribe/ {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         
         proxy_buffering off;
         proxy_cache off;
@@ -83,17 +96,20 @@ server {
 
     location ~ ^/ws/ {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 86400;
     }
 
     location = /api/storage/upload/stream {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_request_buffering off;
         proxy_buffering off;
@@ -115,6 +131,7 @@ server {
 
     location ~ ^/(api|admin|ht|swagger)(/|$) {
         proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-API-Key $http_x_api_key;
         proxy_set_header Host $host;
@@ -125,6 +142,7 @@ server {
 
     location ^~ /webhooks/ {
         proxy_pass http://webhook_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -135,6 +153,7 @@ server {
 
     location ^~ /voice/ {
         proxy_pass http://realtime_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -149,6 +168,7 @@ server {
 
     location /voice/stream {
         proxy_pass http://realtime_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -163,6 +183,7 @@ server {
 
     location /realtime/ {
         proxy_pass http://realtime_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -172,19 +193,22 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    include /etc/nginx/conf.d/chat-${CHAT_ENABLED}.snippet;
+
     location ~ ^/auditor/api/audit/[^/]+/events/?$ {
         return 404;
     }
 
     location /auditor/ {
-        # The auditor exits on startup when AUDIT_TRAIL_ENABLED is not true, so
-        # its hostname may not exist. A static upstream would be resolved when
+        # The auditor runs only under the auditor compose profile and exits on
+        # startup when AUDIT_TRAIL_ENABLED is not true, so its hostname may not exist. A static upstream would be resolved when
         # nginx starts and a missing host stops nginx entirely; proxying to a
         # variable resolves only when a request arrives, so /auditor/ returns
         # 502 while the auditor is disabled and nothing else is affected.
         set $auditor_upstream http://${AUDITOR_HOST}:${AUDITOR_PORT};
         rewrite ^/auditor/(.*)$ /$1 break;
         proxy_pass $auditor_upstream;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_http_version 1.1;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header Host $host;
@@ -195,13 +219,31 @@ server {
 
     location /static/ {
         proxy_pass http://backend_server/static/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location /media/ {
         proxy_pass http://backend_server/media/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Liveness for the compose healthcheck only: bound to the container's loopback and
+# never published, it answers without proxying, so it reports nginx itself and not
+# the backends, and it is outside the TLS server's http->https redirect.
+server {
+    listen 127.0.0.1:8081;
+
+    location = /nginx-health {
+        access_log off;
+        return 204;
+    }
+
+    location / {
+        return 404;
     }
 }

@@ -20,8 +20,9 @@ function normalizeTimezone(iana: string | null | undefined): string {
 /**
  * Rewrites legacy "Once on DD MMM YYYY at HH:MM" names to the new
  * "Once on DD MMM YYYY at HH-MM" format (colon → hyphen in the time part).
- * Returns the input unchanged if it does not match the legacy pattern.
- * Names that already use a hyphen or carry a " #N" suffix are left untouched.
+ * Returns the input unchanged if it does not match the legacy pattern, e.g. when it
+ * already uses a hyphen. A legacy " #N" suffix is kept as it is: the panel still
+ * recognises such a name as auto-generated and regenerates a clean one on the next edit.
  */
 export function rewriteLegacyOnceScheduleName(name: string): string {
     return name.replace(
@@ -67,7 +68,7 @@ export function mapScheduleTriggerNodeToModel(dto: GetScheduleTriggerNodeRequest
         backendId: dto.id,
         type: NodeType.SCHEDULE_TRIGGER,
         node_name: dto.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: dto.node_number ?? undefined,
         data,
         position: ui.position,
         ports: null,

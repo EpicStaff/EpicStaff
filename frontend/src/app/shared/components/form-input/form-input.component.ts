@@ -53,15 +53,17 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         [name]="name"
                         [attr.autocomplete]="effectiveAutocomplete"
                         [attr.spellcheck]="spellcheck"
+                        [attr.aria-label]="ariaLabel() || null"
                         [placeholder]="placeholder"
                         [(ngModel)]="value"
                         (focus)="focused.set(true)"
                         (blur)="focused.set(false); onTouched(); blur.emit(); scrollToEndIfSecret()"
                         class="text-input"
+                        [class.transparent]="transparent()"
                         [class.has-toggle]="hasToggle"
                         [class.masked]="isMasked"
                         [class.error]="errorMessage"
-                        [disabled]="isDisabled"
+                        [attr.disabled]="isDisabled || null"
                         [style.--active-color]="activeColor"
                     />
                     @if (hasToggle) {
@@ -135,6 +137,10 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     color: var(--color-text-primary);
                     font-size: 0.875rem;
                     transition: border-color 0.2s ease;
+
+                    &.transparent {
+                        background-color: var(--color-input-transparent);
+                    }
 
                     &::placeholder {
                         color: var(--color-input-text-placeholder);
@@ -235,8 +241,10 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
     @Input() cautionMessage: string = '';
+    transparent = input<boolean>(false);
     readonly = input<boolean>(false);
     readonlyEmptyPlaceholder = input<string>('—');
+    readonly ariaLabel = input<string>('');
 
     @Output() blur = new EventEmitter<void>();
 

@@ -93,14 +93,17 @@
             }
         }
 
-        &:hover:not(.f-selected) {
+        &:hover:not(.f-selected),
+        &.node-hovered:not(.f-selected) {
             .f-connection-path {
                 stroke: var(--db-primary-1) !important;
             }
 
-            .start-marker circle,
-            .end-marker path {
-                fill: var(--db-primary-1) !important;
+            .f-marker {
+                path,
+                circle {
+                    fill: var(--db-primary-1) !important;
+                }
             }
         }
 
@@ -246,7 +249,8 @@
 
             .f-waypoint {
                 fill: transparent;
-                stroke: var(--fog-alpha-60);
+                stroke: transparent;
+                pointer-events: none;
             }
         }
     }
@@ -284,17 +288,11 @@
             &.Tool-Node:not(.f-selected) {
                 fill: var(--tool-node-accent-color);
             }
-            &.LLM-Node:not(.f-selected) {
-                fill: var(--llm-node-accent-color);
-            }
             &.Project-Node:not(.f-selected) {
                 fill: var(--project-node-accent-color);
             }
             &.Python-Node:not(.f-selected) {
                 fill: var(--python-node-accent-color);
-            }
-            &.Edge-Node:not(.f-selected) {
-                fill: var(--edge-node-accent-color);
             }
             &.Start-Node:not(.f-selected) {
                 fill: var(--slate-215);

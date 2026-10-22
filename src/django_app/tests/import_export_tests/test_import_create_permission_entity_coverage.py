@@ -18,7 +18,7 @@ import pytest
 from django.db.models import Model
 from django.urls import reverse
 
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 from agents.models import AgentDefinition, Surface
@@ -38,7 +38,6 @@ from tables.models.realtime_models import (
 class CarriedEntityCase:
     entity_type: EntityType
     model: type[Model]
-    org_field: str
     resource: ResourceType
     create_source: Callable
 
@@ -61,7 +60,7 @@ def _create_gemini_realtime_config(org):
 
 def _create_agent_definition(org):
     return AgentDefinition.objects.create(
-        organization=org,
+        org=org,
         name="carried agent definition",
         description="description",
         instruction_list=[{"name": "Instruction_1.md", "content": "instructions"}],
@@ -70,7 +69,7 @@ def _create_agent_definition(org):
 
 def _create_surface(org):
     return Surface.objects.create(
-        organization=org, name="carried surface", instructions="instructions"
+        org=org, name="carried surface", instructions="instructions"
     )
 
 
@@ -78,35 +77,30 @@ CASES = [
     CarriedEntityCase(
         EntityType.OPENAI_REALTIME_CONFIG,
         OpenAIRealtimeConfig,
-        "org",
         ResourceType.LLM_CONFIGS,
         _create_openai_realtime_config,
     ),
     CarriedEntityCase(
         EntityType.ELEVENLABS_REALTIME_CONFIG,
         ElevenLabsRealtimeConfig,
-        "org",
         ResourceType.LLM_CONFIGS,
         _create_elevenlabs_realtime_config,
     ),
     CarriedEntityCase(
         EntityType.GEMINI_REALTIME_CONFIG,
         GeminiRealtimeConfig,
-        "org",
         ResourceType.LLM_CONFIGS,
         _create_gemini_realtime_config,
     ),
     CarriedEntityCase(
         EntityType.AGENT_DEFINITION,
         AgentDefinition,
-        "organization",
         ResourceType.AGENTS,
         _create_agent_definition,
     ),
     CarriedEntityCase(
         EntityType.SURFACE,
         Surface,
-        "organization",
         ResourceType.SURFACES,
         _create_surface,
     ),
@@ -146,8 +140,12 @@ def flow_file_carrying(beta, export_service, openai_realtime_builtin_model):
         StartNode.objects.create(graph=graph, variables={})
         source_entity = case.create_source(beta)
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
-        carried = export_service.export_entities(case.entity_type, [source_entity.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
+        carried = export_service.export_entities(
+            case.entity_type, [source_entity.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         export_data[case.entity_type] = carried[case.entity_type]
         return data_to_json_file(data=export_data, filename="flow.json")
 
@@ -163,7 +161,7 @@ def _post_import(client_as, user, org, file):
 
 
 def _rows_in_org(case: CarriedEntityCase, org) -> int:
-    return case.model.objects.filter(**{case.org_field: org}).count()
+    return case.model.objects.filter(org=org).count()
 
 
 @pytest.mark.django_db

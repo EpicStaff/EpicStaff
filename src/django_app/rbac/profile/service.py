@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models.functions import Lower
+from django.utils import timezone
 from loguru import logger
 
 from rbac.access.resolver import PermissionResolver
@@ -9,13 +10,13 @@ from rbac.exceptions import (
     InvalidPasswordChangeTicketError,
     OrgMembershipRequiredError,
 )
+from rbac.identity.credential_revocation import (
+    CredentialRevocationService,
+)
 from rbac.identity.passwords.change_ticket import (
     PasswordChangeTicketService,
 )
 from rbac.identity.passwords.writer import PasswordWriter
-from rbac.identity.session_invalidation import (
-    SessionInvalidationService,
-)
 from rbac.identity.tokens import TokenPair
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
@@ -28,8 +29,8 @@ class UserProfileService:
     """Single orchestrator for /api/profile/* endpoints.
 
     Composes single-purpose collaborators via constructor DI so each
-    seam (avatar storage, ticket service, password writer, session
-    invalidator) is swappable in tests.
+    seam (avatar storage, ticket service, password writer, credential
+    revoker) is swappable in tests.
     """
 
     def __init__(
@@ -37,13 +38,13 @@ class UserProfileService:
         avatar_storage: UserAvatarStorageService | None = None,
         password_change_ticket: PasswordChangeTicketService | None = None,
         password_writer: PasswordWriter | None = None,
-        session_invalidator: SessionInvalidationService | None = None,
+        credential_revoker: CredentialRevocationService | None = None,
         permission_resolver: PermissionResolver | None = None,
     ):
         self._avatar_storage = avatar_storage or UserAvatarStorageService()
         self._password_change_ticket = password_change_ticket or PasswordChangeTicketService()
         self._password_writer = password_writer or PasswordWriter()
-        self._session_invalidator = session_invalidator or SessionInvalidationService()
+        self._credential_revoker = credential_revoker or CredentialRevocationService()
         self._permission_resolver = permission_resolver or PermissionResolver()
 
     # ---- read ----
@@ -107,16 +108,47 @@ class UserProfileService:
 
     # ---- profile field updates ----
 
-    def update_display_name(self, user, display_name: str | None):
-        """Set or clear display_name. None clears (column allows NULL)."""
-        user.display_name = display_name
-        user.save(update_fields=["display_name", "updated_at"])
-        logger.info(
-            "profile.display_name_updated user_id={} cleared={}",
-            user.id,
-            display_name is None,
-        )
+    def update_profile(self, user, changes: dict):
+        update_fields = []
+        if "display_name" in changes:
+            user.display_name = changes["display_name"]
+            update_fields.append("display_name")
+        if "custom_shortcuts" in changes:
+            user.custom_shortcuts = changes["custom_shortcuts"]
+            update_fields.append("custom_shortcuts")
+        if not update_fields:
+            return user
+
+        user.save(update_fields=[*update_fields, "updated_at"])
+        if "display_name" in changes:
+            logger.info(
+                "profile.display_name_updated user_id={} cleared={}",
+                user.id,
+                changes["display_name"] is None,
+            )
+        if "custom_shortcuts" in changes:
+            logger.info(
+                "profile.custom_shortcuts_updated user_id={} custom={} overrides={}",
+                user.id,
+                len(changes["custom_shortcuts"]["custom"]),
+                len(changes["custom_shortcuts"]["overrides"]),
+            )
         return user
+
+    def complete_quickstart_tour(self, user) -> None:
+        """Record that the user finished or skipped the Quick Start tour.
+
+        Idempotent: the first timestamp wins. The conditional UPDATE runs as a
+        single statement, so concurrent calls (two tabs closing the tour at once)
+        cannot overwrite it. `updated_at` is deliberately left alone — this is a
+        UI preference, not a profile edit.
+        """
+        User = get_user_model()  # noqa: N806
+        marked = User.objects.filter(pk=user.pk, quickstart_tour_completed_at__isnull=True).update(
+            quickstart_tour_completed_at=timezone.now()
+        )
+        if marked:
+            logger.info("profile.quickstart_tour_completed user_id={}", user.pk)
 
     # ---- avatar ----
 
@@ -149,14 +181,22 @@ class UserProfileService:
         return ticket, expires_in
 
     def password_change_confirm(self, actor, ticket: str, new_password: str) -> TokenPair:
-        """Step 2: consume ticket, write new password, blacklist all
-        outstanding refresh tokens, mint a fresh pair.
+        """Step 2: consume ticket, write new password, revoke credentials, mint a fresh pair.
+
+        The password write and the revocation of every live refresh token
+        and existing personal API key share one transaction. The fresh pair is
+        minted after it commits, so it is the only refresh token that survives.
 
         Dual binding: ticket must exist AND must belong to the calling
         actor. Mismatch surfaces as the same generic
         InvalidPasswordChangeTicketError so a third party cannot probe
-        whether a ticket exists for another user.
+        whether a ticket exists for another user. A rejected password raises
+        FormValidationError and leaves the ticket unconsumed.
         """
+        # Consuming the ticket is a Redis GETDEL the transaction below cannot
+        # roll back, so the account-aware check runs first, against the actor
+        # the ticket must belong to.
+        self._password_writer.validate(actor, new_password)
         target = self._password_change_ticket.consume(ticket)
         if target is None or actor is None or target.id != actor.id:
             logger.info(
@@ -166,6 +206,6 @@ class UserProfileService:
             raise InvalidPasswordChangeTicketError()
         with transaction.atomic():
             self._password_writer.set(target, new_password)
-        self._session_invalidator.blacklist_all_for_user(target)
+            self._credential_revoker.revoke_all_credentials_for_user(target)
         logger.info("profile.password_change_confirmed user_id={}", target.id)
         return TokenPair.for_user(target)

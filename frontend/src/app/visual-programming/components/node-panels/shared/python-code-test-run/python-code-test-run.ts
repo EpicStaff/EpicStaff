@@ -31,8 +31,9 @@ function parseTestInputValue(raw: string): unknown {
 
 /**
  * A code-only run of a node's stored Python code (run-python-code, then polling for the result) and the
- * terminal that shows it (`app-python-terminal`). Create it in a field initializer: it injects
- * `PythonCodeRunService` and the panel's `DestroyRef`, which stops the polling when the panel goes away.
+ * terminal that shows it (`app-python-terminal`). The panel names the node to run (`target`); this class
+ * knows nothing node-specific. Create it in a field initializer: it injects `PythonCodeRunService` and the
+ * panel's `DestroyRef`, which stops the polling when the panel goes away.
  */
 export class PythonCodeTestRun {
     private readonly pythonCodeRunService = inject(PythonCodeRunService);
@@ -58,8 +59,12 @@ export class PythonCodeTestRun {
         return 'idle';
     });
 
-    /** Runs the stored code `request.python_code_id` with `request.variables` as its arguments; ignored while a run is in flight. */
-    public run(request: RunPythonCodeRequest): void {
+    /**
+     * Runs the code the backend stores for node `request.target` with `request.variables` as its arguments;
+     * ignored while a run is in flight. The wait for the result ends a grace period after the stored code's
+     * `executionTimeoutSeconds`.
+     */
+    public run(request: RunPythonCodeRequest, executionTimeoutSeconds: number): void {
         if (this.isRunning()) return;
         this.isRunningSignal.set(true);
         this.resultSignal.set(null);
@@ -72,7 +77,9 @@ export class PythonCodeTestRun {
         this.currentRun = this.pythonCodeRunService
             .runPythonCode(request)
             .pipe(
-                switchMap(({ execution_id }) => this.pythonCodeRunService.pollResultWithEvents(execution_id)),
+                switchMap(({ execution_id }) =>
+                    this.pythonCodeRunService.pollResultWithEvents(execution_id, executionTimeoutSeconds)
+                ),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({

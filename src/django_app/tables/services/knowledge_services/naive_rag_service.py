@@ -2,6 +2,7 @@ from typing import Any
 
 from django.db import transaction
 from loguru import logger
+from src.shared.models.knowledge_new import ChunkingConfig
 from tables.constants.knowledge_constants import (
     FILE_TYPE_SPECIFIC_STRATEGIES,
     UNIVERSAL_STRATEGIES,
@@ -22,6 +23,7 @@ from tables.models.knowledge_models import (
     NaiveRagPreviewChunk,
     SourceCollection,
 )
+from tables.services.knowledge_services.collection_last_edit import record_collection_edits
 
 
 class NaiveRagService:
@@ -170,7 +172,9 @@ class NaiveRagService:
 
     @classmethod
     @transaction.atomic
-    def create_or_update_naive_rag(cls, collection_id: int, embedder_id: int) -> NaiveRag:
+    def create_or_update_naive_rag(
+        cls, collection_id: int, embedder_id: int, *, user: object | None = None
+    ) -> NaiveRag:
         """
         Create new NaiveRag or update existing one.
         Creates BaseRagType + NaiveRag in one transaction.
@@ -178,6 +182,8 @@ class NaiveRagService:
         Args:
             collection_id: ID of source collection
             embedder_id: ID of embedder to use
+            user: Acting user, recorded as the collection's last editor when the RAG is
+                created or its embedder changes
 
         Returns:
             NaiveRag instance (new or updated)
@@ -187,9 +193,14 @@ class NaiveRagService:
         rag = cls.get_or_none_naive_rag_by_collection(collection_id)
 
         if rag is not None:
+            embedder_before = rag.embedder_id
             rag = cls._update_rag(rag, collection, embedder)
+            changed = rag.embedder_id != embedder_before
         else:
             rag = cls._create_rag(collection, embedder)
+            changed = True
+        if changed:
+            record_collection_edits([collection_id], user)
 
         return rag
 
@@ -257,6 +268,8 @@ class NaiveRagService:
         config_id: int,
         naive_rag_id: int,
         data: dict[str, Any],
+        *,
+        user: object | None = None,
     ) -> NaiveRagDocumentConfig:
         """
         Update existing document config.
@@ -266,6 +279,7 @@ class NaiveRagService:
             config_id: ID of config to update
             naive_rag_id: ID of NaiveRag (for validation)
             data: Data to update document config.
+            user: Acting user, recorded as the collection's last editor if a field changed
 
         Returns:
             Updated config
@@ -293,6 +307,8 @@ class NaiveRagService:
             rag_updated_fields.add("rag_status")
         if rag_updated_fields:
             rag.save(update_fields=rag_updated_fields)
+        if updated_fields:
+            record_collection_edits([rag.base_rag_type.source_collection_id], user)
         return config
 
     @staticmethod
@@ -319,13 +335,14 @@ class NaiveRagService:
 
     @staticmethod
     @transaction.atomic
-    def delete_naive_rag(naive_rag_id: int) -> dict[str, Any]:
+    def delete_naive_rag(naive_rag_id: int, *, user: object | None = None) -> dict[str, Any]:
         """
         Delete NaiveRag and its BaseRagType.
         Cascades to document configs.
 
         Args:
             naive_rag_id: ID of NaiveRag to delete
+            user: Acting user, recorded as the collection's last editor
 
         Returns:
             dict with deletion info
@@ -344,6 +361,7 @@ class NaiveRagService:
             f"Deleted NaiveRag {naive_rag_id} for collection {collection_id} "
             f"with {config_count} document configs"
         )
+        record_collection_edits([collection_id], user)
 
         return {
             "naive_rag_id": naive_rag_id,
@@ -353,7 +371,9 @@ class NaiveRagService:
 
     @staticmethod
     @transaction.atomic
-    def init_document_configs(naive_rag_id: int) -> list[NaiveRagDocumentConfig]:
+    def init_document_configs(
+        naive_rag_id: int, *, user: object | None = None
+    ) -> list[NaiveRagDocumentConfig]:
         """
         Initialize document configs with defaults for documents that don't have configs yet.
 
@@ -365,6 +385,7 @@ class NaiveRagService:
 
         Args:
             naive_rag_id: ID of NaiveRag
+            user: Acting user, recorded as the collection's last editor if a config is created
 
         Returns:
             List of newly created configs (empty list if all docs already configured)
@@ -431,6 +452,8 @@ class NaiveRagService:
             f"Initialized {len(new_configs)} new document configs for NaiveRag {naive_rag_id}. "
             f"Existing configs unchanged: {len(existing_config_doc_ids)}"
         )
+        if new_configs:
+            record_collection_edits([collection_id], user)
 
         return new_configs
 
@@ -440,6 +463,8 @@ class NaiveRagService:
         cls,
         naive_rag_id: int,
         data: list[dict[str, Any]],
+        *,
+        user: object | None = None,
     ) -> dict[str, Any]:
         """
         Bulk update multiple document configs with partial success support.
@@ -448,6 +473,7 @@ class NaiveRagService:
         Args:
             naive_rag_id: ID of NaiveRag (for validation)
             data: Data to update document config.
+            user: Acting user, recorded as the collection's last editor if a config changed
 
         Returns:
             Dict with:
@@ -507,6 +533,7 @@ class NaiveRagService:
                 rag_updated_fields.add("rag_status")
             if rag_updated_fields:
                 rag.save(update_fields=rag_updated_fields)
+            record_collection_edits([rag.base_rag_type.source_collection_id], user)
 
         updated = len(total_updated_configs)
         unupdated = len(total_unupdated_configs)
@@ -527,6 +554,74 @@ class NaiveRagService:
             "errors": errors,
         }
 
+    @classmethod
+    def resolve_effective_document_configs(
+        cls, naive_rag_id: int, overrides: list[dict[str, Any]]
+    ) -> dict[int, ChunkingConfig]:
+        """Merge unsaved chunking settings into the stored configs without saving anything.
+
+        Applies the same rules as the bulk update: overlap must stay below size across
+        the merged values, and the strategy must suit the document's file type.
+
+        Args:
+            naive_rag_id: NaiveRag the configs must belong to. The caller has already
+                checked that it is in the active organization.
+            overrides: Items validated by `DocumentConfigEstimateOverrideSerializer`.
+
+        Returns:
+            Effective chunking settings by document config id, in the shape knowledge_new
+            expects. Nothing is saved.
+
+        Raises:
+            DocumentConfigNotFoundException: A config is missing or belongs to another RAG.
+            InvalidChunkParametersException: A merged config breaks a chunking rule; every
+                error item carries the `document_config_id` it belongs to.
+        """
+        config_ids = {item["document_config_id"] for item in overrides}
+        configs = {
+            config.naive_rag_document_id: config
+            for config in NaiveRagDocumentConfig.objects.filter(
+                naive_rag_id=naive_rag_id, naive_rag_document_id__in=config_ids
+            ).select_related("document")
+        }
+        missing_ids = config_ids - set(configs)
+        if missing_ids:
+            raise DocumentConfigNotFoundException(
+                f"Configs not found or don't belong to"
+                f" NaiveRag {naive_rag_id}: {sorted(missing_ids)}"
+            )
+
+        errors: list[dict[str, Any]] = []
+        for item in overrides:
+            config_id = item["document_config_id"]
+            fields = {key: value for key, value in item.items() if key != "document_config_id"}
+            try:
+                if not isinstance(fields.get("additional_params", {}), dict):
+                    raise InvalidChunkParametersException(
+                        errors=[
+                            {
+                                "field": "additional_params",
+                                "value": fields["additional_params"],
+                                "reason": "'additional_params' must be an object",
+                            }
+                        ],
+                    )
+                cls._update_document_config(configs[config_id], fields, commit=False)
+            except InvalidChunkParametersException as error:
+                errors += [{"document_config_id": config_id, **entry} for entry in error.errors]
+        if errors:
+            raise InvalidChunkParametersException(errors=errors)
+
+        return {
+            config_id: ChunkingConfig(
+                chunk_strategy=config.chunk_strategy,
+                chunk_size=config.chunk_size,
+                chunk_overlap=config.chunk_overlap,
+                extra=config.additional_params or {},
+            )
+            for config_id, config in configs.items()
+        }
+
     @staticmethod
     def sync_rag_status_after_config_removal(rag: NaiveRag) -> None:
         updated_fields = set()
@@ -545,13 +640,16 @@ class NaiveRagService:
 
     @staticmethod
     @transaction.atomic
-    def bulk_delete_document_configs(naive_rag_id: int, config_ids: list[int]) -> dict[str, Any]:
+    def bulk_delete_document_configs(
+        naive_rag_id: int, config_ids: list[int], *, user: object | None = None
+    ) -> dict[str, Any]:
         """
         Bulk delete multiple document configs by their config IDs.
 
         Args:
             naive_rag_id: ID of NaiveRag (for validation)
             config_ids: List of config IDs to delete
+            user: Acting user, recorded as the collection's last editor if a config was deleted
 
         Returns:
             dict with deletion info
@@ -578,6 +676,8 @@ class NaiveRagService:
 
         configs.delete()
         NaiveRagService.sync_rag_status_after_config_removal(rag)
+        if found_ids:
+            record_collection_edits([rag.base_rag_type.source_collection_id], user)
         deleted = len(found_ids)
         logger.info(f"Bulk deleted {deleted} document configs: {found_ids}")
 
@@ -588,13 +688,16 @@ class NaiveRagService:
 
     @staticmethod
     @transaction.atomic
-    def delete_document_config(config_id: int, naive_rag_id: int) -> dict[str, Any]:
+    def delete_document_config(
+        config_id: int, naive_rag_id: int, *, user: object | None = None
+    ) -> dict[str, Any]:
         """
         Delete a single document config.
 
         Args:
             config_id: ID of config to delete
             naive_rag_id: ID of NaiveRag (for validation)
+            user: Acting user, recorded as the collection's last editor
 
         Returns:
             dict with deletion info
@@ -619,6 +722,7 @@ class NaiveRagService:
         document_name = config.document.file_name
         config.delete()
         NaiveRagService.sync_rag_status_after_config_removal(rag)
+        record_collection_edits([rag.base_rag_type.source_collection_id], user)
 
         logger.info(f"Deleted document config {config_id} for document '{document_name}'")
 

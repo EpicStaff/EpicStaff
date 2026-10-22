@@ -1,6 +1,9 @@
 <div
     class="dialog-container"
     [ngClass]="data.type || 'info'"
+    [class.raised]="data.appearance === 'raised'"
+    (appEnterSubmit)="onEnterSubmit()"
+    [appEnterSubmitDisabled]="isConfirmBlocked()"
 >
     <div
         class="dialog-header"
@@ -93,6 +96,13 @@
                 [innerHTML]="data.caution"
             ></p>
         </div>
+    }
+
+    @if (footerMessage()) {
+        <div
+            class="dialog-footer-message"
+            [innerHTML]="footerMessage()"
+        ></div>
     }
 
     @if (data.verification; as verification) {
