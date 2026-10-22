@@ -1,0 +1,150 @@
+# The plugin development lab: EpicStaff's real nginx templates and entrypoint scripts in the nginx
+# image pinned in src/docker-compose.yaml (run.sh reads the pin), rendered with plugin development
+# mode on (nginx) and off (nginx-off), against a stand-in django_app that answers both checks, a
+# stand-in frontend development server, and a plugin backend. Run with run.sh, which gives every
+# run a project name of its own and removes everything afterwards. No host ports. The plugins
+# network's subnet is fixed, apart from the stack's and the gateway lab's, so two runs of this lab
+# at once would collide on it.
+name: es-development-lab
+
+x-lab-secret: &lab-secret
+  PLUGINS_GATEWAY_SECRET: 7c2e9a1f4b6d8e0a3c5f7b9d1e3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a
+
+x-plugins-subnet: &plugins-subnet 10.235.253.0/24
+
+# The gateway lab's image: Python with aiohttp, curl and jq.
+x-lab-service: &lab-service
+  build:
+    context: ../gateway
+  init: true
+  mem_limit: 128m
+  volumes:
+    - ./services:/lab/services:ro
+    - ./scripts:/lab/scripts:ro
+
+x-nginx-environment: &nginx-environment
+  <<: *lab-secret
+  NGINX_ENTRYPOINT_QUIET_LOGS: "1"
+  NGINX_SERVER_NAME: epicstaff.localhost
+  NGINX_SSL_MODE: "off"
+  DJANGO_HOST: decision
+  DJANGO_PORT: "8000"
+  FRONTEND_HOST: frontend
+  FRONTEND_PORT: "80"
+  REALTIME_HOST: realtime
+  REALTIME_PORT: "8050"
+  WEBHOOK_HOST: webhook
+  WEBHOOK_PORT: "8009"
+  AUDITOR_HOST: auditor
+  AUDITOR_PORT: "8010"
+  CHAT_ENABLED: "false"
+  CHAT_UPSTREAM_URL: http://chat:8200
+  PLUGINS_ENABLED: "true"
+  PLUGINS_DEV_MODE: "true"
+  # The .localhost names development mode needs.
+  PLUGINS_BASE_DOMAIN: plugins.epicstaff.localhost
+  DJANGO_FRONTEND_BASE_URL: http://epicstaff.localhost
+  PLUGINS_MAX_PACKAGE_MB: "300"
+  PLUGINS_MAX_REQUEST_BODY_MB: "1"
+  PLUGINS_NETWORK_SUBNET: *plugins-subnet
+
+x-nginx: &nginx
+  image: ${DEVELOPMENT_LAB_NGINX_IMAGE:?}
+  environment: *nginx-environment
+  volumes:
+    - ../../templates/:/etc/nginx/templates:ro
+    - ../../docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
+    - ../../docker-entrypoint.d/16-normalize-plugins-enabled.envsh:/docker-entrypoint.d/16-normalize-plugins-enabled.envsh:ro
+    - plugin_spa:/srv/plugin-spa:ro
+    - ../../plugin-platform:/usr/share/nginx/plugin-platform:ro
+  sysctls:
+    net.ipv4.tcp_tw_reuse: "1"
+  mem_limit: 128m
+  depends_on: [decision, author, plugin_alpha]
+
+services:
+  # Development mode on. The public networks, and plugins-network as epicstaff-api, as in the stack.
+  nginx:
+    <<: *nginx
+    networks:
+      public: {}
+      backend: {}
+      plugins:
+        aliases:
+          - epicstaff-api
+
+  # The same templates with development mode off: no page decision and nothing on 8082.
+  nginx-off:
+    <<: *nginx
+    environment:
+      <<: *nginx-environment
+      PLUGINS_DEV_MODE: "false"
+    networks: [public, backend, plugins]
+
+  decision:
+    <<: *lab-service
+    command: ["python", "-u", "/lab/services/decision.py"]
+    environment:
+      <<: *lab-secret
+      PORT: "8000"
+      AUTHOR_HOST: author
+      PLUGIN_UPSTREAM: plugin_alpha:20001
+    # backend: nginx's checks and API; public: where it resolves the development server's name.
+    networks: [backend, public]
+
+  # The developer's frontend development server. nginx reaches it as it reaches the Docker host,
+  # by an address outside every network of the stack's own services.
+  author:
+    <<: *lab-service
+    command: ["python", "-u", "/lab/services/author.py"]
+    environment:
+      PORT: "5173"
+    networks: [public]
+
+  # The installed plugin's backend, on the plugins network only: /api/ still goes there.
+  plugin_alpha:
+    <<: *lab-service
+    command: ["python", "-u", "/lab/gateway/backend.py"]
+    environment:
+      BACKEND_NAME: alpha
+      PORT: "20001"
+      EVIDENCE_FILE: /tmp/backend.log
+    volumes:
+      - ../gateway/services/backend.py:/lab/gateway/backend.py:ro
+    networks: [plugins]
+
+  # A browser's, and the developer machine's, view: not on the plugins network.
+  tools:
+    <<: *lab-service
+    command: ["sleep", "infinity"]
+    mem_limit: 256m
+    environment:
+      <<: *lab-secret
+    volumes:
+      - ./services:/lab/services:ro
+      - ./scripts:/lab/scripts:ro
+      - ../gateway/spa:/lab/spa:ro
+      - ../../plugin-platform:/lab/plugin-platform:ro
+      - plugin_spa:/srv/plugin-spa
+    networks: [public, backend]
+
+  # A plugin backend's or the node's view: on the plugins network only.
+  inside:
+    <<: *lab-service
+    command: ["sleep", "infinity"]
+    mem_limit: 256m
+    volumes:
+      - ./scripts:/lab/scripts:ro
+    networks: [plugins]
+
+volumes:
+  plugin_spa: {}
+
+networks:
+  public: {}
+  backend: {}
+  plugins:
+    internal: true
+    ipam:
+      config:
+        - subnet: *plugins-subnet

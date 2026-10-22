@@ -41,6 +41,12 @@ ALTER TABLE lab.places ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lab.places FORCE ROW LEVEL SECURITY;
 CREATE POLICY org_rows ON lab.places TO ${app_role}
   USING (org_id = NULLIF(current_setting('app.org_id', true), '')::bigint);
+-- What a migration may store for the owner: a library that does not exist refuses its every
+-- login, unless the node overrides the setting and removes it before each owner login.
+ALTER ROLE CURRENT_USER SET local_preload_libraries = 'missing_library';
+DO $$ BEGIN
+  EXECUTE format('ALTER ROLE CURRENT_USER IN DATABASE %I SET exit_on_error = on', current_database());
+END $$;
 """
 CHANGE = (
     "ALTER TABLE lab.places NO FORCE ROW LEVEL SECURITY; DELETE FROM lab.places WHERE id > 100; "
@@ -70,6 +76,17 @@ async def place_count(desired: DesiredDatabase) -> int:
         return (await cursor.fetchone())[0]
     finally:
         await connection.close()
+
+
+async def owner_settings(connector: DatabaseConnector, desired: DesiredDatabase) -> list[str]:
+    """Every setting stored for the owner, role-wide and in any database, sorted."""
+    async with connector.admin_session(desired.server) as admin:
+        cursor = await admin.execute(
+            "SELECT unnest(setconfig) FROM pg_catalog.pg_db_role_setting "
+            "WHERE setrole = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = %s)",
+            (desired.owner_role,),
+        )
+        return sorted(row[0] for row in await cursor.fetchall())
 
 
 async def main() -> dict:
@@ -103,6 +120,7 @@ async def main() -> dict:
         await provisioner.ensure(
             PLUGIN, desired, app_password, [migration("001_schema.sql", SCHEMA)]
         )
+        outcome["owner_settings_before"] = await owner_settings(connector, desired)
         outcome["rows_before"] = await place_count(desired)
         backup = await backups.backup(
             BackupRequest(
@@ -149,6 +167,7 @@ async def main() -> dict:
             "ledger": [entry.name for entry in restored.provisioned.ledger],
         }
         outcome["rows_after_the_restore"] = await place_count(desired)
+        outcome["owner_settings"] = await owner_settings(connector, desired)
     finally:
         await DatabaseDropper(connector).drop(desired)
         shutil.rmtree(layout.plugin_backups(PLUGIN), ignore_errors=True)

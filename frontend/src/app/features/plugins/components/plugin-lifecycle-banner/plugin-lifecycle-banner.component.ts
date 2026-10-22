@@ -23,10 +23,28 @@ type BannerTone = 'progress' | 'offline' | 'failed' | 'done';
 interface BannerLine {
     tone: BannerTone;
     text: string;
-    /** What the node is doing, how long the plugin has been offline; `null` when there is nothing to add. */
+    /** What the node is doing; `null` when there is nothing to add. */
     detail: string | null;
+    /** How long the plugin has been offline; `null` when it is not. */
+    elapsed: string | null;
     /** Work still under way: a spinner leads the line. */
     working: boolean;
+}
+
+/**
+ * A line's parenthesis, "(Running migrations · offline for 3 min)", in the parts a screen reader hears (`announced`,
+ * `closing`) and the part it does not (`unannounced`): the time offline changes every minute, and the banner is a live
+ * region, so it would be read out again each time.
+ */
+interface BannerDetail {
+    announced: string;
+    unannounced: string;
+    closing: string;
+}
+
+/** A banner line as the template shows it. */
+interface BannerLineView extends BannerLine {
+    parenthesis: BannerDetail | null;
 }
 
 /** What a failure is said to have happened while doing, when the node named no step. */
@@ -68,7 +86,9 @@ export class PluginLifecycleBannerComponent {
         const plugin = this.plugin();
         return purgeProgressText(plugin.name, plugin.purge_progress);
     });
-    protected readonly upgradeLines = computed<BannerLine[]>(() => upgradeLines(this.plugin()));
+    protected readonly upgradeLines = computed<BannerLineView[]>(() =>
+        upgradeLines(this.plugin()).map((line) => ({ ...line, parenthesis: bannerDetail(line) }))
+    );
     protected readonly hooksText = computed(() => {
         const plugin = this.plugin();
         const hooks = plugin.upgrade_hooks;
@@ -113,7 +133,13 @@ function upgradeLines(plugin: PluginDetail): BannerLine[] {
     if (!upgrade.failed) {
         lines.push(workingLine(plugin, upgrade));
     } else if (restore?.state === 'succeeded') {
-        lines.push({ tone: 'failed', text: `The upgrade to ${version} is stopped.`, detail: null, working: false });
+        lines.push({
+            tone: 'failed',
+            text: `The upgrade to ${version} is stopped.`,
+            detail: null,
+            elapsed: null,
+            working: false,
+        });
     } else {
         const activity = upgrade.step
             ? lowerFirst(PLUGIN_UPGRADE_STEP_LABELS[upgrade.step])
@@ -123,6 +149,7 @@ function upgradeLines(plugin: PluginDetail): BannerLine[] {
             tone: 'failed',
             text: `The upgrade to ${version} failed while ${activity}: ${error}`,
             detail: null,
+            elapsed: null,
             working: false,
         });
         if (upgrade.database_changed) {
@@ -130,6 +157,7 @@ function upgradeLines(plugin: PluginDetail): BannerLine[] {
                 tone: 'failed',
                 text: `The database already holds changes of ${version}. Restore the backup to go back.`,
                 detail: null,
+                elapsed: null,
                 working: false,
             });
         }
@@ -147,6 +175,7 @@ function workingLine(plugin: PluginDetail, upgrade: PluginUpgrade): BannerLine {
             tone: 'progress',
             text: `Preparing ${version} — ${plugin.name} keeps running`,
             detail: step,
+            elapsed: null,
             working: true,
         };
     }
@@ -155,13 +184,18 @@ function workingLine(plugin: PluginDetail, upgrade: PluginUpgrade): BannerLine {
             tone: 'progress',
             text: `Upgrading to ${version} — ${plugin.name} keeps running`,
             detail: step,
+            elapsed: null,
             working: true,
         };
     }
     const since = upgrade.maintenance_started_at;
-    const offline = since ? `offline for ${elapsedText(since)}` : null;
-    const detail = [step, offline].filter((part): part is string => part !== null).join(' · ') || null;
-    return { tone: 'offline', text: `Upgrading to ${version} — ${plugin.name} is offline`, detail, working: true };
+    return {
+        tone: 'offline',
+        text: `Upgrading to ${version} — ${plugin.name} is offline`,
+        detail: step,
+        elapsed: since ? `offline for ${elapsedText(since)}` : null,
+        working: true,
+    };
 }
 
 /**
@@ -177,10 +211,7 @@ function latestRestoreNews(upgrade: PluginUpgrade): PluginRestore | null {
 }
 
 function restoreLine(restore: PluginRestore, version: string): BannerLine {
-    const source =
-        restore.backup.reason === 'pre_upgrade'
-            ? `the backup taken before the upgrade to ${version}`
-            : 'the backup taken before the last restore';
+    const source = restoreSourceText(restore, version);
     switch (restore.state) {
         case 'pending':
         case 'running':
@@ -188,10 +219,17 @@ function restoreLine(restore: PluginRestore, version: string): BannerLine {
                 tone: 'progress',
                 text: `Restoring the database from ${source}`,
                 detail: restore.step ? PLUGIN_RESTORE_STEP_LABELS[restore.step] : 'Waiting for the plugin node',
+                elapsed: null,
                 working: true,
             };
         case 'succeeded':
-            return { tone: 'done', text: `Database restored from ${source}`, detail: null, working: false };
+            return {
+                tone: 'done',
+                text: `Database restored from ${source}`,
+                detail: null,
+                elapsed: null,
+                working: false,
+            };
         case 'failed': {
             const activity = restore.step ? ` while ${lowerFirst(PLUGIN_RESTORE_STEP_LABELS[restore.step])}` : '';
             const outcome =
@@ -202,10 +240,31 @@ function restoreLine(restore: PluginRestore, version: string): BannerLine {
                 tone: 'failed',
                 text: `The restore failed${activity}: ${restore.last_error ?? 'no reason was given'}. ${outcome}`,
                 detail: null,
+                elapsed: null,
                 working: false,
             };
         }
     }
+}
+
+/** Which backup a restore uses: by why it was taken, else by its file name. */
+function restoreSourceText(restore: PluginRestore, version: string): string {
+    switch (restore.backup.reason) {
+        case 'pre_upgrade':
+            return `the backup taken before the upgrade to ${version}`;
+        case 'pre_restore':
+            return 'the backup taken before the last restore';
+        case null:
+            return `the backup ${restore.backup.file_name}`;
+    }
+}
+
+function bannerDetail(line: BannerLine): BannerDetail | null {
+    const { detail, elapsed } = line;
+    if (detail && elapsed) return { announced: `(${detail}`, unannounced: ` · ${elapsed}`, closing: ')' };
+    if (detail) return { announced: `(${detail})`, unannounced: '', closing: '' };
+    if (elapsed) return { announced: '', unannounced: `(${elapsed})`, closing: '' };
+    return null;
 }
 
 /** "less than a minute", "3 min", "1 h 5 min" since `since`. */

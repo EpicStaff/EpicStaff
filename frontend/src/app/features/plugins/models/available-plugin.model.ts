@@ -14,4 +14,6 @@ export interface AvailablePlugin {
     /** Always contains `read`. */
     permissions: PluginAction[];
     availability: AvailablePluginAvailability;
+    /** The plugin is served from a developer's machine (development mode); members never see where. */
+    development: boolean;
 }

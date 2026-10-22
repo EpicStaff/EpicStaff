@@ -242,6 +242,65 @@ describe('signing in while the plugin is being updated in the organization', () 
         assert.equal(login.availability, 'available', 'a sign-in that works again ends the maintenance');
     });
 
+    test('a renewal refused for good after the update ends the maintenance: the page shows why', async () => {
+        const { win, login, changes } = setup();
+        const started = login.start();
+        await answerSilently(win, { error: 'temporarily_unavailable' });
+        assert.equal(await started, 'maintenance');
+
+        // The organization's upgrade failed for good: EpicStaff no longer signs the person in to the plugin.
+        const renewed = login.renew();
+        await answerSilently(win, { error: 'access_denied' });
+
+        assert.equal(await renewed, 'access-denied');
+        assert.equal(login.state, 'access-denied');
+        assert.equal(login.availability, 'available');
+        assert.deepEqual(changes, ['maintenance', 'available']);
+    });
+
+    test('an ended session or a failed sign-in after the update ends the maintenance too', async () => {
+        for (const outcome of ['session-ended', 'failed'] as const) {
+            const { win, server, login } = setup();
+            const started = login.start();
+            await answerSilently(win, { error: 'temporarily_unavailable' });
+            await started;
+
+            if (outcome === 'failed') {
+                server.tokenResponder = () => json(400, { status_code: 400, code: 'invalid_grant', message: '' });
+            }
+            const renewed = login.renew();
+            await answerSilently(win, outcome === 'failed' ? { code: CODE } : { error: 'login_required' });
+
+            assert.equal(await renewed, outcome);
+            assert.equal(login.availability, 'available', outcome);
+            login.close();
+        }
+    });
+
+    test('a refused sign-in leaves a maintenance the API answered as it is', async () => {
+        const { win, server, login } = await signedIn();
+        server.apiResponder = () => gateway503('maintenance');
+        await login.fetch('/api/places');
+
+        const renewed = login.renew();
+        await answerSilently(win, { error: 'access_denied' });
+
+        assert.equal(await renewed, 'access-denied');
+        assert.equal(login.availability, 'maintenance');
+    });
+
+    test('a refused sign-in leaves an unavailable API as it is', async () => {
+        const { win, server, login } = await signedIn();
+        server.apiResponder = () => gateway503('unavailable');
+        await login.fetch('/api/places');
+
+        const renewed = login.renew();
+        await answerSilently(win, { error: 'access_denied' });
+
+        assert.equal(await renewed, 'access-denied');
+        assert.equal(login.availability, 'unavailable');
+    });
+
     test('a sign-in leaves an unavailable API as it is: only the API itself says it is back', async () => {
         const { win, server, login } = await signedIn();
         server.apiResponder = () => gateway503('unavailable');

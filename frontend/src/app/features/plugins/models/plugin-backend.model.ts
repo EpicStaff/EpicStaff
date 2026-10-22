@@ -148,8 +148,11 @@ export interface PluginRuntimeResponse {
     placement: PluginPlacement | null;
     /** `null`: the current package has no database. */
     database: PluginRuntimeDatabase | null;
-    /** `null`: the plugin has no backend. */
-    egress: PluginRuntimeEgress | null;
-    /** Set exactly while the node runs a package other than the current one: during an upgrade's maintenance. */
+    /** Every backend has it: the runtime is only answered for a plugin with a backend. */
+    egress: PluginRuntimeEgress;
+    /**
+     * Set exactly while the node runs a package other than the current one: during an upgrade's maintenance, and while
+     * an upgrade that gives the plugin its first backend runs the new version before it completes.
+     */
     upgrade: { from_version: string; to_version: string } | null;
 }

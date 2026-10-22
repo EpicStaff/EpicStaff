@@ -9,8 +9,8 @@ import {
     pluginFrameUrl,
     signInToEpicStaff,
     signOutOfEpicStaff,
-} from './support/epicstaff';
-import { STACK } from './support/stack';
+} from './support/epicstaff.ts';
+import { STACK } from './support/stack.ts';
 
 const TOKEN_ENDPOINT = '/api/auth/plugin-token/';
 
@@ -23,7 +23,8 @@ test('inside EpicStaff: signs in silently, shows who am I, renews, and adds no h
 
     await expect(fact(frame, 'Email')).toHaveText(STACK.email);
     await expect(fact(frame, 'Organization')).toHaveText(`${STACK.orgA.name} (${STACK.orgA.id})`);
-    await expect(fact(frame, 'Permissions')).toHaveText('["read"]');
+    // Weather's Member permissions, in manifest order.
+    await expect(fact(frame, 'Permissions')).toHaveText('["read","update"]');
     await expect(fact(frame, 'Context mode')).toHaveText('user');
     expect(await historyLength(page), 'only the visit itself is in the history').toBe(before + 1);
 

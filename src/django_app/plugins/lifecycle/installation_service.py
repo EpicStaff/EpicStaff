@@ -1,6 +1,7 @@
 import hashlib
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from typing import BinaryIO
 
 from django.conf import settings
@@ -260,18 +261,16 @@ class PluginInstallationService:
             archive = self._reviewed_archive(pending, local_copy)
             _assert_within_platform_maximums(archive.manifest)
             self._record_verdict(package_id, verify_package_signature(archive))
-            plugin, approved = self._approve_checked(
-                package_id, approved_by, archive, local_copy, request
-            )
+            approved = self._approve_checked(package_id, approved_by, archive, local_copy, request)
         log_package_action(
             "approve",
             approved_by,
-            approved,
-            trust=pending.trust,
-            signer=pending.signer_key_name or "none",
+            approved.facts,
+            trust=approved.trust,
+            signer=approved.signer_key_name or "none",
             untrusted_acknowledged=untrusted_acknowledged,
         )
-        return plugin
+        return approved.plugin
 
     def _approve_checked(
         self,
@@ -280,7 +279,7 @@ class PluginInstallationService:
         archive: PackageArchive,
         local_copy: BinaryIO,
         request: ApprovalRequest,
-    ) -> tuple[Plugin, PackageFacts]:
+    ) -> "_Approval":
         manifest = archive.manifest
         version_written = False
         committed = False
@@ -308,6 +307,8 @@ class PluginInstallationService:
                 plugin, package = self._lock_pending(package_id)
                 assert_plugin_in_service(plugin)
                 facts = PackageFacts.of(package)
+                # The verdict as `_record_verdict` stored it, read under the package's lock.
+                trust, signer_key_name = package.trust, package.signer_key_name
                 if plugin.current_package_id is not None:
                     PluginUpgradeService(
                         publisher=self._publisher, store=self._store, placements=self._placements
@@ -323,7 +324,12 @@ class PluginInstallationService:
             if version_written and not committed:
                 self._discard_written_version(manifest)
             raise
-        return Plugin.objects.with_summary().get(pk=plugin.pk), facts
+        return _Approval(
+            plugin=Plugin.objects.with_summary().get(pk=plugin.pk),
+            facts=facts,
+            trust=trust,
+            signer_key_name=signer_key_name,
+        )
 
     def _install(self, plugin: Plugin, package: PluginPackage, manifest, approved_by) -> None:
         """A plugin's first approval: `package` becomes its current package."""
@@ -491,6 +497,17 @@ class PluginInstallationService:
         for key in storage_keys:
             if key not in referenced:
                 self._store.delete(key)
+
+
+@dataclass(frozen=True)
+class _Approval:
+    """What an approval committed, for its audit line: the package's trust and signer as they
+    were when it was approved."""
+
+    plugin: Plugin
+    facts: PackageFacts
+    trust: str
+    signer_key_name: str | None
 
 
 def _assert_installable(manifest: PluginManifest) -> None:

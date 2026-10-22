@@ -53,9 +53,10 @@ class NodeReportService:
 
         A placement of another node, or one that no longer exists, is skipped. The report's
         observations are stored in one transaction that locks placements, then database
-        records, then backups, and never a plugin: each placement's process, what it says
-        about the plugin's database (`DatabaseReportRecorder`) and the backups its node holds
-        (`BackupRecorder`).
+        records, then the backups it changes, and never a plugin: each placement's process,
+        what it says about the plugin's database (`DatabaseReportRecorder`) and the backups
+        its node holds (`BackupRecorder`). A backup inventory marks the recorded backups it
+        no longer lists deleted; a report without one marks none.
 
         Then, for each placement whose plugin may move or has an open upgrade, a transaction
         of its own locks that plugin first and applies the rest (`PluginUpgradeService.
@@ -91,10 +92,9 @@ class NodeReportService:
                 if record is None:
                     continue
                 listed = _store_database_observations(record, placement, observed, node, now)
-                # Only a node that reports the database knows its backups: a report without
-                # it (an older node, or one that could not read its state) lists none, which
-                # says nothing.
-                if observed.database is not None and record.has_present_backups:
+                # A list, even an empty one, is every backup the node holds; None (it could not
+                # read them, or an older node) says nothing about the ones recorded.
+                if observed.backups is not None and record.has_present_backups:
                     listed_by_database[record.pk] = listed
             mark_unlisted_deleted(listed_by_database, now)
         upgrading = _plugins_with_an_open_upgrade(placements)
@@ -128,25 +128,30 @@ def _store_database_observations(
     if observed.database is not None:
         DatabaseReportRecorder().apply(record, identifier, observed.database, now)
     return BackupRecorder().apply_inventory(
-        record, observed.backups, identifier=identifier, node=node
+        record, observed.backups or [], identifier=identifier, node=node
     )
 
 
 def _locked_reported_databases(
     placements: list[PluginPlacement], by_id: dict[int, PlacementReport]
 ) -> dict[int, PluginDatabase]:
-    """The database records of the plugins whose report has a database section or backups,
-    locked, by plugin id, each with `has_present_backups`; no query when no report has one."""
+    """The database records of the plugins whose report has a database section or a backup
+    inventory, locked, by plugin id, each with `has_present_backups`; no query when no report
+    has one.
+
+    `FOR NO KEY UPDATE`: a backup recorded for the database points at the record, and its
+    insert by the node's `migrations` request takes `FOR KEY SHARE` on it.
+    """
     plugin_ids = [
         placement.plugin_id
         for placement in placements
-        if by_id[placement.pk].database is not None or by_id[placement.pk].backups
+        if by_id[placement.pk].database is not None or by_id[placement.pk].backups is not None
     ]
     if not plugin_ids:
         return {}
     return {
         record.plugin_id: record
-        for record in PluginDatabase.objects.select_for_update(of=("self",))
+        for record in PluginDatabase.objects.select_for_update(of=("self",), no_key=True)
         .filter(plugin_id__in=plugin_ids)
         .annotate(
             has_present_backups=Exists(

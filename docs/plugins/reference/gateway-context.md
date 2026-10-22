@@ -24,7 +24,7 @@ The gateway decides every request to `https://<id>.<plugins base domain>/api/**`
 plugin sees it, and adds the context in the `X-EpicStaff-Plugin-Context` header. While the
 plugin is stopped for an upgrade, it refuses every path, public ones included, with the deny
 reason `maintenance` (the client gets `503 plugin_maintenance`); once the plugin is back, it
-gives the same answer to a person of an organization whose upgrade hook has not finished, and
+gives the same answer to a member of an organization whose upgrade hook has not finished, and
 `plugin_unavailable` to one whose upgrade failed ([Error codes](error-codes.md#gateway-codes)). Whatever value a
 client sends in that header, in any spelling, is removed first. The plugin also never receives
 the browser's cookies, and the browser never receives cookies the plugin sets.
@@ -41,24 +41,30 @@ A request gets one of two kinds of context:
 
 ## Who is asking: user contexts
 
-The gateway forwards a request on a non-public path only when all of these hold:
+The gateway forwards a request on a non-public path only when all of these hold, checked in this
+order:
 
 1. it carries a valid plugin login token for this plugin, unexpired and not altered;
 2. the person's account is active, and their password has not changed since the token was
    issued;
-3. the plugin is still granted to the organization the token was issued in, and the grant is
-   active;
-4. the person is still a member of that organization, the organization is active, and the
-   person's role there includes the plugin's `read` action.
+3. the person is still a member of the organization the token was issued in, and the
+   organization is active;
+4. the plugin is still granted to that organization, the grant is active, and it is not being
+   upgraded there;
+5. the person's role there includes the plugin's `read` action.
 
-Otherwise the gateway answers instead of the plugin, in EpicStaff's error shape:
+Before any of them, the plugin itself must be up: while it is stopped for an upgrade, every path
+is answered `503 plugin_maintenance`, signed in or not. Otherwise the gateway answers instead of
+the plugin, in EpicStaff's error shape:
 
 | Answer | Meaning | What the JS SDK does |
 |---|---|---|
-| `401 login_required` | The request has no acceptable token: none, expired, for another plugin, or no longer valid (checks 1–3) | Renews the token silently, once, and repeats the request |
-| `403 forbidden` | The token is fine, but the person may no longer use the plugin in that organization (check 4) | Reports that the person has no access, and does not retry |
-| `503 plugin_maintenance` | The plugin is stopped for an upgrade, or the person's organization is still being upgraded (checks 2 hold, the grant is `upgrading`). Comes with `Retry-After: 30` | Reports `availability: maintenance`, and does not renew the token |
-| `503 plugin_unavailable` | The person's organization's upgrade failed (the grant is `upgrade_failed`), or the plugin's process is not up | Reports `availability: unavailable` |
+| `401 login_required` | The request has no acceptable token: none, expired, for another plugin, or no longer valid (checks 1 and 2, or a grant that was suspended, deleted or re-created in check 4) | Renews the token silently, once, and repeats the request |
+| `403 forbidden` | The token is fine, but the person may no longer use the plugin in that organization (checks 3 and 5) | Reports that the person has no access, and does not retry |
+| `503 plugin_maintenance` | The plugin is stopped for an upgrade, or the person's organization is still being upgraded (checks 1 to 3 hold, and the grant is `upgrading`). Comes with `Retry-After: 30` | Reports `availability: maintenance`, and does not renew the token |
+| `503 plugin_unavailable` | The person's organization's upgrade failed (checks 1 to 3 hold, and the grant is `upgrade_failed`), or the plugin's process is not up | Reports `availability: unavailable` |
+
+So someone who is no longer a member of an organization learns nothing about its upgrade.
 
 A change to an account, a membership, a role or a grant takes effect within 10 seconds. The token
 itself lives at most 15 minutes and is not ended by logging out of EpicStaff.

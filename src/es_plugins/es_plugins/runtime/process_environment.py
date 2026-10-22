@@ -17,9 +17,17 @@ from urllib.parse import quote, urlsplit
 from epicstaff_plugin.contracts.runtime import (
     DATABASE_CONNECTIONS_ENVIRONMENT_VARIABLE,
     DATABASE_URL_ENVIRONMENT_VARIABLE,
+    ENTRYPOINT_ENVIRONMENT_VARIABLE,
+    EPICSTAFF_API_URL_ENVIRONMENT_VARIABLE,
+    EPICSTAFF_PUBLIC_URL_ENVIRONMENT_VARIABLE,
     LOOPBACK_NO_PROXY_HOSTS,
     NO_PROXY_ENVIRONMENT_VARIABLES,
+    PLUGIN_IDENTIFIER_ENVIRONMENT_VARIABLE,
+    PLUGIN_PUBLIC_URL_ENVIRONMENT_VARIABLE,
+    PLUGIN_VERSION_ENVIRONMENT_VARIABLE,
+    PORT_ENVIRONMENT_VARIABLE,
     PROXY_ENVIRONMENT_VARIABLES,
+    RUNTIME_FILE_ENVIRONMENT_VARIABLE,
     RuntimeFile,
 )
 from src.shared.models.plugin_nodes import DesiredDatabase, DesiredPlacement
@@ -52,12 +60,12 @@ def plugin_environment(
     runtime_file: RuntimeFile,
     credentials: PlatformCredentials,
 ) -> dict[str, str]:
-    # EPICSTAFF_PLUGIN_LISTEN_FD is not set here: the launcher adds it at spawn, naming the fd
-    # the agent's listening socket lands on. PORT stays, for the plugin's information.
+    # `LISTEN_FD_ENVIRONMENT_VARIABLE` is not set here: the launcher adds it at spawn, naming
+    # the fd the agent's listening socket lands on. The port stays, for the plugin's information.
     identifier = placement.plugin_identifier
     home = layout.plugin_home(identifier)
     environment = {
-        "PORT": str(placement.runtime.port),
+        PORT_ENVIRONMENT_VARIABLE: str(placement.runtime.port),
         # No /etc/passwd entry exists for a plugin UID; these make getpass.getuser() work.
         "USER": identifier,
         "LOGNAME": identifier,
@@ -66,13 +74,13 @@ def plugin_environment(
         "PATH": f"{venv / 'bin'}:{SYSTEM_PATH}",
         "LANG": "C.UTF-8",
         "PYTHONUNBUFFERED": "1",
-        "EPICSTAFF_PLUGIN_IDENTIFIER": identifier,
-        "EPICSTAFF_PLUGIN_VERSION": placement.package.version,
-        "EPICSTAFF_PLUGIN_ENTRYPOINT": placement.runtime.entrypoint,
-        "EPICSTAFF_PLUGIN_RUNTIME_FILE": str(layout.runtime_file(identifier)),
-        "EPICSTAFF_API_URL": runtime_file.epicstaff_api_url,
-        "EPICSTAFF_PUBLIC_URL": runtime_file.epicstaff_public_url,
-        "EPICSTAFF_PLUGIN_PUBLIC_URL": runtime_file.public_url,
+        PLUGIN_IDENTIFIER_ENVIRONMENT_VARIABLE: identifier,
+        PLUGIN_VERSION_ENVIRONMENT_VARIABLE: placement.package.version,
+        ENTRYPOINT_ENVIRONMENT_VARIABLE: placement.runtime.entrypoint,
+        RUNTIME_FILE_ENVIRONMENT_VARIABLE: str(layout.runtime_file(identifier)),
+        EPICSTAFF_API_URL_ENVIRONMENT_VARIABLE: runtime_file.epicstaff_api_url,
+        EPICSTAFF_PUBLIC_URL_ENVIRONMENT_VARIABLE: runtime_file.epicstaff_public_url,
+        PLUGIN_PUBLIC_URL_ENVIRONMENT_VARIABLE: runtime_file.public_url,
     }
     proxy_user = quote(identifier, safe="")
     proxy_password = quote(credentials.egress_password, safe="")

@@ -20,8 +20,10 @@ Every session the node opens on a plugin's own database (the owner's here, `pg_d
 start-up packet. Those take precedence over what a plugin stored for its database or its owner
 role (`ALTER DATABASE … SET`, `ALTER ROLE … SET`), which the owner may do and which outlives a
 restore: a stored `default_transaction_read_only` or `transaction_timeout` could otherwise
-block every later migration and restore, and a stored `role` could make a backup run as another
-role.
+block every later migration and restore, a stored `local_preload_libraries` naming a library
+that does not exist would refuse the login itself, and a stored `role` could make a backup run
+as another role. The owner role's own stored settings are also removed before each of its logins
+(`migration_runner.open_owner_login`).
 
 A session either opens or raises `DatabaseUnreachableError`; inside it, an error raised by
 psycopg leaves as `DatabaseUnreachableError` when the connection was lost, and as
@@ -64,6 +66,12 @@ OWNER_SESSION_SETTINGS = {
     "idle_session_timeout": "0",
     "transaction_timeout": "0",
     "lock_timeout": "60000",
+    # A library that does not exist would refuse the login itself; a tablespace that does not
+    # exist would fail every CREATE; `exit_on_error` would end the session at a migration's
+    # first error, before the ledger is read again.
+    "local_preload_libraries": "",
+    "default_tablespace": "",
+    "exit_on_error": "off",
 }
 """What an owner session (a migration run, a restore) forces over the plugin's stored settings."""
 
@@ -87,6 +95,8 @@ BACKUP_SESSION_OPTIONS = session_options(
         "idle_session_timeout": "0",
         "transaction_timeout": "0",
         "bytea_output": "hex",
+        "local_preload_libraries": "",
+        "exit_on_error": "off",
     }
 )
 # A dead peer is noticed within about a minute: keepalives after 30 s idle, every 10 s, three

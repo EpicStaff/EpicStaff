@@ -252,11 +252,13 @@ failed, and the SuperAdmin chooses:
   its backup.
 - **Cancel**: while the database holds no migration of the new version, that is before the
   migrations start, after one failed before any file of the new version was applied, or after a
-  restore. The plugin starts again on the version it ran. An upgrade that gives a plugin its
-  first backend cannot be cancelled.
+  successful restore. The plugin starts again on the version it ran. An upgrade that gives a
+  plugin its first backend cannot be cancelled.
 - **Restore backup…**, after a failed migration or start: the database is replaced by a backup
   this upgrade took. The node first backs up the database as it is, so the restore can be
-  undone. Changes made since the backup are lost. After a restore, Cancel is possible again.
+  undone. Changes made since the backup are lost. After a successful restore, Cancel, Retry and
+  a newer version are offered again. A restore that failed after the node had begun
+  recreating the database leaves only another restore, or deleting the plugin.
 
 **Suspended organizations.** An organization suspended during an upgrade keeps the version it
 had. Resumed later, it is upgraded like the others, with the upgrade hook.

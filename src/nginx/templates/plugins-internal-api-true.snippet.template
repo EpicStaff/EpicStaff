@@ -1,66 +1,26 @@
 # PLUGINS_ENABLED=true: EpicStaff's API for the plugin node and plugin backends, on port 8081,
 # which they reach as http://epicstaff-api:8081/api/ on plugins-network (the port is not
-# published). django_app itself is not on that network, so this is their only way in.
-#
-# Only /api/ is served, and not the parts no plugin and no node may call: logins and tokens,
-# the SuperAdmin's administration, and the gateway check. Only the headers set here reach
-# Django: no cookie, no X-API-Key, nothing a plugin would forge (the address is nginx's own
-# view of the caller). X-Plugin-Network-Secret tells Django a request came this way: plugin
-# service-account and node keys authenticate only with it.
+# published). django_app itself is not on that network, so this is their only way in. Its routes
+# and the headers it sends Django are in plugins-api-listener.snippet, shared with the
+# development API listener.
 server {
     listen 8081;
     server_name _;
 
     # Only the plugins network reaches this listener: the plugin backends and the node agent.
     # Refused before choosing a location ($plugin_network_caller, plugins-server-true.snippet), so
-    # also the paths answered by a `return` below, which would otherwise run before an allow/deny.
+    # also the paths answered by a `return`, which would otherwise run before an allow/deny.
     if ($plugin_network_caller = 0) {
         return 403;
     }
 
-    client_max_body_size 50M;
+    # Not the development API listener: Django gets no X-Plugin-Development-Listener from here,
+    # so a development key never authenticates through the plugins network.
+    set $plugin_development_listener "";
 
-    location ^~ /api/auth/ {
-        default_type application/json;
-        return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
-    }
-
-    location ^~ /api/admin/ {
-        default_type application/json;
-        return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
-    }
-
-    location ^~ /api/plugin-gateway/ {
-        default_type application/json;
-        return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
-    }
-
-    location ^~ /api/ {
-        proxy_pass http://backend_server;
-        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-        proxy_pass_request_headers off;
-        # A name DJANGO_ALLOWED_HOSTS accepts (as for the chat service's calls); epicstaff-api
-        # need not be listed there.
-        proxy_set_header Host localhost;
-        proxy_set_header Authorization $http_authorization;
-        proxy_set_header X-Organization-Id $http_x_organization_id;
-        # The person a plugin backend acts for; Django checks they may use the plugin.
-        proxy_set_header X-EpicStaff-On-Behalf-Of $http_x_epicstaff_on_behalf_of;
-        # From the environment, never from the caller (proxy_pass_request_headers is off).
-        proxy_set_header X-Plugin-Network-Secret "${PLUGINS_GATEWAY_SECRET}";
-        # Needed to carry a request body and the node's conditional desired-state request.
-        proxy_set_header Content-Type $content_type;
-        proxy_set_header Accept $http_accept;
-        proxy_set_header If-None-Match $http_if_none_match;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # Package downloads to the node are up to PLUGINS_MAX_PACKAGE_MB.
-        proxy_read_timeout 300s;
-    }
-
-    location / {
-        default_type application/json;
-        return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
-    }
+    include /etc/nginx/conf.d/plugins-api-listener.snippet;
 }
+
+# PLUGINS_DEV_MODE (16-normalize-plugins-enabled.envsh): the development API listener on 8082, or
+# nothing.
+include /etc/nginx/conf.d/plugins-development-api-${PLUGINS_DEV_MODE}.snippet;

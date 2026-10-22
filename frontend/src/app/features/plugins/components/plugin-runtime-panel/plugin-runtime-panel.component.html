@@ -49,6 +49,14 @@
             @if (upgradeText(); as upgrade) {
                 <p class="runtime__upgrade text-body-medium">{{ upgrade }}</p>
             }
+            @if (developmentText(); as development) {
+                <p
+                    class="runtime__callout runtime__development text-body"
+                    role="status"
+                >
+                    {{ development }}
+                </p>
+            }
             @if (placement(); as current) {
                 @if (blockedMessage(); as message) {
                     <div

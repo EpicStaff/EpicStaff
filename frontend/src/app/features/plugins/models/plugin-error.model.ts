@@ -50,6 +50,7 @@ export type PluginErrorCode =
     | 'backup_not_found'
     | 'restore_not_allowed'
     | 'invalid_restore_phrase'
+    | 'plugin_development_mode_off'
     | 'throttled';
 
 /** One problem in a refused package: `loc` is a dotted path such as `manifest.user_permissions[1].action`. */

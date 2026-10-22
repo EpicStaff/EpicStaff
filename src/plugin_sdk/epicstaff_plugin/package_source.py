@@ -10,10 +10,13 @@ from epicstaff_plugin.contracts.manifest import MANIFEST_FILE_NAME, PluginManife
 from epicstaff_plugin.package_layout import (
     BACKEND_REQUIREMENTS,
     MAX_ICON_BYTES,
+    SECRET_SCAN_BYTES,
     SPA_DIRECTORY,
     PackageFile,
+    is_scanned_for_secrets,
     layout_problems,
     path_set_problems,
+    secret_problem,
     size_problems,
 )
 from epicstaff_plugin.problems import MANIFEST_LOC, PackageProblemsError, Problem, archive_file_loc
@@ -67,7 +70,20 @@ class PackageSource:
                 check_spa=self.includes_spa,
                 require_sdk_pin=require_sdk_pin,
             ),
+            *self.secret_problems(),
         ]
+
+    def secret_problems(self) -> list[Problem]:
+        """Name every file that holds an EpicStaff key or runtime file (`secret_problem`)."""
+        problems = []
+        for file in self.files:
+            if not is_scanned_for_secrets(file.path):
+                continue
+            head = _read_capped(file.source, SECRET_SCAN_BYTES)
+            complete = len(head) <= SECRET_SCAN_BYTES
+            if problem := secret_problem(file.path, head[:SECRET_SCAN_BYTES], complete=complete):
+                problems.append(problem)
+        return problems
 
     def file(self, path: str) -> SourceFile | None:
         return next((file for file in self.files if file.path == path), None)

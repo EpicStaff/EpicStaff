@@ -1,4 +1,4 @@
-"""The seccomp filter plugin processes run under: no System V IPC object, made or opened."""
+"""The seccomp filter plugin processes run under: no System V IPC object, made or opened, and no io_uring."""
 
 import errno
 import json
@@ -40,6 +40,14 @@ def test_the_filter_refuses_another_abi_and_the_three_calls_and_allows_the_rest(
     assert program[-1] == (0x06, 0, 0, refuse)
 
 
+@pytest.mark.parametrize("machine", sorted(ARCHITECTURES))
+def test_the_filter_refuses_the_three_io_uring_calls(machine):
+    checked = {value for code, _, _, value in statements(plugin_filter(machine))[4:-2] if code == 0x15}
+
+    # io_uring_setup, io_uring_enter, io_uring_register: one number each on both architectures.
+    assert {425, 426, 427} <= checked
+
+
 def test_an_unknown_architecture_has_no_filter():
     with pytest.raises(ValueError, match="no plugin seccomp filter is known for riscv64"):
         plugin_filter("riscv64")
@@ -59,6 +67,9 @@ for make, remove in (
     results.append(-ctypes.get_errno() if made < 0 else made)
     if made >= 0:
         remove(made)
+# io_uring_setup(1, NULL): EPERM under the filter (EFAULT, or a ring, without it).
+ring = libc.syscall(425, 1, None)
+results.append(-ctypes.get_errno() if ring < 0 else ring)
 results.append(os.getpid() > 0)
 print(json.dumps(results))
 """
@@ -87,12 +98,12 @@ def test_a_spawned_plugin_process_cannot_make_system_v_ipc_objects(layout, tmp_p
     import os
 
     os.waitpid(pid, 0)
-    assert json.loads(output.read_text()) == [-errno.EPERM, -errno.EPERM, -errno.EPERM, True]
+    assert json.loads(output.read_text()) == [-errno.EPERM, -errno.EPERM, -errno.EPERM, -errno.EPERM, True]
 
 
 @pytest.mark.root
 def test_without_the_filter_the_same_calls_work():
     completed = subprocess.run([sys.executable, "-I", "-c", SYSTEM_V_AND_OTHERS], capture_output=True, text=True, check=True)
 
-    shm, msg, sem, _ = json.loads(completed.stdout)
+    shm, msg, sem, _, _ = json.loads(completed.stdout)
     assert shm >= 0 and msg >= 0 and sem >= 0

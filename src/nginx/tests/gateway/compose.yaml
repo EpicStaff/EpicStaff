@@ -46,6 +46,8 @@ services:
       CHAT_ENABLED: "false"
       CHAT_UPSTREAM_URL: http://chat:8200
       PLUGINS_ENABLED: "true"
+      # Without development mode: the development lab (../development) renders it on.
+      PLUGINS_DEV_MODE: "false"
       PLUGINS_BASE_DOMAIN: plugins.epicstaff.test
       PLUGINS_MAX_PACKAGE_MB: "300"
       # Small, so the lab can send a body above it.

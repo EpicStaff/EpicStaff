@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import pytest
+from epicstaff_plugin.contracts.runtime import LISTEN_FD_ENVIRONMENT_VARIABLE
 from pydantic import ValidationError
 
 from es_plugins.agent.launcher_client import LauncherClient, LauncherError
@@ -515,9 +516,11 @@ def plugin_python(layout) -> str:
     return str(venv_bin / "python")
 
 
+# The SDK's name for the variable: the launcher spells it without importing the SDK, so this
+# test is what keeps the two equal.
 SERVE_ON_INHERITED_SOCKET = (
     "import os, socket; "
-    "fd = int(os.environ['EPICSTAFF_PLUGIN_LISTEN_FD']); "
+    f"fd = int(os.environ['{LISTEN_FD_ENVIRONMENT_VARIABLE}']); "
     "listener = socket.socket(fileno=fd); "
     "print(os.get_inheritable(fd), listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN), "
     "sorted(int(name) for name in os.listdir('/proc/self/fd')), flush=True); "
@@ -540,7 +543,7 @@ def test_a_plugin_process_serves_on_the_listening_socket_it_inherits_as_fd_3(lay
     request = spawn_request(
         argv=[plugin_python(layout), "-I", "-c", SERVE_ON_INHERITED_SOCKET],
         # The agent cannot choose the descriptor: the launcher sets the variable itself.
-        environment={"USER": "weather", "EPICSTAFF_PLUGIN_LISTEN_FD": "7"},
+        environment={"USER": "weather", LISTEN_FD_ENVIRONMENT_VARIABLE: "7"},
     )
     result, (pidfd,) = operations.handle(request, [write_end, listener.fileno()])
     os.close(write_end)

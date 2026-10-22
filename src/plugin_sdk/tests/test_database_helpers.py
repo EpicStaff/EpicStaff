@@ -271,6 +271,63 @@ def test_a_task_that_outlives_its_block_may_work_for_another_organization():
     assert fresh.calls == [("begin",), ("execute", SET_ORG_ID, ("2",)), ("commit",)]
 
 
+def test_a_block_a_child_task_opened_stops_holding_the_parents_connection_when_the_parents_block_ends():
+    connection, own = FakeConnection(), FakeConnection()
+
+    async def child(child_opened, other_request_started):
+        async with org_transaction(own, 1):
+            child_opened.set()
+            await other_request_started.wait()
+            # The parent's block ended and the pool lent its connection to another request, in
+            # organization 2's transaction: a savepoint there would set organization 1 in it.
+            with pytest.raises(ConnectionInTransactionError, match="already has a transaction open"):
+                async with org_transaction(connection, 1):
+                    pass
+
+    async def requests():
+        child_opened, other_request_started = asyncio.Event(), asyncio.Event()
+        async with org_transaction(connection, 1):
+            task = asyncio.create_task(child(child_opened, other_request_started))
+            await child_opened.wait()
+        async with org_transaction(connection, 2):
+            other_request_started.set()
+            await task
+
+    asyncio.run(requests())
+
+    assert connection.calls == [
+        ("begin",),
+        ("execute", SET_ORG_ID, ("1",)),
+        ("commit",),
+        ("begin",),
+        ("execute", SET_ORG_ID, ("2",)),
+        ("commit",),
+    ]
+
+
+def test_a_block_in_a_child_task_may_use_the_parents_connection_while_the_parents_block_is_open():
+    connection, own = FakeConnection(), FakeConnection()
+
+    async def child():
+        async with org_transaction(own, 1), org_transaction(connection, 1):
+            pass
+
+    async def request():
+        async with org_transaction(connection, 1):
+            await asyncio.create_task(child())
+
+    asyncio.run(request())
+
+    assert connection.calls == [
+        ("begin",),
+        ("execute", SET_ORG_ID, ("1",)),
+        ("begin",),
+        ("execute", SET_ORG_ID, ("1",)),
+        ("commit",),
+        ("commit",),
+    ]
+
+
 def test_a_task_started_in_a_nested_block_keeps_the_block_around_it_while_that_is_open():
     connection = FakeConnection()
 

@@ -105,10 +105,17 @@ describe('conditionsText', () => {
 
 describe('while Weather is being updated', () => {
     test('the page says so itself only when it runs on its own', () => {
-        assert.equal(showsMaintenance(false, 'maintenance'), true);
-        assert.equal(showsMaintenance(true, 'maintenance'), false);
-        assert.equal(showsMaintenance(false, 'unavailable'), false);
-        assert.equal(showsMaintenance(false, 'available'), false);
+        assert.equal(showsMaintenance(false, 'maintenance', 'maintenance'), true);
+        assert.equal(showsMaintenance(false, 'maintenance', 'signed-in'), true);
+        assert.equal(showsMaintenance(true, 'maintenance', 'maintenance'), false);
+        assert.equal(showsMaintenance(false, 'unavailable', 'signed-in'), false);
+        assert.equal(showsMaintenance(false, 'available', 'signed-in'), false);
+    });
+
+    test('a denied, ended or failed sign-in is shown instead of the update', () => {
+        for (const state of ['access-denied', 'session-ended', 'failed']) {
+            assert.equal(showsMaintenance(false, 'maintenance', state), false, state);
+        }
     });
 
     test('checking again signs in again when that was refused, then asks the backend', async () => {

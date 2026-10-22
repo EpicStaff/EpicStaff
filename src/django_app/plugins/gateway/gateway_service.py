@@ -19,6 +19,12 @@ check, in one query by primary key, so a plugin uninstalled, being deleted or de
 at once. A plugin stopped for an upgrade answers `maintenance` on every path, public ones
 included; once it is back, a person of an organization whose upgrade hook has not finished
 gets `maintenance` too, and one whose upgrade failed gets `unavailable`.
+
+In plugin development mode, a plugin with a development backend port is forwarded to that port
+on `host.docker.internal` instead of its node, as an address django_app resolves. Its
+availability is then only that the plugin is running: the node's process health does not
+count, because the author's process is not the node's. Every other step keeps its order and
+meaning; an address that does not resolve answers `unavailable`.
 """
 
 import threading
@@ -32,6 +38,8 @@ from django.db import close_old_connections
 from epicstaff_plugin.contracts.gateway_context import ContextOrganization, ContextUser
 from epicstaff_plugin.contracts.manifest import PublicPath
 
+from plugins.development.development_host import development_host
+from plugins.development.development_mode import development_mode_on
 from plugins.exceptions import SigningKeyMissingError
 from plugins.gateway.context_builder import public_context, user_context
 from plugins.gateway.path_policy import canonical_path, match_public_path
@@ -51,6 +59,7 @@ from plugins.models import (
     PluginPlacement,
     PluginState,
 )
+from plugins.models.development import development_target_of
 from plugins.nodes.desired_state_builder import PLACED_PLUGIN_STATES
 from plugins.origins import PluginOrigins
 
@@ -62,6 +71,8 @@ DENY_HEADER = "X-Plugin-Deny"
 UPSTREAM_HEADER = "X-Plugin-Upstream"
 CONTEXT_HEADER = "X-Plugin-Context"
 FORWARD_AUTHORIZATION_HEADER = "X-Plugin-Forward-Authorization"
+# The page decision's answer in development mode: where the plugin's page is served from.
+SPA_UPSTREAM_HEADER = "X-Plugin-Spa-Upstream"
 
 DENY_FORBIDDEN = "forbidden"
 DENY_LOGIN = "login"
@@ -120,13 +131,18 @@ class GatewayDecision:
 
 @dataclass(frozen=True)
 class PluginSnapshot:
-    """A plugin's static data, read once per `SNAPSHOT_CACHE_SECONDS`."""
+    """A plugin's static data, read once per `SNAPSHOT_CACHE_SECONDS`.
+
+    `development_backend_port` is the stored development target's backend port, used only
+    while development mode is on.
+    """
 
     plugin_id: int
     identifier: str
     version: str
     upstream: str
     public_paths: tuple[PublicPath, ...]
+    development_backend_port: int | None
 
 
 class _SnapshotCache:
@@ -158,7 +174,9 @@ snapshot_cache = _SnapshotCache()
 def _load_snapshot(identifier: str) -> PluginSnapshot | None:
     """The plugin's snapshot, or None when it has no backend placed on a node."""
     placement = (
-        PluginPlacement.objects.select_related("node", "plugin__current_package")
+        PluginPlacement.objects.select_related(
+            "node", "plugin__current_package", "plugin__development_target"
+        )
         .defer("plugin__current_package__icon_bytes")
         .filter(
             plugin__identifier=identifier,
@@ -173,23 +191,26 @@ def _load_snapshot(identifier: str) -> PluginSnapshot | None:
     manifest = plugin.current_package.parsed_manifest
     if manifest.backend is None:
         return None
+    target = development_target_of(plugin)
     return PluginSnapshot(
         plugin_id=plugin.pk,
         identifier=plugin.identifier,
         version=manifest.version,
         upstream=f"{placement.node.internal_host}:{placement.port}",
         public_paths=tuple(manifest.public_paths),
+        development_backend_port=target.backend_port if target is not None else None,
     )
 
 
-def availability_refusal(plugin_id: int) -> str | None:
+def availability_refusal(plugin_id: int, *, development: bool = False) -> str | None:
     """Why the plugin's backend cannot be reached now, read fresh in one query; None when it
     is running and its process reported running and healthy.
 
     `not_found` once the plugin is out of service (uninstalled, being deleted, or deleted),
     so every path of it, public ones included, answers as an unknown plugin's would, from
     the moment the change commits; `maintenance` while it is stopped for an upgrade;
-    `unavailable` while it is in service but not up.
+    `unavailable` while it is in service but not up. For a `development` backend, being up
+    is only the plugin running: its node process does not serve the requests.
     """
     row = (
         Plugin.objects.filter(pk=plugin_id)
@@ -200,9 +221,26 @@ def availability_refusal(plugin_id: int) -> str | None:
         return DENY_NOT_FOUND
     if row[0] == PluginState.MAINTENANCE:
         return DENY_MAINTENANCE
+    if development:
+        return None if row[0] == PluginState.RUNNING else DENY_UNAVAILABLE
     if row != (PluginState.RUNNING, PlacementObservedState.RUNNING, PlacementHealth.OK):
         return DENY_UNAVAILABLE
     return None
+
+
+def _route(snapshot: PluginSnapshot) -> tuple[str | None, str | None]:
+    """The refusal, or the upstream: the development backend while development mode is on
+    and a backend port is stored, else the node's process."""
+    development_port = snapshot.development_backend_port if development_mode_on() else None
+    if development_port is None:
+        return availability_refusal(snapshot.plugin_id), snapshot.upstream
+    refusal = availability_refusal(snapshot.plugin_id, development=True)
+    if refusal is not None:
+        return refusal, None
+    address = development_host.address()
+    if address is None:
+        return DENY_UNAVAILABLE, None
+    return None, f"{address}:{development_port}"
 
 
 def _deny(status: int, reason: str) -> GatewayDecision:
@@ -226,7 +264,7 @@ class GatewayDecisionService:
     async def decide_async(self, check: GatewayCheckRequest) -> GatewayDecision:
         if self._in_request_thread:
             return await sync_to_async(self.decide)(check)
-        return await sync_to_async(_releasing_connections(self.decide), thread_sensitive=False)(
+        return await sync_to_async(releasing_connections(self.decide), thread_sensitive=False)(
             check
         )
 
@@ -239,12 +277,12 @@ class GatewayDecisionService:
         path = canonical_path(check.raw_uri, check.normalized_path)
         if path is None:
             return _deny(403, DENY_NOT_FOUND)
-        refusal = availability_refusal(snapshot.plugin_id)
+        refusal, upstream = _route(snapshot)
         if refusal is not None:
             return _deny(403, refusal)
         matched = match_public_path(list(snapshot.public_paths), check.method, path)
         if matched is None:
-            return _logged_in_decision(check, snapshot, path)
+            return _logged_in_decision(check, snapshot, path, upstream)
         rule_index, rule = matched
         if _body_too_large(check, rule):
             return _deny(403, DENY_TOO_LARGE)
@@ -266,11 +304,11 @@ class GatewayDecisionService:
         # A public path's own Authorization (a plugin's API token, say) is the plugin's
         # business, so it is passed on; a plugin login token is EpicStaff's, and stays here.
         forward = bearer is None or not looks_like_plugin_login_token(bearer)
-        return _forward(snapshot, context, forward_authorization=forward)
+        return _forward(upstream, context, forward_authorization=forward)
 
 
 def _logged_in_decision(
-    check: GatewayCheckRequest, snapshot: PluginSnapshot, path: str
+    check: GatewayCheckRequest, snapshot: PluginSnapshot, path: str, upstream: str
 ) -> GatewayDecision:
     """Decide a request to a path that is not public: it needs a valid plugin login token."""
     token = _bearer_token(check.authorization)
@@ -283,6 +321,10 @@ def _logged_in_decision(
     person = person_for(claims)
     if not person.holds(claims):
         return _deny(401, DENY_LOGIN)
+    # Before the organization's upgrade answer: someone no longer a member learns nothing
+    # about that organization.
+    if not person.member:
+        return _deny(403, DENY_FORBIDDEN)
     if (refusal := _GRANT_STATE_DENIES.get(person.grant_state)) is not None:
         return _deny(403, refusal)
     if not person.grant_usable:
@@ -302,16 +344,14 @@ def _logged_in_decision(
         )
     except SigningKeyMissingError:
         return _deny(403, DENY_UNAVAILABLE)
-    return _forward(snapshot, context, forward_authorization=False)
+    return _forward(upstream, context, forward_authorization=False)
 
 
-def _forward(
-    snapshot: PluginSnapshot, context: str, *, forward_authorization: bool
-) -> GatewayDecision:
+def _forward(upstream: str, context: str, *, forward_authorization: bool) -> GatewayDecision:
     return GatewayDecision(
         status=200,
         headers={
-            UPSTREAM_HEADER: snapshot.upstream,
+            UPSTREAM_HEADER: upstream,
             CONTEXT_HEADER: context,
             FORWARD_AUTHORIZATION_HEADER: "1" if forward_authorization else "0",
         },
@@ -327,7 +367,7 @@ def _bearer_token(authorization: str) -> str | None:
     return token
 
 
-def _releasing_connections(function: Callable[..., Any]) -> Callable[..., Any]:
+def releasing_connections(function: Callable[..., Any]) -> Callable[..., Any]:
     """Run `function`, then give the worker thread's database connection back to the pool.
 
     Worker threads outlive the request, and Django closes connections only at the end of a

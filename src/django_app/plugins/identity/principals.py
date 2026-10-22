@@ -34,6 +34,7 @@ class PluginServiceAccountPrincipal:
         plugin_name: str,
         package: PluginPackage,
         requests_per_minute: int,
+        development_key: bool,
         person=None,
     ):
         self.service_account_id = service_account_id
@@ -43,6 +44,8 @@ class PluginServiceAccountPrincipal:
         self.display_name = f"{plugin_name} (plugin)"
         self.rate_limit_key = f"plugin-service-account:{service_account_id}"
         self.requests_per_minute = requests_per_minute
+        # Authenticated with a development key, through the development API listener.
+        self.development_key = development_key
         self.person = person
         self._package = package
         # Secret ids already confirmed as the plugin's own and still existing. The principal

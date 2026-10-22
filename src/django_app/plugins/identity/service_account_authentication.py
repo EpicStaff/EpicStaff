@@ -5,8 +5,9 @@ for the `PluginKey` scheme and only while the plugin platform is on; any other r
 left to the other classes (`None`), so a JWT or an API key never reaches it. A `PluginKey`
 request either authenticates or gets 401: it never falls through to anonymous.
 
-The key works only through nginx's internal listener on the plugins network
-(`internal_listener`), and only while its grant holds keys. The result is a
+A node-purpose key works only through nginx's internal listener on the plugins network, a
+development key only through the development API listener and only while plugin development
+mode is on (`internal_listener`); either only while its grant holds keys. The result is a
 `PluginServiceAccountPrincipal` pinned to the grant's organization; `request.auth` is the key
 row. A `X-EpicStaff-On-Behalf-Of` header names the person the call is for, checked here, so
 `request.user.person` is set before any view runs.
@@ -24,11 +25,21 @@ from rest_framework.permissions import BasePermission
 from plugins.access.people_service import PluginPeopleService
 from plugins.audit import log_service_account_refused
 from plugins.configuration.limits import plugin_limits
+from plugins.development.development_mode import development_mode_on
 from plugins.exceptions import InvalidOnBehalfOfError, ServiceAccountNotAuthenticatedError
-from plugins.identity.internal_listener import came_through_internal_listener
+from plugins.identity.internal_listener import (
+    came_through_development_listener,
+    came_through_internal_listener,
+    names_development_listener,
+)
 from plugins.identity.principals import PluginServiceAccountPrincipal
 from plugins.identity.service_account_keys import hash_service_account_key
-from plugins.models import KEY_HOLDING_GRANT_STATES, PluginServiceAccount, PluginServiceAccountKey
+from plugins.models import (
+    KEY_HOLDING_GRANT_STATES,
+    PluginServiceAccount,
+    PluginServiceAccountKey,
+    ServiceAccountKeyPurpose,
+)
 from plugins.ownership.request_scope import scope_for_authentication
 
 KEYWORD = "PluginKey"
@@ -47,7 +58,7 @@ class PluginServiceAccountAuthentication(BaseAuthentication):
             _refuse(None, "outside_internal_listener")
         key = _key_by_hash(raw_key.strip())
         now = timezone.now()
-        _assert_usable(key, now)
+        _assert_usable(key, now, request)
         _mark_used(key, now)
         grant = key.service_account.grant
         plugin = grant.plugin
@@ -59,6 +70,7 @@ class PluginServiceAccountAuthentication(BaseAuthentication):
             plugin_identifier=plugin.identifier,
             plugin_name=plugin.name,
             package=package,
+            development_key=key.purpose == ServiceAccountKeyPurpose.DEVELOPMENT,
             requests_per_minute=plugin_limits(plugin, package.parsed_manifest).effective[
                 "requests_per_minute"
             ],
@@ -112,7 +124,7 @@ def _key_by_hash(raw_key: str) -> PluginServiceAccountKey:
     return key
 
 
-def _assert_usable(key: PluginServiceAccountKey, now) -> None:
+def _assert_usable(key: PluginServiceAccountKey, now, request) -> None:
     """The checks after the lookup, in a fixed order; the first that fails refuses the key."""
     account = key.service_account
     grant = account.grant
@@ -121,6 +133,7 @@ def _assert_usable(key: PluginServiceAccountKey, now) -> None:
         _refuse(identifier, "revoked")
     if key.expires_at is not None and key.expires_at <= now:
         _refuse(identifier, "superseded")
+    _assert_listener(key, identifier, request)
     if account.revoked_at is not None:
         _refuse(identifier, "revoked")
     if grant.state not in KEY_HOLDING_GRANT_STATES:
@@ -130,6 +143,19 @@ def _assert_usable(key: PluginServiceAccountKey, now) -> None:
     package = grant.plugin.current_package
     if package is None or package.parsed_manifest.backend is None:
         _refuse(identifier, "no_backend")
+
+
+def _assert_listener(key: PluginServiceAccountKey, identifier: str, request) -> None:
+    """A development key only through the development listener while the mode is on; a node
+    key never through it. The mode is read now, so turning it off stops every development key
+    at once."""
+    if key.purpose == ServiceAccountKeyPurpose.DEVELOPMENT:
+        if not development_mode_on():
+            _refuse(identifier, "development_mode_off")
+        if not came_through_development_listener(request):
+            _refuse(identifier, "wrong_listener")
+    elif names_development_listener(request):
+        _refuse(identifier, "wrong_listener")
 
 
 def _refuse(identifier: str | None, reason: str):

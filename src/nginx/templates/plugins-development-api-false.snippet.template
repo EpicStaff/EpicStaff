@@ -1,0 +1,2 @@
+# PLUGINS_DEV_MODE=false: no development API listener. Nothing listens on 8082, so no development
+# key can reach Django.

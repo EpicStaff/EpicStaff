@@ -13,13 +13,13 @@ lines of at most `MAX_LINE_BYTES`, and only entries `is_reportable_ledger_entry`
 
 from pathlib import Path
 
+from epicstaff_plugin.contracts.database import MIGRATIONS_LEDGER_SCHEMA, MIGRATIONS_LEDGER_TABLE
 from src.shared.models.plugin_nodes import (
     MAX_APPLIED_MIGRATIONS,
     LedgerEntry,
     is_reportable_ledger_entry,
 )
 
-from es_plugins.database.migration_runner import MIGRATIONS_LEDGER_SCHEMA, MIGRATIONS_LEDGER_TABLE
 from es_plugins.database.postgres_client import PostgresClient
 
 MAX_LINE_BYTES = 64 * 1024

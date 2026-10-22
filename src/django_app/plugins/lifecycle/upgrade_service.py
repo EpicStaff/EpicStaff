@@ -10,7 +10,9 @@ completes at approval; one gaining a backend starts in `migrating`, with nothing
 A failure leaves the upgrade in its stage. The SuperAdmin then retries it, approves a newer
 version (which replaces the failed target in the same upgrade), cancels it while the database
 holds none of the new version's migrations, or, after a failed migration or start, restores
-the backup this upgrade took. EpicStaff never rolls back by itself.
+the backup this upgrade took. After a restore that failed once it may have changed the
+database, only another restore (or deleting the plugin) is allowed. EpicStaff never rolls back
+by itself.
 
 Where a grant goes on every change is `settle_grant`'s. Lock order (`lifecycle_locks`): the
 plugin, then the upgrade, then its restore, then the placement, then the grants.
@@ -67,6 +69,7 @@ from plugins.models import (
     GrantState,
     Plugin,
     PluginDatabase,
+    PluginGrant,
     PluginNode,
     PluginPackage,
     PluginPlacement,
@@ -187,6 +190,8 @@ class PluginUpgradeService:
         package.save(update_fields=["review_state", "approved_by", "approved_at"])
         if manifest.backend is not None:
             self._placements.ensure_placement(plugin)
+            # Locked first: an organization's deletion may be deleting one of them now.
+            lock_grants_of(plugin)
             ensure_service_accounts(plugin)
         if manifest.database is not None:
             PluginDatabaseRecords().ensure_for(plugin)
@@ -288,18 +293,21 @@ class PluginUpgradeService:
 
     # ---- the node's requests ----
 
-    def advance(self, node: PluginNode, upgrade_id: int, request: UpgradeAdvance) -> None:
-        """Take an upgrade of `node`'s to the stage its node asks for, in one transaction.
+    def advance(self, node: PluginNode, upgrade_id: int, body: bytes) -> None:
+        """Take an upgrade of `node`'s to the stage its node asks for in `body` (the request's
+        JSON), in one transaction.
 
         Asking for the stage the upgrade is in already changes nothing. Otherwise the upgrade
-        must be open, not failed, and in the stage before.
+        must be open, not failed, and in the stage before. The upgrade is looked up before the
+        body is read, so an unknown one answers 404 and a closed one 409 whatever the body.
 
         Raises:
             UpgradeNotFoundError: No such upgrade on a placement of this node.
             UpgradeNotCurrentError: The upgrade is closed, failed, or cannot move to that
                 stage from where it is.
-            InvalidUpgradeAdvanceError: The backup the request carries is missing, not this
-                upgrade's, or not the recorded one.
+            InvalidUpgradeAdvanceError: The body is not a valid request, or the backup it
+                carries is missing, not this upgrade's, not the recorded one, or recorded
+                with another sha256.
         """
         identifier = (
             PluginUpgrade.objects.filter(pk=upgrade_id, plugin__placement__node=node)
@@ -313,6 +321,7 @@ class PluginUpgradeService:
             upgrade = open_upgrade_of(plugin, lock=True) if plugin is not None else None
             if upgrade is None or upgrade.pk != upgrade_id:
                 raise UpgradeNotCurrentError()
+            request = parse_upgrade_advance(body)
             if request.to == "maintenance":
                 self._advance_to_maintenance(plugin, upgrade, request)
             else:
@@ -335,13 +344,12 @@ class PluginUpgradeService:
         upgrade.save(update_fields=["stage", "maintenance_started_at", "updated_at"])
         plugin.state = PluginState.MAINTENANCE
         plugin.save(update_fields=["state", "updated_at"])
-        offline = 0
-        for grant in lock_grants_of(plugin):
-            if grant.state != GrantState.ACTIVE:
-                continue
-            settle_grant(grant)
-            grant.save(update_fields=SETTLED_FIELDS)
-            offline += 1
+        active = [grant.pk for grant in lock_grants_of(plugin) if grant.state == GrantState.ACTIVE]
+        # `settle_grant` makes every active grant of a plugin in maintenance `upgrading`, with
+        # nothing else to change: one UPDATE, the rows locked above in ascending pk.
+        offline = PluginGrant.objects.filter(pk__in=active).update(
+            state=GrantState.UPGRADING, updated_at=now
+        )
         ActivityRecorder().plugin_maintenance_started(
             plugin.identifier, upgrade.to_version, offline
         )
@@ -363,18 +371,42 @@ class PluginUpgradeService:
             return
         if upgrade.failed or upgrade.stage != UpgradeStage.MAINTENANCE:
             raise UpgradeNotCurrentError()
+        database = PluginDatabase.objects.filter(plugin=plugin).first()
         if upgrade.backup_required and upgrade.backup_id is None:
-            database = PluginDatabase.objects.get(plugin=plugin)
             _assert_backup_belongs_to(upgrade, database, request)
-            upgrade.backup = BackupRecorder().record(
+            backup = BackupRecorder().record(
                 database, request.backup, identifier=plugin.identifier, node=node
             )
+            if backup.sha256_mismatch:
+                # Recorded already under this name with another sha256: never restorable, so
+                # no migration runs on it.
+                raise InvalidUpgradeAdvanceError(
+                    [
+                        Problem(
+                            f"{ADVANCE_LOC}.backup.sha256",
+                            "is not the sha256 recorded for this backup",
+                        )
+                    ]
+                )
+            upgrade.backup = backup
         else:
             _assert_backup_is_the_recorded_one(upgrade, request)
         now = timezone.now()
         upgrade.stage = UpgradeStage.MIGRATING
         upgrade.migrations_started_at = upgrade.migrations_started_at or now
-        upgrade.save(update_fields=["stage", "backup", "migrations_started_at", "updated_at"])
+        if upgrade.ledger_at_migrations is None and database is not None:
+            # Once, before the first migration of the upgrade: a newer target that replaces a
+            # failed one migrates on top of whatever the failed one left.
+            upgrade.ledger_at_migrations = list(database.ledger)
+        upgrade.save(
+            update_fields=[
+                "stage",
+                "backup",
+                "migrations_started_at",
+                "ledger_at_migrations",
+                "updated_at",
+            ]
+        )
         backup_name = upgrade.backup.file_name if upgrade.backup is not None else None
         transaction.on_commit(
             partial(
@@ -408,6 +440,11 @@ class PluginUpgradeService:
                 .first()
             )
             if plugin is None:
+                logger.debug(
+                    "Placement {placement_id}'s plugin is locked or gone; its report is "
+                    "applied with the next one",
+                    placement_id=placement_id,
+                )
                 return
             placement = PluginPlacement.objects.get(plugin=plugin)
             upgrade = open_upgrade_of(plugin, lock=True)
@@ -486,10 +523,12 @@ class PluginUpgradeService:
 
         Every grant that was active, upgrading or whose upgrade failed, and whose installed
         version is not the new one, goes where `settle_grant` says, and an upgrade hook that
-        was failing gets every automatic retry again. Once this commits: the new frontend is
-        served, the maintenance flag goes, the other frontend versions and every other
-        package (but a pending one) are deleted. A failure there is logged; the frontend
-        reconciler repairs the flag and `current`.
+        was failing gets every automatic retry again; a constant number of queries, whatever
+        the number of grants. Once this commits, each in its own callback: the new frontend is
+        served, the maintenance flag goes, and the other frontend versions are deleted (never
+        the one `current` still names). Every other package (but a pending one) is deleted
+        now. A failure after commit is logged; the frontend reconciler repairs the flag and
+        `current`.
         """
         package = upgrade.to_package
         manifest = package.parsed_manifest
@@ -498,16 +537,16 @@ class PluginUpgradeService:
         plugin.description = manifest.description
         plugin.state = PluginState.RUNNING
         plugin.save(update_fields=["current_package", "name", "description", "state", "updated_at"])
+        behind = [
+            grant
+            for grant in lock_grants_of(plugin)
+            if grant.state in SETTLED_AT_COMPLETION and grant.installed_version != package.version
+        ]
         hooks = UpgradeHookService()
-        for grant in lock_grants_of(plugin):
-            if (
-                grant.state not in SETTLED_AT_COMPLETION
-                or grant.installed_version == package.version
-            ):
-                continue
-            if settle_grant(grant) == GrantState.UPGRADING:
-                hooks.restart_series(grant, now)
-            grant.save(update_fields=SETTLED_FIELDS)
+        with hooks.batch(behind) as jobs:
+            upgrading = [grant for grant in behind if settle_grant(grant) == GrantState.UPGRADING]
+        hooks.restart_series(jobs.pending_job_ids(upgrading), now)
+        _save_settled(behind, now)
         if manifest.backend is not None:
             ensure_service_accounts(plugin)
         started = upgrade.maintenance_started_at
@@ -537,10 +576,19 @@ class PluginUpgradeService:
                 publisher.switch_current(identifier, version)
             else:
                 publisher.remove_current(identifier)
-            publisher.set_maintenance(identifier, False)
-            publisher.prune_versions(identifier, keep={version} if has_spa else set())
+
+        def prune_other_versions() -> None:
+            kept = {version} if has_spa else set()
+            # A switch that failed above leaves the old version served until the reconciler
+            # repairs `current`: its files stay.
+            served = publisher.current_version(identifier)
+            if served is not None:
+                kept.add(served)
+            publisher.prune_versions(identifier, keep=kept)
 
         transaction.on_commit(serve_new_version, robust=True)
+        self._set_maintenance_on_commit(identifier, False)
+        transaction.on_commit(prune_other_versions, robust=True)
         for old in plugin.packages.exclude(pk=package.pk).exclude(review_state=ReviewState.PENDING):
             self._delete_package(identifier, old, discard_spa=False)
 
@@ -555,8 +603,9 @@ class PluginUpgradeService:
 
         Raises:
             PluginNotFoundError: No such plugin.
-            UpgradeNotCancellableError: No open upgrade, it adds a backend, a restore runs, or
-                the database holds a change of the new version.
+            UpgradeNotCancellableError: No open upgrade, it adds a backend, a restore runs or
+                failed after changing the database, or the database holds a change of the new
+                version.
         """
         with transaction.atomic():
             plugin = lock_existing_plugin(identifier)
@@ -574,10 +623,13 @@ class PluginUpgradeService:
                 plugin.state = PluginState.PROVISIONING
                 plugin.save(update_fields=["state", "updated_at"])
                 _bump_restart_generation(plugin)
-            for grant in lock_grants_of(plugin):
-                if grant.state == GrantState.UPGRADING:
+            upgrading = [
+                grant for grant in lock_grants_of(plugin) if grant.state == GrantState.UPGRADING
+            ]
+            with UpgradeHookService().batch(upgrading):
+                for grant in upgrading:
                     settle_grant(grant)
-                    grant.save(update_fields=SETTLED_FIELDS)
+            _save_settled(upgrading, timezone.now())
             if upgrade.to_package is not None:
                 self._delete_package(plugin.identifier, upgrade.to_package, discard_spa=True)
             ActivityRecorder().plugin_upgrade_cancelled(
@@ -601,7 +653,8 @@ class PluginUpgradeService:
 
         Raises:
             PluginNotFoundError: No such plugin.
-            UpgradeNotRetryableError: No open upgrade has failed, or a restore runs.
+            UpgradeNotRetryableError: No open upgrade has failed, or a restore runs or failed
+                after changing the database.
         """
         with transaction.atomic():
             plugin = lock_existing_plugin(identifier)
@@ -686,6 +739,16 @@ class PluginUpgradeService:
                 publisher.discard_version(identifier, version)
 
         transaction.on_commit(delete_package_files, robust=True)
+
+
+def _save_settled(grants: list[PluginGrant], now: datetime) -> None:
+    """Save the fields `settle_grant` set on `grants`, in one query (none for no grant)."""
+    if not grants:
+        return
+    for grant in grants:
+        # `bulk_update` leaves `auto_now` alone.
+        grant.updated_at = now
+    PluginGrant.objects.bulk_update(grants, SETTLED_FIELDS)
 
 
 def _bump_restart_generation(plugin: Plugin) -> None:

@@ -1,4 +1,12 @@
 <div class="plugin-host">
+    @if (inDevelopment() && readyView()) {
+        <p
+            class="plugin-host__development text-body-small"
+            role="status"
+        >
+            Development: this plugin is served from a developer's machine.
+        </p>
+    }
     @for (ready of frameViews(); track ready.frameKey) {
         <!-- sandbox / referrerpolicy / allow must stay literal: Angular refuses to bind them. -->
         <!-- No [src]: the component sets the validated address once the frame protocol listens. -->

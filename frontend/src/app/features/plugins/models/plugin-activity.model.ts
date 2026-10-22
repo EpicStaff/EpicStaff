@@ -40,7 +40,10 @@ export type PluginActivityAction =
     | 'database_restore_failed'
     | 'upgrade_hook_succeeded'
     | 'upgrade_hook_failed'
-    | 'upgrade_hook_retried';
+    | 'upgrade_hook_retried'
+    | 'development_target_set'
+    | 'development_target_cleared'
+    | 'development_runtime_file_issued';
 
 /** Why a deletion began (`detail.reason` of `grant_purge_started` and `plugin_purge_started`). */
 export type PluginPurgeReason = 'requested' | 'grace_period_over' | 'plugin_deleted';
@@ -70,7 +73,9 @@ export interface PluginActivityEvent {
      * is left); the failures (`install_hook_failed`, `database_failed`, `plugin_removal_failed`,
      * `org_removed_hook_failed`, `plugin_upgrade_failed`, `upgrade_hook_failed`, `database_restore_failed`): `error`;
      * `grant_purge_started` and `plugin_purge_started`: `reason`; the upgrade events: `from_version`, `to_version`
-     * and the like.
+     * and the like; `development_target_set`: `backend_port` and `spa_port`; `development_target_cleared`:
+     * `revoked_keys`; `development_runtime_file_issued`: `organizations` (a count); an `api_request` made with a
+     * development key: `development: true`.
      */
     detail: Record<string, PluginActivityDetailValue>;
 }

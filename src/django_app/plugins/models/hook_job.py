@@ -42,8 +42,11 @@ class PluginHookJob(models.Model):
     `attempt` counts the claims. `timeout_seconds` is fixed at creation from the package's
     manifest. `organization_id` and `organization_name` (the name when the job was created)
     are kept as plain values so the job outlives its grant and its organization: an
-    organization removed job runs after the organization is gone. `first_attempt_at` starts
-    its retry window, and `next_attempt_at` is when it may be claimed again after a failure.
+    organization removed job runs after the organization is gone. `package_version` is the
+    version the latest attempt was made to, kept as text: the package row can be deleted
+    while the attempt runs (an upgrade's completion deletes the older packages).
+    `first_attempt_at` starts its retry window, and `next_attempt_at` is when it may be
+    claimed again after a failure.
     """
 
     plugin = models.ForeignKey(Plugin, on_delete=models.CASCADE, related_name="hook_jobs")
@@ -60,6 +63,8 @@ class PluginHookJob(models.Model):
     package = models.ForeignKey(
         PluginPackage, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
+    # Set at each claim; None before the first.
+    package_version = models.CharField(max_length=64, null=True, blank=True)
     state = models.CharField(
         max_length=16, choices=HookJobState.choices, default=HookJobState.PENDING
     )

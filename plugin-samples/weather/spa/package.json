@@ -10,6 +10,7 @@
     },
     "scripts": {
         "build": "node scripts/build.mjs",
+        "dev": "node scripts/serve-development.mjs",
         "typecheck": "tsc --noEmit",
         "test": "node --test \"test/**/*.test.mjs\""
     },

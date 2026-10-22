@@ -1,3 +1,4 @@
+import { HttpResponse } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { StorageService } from '@shared/services';
 import { finalize, Observable, tap } from 'rxjs';
@@ -22,6 +23,7 @@ import {
     PluginSettingsResponse,
     PluginSettingsUpdate,
 } from '../models/plugin-backend.model';
+import { PluginDevelopment, PluginDevelopmentUpdate } from '../models/plugin-development.model';
 import { PluginGrantPurgePreview, PluginPurgePreview } from '../models/plugin-purge-preview.model';
 import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 import { PluginsAdminApiService } from './plugins-admin-api.service';
@@ -219,6 +221,25 @@ export class PluginsAdminStorageService implements StorageService {
         return this.api.restart(identifier);
     }
 
+    getDevelopment(identifier: string): Observable<PluginDevelopment> {
+        return this.api.getDevelopment(identifier);
+    }
+
+    /** Only the server knows whether the plugin now shows as in development: reload it with `getPlugin` afterwards. */
+    updateDevelopment(identifier: string, update: PluginDevelopmentUpdate): Observable<PluginDevelopment> {
+        return this.api.updateDevelopment(identifier, update);
+    }
+
+    /** As `updateDevelopment`: reload the plugin with `getPlugin` afterwards. */
+    clearDevelopment(identifier: string): Observable<void> {
+        return this.api.clearDevelopment(identifier);
+    }
+
+    /** Never kept here: the response goes straight to the caller, which hands its body to the browser's download. */
+    downloadDevelopmentRuntimeFile(identifier: string): Observable<HttpResponse<Blob>> {
+        return this.api.downloadDevelopmentRuntimeFile(identifier);
+    }
+
     clear(): void {
         this.generation++;
         this.pluginsSignal.set([]);
@@ -265,6 +286,7 @@ function toSummary(plugin: PluginDetail): PluginSummary {
         purge_after: plugin.purge_after,
         needs_attention: plugin.needs_attention,
         upgrade: plugin.upgrade,
+        development: plugin.development,
     };
 }
 

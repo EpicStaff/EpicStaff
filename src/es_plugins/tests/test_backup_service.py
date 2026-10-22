@@ -17,6 +17,7 @@ from es_plugins.database.backup_service import BackupError, BackupRequest
 from es_plugins.database.connections import DatabaseConnector, DatabaseUnreachableError
 from es_plugins.database.migration_runner import Migration
 from es_plugins.database.provisioner import DatabaseProvisioner
+from es_plugins.node_disk import FLOOR_BYTES
 from tests.plugin_databases import (
     admin_password,
     backup_password,
@@ -353,3 +354,85 @@ async def test_only_a_pre_upgrade_backup_must_hold_the_ledger(plugin_databases, 
 
     assert refused.value.reason == "verify"
     assert (kept.metadata.reason, kept.metadata.ledger) == ("pre_restore", None)
+
+
+async def test_settings_and_grants_the_owner_changed_stop_no_backup(plugin_databases, layout, client_root):
+    hostile = migration(
+        "003_hostile.sql",
+        """
+DO $$ BEGIN
+  EXECUTE format('ALTER DATABASE %I SET local_preload_libraries = %L', current_database(), 'missing_library');
+  EXECUTE format('ALTER DATABASE %I SET exit_on_error = on', current_database());
+END $$;
+""",
+    )
+    desired, _ = await provisioned(plugin_databases, [*MIGRATIONS, hostile])
+    # Later, outside a migration (provisioning would refuse it): the backup role loses CONNECT.
+    async with owner_session(desired) as owner:
+        await owner.execute(
+            sql.SQL("REVOKE CONNECT ON DATABASE {} FROM plugins_backup").format(sql.Identifier(desired.database_name))
+        )
+    backups, _, _ = backup_services(layout, client_root)
+
+    stored = await backups.backup(request(desired))
+
+    assert [entry.name for entry in stored.metadata.ledger] == ["001_schema.sql", "002_settings.sql", "003_hostile.sql"]
+
+
+async def test_a_dump_that_grows_past_the_room_it_had_is_stopped_and_leaves_nothing(
+    plugin_databases, layout, client_root, tmp_path
+):
+    desired, _ = await provisioned(plugin_databases)
+    room = 16 * 1024 * 1024
+    root = tools_with(
+        client_root,
+        tmp_path,
+        "pg_dump",
+        'if [ "$1" = --version ]; then echo "pg_dump (PostgreSQL) 17.11"; exit 0; fi\n'
+        # exec: one process, as pg_dump is, so the kill closes its output.
+        f"exec head -c {2 * room} /dev/zero\n",
+    )
+    backups, _, _ = backup_services(layout, root, free_bytes=FLOOR_BYTES + room)
+    lines = []
+    sink = logger.add(lines.append, format="{message}", level="INFO")
+    try:
+        with pytest.raises(BackupError, match="the dump grew past the 16 MB that were free") as failed:
+            await backups.backup(request(desired))
+    finally:
+        logger.remove(sink)
+
+    assert failed.value.reason == "disk"
+    assert backups_tree(layout) == []
+    assert any(line.startswith("plugins.database.backup_failed plugin=weather reason=disk") for line in lines)
+
+
+async def test_a_connection_failure_after_another_error_is_not_taken_for_an_unreachable_server(
+    plugin_databases, layout, client_root, tmp_path
+):
+    desired, _ = await provisioned(plugin_databases)
+    root = tools_with(
+        client_root,
+        tmp_path,
+        "pg_dump",
+        'if [ "$1" = --version ]; then echo "pg_dump (PostgreSQL) 17.11"; exit 0; fi\n'
+        "echo 'pg_dump: error: query failed: ERROR:  relation \"x' >&2\n"
+        "echo 'pg_dump: error: connection to server at \"plugins_db\" (10.0.0.1), port 5432 failed: Connection refused' >&2\n"
+        "exit 1\n",
+    )
+    backups, _, _ = backup_services(layout, root)
+
+    with pytest.raises(BackupError) as failed:
+        await backups.backup(request(desired))
+
+    assert failed.value.reason == "dump"
+
+
+async def test_metadata_that_does_not_fit_its_format_fails_the_verification(plugin_databases, layout, client_root):
+    desired, _ = await provisioned(plugin_databases)
+    backups, _, _ = backup_services(layout, client_root)
+
+    with pytest.raises(BackupError, match="the backup's metadata does not fit its format: version") as failed:
+        await backups.backup(request(desired, version="9" * 65))
+
+    assert failed.value.reason == "verify"
+    assert backups_tree(layout) == []

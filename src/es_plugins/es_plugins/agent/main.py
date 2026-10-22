@@ -7,6 +7,7 @@ Loops, all in one event loop:
 - per placement: converge, and the hooks it lists (see `reconciler`);
 - report, every 10 s and right after anything a report shows changed;
 - memory watchdog, every 2 s;
+- socket watchdog, every second;
 - disk watchdog, every 30 s;
 - database limits watchdog, every 60 s.
 
@@ -54,6 +55,7 @@ from es_plugins.packages.package_fetcher import PackageFetcher
 from es_plugins.process_table import ProcessTable
 from es_plugins.supervisor.disk_watchdog import DiskWatchdog
 from es_plugins.supervisor.memory_watchdog import MemoryWatchdog
+from es_plugins.supervisor.socket_watchdog import SocketWatchdog
 
 RECONCILE_INTERVAL_SECONDS = 5.0
 # Well under the container health check's 30 s staleness window, on its own clock.
@@ -138,7 +140,9 @@ class NodeAgent:
         django: DjangoNodeClient,
         reconciler: Reconciler,
         reporter: Reporter,
-        watchdogs: Sequence[MemoryWatchdog | DiskWatchdog | DatabaseLimitsWatchdog],
+        watchdogs: Sequence[
+            MemoryWatchdog | SocketWatchdog | DiskWatchdog | DatabaseLimitsWatchdog
+        ],
     ):
         self._settings = settings
         self._layout = layout
@@ -282,6 +286,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
     reconciler = Reconciler(services)
     watchdogs = [
         MemoryWatchdog(ProcessTable(), reconciler.supervisors),
+        SocketWatchdog(reconciler.supervisors),
         DiskWatchdog(
             launcher,
             reconciler.supervisors,

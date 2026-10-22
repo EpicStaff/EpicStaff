@@ -4,7 +4,51 @@ A complete EpicStaff plugin: a single-page app in EpicStaff's frame (`spa/`, usi
 in `plugin-sdk/`), a FastAPI backend (`backend/`, using the Python SDK in `src/plugin_sdk/`),
 and a database of its own (`database/migrations/`).
 [Build your first plugin](../../docs/plugins/tutorial/build-your-first-plugin.md) walks through
-it, and shows how to pack it.
+it.
+
+## Build, pack and install it
+
+Run these from the root of the EpicStaff repository, for an EpicStaff with the plugin platform on
+([Local development](../../docs/plugins/how-to/local-development.md#run-epicstaff-for-plugin-development)).
+You need Python 3.13 with [uv](https://docs.astral.sh/uv/), and Node.js 24.15 or later.
+
+```bash
+npm --prefix plugin-sdk ci && npm --prefix plugin-sdk run build
+npm --prefix plugin-samples/weather/spa ci && npm --prefix plugin-samples/weather/spa run build
+uv build --project src/plugin_sdk --wheel -o dist
+uv run --frozen --project src/plugin_sdk epicstaff-plugin pack plugin-samples/weather --spa-dir plugin-samples/weather/spa/dist --download-wheels --local-wheel dist/epicstaff_plugin-0.1.0-py3-none-any.whl --out weather-0.7.0.esplugin
+uv run --frozen --project src/plugin_sdk epicstaff-plugin validate weather-0.7.0.esplugin
+```
+
+Add `--key <your secret key>` to `pack` to sign it
+([Sign and package a plugin](../../docs/plugins/how-to/sign-and-package.md)). As a SuperAdmin,
+upload `weather-0.7.0.esplugin` under **Workspace → Plugins**, approve it and grant it to an
+organization.
+
+## Develop it
+
+On an EpicStaff in plugin development mode, run the backend and the page from this directory,
+and point the installed Weather at them on its **Development** tab
+([Local development](../../docs/plugins/how-to/local-development.md#develop-the-backend-on-your-machine)):
+
+```bash
+uv venv --python 3.13 plugin-samples/weather/.venv
+uv pip install --python plugin-samples/weather/.venv --require-hashes -r plugin-samples/weather/backend/requirements.lock
+uv pip install --python plugin-samples/weather/.venv --no-deps ./src/plugin_sdk
+source plugin-samples/weather/.venv/bin/activate
+epicstaff-plugin dev plugin-samples/weather --runtime-file ~/weather-dev/weather-development-runtime.json --port 8001 --database-url postgresql://weather_app:choose-a-password@127.0.0.1:5433/weather_development --apply-migrations
+```
+
+and, in another terminal, the page's development server on port 5173:
+
+```bash
+npm --prefix plugin-samples/weather/spa run dev
+```
+
+The runtime file is the one you download from the Development tab; keep it outside this
+directory. The database is a local PostgreSQL 16 or later with the two roles
+[A database for the development backend](../../docs/plugins/how-to/local-development.md#a-database-for-the-development-backend)
+creates. `.gitignore` keeps `.venv/` and development runtime files out of version control.
 
 ## What the backend does
 
@@ -51,14 +95,15 @@ it, and shows how to pack it.
   another key Weather asks the admin to delete "Weather · LLM key" in Settings → Secrets first.
   To change the key later, change the LLM config in EpicStaff's own settings.
 - **Everything Weather keeps is in its database**, in the schema `weather`: the saved places and
-  their temperatures, which person started which forecast run (`forecast_runs.py`) and the popup
-  relay's results (`popup_relay.py`). Every table has row-level security on `org_id`, and every query runs in
-  one organization's transaction (`database.py`), so an organization never sees another's rows.
+  their temperatures, which person started which forecast run (`backend/src/weather_plugin/forecast_runs.py`) and the popup
+  relay's results (`backend/src/weather_plugin/popup_relay.py`). Every table has row-level security on `org_id`, and
+  every query runs in one organization's transaction (`backend/src/weather_plugin/database.py`), so an organization
+  never sees another's rows.
   A restart loses nothing.
 - **Version 0.7.0 added a migration**, `database/migrations/003_place_conditions.sql`: each saved
   place's position, numbered for the places already saved, and the table of temperatures. The
   earlier files stay as they are: a new version adds files and never changes one that ran.
-- **Old rows are purged hourly** (`retention.py`). A forecast run is kept for 7 days and a popup
+- **Old rows are purged hourly** (`backend/src/weather_plugin/retention.py`). A forecast run is kept for 7 days and a popup
   result until it expires, after five minutes. Once an hour the backend deletes older rows of
   every organization, in batches, as the plugin's job role. Its policies, in
   `database/migrations/002_retention.sql`, let it read only the timestamps of expired rows and

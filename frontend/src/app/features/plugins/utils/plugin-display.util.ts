@@ -112,7 +112,7 @@ export const PLUGIN_BACKUP_NOT_RESTORABLE_LABELS: Readonly<
     Record<NonNullable<PluginBackup['not_restorable_reason']>, string>
 > = {
     earlier_upgrade: 'from an earlier upgrade',
-    not_now: 'only while an upgrade has failed',
+    not_now: 'not while the upgrade runs or a restore is under way',
     mismatch: 'its file changed on the plugin node',
 };
 

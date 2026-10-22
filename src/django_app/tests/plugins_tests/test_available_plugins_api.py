@@ -1,7 +1,9 @@
 """Which plugins a person may open in an organization (`available`)."""
 
 import pytest
-from plugins.models import GrantState, Plugin, PluginGrant, PluginRolePermission, PluginState
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from plugins.models import GrantState, Plugin, PluginDevelopmentTarget, PluginGrant, PluginRolePermission, PluginState
 from rbac.governance.roles import RoleManagementService
 from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
@@ -43,6 +45,7 @@ def test_a_member_whose_role_has_view_by_default_sees_the_plugin(client_as, memb
             "frame_origin": "http://weather.plugins.epicstaff.localhost",
             "permissions": ["read"],
             "availability": "ready",
+            "development": False,
         }
     ]
 
@@ -292,3 +295,69 @@ def test_deleting_the_grant_deletes_the_role_s_plugin_actions(make_custom_role, 
     PluginGrant.objects.filter(pk=grant.pk).delete()
 
     assert not PluginRolePermission.objects.exists()
+
+
+
+# ---- plugin development mode: members see only that a plugin is in development ----
+
+
+def _development_of(client_as, user, organization):
+    return [plugin["development"] for plugin in _available(client_as, user, organization).json()]
+
+
+def test_a_plugin_is_in_development_only_while_the_mode_is_on_and_a_target_is_stored(
+    client_as, member_only, acme, weather_in_acme, settings
+):
+    settings.PLUGINS_DEV_MODE = True
+    without_target = _development_of(client_as, member_only, acme)
+    PluginDevelopmentTarget.objects.create(plugin=weather_in_acme, spa_port=5173)
+    with_target = _development_of(client_as, member_only, acme)
+    settings.PLUGINS_DEV_MODE = False
+    mode_off = _development_of(client_as, member_only, acme)
+
+    assert (without_target, with_target, mode_off) == ([False], [True], [False])
+
+
+def test_a_port_for_a_part_the_package_lacks_is_not_development(client_as, member_only, acme, weather_in_acme, settings):
+    settings.PLUGINS_DEV_MODE = True
+    PluginDevelopmentTarget.objects.create(plugin=weather_in_acme, backend_port=8001)
+
+    assert _development_of(client_as, member_only, acme) == [False]
+
+
+def test_a_member_never_sees_the_ports(client_as, member_only, acme, weather_in_acme, settings):
+    settings.PLUGINS_DEV_MODE = True
+    PluginDevelopmentTarget.objects.create(plugin=weather_in_acme, spa_port=5173)
+
+    plugin = _available(client_as, member_only, acme).json()[0]
+
+    assert plugin["development"] is True
+    assert "5173" not in str(plugin)
+    assert not {"backend_port", "spa_port", "target", "host_address"} & set(plugin)
+
+
+def test_a_member_of_another_organization_still_gets_nothing_of_a_plugin_in_development(
+    client_as, make_member, role_member, beta, weather_in_acme, settings
+):
+    settings.PLUGINS_DEV_MODE = True
+    PluginDevelopmentTarget.objects.create(plugin=weather_in_acme, spa_port=5173)
+    beta_member = make_member(beta, role_member, "member-beta-development@example.com")
+
+    assert _available(client_as, beta_member, beta).json() == []
+
+
+def test_development_adds_no_query_whatever_the_number_of_plugins(client_as, member_only, acme, running_plugin, grant_to, settings):
+    settings.PLUGINS_DEV_MODE = True
+    client = client_as(member_only)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+    counts = []
+    for identifier in ("one", "two", "three", "four", "five"):
+        plugin = running_plugin(id=identifier)
+        grant_to(plugin, acme)
+        PluginDevelopmentTarget.objects.create(plugin=plugin, spa_port=5173)
+        if identifier in ("one", "five"):
+            with CaptureQueriesContext(connection) as queries:
+                assert all(item["development"] for item in client.get(AVAILABLE_URL).json())
+            counts.append(len(queries))
+
+    assert counts[0] == counts[1] <= 3

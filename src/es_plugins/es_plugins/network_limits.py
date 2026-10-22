@@ -8,10 +8,11 @@ the five kept for the plugin node included. The egress proxy checks a password f
 request it is sent, so a plugin that floods it slows every other plugin's outbound access.
 
 Every plugin and the agent share the container's one network namespace, and with it its
-ephemeral ports (about 28,000). A socket holds one from the moment it is bound, before any packet
-is sent: `bind()` to port 0, or a UDP `connect()`, takes one silently, and a TCP connection takes
-one until about a minute after it closes. Without limits one plugin could take them all, and the
-agent could reach neither django_app nor plugins_db, so the plugin could not even be suspended.
+ephemeral ports (21000-65535, about 44,500). A socket holds one from the moment it is bound,
+before any packet is sent: `bind()` to port 0, `listen()` on an unbound TCP socket or a UDP
+`connect()` takes one silently, and a TCP connection takes one until about a minute after it
+closes. Without limits one plugin could take them all, and the agent could reach neither
+django_app nor plugins_db, so the plugin could not even be suspended.
 
 At start-up, for each plugin UID:
 
@@ -28,10 +29,13 @@ At start-up, for each plugin UID:
   A connection over a limit is refused at once (a TCP reset), and closed connections stop
   counting.
 
-The launcher's descriptor limit per process (`RLIMIT_NOFILE`) bounds what is left, a plugin's UDP
-sockets connected without sending; several plugins together could still take the ephemeral
-ports that way (an accepted risk). The agent's UID is outside `PLUGINS_NODE_UID_RANGE`, so the
-node's own sockets are never limited.
+What these cannot see is a port the kernel takes for a socket without `bind()`: `listen()` on an
+unbound TCP socket, and a UDP socket connected without sending. The descriptor limits do not bound
+it either (`RLIMIT_NOFILE` 256 is per process, `RLIMIT_NPROC` 64 per UID: about 16,000 sockets per
+plugin). The agent's socket watchdog (`supervisor.socket_watchdog`) stops a plugin whose UID
+listens on a port of its own or holds more than 512 inet sockets, within a second; up to one
+second of such port pressure is the risk that remains. The agent's UID is outside
+`PLUGINS_NODE_UID_RANGE`, so the node's own sockets are never limited.
 
 The container's entrypoint runs `python -m es_plugins.network_limits` as root with NET_ADMIN and
 BPF, then starts the launcher without NET_ADMIN, BPF or SETPCAP in any capability set, so nothing
@@ -58,7 +62,7 @@ PLUGINS_DB_PORT = 5432
 # A plugin's outbound requests are few and short; this leaves room for a busy one, not a flood.
 PROXY_CONNECTIONS_PER_PLUGIN = 64
 # Far above what a plugin needs, far below what exhausts the shared ephemeral ports (about
-# 28,000, each held about a minute after it closes).
+# 44,500, each held about a minute after it closes).
 NEW_CONNECTIONS_PER_SECOND = 200
 NEW_CONNECTIONS_BURST = 200
 # Far above a plugin's database, proxy and loopback connections together.

@@ -148,7 +148,7 @@ async function main(): Promise<void> {
 
     /** "Weather is being updated" while it is, with the next check planned; `null` otherwise. */
     const maintenancePage = (): HTMLElement[] | null => {
-        if (login === null || !showsMaintenance(plugin.framed, login.availability)) return null;
+        if (login === null || !showsMaintenance(plugin.framed, login.availability, login.state)) return null;
         const signedIn = login;
         recheckTimer ??= setTimeout(() => {
             recheckTimer = null;

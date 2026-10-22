@@ -1,4 +1,4 @@
-"""Start-up checks plugins.E001-E011, which run only while the plugin platform is on."""
+"""Start-up checks plugins.E001-E013 and W001, which run only while the plugin platform is on."""
 
 import pytest
 from django.core.management import call_command
@@ -267,5 +267,125 @@ def test_e011_a_grace_period_outside_one_to_3650_days(valid_platform, value):
 @pytest.mark.parametrize("value", ["1", "30", "3650", " 7 "])
 def test_e011_accepts_one_to_3650_days(valid_platform, value):
     valid_platform.PLUGINS_GRACE_PERIOD_DAYS = value
+
+    assert _ids() == []
+
+
+# ---- plugin development mode: E012, E013 and W001 ----
+
+
+def _messages():
+    return {message.id: message.msg for message in check_plugin_platform_settings(None)}
+
+
+@pytest.fixture
+def development_platform(valid_platform):
+    """A local development deployment with development mode on: only the warning is given.
+
+    DEBUG is set explicitly, because the test runner forces it off.
+    """
+    valid_platform.PLUGINS_DEV_MODE = True
+    valid_platform.PLUGINS_DEV_API_PORT = "8082"
+    valid_platform.DEBUG = True
+    return valid_platform
+
+
+def test_development_mode_on_a_local_development_deployment_only_warns(development_platform):
+    messages = _messages()
+
+    assert list(messages) == ["plugins.W001"]
+    assert messages["plugins.W001"] == (
+        "Plugin development mode is on: plugin requests can be served from this machine's ports."
+    )
+
+
+def test_the_warning_does_not_stop_management_commands(development_platform):
+    call_command("check")
+
+
+def test_e012_development_mode_without_debug(development_platform):
+    development_platform.DEBUG = False
+
+    messages = _messages()
+
+    assert list(messages) == ["plugins.E012"]
+    assert "DJANGO_DEBUG is not true" in messages["plugins.E012"]
+
+
+@pytest.mark.parametrize("base_domain", ["plugins.example.com", "plugins.epicstaff.test", "plugins.localhost.example.com"])
+def test_e012_a_plugin_base_domain_outside_localhost(development_platform, base_domain):
+    # A secure cookie, so the plain-http check (E001) stays quiet and only this one speaks.
+    development_platform.REFRESH_COOKIE_SECURE = True
+    development_platform.PLUGINS_BASE_DOMAIN = base_domain
+
+    messages = _messages()
+
+    assert list(messages) == ["plugins.E012"]
+    assert f"PLUGINS_BASE_DOMAIN ({base_domain!r}) does not end in .localhost" in messages["plugins.E012"]
+
+
+def test_e012_an_epicstaff_host_outside_localhost(development_platform):
+    development_platform.REFRESH_COOKIE_SECURE = True
+    development_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
+
+    messages = _messages()
+
+    assert list(messages) == ["plugins.E012"]
+    assert "DJANGO_FRONTEND_BASE_URL ('epicstaff.example.com')" in messages["plugins.E012"]
+
+
+def test_e012_names_every_failing_condition(development_platform):
+    development_platform.DEBUG = False
+    development_platform.REFRESH_COOKIE_SECURE = True
+    development_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    development_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
+
+    message = _messages()["plugins.E012"]
+
+    assert "DJANGO_DEBUG" in message and "PLUGINS_BASE_DOMAIN" in message
+    assert "DJANGO_FRONTEND_BASE_URL" in message
+
+
+def test_e012_stops_management_commands(development_platform):
+    development_platform.DEBUG = False
+
+    with pytest.raises(SystemCheckError, match="plugins.E012"):
+        call_command("check")
+
+
+def test_localhost_itself_is_a_local_development_host(development_platform):
+    development_platform.REFRESH_COOKIE_SECURE = True
+    development_platform.FRONTEND_BASE_URL = "https://localhost:4200"
+
+    assert _ids() == ["plugins.W001"]
+
+
+@pytest.mark.parametrize("value", ["0", "80", "1023", "65536", "abc", "", "8082.0", "-8082"])
+def test_e013_a_development_api_port_outside_1024_to_65535(development_platform, value):
+    development_platform.PLUGINS_DEV_API_PORT = value
+
+    assert _ids() == ["plugins.E013"]
+
+
+@pytest.mark.parametrize("value", ["1024", "8082", "65535", " 9000 "])
+def test_e013_accepts_ports_from_1024_to_65535(development_platform, value):
+    development_platform.PLUGINS_DEV_API_PORT = value
+
+    assert _ids() == ["plugins.W001"]
+
+
+def test_with_development_mode_off_neither_debug_nor_the_api_port_is_checked(development_platform):
+    development_platform.PLUGINS_DEV_MODE = False
+    development_platform.DEBUG = False
+    development_platform.PLUGINS_DEV_API_PORT = "abc"
+
+    assert _ids() == []
+
+
+def test_development_mode_is_not_checked_while_the_platform_is_off(development_platform):
+    development_platform.PLUGINS_ENABLED = False
+    development_platform.DEBUG = False
+    development_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    development_platform.PLUGINS_DEV_API_PORT = "abc"
 
     assert _ids() == []

@@ -34,3 +34,11 @@ PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS = env.str("PLUGINS_MAX_STATEMENT_TIMEOUT_S
 PLUGINS_MAX_REQUESTS_PER_MINUTE = env.str("PLUGINS_MAX_REQUESTS_PER_MINUTE")
 PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE = env.str("PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE")
 PLUGINS_MAX_REQUEST_BODY_MB = env.str("PLUGINS_MAX_REQUEST_BODY_MB")
+# Plugin development mode: a SuperAdmin may serve an installed plugin's backend and page from
+# this machine's ports. Only for a deployment on the developer's own machine: the
+# plugins.E012 start-up check refuses it anywhere else. Read when used, never cached.
+PLUGINS_DEV_MODE = env.bool("PLUGINS_DEV_MODE")
+# Port on 127.0.0.1 where a development backend reaches EpicStaff's API. Read as text: the
+# plugins.E013 start-up check reports a bad value while development mode is on, so nothing
+# else ever fails on one.
+PLUGINS_DEV_API_PORT = env.str("PLUGINS_DEV_API_PORT")

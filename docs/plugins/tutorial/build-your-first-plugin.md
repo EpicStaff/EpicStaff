@@ -31,7 +31,7 @@ Read the sample's files alongside: each part explains them in the order they mat
 - A local EpicStaff with the plugin platform on: [Local development](../how-to/local-development.md)
   and [Enable the plugin platform](../operator/enable-plugins.md), including the plugin database
   server and the egress proxy, and a Docker host that reaches the internet (for part 3).
-- Python 3.13 and [uv](https://docs.astral.sh/uv/) for the backend, Node.js for the page.
+- Python 3.13 and [uv](https://docs.astral.sh/uv/) for the backend, Node.js 24.15 or later for the page.
 - A SuperAdmin account, and an organization with an Org Admin and a Member.
 
 ## The files
@@ -284,8 +284,8 @@ it from a wheel you build):
 
 ```
 uv build --project src/plugin_sdk --wheel -o dist
-uv run --project src/plugin_sdk epicstaff-plugin pack plugin-samples/weather --spa-dir plugin-samples/weather/spa/dist --download-wheels --local-wheel dist/epicstaff_plugin-0.1.0-py3-none-any.whl --out weather-0.7.0.esplugin
-uv run --project src/plugin_sdk epicstaff-plugin validate weather-0.7.0.esplugin
+uv run --frozen --project src/plugin_sdk epicstaff-plugin pack plugin-samples/weather --spa-dir plugin-samples/weather/spa/dist --download-wheels --local-wheel dist/epicstaff_plugin-0.1.0-py3-none-any.whl --out weather-0.7.0.esplugin
+uv run --frozen --project src/plugin_sdk epicstaff-plugin validate weather-0.7.0.esplugin
 ```
 
 [Sign and package a plugin](../how-to/sign-and-package.md) adds a signature. Then, as the
@@ -433,10 +433,11 @@ ran.
 
 ### 7. What administrators see
 
-- The SuperAdmin's review shows a **Database** section: Weather gets its own database, and two
-  migrations run before the backend first starts.
+- The SuperAdmin's review shows a **Database** section: Weather gets its own database, and its
+  three migrations, `001` to `003` (part 5 explains the third), run before the backend first
+  starts.
 - About a minute after approval, the plugin's Runtime tab shows **Database: Ready**, with the
-  database, its roles, "Migrations: 2 of 2", the connection limit, the statement timeout and the
+  database, its roles, "Migrations: 3 of 3", the connection limit, the statement timeout and the
   size. The Activity tab shows "Database ready", by the platform.
 - Org Admins see "Keeps its data in its own database" on Weather's card in Settings → Plugin
   activity.
@@ -727,7 +728,7 @@ rm -rf /tmp/weather-0.7.1 && mkdir /tmp/weather-0.7.1
 cp -R plugin-samples/weather/manifest.json plugin-samples/weather/icon.svg plugin-samples/weather/backend plugin-samples/weather/database /tmp/weather-0.7.1/
 python3 -c 'import json,pathlib; p=pathlib.Path("/tmp/weather-0.7.1/manifest.json"); m=json.loads(p.read_text()); m["version"]="0.7.1"; p.write_text(json.dumps(m, indent=4)+"\n")'
 printf 'ALTER TABLE weather.saved_places ADD COLUMN note text;\n' > /tmp/weather-0.7.1/database/migrations/004_place_notes.sql
-uv run --project src/plugin_sdk epicstaff-plugin pack /tmp/weather-0.7.1 --spa-dir plugin-samples/weather/spa/dist --download-wheels --local-wheel dist/epicstaff_plugin-0.1.0-py3-none-any.whl --out weather-0.7.1.esplugin
+uv run --frozen --project src/plugin_sdk epicstaff-plugin pack /tmp/weather-0.7.1 --spa-dir plugin-samples/weather/spa/dist --download-wheels --local-wheel dist/epicstaff_plugin-0.1.0-py3-none-any.whl --out weather-0.7.1.esplugin
 ```
 
 As the SuperAdmin, upload `weather-0.7.1.esplugin` on Weather's page. It waits for review, and
@@ -752,3 +753,12 @@ until you tick "I approve the new access".
   "Active · 0.7.1". The hook did nothing for organizations already at 0.7.0. From 0.6.0, it
   gives their flow the new description.
 - The Activity tab lists the upgrade, the backup and each organization's upgrade hook.
+
+## Next: develop on your machine
+
+Packing and upgrading for every change is slow. On a local EpicStaff in plugin development mode,
+a SuperAdmin points the installed Weather at a backend you run from `plugin-samples/weather/`
+with `epicstaff-plugin dev`, and at the page's development server, `npm run dev`: a saved change
+then shows up in Weather within seconds. [Local development](../how-to/local-development.md)
+walks through it, and the [architecture](../explanation/architecture.md) and the
+[security model](../explanation/security-model.md) explain what you built on.

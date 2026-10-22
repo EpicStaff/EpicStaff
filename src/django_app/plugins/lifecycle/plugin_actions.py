@@ -13,8 +13,10 @@ Adding a state a plugin can be uninstalled or deleted from: extend
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import get_args
 
 from epicstaff_plugin.contracts.versions import is_newer
+from src.shared.models.plugin_nodes import RestoreStep
 from utils.exceptions import CustomAPIExeption
 
 from plugins.databases.backup_records import restorable_backups
@@ -44,6 +46,7 @@ from plugins.models import (
     PluginPlacement,
     PluginState,
     PluginUpgrade,
+    RestoreState,
     ReviewState,
     UpgradeStage,
 )
@@ -77,6 +80,10 @@ _NOT_READ = object()
 # The states a plugin may start an upgrade from when none is open. Once one is open, whatever
 # state its node reports, the upgrade's own rules decide.
 UPGRADABLE_PLUGIN_STATES = frozenset({PluginState.RUNNING, PluginState.FAILED})
+_RESTORE_STEPS = get_args(RestoreStep)
+# From `recreate` on, the node has dropped the database or written into it: a restore that
+# failed there may have left it empty or half restored.
+DATABASE_CHANGING_RESTORE_STEPS = frozenset(_RESTORE_STEPS[_RESTORE_STEPS.index("recreate") :])
 
 
 @dataclass(frozen=True)
@@ -84,7 +91,10 @@ class PluginActionFacts:
     """What the action rules read about a plugin besides its state.
 
     `newer_pending` is whether a pending package is newer than the latest approved version.
-    `database_changed` and `restorable_backup` are about the open upgrade, false without one.
+    `database_changed`, `restorable_backup` and `latest_restore_failed` are about the open
+    upgrade, false without one. `latest_restore_failed`: the upgrade's latest restore failed
+    at a step that may have changed the database (`DATABASE_CHANGING_RESTORE_STEPS`), which
+    may now be empty; only another restore and the plugin's deletion are allowed then.
     """
 
     plugin: Plugin
@@ -93,10 +103,12 @@ class PluginActionFacts:
     database_changed: bool
     restorable_backup: bool
     newer_pending: bool
+    latest_restore_failed: bool = False
 
     @classmethod
     def of(cls, plugin: Plugin, open_upgrade=_NOT_READ) -> "PluginActionFacts":
-        """Read the facts of `plugin`: at most two queries without an open upgrade, five with one.
+        """Read the facts of `plugin`: at most two queries without an open upgrade, five with one
+        (six for an upgrade opened before its ledger snapshot was kept).
 
         Pass `open_upgrade` (the upgrade, or None) when the caller has read or locked it
         already; the pending package comes from `with_summary()`'s prefetch when it is there.
@@ -109,12 +121,17 @@ class PluginActionFacts:
         if open_upgrade is None:
             return cls(plugin, None, False, False, False, newer_pending)
         database = PluginDatabase.objects.filter(plugin=plugin).only("pk", "ledger").first()
-        restore_open = (
-            database is not None
-            and PluginDatabaseRestore.objects.filter(
-                plugin_database=database, state__in=OPEN_RESTORE_STATES
-            ).exists()
+        # The database's latest restore. An open one is always the latest: a restore is asked
+        # for only while none is open, and at most one is (`ONE_OPEN_RESTORE_CONSTRAINT`).
+        latest = (
+            PluginDatabaseRestore.objects.filter(plugin_database=database)
+            .order_by("-pk")
+            .values("upgrade_id", "state", "step")
+            .first()
+            if database is not None
+            else None
         )
+        restore_open = latest is not None and latest["state"] in OPEN_RESTORE_STATES
         restorable = (
             database is not None
             and _restore_conditions_hold(open_upgrade, restore_open=restore_open)
@@ -127,6 +144,12 @@ class PluginActionFacts:
             database_changed(open_upgrade, database),
             restorable,
             newer_pending,
+            latest_restore_failed=(
+                latest is not None
+                and latest["upgrade_id"] == open_upgrade.pk
+                and latest["state"] == RestoreState.FAILED
+                and latest["step"] in DATABASE_CHANGING_RESTORE_STEPS
+            ),
         )
 
 
@@ -150,9 +173,10 @@ def restore_allowed(facts: PluginActionFacts) -> bool:
 
 def upgrade_cancellable(facts: PluginActionFacts) -> bool:
     """Whether the open upgrade can be cancelled: it does not add a backend, no restore of it
-    runs, and the database holds no change of the new version yet."""
+    runs or failed after changing the database, and the database holds no change of the new
+    version yet."""
     upgrade = facts.open_upgrade
-    if upgrade is None or upgrade.adds_backend or facts.restore_open:
+    if upgrade is None or upgrade.adds_backend or facts.restore_open or facts.latest_restore_failed:
         return False
     if upgrade.stage in (UpgradeStage.PREPARING, UpgradeStage.MAINTENANCE):
         return True
@@ -164,9 +188,10 @@ def _restore_conditions_hold(upgrade: PluginUpgrade, *, restore_open: bool) -> b
 
 
 def _may_start_upgrade(facts: PluginActionFacts) -> bool:
-    """The state part of `upgrade`: no restore runs, and either no upgrade is open and the
-    plugin runs (or failed), or the open one failed, so a newer version replaces its target."""
-    if facts.restore_open:
+    """The state part of `upgrade`: no restore runs or failed after changing the database, and
+    either no upgrade is open and the plugin runs (or failed), or the open one failed, so a
+    newer version replaces its target."""
+    if facts.restore_open or facts.latest_restore_failed:
         return False
     if facts.open_upgrade is None:
         return facts.plugin.state in UPGRADABLE_PLUGIN_STATES
@@ -212,7 +237,10 @@ _RULES: dict[PluginLifecycleAction, _ActionRule] = {
     ),
     PluginLifecycleAction.RETRY_UPGRADE: _ActionRule(
         lambda facts: (
-            facts.open_upgrade is not None and facts.open_upgrade.failed and not facts.restore_open
+            facts.open_upgrade is not None
+            and facts.open_upgrade.failed
+            and not facts.restore_open
+            and not facts.latest_restore_failed
         ),
         _always(UpgradeNotRetryableError),
     ),
@@ -250,10 +278,11 @@ def assert_plugin_action(
         PluginNotUninstallableError: `uninstall` outside provisioning, running and failed.
         PluginUpgradeOpenError: `uninstall` while an upgrade is open.
         PluginNotUninstallingError: `reinstall` of a plugin that is not uninstalled.
-        PluginNotUpgradableError: `upgrade` while another upgrade works, a restore runs, or
-            from a state that cannot start one.
+        PluginNotUpgradableError: `upgrade` while another upgrade works, a restore runs or
+            failed after changing the database, or from a state that cannot start one.
         UpgradeNotCancellableError: `cancel_upgrade` outside the cancel rule.
-        UpgradeNotRetryableError: `retry_upgrade` without a failed open upgrade.
+        UpgradeNotRetryableError: `retry_upgrade` without a failed open upgrade, or while a
+            restore runs or failed after changing the database.
         RestoreNotAllowedError: `restore_backup` outside a failed migration with a backup.
         PluginNotPurgeableError: `purge` of a plugin uploaded, being deleted, or restoring.
         RemovalNotRetryableError: `retry_removal` unless the node reported a failed removal.

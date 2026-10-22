@@ -17,11 +17,13 @@ import {
     pluginActivityActorText,
     pluginActivityDetailText,
     pluginActivityErrorText,
+    pluginActivityIsDevelopment,
     pluginActivityOrganizationText,
     pluginActivityPluginText,
     pluginActivityRequestLine,
     pluginActivityTargetText,
 } from '../../utils/plugin-activity-display.util';
+import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
 
 /** What the activity endpoints return per page unless asked otherwise. */
 export const PLUGIN_ACTIVITY_PAGE_SIZE = 50;
@@ -39,6 +41,8 @@ interface ActivityEntry {
     target: string | null;
     detail: string | null;
     error: string | null;
+    /** Answered for a development backend. */
+    development: boolean;
 }
 
 const WHEN_COLUMN: AppTableColumnDef = { key: 'when', label: 'When', width: 'minmax(110px, 0.8fr)' };
@@ -54,8 +58,8 @@ const DETAILS_COLUMN: AppTableColumnDef = { key: 'details', label: 'Details', wi
 
 /**
  * A page of plugin activity, newest first: when, who (the plugin, on behalf of whom, a SuperAdmin or the platform),
- * what, and the request line, the target, the overrides a limits change left, or the error of a failure. The container
- * loads the pages; this list only asks for another one.
+ * what, and the request line (marked "Development" when a development backend made it), the target, the overrides a
+ * limits change left, or the error of a failure. The container loads the pages; this list only asks for another one.
  */
 @Component({
     selector: 'app-plugin-activity-list',
@@ -66,6 +70,7 @@ const DETAILS_COLUMN: AppTableColumnDef = { key: 'details', label: 'Details', wi
         LoadingSpinnerComponent,
         MatTooltip,
         PaginationControlsComponent,
+        PluginBadgeComponent,
     ],
     templateUrl: './plugin-activity-list.component.html',
     styleUrl: './plugin-activity-list.component.scss',
@@ -122,5 +127,6 @@ function toEntry(event: PluginActivityEvent, locale: string): ActivityEntry {
         target: pluginActivityTargetText(event),
         detail: pluginActivityDetailText(event, locale),
         error: pluginActivityErrorText(event),
+        development: pluginActivityIsDevelopment(event),
     };
 }

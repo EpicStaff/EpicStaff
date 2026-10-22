@@ -9,6 +9,15 @@
     height: 100%;
     min-height: 0;
 
+    // Above the frame while the plugin is served from a developer's machine.
+    &__development {
+        flex: none;
+        margin: 0;
+        padding: 8px 16px;
+        background: var(--transparent-orange-8);
+        color: var(--color-warning);
+    }
+
     &__frame {
         display: block;
         flex: 1;

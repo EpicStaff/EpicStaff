@@ -77,7 +77,7 @@ describe('PluginRestoreDialogComponent', () => {
     it('says what the restore replaces, that a backup comes first, and which phrase confirms it', () => {
         const body = element.querySelector('.dialog__body')?.textContent?.replace(/\s+/g, ' ') ?? '';
 
-        expect(element.querySelector('h2')?.textContent?.trim()).toBe('Restore Before upgrade to 0.7.1');
+        expect(element.querySelector('h2')?.textContent?.trim()).toBe('Restore the backup "Before upgrade to 0.7.1"');
         expect(body).toMatch(
             /Replace plugin_weather with this backup from Oct 21, 2026, .+\? Changes since then are lost\. A backup of the current database is taken first, so you can undo this\./
         );

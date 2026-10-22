@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from plugins.access.plugin_access import accesses_in_organization
+from plugins.development.development_targets import served_from_development
 from plugins.models import GrantState, Plugin, PluginGrant, PluginState
 
 READY = "ready"
@@ -13,11 +14,14 @@ class AvailablePlugin:
 
     `availability` is `maintenance` while the plugin is stopped for an upgrade, or the
     organization's upgrade has not finished; the plugin's page then says it is being updated.
+    `development` is true while development mode serves some part of it from a developer's
+    machine; a member never sees where.
     """
 
     plugin: Plugin
     permissions: list[str]
     availability: str
+    development: bool
 
 
 def plugins_available_to(user, org_id: int) -> list[AvailablePlugin]:
@@ -29,7 +33,11 @@ def plugins_available_to(user, org_id: int) -> list[AvailablePlugin]:
     queries (the third only for a custom role), whatever the number of plugins.
     """
     accesses = accesses_in_organization(
-        user, org_id, PluginGrant.objects.filter(org_id=org_id).listed()
+        user,
+        org_id,
+        PluginGrant.objects.filter(org_id=org_id)
+        .listed()
+        .select_related("plugin__development_target"),
     )
     return [
         AvailablePlugin(
@@ -39,6 +47,7 @@ def plugins_available_to(user, org_id: int) -> list[AvailablePlugin]:
             if access.grant.state == GrantState.UPGRADING
             or access.grant.plugin.state == PluginState.MAINTENANCE
             else READY,
+            development=served_from_development(access.grant.plugin),
         )
         for access in accesses
     ]

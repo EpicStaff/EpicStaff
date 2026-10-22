@@ -2,7 +2,8 @@
 
 A service account's request is recorded once its response is ready, when it changed
 something (a method other than GET, HEAD and OPTIONS) and succeeded (status below 400),
-except the `/api/plugin-runtime/` calls, which only read. Recording it never changes the
+except the `/api/plugin-runtime/` calls, which only read. One made with a development key has
+`detail.development` true. Recording it never changes the
 response: a failure is logged and the response goes out as it is. Lifecycle events are
 written by the services that change the plugin, in their transaction.
 
@@ -260,7 +261,7 @@ class ActivityRecorder:
                 "job_id": job.pk,
                 "attempt": job.attempt,
                 "from_version": job.previous_version,
-                "to_version": job.package.version if job.package else None,
+                "to_version": job.package_version,
             },
         )
 
@@ -425,6 +426,37 @@ class ActivityRecorder:
     def database_failed(self, identifier: str, error: str | None) -> None:
         _platform_event(identifier, ActivityAction.DATABASE_FAILED, {"error": error})
 
+    def development_target_set(
+        self, actor, identifier: str, backend_port: int | None, spa_port: int | None
+    ) -> None:
+        _superadmin_event(
+            actor,
+            identifier,
+            None,
+            ActivityAction.DEVELOPMENT_TARGET_SET,
+            {"backend_port": backend_port, "spa_port": spa_port},
+        )
+
+    def development_target_cleared(self, actor, identifier: str, revoked_keys: int) -> None:
+        _superadmin_event(
+            actor,
+            identifier,
+            None,
+            ActivityAction.DEVELOPMENT_TARGET_CLEARED,
+            {"revoked_keys": revoked_keys},
+        )
+
+    def development_runtime_file_issued(self, actor, identifier: str, organizations: int) -> None:
+        """Record a download of the development runtime file; `organizations` is how many
+        organizations it holds a key for. The file itself is never recorded."""
+        _superadmin_event(
+            actor,
+            identifier,
+            None,
+            ActivityAction.DEVELOPMENT_RUNTIME_FILE_ISSUED,
+            {"organizations": organizations},
+        )
+
     def database_limit_restored(self, identifier: str, setting: str) -> None:
         """Record that the node put back a limit of the app role that had been changed."""
         _platform_event(identifier, ActivityAction.DATABASE_LIMIT_RESTORED, {"setting": setting})
@@ -443,6 +475,9 @@ class ActivityRecorder:
         principal = scope.principal
         person = principal.person
         target_id, target_label = target or (None, None)
+        detail = {"created_count": len(scope.created)}
+        if principal.development_key:
+            detail["development"] = True
         PluginActivityEvent.objects.create(
             plugin_identifier=principal.plugin_identifier,
             organization_id=principal.pinned_org_id,
@@ -458,7 +493,7 @@ class ActivityRecorder:
             target_resource_type=resource_type,
             target_id=target_id,
             target_label=(target_label or None) and target_label[:MAX_TARGET_LABEL_LENGTH],
-            detail={"created_count": len(scope.created)},
+            detail=detail,
         )
 
 

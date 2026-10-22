@@ -1,5 +1,6 @@
 import copy
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from epicstaff_plugin.testing import ContextSigner, write_runtime_file
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MINISIGN_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "minisign"
+WEATHER_SAMPLE = REPO_ROOT / "plugin-samples" / "weather"
 
 ICON_SVG = (
     b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
@@ -138,3 +140,15 @@ def runtime_file(tmp_path, signer):
 @pytest.fixture
 def runtime(runtime_file):
     return RuntimeConfig.load(runtime_file)
+
+
+@pytest.fixture
+def weather_source(tmp_path):
+    """A copy of the Weather sample's source (manifest, backend, database; no page), safe to modify."""
+    source = tmp_path / "sample" / "weather"
+    shutil.copytree(
+        WEATHER_SAMPLE,
+        source,
+        ignore=shutil.ignore_patterns("spa", ".venv", "__pycache__", "*-development-runtime.json"),
+    )
+    return source

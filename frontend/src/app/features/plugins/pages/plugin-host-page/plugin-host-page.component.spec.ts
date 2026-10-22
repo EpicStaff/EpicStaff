@@ -234,12 +234,75 @@ describe('PluginHostPageComponent', () => {
         const tryAgain = Array.from(
             (harness.routeNativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button')
         ).find((button) => button.textContent?.trim() === 'Try again');
+        // Once when the plugin opened, then for Try again.
+        expect(refresh).toHaveBeenCalledTimes(1);
         tryAgain?.click();
         plugins.set([buildAvailablePlugin()]);
         harness.detectChanges();
 
-        expect(refresh).toHaveBeenCalledTimes(1);
+        expect(refresh).toHaveBeenCalledTimes(2);
         expect(frame()?.getAttribute('src')).toBe(`${FRAME_ORIGIN}/?es_org=3`);
+    });
+
+    it('loads the available plugins again in the background whenever another plugin opens', async () => {
+        await open('/plugins/weather');
+        expect(refresh).toHaveBeenCalledTimes(1);
+
+        await harness.navigateByUrl('/plugins/weather/about');
+        harness.detectChanges();
+        expect(refresh).toHaveBeenCalledTimes(1);
+
+        await harness.navigateByUrl('/plugins/atlas');
+        harness.detectChanges();
+        expect(refresh).toHaveBeenCalledTimes(2);
+    });
+
+    describe('while the plugin is served from a developer’s machine', () => {
+        function banner(): string | null {
+            return (
+                (harness.routeNativeElement as HTMLElement | null)
+                    ?.querySelector('.plugin-host__development')
+                    ?.textContent?.trim() ?? null
+            );
+        }
+
+        it('says so above the frame, and frames the same address', async () => {
+            plugins.set([buildAvailablePlugin({ development: true })]);
+            const iframe = await open('/plugins/weather/forecast?city=Berlin');
+
+            expect(banner()).toBe("Development: this plugin is served from a developer's machine.");
+            expect(iframe.getAttribute('src')).toBe(`${FRAME_ORIGIN}/forecast?city=Berlin&es_org=3`);
+        });
+
+        it('shows no banner for a plugin that is not in development', async () => {
+            await open('/plugins/weather');
+
+            expect(banner()).toBeNull();
+        });
+
+        it('keeps the frame when development starts or stops', async () => {
+            const iframe = await open('/plugins/weather');
+
+            plugins.set([buildAvailablePlugin({ development: true })]);
+            harness.detectChanges();
+            expect(banner()).not.toBeNull();
+            expect(frame()).toBe(iframe);
+
+            plugins.set([buildAvailablePlugin({ development: false })]);
+            harness.detectChanges();
+            expect(banner()).toBeNull();
+            expect(frame()).toBe(iframe);
+            expect(iframe.getAttribute('src')).toBe(`${FRAME_ORIGIN}/?es_org=3`);
+        });
+
+        it('shows no banner without the frame', async () => {
+            plugins.set([buildAvailablePlugin({ development: true, availability: 'maintenance' })]);
+            await harness.navigateByUrl('/plugins/weather');
+            harness.detectChanges();
+
+            expect(frame()).toBeNull();
+            expect(banner()).toBeNull();
+        });
     });
 
     it('opens a new frame for another plugin', async () => {
@@ -263,6 +326,8 @@ describe('PluginHostPageComponent', () => {
          */
         async function enterMaintenance(): Promise<void> {
             await open('/plugins/weather');
+            // Only the checks of the maintenance count from here, not the load when the plugin opened.
+            refresh.mockClear();
             vi.useFakeTimers();
             plugins.set([buildAvailablePlugin({ availability: 'maintenance' })]);
             harness.detectChanges();
@@ -311,6 +376,7 @@ describe('PluginHostPageComponent', () => {
     describe('availability.changed from the framed page', () => {
         it('asks the server again at once, then at most once per 10 seconds, the last report answered late', async () => {
             const port = handshake(await open('/plugins/weather'));
+            refresh.mockClear();
             vi.useFakeTimers();
 
             port.postMessage({ type: 'availability.changed', state: 'maintenance' });
@@ -345,6 +411,7 @@ describe('PluginHostPageComponent', () => {
 
         it('ignores available, which says nothing new', async () => {
             const port = handshake(await open('/plugins/weather'));
+            refresh.mockClear();
 
             port.postMessage({ type: 'availability.changed', state: 'available' });
 
@@ -357,7 +424,8 @@ describe('PluginHostPageComponent', () => {
         harness.detectChanges();
         expect(frame()).toBeNull();
         expect(harness.routeNativeElement?.textContent).toContain('Plugin not available');
-        expect(refresh).not.toHaveBeenCalled();
+        // Only the load when the page opened: nothing polls for a plugin that is not available.
+        expect(refresh).toHaveBeenCalledTimes(1);
 
         plugins.set([buildAvailablePlugin({ frame_origin: 'http://weather.plugins.example.com' })]);
         await harness.navigateByUrl('/plugins/weather');

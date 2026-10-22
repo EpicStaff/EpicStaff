@@ -31,9 +31,11 @@ audit filter presets.
 Everything a service account creates is recorded as owned by the plugin, and every change it
 makes appears in the organization's Plugin activity, which Org Admins read.
 
-The key works only on EpicStaff's internal address, from the plugin network
-(`epicstaff_api_url`); on EpicStaff's public address it gets 401. Never log it, and never send it
-anywhere else.
+The key works only on the address the runtime file names, `epicstaff_api_url`: EpicStaff's
+internal address, from the plugin network, or for a
+[development backend](../reference/runtime.md#a-development-backend) the development API listener
+on the developer's machine. On EpicStaff's public address it gets 401. Never log it, and never
+send it anywhere else.
 
 ## The client
 

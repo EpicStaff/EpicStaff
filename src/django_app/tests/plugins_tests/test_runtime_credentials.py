@@ -406,3 +406,17 @@ def test_a_plugin_out_of_service_gets_its_app_password_until_removal_is_requeste
     assert kept.status_code == 200, kept.content
     assert kept.json()["database"] == {"app_password": app_password_of(PluginDatabase.objects.get(plugin=weather))}
     assert (refused.status_code, refused.json()["code"]) == (404, "placement_not_found")
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_runtime_credentials_call_leaves_development_keys_working(weather, node_client, superadmin, acme):
+    mark_running(weather)
+    PluginGrantService().grant("weather", acme.pk, superadmin)
+    minted = ServiceAccountKeyService().mint_development_keys(weather)
+    development_key = minted[0].raw_key
+
+    for _ in range(3):
+        assert node_client.post(_credentials_url(weather.placement.pk)).status_code == 200
+
+    response = service_account_client(development_key, acme, development_listener="1").get("/api/plugin-runtime/me/")
+    assert response.status_code == 200

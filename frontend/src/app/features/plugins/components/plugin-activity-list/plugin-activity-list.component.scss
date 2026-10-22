@@ -35,6 +35,14 @@
     min-width: 0;
 }
 
+.activity__request-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    min-width: 0;
+}
+
 .activity__request {
     color: var(--color-text-primary);
     font-size: var(--text-body-small-size);

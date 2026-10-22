@@ -23,10 +23,12 @@ uv run --frozen --project src/plugin_sdk epicstaff-plugin --help
 ```
 
 or install it as a tool once: `uv tool install ./src/plugin_sdk`, then call `epicstaff-plugin`
-directly. The examples below use the short form.
+directly. The examples below use the short form. Use the EpicStaff version your deployment runs:
+[Get the tools](../README.md#get-the-tools) has the details.
 
 Every command exits with `0` when it succeeds, `1` when the package or source breaks a rule
-(the problems are printed as `loc: message` lines), and `2` when it was called wrongly.
+(the problems are printed as `loc: message` lines), and `2` when it was called wrongly. The
+[command-line reference](../reference/cli.md) lists every option and output.
 
 ## Lay out the source
 
@@ -57,7 +59,7 @@ epicstaff-plugin validate weather --spa-dir weather/spa/dist
 ```
 
 ```
-valid: weather 0.2.0 (source)
+valid: weather 0.7.0 (source)
 ```
 
 Without `--spa-dir` the app is not checked. For a backend, `validate` checks the lock too, and
@@ -101,7 +103,7 @@ The name before the colon is only a label; they may choose their own.
 
 ```bash
 epicstaff-plugin pack weather --spa-dir weather/spa/dist \
-  --key ~/keys/acme-plugins.key --out weather-0.1.0.esplugin
+  --key ~/keys/acme-plugins.key --out weather-0.7.0.esplugin
 ```
 
 `pack` validates the source, writes `CONTENTS.json`, signs it when `--key` is given, and writes
@@ -113,6 +115,35 @@ finished package back with the same rules EpicStaff applies, and deletes it if i
 `pack` copies `backend/` and `database/` as it finds them, leaving out only `__pycache__`
 directories, `.DS_Store` files and `backend/requirements.in`. It refuses symbolic links. It never
 writes into the source directory.
+
+## Keep secrets out of a package
+
+Everything under `backend/` and `database/` goes into the package as it is, so keep there only
+what you would publish:
+
+- **Keep your virtual environment at the plugin's root** (`weather/.venv`), never under
+  `backend/`. `pack` takes only `backend/`, `database/`, the manifest, the icon and the built app,
+  so a `.venv` beside them stays out; one under `backend/` would be packed, and its symbolic links
+  make `pack` refuse the source.
+- **Keep runtime files out of the source altogether**, the development runtime file a SuperAdmin
+  downloads for [local development](local-development.md#develop-the-backend-on-your-machine)
+  included: it holds keys that act for your plugin in every organization it is granted to, and
+  its secret settings. `epicstaff-plugin dev` refuses one inside the source.
+- **Ignore both in version control.** The Weather sample's `plugin-samples/weather/.gitignore`
+  ignores `.venv/` and `*-development-runtime.json`.
+
+`pack`, `validate` and EpicStaff's upload read every file of the package but the wheels in
+`backend/wheels/`, and refuse one that holds an EpicStaff service-account key (`esp-` and 43 more
+characters, anywhere in the file's first MiB) or that is a runtime file (a JSON object with both
+`service_accounts` and `secret_settings`):
+
+```
+package.backend/weather-development-runtime.json: holds an EpicStaff key or runtime file; never package it
+```
+
+The line names the file and never what was found in it. Move the file out of the source, and
+if it held a key, ask a SuperAdmin to stop development on the plugin's Development tab or to
+download the runtime file again: either revokes the keys it held.
 
 ## A plugin with a backend
 
@@ -164,7 +195,7 @@ This writes `dist/epicstaff_plugin-<version>-py3-none-any.whl`.
 ```bash
 epicstaff-plugin pack weather --spa-dir weather/spa/dist \
   --download-wheels --local-wheel dist/epicstaff_plugin-0.1.0-py3-none-any.whl \
-  --key ~/keys/acme-plugins.key --out weather-0.2.0.esplugin
+  --key ~/keys/acme-plugins.key --out weather-0.7.0.esplugin
 ```
 
 | Option | What it does |
@@ -172,6 +203,9 @@ epicstaff-plugin pack weather --spa-dir weather/spa/dist \
 | `--download-wheels` | Downloads a binary wheel of every lock entry that applies to each target platform into the package's `backend/wheels/`. It runs `pip download` with the lock's hashes, so a file that does not match the lock is refused. Needs `pip` in the Python that runs `epicstaff-plugin` |
 | `--platform <tag>` | A target platform; repeat for more. Default: `manylinux_2_28_x86_64` and `manylinux_2_28_aarch64`, the platforms EpicStaff's plugin node runs on. Older manylinux wheels (such as `manylinux2014`) are taken too, as the node runs them |
 | `--local-wheel <path>` | Adds a wheel no index has, such as the SDK wheel, and appends `<name>==<version> --hash=sha256:<digest>` for it to the **packaged** lock. Repeat for more. Refused when the lock already pins that name, or does not pin something the wheel requires |
+
+Keep both default platforms unless you know every deployment's node: a package without wheels
+for a node's architecture installs on no such node.
 
 Environment markers in the lock (`; sys_platform == 'win32'`) are evaluated for the node's
 platform, not for your machine, so a Windows-only package is never downloaded and a Linux-only
@@ -195,18 +229,18 @@ names the wheel and the platform on the plugin's Runtime tab.
 To sign a package you packed without `--key`, or to replace its signature:
 
 ```bash
-epicstaff-plugin sign weather-0.1.0.esplugin --key ~/keys/acme-plugins.key
+epicstaff-plugin sign weather-0.7.0.esplugin --key ~/keys/acme-plugins.key
 ```
 
 With a password-protected minisign key, sign `CONTENTS.json` with minisign itself, using the
 trusted comment EpicStaff requires, and add the signature to the package:
 
 ```bash
-unzip -p weather-0.1.0.esplugin CONTENTS.json > CONTENTS.json
+unzip -p weather-0.7.0.esplugin CONTENTS.json > CONTENTS.json
 digest=$(shasum -a 256 CONTENTS.json | cut -d' ' -f1)
 minisign -S -s ~/keys/acme-plugins.key -m CONTENTS.json \
-  -t "plugin=weather version=0.1.0 contents_sha256=$digest"
-zip weather-0.1.0.esplugin CONTENTS.json.minisig
+  -t "plugin=weather version=0.7.0 contents_sha256=$digest"
+zip weather-0.7.0.esplugin CONTENTS.json.minisig
 ```
 
 Adding the file with `zip` keeps the package valid, though no longer byte-for-byte deterministic.
@@ -214,7 +248,7 @@ Adding the file with `zip` keeps the package valid, though no longer byte-for-by
 ## 5. Check what EpicStaff will say
 
 ```bash
-epicstaff-plugin verify weather-0.1.0.esplugin \
+epicstaff-plugin verify weather-0.7.0.esplugin \
   --trusted-key acme-plugins:RWRF8uMkJwWxQWjHvGCM65zBNxFclRsPWqGCgGZJfcTC4RCg+93o19KJ
 ```
 
@@ -232,7 +266,14 @@ belong to this package; EpicStaff refuses such an upload.
 
 A SuperAdmin uploads the `.esplugin` file under **Workspace → Plugins**, reviews what it asks for,
 and approves it. Each new upload of the same plugin, until it is approved, replaces the previous
-one. Installing a new version of an approved plugin is not available yet.
+one.
+
+To ship a new version of an installed plugin, raise `version` in the manifest, pack and sign it
+as above, and have a SuperAdmin upload it on the plugin's page. Its review shows what changed
+against the installed version, and approving it upgrades the plugin. A version that is not newer
+than the installed one is refused. [Compatibility and versioning](../reference/compatibility-and-versioning.md)
+says what a new version may change, and [Write an upgrade hook](upgrade-hook.md) how to bring each
+organization to it.
 
 A plugin with a backend is *provisioning* after approval while the node downloads it, builds its
 environment and starts it, and *running* once it answers its health check. [Runtime](../reference/runtime.md)

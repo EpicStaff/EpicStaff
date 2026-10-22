@@ -5,11 +5,14 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from epicstaff_plugin.contracts.runtime import RUNTIME_FILE_FORMAT, RuntimeFile
+from epicstaff_plugin.contracts.runtime import (
+    RUNTIME_FILE_FORMAT,
+    SERVICE_ACCOUNT_KEY_PREFIX,
+    RuntimeFile,
+)
 from epicstaff_plugin.testing.context_signer import ContextSigner
 
 DEFAULT_API_URL = "http://epicstaff-api:8081/api/"
-SERVICE_ACCOUNT_KEY_PREFIX = "esp-"
 
 
 def service_account_key() -> str:

@@ -26,9 +26,11 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
     untrusted_not_acknowledged: 'Confirm that you accept the risk of installing an untrusted package.',
     plugin_not_found: 'This plugin no longer exists.',
     invalid_authorize_request: 'This sign-in link is not valid. Open the plugin again from EpicStaff.',
-    plugin_not_running: 'The plugin is not running yet, so it cannot be granted.',
+    // Granting and development both answer it.
+    plugin_not_running: 'The plugin is not running yet. Try again once it runs.',
     plugin_already_granted: 'This organization already has the plugin.',
-    plugin_has_no_backend: 'This plugin has no backend, so it has no settings, limits or runtime.',
+    plugin_has_no_backend:
+        'This plugin has no backend, so it has no settings, limits, runtime or development runtime file.',
     invalid_plugin_settings: 'Some settings are not valid. Fix the fields marked below and save again.',
     invalid_plugin_limits: 'Some limits are not valid. Fix the fields marked below and save again.',
     no_plugin_node:
@@ -69,6 +71,7 @@ export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = 
     restore_not_allowed:
         'This backup cannot be restored now: only a backup of the failed upgrade under way can. Reload the list.',
     invalid_restore_phrase: 'The confirmation text does not match. Type it exactly as shown.',
+    plugin_development_mode_off: 'Plugin development mode is off on this deployment.',
     throttled: 'Too many requests. Wait a moment and try again.',
 };
 

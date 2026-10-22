@@ -95,6 +95,8 @@ class PurgePassResult:
             rows another process held, flows with a running session, and failed rows.
         first_error: `"<model> <pk>: <message>"` of the first failed row, at most 2000
             characters; None when no row failed.
+        truncated: The pass stopped at its deadline before it went through every row, so a
+            row it never reached may be one that failed before.
     """
 
     purged: int
@@ -102,6 +104,7 @@ class PurgePassResult:
     remaining: int
     first_error: str | None
     held_back: int = 0
+    truncated: bool = False
 
 
 class _Outcome(Enum):
@@ -134,8 +137,10 @@ class OwnedResourcePurger:
         purged = failed = held_back = 0
         first_error = None
         attempted = 0
+        truncated = False
         for row_pk in _in_purge_order(targets):
             if attempted and time.monotonic() >= until:
+                truncated = True
                 break
             if shared_cache.get(FAILED_ROW_CACHE_KEY.format(pk=row_pk)) is not None:
                 held_back += 1
@@ -155,6 +160,7 @@ class OwnedResourcePurger:
             remaining=targets.count(),
             first_error=first_error,
             held_back=held_back,
+            truncated=truncated,
         )
 
     def _purge_row(

@@ -4,6 +4,7 @@ import pytest
 from django.http import HttpResponse
 from django.urls import resolve
 from plugins.activity.recorder import ActivityRecorder, url_path_pattern
+from plugins.identity.service_account_keys import ServiceAccountKeyService
 from plugins.identity.service_account_authentication import PluginServiceAccountAuthentication
 from plugins.models import Plugin, PluginActivityEvent, PluginGrant
 from plugins.ownership.request_scope import PluginRequestScope
@@ -513,3 +514,65 @@ def test_an_org_admin_sees_the_organization_s_upgrade_hooks_and_never_the_deploy
     assert [event["action"] for event in body["results"]] == ["upgrade_hook_succeeded"]
     assert {event["action"] for event in everything["results"]} <= {"upgrade_hook_succeeded", "grant_created", "api_request"}
     assert [event["action"] for event in admin["results"]] == ["plugin_upgraded"]
+
+
+
+# ---- plugin development mode ----
+
+DEVELOPMENT_ACTIONS = ["development_target_set", "development_runtime_file_issued", "development_target_cleared"]
+
+
+@pytest.fixture
+def development_client(weather, client, acme, development_mode):
+    """Weather's service account in Acme, calling with a development key through the
+    development API listener (the node key of `client` is minted first)."""
+    minted = ServiceAccountKeyService().mint_development_keys(weather)
+    return service_account_client(minted[0].raw_key, acme, development_listener="1")
+
+
+def test_a_write_with_a_development_key_is_marked_and_one_with_a_node_key_is_not(development_client, client, acme):
+    development_client.post("/api/graphs/", {"name": "From the author's machine"}, format="json")
+    client.post("/api/graphs/", {"name": "From the node"}, format="json")
+
+    development_event, node_event = _api_requests()
+    assert development_event.organization_id == acme.pk
+    assert development_event.detail == {"created_count": 1, "development": True}
+    assert node_event.detail == {"created_count": 1}
+
+
+def test_a_development_write_is_read_by_its_organization_and_not_found_by_another(
+    development_client, org_admin_client, client_as, make_member, role_org_admin, beta
+):
+    development_client.post("/api/graphs/", {"name": "From the author's machine"}, format="json")
+    [event] = _api_requests()
+    beta_admin = client_as(make_member(beta, role_org_admin, "admin-beta-development@example.com"))
+    beta_admin.credentials(HTTP_X_ORGANIZATION_ID=str(beta.pk))
+
+    own = org_admin_client.get(f"{ACTIVITY_URL}{event.pk}/")
+    other = beta_admin.get(f"{ACTIVITY_URL}{event.pk}/")
+
+    assert own.status_code == 200
+    assert own.json()["detail"]["development"] is True
+    assert other.status_code == 404
+    assert [listed["id"] for listed in beta_admin.get(ACTIVITY_URL).json()["results"]] == []
+
+
+@pytest.mark.usefixtures("development_mode", "development_host_resolves")
+def test_development_events_are_on_the_admin_endpoint_only(weather, client, superadmin_client, org_admin_client):
+    url = "/api/admin/plugins/weather/development/"
+    superadmin_client.put(url, {"backend_port": 8001}, format="json")
+    superadmin_client.post(f"{url}runtime-file/")
+    superadmin_client.delete(url)
+
+    admin = superadmin_client.get(ADMIN_ACTIVITY_URL).json()["results"]
+    development = [event for event in admin if event["action"].startswith("development_")]
+    assert sorted(event["action"] for event in development) == sorted(DEVELOPMENT_ACTIONS)
+    assert all(event["organization"] is None and event["actor"]["kind"] == "superadmin" for event in development)
+    assert {event["action"]: event["detail"] for event in development} == {
+        "development_target_set": {"backend_port": 8001, "spa_port": None},
+        "development_runtime_file_issued": {"organizations": 1},
+        "development_target_cleared": {"revoked_keys": 1},
+    }
+    assert not [event for event in org_admin_client.get(ACTIVITY_URL).json()["results"] if event["action"].startswith("development_")]
+    for action in DEVELOPMENT_ACTIONS:
+        assert org_admin_client.get(ACTIVITY_URL, {"action": action}).json()["results"] == []

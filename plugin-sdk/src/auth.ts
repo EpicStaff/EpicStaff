@@ -199,6 +199,8 @@ class BrowserPluginLogin implements PluginLogin {
     private currentSession: PluginSession | null = null;
     private currentError: PluginLoginError | null = null;
     private currentAvailability: PluginAvailability = 'available';
+    /** The maintenance came from a sign-in EpicStaff refused for an update, not from the API's own answer. */
+    private maintenanceFromSignIn = false;
     /** Kept only here, never in any storage. */
     private token: string | null = null;
     /** The org of the latest token, kept after it ends, for renewals and "Sign in again". */
@@ -495,6 +497,7 @@ class BrowserPluginLogin implements PluginLogin {
         this.storeOrg(answer.session.org.id);
         this.scheduleRenewal(answer.lifetimeSeconds);
         // EpicStaff signs nobody in while the plugin is being updated in the organization: that is over.
+        this.maintenanceFromSignIn = false;
         if (this.currentAvailability === 'maintenance') this.setAvailability('available');
         this.setState('signed-in', true);
         return this.currentState;
@@ -503,6 +506,7 @@ class BrowserPluginLogin implements PluginLogin {
     private deny(): LoginState {
         this.dropToken();
         this.currentError = null;
+        this.endSignInMaintenance();
         this.setState('access-denied');
         return this.currentState;
     }
@@ -515,6 +519,7 @@ class BrowserPluginLogin implements PluginLogin {
         this.dropToken();
         this.currentError = null;
         this.setAvailability('maintenance');
+        this.maintenanceFromSignIn = true;
         this.setState('maintenance');
         return this.currentState;
     }
@@ -523,6 +528,7 @@ class BrowserPluginLogin implements PluginLogin {
     private endSession(): LoginState {
         this.dropToken();
         this.currentError = null;
+        this.endSignInMaintenance();
         this.setState('session-ended');
         if (this.win.parent === this.win) void this.signIn();
         return this.currentState;
@@ -531,8 +537,21 @@ class BrowserPluginLogin implements PluginLogin {
     private fail(code: PluginLoginError['code'], message: string): LoginState {
         this.dropToken();
         this.currentError = new PluginLoginError(code, message);
+        this.endSignInMaintenance();
         this.setState('failed');
         return this.currentState;
+    }
+
+    /**
+     * A sign-in answered something other than maintenance (denied, ended or failed): EpicStaff no longer refuses
+     * sign-in for an update, so a maintenance that sign-in reported is over. Otherwise a page would show "being
+     * updated" for good after an upgrade that failed for the organization. A maintenance or `unavailable` the API
+     * answered is the API's own state: only the API says it is back.
+     */
+    private endSignInMaintenance(): void {
+        if (!this.maintenanceFromSignIn) return;
+        this.maintenanceFromSignIn = false;
+        if (this.currentAvailability === 'maintenance') this.setAvailability('available');
     }
 
     private dropToken(): void {
@@ -577,12 +596,16 @@ class BrowserPluginLogin implements PluginLogin {
      */
     private observeAvailability(response: Response): void {
         if (passedGateway(response)) {
+            this.maintenanceFromSignIn = false;
             this.setAvailability('available');
             return;
         }
         const refusal = gatewayRefusal(response);
         if (response.status !== 503 || refusal === null) return;
-        if (refusal.reason === 'maintenance' || refusal.reason === 'unavailable') this.setAvailability(refusal.reason);
+        if (refusal.reason === 'maintenance' || refusal.reason === 'unavailable') {
+            this.maintenanceFromSignIn = false;
+            this.setAvailability(refusal.reason);
+        }
     }
 
     /**

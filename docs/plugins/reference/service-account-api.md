@@ -29,7 +29,9 @@ organization id as text ([Runtime](runtime.md)):
 - Read the key from the runtime file for each call (`RuntimeConfig.service_account(org_id)`), never
   keep it. On `401 service_account_not_authenticated`, read the file again and retry once.
 - A key works only on calls that reach EpicStaff through the plugins network, at the runtime
-  file's `epicstaff_api_url`. Sent to EpicStaff's public address, it gets `401`.
+  file's `epicstaff_api_url`. Sent to EpicStaff's public address, it gets `401`. A development
+  key works only through the development API listener instead: see
+  [Development keys](#development-keys).
 - Keys and the runtime file are secrets: never log them, never send them anywhere but EpicStaff.
 - **Suspension.** When a SuperAdmin suspends the plugin in an organization, every key of that
   organization's service account stops at once (`401`), the one inside its 10 minutes included,
@@ -39,6 +41,33 @@ organization id as text ([Runtime](runtime.md)):
   everywhere, with the same effect on keys. An organization whose plugin data is being deleted,
   and an organization that was deleted, have no service account key at all: the organization
   removed hook runs without one ([Delete your data when an organization leaves](../how-to/org-removed-hook.md)).
+
+## Development keys
+
+In plugin development mode a SuperAdmin can download a development runtime file for a plugin
+with a backend (Plugins → the plugin → Development). It is the plugin node's runtime file, with
+two differences: `service_accounts` holds development keys, and `epicstaff_api_url` is the
+development API listener on the machine's loopback, `http://127.0.0.1:<PLUGINS_DEV_API_PORT>/api/`.
+`epicstaff-plugin dev` runs your backend with it ([local development](../how-to/local-development.md)).
+
+- A development key looks like any other key and acts for the plugin in one organization, with
+  the same declared access, on-behalf-of rules and activity.
+- It works only through the development API listener, and only while `PLUGINS_DEV_MODE` is
+  true. Through the plugins network it gets `401`, and so does every call once the mode is
+  turned off. Node keys, and the plugin node's own key, get `401` on the development listener.
+- The file holds one key for each organization whose grant holds a key when it is downloaded.
+  The node's keys are not changed, and the plugin node never gets a development key.
+- Development keys never expire and are never replaced by the node. They stop working when a
+  SuperAdmin downloads the file again (every earlier development key of the plugin stops at once,
+  with no overlap), stops development, or suspends the plugin in the organization; resuming
+  issues none. Download the file again after granting another organization or after a
+  suspension. Deleting the plugin deletes them.
+- Turning development mode off revokes nothing: the keys are refused while it is off, and work
+  again if it is turned back on, until one of the events above.
+- An `api_request` made with a development key has `detail.development` set to `true`, and is
+  recorded in the key's organization like any other.
+- The file holds keys and the plugin's secret settings. Keep it outside your plugin's source:
+  `pack`, `validate` and the upload refuse a package that holds a key or a runtime file.
 
 ## Calling EpicStaff
 
@@ -163,7 +192,7 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 
 | Action | Recorded when | Actor | Organization |
 |---|---|---|---|
-| `api_request` | A service account's call that changed something; with its method, path (never the query string), route, status, the resource it created or named, and `created_count` | The plugin, and the person it acted for | The service account's |
+| `api_request` | A service account's call that changed something; with its method, path (never the query string), route, status, the resource it created or named, and `created_count`; `development: true` when it was made with a [development key](#development-keys) | The plugin, and the person it acted for | The service account's |
 | `package_approved` | A SuperAdmin approved a package (`version`, `trust`) | SuperAdmin | none |
 | `grant_created` | A SuperAdmin granted the plugin to an organization | SuperAdmin | the grant's |
 | `install_hook_succeeded`, `install_hook_failed` | The install hook reported (`job_id`, `attempt`, and `error` when it failed) | Platform | the grant's |
@@ -198,6 +227,9 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 | `database_restored`, `database_restore_failed` | The restore finished (`file_name`, `pre_restore_file_name`), or failed (`step`, `error`) | Platform | none |
 | `upgrade_hook_succeeded`, `upgrade_hook_failed` | The upgrade hook reported (`job_id`, `attempt`; `from_version` and `to_version` on success; `error` and `next_attempt_at` on failure, `next_attempt_at` null once the automatic retries are used up) | Platform | the grant's |
 | `upgrade_hook_retried` | A SuperAdmin retried a failed upgrade hook (`job_id`) | SuperAdmin | the grant's |
+| `development_target_set` | A SuperAdmin set or changed where development mode serves the plugin from (`backend_port`, `spa_port`) | SuperAdmin | none |
+| `development_target_cleared` | A SuperAdmin stopped development (`revoked_keys`, how many development keys stopped working) | SuperAdmin | none |
+| `development_runtime_file_issued` | A SuperAdmin downloaded the development runtime file (`organizations`, how many organizations it holds a key for); the file itself is never recorded | SuperAdmin | none |
 
 Events name the plugin by its identifier and the organization by its id, so they outlive the
 plugin, its grants and the organization. Once an organization is deleted, only SuperAdmins see its
@@ -209,7 +241,7 @@ endpoint, the same form for every endpoint: `api/graphs/<pk>/`, `api/sessions/<s
 
 | Code | Status | When |
 |---|---|---|
-| `service_account_not_authenticated` | 401 | The key is unknown, revoked or replaced more than 10 minutes ago, its grant holds no key, its organization is inactive, or the call did not come through the plugins network |
+| `service_account_not_authenticated` | 401 | The key is unknown, revoked or replaced more than 10 minutes ago, its grant holds no key, its organization is inactive, or the call did not come through the plugins network; for a [development key](#development-keys), development mode is off or the call did not come through the development API listener; for any other key, the call came through the development API listener |
 | `invalid_on_behalf_of` | 400 | A malformed `X-EpicStaff-On-Behalf-Of` |
 | `on_behalf_of_not_allowed` | 403 | The person may not use the plugin in the organization |
 | `organization_not_found` | 404 | `X-Organization-Id` names another organization |

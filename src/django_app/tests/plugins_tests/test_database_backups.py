@@ -92,10 +92,18 @@ def test_a_backup_the_node_no_longer_lists_is_marked_deleted(failed_migration, w
     assert PluginDatabaseBackup.objects.get(pk=failed_migration.backup_id).deleted_at is not None
 
 
-def test_a_report_without_the_database_section_says_nothing_about_backups(failed_migration, weather, node_client):
-    send_report(node_client, weather, backups=[])
+def test_a_report_without_a_backup_inventory_says_nothing_about_backups(failed_migration, weather, node_client):
+    send_report(node_client, weather, database=database_report(weather))
 
     assert PluginDatabaseBackup.objects.get(pk=failed_migration.backup_id).deleted_at is None
+
+
+def test_an_empty_inventory_without_the_database_section_still_marks_the_backups_deleted(
+    failed_migration, weather, node_client
+):
+    send_report(node_client, weather, backups=[])
+
+    assert PluginDatabaseBackup.objects.get(pk=failed_migration.backup_id).deleted_at is not None
 
 
 def test_a_backup_listed_again_is_present_again(failed_migration, weather, node_client):
@@ -215,3 +223,41 @@ def test_a_plugin_without_a_database_lists_no_backups(running_plugin, superadmin
 
 def test_an_unknown_plugin_has_no_backup_list(superadmin_client):
     assert superadmin_client.get("/api/admin/plugins/missing/backups/").json()["code"] == "plugin_not_found"
+
+
+def test_a_backup_keeps_the_version_it_was_taken_for_after_a_newer_one_replaced_the_failed_target(
+    failed_migration, newer, upgrade_of, superadmin_client
+):
+    replaced = upgrade_of(newer("0.7.1"))
+    assert (replaced.pk, replaced.to_version, replaced.backup_id) == (failed_migration.pk, "0.7.1", failed_migration.backup_id)
+
+    body = superadmin_client.get("/api/admin/plugins/weather/backups/").json()
+
+    assert body["backups"][0]["upgrade"] == {"id": failed_migration.pk, "to_version": "0.7.0"}
+
+
+def test_a_backup_taken_after_the_replacement_names_the_new_target(failed_migration, weather, newer, upgrade_of, superadmin_client, node_client):
+    upgrade_of(newer("0.7.1"))
+    later = backup_body(failed_migration, reason="pre_restore", taken_at=NOW)
+    send_report(node_client, weather, database=database_report(weather), backups=[backup_body(failed_migration), later])
+
+    rows = {row["file_name"]: row["upgrade"]["to_version"] for row in superadmin_client.get("/api/admin/plugins/weather/backups/").json()["backups"]}
+
+    assert rows[later["file_name"]] == "0.7.1"
+    assert PluginDatabaseBackup.objects.get(file_name=later["file_name"]).taken_for_version == "0.7.1"
+
+
+def test_the_version_each_backup_was_taken_for_costs_no_query_of_its_own(database, failed_migration, newer, upgrade_of, superadmin_client):
+    upgrade_of(newer("0.7.1"))
+
+    def listing_queries():
+        with CaptureQueriesContext(connection) as queries:
+            assert superadmin_client.get("/api/admin/plugins/weather/backups/").status_code == 200
+        return len(queries)
+
+    one = listing_queries()
+    for offset in range(2, 7):
+        _backup(database, upgrade=failed_migration, reason="pre_restore", pk_offset=offset, taken_for_version="0.7.1")
+
+    assert listing_queries() == one
+    assert PluginDatabaseBackup.objects.get(pk=failed_migration.backup_id).taken_for_version == "0.7.0"

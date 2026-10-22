@@ -2,8 +2,14 @@
 
 A plugin serves on the listening socket the agent hands it as fd 3, and never needs to bind one.
 A bound socket holds one of the network namespace's ephemeral ports before any packet is sent,
-so the connection limits of `network_limits` never see it; refusing the bind closes that way of
-taking every port.
+so the connection limits of `network_limits` never see it; refusing the bind, TCP and UDP alike,
+closes that way of taking ports.
+
+What it cannot refuse: the kernel binds a port by itself, without `bind()` and so without this
+hook, for `listen()` on an unbound TCP socket and for `connect()` (TCP or UDP). Connected TCP
+sockets are what the connection limits count; a listening socket of a plugin UID, or more inet
+sockets than a plugin needs, are what the agent's socket watchdog stops
+(`supervisor.socket_watchdog`).
 
 The program is the kernel's `BPF_PROG_TYPE_CGROUP_SOCK_ADDR` for `bind()` of IPv4 and IPv6
 sockets, attached to the container's own cgroup (cgroup v2, which Docker gives each container):
@@ -12,8 +18,9 @@ UID (the agent, the launcher) binds as before. It is eight instructions, assembl
 node needs no BPF library. Loading it needs CAP_BPF and CAP_NET_ADMIN, which only the entrypoint
 holds; an attachment stays with the cgroup, and nothing on the node afterwards can detach it.
 
-After attaching, a child running as the first plugin UID tries a bind: one that succeeds is an
-error, and the node does not start (fail closed, like the connection limits).
+After attaching, a child running as the first plugin UID tries a TCP and a UDP bind, on IPv4
+and IPv6: one that succeeds is an error, and the node does not start (fail closed, like the
+connection limits).
 """
 
 import ctypes
@@ -35,6 +42,12 @@ _BPF_F_ALLOW_MULTI = 2
 _BPF_FUNC_GET_CURRENT_UID_GID = 15
 _ATTRIBUTE_BYTES = 128
 _LOG_BYTES = 65536
+# What the start-up check tries as a plugin UID: TCP and UDP, IPv4 and IPv6, any port.
+_PROBES = tuple(
+    (family, kind, address)
+    for family, address in ((socket.AF_INET, ("0.0.0.0", 0)), (socket.AF_INET6, ("::", 0)))
+    for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM)
+)
 
 
 class BindRefusalError(Exception):
@@ -150,7 +163,8 @@ def _bpf(libc, syscall_number: int, command: int, attribute: bytes, step: str) -
 
 
 def _bind_as(uid: int) -> bool | str:
-    """In a child running as `uid`: True when every inet bind is refused, else what was bound."""
+    """In a child running as `uid`: True when every inet bind (TCP and UDP) is refused, else
+    what was bound."""
     read_end, write_end = os.pipe2(os.O_CLOEXEC)
     child = os.fork()
     if child == 0:
@@ -161,18 +175,18 @@ def _bind_as(uid: int) -> bool | str:
             os.setresgid(uid, uid, uid)
             os.setresuid(uid, uid, uid)
             outcome = "refused"
-            for family, address in ((socket.AF_INET, ("0.0.0.0", 0)), (socket.AF_INET6, ("::", 0))):
+            for family, kind, address in _PROBES:
                 try:
-                    probe = socket.socket(family, socket.SOCK_STREAM)
+                    probe = socket.socket(family, kind)
                 except OSError:
                     continue  # no IPv6 in this namespace: nothing to bind there
                 try:
                     probe.bind(address)
-                    outcome = f"bound {family.name} port {probe.getsockname()[1]}"
+                    outcome = f"bound {family.name} {kind.name} port {probe.getsockname()[1]}"
                     break
                 except OSError as error:
                     if error.errno != errno.EPERM:
-                        outcome = f"{family.name} bind failed otherwise: {error}"
+                        outcome = f"{family.name} {kind.name} bind failed otherwise: {error}"
                         break
                 finally:
                     probe.close()

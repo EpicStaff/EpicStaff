@@ -1,14 +1,8 @@
-"""The runtime file of a plugin process, and the revision that tells its node to rewrite it."""
+"""The runtime credentials of a plugin process on its node, and the roster its revision counts."""
 
-import hashlib
 from collections import defaultdict
 
-from django.conf import settings
 from django.db import transaction
-from epicstaff_plugin.contracts.gateway_context import Jwks, PluginIdentity
-from epicstaff_plugin.contracts.manifest import PluginManifest
-from epicstaff_plugin.contracts.runtime import RUNTIME_FILE_FORMAT
-from epicstaff_plugin.json_documents import canonical_json
 from src.shared.models.plugin_nodes import RuntimeCredentials
 
 from plugins.configuration.setting_values import runtime_settings
@@ -18,17 +12,11 @@ from plugins.identity.service_account_keys import MintedKey, ServiceAccountKeySe
 from plugins.identity.signing_keys import PluginSigningKeyService
 from plugins.lifecycle.open_upgrades import node_package, open_upgrade_of
 from plugins.models import (
-    Plugin,
     PluginNode,
     PluginPlacement,
     PluginServiceAccount,
 )
-from plugins.origins import PluginOrigins
-
-# A plugin's service accounts as the revision sees them: organization id (as text) →
-# `{org_name, grant_state}`. The keys themselves never count, so minting new ones changes
-# nothing the node acts on.
-Roster = dict[str, dict[str, str]]
+from plugins.nodes.runtime_file_builder import Roster, RuntimeFileBuilder
 
 
 def service_account_rosters(plugin_ids: list[int]) -> dict[int, Roster]:
@@ -54,72 +42,6 @@ def roster_of(minted: list[MintedKey]) -> Roster:
         }
         for key in minted
     }
-
-
-class RuntimeFileBuilder:
-    """Builds runtime files with one JWKS, so a whole desired state agrees on the keys."""
-
-    def __init__(self, jwks: Jwks):
-        self._jwks = jwks
-        self._origins = PluginOrigins()
-
-    def credentials_revision(self, plugin: Plugin, manifest: PluginManifest, roster: Roster) -> str:
-        """Hash of every runtime-file field except the settings, with the roster for the keys.
-
-        It changes when the node must rewrite the runtime file although nothing that
-        restarts the process changed: a signing-key rotation, a retired key leaving the
-        JWKS, a new EpicStaff address, a grant created, entering or leaving a key-holding
-        state, a granted organization renamed or deactivated. The node then fetches the
-        runtime credentials again, which mints new keys. Settings have their own revision,
-        which restarts.
-        """
-        document = {**self._without_settings(plugin, manifest), "service_accounts": roster}
-        return hashlib.sha256(canonical_json(document)).hexdigest()
-
-    def runtime_file_document(
-        self,
-        plugin: Plugin,
-        manifest: PluginManifest,
-        settings_and_secrets: tuple[dict, dict],
-        minted: list[MintedKey],
-    ) -> dict:
-        """The runtime file as plain data, secret settings decrypted and minted keys in clear.
-
-        `settings_and_secrets` is what `runtime_settings` returns. Not validated here:
-        `RuntimeCredentials` validates it, so an error can never show a secret or a key (that
-        model hides inputs in its errors; `RuntimeFile` alone does not).
-        """
-        plain, secret = settings_and_secrets
-        return {
-            **self._without_settings(plugin, manifest),
-            "settings": plain,
-            "secret_settings": secret,
-            "service_accounts": {
-                str(key.service_account.grant.org_id): {
-                    "key": key.raw_key,
-                    "org_name": key.service_account.grant.org.name,
-                    "grant_state": key.service_account.grant.state,
-                }
-                for key in minted
-            },
-        }
-
-    def _without_settings(self, plugin: Plugin, manifest: PluginManifest) -> dict:
-        epicstaff_origin = self._origins.epicstaff_origin
-        return {
-            "format": RUNTIME_FILE_FORMAT,
-            "plugin": PluginIdentity(
-                identifier=plugin.identifier, version=manifest.version
-            ).model_dump(),
-            "issuer": epicstaff_origin,
-            "public_url": self._origins.frame_origin(plugin.identifier),
-            "epicstaff_public_url": epicstaff_origin,
-            "epicstaff_api_url": settings.PLUGINS_INTERNAL_API_URL,
-            "jwks": self._jwks.model_dump(mode="json"),
-            "public_paths": [
-                public_path.model_dump(mode="json") for public_path in manifest.public_paths
-            ],
-        }
 
 
 class RuntimeCredentialsService:

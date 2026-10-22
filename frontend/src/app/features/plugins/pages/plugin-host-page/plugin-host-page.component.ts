@@ -120,6 +120,9 @@ export const PLUGIN_AVAILABILITY_CHECK_MS = 10_000;
  * asks the server every 15 seconds (not while the browser tab is hidden) and opens the frame once the plugin is
  * ready. A framed page that reports its API down (`availability.changed`) only makes the page ask the server again,
  * at most once per 10 seconds: the server's answer decides between the frame, the panel and "not available".
+ *
+ * Each plugin opened loads the available list again in the background. While the plugin is served from a developer's
+ * machine (`development`), a banner above the frame says so; the frame's address does not change.
  */
 @Component({
     selector: 'app-plugin-host-page',
@@ -168,6 +171,14 @@ export class PluginHostPageComponent {
         return view.kind === 'message' ? view : null;
     });
     private readonly isInMaintenance = computed(() => this.view().kind === 'maintenance');
+    /**
+     * The plugin is served from a developer's machine (development mode), as the available list last said. Not part of
+     * the frame target: the frame and its address stay the same either way.
+     */
+    protected readonly inDevelopment = computed(() => {
+        const identifier = this.routeIdentifier();
+        return this.availablePlugins.plugins().find((plugin) => plugin.identifier === identifier)?.development === true;
+    });
 
     // A new target closes the old frame's port at once; then attach, then give the iframe its address (the page can't
     // post `es:ready` before EpicStaff listens).
@@ -208,6 +219,14 @@ export class PluginHostPageComponent {
     private pagePathRequest: PagePathRequest | null = null;
 
     constructor() {
+        // The guard opened the plugin from the list held, which may be older than the plugin's availability or its
+        // development state: each plugin opened asks for the list again, in the background.
+        toObservable(this.routeIdentifier)
+            .pipe(
+                switchMap(() => this.availablePlugins.refresh()),
+                takeUntilDestroyed()
+            )
+            .subscribe();
         toObservable(this.isInMaintenance)
             .pipe(
                 switchMap((inMaintenance) =>

@@ -101,7 +101,8 @@ It throws `PluginLoginError` with `code`:
 4. `access_denied` at any step is the `access-denied` state, without navigating.
 5. `temporarily_unavailable` at any step is the `maintenance` state, without navigating: the page does not loop
    through EpicStaff's login while the plugin is updated. A later `renew()` that gets a code signs the person in and
-   ends the maintenance.
+   ends the maintenance; one that ends in `access-denied`, `session-ended` or `failed` ends it too (an organization
+   whose upgrade failed for good gets no access).
 
 Every navigation is a `location.replace`: inside EpicStaff a frame navigation would otherwise add entries to
 EpicStaff's history, and Back would step through the sign-in instead of leaving the plugin.
@@ -157,7 +158,7 @@ Every refusal the gateway answers itself, before your backend sees the request, 
 | Status | `X-EpicStaff-Gateway-Deny` | `code` in the body | Meaning |
 |---|---|---|---|
 | 401 | `login` | `login_required` | No token, or one the gateway no longer accepts |
-| 403 | `forbidden` | `forbidden` | The person may no longer use the plugin in this organization |
+| 403 | `forbidden` | `forbidden` | The person may no longer use the plugin in this organization. Membership is checked first: a person removed from the organization gets this, whatever state the plugin is in there, and never `maintenance` |
 | 404 | `not_found` | `not_found` | Not a path the gateway forwards |
 | 413 | `too_large` | `request_too_large` | The body is over the limit |
 | 429 | `rate_limited` | `rate_limited` | A public path's rate limit |
@@ -188,8 +189,10 @@ It is `null` for a response that passed the gateway, and for a reason this versi
 | Any response without the header (it passed the gateway), your backend's own `503` included | `available` |
 | The gateway's other refusals (`login`, `forbidden`, `not_found`, `too_large`, `rate_limited`) | Unchanged |
 
-A sign-in refused with `temporarily_unavailable` sets `maintenance` as well, and a sign-in that succeeds afterwards
-clears it. It starts as `available`.
+A sign-in refused with `temporarily_unavailable` sets `maintenance` as well. Any later sign-in result clears that
+maintenance: a token, `access-denied`, `session-ended` or `failed`. A maintenance or `unavailable` the API answered
+is the API's own word: only a sign-in that gets a token, or the API's next answer, changes it. It starts as
+`available`.
 
 **Inside EpicStaff** you need not show anything for it: on a change to `maintenance` or `unavailable` the SDK tells
 EpicStaff with the frame message [`availability.changed`](frame-protocol.md#messages), at most once every 30 seconds
@@ -198,7 +201,8 @@ or "not available", instead of your page. `plugin.reportAvailability(state)` sen
 calls its API without `login.fetch`; it does nothing unframed.
 
 **On its own address** the page decides: show "… is being updated. It will be back in a few minutes." while
-`availability` is `maintenance`, and check again every 30 seconds (`Retry-After`). While the plugin itself is being
+`availability` is `maintenance` and the sign-in was not denied, ended or failed (show that instead), and check again
+every 30 seconds (`Retry-After`). While the plugin itself is being
 updated, the gateway answers the page's own address with EpicStaff's maintenance page, so a page loaded now sees it
 only through its API; a page already open sees it through `availability`.
 
@@ -251,6 +255,16 @@ Errors from EpicStaff's endpoints themselves are listed in [Error codes](error-c
 ```
 
 `parsePlatformConfig` refuses a `login` whose URLs are not on `epicstaff_origin`, or carry a query or a fragment.
+
+## Behind a development server
+
+The SDK works unchanged while EpicStaff serves your page from a development server on your machine (development mode,
+[Local development](../how-to/local-development.md#develop-the-page-against-a-development-server)). The page still
+runs on the plugin's own origin, inside the same frame, so the frame handshake, the sign-in and
+`/.well-known/epicstaff/config.json` are the same as for the published page: there is no option to set and no other
+address to allow. Your `/api/` calls go through the gateway as always, to the installed backend or to a development
+backend, whichever EpicStaff routes them to. A live reload is a new page load: `startPlugin` and `login.start()` run
+again and sign the person in silently.
 
 ## The protocol, for a page without the SDK
 

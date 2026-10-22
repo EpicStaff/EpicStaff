@@ -116,10 +116,17 @@ class UpgradeSummarySerializer(serializers.Serializer):
 
 class PluginBackupUpgradeSerializer(serializers.Serializer):
     id = serializers.IntegerField()
-    to_version = serializers.CharField()
+    to_version = serializers.CharField(
+        help_text=(
+            "The version the upgrade was going to when the backup was taken; a newer version "
+            "that later replaced a failed target does not change it."
+        )
+    )
 
 
 class PluginBackupSerializer(serializers.Serializer):
+    """One backup, with its upgrade loaded."""
+
     id = serializers.IntegerField(source="backup.pk")
     file_name = serializers.CharField(source="backup.file_name")
     reason = serializers.CharField(source="backup.reason")
@@ -134,15 +141,21 @@ class PluginBackupSerializer(serializers.Serializer):
 
     @extend_schema_field(PluginBackupUpgradeSerializer(allow_null=True))
     def get_upgrade(self, listed: ListedBackup) -> dict | None:
-        upgrade = listed.backup.upgrade
+        backup = listed.backup
+        upgrade = backup.upgrade
         if upgrade is None:
             return None
-        return {"id": upgrade.pk, "to_version": upgrade.to_version}
+        # Null when the upgrade was not open as the backup was recorded: its target since.
+        return {"id": upgrade.pk, "to_version": backup.taken_for_version or upgrade.to_version}
 
 
 class PluginBackupListSerializer(serializers.Serializer):
     verification_phrase = serializers.CharField()
-    backups = PluginBackupSerializer(many=True)
+    backups = serializers.SerializerMethodField()
+
+    @extend_schema_field(PluginBackupSerializer(many=True))
+    def get_backups(self, backup_list) -> list[dict]:
+        return PluginBackupSerializer(backup_list.backups, many=True).data
 
 
 class AccessGrowthAccessSerializer(serializers.Serializer):

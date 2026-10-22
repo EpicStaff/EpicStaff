@@ -322,3 +322,59 @@ async def test_a_template_mark_the_owner_set_does_not_stop_the_restore(plugin):
     await run_restore(restores, desired, password, restore_of(backup))
 
     assert await place_count(desired, password) == 30
+
+
+# Stored by the owner for itself, as a migration may: each refuses an owner login, makes every
+# CREATE fail, or ends the session at the first error.
+OWNER_ROLE_SETTINGS = """
+DO $$ BEGIN
+  EXECUTE 'ALTER ROLE CURRENT_USER SET local_preload_libraries = ''missing_library''';
+  EXECUTE 'ALTER ROLE CURRENT_USER SET default_tablespace = ''missing_tablespace''';
+  EXECUTE format('ALTER ROLE CURRENT_USER IN DATABASE %I SET exit_on_error = on', current_database());
+  EXECUTE format('ALTER DATABASE %I SET local_preload_libraries = %L', current_database(), 'missing_library');
+END $$;
+"""
+
+
+async def test_settings_the_owner_stored_for_itself_stop_neither_a_backup_nor_a_restore(plugin, layout, client_root):
+    desired, password, backup, restores, _ = plugin
+    provisioner = DatabaseProvisioner(DatabaseConnector(admin_password()))
+    migrations = [migration("001_schema.sql", SCHEMA), migration("002_change.sql", CHANGE)]
+    await provisioner.ensure("weather", desired, password, [*migrations, migration("003_owner_settings.sql", OWNER_ROLE_SETTINGS)])
+    backups, _, _ = backup_services(layout, client_root)
+
+    taken = await backups.backup(
+        BackupRequest(plugin="weather", database=desired, upgrade_id=7, reason="pre_upgrade", version="0.7.0")
+    )
+    await run_restore(restores, desired, password, restore_of(backup))
+
+    assert taken.metadata.ledger is not None
+    assert await place_count(desired, password) == 30
+    async with DatabaseConnector(admin_password()).admin_session(desired.server) as admin:
+        owner_settings = await fetch_all(
+            admin,
+            "SELECT setconfig FROM pg_db_role_setting WHERE setrole = (SELECT oid FROM pg_roles WHERE rolname = %s)",
+            (desired.owner_role,),
+        )
+    assert owner_settings == []
+
+
+async def test_an_owner_that_cannot_log_in_fails_the_restore_before_anything_is_dropped(plugin, layout, client_root):
+    desired, password, backup, _, _ = plugin
+
+    async def refusing_the_owner(**parameters):
+        if parameters["user"] == desired.owner_role:
+            raise psycopg.OperationalError("FATAL:  the login is refused")
+        return await psycopg.AsyncConnection.connect(**parameters)
+
+    _, restores, _ = backup_services(layout, client_root, connect=refusing_the_owner)
+    steps = []
+
+    with pytest.raises(RestoreError) as failed:
+        await run_restore(restores, desired, password, restore_of(backup), steps)
+
+    assert (failed.value.step, failed.value.temporary) == ("close", False)
+    assert "the owner cannot log in, so nothing was changed" in str(failed.value)
+    assert "recreate" not in steps
+    # The database was never dropped: it still holds the newer version's migration.
+    assert await ledger_names(desired) == ["001_schema.sql", "002_change.sql"]

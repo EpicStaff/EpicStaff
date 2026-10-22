@@ -16,6 +16,13 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
+        exclude: ^src/docker-compose\.plugins-dev\.yaml$
+      # Compose's !override tag has no YAML constructor, so this one file is checked for syntax
+      # only; `docker compose config` validates what it means.
+      - id: check-yaml
+        name: check yaml (syntax only, compose tags)
+        args: [--unsafe]
+        files: ^src/docker-compose\.plugins-dev\.yaml$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.8

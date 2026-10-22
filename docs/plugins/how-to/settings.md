@@ -45,9 +45,11 @@ A value of the wrong type or size is refused with `400 invalid_plugin_settings`,
 ## Secrets
 
 A secret is stored encrypted. The admin page never shows it again after it is saved: only that it
-is set and, for a value of at least 9 characters, its last 4 characters. It is decrypted in one
-place only, the runtime file EpicStaff hands your plugin's node, which is readable by your
-plugin's Unix user alone. Changes are recorded by key, never by value.
+is set and, for a value of at least 9 characters, its last 4 characters. It is decrypted only into
+a runtime file: the one EpicStaff hands your plugin's node, which is readable by your plugin's
+Unix user alone, and, on a deployment in plugin development mode, the development runtime file a
+SuperAdmin downloads for a [development backend](local-development.md#develop-the-backend-on-your-machine).
+Changes are recorded by key, never by value.
 
 ## Read them in your backend
 

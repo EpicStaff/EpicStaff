@@ -5,6 +5,10 @@
 #
 #   - every combination of CHAT_ENABLED, PLUGINS_ENABLED and NGINX_SSL_MODE, with throwaway
 #     self-signed certificates; with the plugins flag off nothing plugin-related may be rendered;
+#   - with plugins on, PLUGINS_DEV_MODE false and true: off, no page decision, no development
+#     server location and nothing on 8082; on, both SPA locations ask the page decision, the
+#     development server's location hides its cookies, framing rule and policy and gets no
+#     login, key or context, and the development API listener refuses the plugins subnet;
 #   - in each, that every location of EpicStaff's own server that proxies anywhere but Django
 #     drops the Cookie header and the upstream's Set-Cookie and Clear-Site-Data, and that nginx's
 #     X-Frame-Options is the only one (read from the rendered configuration, includes expanded);
@@ -13,11 +17,14 @@
 #     with its headers, the gateway's maintenance refusal (its map entries and JSON), no
 #     open_file_cache (the flag must count from the next request on), and that the committed
 #     maintenance page is static (no script, nothing loaded);
-#   - that only the internal API listener's /api/ sets X-Plugin-Network-Secret (from
-#     PLUGINS_GATEWAY_SECRET, never from the caller) and X-EpicStaff-On-Behalf-Of, that every
-#     other location that passes a caller's headers on to Django blanks both in every spelling,
-#     and that the internal checks nginx makes before an upload or a plugin request apply no body
-#     limit;
+#   - that only the /api/ of the internal and development API listeners sets
+#     X-Plugin-Network-Secret (from PLUGINS_GATEWAY_SECRET, never from the caller),
+#     X-EpicStaff-On-Behalf-Of and X-Plugin-Development-Listener (from a value each listener sets
+#     itself: none on 8081, 1 on 8082), that every other location that passes a caller's headers
+#     on to Django blanks all three in every spelling, and that the internal checks nginx makes
+#     before an upload, a plugin request or a plugin page apply no body limit;
+#   - the development mode values the start script must refuse: a non-boolean, an unset one, and
+#     a base domain or EpicStaff host that is not a .localhost name;
 #   - live, inside the container: which upstreams receive the browser's cookies and may set
 #     one, the package upload route (with a 1 MiB and a 300 MiB package limit), the login callback
 #     pages a plugin host serves from src/nginx/plugin-platform, which listener answers a caller
@@ -78,10 +85,13 @@ fail() {
 
 # Fills docker_arguments with the stack's nginx environment (the variables
 # src/docker-compose.yaml passes to epicstaff-nginx), overridden by the NAME=value arguments, and
-# the mounts the image's entrypoint needs.
+# the mounts the image's entrypoint needs. An argument "unset:NAME" leaves NAME out entirely.
 docker_arguments=()
 set_docker_arguments() {
-  local assignment
+  local assignment argument unset_names=" "
+  for argument in "$@"; do
+    case "$argument" in unset:*) unset_names="$unset_names${argument#unset:} " ;; esac
+  done
   docker_arguments=(--network none)
   for assignment in \
     NGINX_ENTRYPOINT_QUIET_LOGS=1 \
@@ -89,10 +99,12 @@ set_docker_arguments() {
     DJANGO_HOST=django DJANGO_PORT=8000 FRONTEND_HOST=frontend FRONTEND_PORT=80 \
     REALTIME_HOST=realtime REALTIME_PORT=8050 WEBHOOK_HOST=webhook WEBHOOK_PORT=8009 \
     AUDITOR_HOST=auditor AUDITOR_PORT=8010 CHAT_ENABLED=false CHAT_UPSTREAM_URL=http://chat:8200 \
-    PLUGINS_ENABLED=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test PLUGINS_MAX_PACKAGE_MB=300 \
-    PLUGINS_MAX_REQUEST_BODY_MB=20 PLUGINS_GATEWAY_SECRET="$gateway_secret" \
+    PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test \
+    PLUGINS_MAX_PACKAGE_MB=300 PLUGINS_MAX_REQUEST_BODY_MB=20 PLUGINS_GATEWAY_SECRET="$gateway_secret" \
     DJANGO_FRONTEND_BASE_URL=https://epicstaff.test PLUGINS_NETWORK_SUBNET=10.235.0.0/24 \
     "$@"; do
+    case "$assignment" in unset:*) continue ;; esac
+    case "$unset_names" in *" ${assignment%%=*} "*) continue ;; esac
     docker_arguments+=(-e "$assignment")
   done
   docker_arguments+=(
@@ -315,8 +327,10 @@ expect_only_django_cookies() {
 # server (the one whose server_name captures plugin_identifier): every answer the gateway gives
 # itself instead of the plugin's carries X-EpicStaff-Gateway-Deny, set with `always` (each named
 # error page of any of its locations, and each named location that returns 4xx or 5xx), and /api/
-# hides the header from the plugin's own answers. Prints one line per problem, then "checked <n>":
-# the answering locations it found.
+# hides the header from the plugin's own answers. A named error page that proxies (a frontend
+# development server's page, in development mode) answers with the plugin's own content: it must
+# hide the header instead, like /api/, and never set it. Prints one line per problem, then
+# "checked <n>": the answering locations it found that answer for the gateway.
 read -r -d '' gateway_deny_check_program << 'AWK' || :
 BEGIN { FS = "\t" }
 NR == FNR {
@@ -328,15 +342,21 @@ $1 != plugin_server { next }
   last = split($3, word, " ")
   if (word[1] == "error_page" && substr(word[last], 1, 1) == "@") answering[word[last]] = 1
   if (substr($2, 1, 1) == "@" && word[1] == "return" && word[2] ~ /^[45][0-9][0-9]$/) answering[$2] = 1
+  if (substr($2, 1, 1) == "@" && word[1] == "proxy_pass") proxying[$2] = 1
   if (word[1] == "add_header" && tolower(word[2]) == "x-epicstaff-gateway-deny" && word[last] == "always") marked[$2] = 1
-  if ($2 == "^~ /api/" && word[1] == "proxy_hide_header" && tolower(word[2]) == "x-epicstaff-gateway-deny") hidden = 1
+  if (word[1] == "proxy_hide_header" && tolower(word[2]) == "x-epicstaff-gateway-deny") hides[$2] = 1
 }
 END {
   for (location in answering) {
+    if (location in proxying) {
+      if (location in marked) print location ": marks the plugin's own answer as the gateway's"
+      if (!(location in hides)) print location ": passes a plugin's X-EpicStaff-Gateway-Deny on"
+      continue
+    }
     count++
     if (!(location in marked)) print location ": answers without X-EpicStaff-Gateway-Deny"
   }
-  if (!hidden) print "^~ /api/: passes a plugin's X-EpicStaff-Gateway-Deny on"
+  if (!(("^~ /api/") in hides)) print "^~ /api/: passes a plugin's X-EpicStaff-Gateway-Deny on"
   print "checked " count + 0
 }
 AWK
@@ -362,60 +382,99 @@ expect_gateway_denies_marked() {
   fi
 }
 
-# Reads the flattened configuration twice (the file name, twice) and checks the two headers the
-# internal API listener adds for Django: X-Plugin-Network-Secret, which tells Django a request came
-# through that listener (plugin keys authenticate only with it), and X-EpicStaff-On-Behalf-Of. Each
-# must be set exactly once, in the 8081 server's ^~ /api/, and nowhere else to a value (elsewhere
-# they are only blanked, see the next check); the secret must be the rendered PLUGINS_GATEWAY_SECRET
-# (-v secret, quoted as rendered), never a variable a caller could fill, and that location must
-# not pass the caller's own headers on. Prints one line per problem, then "checked".
+# Reads the flattened configuration twice (the file name, twice) and checks the three headers the
+# listeners for plugin credentials add for Django, in the internal API listener (8081) and, with
+# -v development=true, the development API listener (8082):
+#   - X-Plugin-Network-Secret, which tells Django a request came through one of them (plugin keys
+#     authenticate only with it): the rendered PLUGINS_GATEWAY_SECRET (-v secret, quoted as
+#     rendered), never a variable a caller could fill;
+#   - X-EpicStaff-On-Behalf-Of: the caller's own header;
+#   - X-Plugin-Development-Listener: $plugin_development_listener, which only the listener servers
+#     set, each once at server level, to a literal: "" on 8081 (no header sent), 1 on 8082.
+# Each is set exactly once in each listener's ^~ /api/, which passes none of the caller's own
+# headers on, and nowhere else to a value (elsewhere they are only blanked, see the next check).
+# Prints one line per problem, then "checked <listeners>".
 read -r -d '' internal_headers_check_program << 'AWK' || :
-BEGIN { FS = "\t" }
+BEGIN {
+  FS = "\t"
+  expected_value["8081"] = "\"\""
+  expected_value["8082"] = "1"
+}
 NR == FNR {
-  if ($3 == "listen 8081") internal_server = $1
+  if ($3 == "listen 8081" || $3 == "listen 8082") listener[$1] = substr($3, 8)
   next
 }
 {
-  in_api = (internal_server != "" && $1 == internal_server && $2 == "^~ /api/")
-  if (in_api && $3 == "proxy_pass_request_headers off") headers_off = 1
+  in_listener = ($1 in listener)
+  in_api = (in_listener && $2 == "^~ /api/")
+  if (in_api && $3 == "proxy_pass_request_headers off") headers_off[$1] = 1
   split($3, word, " ")
+  if (index($3, "$plugin_development_listener") > 0) {
+    if (word[1] == "set" && word[2] == "$plugin_development_listener" && in_listener && $2 == "") {
+      development_sets[$1]++
+      development_value[$1] = word[3]
+    } else if (!(in_api && word[1] == "proxy_set_header" && tolower(word[2]) == "x-plugin-development-listener")) {
+      print "$plugin_development_listener used outside a listener's server level and /api/ (server " $1 ", location [" $2 "]): " $3
+    }
+  }
   if (word[1] != "proxy_set_header") next
   name = tolower(word[2])
-  if (name != "x-plugin-network-secret" && name != "x-epicstaff-on-behalf-of") next
+  if (name != "x-plugin-network-secret" && name != "x-epicstaff-on-behalf-of" \
+    && name != "x-plugin-development-listener") next
   if (!in_api) {
     if (word[3] != "\"\"" && word[3] != "''")
-      print "set outside the internal listener's /api/ (server " $1 ", location [" $2 "]): " $3
+      print "set outside the listeners' /api/ (server " $1 ", location [" $2 "]): " $3
     next
   }
-  count[name]++
-  value[name] = substr($3, length(word[1]) + length(word[2]) + 3)
+  count[$1, name]++
+  value[$1, name] = substr($3, length(word[1]) + length(word[2]) + 3)
+}
+# wanted_label names the expected value in a problem line; the secret's is never printed.
+function expect_header(server, label, name, shown, wanted, wanted_label) {
+  if (count[server, name] != 1)
+    print shown " is set " count[server, name] + 0 " times in " label
+  else if (value[server, name] != wanted)
+    print shown " is " value[server, name] " in " label ", not " wanted_label
 }
 END {
-  if (internal_server == "") print "no server listens on 8081"
-  if (!headers_off) print "the internal listener's /api/ passes the caller's headers on"
-  if (count["x-plugin-network-secret"] != 1)
-    print "X-Plugin-Network-Secret is set " count["x-plugin-network-secret"] + 0 " times in the internal listener's /api/"
-  else if (value["x-plugin-network-secret"] != "\"" secret "\"")
-    print "X-Plugin-Network-Secret is " value["x-plugin-network-secret"] ", not PLUGINS_GATEWAY_SECRET"
-  if (count["x-epicstaff-on-behalf-of"] != 1)
-    print "X-EpicStaff-On-Behalf-Of is set " count["x-epicstaff-on-behalf-of"] + 0 " times in the internal listener's /api/"
-  else if (value["x-epicstaff-on-behalf-of"] != "$http_x_epicstaff_on_behalf_of")
-    print "X-EpicStaff-On-Behalf-Of is " value["x-epicstaff-on-behalf-of"] ", not the caller's header"
-  print "checked"
+  for (server in listener) {
+    port = listener[server]
+    ports[port]++
+    label = "the " port " listener's /api/"
+    if (!headers_off[server]) print label " passes the caller's headers on"
+    expect_header(server, label, "x-plugin-network-secret", "X-Plugin-Network-Secret", "\"" secret "\"", "PLUGINS_GATEWAY_SECRET")
+    expect_header(server, label, "x-epicstaff-on-behalf-of", "X-EpicStaff-On-Behalf-Of", "$http_x_epicstaff_on_behalf_of", "the caller's header")
+    expect_header(server, label, "x-plugin-development-listener", "X-Plugin-Development-Listener", "$plugin_development_listener", "$plugin_development_listener")
+    if (development_sets[server] != 1)
+      print "$plugin_development_listener is set " development_sets[server] + 0 " times by the " port " listener"
+    else if (development_value[server] != expected_value[port])
+      print "$plugin_development_listener is " development_value[server] " on " port ", not " expected_value[port]
+  }
+  if (ports["8081"] != 1) print ports["8081"] + 0 " servers listen on 8081, not 1"
+  if (development == "true" && ports["8082"] != 1) print ports["8082"] + 0 " servers listen on 8082, not 1"
+  if (development != "true" && ports["8082"] != 0) print "a server listens on 8082 with development mode off"
+  print "checked " (ports["8081"] + ports["8082"])
 }
 AWK
 
-# $1 = a file of `nginx -T` output; prints the internal header check's problems.
+# $1 = a file of `nginx -T` output, $2 = whether development mode is on (true or false); prints the
+# internal header check's problems. Also: no line of the configuration but the listeners' `set` and
+# their /api/'s header names $plugin_development_listener (no map or geo may fill it).
 internal_header_problems() {
   flatten_configuration "$1" > "$work_dir/flat"
-  awk -v secret="$gateway_secret" "$internal_headers_check_program" "$work_dir/flat" "$work_dir/flat" \
-    | { grep -v '^checked$' || true; }
+  awk -v secret="$gateway_secret" -v development="$2" "$internal_headers_check_program" \
+    "$work_dir/flat" "$work_dir/flat" | { grep -v '^checked ' || true; }
+  grep -v '^[[:space:]]*#' "$1" | grep -F '$plugin_development_listener' \
+    | grep -vE '^[[:space:]]*set \$plugin_development_listener (""|1);$' \
+    | grep -vE '^[[:space:]]*proxy_set_header X-Plugin-Development-Listener \$plugin_development_listener;$' \
+    | sed 's/^[[:space:]]*/$plugin_development_listener named elsewhere: /' || true
 }
 
-# $1 = description. Checks the last rendered configuration (plugins on).
+# $1 = description, $2 = whether development mode is on. Checks the last rendered configuration
+# (plugins on).
 expect_internal_headers() {
   local problems
-  problems=$(internal_header_problems "$work_dir/out")
+  problems=$(internal_header_problems "$work_dir/out" "$2")
   if [ -n "$problems" ]; then
     fail "$1: $(printf '%s\n' "$problems" | paste -sd ';' -)"
   else
@@ -441,13 +500,17 @@ spellings_of() { # $1 = header name
   printf '%s\n' "${spellings[@]}"
 }
 plugin_internal_header_spellings=$(
-  { spellings_of X-Plugin-Network-Secret; spellings_of X-EpicStaff-On-Behalf-Of; } | paste -sd ' ' -
+  {
+    spellings_of X-Plugin-Network-Secret
+    spellings_of X-EpicStaff-On-Behalf-Of
+    spellings_of X-Plugin-Development-Listener
+  } | paste -sd ' ' -
 )
 
 # Reads the flattened configuration and checks every location that proxies to Django
 # (backend_server) and passes the caller's headers on (no proxy_pass_request_headers off): it
-# must blank every spelling of the two internal listener headers (-v spellings), so no caller of
-# a public server can send Django either. A location's proxy_set_header lines replace its
+# must blank every spelling of the three listener headers (-v spellings), so no caller of a
+# public server can send Django any of them. A location's proxy_set_header lines replace its
 # server's, and the server's the http level's, only when it has any; the check applies that.
 # Prints one line per location that passes a spelling on, then "checked <n> <m>": how many such
 # locations it checked, and how many proxy to Django without the caller's headers.
@@ -516,11 +579,13 @@ expect_django_headers_blanked() {
 }
 
 # $1 = description, $2 = location (as written after `location`), $3 = directive without its ";".
-# Passes when that location of the last rendered configuration has the directive itself.
+# Passes when that location of the last rendered configuration has the directive itself. The
+# texts go to awk through its environment, which keeps a backslash as written (-v would not).
 expect_location_directive() {
   if flatten_configuration "$work_dir/out" \
-    | awk -F '\t' -v location="$2" -v directive="$3" '$2 == location && $3 == directive { found = 1 }
-                                                      END { exit !found }'; then
+    | expected_location=$2 expected_directive=$3 awk -F '\t' '
+        $2 == ENVIRON["expected_location"] && $3 == ENVIRON["expected_directive"] { found = 1 }
+        END { exit !found }'; then
     pass "$1"
   else
     fail "$1: [$2] has no [$3;]"
@@ -547,7 +612,8 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       '$http_x_epicstaff_on_behalf_of' \
       plugin_network_caller 10.235.0.0/24 /.well-known/epicstaff/callback \
       /usr/share/nginx/plugin-platform X-EpicStaff-Gateway-Deny @plugin_maintenance_page \
-      maintenance.html plugin_maintenance; do
+      maintenance.html plugin_maintenance /_plugin_development_page_check @plugin_development \
+      plugin_spa_upstream '$plugin_development_listener' "listen 8082"; do
       if has_directive "$text"; then
         leaked="$leaked [$text]"
       fi
@@ -675,8 +741,20 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       'proxy_set_header X-EpicStaff-On-Behalf-Of $http_x_epicstaff_on_behalf_of;' \
       "proxy_set_header X-Plugin-Network-Secret \"$gateway_secret\";" \
       'if ($plugin_network_caller = 0) {'
-    expect_internal_headers "PLUGINS_ENABLED=true $flags: only the internal listener's /api/ sets the network secret (from the environment) and the on-behalf-of header"
+    expect_internal_headers "PLUGINS_ENABLED=true $flags: only the internal listener's /api/ sets the network secret (from the environment) and the on-behalf-of header, and no development listener header" false
     expect_django_headers_blanked "PLUGINS_ENABLED=true $flags: no caller of a public server can send Django the internal listener's headers" 8
+    leaked=""
+    for text in /_plugin_development_page_check @plugin_development plugin_spa_upstream \
+      /api/plugin-gateway/development-spa/ "listen 8082" "set \$plugin_development_listener 1"; do
+      if has_directive "$text"; then
+        leaked="$leaked [$text]"
+      fi
+    done
+    if [ -z "$leaked" ]; then
+      pass "PLUGINS_ENABLED=true PLUGINS_DEV_MODE=false $flags renders no page decision, no development server and nothing on 8082"
+    else
+      fail "PLUGINS_ENABLED=true PLUGINS_DEV_MODE=false $flags renders development directives:$leaked"
+    fi
     # Both checks run as subrequests that carry the request's Content-Length but read no body;
     # a limit of their own would turn a larger request into a 500.
     expect_location_directive "PLUGINS_ENABLED=true $flags: the upload permission check applies no body limit" \
@@ -686,31 +764,181 @@ for chat_enabled in false true; do for ssl_mode in off on; do
   fi
 done; done
 
+# $1 = description, $2 = location, the rest = header names. Passes when that location of the last
+# rendered configuration blanks every spelling of each header itself (it sets headers of its own,
+# so it inherits none).
+expect_location_blanks() {
+  local description=$1 location=$2 name missing
+  shift 2
+  missing=$(for name in "$@"; do spellings_of "$name"; done \
+    | flatten_configuration_lines_missing "$location")
+  if [ -z "$missing" ]; then
+    pass "$description"
+  else
+    fail "$description: [$location] does not blank$(printf ' %s' $missing)"
+  fi
+}
+# Reads header spellings on standard input; prints those the location of the last rendered
+# configuration does not set to "".
+flatten_configuration_lines_missing() { # $1 = location
+  flatten_configuration "$work_dir/out" > "$work_dir/flat"
+  awk -F '\t' -v location="$1" '
+    NR == FNR {
+      split($3, word, " ")
+      if ($2 == location && word[1] == "proxy_set_header" && (word[3] == "\"\"" || word[3] == "'"''"'"))
+        blanked[tolower(word[2])] = 1
+      next
+    }
+    !($1 in blanked) { print $1 }' "$work_dir/flat" -
+}
+
+# Plugin development mode on, with the .localhost names it needs, in every combination of chat
+# and TLS: both SPA locations ask the page decision before serving a file (after the maintenance
+# test), the development server's answer gets the platform's headers and none of its own cookies,
+# framing rule or policy, and never a person's login, an API key or a plugin context, and the
+# development API listener serves the internal listener's routes to callers off the plugins subnet.
+for chat_enabled in false true; do for ssl_mode in off on; do
+  flags="CHAT_ENABLED=$chat_enabled NGINX_SSL_MODE=$ssl_mode PLUGINS_DEV_MODE=true"
+  scheme=http
+  if [ "$ssl_mode" = on ]; then
+    scheme=https
+  fi
+  if expect_valid "nginx -t: PLUGINS_ENABLED=true $flags" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true \
+    NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+    "DJANGO_FRONTEND_BASE_URL=$scheme://epicstaff.localhost"; then
+    expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
+    expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals, and never the development server's page"
+    expect_internal_headers "PLUGINS_ENABLED=true $flags: both listeners' /api/ set the network secret (from the environment) and the on-behalf-of header, and only the development listener says it is" true
+    expect_django_headers_blanked "PLUGINS_ENABLED=true $flags: no caller of a public server can send Django the listeners' headers" 8
+    # Counted in the flattened configuration: one snippet, included in both SPA locations.
+    page_checks=$(flatten_configuration "$work_dir/out" \
+      | awk -F '\t' '$3 == "auth_request /_plugin_development_page_check" { count++ } END { print count + 0 }')
+    flag_test='if (-f /srv/plugin-spa/$plugin_identifier/maintenance) {'
+    if [ "$page_checks" = 2 ] && [ "$(directives | grep -cF "$flag_test")" = 2 ]; then
+      pass "PLUGINS_ENABLED=true $flags asks the page decision in both SPA locations, and still tests the maintenance flag in both"
+    else
+      fail "PLUGINS_ENABLED=true $flags asks the page decision $page_checks time(s) and tests the maintenance flag $(directives | grep -cF "$flag_test") time(s), not 2 each"
+    fi
+    for location in "= /index.html" "/"; do
+      for directive in "auth_request /_plugin_development_page_check" \
+        "auth_request_set \$plugin_spa_upstream \$upstream_http_x_plugin_spa_upstream" \
+        "error_page 403 = @plugin_development_page" "error_page 500 = @plugin_development_unreachable" \
+        "recursive_error_pages on" "error_page 503 @plugin_maintenance_page" "return 503"; do
+        expect_location_directive "PLUGINS_ENABLED=true $flags: [$location] has [$directive]" "$location" "$directive"
+      done
+    done
+    for directive in internal "client_max_body_size 0" \
+      "proxy_pass http://backend_server/api/plugin-gateway/development-spa/" \
+      "proxy_pass_request_headers off" "proxy_pass_request_body off" "proxy_method GET" \
+      "proxy_set_header Host localhost" "proxy_set_header X-Plugin-Gateway-Secret \"$gateway_secret\"" \
+      "proxy_set_header X-Plugin-Identifier \$plugin_identifier"; do
+      expect_location_directive "PLUGINS_ENABLED=true $flags: the page decision has [$directive]" \
+        "= /_plugin_development_page_check" "$directive"
+    done
+    for directive in "proxy_pass http://\$plugin_spa_upstream" "return 502" \
+      "error_page 502 504 = @plugin_development_unreachable" "proxy_hide_header Set-Cookie" \
+      "proxy_hide_header Clear-Site-Data" "proxy_hide_header X-Frame-Options" \
+      "proxy_hide_header Content-Security-Policy" "proxy_hide_header X-EpicStaff-Gateway-Deny" \
+      "proxy_ignore_headers X-Accel-Redirect" "proxy_set_header Host \$host" \
+      "proxy_set_header Upgrade \$http_upgrade" "proxy_set_header Connection \$connection_upgrade" \
+      "proxy_buffering off" "proxy_read_timeout 1h" \
+      "add_header Content-Security-Policy \"frame-ancestors 'self' $scheme://epicstaff.localhost\" always" \
+      "add_header X-Content-Type-Options nosniff always" "add_header Origin-Agent-Cluster \"?1\" always"; do
+      expect_location_directive "PLUGINS_ENABLED=true $flags: the development server's page has [$directive]" \
+        "@plugin_development_page" "$directive"
+    done
+    expect_location_blanks "PLUGINS_ENABLED=true $flags: the development server gets no cookie, login, API key or plugin context, in any spelling" \
+      "@plugin_development_page" Cookie Authorization X-API-Key X-EpicStaff-Plugin-Context
+    for directive in "return 503 \"The development server for this plugin cannot be reached.\\n\"" \
+      "default_type text/html" "add_header Cache-Control no-store always" \
+      "add_header X-EpicStaff-Gateway-Deny unavailable always" \
+      "add_header Content-Security-Policy \"frame-ancestors 'self' $scheme://epicstaff.localhost\" always"; do
+      expect_location_directive "PLUGINS_ENABLED=true $flags: the unreachable answer has [$directive]" \
+        "@plugin_development_unreachable" "$directive"
+    done
+    if [ "$(directives | grep -cF 'if ($plugin_network_caller) {')" = 3 ] && has_directive 'listen 8082;'; then
+      pass "PLUGINS_ENABLED=true $flags renders the development API listener, and it refuses the plugins subnet like EpicStaff's server and the plugin hosts"
+    else
+      fail "PLUGINS_ENABLED=true $flags: $(directives | grep -cF 'if ($plugin_network_caller) {') server(s) refuse the plugins subnet, not 3, or nothing listens on 8082"
+    fi
+  fi
+done; done
+
 # The internal header check itself, on configurations broken on purpose: it must name each break.
 if expect_valid "nginx -t: PLUGINS_ENABLED=true, for the internal header check's self-test" \
   PLUGINS_ENABLED=true; then
   # $1 = what was broken, $2 = text the problems must contain, $3 = the awk program that breaks
-  # the internal listener's snippet in the `nginx -T` output (in_snippet is set for its lines).
+  # the `nginx -T` output: in_snippet is set for the lines of the file named by $4 (default: the
+  # listeners' shared snippet), $5 = whether development mode is on in the configuration.
   expect_internal_header_break() {
-    local problems
-    awk "/^# configuration file / { in_snippet = (\$0 ~ /plugins-internal-api-true\\.snippet:\$/) } $3" \
+    local problems file=${4:-plugins-api-listener} development=${5:-false}
+    awk "/^# configuration file / { in_snippet = (\$0 ~ /$file\\.snippet:\$/) } $3" \
       "$work_dir/out" > "$work_dir/out-broken"
-    problems=$(internal_header_problems "$work_dir/out-broken")
+    problems=$(internal_header_problems "$work_dir/out-broken" "$development")
     case "$problems" in
       *"$2"*) pass "the internal header check finds $1" ;;
       *) fail "the internal header check, with $1, found [$(printf '%s\n' "$problems" | paste -sd ';' -)]" ;;
     esac
   }
   expect_internal_header_break "the secret taken from the caller" "not PLUGINS_GATEWAY_SECRET" \
-    'in_snippet && /^ *proxy_set_header X-Plugin-Network-Secret / { print "        proxy_set_header X-Plugin-Network-Secret $http_x_plugin_network_secret;"; next } { print }'
+    'in_snippet && /^ *proxy_set_header X-Plugin-Network-Secret / { print "    proxy_set_header X-Plugin-Network-Secret $http_x_plugin_network_secret;"; next } { print }'
   expect_internal_header_break "the secret missing" "X-Plugin-Network-Secret is set 0 times" \
     '!(in_snippet && /^ *proxy_set_header X-Plugin-Network-Secret /)'
   expect_internal_header_break "the on-behalf-of header missing" "X-EpicStaff-On-Behalf-Of is set 0 times" \
     '!(in_snippet && /^ *proxy_set_header X-EpicStaff-On-Behalf-Of /)'
   expect_internal_header_break "the caller's headers passed on" "passes the caller's headers on" \
     '!(in_snippet && /^ *proxy_pass_request_headers off;/)'
-  expect_internal_header_break "the secret set in another location" "set outside the internal listener's /api/" \
-    '{ print } in_snippet && /^ *location \/ [{]/ { print "        proxy_set_header X-Plugin-Network-Secret \"x\";" }'
+  expect_internal_header_break "the secret set in another location" "set outside the listeners' /api/" \
+    '{ print } in_snippet && /^location \/ [{]/ { print "    proxy_set_header X-Plugin-Network-Secret \"x\";" }'
+  expect_internal_header_break "the internal listener claiming to be the development one" \
+    "\$plugin_development_listener is 1 on 8081" \
+    'in_snippet && /^ *set \$plugin_development_listener / { print "    set $plugin_development_listener 1;"; next } { print }' \
+    plugins-internal-api-true
+fi
+
+# The same check on a configuration with development mode on: the development listener's value
+# and the header must never come from the caller, and nothing else may fill the variable.
+if expect_valid "nginx -t: PLUGINS_DEV_MODE=true, for the internal header check's self-test" \
+  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+  DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost; then
+  expect_internal_header_break "the development listener's value taken from the caller" \
+    "\$plugin_development_listener is \$http_x_plugin_development_listener on 8082" \
+    'in_snippet && /^ *set \$plugin_development_listener / { print "    set $plugin_development_listener $http_x_plugin_development_listener;"; next } { print }' \
+    plugins-development-api-true true
+  expect_internal_header_break "the development header taken from the caller" \
+    "X-Plugin-Development-Listener is \$http_x_plugin_development_listener in the 8082 listener's /api/" \
+    'in_snippet && /^ *proxy_set_header X-Plugin-Development-Listener / { print "    proxy_set_header X-Plugin-Development-Listener $http_x_plugin_development_listener;"; next } { print }' \
+    plugins-api-listener true
+  expect_internal_header_break "the development header missing" "X-Plugin-Development-Listener is set 0 times" \
+    '!(in_snippet && /^ *proxy_set_header X-Plugin-Development-Listener /)' plugins-api-listener true
+  expect_internal_header_break "a map filling the development listener's value" \
+    "\$plugin_development_listener named elsewhere" \
+    '{ print } in_snippet && /^server [{]/ && !added { print "map $http_x_forwarded_for $plugin_development_listener { default 1; }"; added = 1 }' \
+    plugins-development-api-true true
+  expect_internal_header_break "the development header set on a plugin host" "set outside the listeners' /api/" \
+    '{ print } in_snippet && /^location @plugin_development_page [{]/ { print "    proxy_set_header X-Plugin-Development-Listener 1;" }' \
+    plugins-development-server-true true
+  expect_internal_header_break "no development listener" "0 servers listen on 8082, not 1" \
+    '!(in_snippet && /^ *listen 8082;/)' plugins-development-api-true true
+
+  grep -vF 'X-EpicStaff-Gateway-Deny' "$work_dir/out" > "$work_dir/out-without-deny-header"
+  found=$(gateway_deny_problems "$work_dir/out-without-deny-header")
+  expected=$(printf '%s\n' "@plugin_denied: answers without X-EpicStaff-Gateway-Deny" \
+    "@plugin_maintenance_page: answers without X-EpicStaff-Gateway-Deny" \
+    "@plugin_request_too_large: answers without X-EpicStaff-Gateway-Deny" \
+    "@plugin_unavailable: answers without X-EpicStaff-Gateway-Deny" \
+    "@plugin_development_unreachable: answers without X-EpicStaff-Gateway-Deny" \
+    "@plugin_development_page: passes a plugin's X-EpicStaff-Gateway-Deny on" \
+    "^~ /api/: passes a plugin's X-EpicStaff-Gateway-Deny on" | LC_ALL=C sort)
+  if [ "$found" = "$expected" ]; then
+    pass "the gateway deny check finds every development location: the unreachable answer, and the development page that must hide the plugin's marker"
+  else
+    fail "the gateway deny check, development mode, with the header deleted, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+fi
+
+if expect_valid "nginx -t: PLUGINS_ENABLED=true, for the Django header check's self-test" \
+  PLUGINS_ENABLED=true; then
 
   # The Django header check itself: one spelling dropped from the snippet must show in every
   # location it checks, and one include dropped in exactly that location.
@@ -833,6 +1061,44 @@ fi
 expect_refused "PLUGINS_ENABLED=maybe is refused" "PLUGINS_ENABLED='maybe' is not a boolean" \
   PLUGINS_ENABLED=maybe
 
+# PLUGINS_DEV_MODE: read like every other boolean, only with plugins on, and refused on any
+# deployment whose plugin domain or EpicStaff host is not a .localhost name.
+local_names=(PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost)
+if expect_valid "PLUGINS_DEV_MODE=Yes is accepted with .localhost names" PLUGINS_ENABLED=true \
+  PLUGINS_DEV_MODE=Yes "${local_names[@]}"; then
+  expect_directives "PLUGINS_DEV_MODE=Yes is read as true" "listen 8082;"
+fi
+expect_refused "PLUGINS_DEV_MODE=maybe is refused" "PLUGINS_DEV_MODE='maybe' is not a boolean" \
+  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=maybe "${local_names[@]}"
+expect_refused "an unset PLUGINS_DEV_MODE is refused with plugins on" \
+  "environment variable PLUGINS_DEV_MODE is not set" PLUGINS_ENABLED=true unset:PLUGINS_DEV_MODE
+if expect_valid "PLUGINS_ENABLED=false ignores PLUGINS_DEV_MODE=maybe" PLUGINS_ENABLED=false \
+  PLUGINS_DEV_MODE=maybe; then
+  if has_directive 'listen 8082'; then
+    fail "PLUGINS_ENABLED=false renders the development API listener"
+  fi
+fi
+expect_valid "PLUGINS_ENABLED=false ignores an unset PLUGINS_DEV_MODE" PLUGINS_ENABLED=false \
+  unset:PLUGINS_DEV_MODE || :
+expect_valid "PLUGINS_ENABLED=false ignores PLUGINS_DEV_MODE=true on names that are not .localhost" \
+  PLUGINS_ENABLED=false PLUGINS_DEV_MODE=true || :
+development_refusal="plugin development mode is only for a deployment on your own machine"
+for names in "plugins.epicstaff.test http://epicstaff.localhost" \
+  "plugins.epicstaff.localhost https://epicstaff.example.com" \
+  "plugins.epicstaff.localhost https://epicstaff.localhost.example.com" \
+  "plugins.epicstaff.localhost http://xlocalhost" "plugins.localhost.example.com https://epicstaff.test" \
+  "plugins.epicstaff.test https://epicstaff.test"; do
+  read -r base_domain frontend_url <<< "$names"
+  expect_refused "PLUGINS_DEV_MODE=true with PLUGINS_BASE_DOMAIN=$base_domain and DJANGO_FRONTEND_BASE_URL=$frontend_url is refused" \
+    "$development_refusal" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true \
+    "PLUGINS_BASE_DOMAIN=$base_domain" "DJANGO_FRONTEND_BASE_URL=$frontend_url"
+done
+for frontend_url in http://localhost:4200 http://EpicStaff.LocalHost https://epicstaff.localhost:8443/; do
+  expect_valid "PLUGINS_DEV_MODE=true with DJANGO_FRONTEND_BASE_URL=$frontend_url is accepted" \
+    PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+    "DJANGO_FRONTEND_BASE_URL=$frontend_url" || :
+done
+
 # With the flag off the plugin values are never read, so they cannot stop nginx.
 expect_valid "PLUGINS_ENABLED=false ignores malformed plugin values" PLUGINS_ENABLED=false \
   "PLUGINS_BASE_DOMAIN=bad;value" DJANGO_FRONTEND_BASE_URL=none PLUGINS_MAX_PACKAGE_MB=many \
@@ -929,7 +1195,7 @@ fi
 # plugin backends and of the node, and that EpicStaff's own server passes none of them on.
 cat > "$work_dir/stub-django.conf" <<'STUB'
 log_format stub_django '$request_method $uri $request_length';
-log_format stub_headers 'secret=[$http_x_plugin_network_secret] on_behalf_of=[$http_x_epicstaff_on_behalf_of] authorization=[$http_authorization] organization=[$http_x_organization_id]';
+log_format stub_headers 'secret=[$http_x_plugin_network_secret] on_behalf_of=[$http_x_epicstaff_on_behalf_of] development=[$http_x_plugin_development_listener] authorization=[$http_authorization] organization=[$http_x_organization_id]';
 server {
     listen 127.0.0.1:8000;
     access_log /tmp/stub-django.log stub_django;
@@ -1027,10 +1293,11 @@ status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Host: epicstaff.test' \
   -H 'Authorization: PluginKey esp-check' -H "X-Plugin-Network-Secret: $gateway_secret" \
   -H 'X_Plugin_Network_Secret: forged' -H 'X-Plugin_Network-Secret: forged' \
   -H 'X-EpicStaff-On-Behalf-Of: 7' -H 'X_EpicStaff_On_Behalf_Of: 7' -H 'X-EpicStaff_On-Behalf_Of: 7' \
+  -H 'X-Plugin-Development-Listener: 1' -H 'X_Plugin_Development_Listener: 1' -H 'X-Plugin_Development-Listener: 1' \
   http://127.0.0.1/api/plugin-runtime/me/ || true)
 received=$(live cat /tmp/stub-headers.log)
-if [ "$status" = 200 ] && [ "$received" = "secret=[-] on_behalf_of=[-] authorization=[PluginKey esp-check] organization=[-]" ]; then
-  pass "EpicStaff's own server passes Django neither a network secret nor an on-behalf-of header, in any spelling"
+if [ "$status" = 200 ] && [ "$received" = "secret=[-] on_behalf_of=[-] development=[-] authorization=[PluginKey esp-check] organization=[-]" ]; then
+  pass "EpicStaff's own server passes Django no network secret, on-behalf-of or development listener header, in any spelling"
 else
   fail "EpicStaff's own server, /api/plugin-runtime/me/: status $status, Django got other headers than expected"
 fi
@@ -1184,12 +1451,13 @@ for _ in $(seq 50); do
 done
 live sh -c ': > /tmp/stub-django.log; : > /tmp/stub-headers.log'
 status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: PluginNodeKey k' \
-  -H 'X-Plugin-Network-Secret: forged' http://127.0.0.1:8081/api/plugin-nodes/self/desired-state/ || true)
+  -H 'X-Plugin-Network-Secret: forged' -H 'X-Plugin-Development-Listener: 1' \
+  http://127.0.0.1:8081/api/plugin-nodes/self/desired-state/ || true)
 received=$(live cat /tmp/stub-headers.log)
 if ! reached_django "GET /api/plugin-nodes/self/desired-state/"; then
   fail "the internal API listener did not pass a plugins-subnet caller on to Django ($status)"
-elif [ "$received" = "secret=[$gateway_secret] on_behalf_of=[-] authorization=[PluginNodeKey k] organization=[-]" ]; then
-  pass "the internal API listener serves the node's API to the plugins subnet, with the environment's network secret ($status from the stub)"
+elif [ "$received" = "secret=[$gateway_secret] on_behalf_of=[-] development=[-] authorization=[PluginNodeKey k] organization=[-]" ]; then
+  pass "the internal API listener serves the node's API to the plugins subnet, with the environment's network secret and never a development listener header ($status from the stub)"
 else
   # Never print the received line: on a failure it may hold the secret.
   fail "the internal API listener, node API: status $status, Django got other headers than expected"
@@ -1200,15 +1468,17 @@ fi
 expected_secret="secret=[$gateway_secret]"
 for case in "7|-H X-EpicStaff-On-Behalf-Of:7|$expected_secret on_behalf_of=[7]" \
   "forged|-H X-Plugin-Network-Secret:forged -H X_Plugin_Network_Secret:forged -H X-Plugin_Network-Secret:forged -H X-EpicStaff-On-Behalf-Of:7|$expected_secret on_behalf_of=[7]" \
-  "none|-H X-Plugin-Network-Secret:forged|$expected_secret on_behalf_of=[-]"; do
+  "none|-H X-Plugin-Network-Secret:forged|$expected_secret on_behalf_of=[-]" \
+  "development|-H X-Plugin-Development-Listener:1 -H X_Plugin_Development_Listener:1 -H X-Plugin_Development-Listener:1|$expected_secret on_behalf_of=[-]"; do
   IFS='|' read -r label extra expected <<< "$case"
   live sh -c ': > /tmp/stub-headers.log'
   # shellcheck disable=SC2086  # $extra is a list of curl arguments without spaces in them.
   status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: PluginKey esp-check' \
     -H 'X-Organization-Id: 3' $extra http://127.0.0.1:8081/api/plugin-runtime/me/ || true)
   received=$(live cat /tmp/stub-headers.log)
-  if [ "$status" = 200 ] && [ "$received" = "$expected authorization=[PluginKey esp-check] organization=[3]" ]; then
-    pass "the internal API listener sends Django the environment's network secret ($label)"
+  # The internal listener never says it is the development one, whatever the caller sends.
+  if [ "$status" = 200 ] && [ "$received" = "$expected development=[-] authorization=[PluginKey esp-check] organization=[3]" ]; then
+    pass "the internal API listener sends Django the environment's network secret and no development listener header ($label)"
   else
     # Never print the received line: on a failure it may hold the secret.
     fail "the internal API listener ($label): status $status, Django got other headers than expected"

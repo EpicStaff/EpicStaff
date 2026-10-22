@@ -9,29 +9,36 @@ settings and limits the SuperAdmin edits) comes from it.
 from plugins.models import Plugin, PluginDatabase, PluginPackage, PluginUpgrade
 from plugins.models.upgrade import OPEN_UPGRADE_STAGES, TARGET_STAGES
 
-_PACKAGE_COLUMNS_NOT_READ = ("icon_bytes",)
+# The package being upgraded from is read only for `database_changed`'s fallback, which loads
+# its migration files when it needs them.
+_COLUMNS_NOT_READ = (
+    "to_package__icon_bytes",
+    "from_package__icon_bytes",
+    "from_package__manifest",
+    "from_package__migration_files",
+)
 
 
 def open_upgrades():
-    """Every open upgrade, each with its two packages (without their icons)."""
+    """Every open upgrade, with its target package (without its icon) and the version it
+    upgrades from (without its icon, manifest and migration files)."""
     return (
         PluginUpgrade.objects.filter(stage__in=OPEN_UPGRADE_STAGES)
         .select_related("to_package", "from_package")
-        .defer(
-            *(
-                f"{package}__{column}"
-                for package in ("to_package", "from_package")
-                for column in _PACKAGE_COLUMNS_NOT_READ
-            )
-        )
+        .defer(*_COLUMNS_NOT_READ)
     )
 
 
 def open_upgrade_of(plugin: Plugin, *, lock: bool = False) -> PluginUpgrade | None:
-    """The plugin's open upgrade, if any; `lock` locks its row (take the plugin's lock first)."""
+    """The plugin's open upgrade, if any; `lock` locks its row (take the plugin's lock first).
+
+    The lock is `FOR NO KEY UPDATE`: a backup the node reports for the upgrade points at it,
+    and its insert takes `FOR KEY SHARE` on the upgrade at commit, which a full `FOR UPDATE`
+    would make wait on this transaction while it waits on the report's rows.
+    """
     upgrades = open_upgrades().filter(plugin=plugin)
     if lock:
-        upgrades = upgrades.select_for_update(of=("self",))
+        upgrades = upgrades.select_for_update(of=("self",), no_key=True)
     return upgrades.first()
 
 
@@ -53,14 +60,23 @@ def latest_approved_package(plugin: Plugin, upgrade: PluginUpgrade | None) -> Pl
 def database_changed(upgrade: PluginUpgrade, database: PluginDatabase | None) -> bool:
     """Whether the database already holds a change of the upgrade's new version.
 
-    True when its reported ledger lists a file the version being upgraded from does not have,
-    or with another sha256. A missing `from_package` counts every entry as a change, so
-    nothing is cancelled on a ledger it cannot be compared with.
+    False before the upgrade's first migration run. Then true when the database's reported
+    ledger lists a file, or a file with another sha256, that it did not list when the node
+    first asked to run the migrations (`ledger_at_migrations`): a file an earlier version
+    dropped but the database still lists counts as no change.
     """
-    if database is None:
+    if database is None or upgrade.migrations_started_at is None:
         return False
-    known = {
-        (file["name"], file["sha256"])
-        for file in (upgrade.from_package.migration_files if upgrade.from_package else [])
-    }
+    if upgrade.ledger_at_migrations is not None:
+        known = {(entry["name"], entry["sha256"]) for entry in upgrade.ledger_at_migrations}
+    else:
+        # Opened before the snapshot was kept: compared with the files of the version being
+        # upgraded from, which counts a file that version dropped as a change. A missing
+        # `from_package` counts every entry as one, so nothing is cancelled on a ledger it
+        # cannot be compared with.
+        source = upgrade.from_package
+        known = {
+            (file["name"], file["sha256"])
+            for file in (source.migration_files if source is not None else [])
+        }
     return any((entry["name"], entry["sha256"]) not in known for entry in database.ledger)

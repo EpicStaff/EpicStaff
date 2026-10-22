@@ -5,6 +5,8 @@ from drf_spectacular.utils import extend_schema_field
 from epicstaff_plugin.contracts.manifest import PluginManifest
 from rest_framework import serializers
 
+from plugins.development.development_mode import development_mode_on
+from plugins.development.development_targets import routed_ports
 from plugins.lifecycle.grant_actions import GrantAction, allowed_grant_actions
 from plugins.lifecycle.open_upgrades import open_upgrade_of
 from plugins.lifecycle.plugin_actions import (
@@ -31,6 +33,7 @@ from plugins.origins import PluginOrigins
 from plugins.packages.review import action_label, resource_label, review_warnings
 from plugins.packages.upgrade_review import PackageUpgradeReview, review_upgrade
 from plugins.serializers.common import UserRefSerializer
+from plugins.serializers.development import PluginDevelopmentPortsSerializer
 from plugins.serializers.purge import OrgRemovedJobSerializer, PluginPurgeProgressSerializer
 from plugins.serializers.upgrade import (
     AccessGrowthSerializer,
@@ -283,6 +286,7 @@ class PluginSummarySerializer(serializers.ModelSerializer):
         )
     )
     upgrade = serializers.SerializerMethodField()
+    development = serializers.SerializerMethodField()
 
     class Meta:
         model = Plugin
@@ -300,9 +304,16 @@ class PluginSummarySerializer(serializers.ModelSerializer):
             "purge_after",
             "needs_attention",
             "upgrade",
+            "development",
             "created_at",
         ]
         read_only_fields = fields
+
+    @extend_schema_field(PluginDevelopmentPortsSerializer(allow_null=True))
+    def get_development(self, plugin: Plugin) -> dict | None:
+        """The stored development target's ports; null unless development mode is on and a
+        target is stored."""
+        return routed_ports(plugin)
 
     @extend_schema_field(UpgradeSummarySerializer(allow_null=True))
     def get_upgrade(self, plugin: Plugin) -> dict | None:
@@ -354,6 +365,7 @@ class PluginDetailSerializer(PluginSummarySerializer):
     open_upgrade = serializers.SerializerMethodField()
     last_upgrade = serializers.SerializerMethodField()
     upgrade_hooks = serializers.SerializerMethodField()
+    development_mode = serializers.SerializerMethodField()
 
     class Meta(PluginSummarySerializer.Meta):
         fields = [
@@ -366,8 +378,13 @@ class PluginDetailSerializer(PluginSummarySerializer):
             "open_upgrade",
             "last_upgrade",
             "upgrade_hooks",
+            "development_mode",
         ]
         read_only_fields = fields
+
+    def get_development_mode(self, plugin: Plugin) -> bool:
+        """PLUGINS_DEV_MODE as django_app reads it now: the Development tab shows only then."""
+        return development_mode_on()
 
     @extend_schema_field(PluginUpgradeSerializer(allow_null=True))
     def get_open_upgrade(self, plugin: Plugin) -> dict | None:

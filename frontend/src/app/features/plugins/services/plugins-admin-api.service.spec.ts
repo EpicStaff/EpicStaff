@@ -1,4 +1,4 @@
-import { provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, HttpResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
@@ -10,6 +10,7 @@ import {
     PluginOrgRemovedJob,
     PluginRestore,
 } from '../models/plugin-admin.model';
+import { PluginDevelopment } from '../models/plugin-development.model';
 import { PluginGrantPurgePreview, PluginPurgePreview } from '../models/plugin-purge-preview.model';
 import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 import {
@@ -17,12 +18,15 @@ import {
     buildOrgRemovedJob,
     buildPluginBackupList,
     buildPluginDetail,
+    buildPluginDevelopment,
+    buildPluginDevelopmentTarget,
     buildPluginGrant,
     buildPluginPurgePreview,
     buildPluginRestore,
     buildPluginUpgrade,
     buildSuspendPreview,
 } from '../testing/plugin-fixtures';
+import { toPluginErrorView } from '../utils/plugin-error-message.util';
 import { PluginsAdminApiService } from './plugins-admin-api.service';
 
 describe('PluginsAdminApiService', () => {
@@ -276,5 +280,91 @@ describe('PluginsAdminApiService', () => {
         skip.flush(buildOrgRemovedJob({ state: 'skipped', allowed_actions: [] }));
         expect(skip.request.method).toBe('POST');
         expect(skip.request.body).toBeNull();
+    });
+
+    it('reads, stores and removes the development target', () => {
+        const stored = buildPluginDevelopment({ target: buildPluginDevelopmentTarget() });
+        let read: PluginDevelopment | undefined;
+        let updated: PluginDevelopment | undefined;
+        let cleared = false;
+
+        api.getDevelopment('weather').subscribe((development) => (read = development));
+        const get = http.expectOne('/api/admin/plugins/weather/development/');
+        get.flush(buildPluginDevelopment());
+        expect(get.request.method).toBe('GET');
+        expect(read).toEqual(buildPluginDevelopment());
+
+        api.updateDevelopment('weather', { backend_port: 8001, spa_port: null }).subscribe(
+            (development) => (updated = development)
+        );
+        const put = http.expectOne('/api/admin/plugins/weather/development/');
+        put.flush(stored);
+        expect(put.request.method).toBe('PUT');
+        expect(put.request.body).toEqual({ backend_port: 8001, spa_port: null });
+        expect(updated).toEqual(stored);
+
+        api.clearDevelopment('weather').subscribe(() => (cleared = true));
+        const remove = http.expectOne('/api/admin/plugins/weather/development/');
+        remove.flush(null, { status: 204, statusText: 'No Content' });
+        expect(remove.request.method).toBe('DELETE');
+        expect(cleared).toBe(true);
+    });
+
+    it('downloads the development runtime file as a blob, with its headers, and never reads it', () => {
+        const file = new Blob(['{}'], { type: 'application/json' });
+        const read = vi.spyOn(Blob.prototype, 'text');
+        let answer: HttpResponse<Blob> | undefined;
+
+        api.downloadDevelopmentRuntimeFile('weather').subscribe((response) => (answer = response));
+        const request = http.expectOne('/api/admin/plugins/weather/development/runtime-file/');
+        request.flush(file, {
+            headers: { 'Content-Disposition': 'attachment; filename="weather-development-runtime.json"' },
+        });
+
+        expect(request.request.method).toBe('POST');
+        expect(request.request.body).toBeNull();
+        expect(request.request.responseType).toBe('blob');
+        expect(answer?.body).toBe(file);
+        expect(answer?.headers.get('Content-Disposition')).toBe(
+            'attachment; filename="weather-development-runtime.json"'
+        );
+        expect(read).not.toHaveBeenCalled();
+        read.mockRestore();
+    });
+
+    it("reads a refused download's JSON error, so its code is known", async () => {
+        const failure = new Promise<unknown>((resolve) =>
+            api.downloadDevelopmentRuntimeFile('weather').subscribe({ error: resolve })
+        );
+        const body = {
+            status_code: 409,
+            code: 'plugin_development_mode_off',
+            message: 'Plugin development mode is off.',
+        };
+        http.expectOne('/api/admin/plugins/weather/development/runtime-file/').flush(
+            new Blob([JSON.stringify(body)], { type: 'application/json' }),
+            { status: 409, statusText: 'Conflict' }
+        );
+
+        const error = await failure;
+        expect(error).toBeInstanceOf(HttpErrorResponse);
+        expect((error as HttpErrorResponse).status).toBe(409);
+        expect((error as HttpErrorResponse).error).toEqual(body);
+        expect(toPluginErrorView(error, 'fallback').code).toBe('plugin_development_mode_off');
+    });
+
+    it('gives a refused download without a JSON body a null body', async () => {
+        const failure = new Promise<unknown>((resolve) =>
+            api.downloadDevelopmentRuntimeFile('weather').subscribe({ error: resolve })
+        );
+        http.expectOne('/api/admin/plugins/weather/development/runtime-file/').flush(
+            new Blob(['<html>Bad Gateway</html>'], { type: 'text/html' }),
+            { status: 502, statusText: 'Bad Gateway' }
+        );
+
+        const error = (await failure) as HttpErrorResponse;
+        expect(error.status).toBe(502);
+        expect(error.error).toBeNull();
+        expect(toPluginErrorView(error, 'fallback').message).toBe('fallback');
     });
 });

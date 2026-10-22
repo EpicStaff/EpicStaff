@@ -1,10 +1,10 @@
 from django.db import models
 from django.db.models import Q
 
-from plugins.models.enums import GrantState
+from plugins.models.enums import GrantState, ServiceAccountKeyPurpose
 from plugins.models.grant import PluginGrant
 
-ONE_CURRENT_KEY_PER_ACCOUNT_CONSTRAINT = "plugins_sa_key_one_current_per_account"
+ONE_CURRENT_KEY_PER_PURPOSE_CONSTRAINT = "plugins_sa_key_one_current_per_purpose"
 # The grant states in which a plugin's service account holds keys, so its backend can call
 # EpicStaff in the organization: while the install or upgrade hook runs, and once the grant is
 # active.
@@ -46,8 +46,10 @@ class PluginServiceAccount(models.Model):
 class PluginServiceAccountKey(models.Model):
     """A key of a service account; only its sha256 is stored.
 
-    The current key has no `expires_at`. Minting a new one gives the previous current key ten
-    more minutes and revokes every older one, so at most two keys of an account are valid.
+    Each `purpose` has at most one current key per account, the one without `expires_at`.
+    Minting a node key gives the previous current node key ten more minutes and revokes every
+    older one, so at most two node keys of an account are valid. Minting a development key
+    revokes the account's development keys at once, so at most one of them is valid.
     """
 
     # Read by rbac's gates (`is_plugin_credential`) without importing this app.
@@ -55,6 +57,11 @@ class PluginServiceAccountKey(models.Model):
 
     service_account = models.ForeignKey(
         PluginServiceAccount, on_delete=models.CASCADE, related_name="keys"
+    )
+    purpose = models.CharField(
+        max_length=16,
+        choices=ServiceAccountKeyPurpose.choices,
+        default=ServiceAccountKeyPurpose.NODE,
     )
     prefix = models.CharField(max_length=12)
     key_hash = models.CharField(max_length=64, unique=True)
@@ -65,14 +72,14 @@ class PluginServiceAccountKey(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["service_account"],
+                fields=["service_account", "purpose"],
                 condition=Q(expires_at__isnull=True, revoked_at__isnull=True),
-                name=ONE_CURRENT_KEY_PER_ACCOUNT_CONSTRAINT,
+                name=ONE_CURRENT_KEY_PER_PURPOSE_CONSTRAINT,
             ),
         ]
         indexes = [
-            # Every mint reads an account's unrevoked keys (at most two), while revoked
-            # ones pile up until they are pruned.
+            # Every mint reads an account's unrevoked keys (at most two node keys and one
+            # development key), while revoked ones pile up until they are pruned.
             models.Index(
                 fields=["service_account"],
                 condition=Q(revoked_at__isnull=True),

@@ -132,6 +132,19 @@ describe('PluginRuntimePanelComponent', () => {
         expect(element.querySelector('.runtime__log')).toBeNull();
     });
 
+    it('says when requests go to a development backend, and that hooks still run in the installed process', () => {
+        render();
+        expect(element.querySelector('.runtime__development')).toBeNull();
+
+        fixture.componentRef.setInput('developmentBackendPort', 8001);
+        fixture.detectChanges();
+
+        expect(text(element.querySelector('.runtime__development'))).toBe(
+            'Requests go to the development backend at host.docker.internal:8001; the installed process still runs hooks.'
+        );
+        expect(text(section('Process')?.querySelector('.runtime__development'))).not.toBe('');
+    });
+
     it('shows the last error and the log tail of a failed plugin, and why a plugin is held stopped', () => {
         storage.getRuntime.mockReturnValue(
             of(
@@ -169,7 +182,7 @@ describe('PluginRuntimePanelComponent', () => {
 
     it('says when the plugin has no node or no process yet', () => {
         storage.getRuntime.mockReturnValue(
-            of({ node: null, placement: null, database: null, egress: null, upgrade: null })
+            of({ node: null, placement: null, database: null, egress: { hosts: [] }, upgrade: null })
         );
         render();
 
@@ -287,13 +300,6 @@ describe('PluginRuntimePanelComponent', () => {
 
         expect(sectionTitles()).toEqual(['Node', 'Process', 'Outbound access']);
         expect(text(section('Outbound access'))).toContain('None: the backend cannot reach the internet.');
-    });
-
-    it('leaves out both sections for a plugin with neither', () => {
-        storage.getRuntime.mockReturnValue(of(buildPluginRuntime({ database: null, egress: null })));
-        render();
-
-        expect(sectionTitles()).toEqual(['Node', 'Process']);
     });
 
     it('polls while shown and stops when destroyed', () => {
@@ -440,7 +446,7 @@ describe('PluginRuntimePanelComponent', () => {
             render();
 
             expect(backupRows()[0]).toContain('Before restore · during the upgrade to 0.7.1');
-            expect(backupRows()[0]).toContain('Not restorable: only while an upgrade has failed');
+            expect(backupRows()[0]).toContain('Not restorable: not while the upgrade runs or a restore is under way');
         });
 
         it('opens the restore dialog with the phrase the list carries, and tells the page once it is asked for', () => {
@@ -461,24 +467,37 @@ describe('PluginRuntimePanelComponent', () => {
             expect(storage.listBackups).toHaveBeenCalledTimes(2);
         });
 
-        it('loads the backups again when the open upgrade moves, not on every runtime poll', () => {
+        it('loads the backups again on every runtime poll, and at once when the open upgrade moves', () => {
             render();
             expect(storage.listBackups).toHaveBeenCalledTimes(1);
 
+            // A cancel closes the upgrade without the page's poll seeing it first: the runtime poll catches it.
+            storage.listBackups.mockReturnValue(
+                of(
+                    buildPluginBackupList({
+                        backups: BACKUPS.backups.map((backup) => ({
+                            ...backup,
+                            restorable: false,
+                            not_restorable_reason: 'earlier_upgrade' as const,
+                        })),
+                    })
+                )
+            );
             poll();
-            expect(storage.listBackups).toHaveBeenCalledTimes(1);
+            expect(storage.listBackups).toHaveBeenCalledTimes(2);
+            expect(element.querySelectorAll('.backups__row button')).toHaveLength(0);
 
             showUpgrade(buildFailedMigrationUpgrade());
-            expect(storage.listBackups).toHaveBeenCalledTimes(2);
-
-            showUpgrade(buildFailedMigrationUpgrade({ restore: buildPluginRestore() }));
             expect(storage.listBackups).toHaveBeenCalledTimes(3);
 
             showUpgrade(buildFailedMigrationUpgrade({ restore: buildPluginRestore() }));
-            expect(storage.listBackups).toHaveBeenCalledTimes(3);
+            expect(storage.listBackups).toHaveBeenCalledTimes(4);
+
+            showUpgrade(buildFailedMigrationUpgrade({ restore: buildPluginRestore() }));
+            expect(storage.listBackups).toHaveBeenCalledTimes(4);
         });
 
-        it('brings the backups into view when asked to', () => {
+        it('brings the backups into view each time it is asked to', () => {
             // jsdom does not scroll; the panel calls it when the browser has it.
             const scrollIntoView = vi.fn();
             Object.defineProperty(Element.prototype, 'scrollIntoView', { value: scrollIntoView, configurable: true });
@@ -489,7 +508,7 @@ describe('PluginRuntimePanelComponent', () => {
             element = fixture.nativeElement as HTMLElement;
             fixture.componentRef.setInput('identifier', 'weather');
             fixture.componentRef.setInput('pluginName', 'Weather');
-            fixture.componentRef.setInput('revealBackups', true);
+            fixture.componentRef.setInput('revealBackups', 1);
             fixture.detectChanges();
             TestBed.tick();
             vi.advanceTimersByTime(0);
@@ -497,6 +516,14 @@ describe('PluginRuntimePanelComponent', () => {
             TestBed.tick();
 
             expect(scrollIntoView).toHaveBeenCalledTimes(1);
+            expect(document.activeElement?.textContent?.trim()).toBe('Backups');
+
+            (document.activeElement as HTMLElement | null)?.blur();
+            fixture.componentRef.setInput('revealBackups', 2);
+            fixture.detectChanges();
+            TestBed.tick();
+
+            expect(scrollIntoView).toHaveBeenCalledTimes(2);
             expect(document.activeElement?.textContent?.trim()).toBe('Backups');
         });
 

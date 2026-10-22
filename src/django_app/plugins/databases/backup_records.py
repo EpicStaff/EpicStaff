@@ -28,6 +28,7 @@ from plugins.models import (
     BackupReason,
     PluginDatabase,
     PluginDatabaseBackup,
+    PluginDatabaseRestore,
     PluginNode,
     PluginUpgrade,
 )
@@ -118,10 +119,10 @@ class BackupRecorder:
     ) -> PluginDatabaseBackup | None:
         """Record `report` once, and return its record; None for another installation's.
 
-        A new record is linked to its upgrade when that upgrade is the plugin's, and gets the
-        `database_backed_up` activity event; a known one listed again is present again. A
-        file listed with another sha256 than recorded is marked and never restored. The
-        caller holds the database's lock, or the plugin's and the upgrade's.
+        For the node's `migrations` request, with the plugin and the upgrade locked. A new
+        record is linked to its upgrade when that upgrade is the plugin's (`_create`); a
+        known one, locked, listed again is present again. A file listed with another sha256
+        than recorded is marked and never restored.
         """
         if report.installation_id != database.installation_id:
             logger.warning(
@@ -134,30 +135,10 @@ class BackupRecorder:
         if existing is not None:
             self._update(existing, report, identifier)
             return existing
-        try:
-            with transaction.atomic():
-                backup = PluginDatabaseBackup.objects.create(
-                    plugin_database=database,
-                    upgrade=PluginUpgrade.objects.filter(
-                        pk=report.upgrade_id, plugin_id=database.plugin_id
-                    ).first(),
-                    node=node,
-                    file_name=report.file_name,
-                    reason=report.reason,
-                    version=report.version,
-                    size_bytes=report.size_bytes,
-                    sha256=report.sha256,
-                    created_at=report.created_at,
-                )
-        except IntegrityError:
-            # Recorded at the same moment by the node's other request (the `migrations`
-            # request and a report carry the same backup).
-            existing = self._existing(database, report.file_name)
-            self._update(existing, report, identifier)
-            return existing
-        ActivityRecorder().database_backed_up(identifier, backup)
-        transaction.on_commit(partial(log_backup_recorded, identifier, backup))
-        return backup
+        upgrade = PluginUpgrade.objects.filter(
+            pk=report.upgrade_id, plugin_id=database.plugin_id
+        ).first()
+        return self._create(database, report, upgrade, identifier=identifier, node=node)
 
     def apply_inventory(
         self,
@@ -168,11 +149,15 @@ class BackupRecorder:
         node: PluginNode | None,
     ) -> set[str]:
         """Record every backup a report lists; run in the report's transaction, with the
-        database locked. One query for the known ones, whatever their number; a new one is
-        created with its activity event. Returns the file names recorded for this database.
+        database locked. Returns the file names recorded for this database.
+
+        Two queries for the known ones and the upgrades the new ones name, whatever their
+        number; a known row is locked only by the UPDATE that changes it, and a new one is
+        created with its activity event.
         """
+        reports = list(reports)
         ours = [report for report in reports if report.installation_id == database.installation_id]
-        if len(ours) < len(list(reports)):
+        if len(ours) < len(reports):
             logger.warning(
                 "The plugin node reported backups of another installation for {identifier}; "
                 "ignored",
@@ -182,27 +167,85 @@ class BackupRecorder:
             return set()
         known = {
             backup.file_name: backup
-            for backup in PluginDatabaseBackup.objects.select_for_update().filter(
+            for backup in PluginDatabaseBackup.objects.filter(
                 plugin_database=database, file_name__in=[report.file_name for report in ours]
             )
         }
-        for report in ours:
-            if report.file_name in known:
-                self._update(known[report.file_name], report, identifier)
-            else:
-                self.record(database, report, identifier=identifier, node=node)
+        self._apply_known(
+            [(known[report.file_name], report) for report in ours if report.file_name in known],
+            identifier,
+        )
+        new = [report for report in ours if report.file_name not in known]
+        # Linked only to an upgrade of this plugin.
+        upgrades = (
+            PluginUpgrade.objects.filter(plugin_id=database.plugin_id)
+            .only("pk", "stage", "to_version")
+            .in_bulk({report.upgrade_id for report in new})
+            if new
+            else {}
+        )
+        for report in new:
+            self._create(
+                database, report, upgrades.get(report.upgrade_id), identifier=identifier, node=node
+            )
         return {report.file_name for report in ours}
+
+    def _create(
+        self,
+        database: PluginDatabase,
+        report: BackupFileReport,
+        upgrade: PluginUpgrade | None,
+        *,
+        identifier: str,
+        node: PluginNode | None,
+    ) -> PluginDatabaseBackup:
+        """Create the record, with its activity event and, while its upgrade is open, the
+        version that upgrade is going to; a pre-restore backup is linked to the restore that
+        named it before it was recorded."""
+        try:
+            with transaction.atomic():
+                backup = PluginDatabaseBackup.objects.create(
+                    plugin_database=database,
+                    upgrade=upgrade,
+                    node=node,
+                    file_name=report.file_name,
+                    reason=report.reason,
+                    version=report.version,
+                    taken_for_version=(
+                        upgrade.to_version if upgrade is not None and upgrade.is_open else None
+                    ),
+                    size_bytes=report.size_bytes,
+                    sha256=report.sha256,
+                    created_at=report.created_at,
+                )
+        except IntegrityError:
+            # The node's other request (the `migrations` request and a report carry the same
+            # backup) inserted it first: this insert waited for that transaction on the
+            # unique file name and failed once it committed. The row is there now.
+            existing = self._existing(database, report.file_name)
+            self._update(existing, report, identifier)
+            return existing
+        ActivityRecorder().database_backed_up(identifier, backup)
+        transaction.on_commit(partial(log_backup_recorded, identifier, backup))
+        if backup.reason == BackupReason.PRE_RESTORE:
+            PluginDatabaseRestore.objects.filter(
+                plugin_database=database,
+                pre_restore_file_name=backup.file_name,
+                pre_restore_backup__isnull=True,
+            ).update(pre_restore_backup=backup)
+        return backup
 
     @staticmethod
     def _existing(database: PluginDatabase, file_name: str) -> PluginDatabaseBackup | None:
         return (
-            PluginDatabaseBackup.objects.select_for_update()
+            PluginDatabaseBackup.objects.select_for_update(no_key=True)
             .filter(plugin_database=database, file_name=file_name)
             .first()
         )
 
     @staticmethod
     def _update(backup: PluginDatabaseBackup, report: BackupFileReport, identifier: str) -> None:
+        """Apply `report` to `backup`, which the caller locked."""
         changed = []
         if report.sha256 != backup.sha256 and not backup.sha256_mismatch:
             backup.sha256_mismatch = True
@@ -213,6 +256,27 @@ class BackupRecorder:
             changed.append("deleted_at")
         if changed:
             backup.save(update_fields=changed)
+
+    @staticmethod
+    def _apply_known(
+        listed: list[tuple[PluginDatabaseBackup, BackupFileReport]], identifier: str
+    ) -> None:
+        """Apply what a report says about known backups (read without a lock) with UPDATEs
+        that match only the rows that still need the change; none when nothing changes."""
+        for backup, report in listed:
+            if (
+                report.sha256 != backup.sha256
+                and not backup.sha256_mismatch
+                and PluginDatabaseBackup.objects.filter(pk=backup.pk, sha256_mismatch=False).update(
+                    sha256_mismatch=True
+                )
+            ):
+                log_backup_mismatch(identifier, backup.file_name)
+        listed_again = [backup.pk for backup, _ in listed if backup.deleted_at is not None]
+        if listed_again:
+            PluginDatabaseBackup.objects.filter(
+                pk__in=listed_again, deleted_at__isnull=False
+            ).update(deleted_at=None)
 
 
 @dataclass(frozen=True)

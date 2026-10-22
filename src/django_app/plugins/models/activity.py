@@ -44,6 +44,9 @@ class ActivityAction(models.TextChoices):
     UPGRADE_HOOK_SUCCEEDED = "upgrade_hook_succeeded"
     UPGRADE_HOOK_FAILED = "upgrade_hook_failed"
     UPGRADE_HOOK_RETRIED = "upgrade_hook_retried"
+    DEVELOPMENT_TARGET_SET = "development_target_set"
+    DEVELOPMENT_TARGET_CLEARED = "development_target_cleared"
+    DEVELOPMENT_RUNTIME_FILE_ISSUED = "development_runtime_file_issued"
 
 
 class ActorKind(models.TextChoices):

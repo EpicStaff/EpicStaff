@@ -18,6 +18,7 @@ function plugin(identifier: string, name: string): AvailablePlugin {
         frame_origin: `https://${identifier}.plugins.example.com`,
         permissions: ['read'],
         availability: 'ready',
+        development: false,
     };
 }
 

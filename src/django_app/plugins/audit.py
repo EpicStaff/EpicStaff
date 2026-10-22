@@ -233,7 +233,7 @@ def log_service_account_refused(*, identifier: str | None, reason: str) -> None:
     """Log a refused service-account key; `identifier` is None when the key named no plugin.
 
     `reason` is `outside_internal_listener`, `unknown_key`, `revoked`, `superseded`,
-    `grant_state`, `org_inactive` or `no_backend`.
+    `development_mode_off`, `wrong_listener`, `grant_state`, `org_inactive` or `no_backend`.
     """
     logger.info(
         "plugins.service_account.refused plugin={identifier} reason={reason}",
@@ -547,3 +547,41 @@ def log_spa_repaired(identifier: str, what: str) -> None:
 
 def _actor_or_platform(actor) -> str:
     return actor_label(actor) if actor is not None else "platform"
+
+
+# The development lines never carry a key, a key hash, the runtime file or a setting value.
+def log_development_target_set(
+    actor, *, identifier: str, backend_port: int | None, spa_port: int | None
+) -> None:
+    logger.info(
+        "plugins.development.target_set actor={actor} plugin={identifier} "
+        "backend_port={backend_port} spa_port={spa_port}",
+        actor=actor_label(actor),
+        identifier=identifier,
+        backend_port=backend_port if backend_port is not None else "-",
+        spa_port=spa_port if spa_port is not None else "-",
+    )
+
+
+def log_development_target_cleared(actor, *, identifier: str, revoked_keys: int) -> None:
+    logger.info(
+        "plugins.development.target_cleared actor={actor} plugin={identifier} "
+        "revoked_keys={revoked_keys}",
+        actor=actor_label(actor),
+        identifier=identifier,
+        revoked_keys=revoked_keys,
+    )
+
+
+def log_development_runtime_file_issued(actor, *, identifier: str, organizations: int) -> None:
+    logger.info(
+        "plugins.development.runtime_file_issued actor={actor} plugin={identifier} "
+        "organizations={organizations}",
+        actor=actor_label(actor),
+        identifier=identifier,
+        organizations=organizations,
+    )
+
+
+def log_development_host_unresolved(host: str) -> None:
+    logger.warning("plugins.development.host_unresolved host={host}", host=host)

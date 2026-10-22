@@ -1,5 +1,6 @@
 from django.urls import path
 
+from plugins.gateway.development_spa_check_view import development_spa_check
 from plugins.gateway.gateway_check_view import gateway_check
 from plugins.views.activity import (
     OrganizationServiceAccountViewSet,
@@ -11,6 +12,10 @@ from plugins.views.admin_backend import (
     PluginRestartView,
     PluginRuntimeView,
     PluginSettingsView,
+)
+from plugins.views.admin_development import (
+    PluginDevelopmentRuntimeFileView,
+    PluginDevelopmentView,
 )
 from plugins.views.admin_grant_lifecycle import (
     PluginGrantResumeView,
@@ -217,6 +222,16 @@ urlpatterns = [
         name="admin-plugin-restart",
     ),
     path(
+        "api/admin/plugins/<str:identifier>/development/",
+        PluginDevelopmentView.as_view(),
+        name="admin-plugin-development",
+    ),
+    path(
+        "api/admin/plugins/<str:identifier>/development/runtime-file/",
+        PluginDevelopmentRuntimeFileView.as_view(),
+        name="admin-plugin-development-runtime-file",
+    ),
+    path(
         "api/admin/plugin-role-permissions/rows/",
         role_plugin_rows,
         name="admin-plugin-role-permission-rows",
@@ -257,6 +272,11 @@ urlpatterns = [
         name="plugin-public-icon",
     ),
     path("api/plugin-gateway/check/", gateway_check, name="plugin-gateway-check"),
+    path(
+        "api/plugin-gateway/development-spa/",
+        development_spa_check,
+        name="plugin-gateway-development-spa",
+    ),
     path(
         "api/plugin-nodes/self/desired-state/",
         DesiredStateView.as_view(),

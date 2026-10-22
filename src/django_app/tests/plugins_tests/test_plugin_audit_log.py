@@ -329,3 +329,42 @@ def test_an_approval_refused_for_want_of_a_server_logs_no_record(
         installation.approve(package.pk, superadmin, untrusted_acknowledged=True)
 
     assert _lines(log_messages, "plugins.database.") == []
+
+
+# ---- plugin development mode: ports, counts and reasons, never a key, a file or a secret ----
+
+
+@pytest.mark.usefixtures("plugins_enabled", "development_mode", "development_host_unresolved")
+def test_development_lines_never_carry_a_key_the_runtime_file_or_a_secret(
+    weather_backend, service_account_key, acme, superadmin_client, superadmin_user, log_messages,
+    django_capture_on_commit_callbacks,
+):
+    plugin = weather_backend()
+    service_account_key(plugin, acme)
+    secret_value = "token-for-the-forecast-provider-0123456789"
+    url = "/api/admin/plugins/weather/development/"
+    superadmin_client.patch(
+        "/api/admin/plugins/weather/settings/", {"values": {"forecast_api_token": secret_value}}, format="json"
+    )
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.put(url, {"backend_port": 8001, "spa_port": 5173}, format="json")
+        response = superadmin_client.post(f"{url}runtime-file/")
+        superadmin_client.get(url)
+    runtime_file = response.content.decode()
+    key = response.json()["service_accounts"][str(acme.pk)]["key"]
+    service_account_client(key, acme).get("/api/plugin-runtime/me/")
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.delete(url)
+
+    lines = _lines(log_messages, "plugins.development") + _lines(log_messages, "plugins.service_account.refused")
+    # The PUT's answer resolves the host at once; the change lines follow when the block commits.
+    assert lines == [
+        "plugins.development.host_unresolved host=host.docker.internal",
+        f"plugins.development.target_set {_actor(superadmin_user)} plugin=weather backend_port=8001 spa_port=5173",
+        f"plugins.development.runtime_file_issued {_actor(superadmin_user)} plugin=weather organizations=1",
+        f"plugins.development.target_cleared {_actor(superadmin_user)} plugin=weather revoked_keys=1",
+        "plugins.service_account.refused plugin=weather reason=wrong_listener",
+    ]
+    secrets = (key, hashlib.sha256(key.encode()).hexdigest(), key[12:], secret_value, runtime_file)
+    assert not [line for line in log_messages if any(secret in line for secret in secrets)]
+    assert all(len(line) <= MAX_MESSAGE_LENGTH for line in lines)

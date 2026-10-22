@@ -59,6 +59,7 @@ const ENDPOINT_CODES: PluginErrorCode[] = [
     'backup_not_found',
     'restore_not_allowed',
     'invalid_restore_phrase',
+    'plugin_development_mode_off',
     'throttled',
 ];
 
@@ -108,6 +109,23 @@ describe('toPluginErrorView', () => {
         expect(view).toEqual({
             code: 'plugin_version_not_newer',
             message: '0.6.0 is not newer than the installed 0.7.0.',
+            items: [],
+        });
+    });
+
+    it('says development mode is off when the deployment refuses a development change', () => {
+        const view = toPluginErrorView(
+            failure(409, {
+                status_code: 409,
+                code: 'plugin_development_mode_off',
+                message: 'Plugin development mode is off on this deployment.',
+            }),
+            'fallback'
+        );
+
+        expect(view).toEqual({
+            code: 'plugin_development_mode_off',
+            message: 'Plugin development mode is off on this deployment.',
             items: [],
         });
     });

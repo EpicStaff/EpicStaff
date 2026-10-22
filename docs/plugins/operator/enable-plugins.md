@@ -132,6 +132,13 @@ a value in `src/.env` later changes nothing in the database (see
 
 [Limits](../reference/limits.md) says which limits this version enforces and how.
 
+**Plugin development** (only on your own machine; see [Plugin development mode](#plugin-development-mode))
+
+| Variable | Default | What to set |
+|---|---|---|
+| `PLUGINS_DEV_MODE` | `false` | Leave `false` on every deployment other people use: with `true`, django_app and epicstaff-nginx refuse to start unless `DJANGO_DEBUG=true` and EpicStaff and `PLUGINS_BASE_DOMAIN` use `.localhost` names. The same spellings as `PLUGINS_ENABLED` are accepted. |
+| `PLUGINS_DEV_API_PORT` | `8082` | The port on `127.0.0.1` where a development backend reaches EpicStaff's API. Only `docker-compose.plugins-dev.yaml` publishes it. A whole number from 1024 to 65535 (`plugins.E013`), checked only while the mode is on. |
+
 ## 4. Apply
 
 `restart` does not re-read `src/.env`; recreate the containers that read the settings, and start
@@ -177,6 +184,10 @@ Wrong values stop a container with a message instead of serving a broken plugin 
 | `plugins.E009` | A `PLUGINS_MAX_*` value is not a positive whole number. |
 | `plugins.E010` | The host of `DJANGO_FRONTEND_BASE_URL` is `PLUGINS_BASE_DOMAIN` or a name under it. A plugin's address could then be EpicStaff's own, and EpicStaff would refuse its own pages as a plugin's. |
 | `plugins.E011` | `PLUGINS_GRACE_PERIOD_DAYS` is not a whole number from 1 to 3650. |
+| `plugins.E012` | `PLUGINS_DEV_MODE` is true on a deployment that is not on your own machine: `DJANGO_DEBUG` is not true, `PLUGINS_BASE_DOMAIN` does not end in `.localhost`, or the host of `DJANGO_FRONTEND_BASE_URL` is neither `localhost` nor a `.localhost` name. The message names each condition that fails (see [Plugin development mode](#plugin-development-mode)). |
+| `plugins.E013` | `PLUGINS_DEV_MODE` is true and `PLUGINS_DEV_API_PORT` is not a whole number from 1024 to 65535. |
+
+`plugins.W001` is a warning and stops nothing: plugin development mode is on, where it is allowed.
 
 **epicstaff-nginx** exits with an `ERROR:` line when `PLUGINS_ENABLED` is not a boolean, and, with
 plugins on, when `PLUGINS_BASE_DOMAIN` is not a lower-case DNS name of two or more labels,
@@ -184,8 +195,11 @@ plugins on, when `PLUGINS_BASE_DOMAIN` is not a lower-case DNS name of two or mo
 path, query or fragment is refused, as Django's `plugins.E003` does), `PLUGINS_MAX_PACKAGE_MB` or
 `PLUGINS_MAX_REQUEST_BODY_MB` is not a whole number of MiB above 0, or `PLUGINS_GATEWAY_SECRET` is
 `none`, shorter than 32 characters or holds another character than the ones above (the value is
-never printed), or `PLUGINS_NETWORK_SUBNET` is not an IPv4 CIDR such as `10.235.0.0/24`. With
-plugins off nginx does not read the plugin values at all.
+never printed), or `PLUGINS_NETWORK_SUBNET` is not an IPv4 CIDR such as `10.235.0.0/24`. It also
+exits, with plugins on, when `PLUGINS_DEV_MODE` is not a boolean, and when it is true while
+`PLUGINS_BASE_DOMAIN` does not end in `.localhost` or the host of `DJANGO_FRONTEND_BASE_URL` is
+neither `localhost` nor a `.localhost` name: nginx's own refusal of plugin development mode,
+whatever Django decides. With plugins off nginx does not read the plugin values at all.
 
 **es_plugins** exits when `PLUGINS_NODE_UID_RANGE` is not a valid range, `PLUGINS_NODE_KEY` is
 `none` or shorter than 32 characters, or `ES_PLUGINS_DISK_MB_PER_PLUGIN` or
@@ -377,8 +391,8 @@ capabilities left in any capability set, so nothing on the node can change them 
 shell you open in the container with `docker exec` gets the container's capabilities, `NET_ADMIN`
 and `BPF` included; no plugin process does. Each plugin backend runs as its own user id from
 `PLUGINS_NODE_UID_RANGE`, without any capability, with at most 64 processes and 256 open files
-each, no POSIX message queues and no System V IPC objects (a seccomp filter refuses to make or
-open them), in its own session. Its secret settings reach it only in a file that only its own user
+each, no POSIX message queues, no System V IPC objects and no `io_uring` (a seccomp filter refuses
+those system calls), in its own session. Its secret settings reach it only in a file that only its own user
 id can read; its database URL and its proxy URL, credentials included, are in its environment,
 which only its own user id can read too.
 
@@ -392,18 +406,23 @@ EpicStaff. That is why no secret is ever put on a command line.
 A plugin cannot take another plugin's port either, nor one a plugin installed later will get.
 When it starts, the node binds every port of its range (20001–20999) and keeps them all; it hands
 each plugin's process the listening socket of that plugin's port, and `epicstaff-plugin` serves
-on it. No plugin can bind an inet socket at all: `bind()` answers "Operation not permitted" to
-every plugin user id.
+on it. No plugin can bind an inet socket at all, TCP or UDP: `bind()` answers "Operation not
+permitted" to every plugin user id.
 
 Plugin backends and the node share the container's network namespace, and with it its local
 ports (21000–65535 for outbound connections). So that one plugin cannot use them up, or the
 connection slots of `plugins_db` and the egress proxy, each plugin backend may open at most 200
 new TCP connections a second (after a burst of 200), and have at most 512 TCP connections open at
 once, `PLUGINS_MAX_DB_CONNECTIONS` of them to `plugins_db` and 64 to the egress proxy. A
-connection over a limit is refused at once. The node's own connections are never limited. Two
-ways of sharing the namespace remain, which several plugins together could use: UDP sockets
-connected without sending (each holds a local port; the descriptor limit bounds one plugin's),
-and UNIX sockets in the abstract namespace, which every process in the container can reach.
+connection over a limit is refused at once. The node's own connections are never limited.
+
+A socket can still take a local port without `bind()`: a `listen()` on an unbound TCP socket, or a
+UDP socket that is connected and never sends. So the node checks every plugin's sockets once a
+second, and stops a plugin whose user listens on a port of its own, or holds more than 512 network
+sockets in all. Such a plugin stays stopped, with the reason on its Runtime tab, until a SuperAdmin
+restarts it (see [When a plugin does not run](#when-a-plugin-does-not-run)). Between two checks a
+plugin can still take ports for up to a second. UNIX sockets in the abstract namespace remain
+shared: every process in the container can reach one.
 
 The node is on two internal Docker networks only: `plugins-network`, which it shares with nothing
 but nginx and the egress proxy, and `plugins-db-network`, which it shares with nothing but
@@ -722,6 +741,10 @@ whoever restores it.
      -W -h 127.0.0.1 -U "<id>_owner" -d "inspect_<id>" /tmp/<file>.dump
    ```
 
+   If the plugin stored settings on its owner role that refuse the login or the restore, such as
+   `local_preload_libraries` or `default_tablespace`, pass them empty:
+   `docker compose exec -it -e PGOPTIONS='-c local_preload_libraries= -c default_tablespace=' plugins_db pg_restore …`.
+
    Query it the same way (`psql -W -h 127.0.0.1 -U "<id>_owner" -d "inspect_<id>"`). Tables
    with `FORCE ROW LEVEL SECURITY` show the owner no rows; in this copy, `ALTER TABLE … NO FORCE
    ROW LEVEL SECURITY` lifts that.
@@ -869,6 +892,8 @@ memory, the last error and, for a failed plugin, the end of its log.
 | The plugin stays `provisioning`, the node is not online | The node is not running or cannot authenticate: `docker compose ps es_plugins`, `docker compose logs es_plugins`. `PLUGINS_NODE_KEY` must be the same for django_app and es_plugins; recreate django_app after changing it. |
 | `<project> <version> has no wheel for this node (its wheels are built for …)` | The package has no wheel of that project for this host's architecture. The publisher packs again for it (`epicstaff-plugin pack --download-wheels`, which by default packs for both `x86_64` and `aarch64`). |
 | `failed` after repeated restarts | The backend kept stopping: it was restarted ten times in a row without once staying healthy for a minute in between (the node waits 1 s before the first restart, doubling up to 5 minutes, so this takes at least 13.5 minutes). Read the log on the Runtime tab, fix the cause (often a setting), then press Restart. |
+| `it listened on TCP port … of its own; …` | The backend opened a server socket of its own. A plugin serves only on the socket the node hands it, so the node stopped it. The publisher must fix the backend; then press Restart. |
+| `it held … network sockets, more than the 512 a plugin may; …` | The backend kept too many sockets open, often connections it never closes, so the node stopped it. Ask the publisher to reuse connections; press Restart to start it again. |
 | The backend exits at once with `Operation not permitted` or `Address already in use` in its log | It opens a server socket itself instead of serving on the socket the node hands it (`EPICSTAFF_PLUGIN_LISTEN_FD`, which `epicstaff-plugin` uses); no plugin may bind a socket, and every port of the node's range is the node's. The publisher must fix the backend. |
 | `port … is still in use by placement …` | The plugin got a port another plugin on the node is just giving up (EpicStaff moved them). The node tries again every 30 s; it passes once the other is stopped. |
 | `port … is not one of this node's ports` | The node and django_app disagree about the port range: they are of different versions. Run the same version of both. |
@@ -898,24 +923,89 @@ size limit of its own.
 
 ## Local development
 
-| Variable | Value |
-|---|---|
-| `PLUGINS_ENABLED` | `true` |
-| `PLUGINS_BASE_DOMAIN` | `plugins.epicstaff.localhost` |
-| `NGINX_SERVER_NAME` | `epicstaff.localhost` |
-| `NGINX_SSL_MODE` | `off` |
-| `DJANGO_FRONTEND_BASE_URL` | `http://epicstaff.localhost` |
-| `DJANGO_REFRESH_COOKIE_SECURE` | `false` |
-| `PLUGINS_GATEWAY_SECRET`, `PLUGINS_NODE_KEY`, `PLUGINS_DB_SUPERUSER_PASSWORD`, `PLUGINS_DB_ADMIN_PASSWORD`, `PLUGINS_DB_BACKUP_PASSWORD` | each the output of `openssl rand -hex 32` |
-| `COMPOSE_PROFILES` | add `plugins` |
+For plugin development on your own machine, EpicStaff runs with `.localhost` names over plain
+http. [Run EpicStaff for plugin development](../how-to/local-development.md#run-epicstaff-for-plugin-development)
+has the variables, the compose files and what browsers need. What matters to an operator:
 
-Open EpicStaff at `http://epicstaff.localhost`, not `http://localhost`: a plugin at
-`http://weather.plugins.epicstaff.localhost` must be a subdomain of EpicStaff's own name. Chrome and
-Firefox send every `*.localhost` name to your machine without DNS; other tools may need one
-`/etc/hosts` line per name. Plain http works only on `*.localhost` names, which browsers treat as a
-secure context; sign-in refuses any other http page. Safari treats `*.localhost` names
-differently, so test Safari against a real domain over HTTPS, or against `*.test` names in
-`/etc/hosts` over HTTPS with a certificate of a local CA your browser trusts.
+- Plain http, with `DJANGO_REFRESH_COOKIE_SECURE=false`, works only with `.localhost` names
+  (`plugins.E001`, `plugins.E003`). Browsers send those names to their own machine only.
+- The secrets need random values (`openssl rand -hex 32`) there as on any deployment.
+- [Plugin development mode](#plugin-development-mode) is allowed only on such a deployment.
+
+## Plugin development mode
+
+Plugin development mode lets a SuperAdmin serve an installed plugin's backend, its page, or both
+from ports on the machine EpicStaff runs on, where the plugin's developer runs them (each plugin's
+**Development** tab). It is for a deployment on your own machine only.
+
+**What it reroutes.** For a plugin with a stored development target, and only while the mode is on:
+
+- Requests to the plugin's `/api/` go to `host.docker.internal:<backend port>` instead of the
+  plugin node, after every gateway check as before: sign-in, access, public paths, rate limits,
+  and the maintenance answer while the plugin is being upgraded.
+- The plugin's pages come from a frontend development server at
+  `host.docker.internal:<page port>`, on the plugin's own address, so sign-in and the frame work
+  as with the published page. nginx drops the server's cookies, its framing rule and its own
+  policy, and never sends it the browser's cookies, a login, an API key or a plugin context.
+  During maintenance, a development page shows the maintenance page.
+
+Nothing else moves: hooks still run on the installed version on the node, and the plugin's
+database and outbound hosts stay the node's. A SuperAdmin enters ports only. django_app resolves
+the one name `host.docker.internal` itself and gives nginx an address, so development mode cannot
+send plugin traffic to any other host.
+
+**Where it can run.** With `PLUGINS_DEV_MODE=true`:
+
+- django_app refuses to start (`plugins.E012`) unless `DJANGO_DEBUG=true`, `PLUGINS_BASE_DOMAIN`
+  ends in `.localhost`, and the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or ends in
+  `.localhost`;
+- epicstaff-nginx refuses to start (exit 64) unless the two names are `.localhost` names.
+
+Either refusal alone keeps the mode off a server: `.localhost` names reach only the loopback
+interface of the machine the browser runs on, so nobody on another machine can open such a
+deployment. Where the mode is allowed, django_app logs the warning `plugins.W001`.
+
+**What `docker-compose.plugins-dev.yaml` opens.** Start EpicStaff with both compose files:
+
+```bash
+cd src
+docker compose -f docker-compose.yaml -f docker-compose.plugins-dev.yaml --env-file ./.env up -d
+```
+
+That file holds only what `docker-compose.yaml` must never have:
+
+- the name `host.docker.internal` for django_app (`host-gateway`, the Docker bridge's address on
+  this machine on Linux; Docker Desktop has the name built in);
+- nginx's **development API listener**, published on `127.0.0.1:${PLUGINS_DEV_API_PORT}` only,
+  where a development backend calls EpicStaff's API. It serves the internal listener's routes (no
+  sign-in, no administration, no gateway checks) and refuses callers on the plugins network;
+- EpicStaff's ports 80 and 443 on `127.0.0.1` only, instead of every interface: while a
+  development target is set, a plugin's address serves ports of this machine, and nobody else on
+  your network may reach them.
+
+It replaces the port list of `docker-compose.yaml` with Compose's `!override`, which needs Docker
+Compose 2.24.4 or later. Containers that share a network with epicstaff-nginx, other than the
+plugins network, can reach the development API listener too; it accepts only development keys.
+
+**Development keys.** **Download development runtime file** gives the developer a file like the
+node's runtime file, with a new **development key** for each organization the plugin is granted
+to. Such a key works only through the development API listener, and only while the mode is on.
+Node keys and the plugin's other keys are refused there, and development keys everywhere else.
+Downloading again, **Stop development**, and suspending the plugin in an organization end them;
+resuming issues none, so the developer downloads the file again. The file holds keys and the plugin's secret settings: EpicStaff never stores it, it must
+stay outside the plugin's source, and `pack`, `validate` and the upload refuse a package that
+holds one.
+
+**Turning it off.** Set `PLUGINS_DEV_MODE=false`, then recreate django_app and epicstaff-nginx with
+`docker-compose.yaml` alone:
+
+```bash
+cd src
+docker compose -f docker-compose.yaml --env-file ./.env up -d django_app epicstaff-nginx
+```
+
+Stored development targets stay, but nothing is routed to them, development keys are refused, and
+nothing listens on the development API port.
 
 ## Where plugin data lives
 

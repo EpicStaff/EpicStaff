@@ -9,8 +9,9 @@ Health is `GET /_epicstaff/health` on the plugin's port: every second until the 
 (for at most a minute), then every 15 s; three failures in a row count as a stop. An
 unexpected stop (exit, failed health, over memory) kills whatever is left of the UID and
 restarts after the `RestartPolicy` backoff, or leaves the plugin `failed`. A plugin over its
-disk cap is killed and left `failed` at once (`fail_for`): a restart would only fill the disk
-again. A deliberate stop sends SIGTERM, waits up to the grace period, then SIGKILL.
+disk cap, or holding sockets it may not (`socket_watchdog`), is killed and left `failed` at once
+(`fail_for`): a restart would only fill the disk, or take the ports, again. A deliberate stop
+sends SIGTERM, waits up to the grace period, then SIGKILL.
 """
 
 import asyncio

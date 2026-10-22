@@ -7,6 +7,7 @@ import pytest
 
 from epicstaff_plugin.cli.main import main
 from epicstaff_plugin.package_layout import path_set_problems
+from epicstaff_plugin.testing import service_account_key, write_runtime_file
 from package_helpers import contents_for, sample_files, write_archive
 
 
@@ -154,3 +155,28 @@ def test_path_set_problems_reports_files_used_as_folders():
         ("package.spa/b", "is a file, but 'spa/b/c.js' needs it to be a folder"),
     ]
 
+
+
+SECRET_LINE = "holds an EpicStaff key or runtime file; never package it"
+
+
+def test_a_source_holding_a_runtime_file_is_refused_by_name(weather_source, signer, capsys):
+    copy = weather_source / "backend" / "src" / "weather-development-runtime.json"
+    write_runtime_file(copy, signer=signer, service_accounts={"3": {"key": service_account_key(), "org_name": "Acme", "grant_state": "active"}})
+
+    assert main(["validate", str(weather_source)]) == 1
+
+    output = capsys.readouterr().out
+    assert f"package.backend/src/weather-development-runtime.json: {SECRET_LINE}" in output
+    assert "esp-" not in output
+
+
+def test_a_built_package_holding_a_key_is_refused_by_name(tmp_path, capsys):
+    key = service_account_key()
+    package = write_archive(tmp_path / "weather.esplugin", {**sample_files(), "spa/app.js": f"const k = '{key}';".encode()})
+
+    assert main(["validate", str(package)]) == 1
+
+    output = capsys.readouterr().out
+    assert f"package.spa/app.js: {SECRET_LINE}" in output
+    assert key not in output

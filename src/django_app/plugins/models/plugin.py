@@ -20,7 +20,7 @@ class PluginQuerySet(models.QuerySet):
         be deleted yet, the open upgrade failed, or an organization's upgrade failed),
         `pending_packages` (a list holding the pending package, if any) and `open_upgrades`
         (a list holding the open upgrade, if any, with its packages). The current package
-        comes without its icon and manifest, the placement with it.
+        comes without its icon and manifest, the placement and the development target with it.
         """
         # Imported here: these modules import this one.
         from plugins.models.enums import PlacementRemovalState
@@ -62,7 +62,7 @@ class PluginQuerySet(models.QuerySet):
             output_field=BooleanField(),
         )
         return (
-            self.select_related("current_package", "placement")
+            self.select_related("current_package", "placement", "development_target")
             .defer(*(f"current_package__{field}" for field in PACKAGE_DETAIL_FIELDS))
             .annotate(
                 grant_count=Count(

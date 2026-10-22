@@ -69,7 +69,17 @@ class PluginsOrganizationDeletion:
         with this sweep over a grant of the organization.
         """
         now = timezone.now()
-        grants = list(_grants_of(organization).select_for_update(of=("self",)).order_by("pk"))
+        # Locked first, read after: a lock that waited (an upgrade's completion holds the
+        # grants while it deletes the old package) keeps the snapshot its statement started
+        # with, so the plugin and its current package are read by a statement of their own,
+        # after the wait, and a job never names a package deleted meanwhile.
+        locked = list(
+            PluginGrant.objects.filter(org=organization)
+            .select_for_update()
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+        grants = list(_grants_of(organization).filter(pk__in=locked).order_by("pk"))
         open_steps = list(
             PluginHookJob.objects.select_for_update()
             .filter(

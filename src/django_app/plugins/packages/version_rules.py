@@ -4,7 +4,8 @@ Checked at upload, before anything is stored, and again at the approval that sta
 upgrade, against the state at that moment. The version must be newer than the latest approved
 version (the open upgrade's target, else the current package's), by SemVer precedence with
 build metadata ignored (`epicstaff_plugin.contracts.versions`). Then each of `UPGRADE_RULES`
-looks for changes an upgrade cannot carry.
+looks for changes an upgrade cannot carry, against both the running package and the latest
+approved one.
 
 Adding a rule: a function of `UPGRADE_RULES` returning problems located under `manifest.` or
 `package.`, then its row in `reference/compatibility-and-versioning.md`.
@@ -59,16 +60,24 @@ def installed_version_with(plugin: Plugin, upgrade: PluginUpgrade | None) -> Ins
     )
 
 
+def _installed_manifests(installed: InstalledVersion):
+    """The manifests a new version must keep the sections of: the running package's, and the
+    latest approved one's (a failed upgrade's target may add a backend or a database the
+    running version lacks, and its migrations may have run)."""
+    return (installed.current.parsed_manifest, installed.latest.parsed_manifest)
+
+
 def _keeps_the_backend(candidate: UpgradeCandidate, installed: InstalledVersion) -> list[Problem]:
-    if installed.current.parsed_manifest.backend is not None and candidate.manifest.backend is None:
+    if candidate.manifest.backend is None and any(
+        manifest.backend is not None for manifest in _installed_manifests(installed)
+    ):
         return [Problem("manifest.backend", "a new version cannot drop the backend")]
     return []
 
 
 def _keeps_the_database(candidate: UpgradeCandidate, installed: InstalledVersion) -> list[Problem]:
-    if (
-        installed.current.parsed_manifest.database is not None
-        and candidate.manifest.database is None
+    if candidate.manifest.database is None and any(
+        manifest.database is not None for manifest in _installed_manifests(installed)
     ):
         return [Problem("manifest.database", "a new version cannot drop the database")]
     return []

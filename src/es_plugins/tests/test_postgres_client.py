@@ -153,6 +153,52 @@ async def test_a_failure_keeps_the_tools_own_lines_and_never_a_rows_contents(tmp
     assert failed.value.error_lines[-1] == "pg_restore: error: an object named [31mred [0m"
 
 
+async def test_every_line_of_a_failed_statement_is_left_out_until_the_tools_next_line(tmp_path):
+    tool(
+        tmp_path,
+        "pg_restore",
+        "echo 'pg_restore: error: could not execute query: ERROR:  syntax error' >&2\n"
+        "echo 'Command was: CREATE FUNCTION app.f() RETURNS text' >&2\n"
+        "echo \"    AS \\$\\$ SELECT 'secret row value' \\$\\$\" >&2\n"
+        "echo '    LANGUAGE sql;' >&2\n"
+        "echo 'pg_restore: warning: errors ignored on restore: 1' >&2\n"
+        "exit 1\n",
+    )
+
+    with pytest.raises(PostgresToolError) as failed:
+        await PostgresClient(tmp_path).run("pg_restore", [])
+
+    assert failed.value.error_lines == (
+        "pg_restore: error: could not execute query: ERROR: syntax error",
+        "pg_restore: warning: errors ignored on restore: 1",
+    )
+    assert "secret row value" not in str(failed.value) and "LANGUAGE" not in str(failed.value)
+
+
+async def test_a_failure_keeps_the_tools_first_line_whatever_follows(tmp_path):
+    tool(
+        tmp_path,
+        "pg_dump",
+        "echo 'pg_dump: error: connection to server at \"plugins_db\" (10.0.0.1), port 5432 failed: Connection refused' >&2\n"
+        "for line in 1 2 3 4 5; do echo \"pg_dump: detail: $line\" >&2; done\n"
+        "exit 1\n",
+    )
+
+    with pytest.raises(PostgresToolError) as failed:
+        await PostgresClient(tmp_path).run("pg_dump", [], login=LOGIN)
+
+    assert failed.value.first_line.startswith("pg_dump: error: connection to server at")
+
+
+async def test_a_failure_without_any_error_output_has_no_first_line(tmp_path):
+    tool(tmp_path, "pg_dump", "exit 1\n")
+
+    with pytest.raises(PostgresToolError) as failed:
+        await PostgresClient(tmp_path).run("pg_dump", [], login=LOGIN)
+
+    assert failed.value.first_line is None
+
+
 async def test_a_cancelled_run_kills_the_tool(tmp_path):
     tool(tmp_path, "pg_dump", f"echo $$ > '{tmp_path}/pid'\nexec sleep 60\n")
     run = asyncio.create_task(PostgresClient(tmp_path).run("pg_dump", [], login=LOGIN))

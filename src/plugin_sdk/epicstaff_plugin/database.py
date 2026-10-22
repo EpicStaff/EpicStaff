@@ -101,15 +101,26 @@ class _OpenBlock:
     org_id: int | None
     """The organization of the `org_transaction` blocks; None for `job_transaction`."""
 
-    connections: tuple[AsyncTransactionalConnection, ...]
-    """The connections this block and the blocks around it hold a transaction open on."""
+    connection: AsyncTransactionalConnection
+    """The connection this block holds a transaction open on."""
 
     lifetime: _BlockLifetime
     enclosing: "_OpenBlock | None"
-    """The block this one opened inside, in the same task."""
+    """The block this one opened inside: in the same task, or in the task that started it."""
 
     def holds(self, connection: AsyncTransactionalConnection) -> bool:
-        return any(held is connection for held in self.connections)
+        """Whether this block, or a block it opened inside, holds a transaction on `connection`.
+
+        Only blocks still open count. A block opened inside another task's block outlives it
+        when its task does, and that block's connection may by then be in another task's
+        transaction.
+        """
+        block: _OpenBlock | None = self
+        while block is not None:
+            if block.lifetime.open and block.connection is connection:
+                return True
+            block = block.enclosing
+        return False
 
     def describe(self) -> str:
         if self.org_id is None:
@@ -256,15 +267,9 @@ async def _transaction_block(
             f"the connection already has a transaction open, so {description} would outlive "
             "its block; commit or roll it back first, or take a fresh connection from the pool"
         )
-    connections = open_block.connections if open_block is not None else ()
     lifetime = _BlockLifetime()
     token = _open_block.set(
-        _OpenBlock(
-            org_id=org_id,
-            connections=connections if held else (*connections, connection),
-            lifetime=lifetime,
-            enclosing=open_block,
-        )
+        _OpenBlock(org_id=org_id, connection=connection, lifetime=lifetime, enclosing=open_block)
     )
     try:
         async with connection.transaction():

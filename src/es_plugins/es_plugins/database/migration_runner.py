@@ -3,8 +3,9 @@
 The migrations are the package's `database/migrations/NNN_<name>.sql`, read from the verified
 package (`read_migrations`: every file checked against `CONTENTS.json`), applied in name order:
 
-1. As `plugins_admin`, from `postgres`, the owner is opened for this run only: LOGIN with the
-   verifier of a fresh random password, `CONNECTION LIMIT 1`, `VALID UNTIL` ten minutes on.
+1. As `plugins_admin`, from `postgres`, the owner is opened for this run only: every setting it
+   stored for itself is removed, then LOGIN with the verifier of a fresh random password,
+   `CONNECTION LIMIT 1`, `VALID UNTIL` ten minutes on.
 2. As the owner, on the plugin's database, the ledger `_epicstaff.migrations` is created if it
    is missing.
 3. A file already in the ledger with the same sha256 is skipped; with another sha256 the run
@@ -37,6 +38,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 import psycopg
+from epicstaff_plugin.contracts.database import (
+    MIGRATION_PLACEHOLDERS,
+    MIGRATIONS_LEDGER_SCHEMA,
+    MIGRATIONS_LEDGER_TABLE,
+)
 from epicstaff_plugin.package_layout import MAX_MIGRATION_NAME_LENGTH
 from loguru import logger
 from psycopg import sql
@@ -57,11 +63,8 @@ from es_plugins.database.connections import (
     scram_verifier,
     session_error,
 )
+from es_plugins.database.database_attributes import reset_role_settings
 
-# Each `${name}` in a migration becomes the quoted name of the role DesiredDatabase.<name> names.
-MIGRATION_PLACEHOLDERS = ("owner_role", "app_role", "job_role")
-MIGRATIONS_LEDGER_SCHEMA = "_epicstaff"
-MIGRATIONS_LEDGER_TABLE = "migrations"
 OWNER_LOGIN_WINDOW = timedelta(minutes=10)
 # Long enough for a session ended with pg_terminate_backend to go.
 OWNER_SESSIONS_END_SECONDS = 10.0
@@ -104,7 +107,12 @@ class MigrationRun:
 async def open_owner_login(
     admin: psycopg.AsyncConnection, owner_role: str, password: str, valid_until: datetime
 ) -> None:
-    """Let the owner log in once, with `password`, until `valid_until`."""
+    """Let the owner log in once, with `password`, until `valid_until`.
+
+    Every setting the owner stored for itself is removed first: a migration may have stored one
+    that refuses the login itself (`local_preload_libraries`) or breaks what runs after it.
+    """
+    await reset_role_settings(admin, owner_role)
     await admin.execute(
         sql.SQL("ALTER ROLE {} LOGIN PASSWORD {} CONNECTION LIMIT 1 VALID UNTIL {}").format(
             sql.Identifier(owner_role),
@@ -200,6 +208,7 @@ class MigrationRunner:
         await _in_transaction(owner, _CREATE_LEDGER)
         recorded = dict(await _read_ledger(owner, ["name", "sha256"]))
         replacements = {
+            # Each `${name}` becomes the quoted name of the role DesiredDatabase.<name> names.
             "${" + name + "}": sql.Identifier(getattr(desired, name)).as_string(owner)
             for name in MIGRATION_PLACEHOLDERS
         }

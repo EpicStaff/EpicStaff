@@ -99,3 +99,16 @@ class RestoreState(models.TextChoices):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+
+
+class ServiceAccountKeyPurpose(models.TextChoices):
+    """Where a service-account key may authenticate.
+
+    `node` keys are minted for the plugin node's runtime file and work only through the
+    internal listener on the plugins network. `development` keys are minted only by a
+    SuperAdmin's download of the development runtime file, and work only through the
+    development API listener on the host's loopback, while plugin development mode is on.
+    """
+
+    NODE = "node"
+    DEVELOPMENT = "development"

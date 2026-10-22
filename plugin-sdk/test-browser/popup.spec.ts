@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-import { fact, pluginFrame, signInToEpicStaff } from './support/epicstaff';
-import { STACK } from './support/stack';
+import { fact, pluginFrame, signInToEpicStaff } from './support/epicstaff.ts';
+import { STACK } from './support/stack.ts';
 
 for (const [button, cameBackThrough] of [
     ['Connect', 'The popup’s opener'],

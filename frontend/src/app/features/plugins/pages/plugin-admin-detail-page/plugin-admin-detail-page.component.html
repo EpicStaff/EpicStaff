@@ -92,6 +92,14 @@
                     Runtime
                 </app-tab-button>
             }
+            @if (hasDevelopmentTab()) {
+                <app-tab-button
+                    [active]="tab() === 'development'"
+                    (action)="selectTab('development')"
+                >
+                    Development
+                </app-tab-button>
+            }
             <app-tab-button
                 [active]="tab() === 'activity'"
                 (action)="selectTab('activity')"
@@ -166,7 +174,15 @@
                     [pluginName]="current.name"
                     [openUpgrade]="current.open_upgrade"
                     [revealBackups]="revealBackups()"
+                    [developmentBackendPort]="current.development?.backend_port ?? null"
                     (runtimeChanged)="refreshPlugin()"
+                />
+            }
+            @case ('development') {
+                <app-plugin-development-panel
+                    [identifier]="current.identifier"
+                    [pluginName]="current.name"
+                    (changed)="refreshPlugin()"
                 />
             }
             @case ('activity') {

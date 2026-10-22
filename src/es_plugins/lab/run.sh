@@ -117,9 +117,19 @@ check "probe-b's package carries wheels for both aarch64 and x86_64, and the nod
 echo "# the container and the two privileged processes"
 
 inspected=$(docker inspect "$node" --format \
-  '{{.HostConfig.Privileged}} {{.HostConfig.CapAdd}} {{.HostConfig.CapDrop}} {{.HostConfig.ReadonlyRootfs}} {{.HostConfig.SecurityOpt}} {{.HostConfig.UsernsMode}}|')
-check "the container has SETUID SETGID CHOWN, and NET_ADMIN BPF SETPCAP for its entrypoint only, a read-only root and no-new-privileges ($inspected)" \
-  test "$inspected" = "false [CAP_BPF CAP_CHOWN CAP_NET_ADMIN CAP_SETGID CAP_SETPCAP CAP_SETUID] [ALL] true [no-new-privileges:true] |"
+  '{{.HostConfig.Privileged}} {{.HostConfig.ReadonlyRootfs}} {{.HostConfig.SecurityOpt}} {{.HostConfig.UsernsMode}}|')
+# As a set: upper case, without a CAP_ prefix, however the Docker engine prints the list.
+capabilities() { # CapAdd or CapDrop
+  docker inspect "$node" --format "{{json .HostConfig.$1}}" \
+    | jq -r '[(. // [])[] | ascii_upcase | ltrimstr("CAP_")] | unique | join(" ")'
+}
+cap_add=$(capabilities CapAdd)
+cap_drop=$(capabilities CapDrop)
+check "the container adds exactly SETUID SETGID CHOWN, and NET_ADMIN BPF SETPCAP for its entrypoint ($cap_add)" \
+  test "$cap_add" = "BPF CHOWN NET_ADMIN SETGID SETPCAP SETUID"
+check "the container drops exactly ALL capabilities ($cap_drop)" test "$cap_drop" = "ALL"
+check "the container is not privileged, with a read-only root and no-new-privileges ($inspected)" \
+  test "$inspected" = "false true [no-new-privileges:true] |"
 launcher_status=$(as_root grep -E '^(Uid|CapInh|CapPrm|CapEff|CapBnd|CapAmb):' /proc/1/status | tr -s '\t' ' ' | tr '\n' ' ')
 check "the launcher (PID 1) is root with exactly SETUID SETGID CHOWN in every set: the entrypoint dropped the rest" \
   test "$launcher_status" = "Uid: 0 0 0 0 CapInh: 0000000000000000 CapPrm: 00000000000000c1 CapEff: 00000000000000c1 CapBnd: 00000000000000c1 CapAmb: 0000000000000000 "
@@ -287,8 +297,47 @@ for port in $bind_ports; do
   call probe-a 20001 /api/bind "port=$port" > "$work/bind-$port.json"
 done
 check "probe-a can bind no inet socket: no port of the range, its own, another plugin's, a free one, any port (0) or one outside the range, listening or only bound, on 0.0.0.0 or 127.0.0.1, with or without SO_REUSEADDR/SO_REUSEPORT (EPERM)" \
-  sh -c "for port in $bind_ports; do jq -e 'length == 8 and all(.[]; startswith(\"DENIED\") and contains(\"Operation not permitted\"))' \"$work/bind-\$port.json\" > /dev/null || exit 1; done"
+  sh -c "for port in $bind_ports; do jq -e 'length == 10 and all(.[]; startswith(\"DENIED\") and contains(\"Operation not permitted\"))' \"$work/bind-\$port.json\" > /dev/null || exit 1; done"
+check "probe-a cannot bind a UDP socket either, to any of those ports (EPERM)" \
+  sh -c "for port in $bind_ports; do jq -e '[to_entries[] | select(.key | endswith(\" UDP\")) | .value] | length == 2 and all(.[]; contains(\"Operation not permitted\"))' \"$work/bind-\$port.json\" > /dev/null || exit 1; done"
 check "probe-a still serves: on the socket the agent holds and hands it as fd 3" running 1
+
+echo "# listen() without bind(): the socket watchdog"
+
+# In the tools container, so the time is measured from the probe's answer to the report that
+# shows it stopped, without a docker exec in between.
+a_restarts=$(placement 1 .restarts)
+in_tools python -c '
+import json, sys, time, urllib.request
+context = urllib.request.urlopen(sys.argv[1], timeout=10).read().decode()
+request = urllib.request.Request("http://es_plugins:20001/api/listen", headers={"X-EpicStaff-Plugin-Context": context})
+listened = json.load(urllib.request.urlopen(request, timeout=30))
+answered = time.monotonic()
+seen = None
+while seen is None and time.monotonic() - answered < 10:
+    report = json.load(urllib.request.urlopen("http://control:8000/lab/reports", timeout=5))
+    placement = next(entry for entry in report["placements"] if entry["placement_id"] == 1)
+    if placement["observed_state"] == "failed":
+        seen = placement
+    else:
+        time.sleep(0.05)
+print(json.dumps({"port": listened["port"], "seconds": round(time.monotonic() - answered, 2),
+                  "state": seen and seen["observed_state"], "last_error": seen and seen["last_error"]}))
+' "http://control:8000/lab/context?plugin=probe-a&path=/api/listen" > "$work/listen.json" || true
+check "probe-a listening on a port the kernel picked, without bind(), is stopped by the socket watchdog within 2 s: $(cat "$work/listen.json")" \
+  jq -e '. as $seen | .state == "failed" and .seconds <= 2
+    and (.last_error | startswith("it listened on TCP port \($seen.port) of its own"))' "$work/listen.json"
+check "the agent logged why it stopped probe-a" \
+  sh -c "docker logs $node 2>&1 | grep -q 'plugins.socket_watchdog.stopped plugin=probe-a uid=20001 listening_port='"
+sleep 5
+check "it stays stopped, with no restart, until it is restarted" \
+  test "$(placement 1 '.observed_state + " " + (.restarts | tostring) + " " + (.pid | tostring)')" = "failed $a_restarts null"
+change 1 '{"restart_generation": 1}'
+if wait_for 60 field_is 1 .applied_restart_generation 1 && wait_for 90 running 1; then
+  pass "a restart (a new restart generation) runs it again"
+else
+  fail "probe-a after a restart: $(placement 1 '[.observed_state, .last_error] | tostring')"
+fi
 
 echo "# connection limits: each plugin UID's open connections and new ones a second"
 
@@ -356,8 +405,8 @@ if wait_for 90 field_is 1 .observed_state failed; then
   check "it is not restarted (still failed, no new restart after a measurement and more)" \
     test "$(placement 1 '.observed_state + " " + (.restarts | tostring)')" = "failed $a_restarts"
   check "probe-b was not touched (same pid)" test "$(placement 2 .pid)" = "$b_pid"
-  change 1 '{"restart_generation": 1}'
-  if wait_for 60 field_is 1 .applied_restart_generation 1 && wait_for 90 field_is 1 .observed_state failed; then
+  change 1 '{"restart_generation": 2}'
+  if wait_for 60 field_is 1 .applied_restart_generation 2 && wait_for 90 field_is 1 .observed_state failed; then
     check "restarted with its files still there, it is stopped again at the next measurement" \
       test "$(placement 1 .last_error)" = "uses 100 MB of disk, more than its limit of 64 MB"
   else
@@ -536,6 +585,8 @@ if docker exec -i --user 10000:10000 -e PLUGINS_DB_ADMIN_PASSWORD -e PLUGINS_DB_
     jq -e '.rows_after_the_change == 100 and .rows_after_the_restore == 300
       and .restore.steps == ["verify","backup","close","recreate","restore","settings","assert"]
       and .restore.ledger == ["001_schema.sql"] and (.restore.pre_restore | endswith("-u1-pre_restore.dump"))' "$work/backup.json"
+  check "settings the owner stored for itself (local_preload_libraries naming a missing library, exit_on_error) stopped neither the next migration, the backup nor the restore, and are gone: $(jq -c .owner_settings "$work/backup.json")" \
+    jq -e '.owner_settings_before == ["exit_on_error=on", "local_preload_libraries=missing_library"] and .owner_settings == []' "$work/backup.json"
 else
   fail "the backup and restore did not run: $(tail -n 5 "$work/backup.err")"
 fi

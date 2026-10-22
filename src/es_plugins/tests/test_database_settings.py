@@ -3,8 +3,11 @@
 import pytest
 from psycopg import sql
 
+from es_plugins.database.backup_store import SettingEntry
 from es_plugins.database.database_settings import (
+    MAX_SETTING_NAME_LENGTH,
     DatabaseSetting,
+    read_database_settings,
     setting_statement,
     split_list_setting,
 )
@@ -61,3 +64,28 @@ def test_a_name_that_is_not_a_setting_name_is_skipped(name):
 
 def test_a_list_setting_that_cannot_be_split_is_skipped():
     assert setting_statement(sql.Identifier("plugin_weather"), DatabaseSetting("search_path", '"open')) is None
+
+
+class _Rows:
+    """An admin session that answers the settings query with `entries`."""
+
+    def __init__(self, entries):
+        self._entries = entries
+
+    async def execute(self, query, parameters):
+        return self
+
+    async def fetchall(self):
+        return [(entry,) for entry in self._entries]
+
+
+async def test_a_name_longer_than_a_backup_keeps_is_skipped_and_counted():
+    long_name = "a" * (MAX_SETTING_NAME_LENGTH + 1)
+    entries = [f"{long_name}=1", f"{'b' * MAX_SETTING_NAME_LENGTH}=2", "work_mem=8MB"]
+
+    read = await read_database_settings(_Rows(entries), "plugin_weather")
+
+    assert [setting.name for setting in read.settings] == ["b" * MAX_SETTING_NAME_LENGTH, "work_mem"]
+    assert read.skipped == 1
+    # Whatever is read fits a backup's metadata.
+    assert [SettingEntry(name=setting.name, value=setting.value) for setting in read.settings]

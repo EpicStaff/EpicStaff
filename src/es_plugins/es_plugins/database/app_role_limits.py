@@ -15,6 +15,8 @@ import psycopg
 from psycopg import sql
 from src.shared.models.plugin_nodes import DesiredDatabase
 
+from es_plugins.database.database_attributes import reset_role_settings
+
 APP_ROLE_SETTINGS: dict[str, Callable[[DesiredDatabase], str]] = {
     "statement_timeout": lambda desired: f"{desired.statement_timeout_seconds}s",
 }
@@ -87,15 +89,7 @@ async def apply_app_limits(admin: psycopg.AsyncConnection, desired: DesiredDatab
                 app, sql.Literal(desired.connection_limit)
             )
         )
-        await admin.execute(sql.SQL("ALTER ROLE {} RESET ALL").format(app))
-        cursor = await admin.execute(_APP_ROLE_SETTING_ROWS, (desired.app_role,))
-        for database_oid, database_name, _ in await cursor.fetchall():
-            if database_oid != 0 and database_name is not None:
-                await admin.execute(
-                    sql.SQL("ALTER ROLE {} IN DATABASE {} RESET ALL").format(
-                        app, sql.Identifier(database_name)
-                    )
-                )
+        await reset_role_settings(admin, desired.app_role)
         for name, value in app_role_settings(desired).items():
             await admin.execute(
                 sql.SQL("ALTER ROLE {} SET {} = {}").format(

@@ -216,6 +216,21 @@ class PluginHasNoBackendError(CustomAPIExeption):
     default_code = "plugin_has_no_backend"
 
 
+class PluginDevelopmentModeOffError(CustomAPIExeption):
+    status_code = 409
+    default_detail = "Plugin development mode is off on this deployment."
+    default_code = "plugin_development_mode_off"
+
+
+class InvalidDevelopmentPortsError(_ProblemListError):
+    """Development ports out of range, equal to the development API port, or for a part the
+    plugin's package does not have; `loc` is `backend_port`, `spa_port` or `non_field_errors`."""
+
+    status_code = 400
+    default_detail = "The development ports are invalid."
+    default_code = "invalid"
+
+
 class InvalidPluginSettingsError(_ProblemListError):
     status_code = 400
     default_detail = "The plugin settings are invalid."

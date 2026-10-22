@@ -722,10 +722,12 @@ class PlacementReport(_NodeContractModel):
     restore: RestoreReport | None = None
     """Set while the desired placement has a restore."""
 
-    backups: Annotated[list[BackupFileReport], Field(max_length=MAX_BACKUPS_PER_PLACEMENT)] = Field(
-        default_factory=list
-    )
-    """Every complete backup the node holds for the plugin, newest first."""
+    backups: (
+        Annotated[list[BackupFileReport], Field(max_length=MAX_BACKUPS_PER_PLACEMENT)] | None
+    ) = None
+    """Every complete backup the node holds for the plugin, newest first: the whole inventory,
+    so EpicStaff marks a recorded backup it does not list deleted. None when the node could not
+    read its backups, which marks none."""
 
 
 class RemovalReport(_NodeContractModel):

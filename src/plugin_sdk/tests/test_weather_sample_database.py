@@ -898,7 +898,7 @@ def test_adds_in_one_organization_take_turns_for_the_next_position(plugin_databa
         async def add_in_progress():
             # Another request's add: it holds the organization's lock, and wrote position 1.
             async with await psycopg.AsyncConnection.connect(plugin_database.url) as holder, org_transaction(holder, ACME["id"]):
-                await holder.execute("SELECT pg_advisory_xact_lock(%s)", (ACME["id"],))
+                await holder.execute(weather_modules.places.POSITION_LOCK, (ACME["id"],))
                 await holder.execute(
                     "INSERT INTO weather.saved_places (org_id, name, country, latitude, longitude, created_by, position)"
                     " VALUES (%s, 'Faro', 'Portugal', 37.02, -7.93, 42, 1)",

@@ -23,7 +23,8 @@ An installed plugin takes only a newer version. EpicStaff refuses an upload, and
 a version that is not newer than the plugin's latest approved version: the version being
 installed by an open upgrade, else the installed one. That refuses the same version, an older
 one, and one that differs only in build metadata, with `409 plugin_version_not_newer`. There
-are no downgrades. Uploading a newer version replaces a newer one still waiting for review.
+are no downgrades. Uploading a newer version replaces any package of the plugin still waiting
+for review.
 
 ## What a new version may not change
 
@@ -31,9 +32,12 @@ Checked at upload, before anything is stored, and again at approval:
 
 | Change | Refused with | `loc` |
 |---|---|---|
-| Dropping the backend the installed version has | `409 plugin_upgrade_unavailable` | `manifest.backend` |
-| Dropping the database the installed version has | `409 plugin_upgrade_unavailable` | `manifest.database` |
+| Dropping the backend the installed version has, or that the target of a failed upgrade added | `409 plugin_upgrade_unavailable` | `manifest.backend` |
+| Dropping the database the installed version has, or that the target of a failed upgrade added | `409 plugin_upgrade_unavailable` | `manifest.database` |
 | Changing a migration file that is already applied: a file with the name of one of the latest approved package's files, or of an entry in the database's migration ledger, but other content | `409 plugin_upgrade_unavailable` | `package.database/migrations/<name>` |
+
+A version that takes the place of a failed upgrade's target is checked against both the
+running version and that target.
 
 A new version may leave out a migration file it no longer needs: the migration runner ignores
 ledger entries it has no file for. Add a new file for every change instead

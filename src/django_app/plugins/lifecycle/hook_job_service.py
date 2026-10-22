@@ -116,7 +116,7 @@ class InstallRules:
         grant = _grant_with_plugin(job)
         if grant is not None and grant.state == GrantState.GRANTING:
             if succeeded:
-                grant.installed_version = job.package.version
+                grant.installed_version = job.package_version
                 grant.last_hook_error = None
                 settle_grant(grant)
             else:
@@ -166,7 +166,7 @@ class UpgradeRules:
         if succeeded:
             _close(job, HookJobState.SUCCEEDED, None, now)
             if grant is not None and grant.state == GrantState.UPGRADING:
-                grant.installed_version = job.package.version
+                grant.installed_version = job.package_version
                 grant.last_hook_error = None
                 settle_grant(grant)
                 grant.save(update_fields=[*SETTLED_FIELDS, "last_hook_error"])
@@ -394,6 +394,7 @@ class HookJobService:
             # The call is made to the version running now, whichever version the job was
             # created for: an organization skips the versions it did not run.
             package = plugin.current_package
+            job.package_version = package.version
             if job.kind != HookJobKind.ORG_REMOVED:
                 job.package = package
                 job.timeout_seconds = hook_timeout_seconds(package.parsed_manifest, job.kind)
@@ -410,6 +411,7 @@ class HookJobService:
                     "first_attempt_at",
                     "next_attempt_at",
                     "package",
+                    "package_version",
                     "timeout_seconds",
                     "previous_version",
                     "deadline_at",

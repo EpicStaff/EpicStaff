@@ -24,8 +24,11 @@ class PluginUpgrade(models.Model):
     the target, and is stopped only once the node asks for `maintenance`. `failed_at` and
     `last_error` are set when the node reports a failure, which leaves the upgrade in its
     stage until a Retry, a newer version or a Cancel. `backup` is the backup taken before this
-    upgrade's first migration; `backup_required` says one is needed. The versions are kept as
-    text so the history outlives the packages, which are deleted once the upgrade is over.
+    upgrade's first migration; `backup_required` says one is needed. `ledger_at_migrations` is
+    the database's ledger (`{name, sha256}` each) as EpicStaff knew it when the node first
+    asked to run the migrations: what the database held before any migration of the upgrade,
+    which `database_changed` compares with. The versions are kept as text so the history
+    outlives the packages, which are deleted once the upgrade is over.
     """
 
     plugin = models.ForeignKey(Plugin, on_delete=models.CASCADE, related_name="upgrades")
@@ -58,6 +61,8 @@ class PluginUpgrade(models.Model):
     started_at = models.DateTimeField(default=timezone.now)
     maintenance_started_at = models.DateTimeField(null=True, blank=True)
     migrations_started_at = models.DateTimeField(null=True, blank=True)
+    # None until the first `advance` to migrations, and for upgrades opened before it was kept.
+    ledger_at_migrations = models.JSONField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1,4 +1,4 @@
-"""The seccomp filter every plugin process runs under: no System V IPC object, made or opened.
+"""The seccomp filter every plugin process runs under: no System V IPC object, and no io_uring.
 
 System V shared memory, message queues and semaphores live in the container's IPC namespace,
 which every plugin shares, and outlive the process that made them: one plugin could pass data to
@@ -6,6 +6,11 @@ another through them, or hand one to another plugin's UID and keep it attached s
 removal could never delete it. A plugin needs none of them. So `shmget`, `msgget` and `semget`
 answer EPERM, and so does every system call of another ABI than the node's own (32-bit and x32
 calls, which reach the same objects through other numbers).
+
+`io_uring_setup`, `io_uring_enter` and `io_uring_register` answer EPERM too: io_uring runs
+socket operations (socket, connect, bind, listen) in the kernel on a process's behalf, where no
+seccomp filter sees them, and a plugin's Python needs none of it. Docker's own default profile
+refuses them only from some versions on; this filter does whatever Docker the host runs.
 
 It is a classic BPF program of a dozen instructions, built here for the node's architecture, so
 no seccomp library is needed. The spawn sequence installs it after `PR_SET_NO_NEW_PRIVS`, the one
@@ -36,10 +41,12 @@ class _Architecture(NamedTuple):
     has_x32: bool
 
 
-# The audit architecture of each ABI, and its numbers for shmget, msgget and semget.
+# io_uring_setup, io_uring_enter and io_uring_register: the same numbers on both architectures.
+_IO_URING = (425, 426, 427)
+# The audit architecture of each ABI, and its numbers for shmget, msgget and semget, then io_uring.
 ARCHITECTURES = {
-    "x86_64": _Architecture(0xC000003E, (29, 68, 64), has_x32=True),
-    "aarch64": _Architecture(0xC00000B7, (194, 186, 190), has_x32=False),
+    "x86_64": _Architecture(0xC000003E, (29, 68, 64, *_IO_URING), has_x32=True),
+    "aarch64": _Architecture(0xC00000B7, (194, 186, 190, *_IO_URING), has_x32=False),
 }
 
 

@@ -5,11 +5,18 @@ import re
 from datetime import timedelta
 
 import pytest
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 from plugins.identity.service_account_keys import ServiceAccountKeyService
 from plugins.lifecycle.grant_service import PluginGrantService
-from plugins.models import GrantState, PluginGrant, PluginServiceAccount, PluginServiceAccountKey
+from plugins.lifecycle.suspension_service import PluginSuspensionService
+from plugins.models import (
+    GrantState,
+    PluginGrant,
+    PluginServiceAccount,
+    PluginServiceAccountKey,
+    ServiceAccountKeyPurpose,
+)
 from rbac.models import Organization
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -284,3 +291,181 @@ def test_a_service_account_key_is_no_node_key(acme_key, acme):
 
     assert response.status_code == 401
     assert response.json()["code"] == "node_not_authenticated"
+
+
+
+# ---- development keys: only through the development API listener, only in development mode ----
+
+DESIRED_STATE_URL = "/api/plugin-nodes/self/desired-state/"
+
+
+def _development_key(plugin, organization) -> str:
+    minted = ServiceAccountKeyService().mint_development_keys(plugin)
+    return next(key.raw_key for key in minted if key.service_account.grant.org_id == organization.pk)
+
+
+def _through_development_listener(raw_key, organization, value="1"):
+    return service_account_client(raw_key, organization, development_listener=value)
+
+
+@pytest.fixture
+def development_key(weather, acme_key, acme):
+    return _development_key(weather, acme)
+
+
+def _refusals(log_messages):
+    return [line for line in log_messages if line.startswith("plugins.service_account.refused")]
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_development_key_authenticates_through_the_development_listener_in_its_organization(development_key, acme):
+    response = _through_development_listener(development_key, acme).get(ME_URL)
+
+    assert response.status_code == 200
+    assert response.json()["organization"]["id"] == acme.pk
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_development_key_through_the_internal_listener_is_refused(development_key, acme, log_messages):
+    _refused(service_account_client(development_key, acme).get(ME_URL))
+
+    assert _refusals(log_messages) == ["plugins.service_account.refused plugin=weather reason=wrong_listener"]
+
+
+@pytest.mark.usefixtures("development_mode")
+@pytest.mark.parametrize("value", ["0", "true", ""], ids=["zero", "true", "empty"])
+def test_only_the_development_listener_s_own_value_lets_a_development_key_in(development_key, acme, value):
+    _refused(_through_development_listener(development_key, acme, value).get(ME_URL))
+
+
+def test_a_development_key_is_refused_while_the_mode_is_off(development_key, acme, log_messages):
+    _refused(_through_development_listener(development_key, acme).get(ME_URL))
+
+    assert _refusals(log_messages) == ["plugins.service_account.refused plugin=weather reason=development_mode_off"]
+
+
+def test_the_mode_is_read_on_every_request(development_key, acme, settings):
+    settings.PLUGINS_DEV_MODE = True
+    assert _through_development_listener(development_key, acme).get(ME_URL).status_code == 200
+
+    settings.PLUGINS_DEV_MODE = False
+
+    _refused(_through_development_listener(development_key, acme).get(ME_URL))
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_development_key_still_needs_the_network_secret(development_key, acme):
+    client = service_account_client(development_key, acme, network_secret=None, development_listener="1")
+
+    _refused(client.get(ME_URL))
+
+
+@pytest.mark.usefixtures("development_mode")
+@pytest.mark.parametrize("value", ["1", "0"])
+def test_a_node_purpose_key_is_refused_on_the_development_listener(acme_key, acme, value, log_messages):
+    _refused(_through_development_listener(acme_key, acme, value).get(ME_URL))
+
+    assert _refusals(log_messages) == ["plugins.service_account.refused plugin=weather reason=wrong_listener"]
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_node_key_is_refused_on_the_development_listener(plugin_node, service_account_platform):
+    client = APIClient()
+    client.credentials(
+        HTTP_AUTHORIZATION=f"PluginNodeKey {NODE_KEY}",
+        HTTP_X_PLUGIN_NETWORK_SECRET=GATEWAY_SECRET,
+        HTTP_X_PLUGIN_DEVELOPMENT_LISTENER="1",
+    )
+
+    response = client.get(DESIRED_STATE_URL)
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "node_not_authenticated"
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_revoked_development_key_is_refused_as_revoked_before_the_listener_is_checked(
+    development_key, acme, log_messages
+):
+    PluginServiceAccountKey.objects.filter(purpose=ServiceAccountKeyPurpose.DEVELOPMENT).update(revoked_at=timezone.now())
+
+    _refused(service_account_client(development_key, acme).get(ME_URL))
+
+    assert _refusals(log_messages) == ["plugins.service_account.refused plugin=weather reason=revoked"]
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_development_key_of_a_grant_that_holds_no_key_is_refused(development_key, acme):
+    PluginGrant.objects.filter(org=acme).update(state=GrantState.INSTALL_FAILED)
+
+    _refused(_through_development_listener(development_key, acme).get(ME_URL))
+
+
+def test_node_minting_never_touches_development_keys(weather, acme_key, acme):
+    development_key = _development_key(weather, acme)
+    stored = PluginServiceAccountKey.objects.get(purpose=ServiceAccountKeyPurpose.DEVELOPMENT)
+
+    for _ in range(3):
+        ServiceAccountKeyService().mint_for_plugin(weather)
+
+    stored.refresh_from_db()
+    assert (stored.expires_at, stored.revoked_at) == (None, None)
+    assert stored.key_hash == hashlib.sha256(development_key.encode()).hexdigest()
+
+
+def test_development_minting_never_touches_node_keys(weather, acme_key, acme):
+    node_key = PluginServiceAccountKey.objects.get(purpose=ServiceAccountKeyPurpose.NODE)
+
+    _development_key(weather, acme)
+    _development_key(weather, acme)
+
+    node_key.refresh_from_db()
+    assert (node_key.expires_at, node_key.revoked_at) == (None, None)
+    assert service_account_client(acme_key, acme).get(ME_URL).status_code == 200
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_new_development_key_replaces_the_previous_one_at_once(weather, development_key, acme):
+    newer = _development_key(weather, acme)
+
+    _refused(_through_development_listener(development_key, acme).get(ME_URL))
+    assert _through_development_listener(newer, acme).get(ME_URL).status_code == 200
+
+
+def test_development_keys_are_minted_for_key_holding_grants_in_a_fixed_number_of_queries(
+    weather, superadmin, django_assert_num_queries
+):
+    organizations = [Organization.objects.create(name=f"development-{index}") for index in range(4)]
+    for organization in organizations:
+        PluginGrantService().grant(weather.identifier, organization.pk, superadmin)
+    PluginGrant.objects.filter(org=organizations[3]).update(state=GrantState.SUSPENDED)
+    ServiceAccountKeyService().mint_development_keys(weather)
+
+    with django_assert_num_queries(4 + 2):  # four, inside a savepoint pair
+        minted = ServiceAccountKeyService().mint_development_keys(weather)
+
+    assert sorted(key.service_account.grant.org_id for key in minted) == sorted(org.pk for org in organizations[:3])
+    assert PluginServiceAccountKey.objects.filter(purpose=ServiceAccountKeyPurpose.DEVELOPMENT, revoked_at__isnull=True).count() == 3
+
+
+def test_an_account_has_one_current_key_per_purpose(weather, acme_key, acme):
+    _development_key(weather, acme)
+    account = PluginServiceAccount.objects.get(grant__org=acme)
+
+    for purpose in (ServiceAccountKeyPurpose.NODE, ServiceAccountKeyPurpose.DEVELOPMENT):
+        with pytest.raises(IntegrityError), transaction.atomic():
+            PluginServiceAccountKey.objects.create(
+                service_account=account, purpose=purpose, prefix="esp-xxxxxxxx", key_hash=hashlib.sha256(purpose.encode()).hexdigest()
+            )
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_suspending_revokes_development_keys_and_resuming_issues_none(weather, development_key, acme, superadmin):
+    grant = PluginGrant.objects.get(plugin=weather, org=acme)
+
+    PluginSuspensionService().suspend("weather", grant.pk, superadmin)
+
+    assert PluginServiceAccountKey.objects.get(purpose=ServiceAccountKeyPurpose.DEVELOPMENT).revoked_at is not None
+    PluginSuspensionService().resume("weather", grant.pk, superadmin)
+    assert not PluginServiceAccountKey.objects.filter(purpose=ServiceAccountKeyPurpose.DEVELOPMENT, revoked_at__isnull=True).exists()
+    _refused(_through_development_listener(development_key, acme).get(ME_URL))

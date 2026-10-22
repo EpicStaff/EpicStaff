@@ -56,7 +56,16 @@
         @if (entryOf(row); as entry) {
             <div class="activity__details">
                 @if (entry.requestLine) {
-                    <code class="activity__request">{{ entry.requestLine }}</code>
+                    <span class="activity__request-line">
+                        <code class="activity__request">{{ entry.requestLine }}</code>
+                        @if (entry.development) {
+                            <app-plugin-badge
+                                class="activity__development"
+                                label="Development"
+                                tone="warning"
+                            />
+                        }
+                    </span>
                 }
                 @if (entry.target) {
                     <span class="activity__text">{{ entry.target }}</span>

@@ -1,4 +1,5 @@
 import io
+import socket
 from importlib import import_module, reload
 
 import pytest
@@ -10,6 +11,8 @@ from django_redis import get_redis_connection
 from loguru import logger as loguru_logger
 from epicstaff_plugin.signing import generate_secret_key
 from plugins.access.declared_access import package_declared_access_bits
+from plugins.development.development_host import development_host
+from plugins.development.development_targets import page_decision_cache
 from plugins.gateway.gateway_service import snapshot_cache
 from plugins.gateway.gateway_service import GatewayDecisionService
 from plugins.identity.service_account_keys import ServiceAccountKeyService
@@ -92,15 +95,20 @@ def package_store(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def fresh_process_caches():
-    """Forget the gateway's plugin snapshots, the cached signing key and declared access bits
-    between tests, and any request scope a view called without the middleware left behind."""
+    """Forget the gateway's plugin snapshots and page decisions, the development host's
+    address, the cached signing key and declared access bits between tests, and any request
+    scope a view called without the middleware left behind."""
     snapshot_cache.clear()
+    page_decision_cache.clear()
+    development_host.forget()
     cached_signing_key.clear()
     package_declared_access_bits.clear()
     token = request_scope._current_scope.set(None)
     yield
     request_scope._current_scope.reset(token)
     snapshot_cache.clear()
+    page_decision_cache.clear()
+    development_host.forget()
     cached_signing_key.clear()
     package_declared_access_bits.clear()
 
@@ -355,11 +363,17 @@ WEATHER_ACCESS = [
 ]
 
 
-def service_account_client(raw_key, organization=None, *, on_behalf_of=None, network_secret=GATEWAY_SECRET):
-    """An API client calling as a plugin backend does: its key, through the internal listener."""
+def service_account_client(
+    raw_key, organization=None, *, on_behalf_of=None, network_secret=GATEWAY_SECRET, development_listener=None
+):
+    """An API client calling as a plugin backend does: its key, through the internal listener,
+    or through the development API listener when `development_listener` is that listener's
+    header value."""
     headers = {"HTTP_AUTHORIZATION": f"PluginKey {raw_key}"}
     if network_secret is not None:
         headers["HTTP_X_PLUGIN_NETWORK_SECRET"] = network_secret
+    if development_listener is not None:
+        headers["HTTP_X_PLUGIN_DEVELOPMENT_LISTENER"] = development_listener
     if organization is not None:
         headers["HTTP_X_ORGANIZATION_ID"] = str(organization.pk)
     if on_behalf_of is not None:
@@ -406,3 +420,50 @@ def weather_client(weather_backend, service_account_key, acme):
     """Weather 0.4.0's service account in Acme, as a client without on-behalf-of."""
     plugin = weather_backend()
     return service_account_client(service_account_key(plugin, acme), acme)
+
+
+DEVELOPMENT_HOST_ADDRESS = "192.168.65.254"
+DEVELOPMENT_API_PORT = 8082
+
+
+@pytest.fixture
+def development_mode(settings):
+    """Plugin development mode on, with the development API listener on its default port.
+
+    Runtime paths read only the flag; the start-up check, not these tests, guards DEBUG and
+    the host names.
+    """
+    settings.PLUGINS_DEV_MODE = True
+    settings.PLUGINS_DEV_API_PORT = str(DEVELOPMENT_API_PORT)
+
+
+class FakeResolver:
+    """Stands in for `socket.getaddrinfo` behind the development host, and records each call."""
+
+    def __init__(self, address: str | None):
+        self.address = address
+        self.calls: list[tuple] = []
+
+    def __call__(self, host, port, family=0, type=0, *args):
+        self.calls.append((host, port, family, type))
+        if self.address is None:
+            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (self.address, 0))]
+
+
+@pytest.fixture
+def development_host_resolves(monkeypatch):
+    """`host.docker.internal` resolves to `DEVELOPMENT_HOST_ADDRESS`; the resolver is returned."""
+    resolver = FakeResolver(DEVELOPMENT_HOST_ADDRESS)
+    monkeypatch.setattr(development_host, "_resolver", resolver)
+    development_host.forget()
+    return resolver
+
+
+@pytest.fixture
+def development_host_unresolved(monkeypatch):
+    """`host.docker.internal` does not resolve, as without the development compose file."""
+    resolver = FakeResolver(None)
+    monkeypatch.setattr(development_host, "_resolver", resolver)
+    development_host.forget()
+    return resolver

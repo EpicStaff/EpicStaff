@@ -109,7 +109,11 @@ _LIST = (
 )
 
 # The organization's highest position plus one. The advisory lock in the same transaction
-# makes two adds in one organization take turns, so they never read the same highest position.
+# (`POSITION_LOCK`, keyed by the organization) makes two adds in one organization take turns,
+# so they never read the same highest position. That holds under read committed, the
+# connections' isolation: each statement reads a fresh snapshot, taken after the lock was
+# granted. Under repeatable read the transaction's snapshot would predate the lock, and two
+# adds could still read the same highest position.
 _ADD = (
     "INSERT INTO weather.saved_places"
     " (org_id, name, admin1, country, latitude, longitude, created_by, position)"
@@ -117,6 +121,12 @@ _ADD = (
     " FROM weather.saved_places"
     " ON CONFLICT (org_id, name, admin1, country) DO NOTHING"
     f" RETURNING {_COLUMNS}"
+)
+
+# Namespaced, so the key never collides with another advisory lock of this database's roles.
+# Public: the sample's tests take the same lock.
+POSITION_LOCK = (
+    "SELECT pg_advisory_xact_lock(hashtextextended('weather.saved_places.position', %s::bigint))"
 )
 
 # Writes each temperature for its place, if the place is still there. FOR KEY SHARE waits for
@@ -163,7 +173,7 @@ class SavedPlaces:
             AlreadySaved: The organization has a place with this name, region and country.
         """
         async with self._database.transaction(org_id) as connection:
-            await connection.execute("SELECT pg_advisory_xact_lock(%s)", (org_id,))
+            await connection.execute(POSITION_LOCK, (org_id,))
             cursor = await connection.execute(
                 _ADD,
                 (

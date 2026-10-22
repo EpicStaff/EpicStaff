@@ -1,3 +1,4 @@
+import fnmatch
 import importlib
 import json
 import re
@@ -9,29 +10,99 @@ from epicstaff_plugin.contracts.hook_api import HOOK_PATHS
 
 DOCS = REPO_ROOT / "docs" / "plugins"
 TUTORIAL = DOCS / "tutorial" / "build-your-first-plugin.md"
-PAGES_NAMING_THE_SAMPLE = [
-    TUTORIAL,
-    DOCS / "how-to" / "install-hook.md",
-    DOCS / "how-to" / "upgrade-hook.md",
-    DOCS / "how-to" / "org-removed-hook.md",
-    DOCS / "how-to" / "call-epicstaff-from-the-backend.md",
-    DOCS / "how-to" / "database-migrations.md",
-    DOCS / "how-to" / "external-callbacks.md",
-    DOCS / "reference" / "python-sdk.md",
-]
-SAMPLE_MANIFEST = REPO_ROOT / "plugin-samples" / "weather" / "manifest.json"
+DOC_PAGES = sorted(DOCS.rglob("*.md"))
+SAMPLE = REPO_ROOT / "plugin-samples" / "weather"
+SAMPLE_README = SAMPLE / "README.md"
+SAMPLE_MANIFEST = SAMPLE / "manifest.json"
 SAMPLE_PATH = re.compile(r"`(plugin-samples/weather[^`\s]*)`")
+# The sample README names the sample's own files relative to the sample.
+SAMPLE_RELATIVE_PATH = re.compile(r"`((?:backend|database|spa)/[^`\s]*|manifest\.json|icon\.svg)`")
+# What the docs tell an author to create or build, which no checkout has.
+AUTHOR_MADE_NAMES = (".venv", "dist", "node_modules", "*-development-runtime.json")
 ROUTE = re.compile(r"^\| `(GET|POST|PUT|PATCH|DELETE) (/api/[^` ]+)`", re.MULTILINE)
 JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
+NPM_SCRIPT = re.compile(r"npm --prefix (?:<SRC>/)?([\w./-]+) (?:run ([\w:.-]+)|(test)\b)")
+MAKE_TEST_FILES = re.compile(r"make (?:-C \S+ )?([\w-]+)-tests ARGS=\"([^\"]*)\"")
+TEST_FILE = re.compile(r"\btests/[\w/.-]+\.py")
+# `make <service>-tests` runs in `src/<service>`; django_app's target is named `django-tests`.
+TEST_SERVICE_DIRECTORIES = {"django": "django_app"}
 
 
-@pytest.mark.parametrize("page", PAGES_NAMING_THE_SAMPLE, ids=lambda page: page.name)
+def is_author_made(path: str) -> bool:
+    return any(
+        fnmatch.fnmatch(part, name) for part in path.split("/") for name in AUTHOR_MADE_NAMES
+    )
+
+
+def page_id(page):
+    return str(page.relative_to(REPO_ROOT))
+
+
+@pytest.mark.parametrize("page", [*DOC_PAGES, SAMPLE_README], ids=page_id)
 def test_every_sample_file_a_page_names_exists(page):
     named = SAMPLE_PATH.findall(page.read_text())
 
-    missing = [path for path in named if not (REPO_ROOT / path).exists()]
+    missing = [path for path in named if not is_author_made(path) and not (REPO_ROOT / path).exists()]
 
     assert missing == []
+
+
+def test_every_file_the_sample_readme_names_exists():
+    named = SAMPLE_RELATIVE_PATH.findall(SAMPLE_README.read_text())
+
+    missing = [path for path in named if not is_author_made(path) and not (SAMPLE / path).exists()]
+
+    assert named
+    assert missing == []
+
+
+@pytest.mark.parametrize("page", [*DOC_PAGES, SAMPLE_README], ids=page_id)
+def test_every_npm_script_a_page_runs_exists(page):
+    missing = []
+    for directory, script, test in NPM_SCRIPT.findall(page.read_text()):
+        package = REPO_ROOT / directory / "package.json"
+        name = script or test
+        if not package.is_file():
+            missing.append(f"{directory}: no package.json")
+        elif name not in json.loads(package.read_text()).get("scripts", {}):
+            missing.append(f"{directory}: no script {name!r}")
+
+    assert missing == []
+
+
+@pytest.mark.parametrize("page", [*DOC_PAGES, SAMPLE_README], ids=page_id)
+def test_every_test_file_a_page_runs_exists(page):
+    missing = []
+    for target, arguments in MAKE_TEST_FILES.findall(page.read_text()):
+        service = REPO_ROOT / "src" / TEST_SERVICE_DIRECTORIES.get(target, target)
+        missing += [
+            f"make {target}-tests: {path}"
+            for path in TEST_FILE.findall(arguments)
+            if not (service / path).is_file()
+        ]
+
+    assert missing == []
+
+
+def test_the_command_checks_read_the_forms_the_docs_use():
+    text = (
+        'npm --prefix plugin-samples/weather/spa run dev\n'
+        'npm --prefix plugin-sdk test\n'
+        'make plugin_sdk-tests ARGS="-m postgres tests/test_weather_sample_database.py"\n'
+        'make -C <SRC> django-tests ARGS="tests/plugins_tests/test_error_codes_doc.py -q"\n'
+    )
+
+    assert NPM_SCRIPT.findall(text) == [
+        ("plugin-samples/weather/spa", "dev", ""),
+        ("plugin-sdk", "", "test"),
+    ]
+    assert MAKE_TEST_FILES.findall(text) == [
+        ("plugin_sdk", "-m postgres tests/test_weather_sample_database.py"),
+        ("django", "tests/plugins_tests/test_error_codes_doc.py -q"),
+    ]
+    assert is_author_made("plugin-samples/weather/.venv")
+    assert is_author_made("plugin-samples/weather/backend/weather-development-runtime.json")
+    assert not is_author_made("plugin-samples/weather/backend/src")
 
 
 def test_the_tutorial_names_the_sample_files_it_explains():

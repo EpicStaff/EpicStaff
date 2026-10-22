@@ -8,10 +8,15 @@ old password. The token itself
 (signature, expiry, claims) is checked on every request and never cached, so a deactivation,
 password change, role change, membership removal or grant suspension takes effect within 10 s.
 The cache holds the password's HMAC from the token's key, never the password hash.
+
+The key also carries a tag of `GatewayPerson`'s shape (its fields and their types), so an
+entry another release wrote in another shape is never read: during a deploy, old and new
+processes share the cache and each reads only its own entries.
 """
 
+import hashlib
 import hmac
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 
 from django.core.cache import cache
 
@@ -25,14 +30,17 @@ PERSON_CACHE_SECONDS = 10
 class GatewayPerson:
     """What the gateway knows about a token's person, organization and grant.
 
-    `grant_usable` is false once the token's grant is suspended, deleted or re-created, or
-    the plugin stops running; `grant_state` is that grant's state (None once it is gone), so
-    an organization being upgraded gets its own answer. `may_use` is the `plugin_access` rule:
-    an active member of an active organization whose role has `read` on the plugin.
+    `member` is whether the person is still an active member of the token's organization, and
+    that organization active. `grant_usable` is false once the token's grant is suspended,
+    deleted or re-created, or the plugin stops running; `grant_state` is that grant's state
+    (None once it is gone), so an organization being upgraded gets its own answer. `may_use` is
+    the `plugin_access` rule: an active member of an active organization whose role has `read`
+    on the plugin, with the grant usable.
     """
 
     user_active: bool
     password_fingerprint: str
+    member: bool
     grant_usable: bool
     grant_state: str | None
     may_use: bool
@@ -49,6 +57,14 @@ class GatewayPerson:
         )
 
 
+def _shape_tag() -> str:
+    shape = ",".join(f"{field.name}:{field.type}" for field in fields(GatewayPerson))
+    return hashlib.sha256(shape.encode("utf-8")).hexdigest()[:12]
+
+
+PERSON_SHAPE_TAG = _shape_tag()
+
+
 def person_for(claims: PluginLoginClaims) -> GatewayPerson:
     """Return the gateway's view of the token's person, from the cache or built afresh."""
     key = cache_key(claims)
@@ -62,8 +78,8 @@ def person_for(claims: PluginLoginClaims) -> GatewayPerson:
 
 def cache_key(claims: PluginLoginClaims) -> str:
     return (
-        f"plugins:gw:person:{claims.plugin}:{claims.org_id}:{claims.user_id}:{claims.grant_id}"
-        f":{claims.password_fingerprint}"
+        f"plugins:gw:person:{PERSON_SHAPE_TAG}:{claims.plugin}:{claims.org_id}:{claims.user_id}"
+        f":{claims.grant_id}:{claims.password_fingerprint}"
     )
 
 
@@ -78,6 +94,7 @@ def _build(claims: PluginLoginClaims) -> GatewayPerson:
     return GatewayPerson(
         user_active=user is not None and user.is_active,
         password_fingerprint=password_fingerprint(user.password) if user is not None else "",
+        member=facts.membership is not None,
         grant_usable=facts.grant is not None,
         grant_state=facts.grant_state,
         may_use=facts.may_use,

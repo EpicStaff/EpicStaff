@@ -8,9 +8,11 @@ files are there. It never removes a directory.
 """
 
 from django.conf import settings
+from django.db import transaction
 from utils.logger import logger
 
 from plugins.audit import log_spa_repaired
+from plugins.lifecycle.lifecycle_locks import lock_plugin
 from plugins.models import Plugin, PluginState
 from plugins.packages.spa_publisher import SpaPublisher
 
@@ -24,8 +26,9 @@ class SpaStateReconciler:
     def run(self) -> int:
         """Repair every plugin whose flag or `current` is wrong; returns how many repairs.
 
-        One query, whatever the number of plugins. A plugin whose files cannot be repaired is
-        logged and the others go on. Nothing happens while the SPA volume is not mounted.
+        One query, whatever the number of plugins, plus one for each plugin whose files do not
+        match it. A plugin whose files cannot be repaired is logged and the others go on.
+        Nothing happens while the SPA volume is not mounted.
         """
         if not settings.PLUGINS_SPA_ROOT.is_dir():
             return 0
@@ -35,7 +38,8 @@ class SpaStateReconciler:
         )
         for plugin in plugins:
             try:
-                repairs += self._repair(plugin)
+                if self._repairs_needed(plugin):
+                    repairs += self._repair_locked(plugin.identifier)
             except OSError:
                 logger.exception(
                     "Could not repair the published frontend of {identifier}",
@@ -43,23 +47,46 @@ class SpaStateReconciler:
                 )
         return repairs
 
+    def _repair_locked(self, identifier: str) -> int:
+        """Repair one plugin from its row as it is now, read and written under its lock.
+
+        A lifecycle change writes the flag and `current` only after its transaction commits.
+        Holding the plugin's lock while reading the row and writing the files means no change
+        commits in between: one that committed before is read here, and one that commits after
+        writes its own files last. Either way the files end as the latest state says.
+        """
+        with transaction.atomic():
+            plugin = lock_plugin(identifier)
+            if plugin is None:
+                return 0
+            return self._repair(plugin)
+
+    def _repairs_needed(self, plugin: Plugin) -> bool:
+        return self._flag_wrong(plugin) or self._current_wrong(plugin)
+
     def _repair(self, plugin: Plugin) -> int:
         identifier = plugin.identifier
         repairs = 0
-        in_maintenance = plugin.state == PluginState.MAINTENANCE
-        if self._publisher.maintenance_flag_set(identifier) != in_maintenance:
-            self._publisher.set_maintenance(identifier, in_maintenance)
+        if self._flag_wrong(plugin):
+            self._publisher.set_maintenance(identifier, plugin.state == PluginState.MAINTENANCE)
             log_spa_repaired(identifier, "maintenance_flag")
             repairs += 1
-        package = plugin.current_package
-        if (
-            plugin.state in _SERVING_STATES
-            and package is not None
-            and package.spa_file_count > 0
-            and self._publisher.current_version(identifier) != package.version
-            and self._publisher.has_version(identifier, package.version)
-        ):
-            self._publisher.switch_current(identifier, package.version)
+        if self._current_wrong(plugin):
+            self._publisher.switch_current(identifier, plugin.current_package.version)
             log_spa_repaired(identifier, "current")
             repairs += 1
         return repairs
+
+    def _flag_wrong(self, plugin: Plugin) -> bool:
+        in_maintenance = plugin.state == PluginState.MAINTENANCE
+        return self._publisher.maintenance_flag_set(plugin.identifier) != in_maintenance
+
+    def _current_wrong(self, plugin: Plugin) -> bool:
+        package = plugin.current_package
+        return (
+            plugin.state in _SERVING_STATES
+            and package is not None
+            and package.spa_file_count > 0
+            and self._publisher.current_version(plugin.identifier) != package.version
+            and self._publisher.has_version(plugin.identifier, package.version)
+        )

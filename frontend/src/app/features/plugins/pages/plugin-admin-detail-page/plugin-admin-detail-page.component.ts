@@ -18,6 +18,7 @@ import { ToastService } from '../../../../services/notifications';
 import { PluginAdminActivityComponent } from '../../components/plugin-admin-activity/plugin-admin-activity.component';
 import { PluginBadgeComponent } from '../../components/plugin-badge/plugin-badge.component';
 import { PluginDataRemovalsComponent } from '../../components/plugin-data-removals/plugin-data-removals.component';
+import { PluginDevelopmentPanelComponent } from '../../components/plugin-development-panel/plugin-development-panel.component';
 import { PluginGrantsTableComponent } from '../../components/plugin-grants-table/plugin-grants-table.component';
 import { PluginIconComponent } from '../../components/plugin-icon/plugin-icon.component';
 import { PluginLifecycleBannerComponent } from '../../components/plugin-lifecycle-banner/plugin-lifecycle-banner.component';
@@ -39,7 +40,14 @@ import {
 } from '../../utils/plugin-display.util';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
 
-export type PluginDetailTab = 'overview' | 'organizations' | 'settings' | 'limits' | 'runtime' | 'activity';
+export type PluginDetailTab =
+    | 'overview'
+    | 'organizations'
+    | 'settings'
+    | 'limits'
+    | 'runtime'
+    | 'development'
+    | 'activity';
 
 /** The tabs only a plugin whose current package has a backend has. */
 const BACKEND_TABS: readonly PluginDetailTab[] = ['settings', 'limits', 'runtime'];
@@ -71,7 +79,7 @@ const LIFECYCLE_ACTION_BUTTON_TYPES: Readonly<Record<PluginLifecycleAction, Life
 /**
  * `/workspace/plugins/:identifier`: one plugin's approved package, the organizations it is granted to (with the data
  * removals of deleted organizations) and its activity; for a plugin with a backend also its settings, limits and
- * runtime.
+ * runtime; while the deployment runs in plugin development mode, its Development tab.
  *
  * The header's buttons are exactly the plugin's `allowed_actions`: "Uninstall…" and "Delete permanently…" open their
  * previews, "Upgrade to <version>…" the pending package's review, "Restore backup…" the Runtime tab's backups;
@@ -91,6 +99,7 @@ const LIFECYCLE_ACTION_BUTTON_TYPES: Readonly<Record<PluginLifecycleAction, Life
         PluginAdminActivityComponent,
         PluginBadgeComponent,
         PluginDataRemovalsComponent,
+        PluginDevelopmentPanelComponent,
         PluginGrantsTableComponent,
         PluginIconComponent,
         PluginLifecycleBannerComponent,
@@ -115,17 +124,24 @@ export class PluginAdminDetailPageComponent {
         return plugin?.current_package?.contents.has_backend === true || plugin?.open_upgrade?.adds_backend === true;
     });
     private readonly selectedTab = signal<PluginDetailTab>('overview');
-    /** The selected tab, or Overview when it is a backend tab and the plugin has no backend. */
+    /** The deployment runs in plugin development mode: the Development tab is offered. */
+    protected readonly hasDevelopmentTab = computed(() => this.plugin()?.development_mode === true);
+    /** The selected tab, or Overview when the plugin does not offer it (now). */
     protected readonly tab = computed<PluginDetailTab>(() => {
         const tab = this.selectedTab();
-        return BACKEND_TABS.includes(tab) && !this.hasBackend() ? 'overview' : tab;
+        if (BACKEND_TABS.includes(tab) && !this.hasBackend()) return 'overview';
+        if (tab === 'development' && !this.hasDevelopmentTab()) return 'overview';
+        return tab;
     });
     protected readonly isLoading = signal(true);
     protected readonly loadError = signal<PluginErrorView | null>(null);
     /** Why the last refresh of a plugin already shown failed; cleared by the next answer. */
     protected readonly pollError = signal<string | null>(null);
-    /** "Restore backup…" opened the Runtime tab: it brings its backups into view. Picking a tab clears it. */
-    protected readonly revealBackups = signal(false);
+    /**
+     * Bumped by each "Restore backup…", which opens the Runtime tab and brings its backups into view, again on every
+     * click. Picking a tab resets it.
+     */
+    protected readonly revealBackups = signal(0);
     /** A header action is under way; the header's buttons wait. */
     protected readonly isActing = signal(false);
     protected readonly stateLabel = computed(() => {
@@ -221,7 +237,7 @@ export class PluginAdminDetailPageComponent {
 
     protected selectTab(tab: PluginDetailTab): void {
         this.selectedTab.set(tab);
-        this.revealBackups.set(false);
+        this.revealBackups.set(0);
     }
 
     /**
@@ -342,7 +358,7 @@ export class PluginAdminDetailPageComponent {
     /** The backups live in the Runtime tab; it brings them into view. */
     private showBackups(): void {
         this.selectedTab.set('runtime');
-        this.revealBackups.set(true);
+        this.revealBackups.update((count) => count + 1);
     }
 
     private retryRemoval(plugin: PluginDetail): void {

@@ -22,6 +22,7 @@ from epicstaff_plugin.package_layout import (
     PackageFile,
     layout_problems,
 )
+from epicstaff_plugin.package_source import collect_source
 from package_helpers import contents_for, write_archive
 
 SAMPLE = REPO_ROOT / "plugin-samples" / "weather"
@@ -88,14 +89,8 @@ def test_pack_refuses_migrations_over_the_cap_and_writes_nothing(database_source
 
 
 def _package_files(source, spa):
-    """The files a package of `source` holds, read from disk, without CONTENTS.json."""
-    files = {
-        path.relative_to(source).as_posix(): path.read_bytes()
-        for path in sorted(source.rglob("*"))
-        if path.is_file() and path.name != "requirements.in"
-    }
-    files["spa/index.html"] = (spa / "index.html").read_bytes()
-    return files
+    """The files `pack` puts in a package of `source`, read from disk, without CONTENTS.json."""
+    return {file.path: file.source.read_bytes() for file in collect_source(source, spa).files}
 
 
 def test_validate_refuses_a_package_whose_migrations_are_over_the_cap(database_source, tmp_path, capsys):

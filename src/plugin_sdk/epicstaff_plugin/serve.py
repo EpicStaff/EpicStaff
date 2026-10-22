@@ -13,7 +13,11 @@ Importing the entrypoint module registers the plugin's hook handlers
 On the node the port belongs to the platform: the node binds it, holds it across restarts, and
 passes the listening socket in as the file descriptor `EPICSTAFF_PLUGIN_LISTEN_FD` names, so
 no other process on the node can take the port while the plugin restarts. Without that
-variable (on an author's machine) the runner binds `0.0.0.0:$PORT` itself.
+variable the runner binds `0.0.0.0:$PORT` itself.
+
+`create_app` is the app both the node's runner and `epicstaff-plugin dev` serve; on an author's
+machine, run the backend with `epicstaff-plugin dev`, which serves it on a loopback address
+and reloads it when the source changes.
 """
 
 import errno
@@ -26,6 +30,11 @@ import sys
 from epicstaff_plugin.asgi import ASGIApp
 from epicstaff_plugin.client.epicstaff_client import EpicStaffClient
 from epicstaff_plugin.contracts.manifest import ENTRYPOINT_PATTERN
+from epicstaff_plugin.contracts.runtime import (
+    ENTRYPOINT_ENVIRONMENT_VARIABLE,
+    LISTEN_FD_ENVIRONMENT_VARIABLE,
+    PORT_ENVIRONMENT_VARIABLE,
+)
 from epicstaff_plugin.gateway.asgi_middleware import EpicStaffContextMiddleware
 from epicstaff_plugin.gateway.context_verifier import ContextVerifier
 from epicstaff_plugin.health import HealthCheckMiddleware
@@ -38,9 +47,6 @@ from epicstaff_plugin.runtime.runtime_config import (
     runtime_config,
 )
 
-ENTRYPOINT_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_ENTRYPOINT"
-PORT_ENVIRONMENT_VARIABLE = "PORT"
-LISTEN_FD_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_LISTEN_FD"
 LISTEN_HOST = "0.0.0.0"
 _TCP_FAMILIES = (socket.AF_INET, socket.AF_INET6)
 EXIT_START_FAILED = 1
@@ -73,6 +79,25 @@ def build_app(
             EpicStaffClient(runtime) if epicstaff is None else epicstaff,
         )
     )
+
+
+def create_app() -> ASGIApp:
+    """Return the plugin's app as the node serves it, from this process's environment.
+
+    Reads the runtime file `EPICSTAFF_PLUGIN_RUNTIME_FILE` names and imports the app
+    `EPICSTAFF_PLUGIN_ENTRYPOINT` names, then wraps it with `build_app`. A uvicorn app factory:
+    `epicstaff-plugin dev` serves `epicstaff_plugin.serve:create_app` with `factory=True`, so
+    each reload builds the app anew.
+
+    Raises:
+        RuntimeConfigError: The runtime file is not named, unreadable or invalid.
+        ServeError: The entrypoint is not set, malformed, or does not import.
+    """
+    runtime = runtime_config()
+    entrypoint = os.environ.get(ENTRYPOINT_ENVIRONMENT_VARIABLE)
+    if not entrypoint:
+        raise ServeError(f"{ENTRYPOINT_ENVIRONMENT_VARIABLE} is not set")
+    return build_app(load_entrypoint(entrypoint), runtime)
 
 
 def load_entrypoint(entrypoint: str) -> ASGIApp:
@@ -168,11 +193,7 @@ def _is_listening(probe: socket.socket) -> bool:
 def main() -> int:
     """Start the plugin and serve until stopped; return the exit code if it cannot start."""
     try:
-        runtime = runtime_config()
-        entrypoint = os.environ.get(ENTRYPOINT_ENVIRONMENT_VARIABLE)
-        if not entrypoint:
-            raise ServeError(f"{ENTRYPOINT_ENVIRONMENT_VARIABLE} is not set")
-        app = load_entrypoint(entrypoint)
+        app = create_app()
         listen_fd = inherited_listen_fd()
         # The node's socket is used as it is; `PORT` is then only for information.
         bind = (
@@ -194,7 +215,7 @@ def main() -> int:
         return EXIT_START_FAILED
 
     uvicorn.run(
-        build_app(app, runtime),
+        app,
         **bind,
         workers=1,
         # The gateway is the only proxy in front, and the plugin never needs the client's

@@ -144,29 +144,32 @@ class PluginRestoreService:
         about a restore that is over, changes nothing. Runs in the report's follow-up
         transaction, after the plugin and the upgrade were locked."""
         restore = (
-            PluginDatabaseRestore.objects.select_for_update()
-            .select_related("plugin_database")
+            PluginDatabaseRestore.objects.select_for_update(of=("self",), no_key=True)
             .filter(pk=report.restore_id, upgrade=upgrade, state__in=OPEN_RESTORE_STATES)
             .first()
         )
         if restore is None:
             return
         restore.step = report.step
+        changed = ["state", "step", "updated_at"]
+        if (
+            report.pre_restore_backup is not None
+            and report.pre_restore_backup != restore.pre_restore_file_name
+        ):
+            # Linked now when it is recorded already, else when a report records it.
+            restore.pre_restore_file_name = report.pre_restore_backup
+            restore.pre_restore_backup = PluginDatabaseBackup.objects.filter(
+                plugin_database_id=restore.plugin_database_id, file_name=report.pre_restore_backup
+            ).first()
+            changed += ["pre_restore_file_name", "pre_restore_backup"]
         if report.state == RestoreState.RUNNING:
             restore.state = RestoreState.RUNNING
-            restore.save(update_fields=["state", "step", "updated_at"])
+            restore.save(update_fields=changed)
             return
         restore.state = report.state
         restore.finished_at = now
         recorder = ActivityRecorder()
         if report.state == RestoreState.SUCCEEDED:
-            restore.pre_restore_backup = (
-                PluginDatabaseBackup.objects.filter(
-                    plugin_database=restore.plugin_database, file_name=report.pre_restore_backup
-                ).first()
-                if report.pre_restore_backup
-                else None
-            )
             restore.last_error = None
             upgrade.last_error = RESTORED_MESSAGE.format(file_name=restore.backup_file_name)
             upgrade.save(update_fields=["last_error", "updated_at"])
@@ -176,16 +179,7 @@ class PluginRestoreService:
         else:
             restore.last_error = report.last_error
             recorder.database_restore_failed(plugin.identifier, report.step, report.last_error)
-        restore.save(
-            update_fields=[
-                "state",
-                "step",
-                "finished_at",
-                "pre_restore_backup",
-                "last_error",
-                "updated_at",
-            ]
-        )
+        restore.save(update_fields=[*changed, "finished_at", "last_error"])
         transaction.on_commit(
             partial(
                 log_restore_finished,

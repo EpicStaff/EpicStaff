@@ -10,6 +10,7 @@ and SHA-256, so signing that one file covers the whole package.
 """
 
 import hashlib
+import json
 import re
 import stat
 import zipfile
@@ -23,6 +24,10 @@ from xml.etree import ElementTree
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from epicstaff_plugin.contracts.manifest import MANIFEST_FILE_NAME, PluginManifest, parse_manifest
+from epicstaff_plugin.contracts.runtime import (
+    SERVICE_ACCOUNT_KEY_BODY_PATTERN,
+    SERVICE_ACCOUNT_KEY_PREFIX,
+)
 from epicstaff_plugin.json_documents import canonical_json, load_json_object
 from epicstaff_plugin.paths import path_problem
 from epicstaff_plugin.problems import (
@@ -83,6 +88,21 @@ MAX_ICON_BYTES = 64 * 1024
 MAX_MANIFEST_BYTES = 256 * 1024
 MAX_CONTENTS_BYTES = 16 * 1024 * 1024
 MAX_SIGNATURE_BYTES = 4096
+
+SECRET_SCAN_BYTES = 1024 * 1024
+"""How much of each packaged file `secret_problem` reads: a key or a runtime file sits near the
+start of a file it was pasted or saved into."""
+SECRET_PROBLEM = "holds an EpicStaff key or runtime file; never package it"
+# A key as a whole token: a longer run of key characters is some other identifier.
+_SERVICE_ACCOUNT_KEY = re.compile(
+    rb"(?<![A-Za-z0-9_-])"
+    + re.escape(SERVICE_ACCOUNT_KEY_PREFIX.encode("ascii"))
+    + SERVICE_ACCOUNT_KEY_BODY_PATTERN.encode("ascii")
+    + rb"(?![A-Za-z0-9_-])"
+)
+# The two fields only a runtime file has together; `contracts.runtime.RuntimeFile`.
+_RUNTIME_FILE_FIELDS = ("service_accounts", "secret_settings")
+_UTF8_BYTE_ORDER_MARK = b"\xef\xbb\xbf"
 
 # Files read into memory while the archive streams, with the most each may hold.
 _KEPT_FILE_LIMITS = {
@@ -363,8 +383,57 @@ def layout_problems(
                 )
             )
     if manifest.database is not None:
-        problems.extend(_migration_problems(files))
+        problems.extend(_migration_set_problems({path: file.size for path, file in files.items()}))
     return problems
+
+
+def migration_problems(sizes: Mapping[str, int]) -> list[Problem]:
+    """Check a package's `database/` files as the plugin node takes them.
+
+    `sizes` maps package paths to their sizes in bytes; paths outside `database/` are ignored.
+    Each `database/` file must be a migration named `database/migrations/NNN_<name>.sql`, no
+    two may share a number, and together they stay within `MAX_MIGRATIONS_TOTAL_BYTES`.
+    """
+    problems = [
+        Problem(archive_file_loc(path), problem)
+        for path in sorted(sizes)
+        if path.startswith(DATABASE_DIRECTORY) and (problem := _migration_path_problem(path))
+    ]
+    problems.extend(_migration_set_problems(sizes))
+    return problems
+
+
+def secret_problem(path: str, head: bytes, *, complete: bool) -> Problem | None:
+    """Return the problem of a packaged file that holds a service-account key or a runtime file.
+
+    `head` is the file's first `SECRET_SCAN_BYTES`, and `complete` says it is the whole file.
+    A file is refused when `head` holds a key (`esp-` and 43 URL-safe base64 characters, as a
+    token of its own), or when the whole file is a JSON object with both `service_accounts`
+    and `secret_settings`. Wheels are not read: their contents are compressed. The problem
+    never quotes what matched.
+    """
+    if not is_scanned_for_secrets(path):
+        return None
+    if _SERVICE_ACCOUNT_KEY.search(head) or (complete and _is_runtime_file_document(head)):
+        return Problem(archive_file_loc(path), SECRET_PROBLEM)
+    return None
+
+
+def is_scanned_for_secrets(path: str) -> bool:
+    """Whether `secret_problem` reads the packaged file at `path`: every file but a wheel."""
+    return not _is_wheel(path)
+
+
+def _is_runtime_file_document(data: bytes) -> bool:
+    text = data.removeprefix(_UTF8_BYTE_ORDER_MARK).lstrip()
+    if not text.startswith(b"{"):
+        return False
+    try:
+        document = json.loads(text)
+    except (ValueError, RecursionError):
+        # Not JSON, or nested deeper than the parser follows: not a runtime file either way.
+        return False
+    return isinstance(document, dict) and all(field in document for field in _RUNTIME_FILE_FIELDS)
 
 
 def summarize(files: Iterable[PackageFile]) -> ContentsSummary:
@@ -404,12 +473,16 @@ def _placement_problem(path: str, manifest: PluginManifest) -> str | None:
     if path.startswith(DATABASE_DIRECTORY):
         if manifest.database is None:
             return "is under database/, but the manifest has no database section"
-        if not (match := MIGRATION_PATTERN.match(path)):
-            return "is not a migration named database/migrations/NNN_<name>.sql"
-        if len(match.group(1)) > MAX_MIGRATION_NAME_LENGTH:
-            return f"has a file name longer than {MAX_MIGRATION_NAME_LENGTH} characters"
-        return None
+        return _migration_path_problem(path)
     return "is not a file a plugin package may hold"
+
+
+def _migration_path_problem(path: str) -> str | None:
+    if not (match := MIGRATION_PATTERN.match(path)):
+        return "is not a migration named database/migrations/NNN_<name>.sql"
+    if len(match.group(1)) > MAX_MIGRATION_NAME_LENGTH:
+        return f"has a file name longer than {MAX_MIGRATION_NAME_LENGTH} characters"
+    return None
 
 
 def _is_wheel(path: str) -> bool:
@@ -436,11 +509,7 @@ def _backend_problems(manifest: PluginManifest, files: Mapping[str, PackageFile]
     problems = []
     if BACKEND_REQUIREMENTS not in files:
         problems.append(Problem(archive_file_loc(BACKEND_REQUIREMENTS), "is missing"))
-    module_path = manifest.backend.entrypoint.partition(":")[0].replace(".", "/")
-    candidates = (
-        f"{BACKEND_SOURCE_DIRECTORY}{module_path}.py",
-        f"{BACKEND_SOURCE_DIRECTORY}{module_path}/__init__.py",
-    )
+    candidates = entrypoint_module_paths(manifest.backend.entrypoint)
     if not any(candidate in files for candidate in candidates):
         problems.append(
             Problem(
@@ -451,14 +520,23 @@ def _backend_problems(manifest: PluginManifest, files: Mapping[str, PackageFile]
     return problems
 
 
-def _migration_problems(files: Mapping[str, PackageFile]) -> list[Problem]:
+def entrypoint_module_paths(entrypoint: str) -> tuple[str, str]:
+    """The package paths that may hold the module of a backend entrypoint (`module.path:app`)."""
+    module_path = entrypoint.partition(":")[0].replace(".", "/")
+    return (
+        f"{BACKEND_SOURCE_DIRECTORY}{module_path}.py",
+        f"{BACKEND_SOURCE_DIRECTORY}{module_path}/__init__.py",
+    )
+
+
+def _migration_set_problems(sizes: Mapping[str, int]) -> list[Problem]:
     problems = []
     numbers: dict[str, str] = {}
     total_bytes = 0
-    for path in sorted(files):
+    for path in sorted(sizes):
         if not (match := MIGRATION_PATTERN.match(path)):
             continue
-        total_bytes += files[path].size
+        total_bytes += sizes[path]
         number = match.group(1)[:_MIGRATION_NUMBER_LENGTH]
         if number in numbers:
             problems.append(
@@ -650,12 +728,16 @@ class _ArchiveReader:
         digest = hashlib.sha256()
         size = 0
         chunks: list[bytes] = []
+        head = bytearray()
+        scanned = is_scanned_for_secrets(entry.filename)
         try:
             with self._archive.open(entry) as member:
                 while chunk := member.read(_READ_CHUNK_BYTES):
                     self._account(self._guard.account_bytes, len(chunk), entry.filename)
                     digest.update(chunk)
                     size += len(chunk)
+                    if scanned and len(head) < SECRET_SCAN_BYTES:
+                        head += chunk[: SECRET_SCAN_BYTES - len(head)]
                     if keep:
                         chunks.append(chunk)
         except PackageProblemsError:
@@ -667,6 +749,12 @@ class _ArchiveReader:
         self._files[entry.filename] = PackageFile(
             path=entry.filename, size=size, sha256=digest.hexdigest()
         )
+        if scanned and (
+            problem := secret_problem(
+                entry.filename, bytes(head), complete=size <= SECRET_SCAN_BYTES
+            )
+        ):
+            self._problems.append(problem)
         if keep:
             self._kept[entry.filename] = b"".join(chunks)
 

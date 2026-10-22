@@ -309,6 +309,9 @@ server {
     # maintenance page instead. It is tested on every request (nginx keeps no open_file_cache;
     # tests/check_templates.sh fails if one is added), so it takes effect at once, without a reload.
     # /api/ does not look at it: the gateway check decides each of its requests fresh.
+    #
+    # With PLUGINS_DEV_MODE on, both locations first ask whether a frontend development server
+    # serves this plugin's page (plugins-development-page-${PLUGINS_DEV_MODE}.snippet).
     location = /index.html {
         include /etc/nginx/conf.d/plugins-security-headers.snippet;
         add_header Cache-Control no-cache always;
@@ -318,6 +321,7 @@ server {
         if (-f /srv/plugin-spa/$plugin_identifier/maintenance) {
             return 503;
         }
+        include /etc/nginx/conf.d/plugins-development-page-${PLUGINS_DEV_MODE}.snippet;
     }
 
     # The SPA's files, and its index.html for any other path (client-side routes). The fallback is
@@ -331,7 +335,11 @@ server {
         if (-f /srv/plugin-spa/$plugin_identifier/maintenance) {
             return 503;
         }
+        include /etc/nginx/conf.d/plugins-development-page-${PLUGINS_DEV_MODE}.snippet;
     }
+
+    # The page decision and the development server's locations, or nothing.
+    include /etc/nginx/conf.d/plugins-development-server-${PLUGINS_DEV_MODE}.snippet;
 
     # The platform's maintenance page (src/nginx/plugin-platform, mounted read-only), the same
     # static file for every plugin: no script, nothing loaded from anywhere, nothing about the

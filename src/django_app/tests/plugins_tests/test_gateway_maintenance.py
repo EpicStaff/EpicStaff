@@ -4,6 +4,7 @@ import pytest
 from django.core.cache import cache
 from plugins.identity.plugin_login_tokens import issue_plugin_login_token
 from plugins.models import GrantState, Plugin, PluginGrant, PluginState
+from rbac.models import OrganizationUser
 
 from tests.plugins_tests.conftest import GATEWAY_SECRET, mark_running
 
@@ -118,3 +119,36 @@ def test_a_deactivated_person_is_refused_before_the_organization_s_upgrade_is_to
     member_only.save(update_fields=["is_active"])
 
     assert _check(anonymous_client, "/api/whoami", token) == (401, "login")
+
+
+@pytest.mark.parametrize("state", [GrantState.UPGRADING, GrantState.UPGRADE_FAILED])
+def test_someone_no_longer_a_member_learns_nothing_of_the_organization_s_upgrade(
+    weather, grant, member_only, acme, anonymous_client, state
+):
+    token = _token(member_only, acme, grant)
+    PluginGrant.objects.filter(pk=grant.pk).update(state=state)
+    OrganizationUser.objects.filter(user=member_only, org=acme).delete()
+
+    assert _check(anonymous_client, "/api/whoami", token) == (403, "forbidden")
+
+
+def test_someone_of_a_deactivated_organization_learns_nothing_of_its_upgrade(
+    weather, grant, member_only, acme, anonymous_client
+):
+    token = _token(member_only, acme, grant)
+    PluginGrant.objects.filter(pk=grant.pk).update(state=GrantState.UPGRADING)
+    acme.is_active = False
+    acme.save(update_fields=["is_active"])
+
+    assert _check(anonymous_client, "/api/whoami", token) == (403, "forbidden")
+
+
+@pytest.mark.parametrize("state", [GrantState.SUSPENDED, GrantState.PURGING])
+def test_someone_no_longer_a_member_of_an_organization_whose_grant_is_suspended_is_forbidden(
+    weather, grant, member_only, acme, anonymous_client, state
+):
+    token = _token(member_only, acme, grant)
+    PluginGrant.objects.filter(pk=grant.pk).update(state=state)
+    OrganizationUser.objects.filter(user=member_only, org=acme).delete()
+
+    assert _check(anonymous_client, "/api/whoami", token) == (403, "forbidden")

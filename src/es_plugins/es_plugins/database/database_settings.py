@@ -23,6 +23,8 @@ from src.shared.models.plugin_nodes import DesiredDatabase
 SETTING_NAME_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$")
 MAX_DATABASE_SETTINGS = 100
 MAX_SETTING_LENGTH = 8192
+# Far above any setting PostgreSQL or an extension defines; a backup's metadata keeps no longer one.
+MAX_SETTING_NAME_LENGTH = 200
 # The settings PostgreSQL quotes element by element (GUC_LIST_QUOTE), as pg_dump names them.
 LIST_QUOTED_SETTINGS = frozenset(
     {
@@ -54,7 +56,8 @@ class DatabaseSetting:
 class ReadSettings:
     settings: tuple[DatabaseSetting, ...]
     skipped: int
-    """Entries left out: too long, a name that is not a setting name, or past the first 100."""
+    """Entries left out: too long, a name that is not a setting name or is longer than
+    `MAX_SETTING_NAME_LENGTH`, or past the first 100."""
 
 
 async def read_database_settings(
@@ -77,6 +80,7 @@ async def read_database_settings(
             len(settings) == MAX_DATABASE_SETTINGS
             or not separator
             or len(entry) > MAX_SETTING_LENGTH
+            or len(name) > MAX_SETTING_NAME_LENGTH
             or not SETTING_NAME_PATTERN.fullmatch(name)
         ):
             skipped += 1

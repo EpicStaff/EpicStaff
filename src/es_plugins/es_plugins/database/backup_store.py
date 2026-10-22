@@ -42,6 +42,7 @@ from src.shared.models.plugin_nodes import (
 from es_plugins.database.database_settings import (
     MAX_DATABASE_SETTINGS,
     MAX_SETTING_LENGTH,
+    MAX_SETTING_NAME_LENGTH,
     DatabaseSetting,
 )
 from es_plugins.layout import NodeLayout, check_plugin_identifier
@@ -60,7 +61,7 @@ class _Metadata(BaseModel):
 
 
 class SettingEntry(_Metadata):
-    name: Annotated[str, StringConstraints(max_length=200)]
+    name: Annotated[str, StringConstraints(max_length=MAX_SETTING_NAME_LENGTH)]
     value: Annotated[str, StringConstraints(max_length=MAX_SETTING_LENGTH)]
 
 

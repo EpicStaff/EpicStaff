@@ -1,7 +1,11 @@
 """Start-up checks for the plugin platform, run only while `PLUGINS_ENABLED` is true.
 
-They are Django system checks of level Error, so every management command the container
-runs at start-up (`check_db_init`, `migrate`) stops before the server starts.
+Most are Django system checks of level Error, so every management command the container
+runs at start-up (`check_db_init`, `migrate`) stops before the server starts. One is a
+Warning: plugin development mode is on, and allowed.
+
+Adding a check: an id constant here, a case in `test_plugins_system_checks.py`, then a row in
+the "What stops at start-up" table of `docs/plugins/operator/enable-plugins.md`.
 """
 
 import re
@@ -13,6 +17,12 @@ from epicstaff_plugin.signing import SignatureFormatError, parse_trusted_keys
 
 from plugins.configuration.grace_period import MAX_GRACE_PERIOD_DAYS, grace_period_days
 from plugins.configuration.limits import MAXIMUM_SETTINGS, positive_integer
+from plugins.development.development_mode import (
+    LOCALHOST_SUFFIX,
+    development_mode_on,
+    development_mode_problems,
+    parse_development_port,
+)
 from plugins.nodes.node_registration import parse_uid_range
 
 HTTPS_REQUIRED_CHECK_ID = "plugins.E001"
@@ -26,11 +36,14 @@ NODE_UID_RANGE_CHECK_ID = "plugins.E008"
 PLATFORM_MAXIMUMS_CHECK_ID = "plugins.E009"
 EPICSTAFF_HOST_CHECK_ID = "plugins.E010"
 GRACE_PERIOD_CHECK_ID = "plugins.E011"
+DEVELOPMENT_MODE_CHECK_ID = "plugins.E012"
+DEVELOPMENT_API_PORT_CHECK_ID = "plugins.E013"
+DEVELOPMENT_MODE_WARNING_ID = "plugins.W001"
 
 MIN_SHARED_SECRET_LENGTH = 32
 UNCONFIGURED = "none"
 
-LOCAL_DEVELOPMENT_SUFFIX = ".localhost"
+LOCAL_DEVELOPMENT_SUFFIX = LOCALHOST_SUFFIX
 PLACEHOLDER_SUFFIX = ".invalid"
 _DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _MAX_DNS_NAME_LENGTH = 253
@@ -46,7 +59,7 @@ _NUMERIC_LABEL = re.compile(r"(?:[0-9]+|0[xX][0-9A-Fa-f]*)")
 
 
 @checks.register("plugins")
-def check_plugin_platform_settings(app_configs, **kwargs) -> list[checks.Error]:
+def check_plugin_platform_settings(app_configs, **kwargs) -> list[checks.CheckMessage]:
     """Refuse a plugin platform that would run over plain http or with broken host settings."""
     if not settings.PLUGINS_ENABLED:
         return []
@@ -72,7 +85,51 @@ def check_plugin_platform_settings(app_configs, **kwargs) -> list[checks.Error]:
         *_uid_range_errors(),
         *_platform_maximum_errors(),
         *_grace_period_errors(),
+        *_development_mode_messages(),
     ]
+
+
+def _development_mode_messages() -> list[checks.CheckMessage]:
+    """Refuse plugin development mode outside a deployment on the developer's own machine;
+    warn that it is on where it is allowed."""
+    if not development_mode_on():
+        return []
+    messages: list[checks.CheckMessage] = []
+    problems = development_mode_problems()
+    if problems:
+        messages.append(
+            checks.Error(
+                "PLUGINS_DEV_MODE is true, but this is not a local development deployment: "
+                + "; ".join(problems)
+                + ".",
+                hint=(
+                    "Plugin development mode is only for a deployment on your own machine "
+                    "(DJANGO_DEBUG=true and .localhost host names). Set PLUGINS_DEV_MODE=false."
+                ),
+                id=DEVELOPMENT_MODE_CHECK_ID,
+            )
+        )
+    if parse_development_port(settings.PLUGINS_DEV_API_PORT) is None:
+        messages.append(
+            checks.Error(
+                f"PLUGINS_DEV_API_PORT ({settings.PLUGINS_DEV_API_PORT!r}) is not a whole number "
+                "from 1024 to 65535.",
+                hint=(
+                    "It is the port on 127.0.0.1 where a development backend reaches EpicStaff's "
+                    "API; the default is 8082."
+                ),
+                id=DEVELOPMENT_API_PORT_CHECK_ID,
+            )
+        )
+    if not messages:
+        messages.append(
+            checks.Warning(
+                "Plugin development mode is on: plugin requests can be served from this "
+                "machine's ports.",
+                id=DEVELOPMENT_MODE_WARNING_ID,
+            )
+        )
+    return messages
 
 
 def _is_local_development(host: str | None) -> bool:

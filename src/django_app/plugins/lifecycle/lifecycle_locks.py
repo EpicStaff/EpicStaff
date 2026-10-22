@@ -10,10 +10,15 @@ job's grant, then the job, never the plugin; a node report locks placements, the
 records, then backups, and takes the plugin only in its follow-up transaction, which locks
 nothing before it; an organization's deletion locks organizations, then their grants.
 
-The plugin row is locked `FOR NO KEY UPDATE`: an organization's deletion inserts hook jobs
-that point at the plugin, and Postgres takes `FOR KEY SHARE` on the plugin for each at
-commit. A full `FOR UPDATE` here would wait on that commit while it waits on a grant this
-path holds.
+Every row that new rows point at is locked `FOR NO KEY UPDATE`, never `FOR UPDATE`: the
+plugin (an organization's deletion inserts hook jobs that point at it), the open upgrade, the
+database record and its backups (a node's report and its `migrations` request insert backups
+that point at them), and a restore. Postgres takes `FOR KEY SHARE` on the row an inserted
+foreign key names, at the insert's commit; a full `FOR UPDATE` would make that commit wait on
+this transaction while this one waits on a row the inserting one holds. No path updates a key
+column of these rows; one that did would need `FOR UPDATE`. Deleting a plugin (its removal, or
+the rejection of its first package) takes `FOR UPDATE` by itself, once nothing inserts rows
+that point at it any more.
 """
 
 from plugins.exceptions import GrantNotFoundError, PluginNotFoundError

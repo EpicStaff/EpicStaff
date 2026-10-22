@@ -70,6 +70,13 @@
                         [tone]="upgrade.tone"
                     />
                 }
+                @if (plugin.development) {
+                    <app-plugin-badge
+                        class="development"
+                        label="Development"
+                        tone="warning"
+                    />
+                }
                 @if (plugin.needs_attention) {
                     <app-plugin-badge
                         class="needs-attention"

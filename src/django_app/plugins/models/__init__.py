@@ -5,6 +5,7 @@ from plugins.models.database import (
     PluginDatabaseRestore,
     PluginDatabaseServer,
 )
+from plugins.models.development import PluginDevelopmentTarget
 from plugins.models.enums import (
     BackupReason,
     GrantState,
@@ -15,6 +16,7 @@ from plugins.models.enums import (
     PluginState,
     RestoreState,
     ReviewState,
+    ServiceAccountKeyPurpose,
     SignatureStatus,
     SuspensionCause,
     Trust,
@@ -53,6 +55,7 @@ __all__ = [
     "PluginDatabaseRestore",
     "PluginDatabaseServer",
     "PluginDatabaseState",
+    "PluginDevelopmentTarget",
     "PluginGrant",
     "PluginHookJob",
     "PluginNode",
@@ -68,6 +71,7 @@ __all__ = [
     "PluginUpgrade",
     "RestoreState",
     "ReviewState",
+    "ServiceAccountKeyPurpose",
     "SignatureStatus",
     "SuspensionCause",
     "Trust",

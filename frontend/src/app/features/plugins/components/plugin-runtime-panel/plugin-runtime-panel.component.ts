@@ -8,6 +8,7 @@ import { catchError, EMPTY, exhaustMap, filter, finalize, switchMap, timer } fro
 import { ToastService } from '../../../../services/notifications';
 import { PluginUpgrade } from '../../models/plugin-admin.model';
 import { PluginBlockedReason, PluginRuntimeResponse } from '../../models/plugin-backend.model';
+import { PLUGIN_DEVELOPMENT_HOST } from '../../models/plugin-development.model';
 import { PluginErrorView } from '../../models/plugin-error.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import {
@@ -36,7 +37,8 @@ const BLOCKED_REASON_MESSAGES: Readonly<Record<PluginBlockedReason, string>> = {
  * health, version, process, memory), why it is held stopped, and its last error and log lines when it failed. For a
  * plugin with a database: its state, server, names, migrations, effective limits, size, last error, and when the
  * platform last set the statement timeout back, and its backups. For a plugin with a backend: the hosts it may reach
- * on the internet. While an upgrade has the node run the new version, "Running 0.6.0 → 0.7.0".
+ * on the internet. While an upgrade has the node run the new version, "Running 0.6.0 → 0.7.0". While the plugin is in
+ * development with a backend port, that its requests go to the development backend.
  *
  * Polls the runtime every few seconds while it is shown (not while the browser tab is hidden) and stops when it is
  * destroyed. Restart asks for confirmation first.
@@ -59,8 +61,10 @@ export class PluginRuntimePanelComponent {
     readonly pluginName = input.required<string>();
     /** The plugin's open upgrade: the backups follow its stage, failure and restore. */
     readonly openUpgrade = input<PluginUpgrade | null>(null);
-    /** "Restore backup…" was chosen: the backups come into view. */
-    readonly revealBackups = input(false);
+    /** Bumped each time "Restore backup…" is chosen: the backups come into view; `0` until then. */
+    readonly revealBackups = input(0);
+    /** The stored development target's backend port while development mode is on; `null` otherwise. */
+    readonly developmentBackendPort = input<number | null>(null);
     /**
      * The process moved (observed state or health changed, a restart or a restore was asked for), so the plugin's
      * state may have.
@@ -111,20 +115,41 @@ export class PluginRuntimePanelComponent {
             size: database.size_bytes === null ? null : formatFileSize(database.size_bytes, 'auto'),
         };
     });
-    /** `null` hides the section: the plugin has no backend. */
     protected readonly egress = computed(() => this.runtime()?.egress ?? null);
     /** "Running 0.6.0 → 0.7.0" while the node runs the upgrade's target; `null` otherwise. */
     protected readonly upgradeText = computed(() => {
         const upgrade = this.runtime()?.upgrade ?? null;
         return upgrade ? `Running ${upgrade.from_version} → ${upgrade.to_version}` : null;
     });
-    /** Changes whenever what the backups allow may have changed. */
-    protected readonly backupsRefreshKey = computed(() => {
-        const upgrade = this.openUpgrade();
-        if (!upgrade) return 'none';
-        const restore = upgrade.restore;
-        return [upgrade.id, upgrade.stage, upgrade.failed, upgrade.backup_id, restore?.id, restore?.state].join('|');
+    /** Where gateway requests go instead of this process while the plugin is in development; `null` otherwise. */
+    protected readonly developmentText = computed(() => {
+        const port = this.developmentBackendPort();
+        return port === null
+            ? null
+            : `Requests go to the development backend at ${PLUGIN_DEVELOPMENT_HOST}:${port}; the installed process ` +
+                  'still runs hooks.';
     });
+    /**
+     * Changes whenever what the backups allow may have changed: on every runtime answer (a cancel, or an upgrade
+     * closed elsewhere, changes them too), and at once when the page's open upgrade moves.
+     */
+    protected readonly backupsRefreshKey = computed(() => {
+        const answers = this.runtimeAnswers();
+        const upgrade = this.openUpgrade();
+        if (!upgrade) return `${answers}|none`;
+        const restore = upgrade.restore;
+        return [
+            answers,
+            upgrade.id,
+            upgrade.stage,
+            upgrade.failed,
+            upgrade.backup_id,
+            restore?.id,
+            restore?.state,
+        ].join('|');
+    });
+    /** How many runtime answers were shown: the polls and a restart. */
+    private readonly runtimeAnswers = signal(0);
 
     private readonly storage = inject(PluginsAdminStorageService);
     private readonly confirmation = inject(ConfirmationDialogService);
@@ -193,6 +218,7 @@ export class PluginRuntimePanelComponent {
         const previous = this.runtime()?.placement ?? null;
         const next = runtime.placement;
         this.runtime.set(runtime);
+        this.runtimeAnswers.update((count) => count + 1);
         this.loadError.set(null);
         return (
             previous !== null &&

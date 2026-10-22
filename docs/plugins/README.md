@@ -33,6 +33,31 @@ These pages are for people who build plugins and for operators who run them.
   that address: load the platform config from `/.well-known/epicstaff/config.json` and use
   relative paths.
 
+While you build a plugin, run EpicStaff on your own machine in **plugin development mode**: a
+SuperAdmin there points your installed plugin at the backend and the page's development server
+you run from your source, so a change shows up as soon as you save it, without packing a new
+version. The mode works only on a deployment on your own machine, on `.localhost` names, and
+EpicStaff refuses to start with it anywhere else ([Local development](how-to/local-development.md)).
+
+## Get the tools
+
+The plugin tools are not on PyPI or npm yet. Take them from an EpicStaff checkout at the version
+your deployment runs:
+
+- **The Python SDK and the `epicstaff-plugin` command**, in `src/plugin_sdk`: run the command with
+  `uv run --frozen --project src/plugin_sdk epicstaff-plugin`, or install it with
+  `uv tool install ./src/plugin_sdk` ([Command-line tool](reference/cli.md)). Your backend gets the
+  SDK as a wheel you build with `uv build --project src/plugin_sdk --wheel -o dist`, which
+  `pack --local-wheel` adds to the package
+  ([A plugin with a backend](how-to/sign-and-package.md#a-plugin-with-a-backend)).
+- **The JS SDK**, `@epicstaff/plugin-sdk`, in `plugin-sdk/`: build it with
+  `npm --prefix plugin-sdk ci && npm --prefix plugin-sdk run build`, then either depend on the
+  directory (`"@epicstaff/plugin-sdk": "file:<checkout>/plugin-sdk"`, as the Weather sample does)
+  or pack it once with `npm pack ./plugin-sdk` and install the `epicstaff-plugin-sdk-<version>.tgz`
+  it writes ([JS SDK](reference/js-sdk.md)).
+
+You need Python 3.12 or 3.13 with [uv](https://docs.astral.sh/uv/), and Node.js 24.15 or later.
+
 ## Build a plugin
 
 | Page | What it covers |
@@ -45,8 +70,9 @@ These pages are for people who build plugins and for operators who run them.
 | [Frontend in the frame](how-to/frontend-in-the-frame.md) | Building the page so it works framed and opened directly, logged in, with the person's organization |
 | [Token exchange](reference/token-exchange.md) | How a person logs in to a plugin: authorize, the code exchange, the plugin login token, the organization chooser |
 | [External callbacks](how-to/external-callbacks.md) | Connecting an outside service (OAuth in a popup) and getting its answer back to the page |
-| [Local development](how-to/local-development.md) | Running a plugin against a local EpicStaff, over `*.localhost` or HTTPS |
-| [Sign and package a plugin](how-to/sign-and-package.md) | `epicstaff-plugin validate`, `keygen`, `pack` (with wheels for a backend), `sign`, `verify` |
+| [Local development](how-to/local-development.md) | Running EpicStaff on your machine in plugin development mode, your backend and your page's development server against it, a local database, the browser tests and the stack run |
+| [Sign and package a plugin](how-to/sign-and-package.md) | `epicstaff-plugin validate`, `keygen`, `pack` (with wheels for a backend), `sign`, `verify`, keeping secrets out of a package, shipping a new version |
+| [Command-line tool](reference/cli.md) | Every `epicstaff-plugin` command, option, exit code and output, `dev` included |
 | [Trust and signing](explanation/trust-and-signing.md) | What Trusted and Untrusted mean, and how signatures are checked |
 | [Give people permissions](how-to/user-permissions.md) | `user_permissions`, built-in role defaults, custom roles in the Roles matrix and their ceiling |
 | [Python SDK](reference/python-sdk.md) | `epicstaff-plugin` for backends: serving, the context check, the runtime configuration, testing |
@@ -65,6 +91,8 @@ These pages are for people who build plugins and for operators who run them.
 | [Bring organizations to a new version](how-to/upgrade-hook.md) | The upgrade hook: when it runs, `previous_version`, bringing an organization from any earlier version, retries |
 | [Compatibility and versioning](reference/compatibility-and-versioning.md) | Version order, what a new version may and may not change, what needs the SuperAdmin's approval, how an upgrade goes |
 | [The plugin lifecycle](explanation/lifecycle.md) | A plugin's states in an organization, suspending and resuming, the grace period, deleting a grant's data, uninstalling, reinstalling and deleting a plugin, upgrades and their backups, deleting an organization |
+| [Architecture](explanation/architecture.md) | The platform's parts, who decides, enforces and runs code, five flows from page load to a hook, where things live |
+| [Security model](explanation/security-model.md) | What the platform protects and who it trusts with what, from trust labels to the browser, the network, data and development mode |
 | [Accepted risks](explanation/accepted-risks.md) | What installing a plugin means trusting, what isolation there is and is not, and what data deletion can leave behind |
 | [Hook API](reference/hook-api.md) | How EpicStaff calls a lifecycle hook: the signed assertion, the body, the answer |
 | [Limits](reference/limits.md) | Memory, CPU, the request rate and the other limits, the platform maximums, what is enforced |
@@ -91,9 +119,11 @@ EpicStaff supports:
 | Gateway context (`platform.gateway_context`) | 1 | Supported: `public` mode on public paths, `user` mode for logged-in people |
 | Login protocol (`plugin-sdk/contracts/login-protocol.json`, `protocol`) | 1 | Supported, for plugins with a backend |
 | Hook API (`platform.hook_api`) | 1 | Supported for `install`, `upgrade` and `org_removed` |
-| Service account API (`/api/plugin-runtime/`) | 1 | Supported |
-| Runtime file (`format`) | 1 | Supported |
+| Service account API (`/api/plugin-runtime/`) | 1 | Supported. A newer EpicStaff may add fields: read its answers leniently, as the Python SDK does |
+| Runtime file (`format`) | 1 | Supported, on the plugin node and as the development runtime file |
+| Hook request body (`format`) | 1 | Supported |
 | Backend Python (`backend.python`) | 3.12, 3.13 | Supported |
 | Package signature | minisign, pre-hashed Ed25519 | Supported |
 
-| Upgrades | — | Supported: a SuperAdmin approves each newer version, which backs the database up before its migrations. See [compatibility and versioning](reference/compatibility-and-versioning.md) |
+A plugin is upgraded to a newer version of itself when a SuperAdmin approves it; the database is
+backed up before its migrations run. See [compatibility and versioning](reference/compatibility-and-versioning.md).

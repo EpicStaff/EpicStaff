@@ -1,6 +1,13 @@
-import { HttpClient, HttpEvent, HttpEventType, HttpParams } from '@angular/common/http';
+import {
+    HttpClient,
+    HttpErrorResponse,
+    HttpEvent,
+    HttpEventType,
+    HttpParams,
+    HttpResponse,
+} from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { filter, map, Observable } from 'rxjs';
+import { catchError, defer, filter, map, Observable, of, switchMap, throwError } from 'rxjs';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
@@ -23,6 +30,7 @@ import {
     PluginSettingsResponse,
     PluginSettingsUpdate,
 } from '../models/plugin-backend.model';
+import { PluginDevelopment, PluginDevelopmentUpdate } from '../models/plugin-development.model';
 import { PluginGrantPurgePreview, PluginPurgePreview } from '../models/plugin-purge-preview.model';
 import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
 
@@ -219,6 +227,34 @@ export class PluginsAdminApiService {
         return this.http.post<PluginRuntimeResponse>(`${this.pluginUrl(identifier)}restart/`, null);
     }
 
+    /** The plugin's development state; answers while development mode is off too. */
+    getDevelopment(identifier: string): Observable<PluginDevelopment> {
+        return this.http.get<PluginDevelopment>(this.developmentUrl(identifier));
+    }
+
+    /** Stores both ports (409 `plugin_development_mode_off` or `plugin_not_running`; 400 `invalid` by `loc`). */
+    updateDevelopment(identifier: string, update: PluginDevelopmentUpdate): Observable<PluginDevelopment> {
+        return this.http.put<PluginDevelopment>(this.developmentUrl(identifier), update);
+    }
+
+    /** Stop development: removes the target and stops the development keys. Answers 204, also with nothing stored. */
+    clearDevelopment(identifier: string): Observable<void> {
+        return this.http.delete<void>(this.developmentUrl(identifier));
+    }
+
+    /**
+     * Issues new development keys and answers with the development runtime file, as the server sent it: the body is
+     * for the browser's download only, never read here. A refusal's JSON error is read into the error as usual.
+     */
+    downloadDevelopmentRuntimeFile(identifier: string): Observable<HttpResponse<Blob>> {
+        return this.http
+            .post(`${this.developmentUrl(identifier)}runtime-file/`, null, {
+                responseType: 'blob',
+                observe: 'response',
+            })
+            .pipe(catchError((error: unknown) => throwWithJsonErrorBody(error)));
+    }
+
     private pluginUrl(identifier: string): string {
         return `${this.baseUrl}${encodeURIComponent(identifier)}/`;
     }
@@ -229,6 +265,42 @@ export class PluginsAdminApiService {
 
     private orgRemovedJobUrl(identifier: string, jobId: number): string {
         return `${this.pluginUrl(identifier)}org-removed-jobs/${jobId}/`;
+    }
+
+    private developmentUrl(identifier: string): string {
+        return `${this.pluginUrl(identifier)}development/`;
+    }
+}
+
+/**
+ * A refused blob request carries its JSON error body as a Blob. Rethrows the error with that body parsed (`null` when
+ * it is not JSON), so `toPluginErrorView` reads its code as for any other request. Only a refusal's body is read.
+ */
+function throwWithJsonErrorBody(error: unknown): Observable<never> {
+    if (!(error instanceof HttpErrorResponse) || !(error.error instanceof Blob)) return throwError(() => error);
+    const body = error.error;
+    return defer(() => body.text()).pipe(
+        catchError(() => of('')),
+        switchMap((text) =>
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        error: parseJson(text),
+                        headers: error.headers,
+                        status: error.status,
+                        statusText: error.statusText,
+                        url: error.url ?? undefined,
+                    })
+            )
+        )
+    );
+}
+
+function parseJson(text: string): unknown {
+    try {
+        return JSON.parse(text) as unknown;
+    } catch {
+        return null;
     }
 }
 

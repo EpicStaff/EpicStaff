@@ -62,6 +62,8 @@ hook has finished. EpicStaff also signs nobody in to the plugin in such an organ
   `maintenance`, and check again every 30 seconds: `renew()` when `login.state` is `maintenance`, then any route behind
   the sign-in through `login.fetch`. Ask such a route, not a public path, which answers as soon as the plugin runs. See
   [Availability](../reference/js-sdk.md#availability).
+- When `login.state` is `access-denied`, `session-ended` or `failed`, show that instead, even while `availability` is
+  still `maintenance`: an organization whose upgrade failed for good gets no access, and the person needs to see why.
 - Pages already loaded keep their state, so reload what they show once `availability` is `available` again: an answer
   that came during the update was a refusal.
 
@@ -87,6 +89,26 @@ Take every colour from the `--es-*` tokens, with defaults in `:root` for the pag
 
 A provider's sign-in page cannot be framed; open it in a popup with `login.openPopup`, from a click handler. See
 [Receive an external provider's callback](external-callbacks.md).
+
+## Develop the page against a development server
+
+While a SuperAdmin has set "Frontend dev server port" on your plugin's Development tab, EpicStaff serves your plugin's
+own host from a development server on your machine. The frame's address does not change: the page still runs on
+`<id>.<plugins base domain>`, so the sign-in, the frame protocol and the platform config work as with the published
+page, and the SDK needs no option for it.
+[Local development](local-development.md#develop-the-page-against-a-development-server) shows how to start one and
+what any development server must allow.
+
+What your page's code has to do for it:
+
+- Load assets by path (`/app.js`), never by the development server's own address (`http://127.0.0.1:5173/app.js`): the
+  browser reaches that server only through your plugin's host.
+- Connect live reload or hot updates to the page's own origin (`location.host`), not to the development server's host
+  and port. The Weather sample's `npm run dev` reloads the page through `/esbuild` on the page's origin.
+- Leave `/.well-known/epicstaff/` and `/api/` alone: EpicStaff keeps answering them, with the platform's pages and your
+  backend (or the development backend), whatever your development server would serve there.
+- A reload inside EpicStaff is a new page: the SDK greets EpicStaff again and signs in silently, so the person stays
+  signed in and EpicStaff's address stays in step with your routes.
 
 ## Check it
 

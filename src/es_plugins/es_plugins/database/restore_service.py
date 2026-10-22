@@ -12,7 +12,9 @@ stopped the plugin's process; `on_step` is told when each begins, for the node's
    nothing is changed.
 3. **close**: the database is still this installation's (`installation_lookup`); the app role
    cannot log in any more, and every session of the app role and the owner is ended, through
-   `plugins_admin`'s `pg_signal_backend`. A session that survives is a failure.
+   `plugins_admin`'s `pg_signal_backend`. A session that survives is a failure. Then the owner
+   logs in once, as step 5 will (its stored settings removed first, `open_owner_login`): one
+   that cannot fails the restore here, before anything is dropped.
 4. **recreate**, from `postgres`: the database's template mark and connection limit are put back
    (`database_attributes`), it is dropped as its owner (a plain `DROP`, which a session still
    connected makes PostgreSQL refuse: tried again later), created again owned by the owner, from
@@ -154,6 +156,7 @@ class RestoreService:
             on_step(step, pre_restore)
             async with self._connector.admin_session(desired.server) as admin:
                 await self._close(admin, desired)
+                await self._check_owner_login(admin, desired)
                 step = "recreate"
                 on_step(step, pre_restore)
                 await _recreate(admin, desired)
@@ -263,6 +266,30 @@ class RestoreService:
                 f"{len(remaining)} session(s) of the plugin's roles did not end within "
                 f"{SESSIONS_END_SECONDS:.0f} s",
             )
+
+    async def _check_owner_login(
+        self, admin: psycopg.AsyncConnection, desired: DesiredDatabase
+    ) -> None:
+        """Log in as the owner once, as the restore will, before anything is dropped.
+
+        Raises:
+            RestoreError: At `close`: the owner cannot log in; nothing was changed.
+        """
+        password = secrets.token_urlsafe(32)
+        await open_owner_login(
+            admin, desired.owner_role, password, self._clock() + OWNER_LOGIN_WINDOW
+        )
+        try:
+            async with self._connector.owner_session(
+                desired.server, desired.database_name, desired.owner_role, password
+            ) as owner:
+                await owner.execute("SELECT 1")
+        except DatabaseUnreachableError as error:
+            raise RestoreError(
+                "close", f"the owner cannot log in, so nothing was changed: {error}"
+            ) from None
+        finally:
+            await close_owner_login(admin, desired.owner_role)
 
     async def _restore_as_owner(
         self, admin: psycopg.AsyncConnection, desired: DesiredDatabase, backup: StoredBackup

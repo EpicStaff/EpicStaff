@@ -1,6 +1,6 @@
 import { expect, type FrameLocator, type Page } from '@playwright/test';
 
-import { type Organization, STACK } from './stack';
+import { type Organization, STACK } from './stack.ts';
 
 /** Makes `org` EpicStaff's active organization on every EpicStaff page this test loads. */
 export async function useOrganization(page: Page, org: Organization): Promise<void> {

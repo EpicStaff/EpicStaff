@@ -37,11 +37,22 @@ three things you cannot turn off, in this order:
 the plugin restarts, so no other process on the node can take it in between. It passes the
 listening socket to the process as file descriptor 3 (`EPICSTAFF_PLUGIN_LISTEN_FD`), and
 `serve` serves on that socket and never binds one. Your backend cannot open listening sockets
-of its own: the node refuses every `bind()` of an IPv4 or IPv6 socket by a plugin process with
-`Operation not permitted` (`EPERM`), on `PORT` and on any other port. Outgoing connections are
-not affected.
+of its own: the node refuses every `bind()` of an IPv4 or IPv6 socket by a plugin process, TCP
+and UDP alike, with `Operation not permitted` (`EPERM`), on `PORT` and on any other port.
+Outgoing connections are not affected, within the [connection limits](limits.md#connections).
 `serve` refuses to start when the descriptor is not a listening TCP socket. Without `EPICSTAFF_PLUGIN_LISTEN_FD`, on your own machine, `serve` binds
 `0.0.0.0:$PORT` itself.
+
+**The node watches every plugin's sockets**, once a second. A `listen()` on a socket the
+plugin did not bind still takes a port, and so does a UDP socket that is connected and never
+sends. So the node stops a plugin whose user listens on a TCP port of its own, or holds more
+than 512 network sockets, TCP and UDP together. The plugin's Runtime tab then gives the reason,
+"it listened on TCP port … of its own; …" or "it held … network sockets, more than the 512 a
+plugin may; …", and the plugin stays stopped until a SuperAdmin restarts it.
+
+`io_uring` is not available: `io_uring_setup`, `io_uring_enter` and `io_uring_register` answer
+`EPERM`, as do the System V IPC calls `shmget`, `msgget` and `semget`, and every system call
+made through a 32-bit ABI.
 
 So your lock must pin `uvicorn` and `epicstaff-plugin` (upload refuses a lock without them), and
 your app must be an ASGI app: FastAPI, Starlette, Litestar, Django's ASGI handler and so on.
@@ -155,7 +166,8 @@ for every call (`RuntimeConfig.service_account(org_id)`; the SDK's
 [client](../how-to/call-epicstaff-from-the-backend.md) does), and never store or log it.
 
 A key works only on `epicstaff_api_url`, from the plugin network; EpicStaff refuses it on its
-public address.
+public address. The keys of a [development backend](#a-development-backend) work only on the
+development API listener instead.
 
 ## File system and identity
 
@@ -194,7 +206,7 @@ But every plugin on the node **can**:
 
 - list every process, with its user number, memory use and **full command line**;
 - see which ports are listening, and which plugins are installed;
-- connect to every other plugin's port.
+- connect to every other plugin's port, within its own [connection limits](limits.md#connections).
 
 Hence two rules:
 
@@ -214,3 +226,31 @@ restarts it. The cap counts the resident memory of those processes: memory a plu
 memory file (`memfd_create`) or a tmpfs is not counted, though the node's own memory limit still
 bounds it. [Limits](limits.md) gives the details, including by how much the memory cap can be
 overshot.
+
+## A development backend
+
+On a deployment in plugin development mode, which runs only on a developer's own machine, a
+SuperAdmin can point an installed plugin at a backend that `epicstaff-plugin dev` runs from the
+plugin's source ([Local development](../how-to/local-development.md#develop-the-backend-on-your-machine),
+[`epicstaff-plugin dev`](cli.md#epicstaff-plugin-dev)). EpicStaff's gateway then sends the
+plugin's backend requests there, with the same checks and the same gateway contexts. What
+differs from the plugin node:
+
+| | On the plugin node | A development backend |
+|---|---|---|
+| Started by | The node: `python -I -m epicstaff_plugin.serve` | You: `epicstaff-plugin dev`, which composes the same app |
+| Listens on | The socket the node hands it on `PORT` | `--host` and `--port`, which it binds itself (`127.0.0.1:8001` by default); EpicStaff reaches it at `host.docker.internal:<port>` |
+| Requests | Every request to the plugin's `/api/` | The same, while the backend port is set on the plugin's Development tab |
+| Hooks | Run here | Still run on the installed version on the node, which keeps running |
+| Runtime file | `/run/es_plugins/<id>/runtime.json`, rewritten by the node when keys or grants change | The development runtime file a SuperAdmin downloaded. It is never rewritten: download it again, to the same path, after the plugin is granted to another organization or suspended in one |
+| Service-account keys | Node keys, replaced at every start | Development keys, one per organization the plugin holds a key in. They work only on the development API listener, and only while development mode is on. "Stop development", a new download, and suspending the plugin in an organization revoke them; resuming issues none, so download the file again |
+| `epicstaff_api_url` | `http://epicstaff-api:8081/api/`, on the plugins network | `http://127.0.0.1:<PLUGINS_DEV_API_PORT>/api/` (port 8082 by default), the development API listener on your machine's loopback |
+| Database | The plugin's own database (`DATABASE_URL`) | None, or the local database you pass with `--database-url` |
+| Outbound requests | Only to the declared hosts, through the egress proxy | Your machine's network, with no allow-list and no proxy variables from EpicStaff |
+| User, files, limits | A Unix user, `HOME` and `TMPDIR` of its own, and the plugin's limits | Your user and your files; no limit applies |
+| Settings, public paths, access, user permissions | The installed version's | Still the installed version's: your source's changes to them take effect only in a new version |
+
+The development runtime file is a runtime file like the node's, of the same format, holding the
+plugin's secret settings and keys that act for it in every organization it is granted to. Keep
+it outside your plugin's source, readable by you only: `epicstaff-plugin dev` refuses one inside
+the source, and `pack`, `validate` and EpicStaff's upload refuse a package that holds one.

@@ -60,6 +60,9 @@ export const PLUGIN_ACTIVITY_ACTION_LABELS: Readonly<Record<PluginActivityAction
     upgrade_hook_succeeded: 'Upgrade hook succeeded',
     upgrade_hook_failed: 'Upgrade hook failed',
     upgrade_hook_retried: 'Upgrade hook retried',
+    development_target_set: 'Development started or changed',
+    development_target_cleared: 'Development stopped',
+    development_runtime_file_issued: 'Development runtime file downloaded',
 };
 
 /** Why a deletion began, as `detail.reason` says. */
@@ -133,8 +136,9 @@ export function pluginActivityErrorText(event: PluginActivityEvent): string | nu
 
 /**
  * The overrides in force after a limits change (`Overrides: Memory 128 MB, CPU priority Low`), why a deletion began
- * (`Reason: Grace period over`), or the versions and backups of an upgrade event (`0.6.0 → 0.7.0 · offline 2 min`);
- * else `null`. `locale` formats the time of a planned retry.
+ * (`Reason: Grace period over`), the versions and backups of an upgrade event (`0.6.0 → 0.7.0 · offline 2 min`), or
+ * what a development event changed (`Backend port 8001 · Frontend dev server port 5173`); else `null`. `locale` formats
+ * the time of a planned retry.
  */
 export function pluginActivityDetailText(event: PluginActivityEvent, locale: string): string | null {
     if (event.action === 'limits_changed') {
@@ -142,7 +146,39 @@ export function pluginActivityDetailText(event: PluginActivityEvent, locale: str
         return `Overrides: ${overrides.length > 0 ? overrides.join(', ') : 'none'}`;
     }
     if (ACTIONS_WITH_REASON.has(event.action)) return reasonText(event.detail['reason']);
-    return upgradeDetailText(event, locale);
+    return developmentDetailText(event) ?? upgradeDetailText(event, locale);
+}
+
+/** A plugin request answered for a development backend, with a development key: marked "Development" in a list. */
+export function pluginActivityIsDevelopment(event: PluginActivityEvent): boolean {
+    return event.action === 'api_request' && event.detail['development'] === true;
+}
+
+/** What a development event adds to its label; `null` for any other event. */
+function developmentDetailText(event: PluginActivityEvent): string | null {
+    const detail = event.detail;
+    switch (event.action) {
+        case 'development_target_set': {
+            const backendPort = detail['backend_port'];
+            const spaPort = detail['spa_port'];
+            return joined([
+                typeof backendPort === 'number' ? `Backend port ${backendPort}` : null,
+                typeof spaPort === 'number' ? `Frontend dev server port ${spaPort}` : null,
+            ]);
+        }
+        case 'development_target_cleared': {
+            const revoked = detail['revoked_keys'];
+            if (typeof revoked !== 'number' || revoked <= 0) return null;
+            return `${revoked} development ${revoked === 1 ? 'key' : 'keys'} stopped`;
+        }
+        case 'development_runtime_file_issued': {
+            const organizations = detail['organizations'];
+            if (typeof organizations !== 'number') return null;
+            return `For ${organizations} ${organizations === 1 ? 'organization' : 'organizations'}`;
+        }
+        default:
+            return null;
+    }
 }
 
 /** What an upgrade, backup, restore or upgrade hook event adds to its label; `null` for any other event. */

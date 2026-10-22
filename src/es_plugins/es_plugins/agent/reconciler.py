@@ -40,7 +40,8 @@ target next to it; in `maintenance` it only drains, stops and backs up; in `migr
 placement's package is the target and the start above runs its migrations. A desired `restore`
 replaces the database and starts nothing. With no upgrade open, every version but the desired
 one is deleted once it is installed. The desired placement's `backups_to_delete` are deleted
-(`BackupStore`), and the report lists every complete backup.
+(`BackupStore`), and the report lists every complete backup (none at all, rather than an empty
+list, when the backups cannot be read).
 
 A placement in the desired state's `removals` has its controller closed first, like any placement
 that left `placements`; `PlacementRemover` then drops its database and deletes everything the node
@@ -729,13 +730,15 @@ class PlacementController:
                 ",".join(sorted(set(code) | set(venvs))),
             )
 
-    def _backup_reports(self) -> list[BackupFileReport]:
-        """Every complete backup of the plugin; one that cannot be reported is left out."""
+    def _backup_reports(self) -> list[BackupFileReport] | None:
+        """Every complete backup of the plugin, the whole inventory; one that cannot be
+        reported is left out. None when they cannot be listed: EpicStaff then marks none of
+        the recorded ones deleted."""
         try:
             stored = self._services.backup_store.inventory(self._desired.plugin_identifier)
         except OSError as error:
             self._log_unreportable_backups(f"the backups cannot be listed: {error}")
-            return []
+            return None
         reports = []
         for backup in stored:
             try:

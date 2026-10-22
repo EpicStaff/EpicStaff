@@ -238,8 +238,8 @@ export type PluginRestoreStep = 'verify' | 'backup' | 'close' | 'recreate' | 're
 /** A restore of a backup of the plugin's database, during an upgrade that failed. */
 export interface PluginRestore {
     id: number;
-    /** The backup restored; `id` is `null` once the backup is deleted. */
-    backup: { id: number | null; file_name: string; reason: PluginBackupReason };
+    /** The backup restored; `id` is `null` once the backup is deleted, `reason` when the server no longer knows it. */
+    backup: { id: number | null; file_name: string; reason: PluginBackupReason | null };
     state: PluginRestoreState;
     step: PluginRestoreStep | null;
     /** The backup of the database taken just before the restore, to undo it. */
@@ -301,6 +301,14 @@ export interface PluginPendingPackage {
     trust: PluginTrust;
 }
 
+/** Where a plugin's requests go on the author's machine while it is in development. */
+export interface PluginDevelopmentPorts {
+    /** The author's backend, reached at `host.docker.internal:<port>`. */
+    backend_port: number | null;
+    /** The author's frontend development server, served on the plugin's own host. */
+    spa_port: number | null;
+}
+
 export interface PluginSummary {
     identifier: string;
     name: string;
@@ -329,6 +337,8 @@ export interface PluginSummary {
     needs_attention: boolean;
     /** The open upgrade. */
     upgrade: { to_version: string; stage: PluginUpgradeStage; failed: boolean } | null;
+    /** The stored development target; `null` unless development mode is on and a target is stored. */
+    development: PluginDevelopmentPorts | null;
 }
 
 /** Where the plugin node is with removing a plugin being deleted; `not_needed` for a plugin without a placement. */
@@ -357,6 +367,8 @@ export interface PluginDetail extends PluginSummary {
     last_upgrade: PluginUpgrade | null;
     /** Organizations whose upgrade hook has not finished, and those whose upgrade failed. */
     upgrade_hooks: { upgrading: number; upgrade_failed: number };
+    /** Plugin development mode is on on this deployment: the Development tab is offered. */
+    development_mode: boolean;
 }
 
 /** `skipped`: a SuperAdmin or the platform gave up on a data removal. */

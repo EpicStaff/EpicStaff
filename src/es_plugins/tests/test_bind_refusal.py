@@ -30,8 +30,8 @@ def test_the_program_refuses_the_range_and_allows_every_other_uid():
     assert instructions[4] == (0xB7, 0, 0, 0) and instructions[6] == (0xB7, 0, 0, 1)
 
 
-def bind_as(uid: int) -> int:
-    """0 when a TCP bind to port 0 works as `uid`, else its errno."""
+def bind_as(uid: int, kind: socket.SocketKind = socket.SOCK_STREAM) -> int:
+    """0 when a bind of a `kind` socket (TCP by default) to port 0 works as `uid`, else its errno."""
     read_end, write_end = os.pipe()
     child = os.fork()
     if child == 0:
@@ -40,7 +40,7 @@ def bind_as(uid: int) -> int:
             os.setgroups([])
             os.setresgid(uid, uid, uid)
             os.setresuid(uid, uid, uid)
-            with socket.socket() as probe:
+            with socket.socket(socket.AF_INET, kind) as probe:
                 probe.bind(("0.0.0.0", 0))
             result = 0
         except OSError as error:
@@ -66,3 +66,5 @@ def test_once_installed_a_plugin_uid_cannot_bind_and_any_other_can():
     assert bind_as(REFUSED.last) == errno.EPERM
     assert bind_as(REFUSED.last + 1) == 0
     assert bind_as(10000) == 0
+    assert bind_as(REFUSED.first, socket.SOCK_DGRAM) == errno.EPERM
+    assert bind_as(10000, socket.SOCK_DGRAM) == 0

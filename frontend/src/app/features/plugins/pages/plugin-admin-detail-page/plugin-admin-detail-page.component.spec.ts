@@ -11,10 +11,13 @@ import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ToastService } from '../../../../services/notifications';
 import { AdminOrganizationsService } from '../../../role-base-access/services/admin/organizations.service';
 import { PluginAdminActivityComponent } from '../../components/plugin-admin-activity/plugin-admin-activity.component';
+import { PluginDevelopmentPanelComponent } from '../../components/plugin-development-panel/plugin-development-panel.component';
 import { PluginPurgeTarget } from '../../components/plugin-purge-dialog/plugin-purge-dialog.component';
 import { PluginUninstallDialogData } from '../../components/plugin-uninstall-dialog/plugin-uninstall-dialog.component';
 import { PluginActivityEvent, PluginAdminActivityQuery } from '../../models/plugin-activity.model';
 import { PluginDetail } from '../../models/plugin-admin.model';
+import { PluginRuntimeResponse } from '../../models/plugin-backend.model';
+import { PluginDevelopment, PluginDevelopmentUpdate } from '../../models/plugin-development.model';
 import { PluginActivityApiService } from '../../services/plugin-activity-api.service';
 import { PluginDialogsService } from '../../services/plugin-dialogs.service';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
@@ -25,6 +28,8 @@ import {
     buildPluginActivityEvent,
     buildPluginBackupList,
     buildPluginDetail,
+    buildPluginDevelopment,
+    buildPluginDevelopmentTarget,
     buildPluginPurgeProgress,
     buildPluginRestore,
     buildPluginRuntime,
@@ -509,7 +514,7 @@ describe('PluginAdminDetailPageComponent upgrades', () => {
     const FAILED = buildPluginDetail({
         state: 'maintenance',
         current_version: '0.7.0',
-        allowed_actions: ['retry_upgrade', 'purge', 'restore_backup'],
+        allowed_actions: ['retry_upgrade', 'restore_backup', 'purge'],
         open_upgrade: buildFailedMigrationUpgrade(),
         upgrade: { to_version: '0.7.1', stage: 'migrating', failed: true },
         needs_attention: true,
@@ -615,6 +620,20 @@ describe('PluginAdminDetailPageComponent upgrades', () => {
         expect(text(element.querySelector('.detail__badges'))).toContain('Maintenance');
     });
 
+    it('keeps the time offline out of what a screen reader hears, as it changes every minute', () => {
+        render(OFFLINE);
+
+        const detail = element.querySelector('app-plugin-lifecycle-banner .banner__detail')!;
+        const unannounced = Array.from(detail.querySelectorAll('[aria-hidden="true"]')).map((part) => text(part));
+        expect(unannounced).toEqual(['· offline for 3 min']);
+        expect(detail.closest('[aria-live]')).not.toBeNull();
+        const heard = Array.from(detail.childNodes)
+            .filter((node) => !(node instanceof Element && node.getAttribute('aria-hidden') === 'true'))
+            .map((node) => node.textContent)
+            .join('');
+        expect(heard).toBe('(Running migrations)');
+    });
+
     it('says an upgrade that adds a backend keeps the plugin running', () => {
         render(
             buildPluginDetail({
@@ -633,7 +652,7 @@ describe('PluginAdminDetailPageComponent upgrades', () => {
             'The upgrade to 0.7.1 failed while running migrations: 005_broken.sql line 1: [22012] division by zero',
             'The database already holds changes of 0.7.1. Restore the backup to go back.',
         ]);
-        expect(headerButtons()).toEqual(['Retry', 'Delete permanently…', 'Restore backup…']);
+        expect(headerButtons()).toEqual(['Retry', 'Restore backup…', 'Delete permanently…']);
     });
 
     it('names the stage when the node reported no step, and leaves out the database line when it is unchanged', () => {
@@ -654,7 +673,7 @@ describe('PluginAdminDetailPageComponent upgrades', () => {
 
         render({
             ...FAILED,
-            allowed_actions: ['cancel_upgrade', 'retry_upgrade', 'purge', 'restore_backup'],
+            allowed_actions: ['cancel_upgrade', 'retry_upgrade', 'restore_backup', 'purge'],
             open_upgrade: buildFailedMigrationUpgrade({
                 database_changed: false,
                 last_error: 'Database restored from x.dump. Retry, upload a newer version, or cancel the upgrade.',
@@ -666,6 +685,17 @@ describe('PluginAdminDetailPageComponent upgrades', () => {
             'Database restored from the backup taken before the upgrade to 0.7.1',
         ]);
         expect(headerButtons()).toContain('Cancel upgrade');
+    });
+
+    it("names a restore's backup by its file name when the server no longer knows why it was taken", () => {
+        render({
+            ...FAILED,
+            open_upgrade: buildFailedMigrationUpgrade({
+                restore: buildPluginRestore({ backup: { id: null, file_name: 'x.dump', reason: null } }),
+            }),
+        });
+
+        expect(bannerLines()).toContain('Restoring the database from the backup x.dump (Restoring the backup)');
     });
 
     it('says a failed restore, and how to undo it once the database was touched', () => {
@@ -732,14 +762,14 @@ describe('PluginAdminDetailPageComponent upgrades', () => {
     it('opens the pending package’s review from "Upgrade to <version>…", and polls the upgrade it started', () => {
         const pending = buildPluginDetail({
             current_version: '0.6.0',
-            allowed_actions: ['uninstall', 'purge', 'upgrade'],
+            allowed_actions: ['uninstall', 'upgrade', 'purge'],
             pending_package: { id: 12, version: '0.7.0', trust: 'trusted' },
         });
         openReview.mockReturnValue(of({ kind: 'approved', plugin: PREPARING }));
         render(pending);
         storage.getPlugin.mockReturnValue(of(PREPARING));
 
-        expect(headerButtons()).toEqual(['Uninstall…', 'Delete permanently…', 'Upgrade to 0.7.0…']);
+        expect(headerButtons()).toEqual(['Uninstall…', 'Upgrade to 0.7.0…', 'Delete permanently…']);
         headerButton('Upgrade to 0.7.0…').click();
         refresh();
 
@@ -808,5 +838,135 @@ describe('PluginAdminDetailPageComponent upgrades', () => {
         expect(element.querySelector('app-plugin-backups')).not.toBeNull();
         expect(storage.listBackups).toHaveBeenCalledWith('weather');
         expect(text(element.querySelector('.runtime__upgrade'))).toBe('Running 0.7.0 → 0.7.1');
+    });
+});
+
+describe('PluginAdminDetailPageComponent development', () => {
+    let fixture: ComponentFixture<PluginAdminDetailPageComponent>;
+    let element: HTMLElement;
+    let storage: {
+        getPlugin: Mock<(identifier: string) => Observable<PluginDetail>>;
+        getDevelopment: Mock<(identifier: string) => Observable<PluginDevelopment>>;
+        updateDevelopment: Mock<(identifier: string, update: PluginDevelopmentUpdate) => Observable<PluginDevelopment>>;
+        getRuntime: Mock<(identifier: string) => Observable<PluginRuntimeResponse>>;
+    };
+
+    function inDevelopment(overrides: Partial<PluginDetail> = {}): PluginDetail {
+        return { ...withBackend(true), development_mode: true, ...overrides };
+    }
+
+    function render(plugin: PluginDetail): void {
+        storage.getPlugin.mockReturnValue(of(plugin));
+        fixture = TestBed.createComponent(PluginAdminDetailPageComponent);
+        element = fixture.nativeElement as HTMLElement;
+        fixture.componentRef.setInput('identifier', plugin.identifier);
+        refresh();
+    }
+
+    function refresh(): void {
+        fixture.detectChanges();
+        TestBed.tick();
+        fixture.detectChanges();
+    }
+
+    function tabLabels(): string[] {
+        return Array.from(element.querySelectorAll('.detail__tabs app-tab-button')).map(
+            (tab) => tab.textContent?.trim() ?? ''
+        );
+    }
+
+    function openTab(label: string): void {
+        Array.from(element.querySelectorAll('.detail__tabs app-tab-button'))
+            .find((tab) => tab.textContent?.trim() === label)!
+            .querySelector('button')!
+            .click();
+        refresh();
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        storage = {
+            getPlugin: vi.fn(),
+            getDevelopment: vi.fn(() => of(buildPluginDevelopment())),
+            updateDevelopment: vi.fn(() => of(buildPluginDevelopment({ target: buildPluginDevelopmentTarget() }))),
+            getRuntime: vi.fn(() => of(buildPluginRuntime())),
+        };
+        TestBed.configureTestingModule({
+            imports: [PluginAdminDetailPageComponent],
+            providers: [
+                provideRouter([]),
+                { provide: PluginsAdminStorageService, useValue: storage },
+                { provide: PluginDialogsService, useValue: {} },
+                { provide: ConfirmationDialogService, useValue: { confirm: vi.fn() } },
+                { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
+            ],
+        });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+    });
+
+    it('offers the Development tab only while the deployment runs in development mode', () => {
+        render(inDevelopment());
+        expect(tabLabels()).toEqual([
+            'Overview',
+            'Organizations',
+            'Settings',
+            'Limits',
+            'Runtime',
+            'Development',
+            'Activity',
+        ]);
+
+        fixture.destroy();
+        render({ ...withBackend(false), development_mode: true });
+        expect(tabLabels()).toEqual(['Overview', 'Organizations', 'Development', 'Activity']);
+
+        fixture.destroy();
+        render(withBackend(true));
+        expect(tabLabels()).not.toContain('Development');
+    });
+
+    it('shows the development panel, and reloads the plugin once its target changed', () => {
+        render(inDevelopment());
+
+        openTab('Development');
+
+        expect(storage.getDevelopment).toHaveBeenCalledWith('weather');
+        expect(element.querySelector('app-plugin-development-panel')).not.toBeNull();
+        const loads = storage.getPlugin.mock.calls.length;
+
+        fixture.debugElement.query(By.directive(PluginDevelopmentPanelComponent)).componentInstance.changed.emit();
+        refresh();
+
+        expect(storage.getPlugin.mock.calls.length).toBe(loads + 1);
+    });
+
+    it('goes back to Overview when development mode is turned off while the tab is open', () => {
+        render(inDevelopment());
+        openTab('Development');
+
+        storage.getPlugin.mockReturnValue(of(withBackend(true)));
+        fixture.debugElement.query(By.directive(PluginDevelopmentPanelComponent)).componentInstance.changed.emit();
+        refresh();
+
+        expect(tabLabels()).not.toContain('Development');
+        expect(element.querySelector('app-plugin-development-panel')).toBeNull();
+        expect(element.querySelector('.detail__overview')).not.toBeNull();
+    });
+
+    it("tells the Runtime tab the development backend's port", () => {
+        render(inDevelopment({ development: { backend_port: 8001, spa_port: null } }));
+
+        openTab('Runtime');
+        vi.advanceTimersByTime(0);
+        refresh();
+
+        expect(element.querySelector('.runtime__development')?.textContent?.trim()).toBe(
+            'Requests go to the development backend at host.docker.internal:8001; the installed process still runs hooks.'
+        );
     });
 });

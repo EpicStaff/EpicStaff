@@ -29,10 +29,13 @@ Two things they still share:
 - **UNIX sockets in the abstract namespace.** These have no file, so file permissions do not
   apply: a socket one plugin opens there can be reached by every other plugin on the node. Use a
   socket in your own directory instead, or none.
-- **The node's ephemeral ports.** Each plugin holds at most 256 open descriptors, and its new
-  connections are capped and rate-limited, but several plugins together could still use up the
-  node's ephemeral ports with UDP sockets that are connected and never send. The other plugins
-  on the node would then fail to open outbound connections until those sockets close.
+- **The node's ephemeral ports.** Every plugin on the node shares its ephemeral ports, 21000 to
+  65535, about 44,500 of them. A plugin cannot `bind()` a socket, TCP or UDP, and its new TCP
+  connections are capped and rate-limited. The node stops a plugin, and keeps it stopped until a
+  SuperAdmin restarts it, when the plugin's user listens on a port of its own (`listen()` without
+  `bind()`) or holds more than 512 network sockets in all, UDP sockets that are connected and
+  never send included. The node checks once a second, so a plugin can press on the ports for up
+  to a second before it is stopped ([Runtime](../reference/runtime.md#how-the-backend-is-started)).
 
 ## Keeping organizations apart inside a plugin is the plugin's job
 

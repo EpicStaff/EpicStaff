@@ -69,6 +69,20 @@ describe('PluginsAdminPageComponent', () => {
         expect(stateBadges('Comet')).toEqual(['Deleting', 'Needs attention']);
     });
 
+    it('marks a plugin in development, as the server reports it', () => {
+        render([
+            buildPluginSummary({ identifier: 'atlas', name: 'Atlas' }),
+            buildPluginSummary({
+                identifier: 'beacon',
+                name: 'Beacon',
+                development: { backend_port: 8001, spa_port: null },
+            }),
+        ]);
+
+        expect(stateBadges('Atlas')).toEqual(['Running']);
+        expect(stateBadges('Beacon')).toEqual(['Running', 'Development']);
+    });
+
     it('names each moment of an upgrade, and marks a failed one', () => {
         render([
             buildPluginSummary({

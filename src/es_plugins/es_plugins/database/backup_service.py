@@ -4,9 +4,10 @@
 with provisioning and the limits watchdog:
 
 1. **Room**, on an admin session to `postgres`: the database's template mark and connection
-   limit are put back (`database_attributes`), its size, the server's version and the
-   database's own settings are read. The node's free disk space minus its floor must be at least
-   the database's size.
+   limit are put back (`database_attributes`), and CONNECT is granted again to the five roles
+   that hold it (`provisioner.grant_connect`); its size, the server's version and the database's
+   own settings are read. The node's free disk space minus its floor must be at least the
+   database's size, and the dump stops (reason `disk`) if it grows past that room.
 2. **Dump.** `pg_dump --format=custom` as `plugins_backup` on the plugin's database, with session
    options that override every setting the plugin stored for it (`BACKUP_SESSION_OPTIONS`). Its
    output is written to a temporary file in `backups/<id>/`, which is hashed as it is written.
@@ -29,6 +30,7 @@ import asyncio
 import contextlib
 import hashlib
 import os
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -36,6 +38,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from loguru import logger
+from pydantic import ValidationError
 from src.shared.models.plugin_nodes import (
     BackupReason,
     DesiredDatabase,
@@ -59,7 +62,7 @@ from es_plugins.database.connections import (
 from es_plugins.database.database_attributes import reset_database_attributes
 from es_plugins.database.database_settings import read_database_settings
 from es_plugins.database.postgres_client import PostgresClient, PostgresToolError, ToolLogin
-from es_plugins.database.provisioner import database_size
+from es_plugins.database.provisioner import database_size, grant_connect
 from es_plugins.node_disk import FLOOR_BYTES, NodeDisk
 
 BACKUP_APPLICATION_NAME = "epicstaff-node-backup"
@@ -74,15 +77,12 @@ DUMP_ARGUMENTS = [
 ]
 FailureReason = Literal["disk", "dump", "verify"]
 _MIB = 1024 * 1024
-# libpq's words for a server it could not reach or lost; an authentication refusal is not one.
-_UNREACHABLE_MARKERS = (
-    "could not connect",
-    "server closed the connection unexpectedly",
-    "no connection to the server",
-    "Connection refused",
-    "could not translate host name",
-    "timeout expired",
-    "Connection timed out",
+# libpq's lines for a server it could not reach, which pg_dump prints before anything else, so
+# only the first line is read: later ones can carry the plugin's text. An answer the server
+# sent ("FATAL:", e.g. an authentication refusal) is not one.
+_UNREACHABLE = re.compile(
+    r"^pg_dump: error: (connection to server (at|on socket) .* failed: (?!FATAL:)"
+    r"|could not translate host name )"
 )
 _LARGE_OBJECT_REFUSAL = "permission denied for large object"
 
@@ -161,6 +161,8 @@ class BackupService:
                     request.plugin,
                     desired.database_name,
                 )
+            # The owner may have revoked CONNECT from the backup role.
+            await grant_connect(admin, desired)
             size = await database_size(admin, desired.database_name)
             cursor = await admin.execute("SHOW server_version")
             server_version = (await cursor.fetchone())[0]
@@ -171,12 +173,12 @@ class BackupService:
                 request.plugin,
                 settings.skipped,
             )
-        free = self._disk.free().bytes
-        if free - FLOOR_BYTES < size:
+        room = self._disk.free().bytes - FLOOR_BYTES
+        if room < size:
             raise BackupError(
                 "disk",
                 f"not enough disk space for the database backup: about {-(-size // _MIB)} MB "
-                f"needed, {max(free - FLOOR_BYTES, 0) // _MIB} MB free",
+                f"needed, {max(room, 0) // _MIB} MB free",
             )
         if self._pg_dump_version is None:
             try:
@@ -196,15 +198,18 @@ class BackupService:
         metadata_path = None
         try:
             try:
-                size, sha256 = await self._dump(desired, descriptor)
-                await asyncio.to_thread(os.fsync, descriptor)
-            finally:
+                size, sha256 = await self._dump(desired, descriptor, room)
+            except BaseException:
                 os.close(descriptor)
+                raise
+            # The thread closes the descriptor once it is synced: a cancel while it syncs never
+            # closes it under the thread.
+            await asyncio.to_thread(_sync_and_close, descriptor)
             if size == 0:
                 raise BackupError("dump", "pg_dump wrote nothing")
             await self._verify(dump_path, ledger_required=request.reason == "pre_upgrade")
             ledger = await self._read_ledger(dump_path)
-            metadata = BackupMetadata(
+            metadata = _metadata(
                 format=METADATA_FORMAT,
                 plugin=request.plugin,
                 installation_id=desired.installation_id,
@@ -238,8 +243,13 @@ class BackupService:
             raise
         return StoredBackup(file_name=final_name, path=final, metadata=metadata)
 
-    async def _dump(self, desired: DesiredDatabase, descriptor: int) -> tuple[int, str]:
-        """Write the dump to `descriptor`; return its size and sha256."""
+    async def _dump(self, desired: DesiredDatabase, descriptor: int, room: int) -> tuple[int, str]:
+        """Write the dump to `descriptor`, at most `room` bytes; return its size and sha256.
+
+        Raises:
+            BackupError: Reason `disk`: the dump grew past `room`, the free space measured
+                before it (the database grew, or something else filled the disk).
+        """
         login = ToolLogin(
             server=desired.server,
             database=desired.database_name,
@@ -254,7 +264,15 @@ class BackupService:
 
         async def write(chunk: bytes) -> bool:
             nonlocal size
-            await asyncio.to_thread(_write_all, descriptor, chunk)
+            if size + len(chunk) > room:
+                raise BackupError(
+                    "disk",
+                    "not enough disk space for the database backup: the dump grew past the "
+                    f"{max(room, 0) // _MIB} MB that were free",
+                )
+            # Written here, not in a thread: a cancel can then never close the descriptor while
+            # a write to it is still under way. A chunk is at most a MiB.
+            _write_all(descriptor, chunk)
             digest.update(chunk)
             size += len(chunk)
             return True
@@ -263,7 +281,7 @@ class BackupService:
             await self._client.run("pg_dump", DUMP_ARGUMENTS, login=login, stdout=write)
         except PostgresToolError as error:
             text = str(error)
-            if any(marker in text for marker in _UNREACHABLE_MARKERS):
+            if error.first_line is not None and _UNREACHABLE.match(error.first_line):
                 raise DatabaseUnreachableError(
                     f"the backup could not reach plugins_db: {text}"
                 ) from None
@@ -291,10 +309,35 @@ class BackupService:
             raise BackupError("verify", f"the dump's ledger cannot be read: {error}") from None
 
 
+def _metadata(**fields) -> BackupMetadata:
+    """The backup's metadata.
+
+    Raises:
+        BackupError: Reason `verify`: what was read does not fit the metadata. Only the
+            fields' places are named; their values may be the plugin's.
+    """
+    try:
+        return BackupMetadata(**fields)
+    except ValidationError as error:
+        places = sorted(
+            {".".join(str(part) for part in detail["loc"]) for detail in error.errors()}
+        )
+        raise BackupError(
+            "verify", f"the backup's metadata does not fit its format: {', '.join(places)}"
+        ) from None
+
+
 def _write_all(descriptor: int, chunk: bytes) -> None:
     view = memoryview(chunk)
     while view:
         view = view[os.write(descriptor, view) :]
+
+
+def _sync_and_close(descriptor: int) -> None:
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _log_failure(plugin: str, reason: str) -> None:

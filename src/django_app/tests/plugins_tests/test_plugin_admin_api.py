@@ -7,11 +7,20 @@ import pytest
 import yaml
 from drf_spectacular.generators import SchemaGenerator
 from drf_spectacular.renderers import OpenApiYamlRenderer
-from plugins.models import Plugin, PluginPackage, PluginState, ReviewState
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from plugins.models import Plugin, PluginDevelopmentTarget, PluginPackage, PluginState, ReviewState
 from rest_framework.test import APIClient
 
 from tests.plugins_tests.conftest import reload_root_urlconf, upload_file
-from tests.plugins_tests.package_builder import ICON_SVG, INDEX_HTML, build_package, sample_files, sample_manifest
+from tests.plugins_tests.package_builder import (
+    ICON_SVG,
+    INDEX_HTML,
+    backend_manifest,
+    build_package,
+    sample_files,
+    sample_manifest,
+)
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -189,6 +198,38 @@ def test_a_newer_version_of_an_approved_plugin_is_put_up_for_review(superadmin_c
     assert len(package_store.objects) == 2
 
 
+# Shaped like a service-account key, but not one: the scan matches the shape alone.
+SECRET_SHAPED_KEY = "esp-" + "Q" * 43
+
+
+@pytest.mark.parametrize(
+    ("path", "data"),
+    [
+        ("backend/src/plugin/settings.py", f'EPICSTAFF_KEY = "{SECRET_SHAPED_KEY}"\n'.encode()),
+        ("backend/src/plugin/weather-development-runtime.json", b'{"service_accounts": {}, "secret_settings": {}}'),
+    ],
+    ids=["service-account-key", "runtime-file"],
+)
+def test_an_upload_holding_a_key_or_a_runtime_file_is_refused_and_nothing_is_stored(
+    superadmin_client, package_store, path, data
+):
+    manifest = backend_manifest()
+    files = {**sample_files(manifest), path: data}
+
+    response = _upload(superadmin_client, build_package(files, manifest=manifest))
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "invalid_plugin"
+    assert body["errors"] == [
+        {"loc": f"package.{path}", "message": "holds an EpicStaff key or runtime file; never package it"}
+    ]
+    assert SECRET_SHAPED_KEY not in response.content.decode()
+    assert package_store.objects == {}
+    assert not PluginPackage.objects.exists()
+    assert not Plugin.objects.exists()
+
+
 def test_a_package_with_nothing_to_install_is_invalid(superadmin_client):
     manifest = sample_manifest()
     del manifest["spa"]
@@ -283,10 +324,11 @@ def test_the_list_is_sorted_by_name_and_summarises_each_plugin(superadmin_client
     assert set(zebra_summary) == {
         "identifier", "name", "description", "state", "trust", "current_version", "icon_url",
         "frame_origin", "grant_count", "pending_package", "purge_after", "needs_attention", "upgrade",
-        "created_at",
+        "development", "created_at",
     }
     assert (zebra_summary["purge_after"], zebra_summary["needs_attention"]) == (None, False)
     assert zebra_summary["upgrade"] is None
+    assert zebra_summary["development"] is None
 
 
 def test_the_list_runs_a_fixed_number_of_queries(superadmin_client, django_assert_max_num_queries):
@@ -345,6 +387,10 @@ ADMIN_ENDPOINTS = [
     ("post", f"{PLUGINS_URL}weather/upgrade/retry/"),
     ("get", f"{PLUGINS_URL}weather/backups/"),
     ("post", f"{PLUGINS_URL}weather/backups/1/restore/"),
+    ("get", f"{PLUGINS_URL}weather/development/"),
+    ("put", f"{PLUGINS_URL}weather/development/"),
+    ("delete", f"{PLUGINS_URL}weather/development/"),
+    ("post", f"{PLUGINS_URL}weather/development/runtime-file/"),
 ]
 
 
@@ -407,3 +453,50 @@ def test_the_api_schema_with_the_plugin_routes_renders_as_yaml():
         "/api/admin/plugins/{identifier}/grants/{grant_id}/suspend/",
         "/api/admin/plugins/{identifier}/grants/{grant_id}/resume/",
     } <= set(paths)
+
+
+
+# ---- plugin development mode in the SuperAdmin's list and detail ----
+
+
+def _summary(client, identifier="weather"):
+    return next(plugin for plugin in client.get(PLUGINS_URL).json() if plugin["identifier"] == identifier)
+
+
+def test_the_list_shows_the_stored_ports_only_while_the_mode_is_on(superadmin_client, running_plugin, settings):
+    plugin = running_plugin()
+    PluginDevelopmentTarget.objects.create(plugin=plugin, spa_port=5173)
+
+    mode_off = _summary(superadmin_client)["development"]
+    settings.PLUGINS_DEV_MODE = True
+    mode_on = _summary(superadmin_client)["development"]
+
+    assert (mode_off, mode_on) == (None, {"backend_port": None, "spa_port": 5173})
+
+
+def test_the_list_shows_no_ports_without_a_target(superadmin_client, running_plugin, settings):
+    settings.PLUGINS_DEV_MODE = True
+    running_plugin()
+
+    assert _summary(superadmin_client)["development"] is None
+
+
+@pytest.mark.parametrize("mode", [True, False])
+def test_the_detail_says_whether_development_mode_is_on(superadmin_client, running_plugin, settings, mode):
+    settings.PLUGINS_DEV_MODE = mode
+    running_plugin()
+
+    assert superadmin_client.get(f"{PLUGINS_URL}weather/").json()["development_mode"] is mode
+
+
+def test_development_adds_no_query_to_the_list(superadmin_client, running_plugin, settings):
+    settings.PLUGINS_DEV_MODE = True
+    counts = []
+    for identifier in ("one", "two", "three", "four", "five"):
+        PluginDevelopmentTarget.objects.create(plugin=running_plugin(id=identifier), spa_port=5173)
+        if identifier in ("one", "five"):
+            with CaptureQueriesContext(connection) as queries:
+                assert all(plugin["development"] for plugin in superadmin_client.get(PLUGINS_URL).json())
+            counts.append(len(queries))
+
+    assert counts[0] == counts[1]

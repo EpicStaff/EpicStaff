@@ -107,6 +107,8 @@ class PluginDatabaseBackup(models.Model):
     whose migrations the database held when it was dumped. `created_at` is the node's clock.
     `deleted_at` is set once the node no longer lists the file. A file the node lists with
     another sha256 than the recorded one is `sha256_mismatch` and never restored.
+    `taken_for_version` is the version its upgrade was going to when the backup was recorded
+    (a newer version may replace a failed target later); null when that upgrade was not open.
     """
 
     # No index of its own: the file-name constraint and the retention index lead with it.
@@ -132,6 +134,7 @@ class PluginDatabaseBackup(models.Model):
     file_name = models.CharField(max_length=BACKUP_FILE_NAME_LENGTH)
     reason = models.CharField(max_length=16, choices=BackupReason.choices)
     version = models.CharField(max_length=64)
+    taken_for_version = models.CharField(max_length=64, null=True, blank=True)
     size_bytes = models.PositiveBigIntegerField()
     sha256 = models.CharField(max_length=64)
     sha256_mismatch = models.BooleanField(default=False)
@@ -146,10 +149,10 @@ class PluginDatabaseBackup(models.Model):
             ),
         ]
         indexes = [
-            # Retention and the backups list read a database's present backups by reason,
-            # newest first.
+            # Retention and the backups list read a database's present backups, newest first;
+            # retention sorts them by reason itself.
             models.Index(
-                fields=["plugin_database", "deleted_at", "reason", "created_at"],
+                fields=["plugin_database", "deleted_at", "created_at"],
                 name="plugins_backup_retention",
             ),
         ]
@@ -164,7 +167,8 @@ class PluginDatabaseRestore(models.Model):
     Only during a failed upgrade, from a backup that upgrade took; the node runs it. At most
     one per database is pending or running. `backup_file_name` keeps the file's name after
     the backup's record goes; `pre_restore_backup` is the backup the node took of the database
-    just before it was replaced, the way back.
+    just before it was replaced, the way back. `pre_restore_file_name` is its name as the node
+    reported it, so the record is linked once a report lists it, also after the restore ended.
     """
 
     plugin_database = models.ForeignKey(
@@ -179,6 +183,9 @@ class PluginDatabaseRestore(models.Model):
     backup_file_name = models.CharField(max_length=BACKUP_FILE_NAME_LENGTH)
     pre_restore_backup = models.ForeignKey(
         PluginDatabaseBackup, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    pre_restore_file_name = models.CharField(
+        max_length=BACKUP_FILE_NAME_LENGTH, null=True, blank=True
     )
     requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"

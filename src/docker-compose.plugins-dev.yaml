@@ -1,0 +1,24 @@
+# Plugin development only: for an EpicStaff on your own machine, never on a server others use.
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.plugins-dev.yaml --env-file ./.env up -d
+#
+# PLUGINS_DEV_MODE itself stays in .env; django_app and epicstaff-nginx refuse it unless
+# DJANGO_DEBUG=true and EpicStaff and PLUGINS_BASE_DOMAIN use .localhost names. This file holds
+# only what docker-compose.yaml must never have. It opens:
+#   - host.docker.internal for django_app: the one name it resolves for a development target, to
+#     the address it gives nginx. Docker Desktop has the name built in; on Linux, host-gateway is
+#     the Docker bridge's address on this machine.
+#   - the development API listener on 127.0.0.1:${PLUGINS_DEV_API_PORT} only, where a
+#     development backend (epicstaff-plugin dev) reaches EpicStaff's API with its development keys;
+#   - EpicStaff's ports 80 and 443 on 127.0.0.1 only, instead of every interface: a plugin host
+#     with a development target serves this machine's ports, and nobody else may reach them.
+# `!override` replaces docker-compose.yaml's port list instead of adding to it, and needs Docker
+# Compose 2.24.4 or later.
+services:
+  django_app:
+    extra_hosts: ["host.docker.internal:host-gateway"]
+  epicstaff-nginx:
+    ports: !override
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
+      - "127.0.0.1:${PLUGINS_DEV_API_PORT:?}:8082"

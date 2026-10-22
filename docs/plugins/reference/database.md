@@ -159,10 +159,16 @@ alone.
   privileges in a migration, for the owner.
 - **The owner may mark its database a template or limit its connections**: the node puts both back
   before a backup, a restore or a deletion, which they would stop.
-- **Settings stored on the owner role** (`ALTER ROLE CURRENT_USER SET …` in a migration) survive a
-  restore. The node's own sessions as the owner name the role, the transaction defaults
-  and the timeouts themselves, so those settings cannot stop a later migration or restore; any
-  other setting stored there applies to your migrations.
+- **Settings stored on the owner role do not last.** Before each migration run and each restore,
+  the node removes every setting stored on the owner role (`ALTER ROLE CURRENT_USER SET …`),
+  role-wide and `IN DATABASE` alike. Set defaults for your database with `ALTER DATABASE … SET`
+  instead, which backups keep.
+- **The node's own sessions name how they behave.** Its sessions as the owner, for migrations and
+  restores, and its backup sessions set the role, the transaction defaults and the timeouts
+  themselves, with `local_preload_libraries` empty and `exit_on_error` off; owner sessions also
+  leave `default_tablespace` empty. So no setting stored for your database can keep a later
+  migration, backup or restore from running; any other setting stored for it applies to your
+  migrations.
 
 ## What other plugins can see
 

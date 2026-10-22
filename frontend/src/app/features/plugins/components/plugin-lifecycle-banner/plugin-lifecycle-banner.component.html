@@ -43,8 +43,11 @@
                 }
                 <span>
                     {{ line.text }}
-                    @if (line.detail) {
-                        <span class="banner__detail">({{ line.detail }})</span>
+                    @if (line.parenthesis; as parenthesis) {
+                        <span class="banner__detail"
+                            >{{ parenthesis.announced }}<span aria-hidden="true">{{ parenthesis.unannounced }}</span
+                            >{{ parenthesis.closing }}</span
+                        >
                     }
                 </span>
             </p>

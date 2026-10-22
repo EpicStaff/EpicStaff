@@ -63,6 +63,7 @@ from es_plugins.packages.venv_builder import VenvBuildError
 from es_plugins.packages.wheel_tag_check import IncompatibleWheelError
 
 TRANSIENT_RETRY_SECONDS = 30.0
+RESTORE_INTERNAL_ERROR = "the restore failed with an internal error of the node agent; see its log"
 _MIB = 1024 * 1024
 _FIRST_STEP: dict[str, UpgradeStep] = {
     "preparing": "download",
@@ -438,6 +439,13 @@ class PlacementRestore:
             return TRANSIENT_RETRY_SECONDS
         except (UpgradeStepError, LauncherError) as error:
             self._state, self._last_error = "failed", str(error)
+            self._services.on_change()
+            return None
+        except Exception:
+            # The placement's controller must go on: an unexpected error fails this restore,
+            # at the step it reached, and EpicStaff may ask for another.
+            logger.exception("Plugin {}: unexpected error in its restore", self._plugin)
+            self._state, self._last_error = "failed", RESTORE_INTERNAL_ERROR
             self._services.on_change()
             return None
         self._state = "succeeded"

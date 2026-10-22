@@ -38,11 +38,8 @@ from plugins.models import (
 )
 from plugins.models.database import OPEN_RESTORE_STATES
 from plugins.models.upgrade import TARGET_STAGES
-from plugins.nodes.runtime_credentials_service import (
-    Roster,
-    RuntimeFileBuilder,
-    service_account_rosters,
-)
+from plugins.nodes.runtime_credentials_service import service_account_rosters
+from plugins.nodes.runtime_file_builder import Roster, RuntimeFileBuilder
 
 # Plugin states whose backend is in service: the gateway forwards to it and a grant may be
 # made. Uploaded plugins have no approved package yet.

@@ -126,9 +126,9 @@ class GrantPurgeService:
         deadline.
 
         The grant keeps the first error of a pass that failed. A pass that held back rows
-        which failed within the hour keeps the error the grant has, so it does not vanish
-        until a pass gets through them; only a pass with no failure that held back nothing
-        clears it.
+        which failed within the hour, or that its deadline cut short, keeps the error the
+        grant has, so it does not vanish until a pass gets through every row; only a whole
+        pass with no failure that held back nothing clears it.
         """
         result = OwnedResourcePurger().purge(
             organization_id=grant.org_id,
@@ -138,7 +138,7 @@ class GrantPurgeService:
         )
         if result.failed:
             last_error = result.first_error
-        elif result.held_back:
+        elif result.held_back or result.truncated:
             return result
         else:
             last_error = None

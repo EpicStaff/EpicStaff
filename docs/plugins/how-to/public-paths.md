@@ -3,8 +3,9 @@
 Requests to a plugin's backend reach it through EpicStaff's gateway at
 `https://<id>.<plugins base domain>/api/**`. A path you declare **public** is forwarded without an
 EpicStaff login: a health probe, a webhook a third party calls, a page anyone may fetch. Every
-other path needs a logged-in person; in this version, where people cannot log in to plugins yet,
-every other path is answered `401 login_required`.
+other path needs a person logged in to the plugin through EpicStaff, whose plugin login token the
+gateway checks ([Gateway context](../reference/gateway-context.md#who-is-asking-user-contexts));
+without one it is answered `401 login_required`.
 
 ## Declare them
 
@@ -29,15 +30,21 @@ deployment allows is refused at upload (`invalid_plugin`, located at
 
 ## What the gateway checks, in order
 
-1. **The plugin is installed with a backend**, otherwise `404 not_found`.
+1. **The plugin is installed with a backend and in service**, otherwise `404 not_found`: also
+   while it is uninstalled or being deleted.
 2. **The path is canonical**, otherwise `404 not_found`. A request is matched on its path only
    as the client sent it, decoded once; it is refused if that differs from the normalised path
    (doubled slashes, `.` or `..` segments, `%2e%2e`), if it holds control characters or is not
    UTF-8, or if decoding it a second time gives a dot segment or a path into the platform's
    `/_epicstaff/` paths. So a request can never be checked as one path and reach your backend
    as another.
-3. **The process is running and healthy**, otherwise `503 plugin_unavailable`.
-4. **The method and path match a public path**, otherwise `401 login_required`.
+3. **The plugin is up.** While it is stopped for an upgrade every path, public ones included, is
+   answered `503 plugin_maintenance`; while its process is not running and healthy,
+   `503 plugin_unavailable`.
+4. **The method and path match a public path.** Otherwise the request needs a plugin login token
+   and a person who may use the plugin ([who is
+   asking](../reference/gateway-context.md#who-is-asking-user-contexts)), and the two checks
+   below do not apply.
 5. **The body fits** `max_body_kb`, judged by the request's `Content-Length`. A body without a
    declared length is refused, because its size is not known until it has streamed: a chunked
    request, and any `POST`, `PUT`, `PATCH` or `DELETE` without `Content-Length` (over HTTP/2 a
@@ -68,4 +75,5 @@ curl -i https://weather.plugins.example.com/api/ping
 ```
 
 answers with your backend's response. A path that is not public answers
-`401 {"status_code":401,"code":"login_required",…}` without reaching the backend.
+`401 {"status_code":401,"code":"login_required",…}` to a request without a plugin login token,
+without reaching the backend.

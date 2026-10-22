@@ -37,7 +37,8 @@ interface BackupRow {
 /**
  * The backups the plugin node holds of a plugin's database, newest first: why each was taken, the version whose
  * database it holds, its size and time, and Restore… for those the server says are restorable (else why not). The list
- * is loaded again whenever `refreshKey` changes (the page polls the open upgrade) and after a restore was asked for.
+ * is loaded again whenever `refreshKey` changes (on every runtime poll, and when the open upgrade moves) and after a
+ * restore was asked for.
  */
 @Component({
     selector: 'app-plugin-backups',
@@ -51,8 +52,8 @@ export class PluginBackupsComponent {
     readonly databaseName = input.required<string>();
     /** Changes whenever what the backups allow may have changed: the open upgrade's stage, failure or restore. */
     readonly refreshKey = input('');
-    /** "Restore backup…" was chosen: bring the list into view. */
-    readonly revealed = input(false);
+    /** Bumped each time "Restore backup…" is chosen: bring the list into view; `0` until then. */
+    readonly revealed = input(0);
     /** A restore was asked for; the plugin's open upgrade now carries it. */
     readonly restoreRequested = output<PluginRestore>();
 
@@ -71,7 +72,7 @@ export class PluginBackupsComponent {
 
     private readonly revealEffect = effect(() => {
         const heading = this.heading()?.nativeElement;
-        if (!heading || !this.revealed()) return;
+        if (!heading || this.revealed() === 0) return;
         untracked(() => {
             heading.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
             heading.focus({ preventScroll: true });

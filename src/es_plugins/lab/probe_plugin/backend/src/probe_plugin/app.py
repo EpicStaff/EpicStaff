@@ -124,8 +124,18 @@ def try_bind(host: str, port: int, reuse: bool, listen: bool) -> str:
     return attempt(bind)
 
 
+def try_bind_udp(host: str, port: int) -> str:
+    def bind() -> str:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.bind((host, port))
+        return "bound"
+
+    return attempt(bind)
+
+
 def bind_attempts(port: int) -> dict:
-    """Every way a plugin could try to take `port`: to listen on it, or only to keep it bound."""
+    """Every way a plugin could try to take `port`: to listen on it, or only to keep it bound,
+    over TCP, and a UDP bind."""
     attempts = {}
     for host in ("0.0.0.0", "127.0.0.1"):
         for reuse in (False, True):
@@ -135,7 +145,21 @@ def bind_attempts(port: int) -> dict:
                     f"{'listening' if listen else 'bound only'}"
                 )
                 attempts[name] = try_bind(host, port, reuse, listen)
+        attempts[f"{host} UDP"] = try_bind_udp(host, port)
     return attempts
+
+
+# Sockets the probe keeps open until its process ends.
+kept_sockets: list[socket.socket] = []
+
+
+def listen_without_bind() -> dict:
+    """`listen()` on a TCP socket never bound: the kernel picks a port, and no bind hook runs.
+    The socket stays open, for the node's socket watchdog to find."""
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.listen(1)
+    kept_sockets.append(listener)
+    return {"port": listener.getsockname()[1], "listened_at": time.time()}
 
 
 def talk_to_launcher() -> bytes:
@@ -394,6 +418,8 @@ async def app(scope, receive, send):
         body = fork_bomb()
     elif path == "/api/bind":
         body = bind_attempts(int(query["port"]))
+    elif path == "/api/listen":
+        body = listen_without_bind()
     elif path == "/api/fill":
         body = fill_home(int(query["mb"]))
     elif path == "/api/connect":

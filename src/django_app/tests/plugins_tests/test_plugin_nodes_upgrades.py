@@ -490,7 +490,7 @@ def test_the_upgrade_rules_still_apply_when_the_desired_state_is_read_leniently(
 def test_a_placement_report_from_an_older_node_has_no_upgrade_restore_or_backups():
     report = PlacementReport.model_validate(_placement_report())
 
-    assert (report.upgrade, report.restore, report.backups) == (None, None, [])
+    assert (report.upgrade, report.restore, report.backups) == (None, None, None)
 
 
 def test_a_placement_report_carries_the_upgrade_the_restore_and_the_backups():

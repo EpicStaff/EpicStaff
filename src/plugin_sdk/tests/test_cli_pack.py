@@ -5,6 +5,7 @@ import zipfile
 from epicstaff_plugin.cli.main import main
 from epicstaff_plugin.package_layout import read_package_file
 from epicstaff_plugin.signing import SecretKey, SignatureFile
+from epicstaff_plugin.testing import service_account_key, write_runtime_file
 
 
 def _pack(source, spa, output, *extra):
@@ -123,3 +124,30 @@ def test_a_small_file_may_compress_well(plugin_source, tmp_path):
     (spa / "padding.txt").write_bytes(b" " * 20 * 1024)
 
     assert _pack(source, spa, tmp_path / "weather.esplugin") == 0
+
+
+def test_a_key_in_the_page_writes_no_package_and_is_never_printed(plugin_source, tmp_path, capsys):
+    source, spa = plugin_source
+    key = service_account_key()
+    (spa / "assets" / "config.js").write_text(f"export const key = '{key}';\n")
+    output = tmp_path / "weather.esplugin"
+
+    assert _pack(source, spa, output) == 1
+
+    printed = capsys.readouterr()
+    assert "package.spa/assets/config.js: holds an EpicStaff key or runtime file; never package it" in printed.out
+    assert key not in printed.out + printed.err
+    assert not output.exists()
+
+
+def test_a_runtime_file_in_the_page_writes_no_package(plugin_source, tmp_path, signer, capsys):
+    source, spa = plugin_source
+    write_runtime_file(spa / "runtime.json", signer=signer, secret_settings={"forecast_api_token": "s3cret-value"})
+    output = tmp_path / "weather.esplugin"
+
+    assert _pack(source, spa, output) == 1
+
+    printed = capsys.readouterr().out
+    assert "package.spa/runtime.json: holds an EpicStaff key or runtime file; never package it" in printed
+    assert "s3cret-value" not in printed
+    assert not output.exists()

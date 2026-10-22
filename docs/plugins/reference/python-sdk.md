@@ -18,7 +18,7 @@ Python 3.12 and 3.13.
 | `epicstaff_plugin.versions` | Comparing plugin versions in SemVer order, as EpicStaff does: an upgrade hook compares `previous_version` with it |
 | `epicstaff_plugin.testing` | Forged contexts, hook calls and runtime files for your tests |
 | `epicstaff_plugin.contracts` | The documents EpicStaff and plugins exchange, as Pydantic models |
-| `epicstaff-plugin` (command) | `validate`, `pack`, `keygen`, `sign`, `verify`, `schema`; see [Sign and package a plugin](../how-to/sign-and-package.md) |
+| `epicstaff-plugin` (command) | `validate`, `pack`, `keygen`, `sign`, `verify`, `schema` and `dev`; see the [command-line reference](cli.md) |
 
 Until the package is published, a plugin's lock gets it from a wheel built from the repository;
 [Sign and package a plugin](../how-to/sign-and-package.md#a-plugin-with-a-backend) shows how.
@@ -78,12 +78,16 @@ is wrong (without a descriptor), or uvicorn is not installed.
 
 | Function | Use |
 |---|---|
+| `create_app()` | The app `serve` runs, built from the environment: it reads the runtime file `EPICSTAFF_PLUGIN_RUNTIME_FILE` names, imports the app `EPICSTAFF_PLUGIN_ENTRYPOINT` names, and returns `build_app(app, runtime)`. Raises `RuntimeConfigError` when the runtime file is not named, unreadable or invalid, and `ServeError` when the entrypoint is not set or does not import. [`epicstaff-plugin dev`](cli.md#epicstaff-plugin-dev) serves it too, as a uvicorn app factory, so a backend runs on your machine exactly as the node composes it |
 | `build_app(app, runtime, *, hooks=None, epicstaff=None)` | The wrapped app `serve` runs, for tests of your app as the node serves it. `hooks` replaces the process-wide `hook_registry`, and `epicstaff` the `EpicStaffClient` hook handlers get (by default a new one over `runtime`) |
 | `load_entrypoint("module.path:attribute")` | Import an ASGI app by its entrypoint; raises `ServeError` |
 | `inherited_listen_fd()` | The node's listening socket from `EPICSTAFF_PLUGIN_LISTEN_FD`, checked and made non-inheritable, or `None`; raises `ServeError` |
 
-To run your backend on your machine the way the node does, write a runtime file with
-`epicstaff_plugin.testing.write_runtime_file` and set the variables of [Runtime](runtime.md#environment).
+To run your backend on your machine against a local EpicStaff, use
+[`epicstaff-plugin dev`](cli.md#epicstaff-plugin-dev) ([Local
+development](../how-to/local-development.md#develop-the-backend-on-your-machine)). In tests, serve
+`build_app` with a runtime file from `epicstaff_plugin.testing.write_runtime_file`
+([Testing](#testing)).
 
 ## `epicstaff_plugin.gateway`
 

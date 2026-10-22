@@ -268,6 +268,7 @@ refused when the node installs the backend, naming the wheel and the platform.
 | SPA | At most 2000 files and 50 MiB in total |
 | Migrations | At most 64 MiB in total under `database/migrations/` |
 | Icon | At most 64 KiB |
+| Secrets | No file but a wheel may hold an EpicStaff service-account key (`esp-` and 43 more characters) in its first MiB, or be a runtime file (a JSON object with both `service_accounts` and `secret_settings`): `package.<path>: holds an EpicStaff key or runtime file; never package it`. See [Keep secrets out of a package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package) |
 
 ### Icon
 
@@ -334,8 +335,10 @@ lines.
 | `package` | the archive as a whole, or one file in it after the dot | `package`, `package.spa/app.js` |
 
 Other upload answers: `invalid_signature` (a signature that does not belong to the package),
-`package_too_large` (413) and `plugin_upgrade_unavailable` (409, the plugin already has an
-approved version; installing a new version is not available yet).
+`package_too_large` (413), and for a new version of an installed plugin
+`plugin_version_not_newer` (409, the version is not newer than the latest approved one) and
+`plugin_upgrade_unavailable` (409, it drops the backend or the database, or changes a migration
+that already ran); see [Compatibility and versioning](compatibility-and-versioning.md).
 
 Approving a package checks the stored file again before anything is published: it must still be
 the uploaded file (otherwise `409 package_file_mismatch`: upload it again), it must still pass

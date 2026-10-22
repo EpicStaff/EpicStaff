@@ -24,6 +24,7 @@ import {
     PluginSettingsResponse,
     PluginSettingState,
 } from '../models/plugin-backend.model';
+import { PluginDevelopment, PluginDevelopmentTarget } from '../models/plugin-development.model';
 import { PluginGrantPurgePreview, PluginPurgePreview } from '../models/plugin-purge-preview.model';
 import { PluginRolePermissionsResponse, PluginRoleRow } from '../models/plugin-role-permissions.model';
 import { PluginSuspendPreview } from '../models/plugin-suspend-preview.model';
@@ -97,6 +98,7 @@ export function buildPluginSummary(overrides: Partial<PluginSummary> = {}): Plug
         purge_after: null,
         needs_attention: false,
         upgrade: null,
+        development: null,
         ...overrides,
     };
 }
@@ -104,7 +106,7 @@ export function buildPluginSummary(overrides: Partial<PluginSummary> = {}): Plug
 export function buildPluginDetail(overrides: Partial<PluginDetail> = {}): PluginDetail {
     return {
         ...buildPluginSummary(),
-        current_package: buildPackageReview({ review_state: 'approved' }),
+        current_package: buildPackageReview({ review_state: 'approved', current_version: '0.1.0' }),
         allowed_actions: ['uninstall', 'purge'],
         uninstall_requested_at: null,
         purge_started_at: null,
@@ -112,6 +114,7 @@ export function buildPluginDetail(overrides: Partial<PluginDetail> = {}): Plugin
         open_upgrade: null,
         last_upgrade: null,
         upgrade_hooks: { upgrading: 0, upgrade_failed: 0 },
+        development_mode: false,
         ...overrides,
     };
 }
@@ -136,6 +139,35 @@ export function buildAvailablePlugin(overrides: Partial<AvailablePlugin> = {}): 
         frame_origin: 'https://weather.plugins.example.com',
         permissions: ['read'],
         availability: 'ready',
+        development: false,
+        ...overrides,
+    };
+}
+
+/** Weather's backend on port 8001 of the author's machine, and its page from the development server on 5173. */
+export function buildPluginDevelopmentTarget(
+    overrides: Partial<PluginDevelopmentTarget> = {}
+): PluginDevelopmentTarget {
+    return {
+        backend_port: 8001,
+        spa_port: 5173,
+        updated_at: '2026-10-22T09:00:00Z',
+        updated_by: { id: 1, email: 'sam@example.com' },
+        ...overrides,
+    };
+}
+
+/** Development mode on, the host resolving as on Docker Desktop, Weather with a backend and a page, nothing stored. */
+export function buildPluginDevelopment(overrides: Partial<PluginDevelopment> = {}): PluginDevelopment {
+    return {
+        development_mode: true,
+        host: 'host.docker.internal',
+        host_address: '192.168.65.254',
+        api_url: 'http://127.0.0.1:8082/api/',
+        can_use_backend: true,
+        can_use_spa: true,
+        target: null,
+        runtime_file_issued_at: null,
         ...overrides,
     };
 }

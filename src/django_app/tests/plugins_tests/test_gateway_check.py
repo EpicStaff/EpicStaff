@@ -9,13 +9,14 @@ from epicstaff_plugin.contracts.gateway_context import ContextOrganization, Cont
 from epicstaff_plugin.gateway.context_verifier import ContextRejected, ContextVerifier
 from epicstaff_plugin.runtime.runtime_config import RuntimeConfig
 from plugins.gateway import public_rate_limiter
+from plugins.gateway.person_cache import PERSON_SHAPE_TAG
 from plugins.identity.plugin_login_tokens import issue_plugin_login_token, password_fingerprint, signing_key
 from plugins.identity.signing_keys import PluginSigningKeyService
 from plugins.models import GrantState, Plugin, PluginGrant, PluginPlacement, PluginSigningKey, PluginState
 from rbac.models import OrganizationUser
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from tests.plugins_tests.conftest import GATEWAY_SECRET, mark_running
+from tests.plugins_tests.conftest import DEVELOPMENT_HOST_ADDRESS, GATEWAY_SECRET, mark_running
 from tests.plugins_tests.package_builder import PING_PATH
 
 pytestmark = [
@@ -332,8 +333,9 @@ def _login_token(user, organization, grant, identifier="weather"):
     return issue_plugin_login_token(user=user, org_id=organization.pk, grant_id=grant.pk, identifier=identifier).token
 
 
-def _person_key(user, organization, grant):
-    return f"plugins:gw:person:weather:{organization.pk}:{user.pk}:{grant.pk}:{password_fingerprint(user.password)}"
+def _person_key(user, organization, grant, shape_tag=PERSON_SHAPE_TAG):
+    prefix = "plugins:gw:person:" + (f"{shape_tag}:" if shape_tag else "")
+    return f"{prefix}weather:{organization.pk}:{user.pk}:{grant.pk}:{password_fingerprint(user.password)}"
 
 
 def _logged_in_check(client, token, uri="/api/whoami", scheme="Bearer", **headers):
@@ -532,6 +534,41 @@ def test_a_repeated_logged_in_check_reads_only_the_plugin_s_availability(weather
     assert response.status_code == 200
 
 
+def test_an_entry_an_earlier_release_cached_in_another_shape_is_never_read(
+    weather, acme_grant, member_only, acme, anonymous_client
+):
+    # What the previous release cached for this person, under its untagged key and without
+    # the fields added since: reading it as a person would raise TypeError.
+    earlier = {
+        "user_active": True,
+        "password_fingerprint": password_fingerprint(member_only.password),
+        "grant_usable": True,
+        "may_use": True,
+        "organization_name": acme.name,
+        "email": member_only.email,
+        "name": "",
+        "actions": ["read"],
+    }
+    cache.set(_person_key(member_only, acme, acme_grant, shape_tag=None), earlier, timeout=10)
+
+    response = _logged_in_check(anonymous_client, _login_token(member_only, acme, acme_grant))
+
+    assert response.status_code == 200
+    assert cache.get(_person_key(member_only, acme, acme_grant))["member"] is True
+
+
+def test_the_shape_tag_follows_the_person_s_fields():
+    from dataclasses import fields
+
+    from plugins.gateway import person_cache
+
+    names = [field.name for field in fields(person_cache.GatewayPerson)]
+
+    assert {"member", "grant_state"} <= set(names)
+    assert person_cache._shape_tag() == PERSON_SHAPE_TAG
+    assert len(PERSON_SHAPE_TAG) == 12
+
+
 def test_the_cache_keeps_no_password_hash(weather, acme_grant, member_only, acme, anonymous_client):
     _logged_in_check(anonymous_client, _login_token(member_only, acme, acme_grant))
 
@@ -558,3 +595,129 @@ def test_a_public_path_with_another_authorization_passes_it_on(weather, anonymou
     response = _check(anonymous_client, HTTP_AUTHORIZATION=authorization)
 
     assert response.headers["X-Plugin-Forward-Authorization"] == "1"
+
+
+
+# ---- plugin development mode: a development backend port routes to the author's machine ----
+
+DEVELOPMENT_UPSTREAM = f"{DEVELOPMENT_HOST_ADDRESS}:8001"
+
+
+@pytest.fixture
+def developed_weather(weather, development_mode, development_host_resolves):
+    """Weather with a development backend port stored, development mode on and the host resolving."""
+    from plugins.models import PluginDevelopmentTarget
+
+    PluginDevelopmentTarget.objects.create(plugin=weather, backend_port=8001)
+    return weather
+
+
+def test_a_development_backend_port_is_the_upstream(developed_weather, anonymous_client):
+    response = _check(anonymous_client)
+
+    assert response.status_code == 200
+    assert response["X-Plugin-Upstream"] == DEVELOPMENT_UPSTREAM
+
+
+@pytest.mark.parametrize(
+    "placement_changes",
+    [{"observed_state": "failed", "health": "failing"}, {"observed_state": "starting"}, {"health": "failing"}],
+)
+def test_the_node_s_process_health_does_not_count_for_a_development_backend(
+    developed_weather, anonymous_client, placement_changes
+):
+    PluginPlacement.objects.filter(plugin=developed_weather).update(**placement_changes)
+
+    response = _check(anonymous_client)
+
+    assert response.status_code == 200
+    assert response["X-Plugin-Upstream"] == DEVELOPMENT_UPSTREAM
+
+
+@pytest.mark.parametrize(
+    ("state", "deny"),
+    [
+        (PluginState.FAILED, "unavailable"),
+        (PluginState.PROVISIONING, "unavailable"),
+        (PluginState.MAINTENANCE, "maintenance"),
+        (PluginState.UNINSTALLING, "not_found"),
+    ],
+)
+def test_a_development_backend_answers_only_while_the_plugin_runs(developed_weather, anonymous_client, state, deny):
+    Plugin.objects.filter(pk=developed_weather.pk).update(state=state)
+
+    assert _deny(_check(anonymous_client)) == (403, deny)
+
+
+def test_an_unresolved_host_is_unavailable_and_logged_once(
+    weather, development_mode, development_host_unresolved, anonymous_client, log_messages
+):
+    from plugins.models import PluginDevelopmentTarget
+
+    PluginDevelopmentTarget.objects.create(plugin=weather, backend_port=8001)
+
+    answers = [_deny(_check(anonymous_client)) for _ in range(2)]
+
+    assert answers == [(403, "unavailable")] * 2
+    assert [line for line in log_messages if "host_unresolved" in line] == [
+        "plugins.development.host_unresolved host=host.docker.internal"
+    ]
+
+
+def test_with_the_mode_off_a_stored_target_is_inert(developed_weather, anonymous_client, settings, development_host_resolves):
+    settings.PLUGINS_DEV_MODE = False
+
+    response = _check(anonymous_client)
+
+    assert response["X-Plugin-Upstream"] == f"es_plugins:{developed_weather.placement.port}"
+    assert development_host_resolves.calls == []
+
+
+def test_a_page_port_alone_leaves_the_backend_on_the_node(weather, development_mode, anonymous_client):
+    from plugins.models import PluginDevelopmentTarget
+
+    PluginDevelopmentTarget.objects.create(plugin=weather, spa_port=5173)
+
+    assert _check(anonymous_client)["X-Plugin-Upstream"] == f"es_plugins:{weather.placement.port}"
+
+
+def test_a_private_path_still_needs_a_login_token(developed_weather, anonymous_client):
+    assert _deny(_check(anonymous_client, uri="/api/whoami")) == (401, "login")
+
+
+def test_a_non_canonical_path_is_still_not_found(developed_weather, anonymous_client):
+    assert _deny(_check(anonymous_client, uri="/api/x/../ping", normalized="/api/ping")) == (403, "not_found")
+
+
+def test_public_path_limits_still_apply(developed_weather, anonymous_client):
+    response = _check(anonymous_client, HTTP_X_ORIGINAL_CONTENT_LENGTH="1")
+
+    assert _deny(response) == (403, "too_large")
+
+
+def test_a_logged_in_request_goes_to_the_development_backend_with_its_context(
+    developed_weather, acme_grant, member_only, acme, anonymous_client
+):
+    response = _logged_in_check(anonymous_client, _login_token(member_only, acme, acme_grant))
+
+    assert response.status_code == 200
+    assert response["X-Plugin-Upstream"] == DEVELOPMENT_UPSTREAM
+    assert response["X-Plugin-Context"]
+    assert response["X-Plugin-Forward-Authorization"] == "0"
+
+
+def test_a_development_write_reroutes_this_process_at_once(
+    weather, development_mode, development_host_resolves, anonymous_client, superadmin_client,
+    django_capture_on_commit_callbacks,
+):
+    before = _check(anonymous_client)["X-Plugin-Upstream"]
+
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.put("/api/admin/plugins/weather/development/", {"backend_port": 8001}, format="json")
+    during = _check(anonymous_client)["X-Plugin-Upstream"]
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.delete("/api/admin/plugins/weather/development/")
+    after = _check(anonymous_client)["X-Plugin-Upstream"]
+
+    node = f"es_plugins:{weather.placement.port}"
+    assert (before, during, after) == (node, DEVELOPMENT_UPSTREAM, node)

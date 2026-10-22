@@ -133,6 +133,47 @@ def test_the_app_order_is_health_then_hooks_then_the_context_check(plugin_module
     assert request(app, "POST", "/api/ping", hook.headers, hook.body).json() == {"code": "context_invalid"}
 
 
+def test_create_app_composes_health_then_hooks_then_the_context_check_then_the_app(plugin_module, plugin_environment, signer):
+    app = serve.create_app()
+    failing_hook = HookSigner(signer).call("org_removed", org={"id": 13, "name": "Locked"})
+
+    assert request(app, "GET", "/_epicstaff/health").json() == {"status": "ok"}
+    answer = request(app, "POST", failing_hook.path, failing_hook.headers, failing_hook.body)
+    assert (answer.status, answer.json()["error"]["message"]) == (500, "cannot remove organization 13")
+    assert request(app, "GET", "/api/whoami").json() == {"code": "context_invalid"}
+    served = request(app, "GET", "/api/whoami", signer.headers("GET", "/api/whoami"))
+    assert (served.status, served.json()["plugin"]["identifier"]) == (200, "weather")
+
+
+def test_main_serves_the_app_create_app_builds(plugin_module, plugin_environment, recorded_uvicorn, monkeypatch):
+    created = []
+
+    def create_app():
+        created.append(object())
+        return created[-1]
+
+    monkeypatch.setattr(serve, "create_app", create_app)
+
+    assert serve.main() == 0
+    (app, _), = recorded_uvicorn
+    assert created == [app]
+
+
+@pytest.mark.parametrize(
+    ("variable", "value", "error", "message"),
+    [
+        ("EPICSTAFF_PLUGIN_ENTRYPOINT", "", serve.ServeError, "EPICSTAFF_PLUGIN_ENTRYPOINT is not set"),
+        ("EPICSTAFF_PLUGIN_ENTRYPOINT", "missing_module:app", serve.ServeError, "cannot import missing_module"),
+        ("EPICSTAFF_PLUGIN_RUNTIME_FILE", "/nonexistent/runtime.json", serve.RuntimeConfigError, "cannot read"),
+    ],
+)
+def test_create_app_refuses_an_environment_it_cannot_serve(plugin_module, plugin_environment, monkeypatch, variable, value, error, message):
+    monkeypatch.setenv(variable, value)
+
+    with pytest.raises(error, match=message):
+        serve.create_app()
+
+
 @pytest.mark.parametrize(
     ("variable", "value", "message"),
     [

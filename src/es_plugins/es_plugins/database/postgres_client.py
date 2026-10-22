@@ -15,8 +15,9 @@ variable. Archives travel through pipes: `pg_dump` writes to its standard output
 writes the file, `pg_restore` reads the archive from its standard input. So the tools never open
 a path of the node's.
 
-A run that fails raises `PostgresToolError` with the tool's last error lines. Lines that can
-carry a row's contents (`DETAIL:`, `CONTEXT:`, `Command was:`) are left out, and control
+A run that fails raises `PostgresToolError` with the tool's last error lines and its first
+line. Lines that can carry a row's contents (`DETAIL:`, `CONTEXT:`, `Command was:` and every
+line of the statement after it, up to the tool's next line) are left out, and control
 characters become spaces, since object names and messages in them are the plugin's.
 """
 
@@ -48,18 +49,26 @@ _CHUNK_BYTES = 1024 * 1024
 _STREAM_LIMIT_BYTES = 1024 * 1024
 _SYSTEM_PATH = "/usr/bin:/bin"
 # A tool's own lines start with its name; the server's ERROR text is on the same line.
-_ROW_BEARING_PREFIXES = ("DETAIL:", "CONTEXT:", "Command was:", "LINE ")
+_ROW_BEARING_PREFIXES = ("DETAIL:", "CONTEXT:", "LINE ")
+_STATEMENT_PREFIX = "Command was:"
 
 StdoutSink = Callable[[bytes], Awaitable[bool]]
 """Takes one chunk of a tool's output; returns False once it wants no more (the tool is ended)."""
 
 
 class PostgresToolError(Exception):
-    """`pg_dump` or `pg_restore` failed; the message ends with its last error lines."""
+    """`pg_dump` or `pg_restore` failed; the message ends with its last error lines.
 
-    def __init__(self, message: str, *, error_lines: tuple[str, ...] = ()):
+    `first_line` is the first line the tool wrote to its standard error, None when it wrote
+    none: what libpq says when it could not connect, which nothing of the plugin's can precede.
+    """
+
+    def __init__(
+        self, message: str, *, error_lines: tuple[str, ...] = (), first_line: str | None = None
+    ):
         super().__init__(message)
         self.error_lines = error_lines
+        self.first_line = first_line
 
 
 @dataclass(frozen=True)
@@ -146,7 +155,7 @@ class PostgresClient:
                 env=self.environment(login),
                 limit=_STREAM_LIMIT_BYTES,
             )
-            errors: deque[str] = deque(maxlen=ERROR_LINES_KEPT)
+            errors = _ErrorLines(tool)
             collecting = asyncio.ensure_future(_collect_errors(process.stderr, errors))
             try:
                 stopped = await _forward(process.stdout, stdout)
@@ -162,10 +171,12 @@ class PostgresClient:
                     await process.wait()
                 raise
         if status != 0 and not stopped:
-            lines = tuple(errors)
+            lines = tuple(errors.kept)
             detail = "; ".join(lines) or "no error message"
             raise PostgresToolError(
-                f"{tool} exited with status {status}: {detail}", error_lines=lines
+                f"{tool} exited with status {status}: {detail}",
+                error_lines=lines,
+                first_line=errors.first,
             )
 
     async def version(self, tool: PostgresTool) -> str:
@@ -188,7 +199,33 @@ async def _forward(stream: asyncio.StreamReader, sink: StdoutSink | None) -> boo
     return False
 
 
-async def _collect_errors(stream: asyncio.StreamReader, errors: deque[str]) -> None:
+class _ErrorLines:
+    """A tool's standard error as it arrives: its first line, and the last lines worth keeping."""
+
+    def __init__(self, tool: PostgresTool):
+        self._own_prefix = f"{tool}:"
+        self.first: str | None = None
+        self.kept: deque[str] = deque(maxlen=ERROR_LINES_KEPT)
+        self._in_statement = False
+
+    def add(self, line: str) -> None:
+        if not line:
+            return
+        if self.first is None:
+            self.first = line
+        if line.startswith(self._own_prefix):
+            self._in_statement = False
+        elif self._in_statement:
+            # The rest of the statement `Command was:` began: the plugin's SQL, maybe its rows.
+            return
+        if line.startswith(_STATEMENT_PREFIX):
+            self._in_statement = True
+            return
+        if not line.startswith(_ROW_BEARING_PREFIXES) and ": detail:" not in line:
+            self.kept.append(line)
+
+
+async def _collect_errors(stream: asyncio.StreamReader, errors: _ErrorLines) -> None:
     while True:
         try:
             raw = await stream.readline()
@@ -198,9 +235,7 @@ async def _collect_errors(stream: asyncio.StreamReader, errors: deque[str]) -> N
             continue
         if not raw:
             return
-        line = describe_text(raw.decode(errors="replace"))
-        if line and not line.startswith(_ROW_BEARING_PREFIXES) and ": detail:" not in line:
-            errors.append(line)
+        errors.add(describe_text(raw.decode(errors="replace")))
 
 
 def _kill(process: asyncio.subprocess.Process) -> None:

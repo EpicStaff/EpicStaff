@@ -51,6 +51,9 @@ const EVERY_ACTION: PluginActivityAction[] = [
     'upgrade_hook_succeeded',
     'upgrade_hook_failed',
     'upgrade_hook_retried',
+    'development_target_set',
+    'development_target_cleared',
+    'development_runtime_file_issued',
 ];
 
 /** A deployment-wide event of the platform, without a request or a target. */
@@ -222,6 +225,74 @@ describe('PluginActivityListComponent', () => {
 
     it('labels every action it knows, and no other', () => {
         expect(Object.keys(PLUGIN_ACTIVITY_ACTION_LABELS).sort()).toEqual([...EVERY_ACTION].sort());
+    });
+
+    it('says what a SuperAdmin did to development: the ports, the keys stopped, the organizations of a file', () => {
+        const superAdmin = { kind: 'superadmin', label: 'sam@example.com' } as const;
+        render([
+            platformEvent({
+                id: 1,
+                actor: superAdmin,
+                action: 'development_target_set',
+                detail: { backend_port: 8001, spa_port: 5173 },
+            }),
+            platformEvent({
+                id: 2,
+                actor: superAdmin,
+                action: 'development_target_set',
+                detail: { backend_port: null, spa_port: 5173 },
+            }),
+            platformEvent({
+                id: 3,
+                actor: superAdmin,
+                action: 'development_target_cleared',
+                detail: { revoked_keys: 2 },
+            }),
+            platformEvent({
+                id: 4,
+                actor: superAdmin,
+                action: 'development_target_cleared',
+                detail: { revoked_keys: 0 },
+            }),
+            platformEvent({
+                id: 5,
+                actor: superAdmin,
+                action: 'development_runtime_file_issued',
+                detail: { organizations: 1 },
+            }),
+        ]);
+
+        expect([0, 1, 2, 3, 4].map((index) => row(index)['Action'])).toEqual([
+            'Development started or changed',
+            'Development started or changed',
+            'Development stopped',
+            'Development stopped',
+            'Development runtime file downloaded',
+        ]);
+        expect(details(0)).toEqual(['Backend port 8001 · Frontend dev server port 5173']);
+        expect(details(1)).toEqual(['Frontend dev server port 5173']);
+        expect(details(2)).toEqual(['2 development keys stopped']);
+        expect(details(3)).toEqual([]);
+        expect(details(4)).toEqual(['For 1 organization']);
+        expect(row(0)['Actor']).toBe('sam@example.com (SuperAdmin)');
+    });
+
+    it('marks an API request a development backend made, and no other request', () => {
+        render([
+            buildPluginActivityEvent({ id: 1, detail: { created_count: 0, development: true } }),
+            buildPluginActivityEvent({ id: 2 }),
+            platformEvent({ id: 3, action: 'restarted', detail: { development: true } }),
+        ]);
+
+        const chips = (index: number): string[] =>
+            Array.from(
+                element.querySelectorAll('.table-body .table-row')[index].querySelectorAll('.activity__development')
+            ).map((chip) => chip.textContent?.trim() ?? '');
+        expect(chips(0)).toEqual(['Development']);
+        expect(chips(1)).toEqual([]);
+        expect(chips(2)).toEqual([]);
+        expect(row(0)['Actor']).toBe('Weather (plugin) on behalf of ada@example.com');
+        expect(element.querySelector('.activity__request-line code')?.textContent).toBe('POST /api/run-session/ (201)');
     });
 
     it('shows why a deletion began, by a SuperAdmin or the platform', () => {

@@ -147,7 +147,8 @@ The Weather sample does exactly this:
 ## 7. Set defaults on the database, not on the role
 
 The platform owns the app role's settings: it resets any setting it finds on the role and keeps
-only the statement timeout of your limits. Set defaults for your database instead. The database's
+only the statement timeout of your limits. It also removes every setting stored on the owner role
+before each migration run and each restore. Set defaults for your database instead. The database's
 name depends on your plugin's id, so set them from a `DO` block:
 
 ```sql
@@ -314,3 +315,9 @@ version, run the earlier version's files first, add rows for more than one organ
 then run the new files. The Weather sample's tests do both, in
 `src/plugin_sdk/tests/test_weather_sample_database.py` in the EpicStaff repository, and then run
 the backend's stores against the result, as the app role.
+
+`epicstaff-plugin dev --apply-migrations` also applies your migrations, to a local database for a
+development backend ([A database for the development
+backend](local-development.md#a-database-for-the-development-backend)). There the login role owns
+the database and everything in it, so a grant your app role lacks on the node can go unnoticed:
+test against the node's three roles before you ship.

@@ -14,6 +14,7 @@ from src.shared.models.plugin_nodes import LedgerEntry
 from es_plugins.agent import reconciler as reconciler_module
 from es_plugins.agent import upgrade as upgrade_module
 from es_plugins.agent.reconciler import Reconciler
+from es_plugins.agent.upgrade import RESTORE_INTERNAL_ERROR
 from es_plugins.database.backup_service import BackupError, BackupRequest
 from es_plugins.database.connections import DatabaseProvisioningError, DatabaseUnreachableError
 from es_plugins.database.restore_service import RestoreError
@@ -446,6 +447,26 @@ async def test_a_restore_that_fails_is_reported_failed_with_its_step(upgrading):
 
     report = reconciler.reports()[0].restore
     assert (report.step, report.last_error) == ("restore", "pg_restore exited with status 1: corrupt")
+
+
+async def test_an_unexpected_error_in_a_restore_fails_it_and_the_controller_goes_on(upgrading):
+    reconciler, django, launcher, _, state = upgrading
+    await run_current(reconciler, state)
+    await reconciler.apply(state("maintenance"))
+    await wait_until(lambda: advance_bodies(django))
+    backup_name = advance_bodies(django)[0]["backup"]["file_name"]
+    # The pre-restore dump hits an error nothing classifies.
+    state.backups.failures.append(OSError(28, "No space left on device"))
+    restore = {"restore_id": 9, "upgrade_id": 5, "backup_file": backup_name, "backup_sha256": "a" * 64}
+
+    await reconciler.apply(state("migrating", backup="taken", restore=restore))
+    await wait_until(lambda: reconciler.reports()[0].restore.state == "failed")
+
+    report = reconciler.reports()[0].restore
+    assert (report.step, report.last_error) == ("backup", RESTORE_INTERNAL_ERROR)
+    await reconciler.apply(state("migrating", backup="taken", restore={**restore, "restore_id": 10}))
+    await wait_until(lambda: reconciler.reports()[0].restore.state == "succeeded")
+    assert [call["restore"].restore_id for call in state.restores.calls] == [9, 10]
 
 
 async def test_a_failed_migration_reports_the_step_and_the_ledger_it_left(upgrading):

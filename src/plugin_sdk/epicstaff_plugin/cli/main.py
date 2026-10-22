@@ -1,4 +1,8 @@
-"""Entry point of `epicstaff-plugin`. Exit codes: 0 ok, 1 validation failed, 2 usage error."""
+"""Entry point of `epicstaff-plugin`.
+
+Exit codes: 0 ok (for `dev`: stopped), 1 validation failed (for `dev`: could not start), 2 usage
+error.
+"""
 
 import argparse
 import sys
@@ -6,6 +10,13 @@ from pathlib import Path
 from typing import NoReturn
 
 from epicstaff_plugin.cli.backend_wheels import DEFAULT_PLATFORMS
+from epicstaff_plugin.cli.development import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    develop,
+    development_host,
+    development_port,
+)
 from epicstaff_plugin.cli.keygen import keygen
 from epicstaff_plugin.cli.output import EXIT_USAGE, UsageError, print_error
 from epicstaff_plugin.cli.pack import pack
@@ -18,7 +29,7 @@ from epicstaff_plugin.cli.verify import verify
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="epicstaff-plugin",
-        description="Validate, package and sign EpicStaff plugins.",
+        description="Validate, package and sign EpicStaff plugins, and run a backend for development.",
     )
     commands = parser.add_subparsers(dest="command", required=True, metavar="command")
 
@@ -88,6 +99,49 @@ def build_parser() -> argparse.ArgumentParser:
 
     schema_command = commands.add_parser("schema", help="write the manifest JSON Schema")
     schema_command.add_argument("--out", type=Path, required=True, help="file to write")
+
+    dev_command = commands.add_parser(
+        "dev",
+        help="serve a plugin's backend from its source, for EpicStaff's plugin development mode",
+    )
+    dev_command.add_argument("source", type=Path, help="plugin source directory")
+    dev_command.add_argument(
+        "--runtime-file",
+        type=Path,
+        required=True,
+        metavar="FILE",
+        help="the development runtime file downloaded from EpicStaff; keep it outside the source",
+    )
+    dev_command.add_argument(
+        "--port",
+        type=development_port,
+        metavar="PORT",
+        default=DEFAULT_PORT,
+        help=f"port to serve the backend on, 1024-65535 (default: {DEFAULT_PORT})",
+    )
+    dev_command.add_argument(
+        "--host",
+        type=development_host,
+        metavar="ADDRESS",
+        default=DEFAULT_HOST,
+        help=f"address to listen on: an IP address or localhost (default: {DEFAULT_HOST})",
+    )
+    dev_command.add_argument(
+        "--no-reload",
+        dest="reload",
+        action="store_false",
+        help="do not restart the backend when backend/src changes",
+    )
+    dev_command.add_argument(
+        "--database-url",
+        metavar="URL",
+        help="postgresql:// URL of a local database the backend gets as DATABASE_URL",
+    )
+    dev_command.add_argument(
+        "--apply-migrations",
+        action="store_true",
+        help="apply database/migrations/ to the --database-url database before starting",
+    )
     return parser
 
 
@@ -116,6 +170,16 @@ def main(argv: list[str] | None = None) -> int:
                 return verify(arguments.package, arguments.trusted_key)
             case "schema":
                 return schema(arguments.out)
+            case "dev":
+                return develop(
+                    arguments.source,
+                    arguments.runtime_file,
+                    port=arguments.port,
+                    host=arguments.host,
+                    reload=arguments.reload,
+                    database_url=arguments.database_url,
+                    apply_migrations=arguments.apply_migrations,
+                )
     except UsageError as error:
         print_error(str(error))
         return EXIT_USAGE

@@ -26,6 +26,29 @@ from epicstaff_plugin.contracts.manifest import SETTING_KEY_PATTERN, PublicPath
 
 RUNTIME_FILE_FORMAT = 1
 RUNTIME_FILE_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_RUNTIME_FILE"
+ENTRYPOINT_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_ENTRYPOINT"
+"""The backend's ASGI app, `module.path:attribute` (the manifest's `backend.entrypoint`)."""
+
+PORT_ENVIRONMENT_VARIABLE = "PORT"
+"""The backend's port. On the node it is for information only: the socket comes in through
+`LISTEN_FD_ENVIRONMENT_VARIABLE`."""
+
+LISTEN_FD_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_LISTEN_FD"
+"""The listening socket the node passes in, as a file descriptor number; set only on the node."""
+
+# What every backend process is told about itself. The three URLs repeat the runtime file's.
+PLUGIN_IDENTIFIER_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_IDENTIFIER"
+PLUGIN_VERSION_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_VERSION"
+"""The version of the plugin the process runs."""
+
+EPICSTAFF_API_URL_ENVIRONMENT_VARIABLE = "EPICSTAFF_API_URL"
+"""The runtime file's `epicstaff_api_url`."""
+
+EPICSTAFF_PUBLIC_URL_ENVIRONMENT_VARIABLE = "EPICSTAFF_PUBLIC_URL"
+"""The runtime file's `epicstaff_public_url`."""
+
+PLUGIN_PUBLIC_URL_ENVIRONMENT_VARIABLE = "EPICSTAFF_PLUGIN_PUBLIC_URL"
+"""The runtime file's `public_url`."""
 
 # The plugin node sets these in the environment of a backend process, which only the
 # plugin's own user can read. Setting secrets stay in the runtime file; these carry the
@@ -76,7 +99,10 @@ SettingKey = Annotated[str, StringConstraints(pattern=SETTING_KEY_PATTERN)]
 SettingValue = str | int | bool
 # An organization id as a JSON object key.
 OrgIdText = Annotated[str, StringConstraints(pattern=r"^[1-9][0-9]{0,18}$")]
-SERVICE_ACCOUNT_KEY_PATTERN = r"^esp-[A-Za-z0-9_-]{43}$"
+SERVICE_ACCOUNT_KEY_PREFIX = "esp-"
+# `secrets.token_urlsafe(32)`: 43 characters of the URL-safe base64 alphabet.
+SERVICE_ACCOUNT_KEY_BODY_PATTERN = r"[A-Za-z0-9_-]{43}"
+SERVICE_ACCOUNT_KEY_PATTERN = f"^{SERVICE_ACCOUNT_KEY_PREFIX}{SERVICE_ACCOUNT_KEY_BODY_PATTERN}$"
 ServiceAccountKey = Annotated[str, StringConstraints(pattern=SERVICE_ACCOUNT_KEY_PATTERN)]
 
 
