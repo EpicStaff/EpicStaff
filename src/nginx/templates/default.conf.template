@@ -225,10 +225,20 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Avatars are public: the bucket policy storage-init sets lets anyone read
-    # <bucket>/system/avatars/ and nothing else, so no credential goes to storage.
-    # Query arguments are dropped: S3 reads them as subresources and header overrides.
+    # Only a URL signed by django_app (AvatarStorage.url) gets through: no or a wrong
+    # signature is 403, an expired one 410. The bucket policy storage-init sets lets nginx
+    # read <bucket>/system/avatars/ without credentials inside the docker network.
+    # Query arguments are dropped after the check: S3 reads them as subresources and
+    # header overrides.
     location /media/avatars/ {
+        secure_link $arg_s,$arg_e;
+        secure_link_md5 "$secure_link_expires$uri ${AVATAR_URL_SIGNING_SECRET}";
+        if ($secure_link = "") {
+            return 403;
+        }
+        if ($secure_link = "0") {
+            return 410;
+        }
         set $args "";
         proxy_pass http://storage_server/${STORAGE_BUCKET}/system/avatars/;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;

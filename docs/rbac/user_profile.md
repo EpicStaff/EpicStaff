@@ -256,7 +256,7 @@ Or, for multi-field validation:
 ## Deployment
 
 - `MEDIA_URL` must be served by the reverse proxy (nginx / Caddy) in production. Django serves `MEDIA_URL` only in DEBUG mode.
-- Avatars are public. They are stored in the `STORAGE_BUCKET` bucket under `system/avatars/`, which `storage-init` makes anonymously readable (that prefix only, `s3:GetObject` only), and nginx serves them at `/media/avatars/` straight from the bucket. Every upload gets a new key, stored with `Cache-Control: public, max-age=31536000, immutable`. A migration clears avatars uploaded before the move to object storage (and deletes their local files); those users upload again.
+- Avatars are visible only to logged-in users. They are stored in the `STORAGE_BUCKET` bucket under `system/avatars/`, and nginx serves them at `/media/avatars/` only with a valid signed URL, which django_app puts in authenticated API responses (`avatar_url`). The link expires at the end of the next UTC day (24–48 h after it is issued); an image first loaded after that fails until the data is refetched, and the UI falls back to initials. A missing or wrong signature is 403, an expired one 410. django_app and nginx share the signing key `AVATAR_URL_SIGNING_SECRET` (required). `storage-init` lets nginx read that prefix without credentials (`s3:GetObject` only); storage publishes no port, so only containers in the docker network can use that. Every upload gets a new key, stored with `Cache-Control: public, max-age=31536000, immutable`. A migration clears avatars uploaded before the move to object storage (and deletes their local files); those users upload again.
 - Env vars:
   - `DJANGO_PASSWORD_CHANGE_TICKET_TTL` (default `5m`)
   - `DJANGO_AVATAR_MAX_SIZE` (default `10mb`)

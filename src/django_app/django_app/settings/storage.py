@@ -7,6 +7,7 @@ STORAGE_ENDPOINT = f"{http}://{env.str('STORAGE_HOST')}:{env.int('STORAGE_PORT')
 STORAGE_ACCESS_KEY = env.str("STORAGE_USER")
 STORAGE_SECRET_KEY = env.str("STORAGE_PASSWORD")
 STORAGE_BUCKET_NAME = env.str("STORAGE_BUCKET")
+AVATAR_URL_SIGNING_SECRET = env.secret("AVATAR_URL_SIGNING_SECRET")
 
 # TTL for temporary session storage credentials (hours). 0 means no expiration.
 # Do not set to 0 in production — credentials will never expire if revocation fails.

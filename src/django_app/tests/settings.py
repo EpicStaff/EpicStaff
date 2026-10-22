@@ -23,8 +23,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [],
 }
 
-# Avatars go to local disk under MEDIA_ROOT, never to the bucket; the URLs are
-# `/media/<name>`, as AvatarStorage's. Set here, not with override_settings: the
+# Avatars go to local disk under MEDIA_ROOT, never to the bucket; the URLs are the
+# unsigned `/media/<name>` (AvatarStorage's signing is covered by
+# storage_tests/test_avatar_storage.py). Set here, not with override_settings: the
 # avatar field resolves its storage once, when models load.
 STORAGES = {
     **STORAGES,
