@@ -278,6 +278,45 @@ describe('buildFlowDiff', () => {
         }
     );
 
+    it.each([
+        fieldCase(
+            NodeType.PYTHON,
+            UUID.python,
+            (node) => ({ ...node, data: { ...node.data, execution_timeout: 90 } }),
+            { path: 'python_code.execution_timeout', current: 90, version: null }
+        ),
+        fieldCase(
+            NodeType.WEBHOOK_TRIGGER,
+            UUID.webhook,
+            (node) => ({
+                ...node,
+                data: { ...node.data, python_code: { ...node.data.python_code, execution_timeout: 90 } },
+            }),
+            { path: 'python_code.execution_timeout', current: 90, version: null }
+        ),
+        fieldCase(
+            NodeType.CLASSIFICATION_TABLE,
+            UUID.classificationTable,
+            (node) => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    table: {
+                        ...node.data.table,
+                        post_computation: { ...node.data.table.post_computation!, execution_timeout: 90 },
+                    },
+                },
+            }),
+            { path: 'post_computation.execution_timeout', current: 90, version: null }
+        ),
+    ])('$type: a changed execution timeout is a change', (testCase) => {
+        const diff = diffVersion(snapshot, { liveFlow: testCase.edit(loadLive()) });
+
+        expect(entryOf(diff, testCase.nodeUuid).fields).toEqual([
+            expect.objectContaining({ path: testCase.path, current: testCase.current, version: testCase.version }),
+        ]);
+    });
+
     it('shows what a restore does: version-only nodes and edges are added, canvas-only ones deleted', () => {
         // The version has a node and an edge the canvas lacks; the canvas has the note and an edge the version lacks.
         const withoutNote = withoutNode(loadLive(), UUID.note);

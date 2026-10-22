@@ -87,6 +87,7 @@ export const liveGraphSnapshot: GraphVersionSnapshot = {
             uuid: UUID.schedule,
             node_type: 'ScheduleTriggerNode',
             node_name: 'Schedule',
+            node_number: 9,
             metadata: {},
             is_active: true,
             timezone: 'Europe/Kyiv',

@@ -370,6 +370,7 @@ function pythonCode(code: CustomPythonCode): Projection {
         entrypoint: code.entrypoint,
         libraries: toLibraryList(code.libraries),
         secret_names: sortedStrings(code.secret_names),
+        execution_timeout: code.execution_timeout ?? null,
     };
 }
 
@@ -428,5 +429,6 @@ function computation(
         output_variable_path: block?.output_variable_path || flat.outputVariablePath || null,
         libraries: toLibraryList(block?.libraries),
         secret_names: sortedStrings(block?.secret_names),
+        execution_timeout: block?.execution_timeout ?? null,
     };
 }
