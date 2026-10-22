@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from utils.graph_utils import runtime_node_name
 
 from tables.exceptions import KnowledgeNodeRunValidationError
 from tables.services.rag_registry import resolve_rag_in_collection
@@ -57,7 +58,10 @@ class KnowledgeNodeValidator:
             if not (node.query or "").strip():
                 missing.append("query")
             if missing:
-                issues.append(f"{node.node_name} #{node.id} ({', '.join(missing)})")
+                node_name = runtime_node_name(
+                    node_name=node.node_name, node_number=node.node_number, node_id=node.id
+                )
+                issues.append(f"{node_name} ({', '.join(missing)})")
         if issues:
             raise KnowledgeNodeRunValidationError(
                 f"KnowledgeNode is not fully configured to run. "

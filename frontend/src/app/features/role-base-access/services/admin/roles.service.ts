@@ -21,6 +21,7 @@ export interface LoadRolesParams {
     orgIds?: number[];
     page?: number;
     pageSize?: number;
+    search?: string;
 }
 
 @Injectable({
@@ -70,6 +71,9 @@ export class RolesService implements StorageService {
         }
         if (params.pageSize !== undefined) {
             httpParams = httpParams.set('page_size', String(params.pageSize));
+        }
+        if (params.search) {
+            httpParams = httpParams.set('search', params.search);
         }
         return this.http
             .get<RolesListResponse>(this.apiUrl, {

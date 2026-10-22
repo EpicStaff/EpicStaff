@@ -5,9 +5,9 @@ import { Subject } from 'rxjs';
 
 import { GraphDto } from '../../features/flows/models/graph.model';
 import {
+    arePortsCompatible,
     generatePortsForClassificationDecisionTableNode,
     generatePortsForDecisionTableNode,
-    isDecisionPortRole,
     parsePortId,
 } from '../core/helpers/helpers';
 import { ConnectionModel } from '../core/models/connection.model';
@@ -38,6 +38,8 @@ export class FlowService {
     });
 
     private _lastIssuedNumber = 0;
+    /** The loaded graph's `node_number_seq`: numbers up to it were issued by the backend, maybe to deleted nodes. */
+    private nodeNumberFloor = 0;
 
     // Subject to request canvas redraw (e.g., after port reordering)
     private canvasRedrawRequest$ = new Subject<void>();
@@ -123,8 +125,17 @@ export class FlowService {
         this._lastIssuedNumber = 0;
     }
 
+    /**
+     * Takes the graph counter (`GraphDto.node_number_seq`) of the graph just loaded or saved, so a new node
+     * is not shown a number the backend already gave out. Replaces the previous value: a different graph
+     * may have a lower counter. `setFlow` keeps it.
+     */
+    public setNodeNumberFloor(nodeNumberSeq: number): void {
+        this.nodeNumberFloor = nodeNumberSeq;
+    }
+
     public getNextNodeNumber(): number {
-        const next = Math.max(this.highestNodeNumber(), this._lastIssuedNumber) + 1;
+        const next = Math.max(this.nodeNumberFloor, this.highestNodeNumber(), this._lastIssuedNumber) + 1;
         this._lastIssuedNumber = next;
         return next;
     }
@@ -708,35 +719,7 @@ export class FlowService {
     }
 
     private canPortsConnect(portA: FlattenedPort, portB: FlattenedPort): boolean {
-        // Prevent connecting ports on the same node.
-        if (portA.nodeId === portB.nodeId) {
-            return false;
-        }
-
-        const a = portA.port;
-        const b = portB.port;
-        if (a.port_type === 'input' && b.port_type === 'output') {
-            return this.isAllowedRole(a.allowedConnections, b.role);
-        }
-        if (a.port_type === 'output' && b.port_type === 'input') {
-            return this.isAllowedRole(b.allowedConnections, a.role);
-        }
-        if (a.port_type === 'input-output' && b.port_type === 'input-output') {
-            return this.isAllowedRole(a.allowedConnections, b.role) || this.isAllowedRole(b.allowedConnections, a.role);
-        }
-        return false;
-    }
-
-    private isAllowedRole(allowedRoles: string[], targetRole: string): boolean {
-        return allowedRoles.some((allowedRole) => {
-            if (allowedRole === targetRole) {
-                return true;
-            }
-            if (allowedRole === 'table-out' && isDecisionPortRole(targetRole)) {
-                return true;
-            }
-            return false;
-        });
+        return arePortsCompatible(portA.nodeId, portA.port, portB.nodeId, portB.port);
     }
     public deleteSelections(selections: { fNodeIds: string[]; fConnectionIds: string[] }): void {
         this.flowSignal.update((flow: FlowModel) => {

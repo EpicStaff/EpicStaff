@@ -2,10 +2,12 @@ import { computed, Injectable, signal } from '@angular/core';
 import { NodeType } from '@shared/models';
 
 import {
+    FlowNodeReviewItem,
     FlowNodesByFile,
     mapBackendNodeType,
     ReviewItem,
     ReviewPythonCode,
+    toFileNodeId,
 } from '../../../../core/models/review-item.model';
 import { CodeTab, FlowReviewNode, McpReviewableEntry, ReviewableEntry } from './model/review-entry.model';
 
@@ -14,11 +16,38 @@ interface CodeField {
     code: ReviewPythonCode;
 }
 
+interface ReviewedFileNode {
+    item: FlowNodeReviewItem;
+    fields: CodeField[];
+}
+
+/**
+ * Identifies a node of an import file. Names may repeat within a flow, so a node is told apart by its
+ * id in the file, which is unique per node type (each type is its own table). A file without ids
+ * falls back to the name.
+ */
+function flowNodeKey(flowName: string, nodeType: string, nodeId: number | null, nodeName: string | null): string {
+    const identity = nodeId === null ? `name:${nodeName ?? ''}` : `id:${nodeId}`;
+    return `${flowName}::${nodeType}::${identity}`;
+}
+
+function toFlowReviewNode(key: string, name: string, backendNodeType: string, fields: CodeField[]): FlowReviewNode {
+    return {
+        key,
+        name,
+        nodeType: mapBackendNodeType(backendNodeType) ?? NodeType.PYTHON,
+        codeFieldCount: fields.length,
+        fieldKeys: fields.map((_, index) => `${key}::${index}`),
+        codes: fields.map((field) => field.code),
+        fieldLabels: fields.map((field) => field.label),
+    };
+}
+
 @Injectable()
 export class ReviewSessionStore {
     private pythonCodeToolCodes = new Map<string, ReviewPythonCode>();
     private mcpToolTransports = new Map<string, string>();
-    private flowNodesByName = new Map<string, FlowReviewNode[]>();
+    private flowNodesByFlow = new Map<string, FlowReviewNode[]>();
 
     public readonly reviewedNodeKeys = signal<Set<string>>(new Set());
     private readonly viewedKeys = signal<Set<string>>(new Set());
@@ -40,7 +69,7 @@ export class ReviewSessionStore {
     });
 
     public init(reviewItems: ReviewItem[], allFlowNodes: FlowNodesByFile): void {
-        this.flowNodesByName = this.buildFlowNodesByName(reviewItems, allFlowNodes);
+        this.flowNodesByFlow = this.buildFlowNodesByKey(reviewItems, allFlowNodes);
         this.pythonCodeToolCodes = new Map(
             reviewItems
                 .filter((item) => item.kind === 'python_code_tool')
@@ -65,7 +94,7 @@ export class ReviewSessionStore {
         for (const [name, code] of this.pythonCodeToolCodes) {
             entries.push({ kind: 'code', title: name, fieldKey: this.toolReviewKey(name), code, codeTabs: [] });
         }
-        for (const nodes of this.flowNodesByName.values()) {
+        for (const nodes of this.flowNodesByFlow.values()) {
             for (const node of nodes) {
                 const codeTabs: CodeTab[] = node.fieldLabels
                     .map((label, i) => (label ? { label, fieldKey: node.fieldKeys[i] } : null))
@@ -79,41 +108,37 @@ export class ReviewSessionStore {
         return entries;
     }
 
-    private buildFlowNodesByName(
+    private buildFlowNodesByKey(
         reviewItems: ReviewItem[],
         allFlowNodes: FlowNodesByFile
     ): Map<string, FlowReviewNode[]> {
-        const fieldsByNode = new Map<string, CodeField[]>();
+        const reviewedNodesByKey = new Map<string, ReviewedFileNode>();
         for (const item of reviewItems) {
             if (item.kind !== 'flow_node') continue;
-            const name = item.node_name ?? 'Untitled node';
             const fields: CodeField[] = [];
             if (item.python_code) fields.push({ label: null, code: item.python_code });
             if (item.pre_python_code) fields.push({ label: 'Pre-computation', code: item.pre_python_code });
             if (item.post_python_code) fields.push({ label: 'Post-computation', code: item.post_python_code });
-            fieldsByNode.set(`${item.flow_name}::${name}`, fields);
+            const key = flowNodeKey(item.flow_name, item.node_type, toFileNodeId(item.node_id), item.node_name);
+            reviewedNodesByKey.set(key, { item, fields });
         }
 
         const map = new Map<string, FlowReviewNode[]>();
         for (const [flowName, nodes] of Object.entries(allFlowNodes)) {
             const list = nodes.map((node): FlowReviewNode => {
-                const key = `${flowName}::${node.name}`;
-                const nodeType = mapBackendNodeType(node.node_type) ?? NodeType.PYTHON;
-                const fields = fieldsByNode.get(key) ?? [];
-                const fieldKeys = fields.map((_, i) => `${key}::${i}`);
-                const codes = fields.map((field) => field.code);
-                const fieldLabels = fields.map((field) => field.label);
-                return {
-                    key,
-                    name: node.name,
-                    nodeType,
-                    codeFieldCount: fields.length,
-                    fieldKeys,
-                    codes,
-                    fieldLabels,
-                };
+                const key = flowNodeKey(flowName, node.node_type, toFileNodeId(node.id), node.name);
+                const fields = reviewedNodesByKey.get(key)?.fields ?? [];
+                reviewedNodesByKey.delete(key);
+                return toFlowReviewNode(key, node.name, node.node_type, fields);
             });
             map.set(flowName, list);
+        }
+
+        // Code the backend will import must never be hidden: a reviewed node the file list did not
+        // match (a name or id it reads differently) still gets its own row.
+        for (const [key, { item, fields }] of reviewedNodesByKey) {
+            const row = toFlowReviewNode(key, item.node_name ?? 'Untitled node', item.node_type, fields);
+            map.set(item.flow_name, [...(map.get(item.flow_name) ?? []), row]);
         }
         return map;
     }
@@ -165,7 +190,7 @@ export class ReviewSessionStore {
     }
 
     public flowNodes(flowName: string): FlowReviewNode[] {
-        return this.flowNodesByName.get(flowName) ?? [];
+        return this.flowNodesByFlow.get(flowName) ?? [];
     }
 
     public hasReviewNodes(flowName: string): boolean {

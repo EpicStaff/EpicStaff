@@ -97,7 +97,7 @@ async def test_rejected_transport_surfaces_as_tool_error_result(tmp_path):
     script = tmp_path / "server.py"
     script.write_text("print('pwned')")
     executor = McpToolExecutor(
-        McpToolGateway(FastMCPClientFactory()), _data(str(script)), name="search"
+        McpToolGateway(FastMCPClientFactory(), describe_cache_ttl_s=300), _data(str(script)), name="search"
     )
 
     result = await executor({})

@@ -232,6 +232,7 @@ from tables.serializers.model_serializers import (
     TelegramTriggerNodeSerializer,
     TelegramWebhookInfoSerializer,
     TwilioChannelSerializer,
+    WebhookTriggerFlowsSerializer,
     WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
 )
@@ -269,6 +270,7 @@ from tables.services.copy_services import (
     PythonCodeToolCopyService,
 )
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
+from tables.services.graph_bulk_save_service.registry import TRIGGER_NODE_LIST_KEYS
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
@@ -280,6 +282,7 @@ from tables.services.tools_usage_service import (
     get_mcp_tool_usage_detail,
     get_python_code_tool_usage_detail,
 )
+from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 from tables.services.twilio_service import TwilioService, TwilioServiceError
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.swagger_schemas.audit_filter_preset_schemas import (
@@ -288,6 +291,8 @@ from tables.swagger_schemas.audit_filter_preset_schemas import (
     AUDIT_FILTER_PRESET_EXPORT_ONE,
     AUDIT_FILTER_PRESET_IMPORT,
 )
+from tables.swagger_schemas.common_schemas import FLOW_WITH_TRIGGER_NODES_403_RESPONSE
+from tables.swagger_schemas.graph_copy_schemas import GRAPH_COPY_POST
 from tables.swagger_schemas.graph_delete_by_uuid_schemas import (
     GRAPH_DELETE_BY_UUID_DELETE,
 )
@@ -326,9 +331,12 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_CONFIGURE_WEBHOOK_POST,
 )
 from tables.swagger_schemas.webhook_schemas import (
+    SCHEDULE_TRIGGER_NODE_WRITE,
     TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST,
     TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET,
+    TELEGRAM_TRIGGER_NODE_WRITE,
     WEBHOOK_TRIGGER_CREATE,
+    WEBHOOK_TRIGGER_FLOWS_GET,
     WEBHOOK_TRIGGER_NODE_CREATE,
     WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
     WEBHOOK_TRIGGER_NODE_UPDATE,
@@ -341,6 +349,7 @@ from tables.views.mixins import (
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
+    TriggerNodeUsePermissionMixin,
 )
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 from utils.logger import logger
@@ -718,6 +727,7 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
+@extend_schema_view(copy=extend_schema(**GRAPH_COPY_POST))
 class GraphViewSet(
     OrgScopedViewSetMixin,
     CopyActionMixin,
@@ -857,6 +867,11 @@ class GraphViewSet(
         created_graph = serializer.save(org_id=org_id, created_by=resolve_author(self.request.user))
         GraphOrganization.objects.create(graph=created_graph)
 
+    def check_copy_allowed(self, request, instance) -> None:
+        # Copied trigger nodes are live at once (they share the source's webhook trigger).
+        if TriggerNodeInspector.has_any_in_graph(instance):
+            trigger_node_access.assert_user_may_recreate(request.user, instance.org_id)
+
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
@@ -910,7 +925,8 @@ class GraphViewSet(
     @extend_schema(
         request={"multipart/form-data": ImportRequestSerializer},
         responses={
-            200: OpenApiResponse(description="Import summary with created/skipped entity counts")
+            200: OpenApiResponse(description="Import summary with created/skipped entity counts"),
+            403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
         },
     )
     @action(detail=False, methods=["post"], url_path="import")
@@ -982,14 +998,18 @@ class GraphViewSet(
         )
         return Response(self.get_serializer(refreshed).data)
 
-    @action(detail=True, methods=["post"], url_path="save")
     @extend_schema(**_SAVE_FLOW_SWAGGER)
+    @action(detail=True, methods=["post"], url_path="save")
     def save_flow(self, request, pk=None):
         input_serializer = GraphBulkSaveInputSerializer(data=request.data)
         if not input_serializer.is_valid():
             return Response({"errors": input_serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
         graph = self.get_object()
+        # Creating or editing a trigger node, even only moving it, needs USE; deleting
+        # one does not. Checked after get_object so a foreign flow stays a 404.
+        if any(input_serializer.validated_data[key] for key in TRIGGER_NODE_LIST_KEYS):
+            trigger_node_access.assert_may_write(request.user, graph.org_id)
         try:
             GraphBulkSaveService().save(graph, input_serializer.validated_data, request=request)
         except BulkSaveValidationError as exc:
@@ -1094,7 +1114,10 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "any that are missing are stripped and reported in the `warnings` list. "
             "If the `backup` query parameter is `true`, the current graph state is saved as a new "
             "version before restoring, and its ID is returned in `auto_backup_version_id`. "
-            "Uses optimistic locking via `save_version` to prevent overwriting concurrent edits."
+            "Uses optimistic locking via `save_version` to prevent overwriting concurrent edits. "
+            "A snapshot holding a trigger node (webhook, Telegram, schedule) also requires USE "
+            "on flows; without it the response is 403 "
+            "`flow_with_trigger_nodes_requires_use_permission` and nothing is written."
         ),
         request=RestoreVersionInputSerializer,
         responses={
@@ -1105,7 +1128,8 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
                     "warnings": serializers.ListField(child=serializers.DictField()),
                     "auto_backup_version_id": serializers.IntegerField(allow_null=True),
                 },
-            )
+            ),
+            403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
         },
         parameters=[
             OpenApiParameter(
@@ -1123,7 +1147,9 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "Creates a new, fully independent graph from the snapshot stored in this version. "
             "The new graph is a copy — it does not remain linked to the original. "
             "Missing dependencies are stripped from the snapshot and reported in `warnings`. "
-            "Returns the ID of the newly created graph."
+            "Returns the ID of the newly created graph. A snapshot holding a trigger node "
+            "(webhook, Telegram, schedule) also requires USE on flows; without it the response "
+            "is 403 `flow_with_trigger_nodes_requires_use_permission` and nothing is written."
         ),
         request=None,
         responses={
@@ -1133,7 +1159,8 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
                     "graph_id": serializers.IntegerField(),
                     "warnings": serializers.ListField(child=serializers.DictField()),
                 },
-            )
+            ),
+            403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
         },
     ),
     preview=extend_schema(
@@ -1237,6 +1264,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         expected_save_version = input_serializer.validated_data["save_version"]
 
         version = self.get_object()
+        self._check_trigger_nodes_may_be_recreated(request, version)
         backup = request.query_params.get("backup", "").lower() == "true"
         result = GraphVersioningService().restore_version(
             version,
@@ -1260,8 +1288,16 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="create-graph")
     def create_graph(self, request, *args, **kwargs):
         version = self.get_object()
+        self._check_trigger_nodes_may_be_recreated(request, version)
         result = GraphVersioningService().create_graph_from_version(version, user=request.user)
         return Response(result, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _check_trigger_nodes_may_be_recreated(request, version: GraphVersion) -> None:
+        # The stored snapshot, before any conversion: trigger node types and the
+        # `nodes` layout are the same in every snapshot version.
+        if TriggerNodeInspector.has_any_in_flow_entry(version.snapshot or {}):
+            trigger_node_access.assert_user_may_recreate(request.user, version.graph.org_id)
 
     @action(detail=True, methods=["get"], url_path="preview")
     def preview(self, request, *args, **kwargs):
@@ -1273,37 +1309,9 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         )
 
 
-class IdempotentNodeCreateMixin:
-    # TODO: change fields from (graph, node_name) to id (all nodes id's are consistent)
-    # """
-    # COMMIT_COMMENTS: Makes node POST idempotent — if a node with the same
-    # (graph, node_name) already exists, update it instead of failing with a
-    # unique constraint violation. This prevents orphan accumulation when
-    # forkJoin-based saves partially fail and retry.
-    # """
-
-    def create(self, request, *args, **kwargs):
-        graph_id = request.data.get("graph")
-        node_name = request.data.get("node_name")
-        if graph_id and node_name:
-            # Org-scoped queryset: an idempotent match only updates a node whose
-            # graph is in the active org; a node in another org is never touched.
-            queryset = self.get_queryset()
-            try:
-                existing = queryset.get(graph_id=graph_id, node_name=node_name)
-                serializer = self.get_serializer(existing, data=request.data)
-                serializer.is_valid(raise_exception=True)
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            except queryset.model.DoesNotExist:
-                pass
-        return super().create(request, *args, **kwargs)
-
-
 class PythonNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1317,7 +1325,6 @@ class PythonNodeViewSet(
 class FileExtractorNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1331,7 +1338,6 @@ class FileExtractorNodeViewSet(
 class KnowledgeNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1364,7 +1370,6 @@ class KnowledgeNodeViewSet(
 class AudioTranscriptionNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1378,7 +1383,6 @@ class AudioTranscriptionNodeViewSet(
 class TaskNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1420,7 +1424,6 @@ class TaskNodeViewSet(
 class AgentNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -2017,19 +2020,7 @@ class DecisionTableNodeModelViewSet(
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """
-        Create a DecisionTableNode along with nested ConditionGroups and Conditions.
-        If a node with the same (graph, node_name) already exists, update it instead.
-        """
-        graph_id = request.data.get("graph")
-        node_name = request.data.get("node_name")
-        if graph_id and node_name:
-            try:
-                existing = DecisionTableNode.objects.get(graph_id=graph_id, node_name=node_name)
-                node, _ = self._create_or_update_node(data=request.data, instance=existing)
-                return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
-            except DecisionTableNode.DoesNotExist:
-                pass
+        """Create a DecisionTableNode along with nested ConditionGroups and Conditions."""
         node, _ = self._create_or_update_node(data=request.data)
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
@@ -2442,8 +2433,8 @@ class GraphOrganizationUserViewSet(OrgScopedChildViewSetMixin, viewsets.ReadOnly
 )
 class WebhookTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
+    TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -2475,7 +2466,7 @@ class WebhookTriggerNodeViewSet(
 class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "flows_using_trigger": Permission.READ, **RECYCLE_BIN_ACTION_MAP}
     recycle_bin_resource_key = RecycleBinSource.WEBHOOK_TRIGGER
     queryset = WebhookTrigger.objects.select_related(
         "ngrok", "localhost", "auth", "auth__secret"
@@ -2483,6 +2474,8 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
     serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = WebhookTriggerFilter
+    # The flows action names at most this many flows; `flow_count` is always the total.
+    flows_using_trigger_limit = 50
 
     def _wait_for_tunnel_url(self, trigger):
         service = WebhookTriggerService()
@@ -2496,7 +2489,15 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
         self._wait_for_tunnel_url(trigger)
 
     def update(self, request, *args, **kwargs):
+        # Also serves partial_update. Re-keying, re-pathing or re-tunnelling a trigger
+        # that nodes are attached to can bring them live (and Telegram `auth_kind`
+        # re-registers every attached node), so it needs flows:USE like editing the
+        # nodes. Checked after get_object (another org's trigger stays a 404) and
+        # before any body-dependent check, so a caller without USE always gets the
+        # same 403.
         instance = self.get_object()
+        if TriggerNodeInspector.has_any_attached_to_webhook_trigger(instance):
+            trigger_node_access.assert_may_write(request.user, instance.org_id)
         new_provider = request.data.get("provider_type", instance.provider_type)
         if new_provider in LOCAL_ONLY_PROVIDERS and instance.twilio_channels.exists():
             return Response(
@@ -2514,11 +2515,35 @@ class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, views
         trigger = serializer.save()
         self._wait_for_tunnel_url(trigger)
 
+    @extend_schema(**WEBHOOK_TRIGGER_FLOWS_GET)
+    @action(detail=True, methods=["get"], url_path="flows")
+    def flows_using_trigger(self, request, pk=None):
+        """Return the flows whose trigger nodes make updating this trigger need flows:USE."""
+        graphs = TriggerNodeInspector.graphs_attached_to_webhook_trigger(self.get_object())
+        effective_permissions = PermissionResolver().resolve(
+            user=request.user, org_id=self.get_active_org_id()
+        )
+        # Names only for callers who could list these flows anyway; the count is safe
+        # for anyone who may read the trigger.
+        if effective_permissions.can(ResourceType.FLOWS, Permission.READ):
+            flows = list(
+                graphs.order_by("name", "id").values("id", "name")[: self.flows_using_trigger_limit]
+            )
+        else:
+            flows = []
+        payload = {"flow_count": graphs.count(), "flows": flows}
+        return Response(WebhookTriggerFlowsSerializer(payload).data)
 
+
+@extend_schema_view(
+    create=extend_schema(**TELEGRAM_TRIGGER_NODE_WRITE),
+    update=extend_schema(**TELEGRAM_TRIGGER_NODE_WRITE),
+    partial_update=extend_schema(**TELEGRAM_TRIGGER_NODE_WRITE),
+)
 class TelegramTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
+    TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2558,10 +2583,15 @@ class TelegramTriggerNodeViewSet(
         return Response(TelegramWebhookInfoSerializer(webhook_status).data)
 
 
+@extend_schema_view(
+    create=extend_schema(**SCHEDULE_TRIGGER_NODE_WRITE),
+    update=extend_schema(**SCHEDULE_TRIGGER_NODE_WRITE),
+    partial_update=extend_schema(**SCHEDULE_TRIGGER_NODE_WRITE),
+)
 class ScheduleTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
+    TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2577,7 +2607,6 @@ class ScheduleTriggerNodeViewSet(
 class GraphNoteViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):

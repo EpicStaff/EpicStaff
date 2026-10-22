@@ -13,6 +13,7 @@ export type AuditNodeType =
     | 'AUDIO_TRANSCRIPTION'
     | 'DECISION_TABLE'
     | 'CLASSIFICATION_DECISION_TABLE'
+    | 'KEY_VALUE'
     | 'END'
     | 'SCHEDULE_TRIGGER'
     | 'WEBHOOK_TRIGGER'

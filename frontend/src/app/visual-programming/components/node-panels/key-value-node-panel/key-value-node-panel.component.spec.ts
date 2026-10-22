@@ -37,7 +37,6 @@ import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { KeyValueEntryDraftsService } from '../../../services/key-value-entry-drafts.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
 import { SidePanelService } from '../../../services/side-panel.service';
-import { UniqueNodeNameValidatorService } from '../../../services/unique-node-name.validator';
 import { mapGraphDtoToFlowModel } from '../../../utils/load/map-graph-dto-to-flow-model';
 import { mapKeyValueNodeToModel } from '../../../utils/load/nodes/key-value-node.mapper';
 import { getNodeDiff } from '../../../utils/save/diff';
@@ -49,7 +48,8 @@ const ALL_ACTIONS = [ActionCode.Create, ActionCode.Read, ActionCode.Update, Acti
 const DTO: GetKeyValueNodeRequest = {
     id: 12,
     graph: 1,
-    node_name: 'Key-Value #1',
+    node_number: 1,
+    node_name: 'Key-Value',
     key_value_table: 3,
     mode: 'read',
     entries: [
@@ -170,15 +170,20 @@ function createPanel(
                     can: (_resource: string, action: ActionCode) => permittedActions().includes(action),
                 },
             },
-            // Its own stand-in: the one above answers every resource alike, Flows included.
-            { provide: FlowReadOnlyService, useValue: { isReadOnly: flowReadOnly, notifyBlocked } },
+            // Its own stand-in: the one above answers every resource alike, Flows included. A Key-Value node is
+            // not a trigger node, so it is read-only exactly when the flow is.
+            {
+                provide: FlowReadOnlyService,
+                useValue: {
+                    isReadOnly: flowReadOnly,
+                    isNodeTypeReadOnly: () => flowReadOnly(),
+                    notifyBlocked,
+                    notifyNodeTypeBlocked: notifyBlocked,
+                },
+            },
             { provide: Dialog, useValue: { open: openDialog } },
             // The panel shell, mounted by some tests below, reads node authorship from the flow page's store.
             NodeAuthorshipStore,
-            {
-                provide: UniqueNodeNameValidatorService,
-                useValue: { createSyncUniqueNameValidator: () => () => null, getValidationErrorMessage: () => '' },
-            },
             {
                 provide: SidePanelService,
                 // The shell's side of it too, for the Ctrl+S spec.
@@ -3016,7 +3021,7 @@ describe('KeyValueNodePanelComponent', () => {
             vi.advanceTimersByTime(1000);
 
             expect(panel.form.disabled).toBe(true);
-            expect(panel.form.getRawValue()).toMatchObject({ node_name: 'Key-Value #1', mode: 'write' });
+            expect(panel.form.getRawValue()).toMatchObject({ node_name: 'Key-Value', mode: 'write' });
             expect(triggerAutosave).not.toHaveBeenCalled();
 
             flowReadOnly.set(false);

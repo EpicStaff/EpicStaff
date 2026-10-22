@@ -61,17 +61,19 @@ refuses to set `is_active=true` until the schedule is fully configured
 ## 2. Create a node
 
 - **Endpoint**: `POST /api/schedule-trigger-nodes/`
-- **Behavior**: if a node with the same `(graph, node_name)` already exists,
-  it is updated in place instead of failing with a unique-constraint error
-  (idempotent create). If `schedule` is omitted, the node is created as a
-  draft (`is_active=false`, all schedule fields `null`) regardless of the
-  `is_active` value sent by the client.
+- **Behavior**: every `POST` creates a new node, even when another node in
+  the graph already has the same `node_name` (names may repeat; the node's
+  badge number `node_number` tells them apart). A client that retries a
+  create must look the node up first and update it by id — the
+  `schedule_manager_tool` does exactly that. If `schedule` is omitted, the
+  node is created as a draft (`is_active=false`, all schedule fields
+  `null`) regardless of the `is_active` value sent by the client.
 
 ### 2.1 Request body — fully configured
 
 ```js
 {
-  "node_name": "Schedule Trigger (#1)",        // string, unique within the graph
+  "node_name": "Schedule Trigger",             // string, free-form label; may repeat within the graph
   "graph": 1,                                  // int, graph id
   "is_active": true,                           // bool; default false
   "metadata": {},                              // object, free-form (UI position, etc.)
@@ -97,7 +99,7 @@ refuses to set `is_active=true` until the schedule is fully configured
 
 ```json
 {
-  "node_name": "Schedule Trigger (#1)",
+  "node_name": "Schedule Trigger",
   "graph": 1,
   "metadata": { "x": 100, "y": 200 }
 }
@@ -112,7 +114,7 @@ The server will store this as `is_active=false` with `timezone="UTC"`,
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `node_name` | string | yes | Unique per graph. |
+| `node_name` | string | yes | Free-form label. May repeat within a graph. |
 | `graph` | int | yes | Parent graph id. |
 | `is_active` | bool | no (default `false`) | When `false`, the Manager will not register an APScheduler job. Setting `true` requires a fully configured schedule (see §2.3 activation gate). |
 | `metadata` | object | no | Free-form (canvas position, icon, color, etc.). |
@@ -181,7 +183,9 @@ A failing rule returns `400 Bad Request` with a structured error (see §8).
 ```js
 {
   "id": 42,                                    // int, PK (read-only)
-  "node_name": "Schedule Trigger (#1)",
+  "node_name": "Schedule Trigger",
+  "node_number": 3,                            // int, read-only: the node's #N badge in its graph,
+                                               // assigned by the server; never sent by clients
   "graph": 1,
   "is_active": true,
   "metadata": {},

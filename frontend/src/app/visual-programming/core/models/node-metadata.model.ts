@@ -9,5 +9,4 @@ export interface NodeDtoMetadata extends Record<string, unknown> {
     color: string;
     icon: string;
     size: { width: number; height: number };
-    nodeNumber?: number;
 }

@@ -59,6 +59,13 @@ class NaiveRag(SoftDeleteFields, models.Model):
     )
     error_message = models.TextField(null=True, blank=True)
     outdated_reasons = models.JSONField(default=dict, blank=True)
+    indexing_usage = models.JSONField(
+        default=dict,
+        db_default={},
+        blank=True,
+        editable=False,
+        help_text="Token usage and cost of indexing runs, written by the knowledge service.",
+    )
 
     indexing_document_config_ids = ArrayField(
         base_field=PositiveIntegerField(),

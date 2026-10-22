@@ -71,6 +71,19 @@
     </section>
 
     <section class="menu-section">
+        @if (canStartQuickStartTour()) {
+            <button
+                class="nav-item"
+                (click)="onQuickStartTourClick()"
+            >
+                <app-svg-icon
+                    size="16px"
+                    icon="help"
+                    class="nav-icon"
+                />
+                <span class="nav-label text-body-small-large">Quick Start Tour</span>
+            </button>
+        }
         <button
             class="nav-item"
             (click)="onSignOutClick()"

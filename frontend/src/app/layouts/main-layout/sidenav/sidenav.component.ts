@@ -1,3 +1,4 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { PortalModule } from '@angular/cdk/portal';
 import {
@@ -13,13 +14,14 @@ import {
     untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map } from 'rxjs/operators';
 
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { QUICK_START_TOUR_ANCHORS } from '../../../features/quick-start-tour/quick-start-tour-anchors';
 import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
@@ -55,6 +57,18 @@ interface NavItem {
     separatedAbove?: boolean;
 }
 
+const PAGE_STEP_BY_CODE: Partial<Record<'ArrowUp' | 'ArrowDown', 1 | -1>> = { ArrowUp: -1, ArrowDown: 1 };
+
+function isPlainAltChord(event: KeyboardEvent): boolean {
+    return event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && !event.repeat;
+}
+
+function isEditableTarget(element: Element): boolean {
+    return !!element.closest(
+        'input, textarea, select, [contenteditable]:not([contenteditable="false"]), .monaco-editor, .native-edit-context'
+    );
+}
+
 @Component({
     selector: 'app-left-sidebar',
     imports: [
@@ -72,6 +86,7 @@ interface NavItem {
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '(document:keydown)': 'onDocumentKeydown($event)' },
 })
 export class LeftSidebarComponent {
     /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
@@ -97,6 +112,7 @@ export class LeftSidebarComponent {
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
     public showAccountTooltip = false;
+    protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
 
     private router = inject(Router);
     private currentPath = toSignal(
@@ -146,6 +162,22 @@ export class LeftSidebarComponent {
     private readonly configService = inject(ConfigService);
     private readonly permissionService = inject(PermissionsService);
     private readonly chatInboxStream = inject(ChatInboxStreamService);
+    private readonly dialog = inject(Dialog);
+    private readonly activatedRoute = inject(ActivatedRoute);
+    private readonly workspaceNavItem: NavItem = {
+        id: 'workspace',
+        routeLink: 'workspace',
+        label: 'Workspace',
+        isPermitted: () => this.activeMembership() !== null && this.permissionService.canAccessWorkspace(),
+        showTooltip: false,
+    };
+    private readonly profileNavItem: NavItem = {
+        id: 'profile',
+        routeLink: 'profile',
+        label: 'Profile',
+        isPermitted: () => this.user() !== null,
+        showTooltip: false,
+    };
 
     constructor() {
         this.destroyRef.onDestroy(() => this.chatInboxStream.stop());
@@ -226,6 +258,7 @@ export class LeftSidebarComponent {
         this.bottomNavItems.push({
             id: 'settings',
             routeLink: 'settings',
+            activePaths: ['/settings'],
             icon: 'settings',
             label: 'Settings',
             isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
@@ -266,9 +299,22 @@ export class LeftSidebarComponent {
         }
     }
 
+    protected onDocumentKeydown(event: KeyboardEvent): void {
+        if (event.defaultPrevented) return;
+        const step = PAGE_STEP_BY_CODE[event.code as keyof typeof PAGE_STEP_BY_CODE];
+        if (step === undefined || !isPlainAltChord(event) || this.dialog.openDialogs.length > 0) return;
+        if (event.target instanceof Element && isEditableTarget(event.target)) return;
+
+        const nextItem = this.findSteppedItem(step);
+        if (!nextItem?.routeLink) return;
+
+        event.preventDefault();
+        this.closeUserMenu();
+        void this.router.navigate([nextItem.routeLink], { relativeTo: this.activatedRoute });
+    }
+
     public isItemActive(item: NavItem): boolean {
-        const path = this.currentPath();
-        return (item.activePaths ?? []).some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+        return this.matchesCurrentPath(item.activePaths ?? []);
     }
 
     public badgeCount(item: NavItem): number {
@@ -277,6 +323,31 @@ export class LeftSidebarComponent {
 
     public resolveRouteLink(item: NavItem): string | null {
         return item.routeLink ?? null;
+    }
+
+    private findSteppedItem(step: number): NavItem | null {
+        const visibleItems = [
+            this.workspaceNavItem,
+            ...this.topNavItems,
+            this.recycleBinNavItem,
+            ...this.bottomNavItems,
+            this.profileNavItem,
+        ].filter((item) => item.isPermitted());
+        const currentIndex = visibleItems.findIndex((item) => this.isCurrentPage(item));
+        if (currentIndex === -1) {
+            return (step > 0 ? visibleItems[0] : visibleItems[visibleItems.length - 1]) ?? null;
+        }
+        return visibleItems[currentIndex + step] ?? null;
+    }
+
+    private isCurrentPage(item: NavItem): boolean {
+        const ownPaths = item.routeLink ? [`/${item.routeLink}`] : [];
+        return this.matchesCurrentPath(item.activePaths ?? ownPaths);
+    }
+
+    private matchesCurrentPath(prefixes: string[]): boolean {
+        const path = this.currentPath();
+        return prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
     }
 
     private readCurrentPath(): string {

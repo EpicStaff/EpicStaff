@@ -41,6 +41,7 @@ from tables.services.copy_services.helpers import (
     create_python_code,
 )
 from tables.services.secrets.parse_code import parse_secret_names
+from tables.validators.execution_timeout_validator import normalize_execution_timeout
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
@@ -85,12 +86,16 @@ class PythonCodeSerializer(
             "global_kwargs",
             "secrets",
             "secret_ids",
+            "execution_timeout",
         ]
         read_only_fields = ["id"]
         extra_kwargs = {
             "code": {"allow_blank": True},
             "entrypoint": {"allow_blank": True},
         }
+
+    def validate_execution_timeout(self, value: int) -> int:
+        return normalize_execution_timeout(value)
 
     def to_representation(self, instance):
         """Convert 'libraries' string to a list of strings for output."""

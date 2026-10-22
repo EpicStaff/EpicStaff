@@ -1,7 +1,7 @@
 import { truncateName } from '../../utils/surface/surface-collection-conflict.util';
 import { KeyValueMode } from '../models/key-value-node.model';
 
-/** The longest table name the #N tab above the node shows whole; a longer one is cut to end in "…". */
+/** The longest table name the summary tab above a Key-Value node shows whole; a longer one is cut to end in "…". */
 export const CAPTION_TABLE_NAME_LIMIT = 20;
 
 // The stripe colour per mode is KEY_VALUE_MODE_COLORS in @shared/models, shared with the session card.

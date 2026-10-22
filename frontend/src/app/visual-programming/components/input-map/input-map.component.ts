@@ -27,6 +27,7 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, HelpTooltipComponent, ToggleSwitchComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 import { filter, Subscription } from 'rxjs';
 import { distinctUntilChanged, finalize } from 'rxjs/operators';
 
@@ -540,6 +541,7 @@ export class InputMapComponent implements OnInit, OnChanges {
     @Input() testRunning: boolean = false;
     @Input() testInputDirty: boolean = false;
     readonly = input<boolean>(false);
+    readonly nodeNumber = input<number | undefined>();
     /** Why the owning panel cannot run the test now (e.g. its stored code is not the panel's), or null. */
     readonly runTestBlocker = input<string | null>(null);
     @Output() testModeChange = new EventEmitter<boolean>();
@@ -609,7 +611,7 @@ export class InputMapComponent implements OnInit, OnChanges {
     }
 
     ngOnChanges(changes: SimpleChanges): void {
-        if (changes['pythonNodeId'] || changes['graphId'] || changes['nodeName']) {
+        if (changes['pythonNodeId'] || changes['graphId'] || changes['nodeName'] || changes['nodeNumber']) {
             this.checkSuccessfulSessions();
         }
     }
@@ -1103,7 +1105,7 @@ export class InputMapComponent implements OnInit, OnChanges {
             this.hasSuccessfulSession.set(false);
             return;
         }
-        const formattedNodeName = `${this.nodeName} #${this.pythonNodeId}`;
+        const formattedNodeName = `${formatNodeLabel({ node_name: this.nodeName, nodeNumber: this.nodeNumber() })} #${this.pythonNodeId}`;
         this.graphSessionService
             .getSessionsByGraphId(this.graphId, false, 1, 0, [GraphSessionStatus.ENDED], formattedNodeName)
             .subscribe({

@@ -44,12 +44,30 @@ header {
             flex-shrink: 0;
         }
 
+        // The #N sits on the name's text baseline; the pair as a whole stays centred next to the icon.
+        .title-with-number {
+            display: flex;
+            align-items: baseline;
+            min-width: 0;
+        }
+
         .title {
             font-size: 1.125rem;
             font-weight: 400;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        // Same look as the #N under a canvas node's name; never cut short, the name ellipsizes instead.
+        .node-number {
+            flex-shrink: 0;
+            margin-left: 0.5rem;
+            font-size: var(--text-body-small-size);
+            font-weight: var(--text-body-small-weight);
+            line-height: var(--text-body-small-line-height);
+            color: var(--color-text-secondary);
+            white-space: nowrap;
         }
     }
 

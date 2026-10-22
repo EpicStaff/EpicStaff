@@ -45,3 +45,23 @@ async def test_no_credential_sends_none():
     target = await _searched_target(None)
 
     assert target.embedder_api_key is None
+
+
+@pytest.mark.asyncio
+async def test_extra_headers_reach_the_search_target():
+    knowledge_client = AsyncMock()
+    knowledge_client.search = AsyncMock(return_value=[])
+    executor = KnowledgeSearchToolExecutor(
+        knowledge_collection_id=1,
+        rag_type_id="graph:2",
+        rag_search_config={"search_params": {"search_method": "basic"}},
+        knowledge_client=knowledge_client,
+        rag_embedder_extra_headers={"X-Emb": "emb-resolved"},
+        rag_llm_extra_headers={"X-Llm": "llm-resolved"},
+    )
+
+    await executor.execute(query="q")
+
+    target = knowledge_client.search.call_args.args[0]
+    assert target.embedder_extra_headers == {"X-Emb": "emb-resolved"}
+    assert target.llm_extra_headers == {"X-Llm": "llm-resolved"}

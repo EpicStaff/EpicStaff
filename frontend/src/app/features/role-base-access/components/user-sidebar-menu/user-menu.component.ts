@@ -13,6 +13,7 @@ import { AuthService } from '../../../../services/auth/auth.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
+import { QuickStartTourService } from '../../../quick-start-tour/quick-start-tour.service';
 import { OrgAvatarComponent } from '../org-avatar/org-avatar.component';
 
 const ORG_SWITCH_FAILED_MESSAGE = 'Could not switch organization. Please try again.';
@@ -48,6 +49,9 @@ export class UserMenuComponent {
     private unsavedChangesRegistry = inject(UnsavedChangesRegistry);
     private currentUserService = inject(ProfileService);
     private permissionService = inject(PermissionsService);
+    private readonly quickStartTourService = inject(QuickStartTourService);
+
+    protected readonly canStartQuickStartTour = this.quickStartTourService.isAvailable;
 
     // Declared after the router it reads: field initializers run in order.
     private currentUrl = toSignal(
@@ -98,6 +102,11 @@ export class UserMenuComponent {
     onProfileClick(): void {
         this.isUserMenuOpen.set(false);
         void this.router.navigate(['/profile']);
+    }
+
+    onQuickStartTourClick(): void {
+        this.isUserMenuOpen.set(false);
+        void this.quickStartTourService.start();
     }
 
     onSignOutClick(): void {

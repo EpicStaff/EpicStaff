@@ -12,11 +12,18 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { DEFAULT_STEP_SIZE } from '@shared/constants';
+import { DEFAULT_STEP_SIZE, TOKEN_PRICE_HINT } from '@shared/constants';
 import { EnterSubmitDirective } from '@shared/directives';
-import { ModelTypes, ReasoningEffort } from '@shared/models';
+import { pricePairValidator } from '@shared/form-validators';
+import { GetLlmConfigRequest, ModelTypes, ReasoningEffort } from '@shared/models';
 import { LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractFieldErrorMessages, extractHttpErrorMessage, trackPickedSecrets } from '@shared/utils';
+import {
+    extractFieldErrorMessages,
+    extractHttpErrorMessage,
+    perMillionToPerToken,
+    perTokenToPerMillion,
+    trackPickedSecrets,
+} from '@shared/utils';
 import { startWith } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -69,6 +76,8 @@ export class LlmModelConfigDialogComponent implements OnInit {
     private secretsStorageService = inject(SecretsStorageService);
     private toast = inject(ToastService);
     private data = inject<DialogData>(DIALOG_DATA, { optional: true });
+    // Prices as stored, so an untouched price is sent back unchanged instead of through the per-1M conversion.
+    private storedPrices: Pick<GetLlmConfigRequest, 'input_cost_per_token' | 'output_cost_per_token'> | null = null;
 
     dialogRef = inject(DialogRef);
 
@@ -116,6 +125,13 @@ export class LlmModelConfigDialogComponent implements OnInit {
             timeout: [120, [Validators.min(1), Validators.max(600)]],
             reasoning_effort: this.reasoningEffortControl,
             is_visible: [true],
+            pricing: this.fb.group(
+                {
+                    input_price_per_million: [null as number | null, [Validators.min(0)]],
+                    output_price_per_million: [null as number | null, [Validators.min(0)]],
+                },
+                { validators: pricePairValidator('input_price_per_million', 'output_price_per_million') }
+            ),
         });
         this.form.statusChanges
             .pipe(startWith(this.form.status), takeUntilDestroyed(this.destroyRef))
@@ -148,7 +164,17 @@ export class LlmModelConfigDialogComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (config) => {
-                    this.form.patchValue(config);
+                    this.storedPrices = {
+                        input_cost_per_token: config.input_cost_per_token ?? null,
+                        output_cost_per_token: config.output_cost_per_token ?? null,
+                    };
+                    this.form.patchValue({
+                        ...config,
+                        pricing: {
+                            input_price_per_million: perTokenToPerMillion(config.input_cost_per_token),
+                            output_price_per_million: perTokenToPerMillion(config.output_cost_per_token),
+                        },
+                    });
                     this.isLoading.set(false);
                 },
                 error: () => {
@@ -170,9 +196,20 @@ export class LlmModelConfigDialogComponent implements OnInit {
 
         this.isSaving.set(true);
         this.errorMessage.set(null);
+        const { pricing, ...config } = this.form.value;
         const formValue = {
-            ...this.form.value,
+            ...config,
             reasoning_effort: this.reasoningEffortField()?.submittedValue() ?? null,
+            input_cost_per_token: this.priceToSave(
+                'input_price_per_million',
+                pricing.input_price_per_million,
+                this.storedPrices?.input_cost_per_token
+            ),
+            output_cost_per_token: this.priceToSave(
+                'output_price_per_million',
+                pricing.output_price_per_million,
+                this.storedPrices?.output_cost_per_token
+            ),
         };
 
         const request$ = this.isEditMode()
@@ -202,6 +239,17 @@ export class LlmModelConfigDialogComponent implements OnInit {
         });
     }
 
+    private priceToSave(
+        controlName: string,
+        pricePerMillion: number | null,
+        storedPricePerToken: number | null | undefined
+    ): number | null {
+        const isEdited = this.form.get(['pricing', controlName])?.dirty ?? false;
+        if (this.storedPrices && !isEdited) return storedPricePerToken ?? null;
+        return perMillionToPerToken(pricePerMillion);
+    }
+
     protected readonly ModelTypes = ModelTypes;
     protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+    protected readonly TOKEN_PRICE_HINT = TOKEN_PRICE_HINT;
 }

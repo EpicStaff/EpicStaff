@@ -253,7 +253,7 @@ describe('ChatThreadComposerComponent', () => {
     });
 
     it('keeps Visitor disabled while its token is fetched, then links it to why it failed', () => {
-        setInputs({ conversation: row(), visitorToken: null, visitorTokenPending: true });
+        setInputs({ conversation: row(), visitorToken: undefined, visitorTokenPending: true });
         expect(roleButtons()[0].disabled).toBe(true);
         let describedBy = roleButtons()[0].getAttribute('aria-describedby') as string;
         expect(host().querySelector(`#${describedBy}`)?.textContent?.trim()).toBe('Getting a visitor token…');
@@ -263,7 +263,7 @@ describe('ChatThreadComposerComponent', () => {
         expect(host().querySelector(`#${describedBy}`)?.textContent?.trim()).toBe("Couldn't get a visitor token.");
         expect(roleButtons()[1].hasAttribute('aria-describedby')).toBe(false);
 
-        setInputs({ visitorTokenError: null, visitorToken: 'vt-1' });
+        setInputs({ visitorTokenError: undefined, visitorToken: 'vt-1' });
         expect(roleButtons()[0].disabled).toBe(false);
         expect(host().querySelector('.composer__caption')).toBeNull();
         expect(fixture.componentInstance.role()).toBe('visitor');
@@ -423,7 +423,7 @@ describe('ChatThreadComposerComponent', () => {
         expect(roleButtons()).toEqual([]);
         expect(input().placeholder).toBe('Claim the conversation to reply');
 
-        setInputs({ conversation: row({ id: 'c-2' }), visitorToken: null });
+        setInputs({ conversation: row({ id: 'c-2' }), visitorToken: undefined });
         expect(roleButtons()[0].disabled).toBe(true);
         expect(fixture.componentInstance.role()).toBe('operator');
     });

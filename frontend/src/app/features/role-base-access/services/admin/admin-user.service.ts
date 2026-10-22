@@ -17,6 +17,8 @@ export interface ListAdminUsersParams {
     orgIds?: number[];
     page?: number;
     pageSize?: number;
+    search?: string;
+    isActive?: boolean;
 }
 
 @Injectable({
@@ -45,6 +47,8 @@ export class AdminUserService {
         if (params.orgIds?.length) httpParams = httpParams.set('org_ids', params.orgIds.join(','));
         if (params.page !== undefined) httpParams = httpParams.set('page', String(params.page));
         if (params.pageSize !== undefined) httpParams = httpParams.set('page_size', String(params.pageSize));
+        if (params.search) httpParams = httpParams.set('search', params.search);
+        if (params.isActive !== undefined) httpParams = httpParams.set('is_active', String(params.isActive));
         return this.http.get<ApiGetRequest<AdminCreateUserResponse>>(this.apiUrl, {
             params: httpParams,
             context: withCrossOrgPermission<ApiGetRequest<AdminCreateUserResponse>>(

@@ -27,6 +27,7 @@ class NaiveRag(BaseModel):
     error_message = Column(Text, nullable=True)
     outdated_reasons = Column(JSON, nullable=False, default=dict)
     indexing_document_config_ids = Column(ARRAY(Integer), nullable=False, server_default="{}")
+    indexing_usage = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     indexed_at = Column(DateTime, nullable=True)

@@ -6,6 +6,7 @@ from tables.models import (
     PythonCodeToolConfig,
 )
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
+from tables.validators.execution_timeout_validator import normalize_imported_execution_timeout
 from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
@@ -28,6 +29,9 @@ class PythonCodeImportSerializer(serializers.ModelSerializer):
         for entry in value.split():
             validate_python_library_spec(entry)
         return value
+
+    def validate_execution_timeout(self, value: int) -> int:
+        return normalize_imported_execution_timeout(value)
 
     def to_internal_value(self, data):
         result = super().to_internal_value(data)

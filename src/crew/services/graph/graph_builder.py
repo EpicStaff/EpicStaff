@@ -284,6 +284,8 @@ class SessionGraphBuilder:
                 knowledge_search_service=self.knowledge_search_service,
                 embedder_api_key=knowledge_node_data.embedder_api_key,
                 llm_api_key=knowledge_node_data.llm_api_key,
+                embedder_extra_headers=knowledge_node_data.embedder_extra_headers,
+                llm_extra_headers=knowledge_node_data.llm_extra_headers,
             )
             self.add_node(knowledge_node)
 

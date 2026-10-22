@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
+from weakref import WeakKeyDictionary
 
 import egress_firewall
 import settings
@@ -122,6 +123,39 @@ def _calculate_libraries_hash(libraries: list[str]) -> str:
     return hashlib.sha256(libraries_str.encode("utf-8")).hexdigest()
 
 
+# Registry of locks tied to event loops: prevents concurrent venv creation/installation
+# on the same venv_path. Maps event loop → {venv_path_str → asyncio.Lock}.
+# Uses WeakKeyDictionary so loops are cleaned up when they're garbage-collected.
+_venv_locks_registry: WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio.Lock]] = (
+    WeakKeyDictionary()
+)
+
+
+def _get_venv_lock(venv_path: Path | str) -> asyncio.Lock:
+    """Get or create an asyncio.Lock for a venv path, tied to the running event loop.
+
+    Ensures that concurrent runs trying to create or install libraries in the same
+    venv path will serialize their operations, preventing "No module named pip" errors
+    when venv creation's directory check passes before pip's ensurepip bootstrap completes.
+
+    Args:
+        venv_path: The path to the virtual environment.
+
+    Returns:
+        An asyncio.Lock specific to this venv_path in this event loop.
+    """
+    venv_path_str = str(venv_path)
+    loop = asyncio.get_running_loop()
+
+    if loop not in _venv_locks_registry:
+        _venv_locks_registry[loop] = {}
+
+    if venv_path_str not in _venv_locks_registry[loop]:
+        _venv_locks_registry[loop][venv_path_str] = asyncio.Lock()
+
+    return _venv_locks_registry[loop][venv_path_str]
+
+
 def _privilege_drop_kwargs() -> dict[str, object]:
     """Subprocess kwargs to run a child as sandboxuser, or empty when non-root."""
     if not _can_drop_privileges():
@@ -231,16 +265,17 @@ class CreateVenvHandler(AbstractHandler):
         context["hash_file"] = hash_file
         context["lib_hash"] = lib_hash
 
-        if not venv_path.exists():
-            logger.info(f"Creating virtual environment at {venv_path}...")
-            process = await asyncio.create_subprocess_shell(
-                f"{sys.executable} -m venv {venv_path}",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            await process.communicate()
-        else:
-            logger.info(f"Virtual environment already exists at {venv_path}.")
+        async with _get_venv_lock(venv_path):
+            if not venv_path.exists():
+                logger.info(f"Creating virtual environment at {venv_path}...")
+                process = await asyncio.create_subprocess_shell(
+                    f"{sys.executable} -m venv {venv_path}",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await process.communicate()
+            else:
+                logger.info(f"Virtual environment already exists at {venv_path}.")
 
         if self._next_handler:
             return await super().handle(context)
@@ -269,96 +304,18 @@ class InstallLibrariesHandler(AbstractHandler):
         """Install libraries asynchronously."""
         python_executable = context["python_executable"]
         lib_hash = context.get("lib_hash")
-        hash_changed = self._hash_changed(lib_hash=lib_hash, hash_file=context["hash_file"])
 
-        if hash_changed:
-            logger.info("Installing libraries...")
+        async with _get_venv_lock(context["venv_path"]):
+            hash_changed = self._hash_changed(lib_hash=lib_hash, hash_file=context["hash_file"])
 
-            env = build_base_env(python_executable)
+            if hash_changed:
+                logger.info("Installing libraries...")
 
-            # Upgrade pip
-            process = await asyncio.create_subprocess_exec(
-                str(python_executable), "-m", "pip", "install", "--upgrade", "pip",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-            )  # fmt: off
-            stdout, stderr = await process.communicate()
-            stderr = stderr.decode("utf-8", errors="replace")
-            stdout = stdout.decode("utf-8", errors="replace")
-            returncode = process.returncode
+                env = build_base_env(python_executable)
 
-            if returncode != 0:
-                return CodeResultData(
-                    execution_id=context["execution_id"],
-                    stderr=stderr,
-                    stdout=stdout,
-                    returncode=returncode,
-                )
-
-            # Uninstall all libraries
-            logger.info("Uninstalling all libraries...")
-            process = await asyncio.create_subprocess_exec(
-                str(python_executable), "-m", "pip", "freeze",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-            )  # fmt: off
-            stdout, stderr = await process.communicate()
-            returncode = process.returncode
-
-            stderr = stderr.decode("utf-8", errors="replace")
-            stdout = stdout.decode("utf-8", errors="replace")
-            if returncode != 0:
-                return CodeResultData(
-                    execution_id=context["execution_id"],
-                    stderr=stderr,
-                    stdout=stdout,
-                    returncode=returncode,
-                )
-
-            installed_packages = stdout.splitlines()
-
-            for package in installed_packages:
-                package_name = package.split("==")[0]
-                logger.info(f"Uninstalling {package_name}...")
+                # Upgrade pip
                 process = await asyncio.create_subprocess_exec(
-                    str(python_executable), "-m", "pip", "uninstall", "-y", package_name,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    env=env,
-                )  # fmt: off
-                stdout, stderr = await process.communicate()
-                stderr = stderr.decode("utf-8", errors="replace")
-                stdout = stdout.decode("utf-8", errors="replace")
-                returncode = process.returncode
-                if returncode != 0:
-                    return CodeResultData(
-                        execution_id=context["execution_id"],
-                        stderr=stderr,
-                        stdout=stdout,
-                        returncode=returncode,
-                    )
-
-            # Install libraries
-            #
-            # Deliberately NOT passing _privilege_drop_kwargs() here, unlike the
-            # code-execution subprocess below -- pip for a caller-supplied specifier
-            # (which can run setup.py/PEP 517 build code at install time) runs as this
-            # container's own user, not sandboxuser. Accepted risk (Igor Polishchuk /
-            # Volodymyr Panchyshyn, 2026-09-07/08): the install subprocess gets the same
-            # curated, minimal env as user code (build_base_env -- no os.environ
-            # inheritance, no credentials), the container has cap_drop: ALL and
-            # no-new-privileges, and no Docker socket is mounted, so install-time root
-            # has no path off this container and no secret to reach. This is a real,
-            # accepted asymmetry with the code-execution path below, not an oversight
-            # left uncommented -- don't "fix" it by adding drop_kwargs without checking
-            # whether pip still needs root for its own reasons (writing into root-owned
-            # venv directories) first.
-            for library in context["libraries"]:
-                logger.info(f"Installing {library}...")
-                process = await asyncio.create_subprocess_exec(
-                    str(python_executable), "-m", "pip", "install", "--", library,
+                    str(python_executable), "-m", "pip", "install", "--upgrade", "pip",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
@@ -376,9 +333,89 @@ class InstallLibrariesHandler(AbstractHandler):
                         returncode=returncode,
                     )
 
-            self._update_hash(lib_hash=lib_hash, hash_file=context["hash_file"])
-        else:
-            logger.info("Libraries are up-to-date. Skipping installation.")
+                # Uninstall all libraries
+                logger.info("Uninstalling all libraries...")
+                process = await asyncio.create_subprocess_exec(
+                    str(python_executable), "-m", "pip", "freeze",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env,
+                )  # fmt: off
+                stdout, stderr = await process.communicate()
+                returncode = process.returncode
+
+                stderr = stderr.decode("utf-8", errors="replace")
+                stdout = stdout.decode("utf-8", errors="replace")
+                if returncode != 0:
+                    return CodeResultData(
+                        execution_id=context["execution_id"],
+                        stderr=stderr,
+                        stdout=stdout,
+                        returncode=returncode,
+                    )
+
+                installed_packages = stdout.splitlines()
+
+                for package in installed_packages:
+                    package_name = package.split("==")[0]
+                    logger.info(f"Uninstalling {package_name}...")
+                    process = await asyncio.create_subprocess_exec(
+                        str(python_executable), "-m", "pip", "uninstall", "-y", package_name,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=env,
+                    )  # fmt: off
+                    stdout, stderr = await process.communicate()
+                    stderr = stderr.decode("utf-8", errors="replace")
+                    stdout = stdout.decode("utf-8", errors="replace")
+                    returncode = process.returncode
+                    if returncode != 0:
+                        return CodeResultData(
+                            execution_id=context["execution_id"],
+                            stderr=stderr,
+                            stdout=stdout,
+                            returncode=returncode,
+                        )
+
+                # Install libraries
+                #
+                # Deliberately NOT passing _privilege_drop_kwargs() here, unlike the
+                # code-execution subprocess below -- pip for a caller-supplied specifier
+                # (which can run setup.py/PEP 517 build code at install time) runs as this
+                # container's own user, not sandboxuser. Accepted risk (Igor Polishchuk /
+                # Volodymyr Panchyshyn, 2026-09-07/08): the install subprocess gets the same
+                # curated, minimal env as user code (build_base_env -- no os.environ
+                # inheritance, no credentials), the container has cap_drop: ALL and
+                # no-new-privileges, and no Docker socket is mounted, so install-time root
+                # has no path off this container and no secret to reach. This is a real,
+                # accepted asymmetry with the code-execution path below, not an oversight
+                # left uncommented -- don't "fix" it by adding drop_kwargs without checking
+                # whether pip still needs root for its own reasons (writing into root-owned
+                # venv directories) first.
+                for library in context["libraries"]:
+                    logger.info(f"Installing {library}...")
+                    process = await asyncio.create_subprocess_exec(
+                        str(python_executable), "-m", "pip", "install", "--", library,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=env,
+                    )  # fmt: off
+                    stdout, stderr = await process.communicate()
+                    stderr = stderr.decode("utf-8", errors="replace")
+                    stdout = stdout.decode("utf-8", errors="replace")
+                    returncode = process.returncode
+
+                    if returncode != 0:
+                        return CodeResultData(
+                            execution_id=context["execution_id"],
+                            stderr=stderr,
+                            stdout=stdout,
+                            returncode=returncode,
+                        )
+
+                self._update_hash(lib_hash=lib_hash, hash_file=context["hash_file"])
+            else:
+                logger.info("Libraries are up-to-date. Skipping installation.")
 
         if self._next_handler:
             return await super().handle(context)
@@ -701,8 +738,9 @@ except Exception:
             **drop_kwargs,
         )
 
+        execution_timeout = effective_execution_timeout(context.get("execution_timeout"))
         comm_task = asyncio.ensure_future(process.communicate())
-        done, _ = await asyncio.wait({comm_task}, timeout=settings.EXECUTION_TIMEOUT)
+        done, _ = await asyncio.wait({comm_task}, timeout=execution_timeout)
 
         if comm_task not in done:
             return await self._handle_timeout(
@@ -710,6 +748,7 @@ except Exception:
                 comm_task=comm_task,
                 context=context,
                 masking_values=masking_values,
+                execution_timeout=execution_timeout,
             )
 
         stdout, stderr = comm_task.result()
@@ -755,17 +794,17 @@ except Exception:
         comm_task: asyncio.Task,
         context: dict[str, Any],
         masking_values: dict[str, str],
+        execution_timeout: float,
     ) -> CodeResultData:
         """Terminate a hung execution and report it as a timed-out result.
 
         The job never finishes writing output.txt, so unlike the normal path
         this never reads the result file: result_data stays None.
         """
-        timeout = settings.EXECUTION_TIMEOUT
         logger.error(
             "Execution {} exceeded {} seconds; killing process tree.",
             context["execution_id"],
-            f"{timeout:g}",
+            f"{execution_timeout:g}",
         )
 
         killed = _kill_process_tree(process, execution_id=context["execution_id"])
@@ -798,7 +837,7 @@ except Exception:
         stdout = scrub(text=stdout, secrets=masking_values)
         stderr = scrub(text=stderr, secrets=masking_values)
 
-        timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
+        timeout_message = f"Execution exceeded {execution_timeout:g} seconds and was terminated."
         if not killed:
             timeout_message += " Process could not be terminated and may still be running."
         stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message
@@ -809,6 +848,19 @@ except Exception:
             stderr=stderr,
             returncode=124,
         )
+
+
+def effective_execution_timeout(requested_seconds: float | None) -> float:
+    """Return the execution timeout to apply, in seconds.
+
+    The requested value comes from the task message and is untrusted, so
+    SANDBOX_MAX_EXECUTION_TIMEOUT is the security bound it is capped at (None there means no
+    upper limit). SANDBOX_DEFAULT_EXECUTION_TIMEOUT only fills in a missing request.
+    """
+    timeout = settings.DEFAULT_EXECUTION_TIMEOUT if requested_seconds is None else requested_seconds
+    if settings.MAX_EXECUTION_TIMEOUT is None:
+        return timeout
+    return min(timeout, settings.MAX_EXECUTION_TIMEOUT)
 
 
 class DynamicVenvExecutorChain:
@@ -848,8 +900,16 @@ class DynamicVenvExecutorChain:
         storage_org_prefix: str | None = None,
         storage_credentials: StorageCredentials | None = None,
         secrets: dict[str, str] | None = None,
+        execution_timeout: float | None = None,
     ) -> CodeResultData:
-        """Run the complete workflow asynchronously."""
+        """Run the complete workflow asynchronously.
+
+        Args:
+            execution_timeout: Requested execution timeout in seconds, capped at
+                SANDBOX_MAX_EXECUTION_TIMEOUT; None applies SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
+                Bounds only the code run itself; venv creation and library
+                installation are not limited by it.
+        """
         if func_kwargs is None:
             func_kwargs = {}
 
@@ -903,6 +963,7 @@ class DynamicVenvExecutorChain:
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
             "secrets": secrets,
+            "execution_timeout": execution_timeout,
         }
         if use_storage:
             # Fail-closed: code that requests storage access must have valid

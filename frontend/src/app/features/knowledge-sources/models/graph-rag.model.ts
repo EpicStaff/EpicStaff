@@ -1,4 +1,4 @@
-import { BaseRagType, RagStatus, RagType } from './base-rag.model';
+import { BaseRagType, IndexingUsage, RagStatus, RagType } from './base-rag.model';
 
 export type GraphRagFileType = 'csv' | 'text' | 'json';
 export type GraphRagChunkStrategy = 'tokens' | 'sentence';
@@ -14,6 +14,7 @@ export interface CollectionDetailsGraphRag {
     reindex_reason: Record<string, string>;
     status: RagStatus;
     processing_document_ids: number[];
+    indexing_usage: IndexingUsage;
     created_at: string;
     updated_at: string;
 }
