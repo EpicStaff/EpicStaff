@@ -108,6 +108,7 @@ GENERATED_SECRETS = (
     "REALTIME_DB_PASSWORD",
     "MANAGER_DB_PASSWORD",
     "KNOWLEDGE_DB_PASSWORD",
+    "SANDBOX_DB_PASSWORD",
     "CHAT_DB_PASSWORD",
     "AUDITOR_INGEST_API_KEY",
     "AUDIT_JWT_SECRET",
@@ -120,6 +121,7 @@ PRODUCTION_USERNAMES = {
     "REALTIME_DB_USER": "epicstaff_realtime",
     "MANAGER_DB_USER": "epicstaff_manager",
     "KNOWLEDGE_DB_USER": "epicstaff_knowledge",
+    "SANDBOX_DB_USER": "epicstaff_sandbox",
 }
 # Letters and digits only: several secrets end up inside URLs (redis://user:password@host)
 # and compose expands `$`.
