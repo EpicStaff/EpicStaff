@@ -12,7 +12,7 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
         backendId: wn.id,
         type: NodeType.WEBHOOK_TRIGGER,
         node_name: wn.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: wn.node_number ?? undefined,
         data: {
             webhook_trigger: wn.webhook_trigger,
             python_code: {
@@ -20,6 +20,7 @@ export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): 
                 libraries: wn.python_code.libraries,
                 code: wn.python_code.code,
                 entrypoint: wn.python_code.entrypoint,
+                execution_timeout: wn.python_code.execution_timeout,
                 secret_ids: toSecretIds(wn.python_code.secrets),
                 secret_names: toSecretNames(wn.python_code.secrets),
             },

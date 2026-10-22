@@ -145,7 +145,7 @@ def test_export_csv_includes_principal_columns_for_trigger_run(
     default_org, monkeypatch
 ):
     graph = Graph.objects.create(name="export-csv-trigger", org=default_org)
-    node = ScheduleTriggerNode.objects.create(graph=graph, node_name="sched")
+    node = ScheduleTriggerNode.objects.create(graph=graph, node_name="sched", node_number=4)
     _stub_publish(monkeypatch)
 
     ScheduleTriggerService()._start_session(node)
@@ -157,7 +157,7 @@ def test_export_csv_includes_principal_columns_for_trigger_run(
 
     assert len(rows) == 1
     assert rows[0]["started_by_type"] == "trigger"
-    assert rows[0]["started_by"] == "sched"
+    assert rows[0]["started_by"] == "sched #4"
 
 
 @pytest.mark.django_db

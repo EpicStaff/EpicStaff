@@ -126,6 +126,11 @@ class UsageHit:
     """The Graph, for flows. None for tools and configs, which are named only."""
     resource_name: str = ""
     """Flow name, or the tool / config display name."""
+    node_id: int | None = None
+    """Flows only — the node's primary key. Names repeat within a graph, so this is
+    what tells two nodes apart."""
+    node_number: int | None = None
+    """Flows only — the node's display-only "#N" badge; nullable."""
     node_name: str | None = None
     """Flows only."""
     node_type: str | None = None
@@ -212,11 +217,15 @@ class UsageSource:
         )
 
     def node_rows(self, *, org_id: int, secret_ids: set[int], readability):
-        """(secret_id, node_type, graph_id, graph_name, node_name, code_field).
+        """(secret_id, node_type, graph_id, graph_name, node_id, node_number, node_name, code_field).
 
         `graph_id` is passed straight through (no Cast) so it stays a real
         int, matching every existing caller (`hits_from_node_rows` etc.) that
         assigns it to `UsageHit.resource_id: int | None`.
+
+        `node_id` must stay in the projection: the detail path combines sources
+        with a distinct UNION, and without it two same-named nodes of one type in
+        one graph produce identical rows and collapse into one.
         """
         return (
             self.readable_scoped(org_id=org_id, secret_ids=secret_ids, readability=readability)
@@ -231,6 +240,8 @@ class UsageSource:
                 "usage_node_type",
                 f"{self.graph_path}_id",
                 "usage_graph_name",
+                "id",
+                "node_number",
                 "usage_node_name",
                 "usage_code_field",
             )
@@ -314,11 +325,22 @@ def hits_from_node_rows(*, rows) -> list[UsageHit]:
             category=CATEGORY_FLOWS,
             resource_id=graph_id,
             resource_name=graph_name,
+            node_id=node_id,
+            node_number=node_number,
             node_name=node_name,
             node_type=node_type,
             code_field=code_field,
         )
-        for secret_id, node_type, graph_id, graph_name, node_name, code_field in rows
+        for (
+            secret_id,
+            node_type,
+            graph_id,
+            graph_name,
+            node_id,
+            node_number,
+            node_name,
+            code_field,
+        ) in rows
     ]
 
 

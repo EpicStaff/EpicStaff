@@ -1,18 +1,21 @@
 from django.db import transaction
 from rbac.authorship import record_last_edits, resolve_author
 from tables.models import Graph, Label
+from tables.models.base_models import NumberedNode
 from tables.models.graph_models import Edge, StartNode
 from tables.services.copy_services.base_copy_service import BaseCopyService
 from tables.services.copy_services.helpers import next_copy_name
 from tables.services.copy_services.node_copy_handlers import NODE_COPY_HANDLERS
+from tables.services.node_number_service import source_order
 from tables.services.persistent_variables_service import PersistentVariablesService
 
 
 class GraphCopyService(BaseCopyService):
     """Copy a Graph with its nodes (via NODE_COPY_HANDLERS) and its edges, remapping node ids.
 
-    Node ids stored inside decision-table nodes are remapped to the copies too. The acting
-    user is recorded as the last editor of the new graph and of every new node.
+    Node ids stored inside decision-table nodes are remapped to the copies too. The copied
+    nodes are numbered 1..K in the source's number order. The acting user is recorded as
+    the last editor of the new graph and of every new node.
     """
 
     def copy(
@@ -41,13 +44,28 @@ class GraphCopyService(BaseCopyService):
             new_graph, source_start.variables if source_start else {}
         )
 
+        source_nodes = [
+            (handler, node)
+            for relation_name, handler in NODE_COPY_HANDLERS.values()
+            for node in getattr(graph, relation_name).all()
+        ]
+        # The copy is a rebuilt graph: its badges run 1..K in the source's order.
+        new_node_numbers = source_order(
+            {
+                node.id: node.node_number
+                for _, node in source_nodes
+                if isinstance(node, NumberedNode)
+            }
+        )
+
         node_id_map: dict[int, int] = {}
         new_nodes = []
-        for relation_name, handler in NODE_COPY_HANDLERS.values():
-            for node in getattr(graph, relation_name).all():
-                new_node = handler(new_graph, node, user=user)
-                node_id_map[node.id] = new_node.id
-                new_nodes.append(new_node)
+        for handler, node in source_nodes:
+            new_node = handler(
+                new_graph, node, user=user, node_number=new_node_numbers.get(node.id)
+            )
+            node_id_map[node.id] = new_node.id
+            new_nodes.append(new_node)
 
         for edge in graph.edge_list.all():
             Edge.objects.create(

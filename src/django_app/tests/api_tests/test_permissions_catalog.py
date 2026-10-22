@@ -51,6 +51,15 @@ def test_catalog_entries(catalog, code, expected):
 
 
 @pytest.mark.django_db
+def test_catalog_exposes_use_on_secrets_and_flows_only(catalog):
+    use = next(action for action in catalog["actions"] if action["code"] == "use")
+
+    assert use == {"code": "use", "label": "Use", "bit": 64}
+    assert [r["code"] for r in catalog["resource_types"] if "use" in r["applicable_actions"]] == ["flows", "secrets"]
+    assert _resource(catalog, "flows")["recommended_with"]["use"] == [{"resource_type": "flows", "action": "read"}]
+
+
+@pytest.mark.django_db
 def test_catalog_recommends_what_a_flow_action_needs(catalog):
     flows = _resource(catalog, "flows")
 

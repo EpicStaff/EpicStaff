@@ -137,7 +137,6 @@ export class ApiKeysTabComponent {
             filterItems: STATUS_ITEMS,
             filterKind: 'single',
             filterServerSide: true,
-            align: 'center',
         },
         { key: 'actions', label: 'ACTIONS', width: '110px', align: 'end' },
     ]);

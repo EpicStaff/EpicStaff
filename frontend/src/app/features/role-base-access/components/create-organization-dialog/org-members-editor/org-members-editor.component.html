@@ -9,6 +9,13 @@
                 placeholder="Search by name, email..."
                 [(searchTerm)]="searchTerm"
             />
+            <app-select
+                class="bulk-role-select"
+                placeholder="Role for selected"
+                [items]="roleItems()"
+                [selectedValue]="bulkRoleId()"
+                (changed)="onBulkRoleSelected($event)"
+            />
         </div>
 
         @if (isUsersLoading()) {
@@ -19,7 +26,8 @@
         } @else {
             <app-table
                 [columns]="columns"
-                [data]="filteredUsers()"
+                [data]="usersTableData()"
+                [rowVisible]="matchesSearch()"
                 [selectable]="true"
                 [rowSelectable]="isRowEditable"
                 [initialSelectedIds]="selectionIds()"

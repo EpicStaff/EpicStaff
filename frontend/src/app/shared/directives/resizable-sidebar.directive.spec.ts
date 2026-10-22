@@ -23,12 +23,14 @@ const STORAGE_KEY = `sidebar-width:${KEY}`;
             [sidebarMinWidth]="180"
             [sidebarMaxWidth]="320"
             [sidebarCollapse]="collapse()"
+            [sidebarSide]="side()"
         ></div>
     `,
 })
 class HostComponent {
     readonly key = KEY;
     readonly collapse = signal<SidebarCollapseOptions | null>(COLLAPSE);
+    readonly side = signal<'left' | 'right'>('left');
 }
 
 describe('ResizableSidebarDirective', () => {
@@ -235,6 +237,44 @@ describe('ResizableSidebarDirective', () => {
             expect(event.defaultPrevented).toBe(false);
             expect(currentWidth()).toBe(200);
             expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+        });
+    });
+
+    describe('right sidebar', () => {
+        beforeEach(() => {
+            fixture.componentInstance.side.set('right');
+            fixture.componentInstance.collapse.set(null);
+            fixture.detectChanges();
+            startWidth = 240;
+            TestBed.inject(SidebarWidthService).setWidth(KEY, startWidth, OPTIONS);
+        });
+
+        function press(key: string): void {
+            handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        }
+
+        it('grows when the handle is dragged left and persists on release', () => {
+            drag(500, 430);
+            expect(currentWidth()).toBe(310);
+
+            release();
+
+            expect(localStorage.getItem(STORAGE_KEY)).toBe('310');
+        });
+
+        it('shrinks when the handle is dragged right', () => {
+            drag(500, 540);
+
+            expect(currentWidth()).toBe(200);
+        });
+
+        it.each([
+            ['ArrowLeft', 256],
+            ['ArrowRight', 224],
+        ])('%s moves the width to %ipx', (key, expected) => {
+            press(key);
+
+            expect(currentWidth()).toBe(expected);
         });
     });
 });

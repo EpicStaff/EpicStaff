@@ -1,6 +1,7 @@
 import {
     ChangeDetectionStrategy,
     Component,
+    DestroyRef,
     ElementRef,
     EventEmitter,
     inject,
@@ -14,8 +15,10 @@ import {
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { formatNodeLabel } from '@shared/utils';
 
 import { NodeModel } from '../../core/models/node.model';
+import { KeymapService } from '../../services/keymap.service';
 import { SearchNodeItemComponent } from './search-node-item/search-node-item.component';
 
 @Component({
@@ -25,7 +28,6 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
     // Host listener instead of document.addEventListener so it is removed with the component
     // (the flow canvas is destroyed and re-created around version preview).
     host: {
-        '(document:keydown)': 'onDocumentKeydown($event)',
         '(document:mousedown)': 'onDocumentMousedown($event)',
     },
     template: `
@@ -291,6 +293,14 @@ export class NodesSearchComponent implements OnChanges {
     public isSearchVisible = signal<boolean>(false);
 
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly keymap = inject(KeymapService);
+    private readonly destroyRef = inject(DestroyRef);
+
+    constructor() {
+        const options = { allowInEditable: true, destroyRef: this.destroyRef };
+        this.keymap.register('navigating.node-search', () => this.toggleSearchInput(), options);
+        this.keymap.register('editing.escape', () => this.closeSearch(), options);
+    }
 
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['nodes']) {
@@ -301,17 +311,6 @@ export class NodesSearchComponent implements OnChanges {
     protected onDocumentMousedown(event: MouseEvent): void {
         if (this.isSearchVisible() && !this.hostElement.nativeElement.contains(event.target as Node)) {
             this.closeSearch();
-        }
-    }
-
-    protected onDocumentKeydown(event: KeyboardEvent): void {
-        if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
-            event.preventDefault();
-            this.toggleSearchInput();
-        }
-
-        if (event.key === 'Escape' && this.isSearchVisible()) {
-            this.toggleSearchInput();
         }
     }
 
@@ -340,8 +339,8 @@ export class NodesSearchComponent implements OnChanges {
             return true;
         }
 
-        // Search by node name
-        if (node.node_name && node.node_name.toLowerCase().includes(query)) {
+        // Search by node name and number, as the result list labels it
+        if (node.node_name && formatNodeLabel(node).toLowerCase().includes(query)) {
             return true;
         }
 

@@ -4,11 +4,21 @@ import { Observable } from 'rxjs';
 import { ImportResult } from './import-result.model';
 
 export interface RawFlowNode {
+    /** The node's id in the import file; `null` when the file has none. */
+    id: number | null;
     name: string;
     node_type: string;
 }
 
 export type FlowNodesByFile = Record<string, RawFlowNode[]>;
+
+/**
+ * A node's id in an import file, as both the file reader and the inspect response must read it: only an
+ * integer counts (the backend sends `node_id: null` for anything else), so both sides fall back to the name.
+ */
+export function toFileNodeId(value: unknown): number | null {
+    return typeof value === 'number' && Number.isInteger(value) ? value : null;
+}
 
 export interface ReviewPythonCode {
     code: string;
@@ -35,6 +45,8 @@ export interface McpToolReviewItem {
 export interface FlowNodeReviewItem {
     kind: 'flow_node';
     flow_name: string;
+    /** The node's id in the import file (backend inspect `_project_flow_nodes`); `null` when the file has none. */
+    node_id: number | null;
     node_name: string | null;
     node_type: string;
     python_code?: ReviewPythonCode;

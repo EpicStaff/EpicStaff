@@ -5,6 +5,7 @@ import {
     ChangeDetectorRef,
     Component,
     computed,
+    DestroyRef,
     effect,
     ElementRef,
     EventEmitter,
@@ -12,6 +13,7 @@ import {
     Injector,
     Input,
     input,
+    NgZone,
     OnChanges,
     OnDestroy,
     OnInit,
@@ -21,7 +23,9 @@ import {
     SimpleChanges,
     untracked,
     ViewChild,
+    viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { IPoint, PointExtensions } from '@foblex/2d';
@@ -42,8 +46,8 @@ import {
 } from '@foblex/flow';
 import { AppSvgIconComponent, AuthorshipDetailsSource } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, NodeType, ResourceCode } from '@shared/models';
-import { Subject } from 'rxjs';
+import { ActionCode, NodeType, ResourceCode, ShortcutParams } from '@shared/models';
+import { fromEvent, Subject } from 'rxjs';
 
 import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
 import { ToastService } from '../../services/notifications';
@@ -61,7 +65,6 @@ import { NodePanelShellComponent } from '../components/node-panels/node-panel-sh
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
-import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { buildInsertionConnections, findConnectionUnderNode } from '../core/helpers/drop-on-connection.util';
@@ -78,6 +81,9 @@ import {
     snapPointToGrid,
 } from '../core/helpers/node-placement.utils';
 import { normalizeTableNodeSize } from '../core/helpers/node-size.util';
+import { subgraphFlowOptions, subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
+import { CanvasPan, EDITOR_ACTIONS } from '../core/keymap/editor-actions';
+import { flowIdOf } from '../core/keymap/shortcut-params';
 import { FlowModel } from '../core/models/flow.model';
 import { FlowViewport } from '../core/models/flow-viewport.model';
 import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.model';
@@ -88,9 +94,10 @@ import { CurvedPathBuilder } from '../core/routing/curved.path-builder';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
-import { FlowReadOnlyService } from '../services/flow-readonly.service';
+import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
+import { KeymapService } from '../services/keymap.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
@@ -105,6 +112,10 @@ import { FlowSelectionManagerService } from './flow-selection-manager.service';
 
 /** How long a refused reassignment — and the same refusal when drawing a connection — stays on screen. */
 const CONNECTION_REFUSED_TOAST_MS = 5000;
+
+const CANVAS_PAN_STEP_PX = 40;
+
+const CANVAS_PAN_FAST_STEP_PX = 200;
 
 @Component({
     selector: 'app-flow-graph',
@@ -136,7 +147,6 @@ const CONNECTION_REFUSED_TOAST_MS = 5000;
         FormsModule,
         FlowBaseNodeComponent,
         FlowNodeVariablesOverlayComponent,
-        ShortcutListenerDirective,
         MouseTrackerDirective,
         FlowGraphContextMenuComponent,
         FlowActionPanelComponent,
@@ -157,7 +167,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public readonly availableFlows = input<GetGraphLightRequest[]>([]);
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
-    @Input() initialNodeExpand: boolean = true;
     @Input() isSaving: boolean = false;
     @Input() hasUnsavedChanges: boolean = false;
     /** Applied once the canvas loads, instead of fitting the flow to the screen. */
@@ -191,6 +200,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private overlayNodesObserver: MutationObserver | null = null;
 
     @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
+    private readonly shortcutsAnchor = viewChild.required<ElementRef<HTMLElement>>('shortcutsAnchor');
+    private readonly flowHost = viewChild.required('flowHost', { read: ElementRef<HTMLElement> });
 
     public closeNodesSearch(): void {
         this.nodesSearchComponent?.closeSearch();
@@ -206,6 +217,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     protected mouseCursorPosition: IPoint = { x: 0, y: 0 };
     protected contextMenuPosition = signal<IPoint>({ x: 0, y: 0 });
+    private lastPointer: IPoint | null = null;
     protected isLoaded = signal(false);
     protected showContextMenu = signal(false);
     private readonly arrangeAnimator = inject(FlowArrangeAnimatorService);
@@ -220,6 +232,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     /** Gates every Foblex gesture that edits the graph (move, resize, rotate, connect, reassign, waypoints). */
     readonly editGestureTrigger = (): boolean => !this.flowReadOnly.isReadOnly();
+
+    protected readonly isAutoArrangeDisabled = computed(
+        () =>
+            this.isArranging() ||
+            this.flowService.nodes().length - this.arrangeAnimator.pinnedNodeIds().size < 2 ||
+            !this.hasUnarrangedChanges()
+    );
 
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
@@ -268,6 +287,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
     });
 
+    /** The node may not be changed here, so it cannot be dragged either (a trigger node without Flows:Use). */
+    public isNodeReadOnly(node: NodeModel): boolean {
+        return this.flowReadOnly.isNodeTypeReadOnly(node.type);
+    }
+
     public getNodeZIndex(node: NodeModel): number {
         if (this.hoveredNodeId() === node.id) return 1000;
         return Math.max(2, 500 - Math.floor(Math.max(0, node.position?.y ?? 0) / 10));
@@ -297,6 +321,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly injector = inject(Injector);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly keymap = inject(KeymapService);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly ngZone = inject(NgZone);
 
     // Start from the current count so a canvas re-created after an earlier save request
     // (e.g. when leaving version preview) does not replay it. untracked: this initialiser runs
@@ -304,6 +331,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private lastSeenFullSaveRequest = untracked(() => this.sidePanelService.fullSaveRequest());
 
     constructor() {
+        this.registerShortcuts();
+
         effect(() => {
             const requestCount = this.sidePanelService.fullSaveRequest();
             if (requestCount > this.lastSeenFullSaveRequest) {
@@ -324,9 +353,97 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             () => {
                 this.moveOverlayLayerIntoCanvas();
                 this.setupOverlayTransformSync();
+                this.trackPointerOverCanvas();
             },
             { injector: this.injector }
         );
+    }
+
+    private registerShortcuts(): void {
+        const options = { destroyRef: this.destroyRef };
+        this.keymap.register('editing.copy', () => this.onCopy(), options);
+        this.keymap.register('editing.paste', () => this.onPaste(), options);
+        this.keymap.register('editing.delete', () => this.onDelete(), options);
+        this.keymap.register('editing.undo', () => this.onUndo(), options);
+        this.keymap.register('editing.redo', () => this.onRedo(), options);
+        this.keymap.register('editing.escape', () => this.onEscapeKey(), { ...options, allowInEditable: true });
+        this.keymap.register(
+            'navigating.shortcuts',
+            () => this.onOpenShortcuts(this.shortcutsAnchor().nativeElement),
+            options
+        );
+        for (const action of EDITOR_ACTIONS) {
+            if ('nodeType' in action && !('param' in action)) {
+                const request: CreateNodeRequest = { type: action.nodeType };
+                this.keymap.register(action.id, () => this.onNodeShortcut(request), options);
+            }
+        }
+        this.keymap.register('node.subgraph', (_event, { params }) => this.onSubgraphShortcut(params), options);
+        for (const action of EDITOR_ACTIONS) {
+            if ('pan' in action) {
+                const pan = action.pan;
+                this.keymap.register(action.id, () => this.onPanShortcut(pan), {
+                    ...options,
+                    runOutsideAngular: true,
+                    when: (event) => this.isCanvasKeyTarget(event.target),
+                });
+            }
+        }
+    }
+
+    private isCanvasKeyTarget(target: EventTarget | null): boolean {
+        if (!(target instanceof Node)) {
+            return false;
+        }
+        return target === target.ownerDocument?.body || this.flowHost().nativeElement.contains(target);
+    }
+
+    private onPanShortcut(pan: CanvasPan): void {
+        const canvas = this.fCanvasComponent;
+        if (!canvas || this.isDialogOpen() || this.showContextMenu()) {
+            return;
+        }
+        const step = pan.fast ? CANVAS_PAN_FAST_STEP_PX : CANVAS_PAN_STEP_PX;
+        const position = canvas.getPosition();
+        canvas.transform.position = PointExtensions.initialize(position.x - pan.x * step, position.y - pan.y * step);
+        canvas.redraw();
+        canvas.emitCanvasChangeEvent();
+    }
+
+    private onSubgraphShortcut(params: ShortcutParams | null): void {
+        const flowId = flowIdOf(params);
+        const flow = subgraphFlowOptions(this.availableFlows(), this.currentFlowId).find(
+            (candidate) => candidate.id === flowId
+        );
+        if (flow) {
+            this.onNodeShortcut(subgraphNodeRequest(flow));
+        }
+    }
+
+    private onNodeShortcut(request: CreateNodeRequest): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        if (this.isEditingLocked() || this.showContextMenu()) {
+            return;
+        }
+        this.addNodeAt(request, this.lastPointer);
+    }
+
+    private trackPointerOverCanvas(): void {
+        const host = this.flowHost().nativeElement;
+        this.ngZone.runOutsideAngular(() => {
+            fromEvent<PointerEvent>(host, 'pointermove')
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((event) => {
+                    const overMinimap = event.target instanceof Element && event.target.closest('f-minimap') !== null;
+                    this.lastPointer = overMinimap ? null : { x: event.clientX, y: event.clientY };
+                });
+            fromEvent(host, 'pointerleave')
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe(() => (this.lastPointer = null));
+        });
     }
 
     private moveOverlayLayerIntoCanvas(): void {
@@ -388,7 +505,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public ngOnInit(): void {
         this.applyIncomingFlowState(this.flowState);
         if (this.initialNodeId) {
-            this.openNodePanel(this.initialNodeId, this.initialNodeExpand);
+            this.openNodePanel(this.initialNodeId);
         }
     }
 
@@ -404,7 +521,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
         if (changes['initialNodeId'] && changes['initialNodeId'].currentValue) {
-            this.openNodePanel(changes['initialNodeId'].currentValue, this.initialNodeExpand);
+            this.openNodePanel(changes['initialNodeId'].currentValue);
         }
         if (changes['isSaving'] && changes['isSaving'].currentValue === true) {
             this.onCloseContextMenu();
@@ -546,8 +663,19 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ? snapPointToGrid(this.toFlowPosition(this.mouseCursorPosition))
             : { x: 0, y: 0 };
 
-        this.undoRedoService.stateChanged();
-        const { newNodes, newConnections } = this.clipboardService.paste(pastePosition);
+        const canPaste = (node: NodeModel): boolean => !this.flowReadOnly.isNodeTypeReadOnly(node.type);
+        // Recorded before the paste changes the flow, and only when it will change it.
+        if (this.clipboardService.getClipboardData()?.nodes.some(canPaste)) {
+            this.undoRedoService.stateChanged();
+        }
+        const { newNodes, newConnections, skippedNodeCount } = this.clipboardService.paste(pastePosition, canPaste);
+        if (skippedNodeCount > 0) {
+            this.toastService.warning(
+                `${skippedNodeCount} trigger node${skippedNodeCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`,
+                6000,
+                'bottom-right'
+            );
+        }
         const placedNodes: NodeModel[] = [];
         const existingBeforePaste = this.flowService.nodes().filter((n) => !newNodes.some((p) => p.id === n.id));
 
@@ -664,6 +792,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (!event.data || typeof event.data !== 'object') {
             return;
         }
+        if (this.flowReadOnly.isNodeTypeReadOnly((event.data as NodeModel).type)) {
+            this.flowReadOnly.notifyNodeTypeBlocked((event.data as NodeModel).type);
+            return;
+        }
 
         const normalizedNode = normalizeTableNodeSize(event.data as NodeModel);
 
@@ -705,30 +837,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
-        if (event.type === NodeType.END && this.flowService.hasEndNode()) {
-            this.toastService.warning('Only one End node is allowed', 4000, 'bottom-right');
-            return;
-        }
-
-        this.arrangeAnimator.markUnarranged();
-        this.undoRedoService.stateChanged();
-
-        const position = this.fFlowComponent.getPositionInFlow(
-            PointExtensions.initialize(this.contextMenuPosition().x, this.contextMenuPosition().y)
-        );
-        const newNode = this.nodeFactory.createNode(event.type, { ...event.overrides, position });
-        const safePosition = findNearestFreePosition(
-            { x: this.snapToGrid(position.x), y: this.snapToGrid(position.y) },
-            getCollisionBounds(newNode),
-            this.flowService.nodes()
-        );
-        this.flowService.addNode({ ...newNode, position: safePosition });
-
-        setTimeout(() => {
-            this.routingOrchestrator.rerouteSegmentConnections();
-            this.cd.detectChanges();
-            this.fFlowComponent?.redraw();
-        }, 0);
+        this.addNodeAt(event, this.contextMenuPosition());
     }
 
     public onOpenNodePanel(node: NodeModel): void {
@@ -821,7 +930,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public commitSidePanelToFlow(): boolean {
-        if (!this.nodePanelShell?.hasPanelInstance()) {
+        // A panel that may not change its node (a trigger node without Flows:Use) has nothing to commit.
+        if (!this.nodePanelShell?.hasPanelInstance() || this.nodePanelShell.isNodeReadOnly()) {
             return true;
         }
         // Use the validation-aware capture. Most panels (e.g. the task node panel) always
@@ -852,6 +962,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodeSizeChanged(event: { width: number; height: number }, node: NodeModel): void {
+        if (this.isNodeReadOnly(node)) {
+            this.revertNodeLayout(node);
+            return;
+        }
         this.undoRedoService.stateChanged();
 
         const updatedNode = {
@@ -981,6 +1095,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodePositionChanged(newPos: IPoint, node: NodeModel): void {
+        // Dragging is disabled on such a node, but a drag of a selection still carries it along.
+        if (this.isNodeReadOnly(node)) {
+            this.revertNodeLayout(node);
+            this.flowReadOnly.notifyNodeTypeBlocked(node.type);
+            return;
+        }
         this.arrangeAnimator.markUnarranged();
         this.draggedNodeIds.add(node.id);
 
@@ -1109,6 +1229,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected onExtractToSubflow(): void {
         const ids = this.selectionManager.extractableSelectedNodeIds();
         if (ids.size === 0) return;
+        // Extracting creates the nodes again in the new subflow.
+        const readOnlyNode = this.flowService
+            .nodes()
+            .find((node) => ids.has(node.id) && this.flowReadOnly.isNodeTypeReadOnly(node.type));
+        if (readOnlyNode) {
+            this.flowReadOnly.notifyNodeTypeBlocked(readOnlyNode.type);
+            return;
+        }
         this.extractToSubflow.emit(ids);
     }
 
@@ -1143,6 +1271,44 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         // A loaded flow starts a new history: its saved hand-edited wires must not count as flipped.
         this.routingOrchestrator.clearBackwardClassification();
         this.routingOrchestrator.rerouteSegmentConnections();
+    }
+
+    private addNodeAt(request: CreateNodeRequest, clientPoint: IPoint | null): void {
+        if (this.flowReadOnly.isNodeTypeReadOnly(request.type)) {
+            this.flowReadOnly.notifyNodeTypeBlocked(request.type);
+            return;
+        }
+
+        if (request.type === NodeType.END && this.flowService.hasEndNode()) {
+            this.toastService.warning('Only one End node is allowed', 4000, 'bottom-right');
+            return;
+        }
+
+        this.arrangeAnimator.markUnarranged();
+        this.undoRedoService.stateChanged();
+
+        const screenPoint = clientPoint ?? this.canvasCenter();
+        const position = this.fFlowComponent.getPositionInFlow(
+            PointExtensions.initialize(screenPoint.x, screenPoint.y)
+        );
+        const newNode = this.nodeFactory.createNode(request.type, { ...request.overrides, position });
+        const safePosition = findNearestFreePosition(
+            { x: this.snapToGrid(position.x), y: this.snapToGrid(position.y) },
+            getCollisionBounds(newNode),
+            this.flowService.nodes()
+        );
+        this.flowService.addNode({ ...newNode, position: safePosition });
+
+        setTimeout(() => {
+            this.routingOrchestrator.rerouteSegmentConnections();
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
+        }, 0);
+    }
+
+    private canvasCenter(): IPoint {
+        const rect = this.flowHost().nativeElement.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     }
 
     private isDialogOpen(): boolean {
@@ -1182,9 +1348,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return this.nodeAuthorshipStore.authorshipOf(startNode ?? { type: NodeType.START, backendId: null });
     }
 
-    public openNodePanel(nodeId: string, expand: boolean = true): void {
+    public openNodePanel(nodeId: string): void {
         this.sidePanelService.setSelectedNodeId(nodeId);
-        if (!expand) return;
         afterNextRender(() => this.nodePanelShell?.expandPanel(), { injector: this.injector });
     }
 
@@ -1227,7 +1392,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     private applyNodePanelUpdate(updatedNode: NodeModel, clearSelection: boolean): void {
-        if (this.flowReadOnly.isReadOnly()) {
+        if (this.flowReadOnly.isNodeTypeReadOnly(updatedNode.type)) {
             return;
         }
         const normalizedNode = normalizeTableNodeSize(updatedNode);
@@ -1258,7 +1423,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return [];
         }
 
-        const movedNodes = resolveOverlapsForNode(node.id, this.flowService.nodes());
+        // A node this user may not change stays where it is, even if the table now overlaps it.
+        const movedNodes = resolveOverlapsForNode(node.id, this.flowService.nodes()).filter(
+            (movedNode) => !this.isNodeReadOnly(movedNode)
+        );
 
         if (movedNodes.length > 0) {
             this.flowService.updateNodesInBatch(movedNodes);
@@ -1269,6 +1437,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private snapToGrid(value: number): number {
         return Math.round(value / this.GRID_CELL_SIZE) * this.GRID_CELL_SIZE;
+    }
+
+    /**
+     * Puts a node Foblex moved or resized back where the flow has it: new position and size objects
+     * make Foblex take them again, while the flow's values stay as they were.
+     */
+    private revertNodeLayout(node: NodeModel): void {
+        const current = this.flowService.nodes().find((candidate) => candidate.id === node.id);
+        if (!current) return;
+        this.flowService.updateNode({ ...current, position: { ...current.position }, size: { ...current.size } });
     }
 
     private syncAfterAutoAlign(affectedNodeIds: Set<string>): void {

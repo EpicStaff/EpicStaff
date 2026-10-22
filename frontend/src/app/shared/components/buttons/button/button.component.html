@@ -1,4 +1,5 @@
 <button
+    #button
     [appCollapseOnOverflow]="collapseEnabled"
     [collapseOnOverflowTarget]="'.btn-content'"
     [collapseOnOverflowClass]="'btn--only-icon'"
@@ -22,6 +23,7 @@
             <app-svg-icon
                 [icon]="leftIcon!"
                 [size]="iconSize"
+                [width]="iconWidth"
                 class="btn-icon left"
                 [ngStyle]="leftIconColor ? { color: leftIconColor } : null"
             />
@@ -30,6 +32,7 @@
             <app-svg-icon
                 [icon]="rightIcon!"
                 [size]="iconSize"
+                [width]="iconWidth"
                 class="btn-icon right"
                 [ngStyle]="rightIconColor ? { color: rightIconColor } : null"
             />
@@ -39,6 +42,7 @@
             <app-svg-icon
                 [icon]="leftIcon!"
                 [size]="iconSize"
+                [width]="iconWidth"
                 class="btn-icon left"
                 [ngStyle]="leftIconColor ? { color: leftIconColor } : null"
             />
@@ -52,6 +56,7 @@
             <app-svg-icon
                 [icon]="rightIcon!"
                 [size]="iconSize"
+                [width]="iconWidth"
                 class="btn-icon right"
                 [ngStyle]="rightIconColor ? { color: rightIconColor } : null"
             />

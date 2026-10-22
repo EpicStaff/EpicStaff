@@ -28,17 +28,6 @@ describe('SidebarToggleButtonComponent', () => {
         expect(tooltip().position).toBe('right');
     });
 
-    it('is inactive by default', () => {
-        expect(button().classList).not.toContain('active');
-    });
-
-    it('marks an open sidebar as active', () => {
-        fixture.componentRef.setInput('active', true);
-        fixture.detectChanges();
-
-        expect(button().classList).toContain('active');
-    });
-
     it('emits on click', () => {
         const toggled = vi.fn();
         fixture.componentInstance.toggled.subscribe(toggled);

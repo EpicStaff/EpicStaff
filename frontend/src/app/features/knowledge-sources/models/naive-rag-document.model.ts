@@ -82,6 +82,10 @@ export interface BulkUpdateNaiveRagDocumentsRequest extends UpdateNaiveRagDocume
     id: number;
 }
 
+export interface EstimateDocumentConfig extends UpdateNaiveRagDocumentDtoRequest {
+    document_config_id: number;
+}
+
 export interface BulkUpdateNaiveRagDocumentsResponse {
     configs: UpdatedNaiveRagDocumentConfig[];
     failed_count: number;

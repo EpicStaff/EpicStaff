@@ -5,6 +5,7 @@ import { NodeType } from '@shared/models';
 import { downloadBlob, showExportExclusionWarning } from '@shared/utils';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
+import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
 import { ToastService } from '../../services/notifications';
 import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { FlowModel } from '../core/models/flow.model';
@@ -22,6 +23,7 @@ export class FlowImportExportService {
     private readonly flowService = inject(FlowService);
     private readonly selectionManager = inject(FlowSelectionManagerService);
     private readonly importExportService = inject(ImportExportService);
+    private readonly flowCopyImportFacade = inject(FlowCopyImportFacadeService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
@@ -264,7 +266,9 @@ export class FlowImportExportService {
     }
 
     private doPartialImport(file: File, currentFlowId: number, onImportComplete: () => void): void {
-        this.importExportService
+        // Through the facade: the backend refuses a file with trigger nodes to a user without Flows:Use, and the
+        // facade explains that refusal (nothing is emitted then, so nothing below runs).
+        this.flowCopyImportFacade
             .partialImport(currentFlowId, file)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
@@ -283,20 +287,11 @@ export class FlowImportExportService {
                     onImportComplete();
                 },
                 error: (err: HttpErrorResponse) => {
-                    const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
                     const rawMessage =
                         (err.error as Record<string, string>)?.['message'] ??
                         (err.error as Record<string, string>)?.['detail'] ??
                         null;
-                    if (body.includes('node_name must make a unique set')) {
-                        this.toastService.error(
-                            'Import failed: a Classification Decision Table node with this name already exists in this flow. This is a backend issue — delete the duplicate CDT nodes and try again.',
-                            6000,
-                            'bottom-right'
-                        );
-                    } else {
-                        this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
-                    }
+                    this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
                 },
             });
     }

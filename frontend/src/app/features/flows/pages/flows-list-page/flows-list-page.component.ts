@@ -63,6 +63,7 @@ import {
     FlowNodesByFile,
     hasReviewableItems,
     ImportReviewDialogCloseResult,
+    toFileNodeId,
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications';
@@ -76,6 +77,7 @@ import { ImportResultDialogComponent } from '../../components/import-result-dial
 import { ImportReviewDialogComponent } from '../../components/import-review-dialog/import-review-dialog.component';
 import { EMPTY_FLOWS_FILTER, FlowsFilterState } from '../../models/flow-filter.model';
 import { GraphDto } from '../../models/graph.model';
+import { FlowCopyImportFacadeService } from '../../services/flow-copy-import-facade.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
@@ -119,6 +121,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private activatedRoute = inject(ActivatedRoute);
     private cdr = inject(ChangeDetectorRef);
     private importExportService = inject(ImportExportService);
+    private flowCopyImport = inject(FlowCopyImportFacadeService);
     private toastService = inject(ToastService);
     private labelsStorage = inject(LabelsStorageService);
     private importFlowSettings = inject(ImportFlowSettingsService);
@@ -485,7 +488,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         return this.importExportService.inspectFlow(file).pipe(
             switchMap((inspection) => {
                 if (!hasReviewableItems(inspection.review_items)) {
-                    return this.importExportService.importFlow(file, settings).pipe(
+                    // A refusal over trigger nodes is explained by the facade and emits nothing: no toast here.
+                    return this.flowCopyImport.importFlow(file, settings).pipe(
                         map((result) => ({ result, fileData })),
                         catchError((error: HttpErrorResponse) => {
                             this.toastService.error(
@@ -507,7 +511,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                         importResult: buildPreviewImportResult(fileData),
                         reviewItems: inspection.review_items,
                         allFlowNodes: this._extractFlowNodesFromFile(fileData),
-                        importFn: () => this.importExportService.importFlow(file, settings),
+                        // On a refusal over trigger nodes nothing is emitted, so the review dialog stays open.
+                        importFn: () => this.flowCopyImport.importFlow(file, settings),
                     },
                 });
 
@@ -567,6 +572,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 .filter((node): node is JsonObject => typeof node === 'object' && node !== null && !Array.isArray(node))
                 .filter((node) => !FlowsListPageComponent.EXCLUDED_NODE_TYPES.has(String(node['node_type'] ?? '')))
                 .map((node) => ({
+                    id: toFileNodeId(node['id']),
                     name: String(node['node_name'] ?? node['node_type'] ?? 'Node'),
                     node_type: String(node['node_type'] ?? ''),
                 }));

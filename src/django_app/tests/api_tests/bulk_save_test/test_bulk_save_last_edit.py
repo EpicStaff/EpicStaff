@@ -274,7 +274,6 @@ APPEARANCE_CHANGES = [
     pytest.param({"size": {"width": 500, "height": 90}}, id="size"),
     pytest.param({"color": "#000000"}, id="color"),
     pytest.param({"icon": "other"}, id="icon"),
-    pytest.param({"nodeNumber": 7}, id="node_number"),
 ]
 
 

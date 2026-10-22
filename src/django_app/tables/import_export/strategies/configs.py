@@ -27,6 +27,8 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
+from tables.services.secrets.reference_guard import secret_reference_guard
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 
 
 class BaseConfigStrategy(EntityImportExportStrategy):
@@ -100,7 +102,20 @@ class BaseConfigStrategy(EntityImportExportStrategy):
             data={**data, **resolved_fks, **tag_overrides, "org": org_id}
         )
         serializer.is_valid(raise_exception=True)
+        self._assert_markers_permitted(serializer, user=kwargs.get("user"), org_id=org_id)
         return serializer.save(created_by=resolve_author(kwargs.get("user")))
+
+    def _assert_markers_permitted(self, serializer, *, user, org_id) -> None:
+        """Require secrets:USE to create a config whose headers carry secret markers.
+
+        Import always creates the config, so every marker in it is new to the org's
+        rows; a reused existing config (find_existing) never reaches here.
+        """
+        for field_name in self.serializer_class.secret_marker_fields:
+            if extract_secret_marker_names(serializer.validated_data.get(field_name)):
+                secret_reference_guard.assert_may_use(
+                    user=user, org_id=org_id, field_name=field_name
+                )
 
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data

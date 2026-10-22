@@ -9,7 +9,7 @@ from ..models.knowledge import (
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
-from ..models.knowledge_new import FoundChunk, SearchConfig
+from ..models.knowledge_new import FoundChunk, SearchConfig, SearchOutcome, SearchUsage
 from .target import KnowledgeSearchTarget
 
 _SEARCH_CONFIG = TypeAdapter(SearchConfig)
@@ -55,6 +55,12 @@ class KnowledgeClient:
     async def search(
         self, target: KnowledgeSearchTarget, query: str, *, timeout: float
     ) -> list[FoundChunk] | str:
+        return (await self.search_with_usage(target, query, timeout=timeout)).result
+
+    async def search_with_usage(
+        self, target: KnowledgeSearchTarget, query: str, *, timeout: float
+    ) -> SearchOutcome:
+        """Search like `search`, also returning the embedding usage knowledge_new reports."""
         assert self._client is not None, "KnowledgeClient.start() must be called before search()"
 
         response = await self._client.post(
@@ -64,8 +70,14 @@ class KnowledgeClient:
                 "search_config": _to_search_config(target.search_config),
                 "embedding_api_key": target.embedder_api_key,
                 "llm_api_key": target.llm_api_key,
+                "embedding_extra_headers": target.embedder_extra_headers or {},
+                "llm_extra_headers": target.llm_extra_headers or {},
             },
             timeout=timeout,
         )
         response.raise_for_status()
-        return _RESULT.validate_python(response.json()["result"])
+        body = response.json()
+        return SearchOutcome(
+            result=_RESULT.validate_python(body["result"]),
+            usage=SearchUsage(**body.get("usage", {})),
+        )
