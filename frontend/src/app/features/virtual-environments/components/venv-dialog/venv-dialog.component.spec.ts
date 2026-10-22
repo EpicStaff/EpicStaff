@@ -4,6 +4,7 @@ import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@a
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { ConfigService } from '../../../../services/config';
+import { ToastService } from '../../../../services/notifications';
 import { CreateVenvRequest, Venv, VenvLib } from '../../models/venv.model';
 import { VenvDialogComponent, VenvDialogData } from './venv-dialog.component';
 
@@ -52,6 +53,7 @@ describe('VenvDialogComponent library rows', () => {
                 { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
                 { provide: DialogRef, useValue: { close } as unknown as DialogRef },
                 { provide: DIALOG_DATA, useValue: data },
+                { provide: ToastService, useValue: { error: vi.fn() } as unknown as ToastService },
             ],
         });
         httpMock = TestBed.inject(HttpTestingController);
@@ -115,21 +117,23 @@ describe('VenvDialogComponent library rows', () => {
     }
 
     it('fills Version with the installed version and Specification with the stored specifier set', () => {
-        open({ venv: storedVenv([{ name: 'requests', version: '2.31.0', specification: '>=2.0,<3.0' }]) });
+        open({
+            venv: storedVenv([{ name: 'requests', version: '2.31.0', specification: '>=2.0,<3.0', description: null }]),
+        });
 
         expect(cell(0, 'Version').value).toBe('2.31.0');
         expect(cell(0, 'Specification').value).toBe('>=2.0,<3.0');
     });
 
     it('leaves Version empty for a library the build has not resolved yet', () => {
-        open({ venv: storedVenv([{ name: 'requests', version: null, specification: '>=2.0' }]) });
+        open({ venv: storedVenv([{ name: 'requests', version: null, specification: '>=2.0', description: null }]) });
 
         expect(cell(0, 'Version').value).toBe('');
     });
 
     it('sends a stored specifier set back unchanged when nothing in the row was edited', () => {
         const specification = '!=1.2,>=1.0,<=1.8';
-        open({ venv: storedVenv([{ name: 'requests', version: '1.5', specification }]) });
+        open({ venv: storedVenv([{ name: 'requests', version: '1.5', specification, description: null }]) });
 
         save();
 
@@ -137,9 +141,9 @@ describe('VenvDialogComponent library rows', () => {
         expect(request.request.method).toBe('PATCH');
         expect(request.request.body).toEqual({
             name: 'ml base',
-            libs: [{ name: 'requests', version: '1.5', specification }],
+            libs: [{ name: 'requests', version: '1.5', specification, description: null }],
         });
-        request.flush(storedVenv([{ name: 'requests', version: '1.5', specification }]));
+        request.flush(storedVenv([{ name: 'requests', version: '1.5', specification, description: null }]));
     });
 
     it.each([
@@ -147,25 +151,25 @@ describe('VenvDialogComponent library rows', () => {
             shape: 'name only: the resolver picks a version',
             version: '',
             specification: '',
-            expected: { name: 'requests', version: null, specification: '' },
+            expected: { name: 'requests', version: null, specification: '', description: null },
         },
         {
             shape: 'name and version: that version is pinned',
             version: '2.31.0',
             specification: '',
-            expected: { name: 'requests', version: '2.31.0', specification: '' },
+            expected: { name: 'requests', version: '2.31.0', specification: '', description: null },
         },
         {
             shape: 'name and specification: the resolver picks inside the set',
             version: '',
             specification: '!=1.2,>=1.0,<=1.8',
-            expected: { name: 'requests', version: null, specification: '!=1.2,>=1.0,<=1.8' },
+            expected: { name: 'requests', version: null, specification: '!=1.2,>=1.0,<=1.8', description: null },
         },
         {
             shape: 'name, version and specification: the version wins, the set is kept',
             version: '1.5',
             specification: '!=1.2,>=1.0,<=1.8',
-            expected: { name: 'requests', version: '1.5', specification: '!=1.2,>=1.0,<=1.8' },
+            expected: { name: 'requests', version: '1.5', specification: '!=1.2,>=1.0,<=1.8', description: null },
         },
     ])('posts $shape', ({ version, specification, expected }) => {
         open({});
@@ -182,7 +186,9 @@ describe('VenvDialogComponent library rows', () => {
 
         save();
 
-        expect(savedBody().libs).toEqual([{ name: 'requests', version: '2.31.0', specification: '>=2.0' }]);
+        expect(savedBody().libs).toEqual([
+            { name: 'requests', version: '2.31.0', specification: '>=2.0', description: null },
+        ]);
     });
 
     it.each(['>=1.0', '!=1.2,>=1.0,<=1.8', '==1.2.*', '~=1.4.2', '>=1.0, <2.0'])(
@@ -221,7 +227,7 @@ describe('VenvDialogComponent library rows', () => {
         expect(cell(0, 'Version').classList).toContain('venv-dialog__cell-input--invalid');
     });
 
-    it('shows the service message when it rejects the version against the specification', () => {
+    it('toasts the service message when it rejects the version against the specification', () => {
         open({});
         declare('requests', '1.0', '>=2.0');
 
@@ -229,10 +235,10 @@ describe('VenvDialogComponent library rows', () => {
         httpMock
             .expectOne(VENVS_URL)
             .flush({ detail: "Version '1.0' does not satisfy specification '>=2.0'" }, { status: 400, statusText: '' });
-        fixture.detectChanges();
 
-        const message = (fixture.nativeElement as HTMLElement).querySelector('.venv-dialog__error-message');
-        expect(message?.textContent?.trim()).toBe("Version '1.0' does not satisfy specification '>=2.0'");
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledWith(
+            "Version '1.0' does not satisfy specification '>=2.0'"
+        );
         expect(close).not.toHaveBeenCalled();
     });
 });
