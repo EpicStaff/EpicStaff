@@ -6,9 +6,8 @@ from rest_framework import serializers
 # src/agent/app/tools/mcp/gateway.py (_C0_CONTROL_CHARS_RE / _MAX_MCP_DESCRIPTION_CHARS).
 # Kept in sync by convention rather than a shared import: django_app and the
 # agent service are deployed independently and do not share a dependency tree.
-# Unlike the gateway, the result is also trimmed: it is stored, and the serializer
-# field trims what an import reads, so an untrimmed stored value would never match
-# its own export again.
+# The result is also trimmed: it is stored, and the serializer field trims what an
+# import reads, so an untrimmed stored value would never match its own export again.
 MAX_DESCRIPTION_CHARS = 1024
 _C0_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
