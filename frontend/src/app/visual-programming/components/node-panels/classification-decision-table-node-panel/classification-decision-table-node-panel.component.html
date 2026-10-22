@@ -1,13 +1,15 @@
 <ng-template #headerActionsTpl>
-    <app-action-dropdown-button
-        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
-        label="Export"
-        [items]="exportFormatItems"
-        [panelWidth]="100"
-        [buttonWidth]="null"
-        (mainClick)="exportAsJson()"
-        (itemClick)="onExportItemSelected($event)"
-    />
+    @if (showsExport) {
+        <app-action-dropdown-button
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+            label="Export"
+            [items]="exportFormatItems"
+            [panelWidth]="100"
+            [buttonWidth]="null"
+            (mainClick)="exportAsJson()"
+            (itemClick)="onExportItemSelected($event)"
+        />
+    }
 
     <app-button
         type="outline-secondary"
