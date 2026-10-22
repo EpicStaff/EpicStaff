@@ -11,9 +11,10 @@
         ></app-svg-icon>
         <span>This version could not be loaded.</span>
     </div>
-} @else if (previewModel(); as model) {
+} @else if (canvas(); as canvas) {
     <app-flow-graph
-        [flowState]="model.flow"
+        [flowState]="canvas.flow"
+        [diffState]="canvas.diffState"
         (openShortcuts)="openShortcuts.emit($event)"
         (copied)="onCopied()"
     ></app-flow-graph>

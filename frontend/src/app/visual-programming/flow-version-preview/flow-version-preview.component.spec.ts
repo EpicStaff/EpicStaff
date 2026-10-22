@@ -15,14 +15,17 @@ import {
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
+import { FlowModel } from '../core/models/flow.model';
 import { FlowGraphComponent } from '../flow-graph/flow-graph.component';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
+import { FlowDiffStateService } from '../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
+import { buildPreviewFlowModel } from '../utils/load';
 import { FlowVersionPreviewComponent } from './flow-version-preview.component';
 
 const EDITOR_SERVICES: Type<unknown>[] = [
@@ -32,6 +35,7 @@ const EDITOR_SERVICES: Type<unknown>[] = [
     SidePanelService,
     ClipboardService,
     NodeFactoryService,
+    FlowDiffStateService,
 ];
 
 const CREATOR: UserSummary = { id: 7, display_name: 'Ivan Bohun', avatar_url: null };
@@ -47,13 +51,17 @@ function version(id: number): GraphVersionDto {
     return { id, graph_id: 1, name: `Version ${id}`, description: '', created_at: '2026-01-01T00:00:00Z' };
 }
 
+const START_UUID = '00000000-0000-4000-8000-000000000001';
+const PYTHON_UUID = '00000000-0000-4000-8000-000000000002';
+
 /** A snapshot with a Start node and one Python node named after the version. */
 function snapshotFor(pythonNodeName: string): GraphVersionSnapshot {
     return {
         nodes: [
-            { id: 1, node_type: 'StartNode', node_name: '__start__', variables: {}, metadata: {} },
+            { id: 1, uuid: START_UUID, node_type: 'StartNode', node_name: '__start__', variables: {}, metadata: {} },
             {
                 id: 2,
+                uuid: PYTHON_UUID,
                 node_type: 'PythonNode',
                 node_number: 1,
                 node_name: pythonNodeName,
@@ -77,12 +85,19 @@ function spyOnAllMethods(service: object): ReturnType<typeof vi.spyOn>[] {
         .map((name) => vi.spyOn(service as Record<string, () => unknown>, name));
 }
 
+/** A live canvas holding the same nodes as `snapshotFor(pythonNodeName)` (same uuids, other canvas ids). */
+function liveCanvasWith(pythonNodeName: string): FlowModel {
+    return buildPreviewFlowModel(snapshotFor(pythonNodeName), new Map(), []).flow;
+}
+
 describe('FlowVersionPreviewComponent', () => {
     let responses: Map<number, Subject<PreviewGraphVersionResponse>>;
     let fixture: ComponentFixture<FlowVersionPreviewComponent>;
+    let liveFlow: FlowModel;
 
     beforeEach(() => {
         responses = new Map();
+        liveFlow = { nodes: [], connections: [] };
         TestBed.configureTestingModule({
             providers: [
                 {
@@ -109,6 +124,7 @@ describe('FlowVersionPreviewComponent', () => {
     afterEach(() => vi.restoreAllMocks());
 
     async function render(versionId: number): Promise<void> {
+        fixture.componentRef.setInput('liveFlow', liveFlow);
         fixture.componentRef.setInput('version', version(versionId));
         fixture.detectChanges();
         // Not whenStable(): a loading resource keeps the app unstable until its response arrives.
@@ -141,6 +157,74 @@ describe('FlowVersionPreviewComponent', () => {
     function flowGraph(): FlowGraphComponent {
         return fixture.debugElement.query(By.directive(FlowGraphComponent)).componentInstance as FlowGraphComponent;
     }
+
+    describe('diff with the live canvas', () => {
+        function previewNode(type: NodeType) {
+            return previewFlowService()
+                .nodes()
+                .find((node) => node.type === type)!;
+        }
+
+        function statusOf(type: NodeType) {
+            return fixture.debugElement.injector.get(FlowDiffStateService).nodeStatus(previewNode(type).id);
+        }
+
+        it('shows the version marked with what a restore does to the live canvas', async () => {
+            liveFlow = liveCanvasWith('Live python');
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Version python');
+
+            expect(previewNode(NodeType.PYTHON).node_name).toBe('Version python');
+            expect(statusOf(NodeType.PYTHON)).toBe('changed');
+            expect(statusOf(NodeType.START)).toBe('unchanged');
+            expect(flowGraph().diffState()).not.toBeNull();
+        });
+
+        it('shows a node only the live canvas has, which a restore removes', async () => {
+            liveFlow = liveCanvasWith('Python');
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respondWith(1, { ...snapshotFor('Python'), nodes: snapshotFor('Python').nodes.slice(0, 1) });
+
+            expect(previewNode(NodeType.PYTHON).node_name).toBe('Python');
+            expect(statusOf(NodeType.PYTHON)).toBe('deleted');
+        });
+
+        it('keeps the canvas (and its node ids) when the live canvas changes while previewing', async () => {
+            liveFlow = liveCanvasWith('Python');
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Python');
+            const idsBefore = previewFlowService()
+                .nodes()
+                .map((node) => node.id);
+
+            fixture.componentRef.setInput('liveFlow', liveCanvasWith('Python after a save'));
+            fixture.detectChanges();
+
+            expect(
+                previewFlowService()
+                    .nodes()
+                    .map((node) => node.id)
+            ).toEqual(idsBefore);
+            expect(statusOf(NodeType.PYTHON)).toBe('unchanged');
+        });
+
+        it('compares again when another version is previewed', async () => {
+            liveFlow = liveCanvasWith('Python');
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Python');
+            expect(statusOf(NodeType.PYTHON)).toBe('unchanged');
+
+            await render(2);
+            await respond(2, 'Renamed python');
+
+            expect(previewNode(NodeType.PYTHON).node_name).toBe('Renamed python');
+            expect(statusOf(NodeType.PYTHON)).toBe('changed');
+        });
+    });
 
     it('gets its own instance of every flow-editor service', () => {
         fixture = TestBed.createComponent(FlowVersionPreviewComponent);

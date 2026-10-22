@@ -39,6 +39,7 @@
             <app-flow-version-preview
                 [version]="version"
                 [flowsLight]="availableFlowLights()"
+                [liveFlow]="currentFlowState()"
                 (closed)="onPreviewExit()"
                 (openShortcuts)="openShortcutsModal($event)"
             />

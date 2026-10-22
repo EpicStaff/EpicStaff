@@ -161,6 +161,48 @@
             opacity: 0.3;
         }
 
+        // Version diff: an edge a restore adds is green, one it removes is red and dashed; an unchanged
+        // edge keeps the default look. The colour wins over the gradient stroke and the arrow colours.
+        &.diff-added {
+            --diff-edge-color: var(--color-diff-added);
+        }
+
+        &.diff-deleted {
+            --diff-edge-color: var(--color-diff-deleted);
+
+            .f-connection-path {
+                stroke-dasharray: 4 4;
+            }
+        }
+
+        // Hovered, or an edge of the hovered node: the diff colour stays (it does not turn purple like an
+        // unchanged edge); a brighter tint and a thicker stroke mark the highlight instead.
+        &.diff-added:is(:hover, .node-hovered) {
+            --diff-edge-color: var(--color-diff-added-highlight);
+        }
+
+        &.diff-deleted:is(:hover, .node-hovered) {
+            --diff-edge-color: var(--color-diff-deleted-highlight);
+        }
+
+        // Not while selected: the selection highlight wins.
+        &.diff-added:not(.f-selected),
+        &.diff-deleted:not(.f-selected) {
+            .f-connection-path {
+                stroke: var(--diff-edge-color) !important;
+            }
+
+            svg.f-marker path,
+            svg.f-marker circle {
+                fill: var(--diff-edge-color) !important;
+            }
+
+            &:is(:hover, .node-hovered) .f-connection-path {
+                // 3.5, not 4: the arrow markers scale with the stroke width.
+                stroke-width: 3.5;
+            }
+        }
+
         .connection-center {
             display: none;
             align-items: center;

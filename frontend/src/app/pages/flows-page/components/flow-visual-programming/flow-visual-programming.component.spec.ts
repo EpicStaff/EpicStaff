@@ -162,6 +162,7 @@ class FlowGraphStubComponent {
 class FlowVersionPreviewStubComponent {
     readonly version = input.required<GraphVersionDto>();
     readonly flowsLight = input<unknown[]>([]);
+    readonly liveFlow = input.required<FlowModel>();
     readonly closed = output<void>();
     readonly openShortcuts = output<DOMRect>();
 
@@ -403,6 +404,21 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(component.hasUnsavedChangesSignal()).toBe(dirtyBefore);
             expect(flowService.getFlowState()).toEqual(flowBefore);
+        });
+
+        it('gives the preview the live canvas, unsaved edits included, to compare the version with', () => {
+            const savedFlow = flowService.getFlowState();
+            const editedFlow = {
+                ...savedFlow,
+                nodes: savedFlow.nodes.map((node) => ({ ...node, node_name: 'Edited' })),
+            };
+            flowService.setFlow(editedFlow);
+
+            enterPreview();
+
+            const previewComponent = fixture.debugElement.query(By.directive(FlowVersionPreviewStubComponent))
+                .componentInstance as FlowVersionPreviewStubComponent;
+            expect(previewComponent.liveFlow()).toBe(editedFlow);
         });
 
         it('hands the viewport captured on entry back to the live canvas on a plain exit', () => {

@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { DOCUMENT } from '@angular/common';
-import { Component, computed, DestroyRef, effect, inject, input, output, viewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, input, output, untracked, viewChild } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, SpinnerComponent } from '@shared/components';
 import { filter, fromEvent } from 'rxjs';
@@ -14,15 +14,31 @@ import { SnapshotNodeAuthorship } from '../../features/flows/models/graph-versio
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { ToastService } from '../../services/notifications';
 import { isEditableTarget } from '../core/keymap/key-chord.util';
+import { FlowModel } from '../core/models/flow.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { FLOW_EDITOR_STATE_PROVIDERS } from '../core/providers/flow-editor-state.providers';
 import { FlowGraphComponent } from '../flow-graph/flow-graph.component';
 import { ClipboardService } from '../services/clipboard.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
+import {
+    buildFlowDiff,
+    buildUnionFlowModel,
+    buildVersionKeyValueTableNames,
+    buildVersionWarningReferences,
+    FlowDiffCanvasState,
+} from '../utils/diff';
 import { buildPreviewFlowModel, mapNodeAuthorshipToCanvas } from '../utils/load';
 
 type PreviewFlowModel = ReturnType<typeof buildPreviewFlowModel>;
+
+/** What the canvas shows, and where a node of the snapshot is on it. */
+interface PreviewCanvas {
+    flow: FlowModel;
+    /** `null` for the plain version; the statuses of the diff canvas otherwise. */
+    diffState: FlowDiffCanvasState | null;
+    snapshotIdToCanvasId: ReadonlyMap<number, string>;
+}
 
 /**
  * Read-only canvas for one stored version. It owns a separate set of flow-editor services, so
@@ -40,6 +56,11 @@ export class FlowVersionPreviewComponent {
     public readonly version = input.required<GraphVersionDto>();
     /** Flows the user can open; a subgraph node pointing elsewhere is shown as blocked. */
     public readonly flowsLight = input<GetGraphLightRequest[]>([]);
+    /**
+     * The live canvas (unsaved edits included); the diff compares the version with it. Read when a version is
+     * loaded, not followed: later host updates do not rebuild the canvas.
+     */
+    public readonly liveFlow = input.required<FlowModel>();
     public readonly closed = output<void>();
     /** The canvas's shortcuts button; the host page owns the shortcuts modal. */
     public readonly openShortcuts = output<DOMRect>();
@@ -72,16 +93,50 @@ export class FlowVersionPreviewComponent {
             return { model: null, failed: true };
         }
     });
-    protected readonly previewModel = computed(() => this.previewBuild().model);
-    protected readonly hasFailed = computed(() => !!this.preview.error() || this.previewBuild().failed);
+    private readonly previewModel = computed(() => this.previewBuild().model);
+    // What a restore of the version does to the live canvas, on one canvas. Kept apart from the plain
+    // preview model, so a plain / diff switch only changes which canvas is bound.
+    private readonly diffBuild = computed<{ canvas: PreviewCanvas | null; failed: boolean }>(() => {
+        const model = this.previewModel();
+        const response = this.preview.hasValue() ? this.preview.value() : undefined;
+        if (!model || !response) return { canvas: null, failed: false };
+        try {
+            const diff = buildFlowDiff({
+                versionFlow: model.flow,
+                // Read, not tracked (D14): a host update while previewing (e.g. backend ids patched in after
+                // a save) must not rebuild the canvas with new ids under an open panel or selection.
+                liveFlow: untracked(() => this.liveFlow()),
+                versionWarningReferences: buildVersionWarningReferences(response.warnings, model.snapshotIdToCanvasId),
+                versionKeyValueTableNames: buildVersionKeyValueTableNames(
+                    response.snapshot.nodes,
+                    model.snapshotIdToCanvasId
+                ),
+            });
+            const union = buildUnionFlowModel(diff);
+            const snapshotIdToCanvasId = new Map<number, string>();
+            for (const [snapshotId, versionId] of model.snapshotIdToCanvasId) {
+                const unionId = union.unionIdByVersionId.get(versionId);
+                if (unionId !== undefined) snapshotIdToCanvasId.set(snapshotId, unionId);
+            }
+            return { canvas: { flow: union.flow, diffState: union.diffState, snapshotIdToCanvasId }, failed: false };
+        } catch (error) {
+            console.error('Failed to compare the version with the current flow', error);
+            return { canvas: null, failed: true };
+        }
+    });
+    /** The canvas bound to the graph: the diff canvas, the preview's only view for now. */
+    protected readonly canvas = computed(() => this.diffBuild().canvas);
+    protected readonly hasFailed = computed(
+        () => !!this.preview.error() || this.previewBuild().failed || this.diffBuild().failed
+    );
     protected readonly warnings = computed<RestoreWarning[]>(() =>
         this.preview.hasValue() ? this.preview.value().warnings : []
     );
     // Empty for a version saved before node authorship was recorded. Re-keyed whenever the canvas is rebuilt.
     private readonly nodeAuthorshipByNodeId = computed<ReadonlyMap<string, SnapshotNodeAuthorship>>(() => {
-        const model = this.previewModel();
-        if (!model || !this.preview.hasValue()) return new Map();
-        return mapNodeAuthorshipToCanvas(this.preview.value().node_authorship, model.snapshotIdToCanvasId);
+        const canvas = this.canvas();
+        if (!canvas || !this.preview.hasValue()) return new Map();
+        return mapNodeAuthorshipToCanvas(this.preview.value().node_authorship, canvas.snapshotIdToCanvasId);
     });
 
     // This preview's own store, read by a node's "Node Details" dialog and the Start window's footer.
@@ -133,7 +188,7 @@ export class FlowVersionPreviewComponent {
             )
             .subscribe((snapshotNodeId) => {
                 // Warnings name nodes by their id in the snapshot; preview nodes have no backend id.
-                const nodeId = this.previewModel()?.snapshotIdToCanvasId.get(snapshotNodeId);
+                const nodeId = this.canvas()?.snapshotIdToCanvasId.get(snapshotNodeId);
                 if (nodeId) {
                     this.flowGraph()?.openNodePanel(nodeId);
                 }

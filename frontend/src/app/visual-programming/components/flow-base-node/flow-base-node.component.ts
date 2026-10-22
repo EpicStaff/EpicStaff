@@ -45,11 +45,19 @@ import {
 } from '../../core/models/node.model';
 import { CustomPortId } from '../../core/models/port.model';
 import { FlowService } from '../../services/flow.service';
+import { FlowDiffStateService } from '../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../services/flow-settings.service';
+import { NodeDiffStatus } from '../../utils/diff';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
+
+const DIFF_BADGES: Record<Exclude<NodeDiffStatus, 'unchanged'>, { icon: string; label: string }> = {
+    added: { icon: 'ti ti-plus', label: 'Restore adds this node' },
+    deleted: { icon: 'ti ti-trash', label: 'Restore removes this node' },
+    changed: { icon: 'ti ti-pencil', label: 'Restore changes this node' },
+};
 
 @Component({
     selector: 'app-flow-base-node',
@@ -79,6 +87,7 @@ export class FlowBaseNodeComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
     private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+    private readonly flowDiffState = inject(FlowDiffStateService);
 
     @Input({ required: true }) node!: NodeModel;
     @Output() fNodeSizeChange = new EventEmitter<{
@@ -157,6 +166,31 @@ export class FlowBaseNodeComponent implements OnInit {
     }
 
     public getNodeClass(): string {
+        const status = this.diffStatus;
+        return status ? `${this.typeClass()} diff-${status}` : this.typeClass();
+    }
+
+    /** The node's status on a version diff canvas; `null` elsewhere. */
+    protected get diffStatus(): NodeDiffStatus | null {
+        return this.flowDiffState.nodeStatus(this.node.id);
+    }
+
+    /** The status badge: none for an unchanged node, or off a diff canvas. */
+    protected get diffBadge(): { status: NodeDiffStatus; icon: string; label: string } | null {
+        const status = this.diffStatus;
+        return status && status !== 'unchanged' ? { status, ...DIFF_BADGES[status] } : null;
+    }
+
+    protected get hasMissingReferences(): boolean {
+        return this.flowDiffState.hasMissingReferences(this.node.id);
+    }
+
+    /** The hover/selected-only summary tab above a Key-Value node is drawn, in the badge's top-left corner. */
+    protected get showsSummaryTab(): boolean {
+        return this.keyValueNode !== null;
+    }
+
+    private typeClass(): string {
         const blockedClass = this.isBlockedSubgraph ? ' is-blocked' : '';
         switch (this.node.type) {
             case NodeType.AGENT:

@@ -481,3 +481,84 @@
 }
 
 // Overlay visuals moved to app-flow-node-variables-overlay component
+
+// Above the node's own action bars (`.actions`, z-index 11), so a badge is never covered.
+$diff-marker-z-index: 12;
+
+// Version diff canvas. Added and deleted nodes get a status border, which also wraps a Key-Value node's
+// summary tab while it shows (the badge then yields to the tab); a changed node only has its badge.
+:host(.diff-added) {
+    --diff-node-color: var(--color-diff-added);
+}
+
+:host(.diff-deleted) {
+    --diff-node-color: var(--color-diff-deleted);
+    // A ghost: the content fades, the badges keep full strength.
+    background: transparent;
+
+    > :not(.diff-badge, .missing-references-marker) {
+        opacity: 0.6;
+    }
+}
+
+:host(.diff-added),
+:host(.diff-deleted) {
+    // !important: the status stays visible on a selected node too.
+    .interactive-node-body,
+    .interactive-node-body .node-action-bar .key-value-summary-tab {
+        border-color: var(--diff-node-color) !important;
+    }
+
+    app-graph-note {
+        outline: 2px solid var(--diff-node-color);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+}
+
+.diff-badge,
+.missing-references-marker {
+    position: absolute;
+    top: -10px;
+    z-index: $diff-marker-z-index;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    color: var(--color-text-on-bright);
+    pointer-events: auto;
+}
+
+.diff-badge {
+    left: -10px;
+    font-size: 0.75rem;
+    // Comes back only once the summary tab has faded out.
+    transition: opacity mixins.$node-actions-fade-duration ease mixins.$node-actions-hide-delay;
+
+    &--added {
+        background-color: var(--color-diff-added);
+    }
+
+    &--deleted {
+        background-color: var(--color-diff-deleted);
+    }
+
+    &--changed {
+        background-color: var(--color-diff-changed);
+    }
+}
+
+:host(:hover),
+:host(.f-selected) {
+    .diff-badge--yields-to-tab {
+        opacity: 0;
+        transition-delay: 0s;
+    }
+}
+
+.missing-references-marker {
+    right: -10px;
+    background-color: var(--color-diff-missing-reference);
+}

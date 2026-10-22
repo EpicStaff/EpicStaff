@@ -156,6 +156,9 @@
                     [class.is-backward]="routingOrchestrator.backwardConnectionIds().has(connection.id)"
                     [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
                     [class.node-hovered]="hoveredNodeConnectionIds().has(connection.id)"
+                    [class.diff-added]="flowDiffState.connectionStatus(connection.id) === 'added'"
+                    [class.diff-deleted]="flowDiffState.connectionStatus(connection.id) === 'deleted'"
+                    [class.diff-unchanged]="flowDiffState.connectionStatus(connection.id) === 'unchanged'"
                     [style.z-index]="routingOrchestrator.backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()

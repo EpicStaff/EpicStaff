@@ -38,7 +38,11 @@ import { NodePanelShellComponent } from '../components/node-panels/node-panel-sh
 import { ScheduleTriggerNodePanelComponent } from '../components/node-panels/schedule-trigger-node-panel/schedule-trigger-node-panel.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
-import { generatePortsForClassificationDecisionTableNode, generatePortsForNode } from '../core/helpers/helpers';
+import {
+    generatePortsForClassificationDecisionTableNode,
+    generatePortsForDecisionTableNode,
+    generatePortsForNode,
+} from '../core/helpers/helpers';
 import { subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
 import { ConditionGroup } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
@@ -57,10 +61,12 @@ import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
 import { createFlowConnection } from '../utils/connection.factory';
+import { FlowDiffCanvasState } from '../utils/diff';
 import { createStartNode } from '../utils/load';
 import { mapGraphDtoToFlowModel } from '../utils/load/map-graph-dto-to-flow-model';
+import { mapDecisionTableNodeToModel } from '../utils/load/nodes/decision-table-node.mapper';
 import { cloneFlowState, getNodeDiff, hasTriggerNodeWrites } from '../utils/save';
-import { liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
+import { liveDecisionTable, liveGraph, liveNote, liveStart } from '../utils/testing/live-graph.fixture';
 import {
     FLOW_ACTIONS_WITH_USE,
     FLOW_ACTIONS_WITHOUT_USE,
@@ -99,6 +105,7 @@ function scheduleTriggerNode(): ScheduleTriggerNodeModel {
     return {
         id: 'schedule-1',
         backendId: 7,
+        nodeUuid: 'node-uuid-schedule-1',
         type: NodeType.SCHEDULE_TRIGGER,
         node_name: 'Schedule #1',
         data: {
@@ -132,7 +139,8 @@ function mount(
     flowState: FlowModel,
     beforeCreate: () => void = () => undefined,
     canUpdateFlows = true,
-    canRunFlows = true
+    canRunFlows = true,
+    diffState: FlowDiffCanvasState | null = null
 ): ComponentFixture<FlowGraphComponent> {
     TestBed.configureTestingModule({
         providers: [
@@ -167,6 +175,7 @@ function mount(
     beforeCreate();
     const fixture = TestBed.createComponent(FlowGraphComponent);
     fixture.componentRef.setInput('flowState', flowState);
+    fixture.componentRef.setInput('diffState', diffState);
     fixture.detectChanges();
     return fixture;
 }
@@ -986,6 +995,129 @@ describe('FlowGraphComponent', () => {
             expect(canvas.fitToScreen).toHaveBeenCalled();
             // position + scaledPosition, as Foblex reports it
             expect(component.captureViewport()).toEqual({ position: { x: 6, y: 7 }, scale: 1 });
+        });
+    });
+
+    describe('version diff canvas', () => {
+        const KEPT_NOTE = noteNode();
+        const REMOVED_NOTE: GraphNoteModel = { ...noteNode(), id: 'note-removed', position: { x: 600, y: 0 } };
+        const DIFF_STATE: FlowDiffCanvasState = {
+            nodes: new Map([
+                [KEPT_NOTE.id, { status: 'unchanged', hasMissingReferences: false }],
+                [REMOVED_NOTE.id, { status: 'deleted', hasMissingReferences: false }],
+            ]),
+            connections: new Map(),
+            versionOnlyPortIds: new Set(),
+        };
+
+        function mountDiff(flowState: FlowModel, diffState: FlowDiffCanvasState | null = DIFF_STATE) {
+            return mount(true, flowState, undefined, true, true, diffState);
+        }
+
+        function select(component: FlowGraphComponent, nodeIds: string[]): void {
+            component['fFlowComponent'] = {
+                getSelection: () => ({ fNodeIds: nodeIds, fGroupIds: [], fConnectionIds: [] }),
+            } as unknown as FlowGraphComponent['fFlowComponent'];
+        }
+
+        it('copies the version nodes of a selection, never a node a restore removes, and says why', () => {
+            const component = mountDiff({ nodes: [KEPT_NOTE, REMOVED_NOTE], connections: [] }).componentInstance;
+            const info = vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
+            const copied = vi.fn();
+            component.copied.subscribe(copied);
+            select(component, [KEPT_NOTE.id, REMOVED_NOTE.id]);
+
+            component.onCopy();
+
+            expect(
+                TestBed.inject(ClipboardService)
+                    .getClipboardData()
+                    ?.nodes.map((node) => node.id)
+            ).toEqual([KEPT_NOTE.id]);
+            expect(copied).toHaveBeenCalledTimes(1);
+            expect(info).toHaveBeenCalledWith(
+                'Nodes that a restore would remove cannot be copied',
+                3000,
+                'bottom-right'
+            );
+        });
+
+        it('copies the version part only: no edge a restore removes, and a table at its version size', () => {
+            const otherNote: GraphNoteModel = { ...noteNode(), id: 'note-2', position: { x: 0, y: 400 } };
+            const keptEdge = createFlowConnection(KEPT_NOTE.id, otherNote.id, 'note-1_a', 'note-2_a');
+            const removedEdge = createFlowConnection(KEPT_NOTE.id, otherNote.id, 'note-1_b', 'note-2_b');
+            // One condition group: 240 high in the version; the diff canvas grew it by a removed route's row.
+            const grownTable = { ...mapDecisionTableNodeToModel(liveDecisionTable), size: { width: 330, height: 300 } };
+            const component = mountDiff(
+                { nodes: [KEPT_NOTE, otherNote, grownTable], connections: [keptEdge, removedEdge] },
+                {
+                    nodes: new Map([
+                        [KEPT_NOTE.id, { status: 'unchanged', hasMissingReferences: false }],
+                        [otherNote.id, { status: 'unchanged', hasMissingReferences: false }],
+                        [grownTable.id, { status: 'changed', hasMissingReferences: false }],
+                    ]),
+                    connections: new Map([
+                        [keptEdge.id, 'unchanged'],
+                        [removedEdge.id, 'deleted'],
+                    ]),
+                    versionOnlyPortIds: new Set(),
+                }
+            ).componentInstance;
+            select(component, [KEPT_NOTE.id, otherNote.id, grownTable.id]);
+
+            component.onCopy();
+
+            const copied = TestBed.inject(ClipboardService).getClipboardData()!;
+            expect(copied.connections.map((connection) => connection.id)).toEqual([keptEdge.id]);
+            expect(copied.nodes.find((node) => node.id === grownTable.id)?.size).toEqual({ width: 330, height: 240 });
+        });
+
+        it('copies nothing when the selection holds only nodes a restore removes', () => {
+            const component = mountDiff({ nodes: [KEPT_NOTE, REMOVED_NOTE], connections: [] }).componentInstance;
+            vi.spyOn(TestBed.inject(ToastService), 'info').mockImplementation(() => undefined);
+            const copied = vi.fn();
+            component.copied.subscribe(copied);
+            select(component, [REMOVED_NOTE.id]);
+
+            component.onCopy();
+
+            expect(TestBed.inject(ClipboardService).getClipboardData()).toBeNull();
+            expect(copied).not.toHaveBeenCalled();
+        });
+
+        it('draws a node a restore removes behind the others, until it is hovered', () => {
+            const component = mountDiff({ nodes: [KEPT_NOTE, REMOVED_NOTE], connections: [] }).componentInstance;
+
+            expect(component.getNodeZIndex(REMOVED_NOTE)).toBeLessThan(component.getNodeZIndex(KEPT_NOTE));
+            component.hoveredNodeId.set(REMOVED_NOTE.id);
+            expect(component.getNodeZIndex(REMOVED_NOTE)).toBeGreaterThan(component.getNodeZIndex(KEPT_NOTE));
+        });
+
+        // A decision table on both sides carries the route ports of both; one only the canvas has is not in its data.
+        const table = mapDecisionTableNodeToModel(liveDecisionTable);
+        const canvasOnlyGroup = { ...table.data.table.condition_groups[0], group_name: 'canvas only' };
+        const unionTable = {
+            ...table,
+            ports: generatePortsForDecisionTableNode(table.id, [...table.data.table.condition_groups, canvasOnlyGroup]),
+        };
+        const canvasOnlyPortId = `${table.id}_decision-out-canvas-only`;
+        const tablePortIds = () =>
+            (
+                TestBed.inject(FlowService)
+                    .nodes()
+                    .find((node) => node.id === table.id)?.ports ?? []
+            ).map((port) => port.id);
+
+        it('keeps the ports a diff canvas gives its nodes', () => {
+            mountDiff({ nodes: [unionTable], connections: [] });
+
+            expect(tablePortIds()).toContain(canvasOnlyPortId);
+        });
+
+        it('still fits the ports of a plain canvas to the node data', () => {
+            mountDiff({ nodes: [unionTable], connections: [] }, null);
+
+            expect(tablePortIds()).not.toContain(canvasOnlyPortId);
         });
     });
 

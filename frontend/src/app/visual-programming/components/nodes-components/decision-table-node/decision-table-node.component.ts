@@ -5,12 +5,14 @@ import { FFlowModule } from '@foblex/flow';
 import { formatNodeLabel } from '@shared/utils';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
+import { routePortsWithoutRow } from '../../../core/helpers/helpers';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { DT_HEADER_HEIGHT, DT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
-import { CustomPortId } from '../../../core/models/port.model';
+import { CustomPortId, ViewPort } from '../../../core/models/port.model';
 import { FlowService } from '../../../services/flow.service';
+import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../../services/flow-settings.service';
 @Component({
@@ -27,9 +29,11 @@ export class DecisionTableNodeComponent {
     private flowService = inject(FlowService);
     private readonly flowSettings = inject(FlowSettingsService);
     public readonly isReadOnly = inject(FlowReadOnlyService).isReadOnly;
+    private readonly flowDiffState = inject(FlowDiffStateService);
 
     public readonly headerHeightPx = DT_HEADER_HEIGHT;
     public readonly rowHeightPx = DT_ROW_HEIGHT;
+    protected readonly addedRouteLabel = 'Restore adds this condition';
 
     public getPortConnections(portId: CustomPortId): CustomPortId[] {
         return this.flowService.portConnectionsMap()[portId] ?? ['__none__'];
@@ -40,6 +44,21 @@ export class DecisionTableNodeComponent {
         return allGroups
             .filter((group) => group.valid !== false)
             .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+    }
+
+    /** On a version diff canvas: the routes only the current canvas has, which a restore removes. */
+    get removedRoutePorts(): ViewPort[] {
+        if (!this.flowDiffState.isActive()) return [];
+        const rowPortIds = new Set(
+            this.conditionGroups.map((group) => this.getPortForGroup(group)?.id).filter((id) => id !== undefined)
+        );
+        return routePortsWithoutRow(this.node.ports, rowPortIds);
+    }
+
+    /** On a version diff canvas: whether the group's route is only in the version, so a restore adds it. */
+    protected isAddedRoute(group: ConditionGroup): boolean {
+        const port = this.getPortForGroup(group);
+        return !!port && this.flowDiffState.isVersionOnlyPort(port.id);
     }
 
     get defaultNextNode() {

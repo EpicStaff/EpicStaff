@@ -1,4 +1,6 @@
 export { buildFlowDiff } from './build-flow-diff';
+export type { FlowDiffCanvasState, UnionFlowModel, UnionNodeDiffState } from './build-union-flow-model';
+export { buildUnionFlowModel } from './build-union-flow-model';
 export type { FieldName } from './field-display';
 export { FIELD_DISPLAY, fieldKind } from './field-display';
 export type {

@@ -94,6 +94,7 @@ import { CurvedPathBuilder } from '../core/routing/curved.path-builder';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
+import { FlowDiffStateService } from '../services/flow-diff-state.service';
 import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
 import { KeyValueEntryDraftsService } from '../services/key-value-entry-drafts.service';
@@ -103,6 +104,7 @@ import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
+import { FlowDiffCanvasState } from '../utils/diff';
 import { normalizeFlowPorts } from '../utils/load';
 import { FlowArrangeAnimatorService } from './flow-arrange-animator.service';
 import { FlowImportExportService } from './flow-import-export-handler.service';
@@ -171,6 +173,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() hasUnsavedChanges: boolean = false;
     /** Applied once the canvas loads, instead of fitting the flow to the screen. */
     @Input() initialViewport: FlowViewport | null = null;
+    /**
+     * The statuses of a version diff canvas (`flowState` is then its union model, from
+     * `buildUnionFlowModel`); `null` for a plain canvas.
+     */
+    public readonly diffState = input<FlowDiffCanvasState | null>(null);
 
     @Output() save = new EventEmitter<FlowModel>();
     @Output() requestReload = new EventEmitter<void>();
@@ -294,6 +301,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public getNodeZIndex(node: NodeModel): number {
         if (this.hoveredNodeId() === node.id) return 1000;
+        // A node a restore removes is drawn behind the rest. Hover lifts it above; so does selection, through
+        // the node's `.f-selected` rule (z-index 1000 !important).
+        if (this.flowDiffState.nodeStatus(node.id) === 'deleted') return 1;
         return Math.max(2, 500 - Math.floor(Math.max(0, node.position?.y ?? 0) / 10));
     }
 
@@ -310,6 +320,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly routingOrchestrator = inject(FlowRoutingOrchestratorService);
     protected readonly sidePanelService = inject(SidePanelService);
     protected readonly flowReadOnly = inject(FlowReadOnlyService);
+    protected readonly flowDiffState = inject(FlowDiffStateService);
     private readonly undoRedoService = inject(UndoRedoService);
     private readonly clipboardService = inject(ClipboardService);
     private readonly nodeFactory = inject(NodeFactoryService);
@@ -503,6 +514,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public ngOnInit(): void {
+        this.flowDiffState.setState(this.diffState());
         this.applyIncomingFlowState(this.flowState);
         if (this.initialNodeId) {
             this.openNodePanel(this.initialNodeId);
@@ -510,6 +522,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public ngOnChanges(changes: SimpleChanges): void {
+        // Before the flow: applying a flow depends on whether it is a diff canvas.
+        if (changes['diffState'] && !changes['diffState'].firstChange) {
+            this.flowDiffState.setState(this.diffState());
+        }
         if (changes['flowState'] && !changes['flowState'].firstChange) {
             const stateToApply = this.importExportHandler.processImportedFlowState(this.flowState);
             this.applyIncomingFlowState(stateToApply);
@@ -635,16 +651,26 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.routingOrchestrator.rerouteSegmentConnections();
     }
 
-    /** Allowed in read-only mode too: copying reads the flow, and the preview hands the copy to the live editor. */
+    /**
+     * Allowed in read-only mode too: copying reads the flow, and the preview hands the copy to the live editor.
+     * On a diff canvas, nodes a restore removes are left out: they are not part of the version.
+     */
     public onCopy(): void {
         if (this.isDialogOpen()) {
             return;
         }
 
         const previousClipboard = this.clipboardService.getClipboardData();
-        const selections: ICurrentSelection = this.fFlowComponent.getSelection();
-        this.clipboardService.copy(selections);
+        const selection: ICurrentSelection = this.fFlowComponent.getSelection();
+        const copyableNodeIds = selection.fNodeIds.filter(
+            (nodeId) => this.flowDiffState.nodeStatus(nodeId) !== 'deleted'
+        );
+        if (copyableNodeIds.length < selection.fNodeIds.length) {
+            this.toastService.info('Nodes that a restore would remove cannot be copied', 3000, 'bottom-right');
+        }
+        this.clipboardService.copy({ ...selection, fNodeIds: copyableNodeIds });
         if (this.clipboardService.getClipboardData() !== previousClipboard) {
+            if (this.flowDiffState.isActive()) this.keepVersionPartOfClipboard();
             this.copied.emit();
         }
     }
@@ -1265,8 +1291,26 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.openShortcuts.emit(anchorEl.getBoundingClientRect());
     }
 
+    /**
+     * A copy from a diff canvas is a copy of the version: no edge a restore removes, and tables at their
+     * version size (the diff canvas grows them by the rows of the routes a restore removes).
+     */
+    private keepVersionPartOfClipboard(): void {
+        const copied = this.clipboardService.getClipboardData();
+        if (!copied) return;
+        this.clipboardService.setClipboardData({
+            ...copied,
+            nodes: copied.nodes.map((node) => normalizeTableNodeSize(node)),
+            connections: copied.connections.filter(
+                (connection) => this.flowDiffState.connectionStatus(connection.id) !== 'deleted'
+            ),
+        });
+    }
+
     private applyIncomingFlowState(flowState: FlowModel): void {
-        const normalizedFlowState = normalizeFlowPorts(flowState);
+        // A diff canvas already has its final ports: a node on both sides carries the ports of both, and
+        // normalizing would drop the ones only the current canvas has (with the edges drawn to them).
+        const normalizedFlowState = this.flowDiffState.isActive() ? flowState : normalizeFlowPorts(flowState);
         this.flowService.setFlow(normalizedFlowState);
         // A loaded flow starts a new history: its saved hand-edited wires must not count as flipped.
         this.routingOrchestrator.clearBackwardClassification();
