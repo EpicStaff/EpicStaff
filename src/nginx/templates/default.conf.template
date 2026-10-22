@@ -55,6 +55,10 @@ server {
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
 
+    # Strict-Transport-Security is decided separately from NGINX_SSL_MODE: a load
+    # balancer in front of nginx can terminate TLS while nginx serves plain HTTP.
+    include /etc/nginx/conf.d/hsts-${NGINX_HSTS_ENABLED}.snippet;
+
     # Report-only: the SPA is built from a separate repository, so this policy
     # has not been verified against it. Violations surface in the browser
     # console; there is no report collector in this stack. Promote to
@@ -259,3 +263,21 @@ include /etc/nginx/conf.d/plugins-server-${PLUGINS_ENABLED}.snippet;
 
 # EpicStaff's API for the plugin node and plugin backends, on port 8081 of plugins-network.
 include /etc/nginx/conf.d/plugins-internal-api-${PLUGINS_ENABLED}.snippet;
+
+# Liveness for the compose healthcheck only: bound to the container's loopback and
+# never published, it answers without proxying, so it reports nginx itself and not
+# the backends, and it is outside the TLS server's http->https redirect. Port 8081 on the
+# container's other addresses is the plugin internal API listener (plugins-internal-api-*.snippet):
+# nginx picks the server by the address a connection arrived on.
+server {
+    listen 127.0.0.1:8081;
+
+    location = /nginx-health {
+        access_log off;
+        return 204;
+    }
+
+    location / {
+        return 404;
+    }
+}

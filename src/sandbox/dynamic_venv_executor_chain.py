@@ -738,8 +738,9 @@ except Exception:
             **drop_kwargs,
         )
 
+        execution_timeout = effective_execution_timeout(context.get("execution_timeout"))
         comm_task = asyncio.ensure_future(process.communicate())
-        done, _ = await asyncio.wait({comm_task}, timeout=settings.EXECUTION_TIMEOUT)
+        done, _ = await asyncio.wait({comm_task}, timeout=execution_timeout)
 
         if comm_task not in done:
             return await self._handle_timeout(
@@ -747,6 +748,7 @@ except Exception:
                 comm_task=comm_task,
                 context=context,
                 masking_values=masking_values,
+                execution_timeout=execution_timeout,
             )
 
         stdout, stderr = comm_task.result()
@@ -792,17 +794,17 @@ except Exception:
         comm_task: asyncio.Task,
         context: dict[str, Any],
         masking_values: dict[str, str],
+        execution_timeout: float,
     ) -> CodeResultData:
         """Terminate a hung execution and report it as a timed-out result.
 
         The job never finishes writing output.txt, so unlike the normal path
         this never reads the result file: result_data stays None.
         """
-        timeout = settings.EXECUTION_TIMEOUT
         logger.error(
             "Execution {} exceeded {} seconds; killing process tree.",
             context["execution_id"],
-            f"{timeout:g}",
+            f"{execution_timeout:g}",
         )
 
         killed = _kill_process_tree(process, execution_id=context["execution_id"])
@@ -835,7 +837,7 @@ except Exception:
         stdout = scrub(text=stdout, secrets=masking_values)
         stderr = scrub(text=stderr, secrets=masking_values)
 
-        timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
+        timeout_message = f"Execution exceeded {execution_timeout:g} seconds and was terminated."
         if not killed:
             timeout_message += " Process could not be terminated and may still be running."
         stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message
@@ -846,6 +848,19 @@ except Exception:
             stderr=stderr,
             returncode=124,
         )
+
+
+def effective_execution_timeout(requested_seconds: float | None) -> float:
+    """Return the execution timeout to apply, in seconds.
+
+    The requested value comes from the task message and is untrusted, so
+    SANDBOX_MAX_EXECUTION_TIMEOUT is the security bound it is capped at (None there means no
+    upper limit). SANDBOX_DEFAULT_EXECUTION_TIMEOUT only fills in a missing request.
+    """
+    timeout = settings.DEFAULT_EXECUTION_TIMEOUT if requested_seconds is None else requested_seconds
+    if settings.MAX_EXECUTION_TIMEOUT is None:
+        return timeout
+    return min(timeout, settings.MAX_EXECUTION_TIMEOUT)
 
 
 class DynamicVenvExecutorChain:
@@ -885,8 +900,16 @@ class DynamicVenvExecutorChain:
         storage_org_prefix: str | None = None,
         storage_credentials: StorageCredentials | None = None,
         secrets: dict[str, str] | None = None,
+        execution_timeout: float | None = None,
     ) -> CodeResultData:
-        """Run the complete workflow asynchronously."""
+        """Run the complete workflow asynchronously.
+
+        Args:
+            execution_timeout: Requested execution timeout in seconds, capped at
+                SANDBOX_MAX_EXECUTION_TIMEOUT; None applies SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
+                Bounds only the code run itself; venv creation and library
+                installation are not limited by it.
+        """
         if func_kwargs is None:
             func_kwargs = {}
 
@@ -940,6 +963,7 @@ class DynamicVenvExecutorChain:
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
             "secrets": secrets,
+            "execution_timeout": execution_timeout,
         }
         if use_storage:
             # Fail-closed: code that requests storage access must have valid

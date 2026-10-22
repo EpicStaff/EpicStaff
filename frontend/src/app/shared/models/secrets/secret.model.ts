@@ -36,6 +36,10 @@ export interface CreateSecretRequest {
 }
 
 export interface SecretUsageNodeDto {
+    /** The node's backend id; a node using the secret in two code fields arrives once per field, with the same id. */
+    id: number;
+    /** Display-only number that tells same-named nodes apart ("Name #N"); null for unnumbered node types. */
+    node_number: number | null;
     name: string;
     node_type: string;
     code_field: string | null;

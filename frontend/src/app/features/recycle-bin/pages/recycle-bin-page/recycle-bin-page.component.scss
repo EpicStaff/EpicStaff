@@ -22,8 +22,8 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 1.75rem 3.75rem 1rem 2.5rem;
-            height: 80px;
+            padding: header.$page-header-padding;
+            height: header.$page-header-height;
             border-bottom: 1px solid var(--color-divider-subtle);
 
             .header-titles {
@@ -55,9 +55,9 @@
         }
     }
 
-    // The settings page's tab row: app-route-tabs, with the same gutters as the header above.
+    // The tab row: app-route-tabs, starting under the title.
     .tabs {
-        padding: 4px 3.75rem 0 2.5rem;
+        padding: 4px 1.5rem 0 header.$page-inset-left;
     }
 
     // The tab inside scrolls its own table rows; the body itself doesn't scroll.

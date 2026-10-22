@@ -107,6 +107,34 @@ function applyAgentTaskIds(node: AgentNodeModel, idFor: AgentTaskIdResolver): Ag
     return { ...node, data: { ...node.data, tasks: patchedTasksWithRefs } };
 }
 
+/** The `GraphDto` lists whose nodes the server numbers. */
+const NUMBERED_NODE_LISTS = [
+    'python_node_list',
+    'file_extractor_node_list',
+    'key_value_node_list',
+    'audio_transcription_node_list',
+    'subgraph_node_list',
+    'classification_decision_table_node_list',
+    'decision_table_node_list',
+    'knowledge_node_list',
+    'webhook_trigger_node_list',
+    'telegram_trigger_node_list',
+    'schedule_trigger_node_list',
+    'task_node_list',
+    'agent_node_list',
+] as const satisfies readonly (keyof GraphDto)[];
+
+/** The number the server gave each numbered node, by its backend id (unique across node tables). */
+function buildNodeNumberByBackendId(responseGraph: GraphDto): Map<number, number> {
+    const numberByBackendId = new Map<number, number>();
+    for (const list of NUMBERED_NODE_LISTS) {
+        for (const node of responseGraph[list] ?? []) {
+            if (node.node_number != null) numberByBackendId.set(node.id, node.node_number);
+        }
+    }
+    return numberByBackendId;
+}
+
 function patchWithBackendIds(
     currentFlow: FlowModel,
     previousFlow: FlowModel,
@@ -115,6 +143,7 @@ function patchWithBackendIds(
     agentTaskIds: AgentTaskIdLookup
 ): FlowModel {
     const uiToBackendId = buildCreatedNodeIdMap(previousFlow, nodeDiff, responseGraph);
+    const numberByBackendId = buildNodeNumberByBackendId(responseGraph);
 
     const scheduleDataByBackendId = new Map<
         number,
@@ -131,6 +160,16 @@ function patchWithBackendIds(
     const patchedNodes = currentFlow.nodes.map((node) => {
         const mappedBackendId = uiToBackendId.get(node.id);
         let patched = mappedBackendId != null ? { ...node, backendId: mappedBackendId } : node;
+
+        // Only a node this save created can have been numbered by it: the number it showed was a
+        // hint the server may have replaced. A saved node's number never changes, and renumbering
+        // one here would let the canvas drift from a baseline that patches only the nodes it sent.
+        if (mappedBackendId != null) {
+            const serverNumber = numberByBackendId.get(mappedBackendId);
+            if (serverNumber != null && serverNumber !== patched.nodeNumber) {
+                patched = { ...patched, nodeNumber: serverNumber };
+            }
+        }
 
         if (patched.type === NodeType.AGENT) {
             const idFor = agentTaskIds(patched, mappedBackendId ?? patched.backendId);
@@ -269,6 +308,11 @@ function buildCreatedNodeIdMap(
         nodeDiff.classificationDecisionTableNodes.toCreate,
         responseGraph.classification_decision_table_node_list ?? [],
         existingIdsByType(NodeType.CLASSIFICATION_TABLE)
+    );
+    mapByNewIds(
+        nodeDiff.knowledgeRetrieverNodes.toCreate,
+        responseGraph.knowledge_node_list ?? [],
+        existingIdsByType(NodeType.KNOWLEDGE_RETRIEVER)
     );
 
     return mapping;

@@ -1,3 +1,4 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { PortalModule } from '@angular/cdk/portal';
 import {
@@ -13,7 +14,7 @@ import {
     untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -23,9 +24,9 @@ import { ChatInboxStreamService } from '../../../features/chat/services/chat-inb
 import { PluginIconComponent } from '../../../features/plugins/components/plugin-icon/plugin-icon.component';
 import { AvailablePlugin } from '../../../features/plugins/models/available-plugin.model';
 import { AvailablePluginsStorageService } from '../../../features/plugins/services/available-plugins-storage.service';
+import { QUICK_START_TOUR_ANCHORS } from '../../../features/quick-start-tour/quick-start-tour-anchors';
 import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
-import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
@@ -57,6 +58,20 @@ interface NavItem {
     badgeLabel?: (count: number) => string;
     action?: () => void;
     customClass?: string;
+    /** Draws a divider above the item, separating it from the group before it. */
+    separatedAbove?: boolean;
+}
+
+const PAGE_STEP_BY_CODE: Partial<Record<'ArrowUp' | 'ArrowDown', 1 | -1>> = { ArrowUp: -1, ArrowDown: 1 };
+
+function isPlainAltChord(event: KeyboardEvent): boolean {
+    return event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && !event.repeat;
+}
+
+function isEditableTarget(element: Element): boolean {
+    return !!element.closest(
+        'input, textarea, select, [contenteditable]:not([contenteditable="false"]), .monaco-editor, .native-edit-context'
+    );
 }
 
 @Component({
@@ -67,7 +82,6 @@ interface NavItem {
         OverlayModule,
         PortalModule,
         UserMenuComponent,
-        OrganizationsMenuComponent,
         AppSvgIconComponent,
         UserAvatarComponent,
         OrgAvatarComponent,
@@ -78,6 +92,7 @@ interface NavItem {
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '(document:keydown)': 'onDocumentKeydown($event)' },
 })
 export class LeftSidebarComponent {
     /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
@@ -96,7 +111,7 @@ export class LeftSidebarComponent {
     /** The fixed items, then one per plugin the user may open in the active organization (sorted by name). */
     public readonly topNavItems = computed<NavItem[]>(() => [...this.staticTopNavItems, ...this.pluginNavItems()]);
     private readonly pluginNavItems = computed<NavItem[]>(() =>
-        this.availablePlugins.plugins().map((plugin) => toPluginNavItem(plugin))
+        this.availablePlugins.plugins().map((plugin, index) => toPluginNavItem(plugin, index === 0))
     );
     private readonly staticTopNavItems: NavItem[];
     public bottomNavItems: NavItem[];
@@ -107,9 +122,8 @@ export class LeftSidebarComponent {
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
-    public isOrgMenuOpen = signal<boolean>(false);
     public showAccountTooltip = false;
-    public showOrgTooltip = false;
+    protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
 
     private router = inject(Router);
     private currentPath = toSignal(
@@ -118,19 +132,6 @@ export class LeftSidebarComponent {
             map(() => this.readCurrentPath())
         ),
         { initialValue: this.readCurrentPath() }
-    );
-    public isWorkspaceRoute = computed(() => this.currentPath().startsWith('/workspace'));
-
-    public activeMembership = computed(() => {
-        const user = this.user();
-        if (!user) return null;
-        const orgId = this.activeOrgService.activeOrgId();
-        return user.memberships.find((m) => m.organization.id === orgId) ?? null;
-    });
-
-    /** Mirrors the org switcher icon: the workspace icon on workspace pages, the org avatar elsewhere. */
-    protected readonly orgSwitcherLabel = computed(() =>
-        this.isWorkspaceRoute() ? 'Workspace' : (this.activeMembership()?.organization.name ?? '')
     );
 
     /**
@@ -147,6 +148,21 @@ export class LeftSidebarComponent {
         );
     });
 
+    /** Workspace and My Profile are reached from the account menu, so their pages highlight its row. */
+    protected readonly isAccountRoute = computed(() =>
+        ['/workspace', '/profile'].some(
+            (prefix) => this.currentPath() === prefix || this.currentPath().startsWith(`${prefix}/`)
+        )
+    );
+
+    /** The account row shows the organization the user is working in. */
+    protected readonly activeMembership = computed(() => {
+        const user = this.user();
+        if (!user) return null;
+        const orgId = this.activeOrgService.activeOrgId();
+        return user.memberships.find((membership) => membership.organization.id === orgId) ?? null;
+    });
+
     /** Same fallback as the user menu header: the display name, or the email when there is none. */
     protected readonly accountLabel = computed(() => {
         const user = this.user();
@@ -158,6 +174,22 @@ export class LeftSidebarComponent {
     private readonly permissionService = inject(PermissionsService);
     private readonly chatInboxStream = inject(ChatInboxStreamService);
     private readonly availablePlugins = inject(AvailablePluginsStorageService);
+    private readonly dialog = inject(Dialog);
+    private readonly activatedRoute = inject(ActivatedRoute);
+    private readonly workspaceNavItem: NavItem = {
+        id: 'workspace',
+        routeLink: 'workspace',
+        label: 'Workspace',
+        isPermitted: () => this.activeMembership() !== null && this.permissionService.canAccessWorkspace(),
+        showTooltip: false,
+    };
+    private readonly profileNavItem: NavItem = {
+        id: 'profile',
+        routeLink: 'profile',
+        label: 'Profile',
+        isPermitted: () => this.user() !== null,
+        showTooltip: false,
+    };
 
     constructor() {
         this.destroyRef.onDestroy(() => this.chatInboxStream.stop());
@@ -230,6 +262,7 @@ export class LeftSidebarComponent {
                     this.configService.isAuditTrailEnabled &&
                     this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
                 showTooltip: false,
+                separatedAbove: true,
             },
         ];
 
@@ -237,6 +270,7 @@ export class LeftSidebarComponent {
         this.bottomNavItems.push({
             id: 'settings',
             routeLink: 'settings',
+            activePaths: ['/settings'],
             icon: 'settings',
             label: 'Settings',
             isPermitted: () => this.permissionService.canOpenConfigureModelsDialog(),
@@ -244,12 +278,12 @@ export class LeftSidebarComponent {
             customClass: 'settings-tooltip',
         });
 
-        // Hidden when no bin tab is readable, the same rule as Files. It has no active (purple) state
-        // by design: it stays gray on /recycle-bin/*. No `icon`: that names a sprite icon, and the
-        // template draws Tabler's outline trash instead (the sprite's trash is solid).
+        // Hidden when no bin tab is readable, the same rule as Files. No `icon`: that names a sprite icon,
+        // and the template draws Tabler's outline trash instead (the sprite's trash is solid).
         this.recycleBinNavItem = {
             id: 'recycle-bin',
             routeLink: 'recycle-bin',
+            activePaths: ['/recycle-bin'],
             label: 'Recycle Bin',
             isPermitted: () =>
                 visibleRecycleBinTabs((resource, action) => this.permissionService.can(resource, action)).length > 0,
@@ -270,15 +304,6 @@ export class LeftSidebarComponent {
         this.isUserMenuOpen.update((prev) => !prev);
     }
 
-    public closeOrgMenu(): void {
-        this.isOrgMenuOpen.set(false);
-    }
-
-    public toggleOrgMenu(event: MouseEvent): void {
-        event.stopPropagation();
-        this.isOrgMenuOpen.update((prev) => !prev);
-    }
-
     public handleItemClick(item: NavItem, event: MouseEvent): void {
         if (item.action) {
             event.preventDefault();
@@ -286,9 +311,22 @@ export class LeftSidebarComponent {
         }
     }
 
+    protected onDocumentKeydown(event: KeyboardEvent): void {
+        if (event.defaultPrevented) return;
+        const step = PAGE_STEP_BY_CODE[event.code as keyof typeof PAGE_STEP_BY_CODE];
+        if (step === undefined || !isPlainAltChord(event) || this.dialog.openDialogs.length > 0) return;
+        if (event.target instanceof Element && isEditableTarget(event.target)) return;
+
+        const nextItem = this.findSteppedItem(step);
+        if (!nextItem?.routeLink) return;
+
+        event.preventDefault();
+        this.closeUserMenu();
+        void this.router.navigate([nextItem.routeLink], { relativeTo: this.activatedRoute });
+    }
+
     public isItemActive(item: NavItem): boolean {
-        const path = this.currentPath();
-        return (item.activePaths ?? []).some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+        return this.matchesCurrentPath(item.activePaths ?? []);
     }
 
     public badgeCount(item: NavItem): number {
@@ -299,12 +337,38 @@ export class LeftSidebarComponent {
         return item.routeLink ?? null;
     }
 
+    private findSteppedItem(step: number): NavItem | null {
+        const visibleItems = [
+            this.workspaceNavItem,
+            ...this.topNavItems(),
+            this.recycleBinNavItem,
+            ...this.bottomNavItems,
+            this.profileNavItem,
+        ].filter((item) => item.isPermitted());
+        const currentIndex = visibleItems.findIndex((item) => this.isCurrentPage(item));
+        if (currentIndex === -1) {
+            return (step > 0 ? visibleItems[0] : visibleItems[visibleItems.length - 1]) ?? null;
+        }
+        return visibleItems[currentIndex + step] ?? null;
+    }
+
+    private isCurrentPage(item: NavItem): boolean {
+        const ownPaths = item.routeLink ? [`/${item.routeLink}`] : [];
+        return this.matchesCurrentPath(item.activePaths ?? ownPaths);
+    }
+
+    private matchesCurrentPath(prefixes: string[]): boolean {
+        const path = this.currentPath();
+        return prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+    }
+
     private readCurrentPath(): string {
         return this.router.url.split(/[?#;]/)[0];
     }
 }
 
-function toPluginNavItem(plugin: AvailablePlugin): NavItem {
+/** `startsGroup`: the first plugin draws the divider, so the plugins are a group of their own below the fixed items. */
+function toPluginNavItem(plugin: AvailablePlugin, startsGroup: boolean): NavItem {
     const route = `/plugins/${plugin.identifier}`;
     return {
         id: `plugin-${plugin.identifier}`,
@@ -315,5 +379,6 @@ function toPluginNavItem(plugin: AvailablePlugin): NavItem {
         // The available list already holds only plugins the user may open here.
         isPermitted: () => true,
         showTooltip: false,
+        separatedAbove: startsGroup,
     };
 }

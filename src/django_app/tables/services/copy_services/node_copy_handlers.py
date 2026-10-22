@@ -44,7 +44,7 @@ from tables.services.copy_services.inline_surface_copy_helpers import (
 from tables.services.key_value_table_service import KeyValueTableService
 
 
-def copy_start_node(graph: Graph, node: StartNode, user) -> StartNode:
+def copy_start_node(graph: Graph, node: StartNode, user, node_number: int | None) -> StartNode:
     return StartNode.objects.create(
         graph=graph,
         created_by=resolve_author(user),
@@ -53,7 +53,7 @@ def copy_start_node(graph: Graph, node: StartNode, user) -> StartNode:
     )
 
 
-def copy_end_node(graph: Graph, node: EndNode, user) -> EndNode:
+def copy_end_node(graph: Graph, node: EndNode, user, node_number: int | None) -> EndNode:
     return EndNode.objects.create(
         graph=graph,
         created_by=resolve_author(user),
@@ -62,7 +62,7 @@ def copy_end_node(graph: Graph, node: EndNode, user) -> EndNode:
     )
 
 
-def copy_graph_note(graph: Graph, node: GraphNote, user) -> GraphNote:
+def copy_graph_note(graph: Graph, node: GraphNote, user, node_number: int | None) -> GraphNote:
     return GraphNote.objects.create(
         graph=graph,
         content=node.content,
@@ -71,19 +71,25 @@ def copy_graph_note(graph: Graph, node: GraphNote, user) -> GraphNote:
     )
 
 
-def copy_file_extractor_node(graph: Graph, node: FileExtractorNode, user) -> FileExtractorNode:
+def copy_file_extractor_node(
+    graph: Graph, node: FileExtractorNode, user, node_number: int | None
+) -> FileExtractorNode:
     return FileExtractorNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         **get_base_node_fields(node),
     )
 
 
-def copy_key_value_node(graph: Graph, node: KeyValueNode, user) -> KeyValueNode:
+def copy_key_value_node(
+    graph: Graph, node: KeyValueNode, user, node_number: int | None
+) -> KeyValueNode:
     # A cross-org copy must re-bind by name in the target org, never keep the source id.
     table = node.key_value_table
     return KeyValueNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         key_value_table=KeyValueTableService().resolve_reference(
             graph.org_id,
@@ -99,38 +105,46 @@ def copy_key_value_node(graph: Graph, node: KeyValueNode, user) -> KeyValueNode:
 
 
 def copy_audio_transcription_node(
-    graph: Graph, node: AudioTranscriptionNode, user
+    graph: Graph, node: AudioTranscriptionNode, user, node_number: int | None
 ) -> AudioTranscriptionNode:
     return AudioTranscriptionNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         **get_base_node_fields(node),
     )
 
 
-def copy_subgraph_node(graph: Graph, node: SubGraphNode, user) -> SubGraphNode:
+def copy_subgraph_node(
+    graph: Graph, node: SubGraphNode, user, node_number: int | None
+) -> SubGraphNode:
     return SubGraphNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         subgraph=node.subgraph,
         **get_base_node_fields(node),
     )
 
 
-def copy_python_node(graph: Graph, node: PythonNode, user) -> PythonNode:
+def copy_python_node(graph: Graph, node: PythonNode, user, node_number: int | None) -> PythonNode:
     new_code = copy_python_code(node.python_code)
     return PythonNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         python_code=new_code,
         **get_base_node_fields(node),
     )
 
 
-def copy_webhook_trigger_node(graph: Graph, node: WebhookTriggerNode, user) -> WebhookTriggerNode:
+def copy_webhook_trigger_node(
+    graph: Graph, node: WebhookTriggerNode, user, node_number: int | None
+) -> WebhookTriggerNode:
     new_code = copy_python_code(node.python_code)
     return WebhookTriggerNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         node_name=node.node_name,
         webhook_trigger=node.webhook_trigger,
@@ -142,10 +156,11 @@ def copy_webhook_trigger_node(graph: Graph, node: WebhookTriggerNode, user) -> W
 
 
 def copy_telegram_trigger_node(
-    graph: Graph, node: TelegramTriggerNode, user
+    graph: Graph, node: TelegramTriggerNode, user, node_number: int | None
 ) -> TelegramTriggerNode:
     new_node = TelegramTriggerNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         node_name=node.node_name,
         telegram_bot_api_key_secret=node.telegram_bot_api_key_secret,
@@ -163,9 +178,12 @@ def copy_telegram_trigger_node(
     return new_node
 
 
-def copy_knowledge_node(graph: Graph, node: KnowledgeNode, user) -> KnowledgeNode:
+def copy_knowledge_node(
+    graph: Graph, node: KnowledgeNode, user, node_number: int | None
+) -> KnowledgeNode:
     new_node = KnowledgeNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         source_collection=node.source_collection,
         rag_type=node.rag_type,
@@ -190,12 +208,13 @@ def copy_knowledge_node(graph: Graph, node: KnowledgeNode, user) -> KnowledgeNod
 
 
 def copy_schedule_trigger_node(
-    graph: Graph, node: ScheduleTriggerNode, user
+    graph: Graph, node: ScheduleTriggerNode, user, node_number: int | None
 ) -> ScheduleTriggerNode:
     # Schedule config is preserved verbatim; activation state is reset so the
     # copy does not start firing on its own — user must enable it explicitly.
     return ScheduleTriggerNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         node_name=node.node_name,
         timezone=node.timezone,
@@ -214,9 +233,12 @@ def copy_schedule_trigger_node(
     )
 
 
-def copy_decision_table_node(graph: Graph, node: DecisionTableNode, user) -> DecisionTableNode:
+def copy_decision_table_node(
+    graph: Graph, node: DecisionTableNode, user, node_number: int | None
+) -> DecisionTableNode:
     new_node = DecisionTableNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         node_name=node.node_name,
         default_next_node_id=node.default_next_node_id,
@@ -244,13 +266,14 @@ def copy_decision_table_node(graph: Graph, node: DecisionTableNode, user) -> Dec
 
 
 def copy_classification_decision_table_node(
-    graph: Graph, node: ClassificationDecisionTableNode, user
+    graph: Graph, node: ClassificationDecisionTableNode, user, node_number: int | None
 ) -> ClassificationDecisionTableNode:
     new_pre_code = copy_python_code(node.pre_python_code) if node.pre_python_code else None
     new_post_code = copy_python_code(node.post_python_code) if node.post_python_code else None
 
     new_node = ClassificationDecisionTableNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         node_name=node.node_name,
         pre_python_code=new_pre_code,
@@ -314,9 +337,10 @@ def copy_classification_decision_table_node(
     return new_node
 
 
-def copy_task_node(graph: Graph, node: TaskNode, user) -> TaskNode:
+def copy_task_node(graph: Graph, node: TaskNode, user, node_number: int | None) -> TaskNode:
     new_node = TaskNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         agent_definition=node.agent_definition,
         instructions=node.instructions,
@@ -329,9 +353,10 @@ def copy_task_node(graph: Graph, node: TaskNode, user) -> TaskNode:
     return new_node
 
 
-def copy_agent_node(graph: Graph, node: AgentNode, user) -> AgentNode:
+def copy_agent_node(graph: Graph, node: AgentNode, user, node_number: int | None) -> AgentNode:
     new_node = AgentNode.objects.create(
         graph=graph,
+        node_number=node_number,
         created_by=resolve_author(user),
         agent_definition=node.agent_definition,
         **get_base_node_fields(node),
@@ -346,8 +371,10 @@ def copy_agent_node(graph: Graph, node: AgentNode, user) -> AgentNode:
 
 # Maps each NodeType to (relation_name, handler_function).
 # relation_name is the Graph reverse accessor used to iterate existing nodes.
-# Handlers are called as handler(new_graph, node, user=<acting user or None>) and author
-# the new node with that user.
+# Handlers are called as handler(new_graph, node, user=<acting user or None>,
+# node_number=<the copy's badge number>) and author the new node with that user.
+# node_number is None for the types that show no badge (start, end, note), and when
+# the caller wants the number minted from the target graph's counter.
 # To add a new node type: write a copy_<name> function above and add one entry here.
 NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     NodeType.START_NODE: ("start_node_list", copy_start_node),

@@ -26,7 +26,7 @@ from tables.models.python_models import (
 from tables.models.secret_models import Secret
 from tables.serializers.base_serializer import ContentHashWritableMixin
 from tables.serializers.model_serializers.secret_serializers import SecretNameSerializer
-from tables.serializers.utils.description_sanitizer import sanitize_description
+from tables.serializers.utils.description_sanitizer import validate_tool_description
 from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
@@ -41,6 +41,7 @@ from tables.services.copy_services.helpers import (
     create_python_code,
 )
 from tables.services.secrets.parse_code import parse_secret_names
+from tables.validators.execution_timeout_validator import normalize_execution_timeout
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
@@ -85,12 +86,16 @@ class PythonCodeSerializer(
             "global_kwargs",
             "secrets",
             "secret_ids",
+            "execution_timeout",
         ]
         read_only_fields = ["id"]
         extra_kwargs = {
             "code": {"allow_blank": True},
             "entrypoint": {"allow_blank": True},
         }
+
+    def validate_execution_timeout(self, value: int) -> int:
+        return normalize_execution_timeout(value)
 
     def to_representation(self, instance):
         """Convert 'libraries' string to a list of strings for output."""
@@ -218,8 +223,8 @@ class PythonCodeToolSerializer(
         read_only_fields = ["id", "built_in", "created_by", "created_at", "updated_at"]
 
     def validate_description(self, value: str) -> str:
-        """Strip control chars / cap length — this reaches the LLM tool schema verbatim."""
-        return sanitize_description(value)
+        """See validate_tool_description: this text reaches the LLM tool schema verbatim."""
+        return validate_tool_description(value)
 
     def to_representation(self, instance):
         """Scope the serialized `labels` to the active org.

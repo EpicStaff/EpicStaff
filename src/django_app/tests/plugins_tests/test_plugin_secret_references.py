@@ -20,6 +20,7 @@ from rest_framework.request import Request
 from rest_framework.test import APIClient, APIRequestFactory
 from django.urls import reverse
 from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.graph_versioning.services import GraphVersioningService
@@ -34,7 +35,7 @@ from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenc
 from tables.services.secrets import secret_service
 from tables.services.secrets.reference_guard import secret_reference_guard
 
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
 
 pytestmark = [pytest.mark.django_db]
@@ -51,6 +52,8 @@ ACCESS = [
 # The guarded (serializer, field) pairs found today; a floor, so the walk below can never
 # lose serializers silently.
 MINIMUM_GUARDED_FIELDS = 18
+# The same floor for header fields whose `epicstaff_secret(<name>)` markers name secrets.
+MINIMUM_GUARDED_MARKER_FIELDS = 2
 
 
 @pytest.fixture
@@ -221,6 +224,126 @@ def test_dropping_the_org_secret_is_not_a_reference(client, org_llm_config):
     assert response.status_code == 200, response.content
 
 
+# ---- a secret marker in a config's headers names a secret too ----
+
+CONFIG_ENDPOINTS = [("/api/llm-configs/", LLMConfig), ("/api/embedding-configs/", EmbeddingConfig)]
+
+
+def _marker_headers(secret_name):
+    return {"Authorization": f"Bearer epicstaff_secret({secret_name})", "X-Trace": "plain"}
+
+
+@pytest.mark.parametrize("endpoint, model", CONFIG_ENDPOINTS)
+def test_a_header_marker_of_an_org_secret_is_refused(client, org_secret, endpoint, model):
+    response = client.post(
+        endpoint, {"custom_name": "Exfiltrate", "extra_headers": _marker_headers(ORG_SECRET_NAME)}, format="json"
+    )
+
+    _refused(response, "extra_headers")
+    assert not model.objects.filter(custom_name="Exfiltrate").exists()
+
+
+@pytest.mark.parametrize("endpoint, model", CONFIG_ENDPOINTS)
+def test_a_header_marker_of_its_own_secret_is_taken_and_kept_on_edit(client, own_secret, endpoint, model):
+    created = client.post(
+        endpoint, {"custom_name": "Weather", "extra_headers": _marker_headers(own_secret.name)}, format="json"
+    )
+    assert created.status_code == 201, created.content
+
+    renamed = client.patch(f"{endpoint}{created.json()['id']}/", {"custom_name": "Weather renamed"}, format="json")
+
+    assert renamed.status_code == 200, renamed.content
+    assert model.objects.get(pk=created.json()["id"]).extra_headers == _marker_headers(own_secret.name)
+
+
+def test_a_header_marker_naming_no_secret_is_refused(client):
+    # A person could create a secret of that name later, and the config would send it.
+    response = client.post(
+        "/api/llm-configs/", {"custom_name": "Waiting", "extra_headers": _marker_headers("NOT_CREATED_YET")}, format="json"
+    )
+
+    _refused(response, "extra_headers")
+
+
+def test_an_org_config_whose_headers_name_an_org_secret_cannot_be_changed(client, acme, org_secret):
+    config = EmbeddingConfig.objects.create(
+        custom_name="Acme embeddings", org=acme, extra_headers=_marker_headers(ORG_SECRET_NAME)
+    )
+
+    response = client.patch(f"/api/embedding-configs/{config.pk}/", {"custom_name": "Renamed"}, format="json")
+
+    _refused(response, "extra_headers")
+    config.refresh_from_db()
+    assert config.custom_name == "Acme embeddings"
+
+
+def test_dropping_an_org_secret_s_marker_is_not_a_reference(client, acme, org_secret):
+    config = LLMConfig.objects.create(custom_name="Acme marked", org=acme, extra_headers=_marker_headers(ORG_SECRET_NAME))
+
+    response = client.patch(f"/api/llm-configs/{config.pk}/", {"extra_headers": {"X-Trace": "plain"}}, format="json")
+
+    assert response.status_code == 200, response.content
+
+
+def test_a_marker_of_its_own_binned_secret_still_lets_it_edit_the_config(client, own_secret):
+    config_id = client.post(
+        "/api/llm-configs/", {"custom_name": "Binned marker", "extra_headers": _marker_headers(own_secret.name)}, format="json"
+    ).json()["id"]
+    own_secret.delete()
+
+    response = client.patch(f"/api/llm-configs/{config_id}/", {"temperature": 0.2}, format="json")
+
+    assert response.status_code == 200, response.content
+
+
+def test_a_marker_whose_name_a_binned_org_secret_shares_is_refused(client, acme):
+    # Once the plugin's secret of that name is binned, restoring the organization's one
+    # would make the marker send it.
+    secret_service.create(text="sk-acme-old", org=acme, name="Shared name").delete()
+    created = client.post("/api/secrets/", {"name": "Shared name", "value": "sk-weather"}, format="json")
+    assert created.status_code == 201, created.content
+
+    response = client.post(
+        "/api/llm-configs/", {"custom_name": "Shared", "extra_headers": _marker_headers("Shared name")}, format="json"
+    )
+
+    _refused(response, "extra_headers")
+
+
+@pytest.mark.parametrize(
+    "config_type, model_type, model_fixture",
+    [
+        (EntityType.LLM_CONFIG, EntityType.LLM_MODEL, "gpt_4o_llm"),
+        (EntityType.EMBEDDING_CONFIG, EntityType.EMBEDDING_MODEL, "embedding_model"),
+    ],
+)
+def test_a_plugin_s_config_import_takes_a_marker_of_its_own_secret_only(
+    request, acme_key, acme, org_secret, own_secret, config_type, model_type, model_fixture
+):
+    principal = _plugin_request(acme_key, acme).user
+    model = request.getfixturevalue(model_fixture)
+    strategy = entity_registry.get_strategy(config_type)
+    source = strategy.config_model.objects.create(custom_name="Exported", model=model, org=acme)
+    exported = ExportService(entity_registry).export_entities(
+        config_type, [source.pk], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data[config_type][0]
+    id_mapper = IDMapper()
+    id_mapper.map(model_type, model.pk, model.pk, was_created=False)
+
+    def import_with_marker_of(secret_name):
+        data = {**exported, "custom_name": f"Imported {secret_name}", "extra_headers": _marker_headers(secret_name)}
+        return strategy.create_entity(data, id_mapper, user=principal, org_id=acme.pk)
+
+    with pytest.raises(ValidationError) as refused:
+        import_with_marker_of(ORG_SECRET_NAME)
+    imported = import_with_marker_of(own_secret.name)
+
+    assert REFUSED in str(refused.value.detail["extra_headers"])
+    assert ORG_SECRET_NAME not in str(refused.value.detail)
+    assert not strategy.config_model.objects.filter(custom_name=f"Imported {ORG_SECRET_NAME}").exists()
+    assert imported.extra_headers == _marker_headers(own_secret.name)
+
+
 # ---- every guarded serializer ----
 
 
@@ -275,6 +398,37 @@ def test_every_guarded_field_refuses_an_org_secret_and_takes_the_plugin_s_own(ac
 
     assert failures == []
     assert len(checked) >= MINIMUM_GUARDED_FIELDS, checked
+
+
+def test_every_guarded_header_field_refuses_an_org_secret_s_marker_and_takes_the_plugin_s_own(
+    acme_key, acme, org_secret, own_secret
+):
+    request = _plugin_request(acme_key, acme)
+    checked, failures = [], []
+    for serializer_class in _guarded_serializer_classes():
+        serializer = serializer_class(context={"request": request})
+        for field_name in serializer_class.secret_marker_fields:
+            field = serializer.fields.get(field_name)
+            if field is None or field.read_only:
+                continue
+            checked.append(f"{serializer_class.__name__}.{field_name}")
+
+            def check(secret_name):
+                secret_reference_guard.assert_no_new_markers_or_permitted(
+                    serializer=serializer, attrs={field.source: _marker_headers(secret_name)}, fields=(field_name,)
+                )
+
+            try:
+                check(own_secret.name)
+            except ValidationError as error:
+                failures.append(f"{checked[-1]} refused the plugin's own secret: {error.detail}")
+            with pytest.raises(ValidationError) as refused:
+                check(ORG_SECRET_NAME)
+            if REFUSED not in str(refused.value.detail.get(field_name)) or ORG_SECRET_NAME in str(refused.value.detail):
+                failures.append(f"{checked[-1]} answered {refused.value.detail}")
+
+    assert failures == []
+    assert len(checked) >= MINIMUM_GUARDED_MARKER_FIELDS, checked
 
 
 # ---- everyone else ----
@@ -446,7 +600,9 @@ def _flow_with_a_telegram_bot(organization, bot_key, path):
 
 
 def _replace_import(client, graph):
-    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.pk])
+    export_data = ExportService(entity_registry).export_entities(
+        EntityType.GRAPH, [graph.pk], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
     return client.post(
         reverse("graphs-import-entity"),
         {"file": data_to_json_file(data=export_data, filename="flow.json"), "preserve_uuids": True, "replace_existing": True},

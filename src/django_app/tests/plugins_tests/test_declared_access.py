@@ -14,7 +14,7 @@ from tables.import_export.services.export_service import ExportService
 from tables.models import Graph, LLMConfig, Secret, Session
 from tables.models.graph_models import ScheduleTriggerNode
 
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.plugins_tests.conftest import WEATHER_ACCESS, mark_running, service_account_client, upload_file
 from tests.plugins_tests.package_builder import backend_manifest, build_package
 from tests.plugins_tests.service_account_helpers import runnable_graph
@@ -91,7 +91,9 @@ def test_a_schedule_trigger_needs_flows_use(weather_client, weather_client_witho
 def test_importing_a_flow_with_a_trigger_needs_flows_use(weather_client_without_use, acme):
     source = Graph.objects.create(name="Triggered", org=acme)
     ScheduleTriggerNode.objects.create(graph=source, node_name="Hourly")
-    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [source.pk], org_id=acme.pk)
+    export_data = ExportService(entity_registry).export_entities(
+        EntityType.GRAPH, [source.pk], org_id=acme.pk, policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
 
     response = weather_client_without_use.post(
         reverse("graphs-import-entity"),

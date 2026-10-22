@@ -65,6 +65,8 @@ interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> {
     node_type: TNodeType;
     node_name: string;
     metadata: Record<string, unknown>;
+    /** The node's number in the source graph; the numbers may have gaps. */
+    node_number: number | null;
 }
 
 export interface SnapshotPythonCode {
@@ -73,6 +75,8 @@ export interface SnapshotPythonCode {
     libraries: string;
     entrypoint: string;
     global_kwargs?: Record<string, unknown>;
+    /** Seconds; absent in versions saved before code had an execution timeout. */
+    execution_timeout?: number;
 }
 
 export type SnapshotStartNode = SnapshotNodeOf<'StartNode', StartNode>;

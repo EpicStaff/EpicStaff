@@ -2,6 +2,7 @@ import pytest
 
 from tables.models import Graph, GraphNote, StartNode
 from tables.import_export.enums import EntityType
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.mark.django_db
@@ -31,7 +32,9 @@ class TestGraphImportMetadataIdNamespaceCollision:
         StartNode.objects.create(graph=parent, variables={})
         GraphNote.objects.create(graph=parent, content="unrelated note")
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [parent.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [parent.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
 
         parent_entity = next(
             g for g in export_data[EntityType.GRAPH] if g["id"] == parent.id

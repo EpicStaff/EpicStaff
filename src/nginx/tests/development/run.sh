@@ -66,6 +66,17 @@ compose exec -T tools bash /lab/scripts/checks.sh outside || status=$?
 compose exec -T inside bash /lab/scripts/checks.sh inside || status=$?
 compose exec -T tools bash /lab/scripts/checks.sh off || status=$?
 
+echo "# inside each nginx container, where the stack's healthcheck runs"
+for server in nginx nginx-off; do
+  code=$(compose exec -T "$server" curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/nginx-health || true)
+  if [ "$code" = 204 ]; then
+    echo "ok - $server: /nginx-health on 127.0.0.1:8081 answers 204, next to the internal API listener on the same port"
+  else
+    echo "not ok - $server: /nginx-health on 127.0.0.1:8081 answered $code"
+    status=1
+  fi
+done
+
 echo "# development mode without the development compose file"
 refusal_status=0
 refusal=$(compose run --rm --no-deps -T nginx-unmarked nginx -t 2>&1) || refusal_status=$?

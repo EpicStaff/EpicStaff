@@ -50,10 +50,12 @@ outside)
   set_decision '{"answer": "published"}'
   before=$(decisions)
   request "$gateway/" -H "Host: $plugin_host" -H 'Cookie: sessionid=s3cret' -H 'Authorization: Bearer person'
-  if [ "$status" = 200 ] && cmp -s "$work/body" "$spa/index.html" && [ "$(header Cache-Control)" = no-cache ]; then
-    pass "/ is the published index.html, with no-cache"
+  # The lab's nginx runs with NGINX_HSTS_ENABLED=false (compose.yaml): no Strict-Transport-Security.
+  if [ "$status" = 200 ] && cmp -s "$work/body" "$spa/index.html" && [ "$(header Cache-Control)" = no-cache ] \
+    && [ "$(header_count Strict-Transport-Security)" = 0 ]; then
+    pass "/ is the published index.html, with no-cache and, with NGINX_HSTS_ENABLED=false, no Strict-Transport-Security"
   else
-    fail "/ with the published files: $status, Cache-Control [$(header Cache-Control)]"
+    fail "/ with the published files: $status, Cache-Control [$(header Cache-Control)], Strict-Transport-Security [$(header Strict-Transport-Security)]"
   fi
   last_decision=$(curl -s "$decision/lab/page-decisions")
   decision_names=$(jq -r '[.last_headers[][0] | ascii_downcase] | sort | join(" ")' <<< "$last_decision")
@@ -112,6 +114,8 @@ outside)
   [ "$(header Referrer-Policy)" = strict-origin-when-cross-origin ] || problems="$problems no Referrer-Policy;"
   [ "$(header Origin-Agent-Cluster)" = '?1' ] || problems="$problems no Origin-Agent-Cluster;"
   [ "$(header Cache-Control)" = max-age=60 ] || problems="$problems Cache-Control [$(header Cache-Control)];"
+  [ "$(header_count Strict-Transport-Security)" = 0 ] \
+    || problems="$problems Strict-Transport-Security with NGINX_HSTS_ENABLED=false;"
   if [ -z "$problems" ]; then
     pass "the development server's cookie, framing rule, policy, Clear-Site-Data and marker are hidden; the platform's headers are added, its caching header is kept"
   else
@@ -144,7 +148,8 @@ outside)
     request "$gateway/" -H "Host: $plugin_host"
     if [ "$status" = 503 ] && [ "$(cat "$work/body")" = "$unreachable_body" ] \
       && [ "$(header Content-Type)" = text/html ] && [ "$(header X-EpicStaff-Gateway-Deny)" = unavailable ] \
-      && [ "$(header Content-Security-Policy)" = "frame-ancestors 'self' http://epicstaff.localhost" ]; then
+      && [ "$(header Content-Security-Policy)" = "frame-ancestors 'self' http://epicstaff.localhost" ] \
+      && [ "$(header_count Strict-Transport-Security)" = 0 ]; then
       pass "$1: 503 text/html, the one sentence, marked unavailable"
     else
       fail "$1: $status [$(header Content-Type)] [$(header X-EpicStaff-Gateway-Deny)] $(head -c 120 "$work/body")"

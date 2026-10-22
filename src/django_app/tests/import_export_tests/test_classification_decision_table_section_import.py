@@ -9,6 +9,7 @@ from tables.models.graph_models import (
     Graph,
 )
 from tables.import_export.enums import EntityType
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.mark.django_db
@@ -32,7 +33,9 @@ def test_import_classification_decision_table_node_clones_section_with_new_id(
         section=section,
     )
 
-    export_data = export_service.export_entities(EntityType.GRAPH, [src.id])
+    export_data = export_service.export_entities(
+        EntityType.GRAPH, [src.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
 
     # Import back into the same running system while the source graph (and
     # section row, same UUID PK) still exists.

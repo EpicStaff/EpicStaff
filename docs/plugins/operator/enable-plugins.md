@@ -1065,7 +1065,9 @@ from the plugin's own errors), allow request bodies of `PLUGINS_MAX_PACKAGE_MB` 
 `/api/admin/plugins/packages/` and of `PLUGINS_MAX_REQUEST_BODY_MB` on the plugin hosts, let
 WebSocket upgrades and long-lived streams (server-sent events) through to the plugin hosts, and
 put the wildcard certificate on that proxy. Then set `NGINX_SSL_MODE=off` and
-`DJANGO_REFRESH_COOKIE_SECURE=true`.
+`DJANGO_REFRESH_COOKIE_SECURE=true`. The plugin hosts send `Strict-Transport-Security` by
+`NGINX_HSTS_ENABLED`, as EpicStaff's own server does: set it as
+[SSL](../../setup/ssl.md#behind-a-load-balancer) describes, and let the proxy pass the header on.
 
 nginx then sees the proxy's address as every client's. The rate limit of a public path is counted
 per client address, so all clients share one count, and one busy client can use up a public

@@ -9,6 +9,8 @@ gateway=http://nginx
 alpha=alpha.plugins.epicstaff.test
 main_host=epicstaff.test
 internal_api=http://epicstaff-api:8081
+# The lab's nginx runs with NGINX_HSTS_ENABLED=true (compose.yaml), over plain http.
+hsts="max-age=31536000; includeSubDomains"
 work=$(mktemp -d)
 failures=0
 
@@ -63,8 +65,8 @@ expect_refusal() { # description, status, code, [header=value...]; uses the last
     fi
   done
   if [ "$(header Content-Security-Policy)" != "frame-ancestors 'self' https://epicstaff.test" ] \
-    || [ "$(header Origin-Agent-Cluster)" != "?1" ]; then
-    fail "$description: the plugin host's security headers are missing"
+    || [ "$(header Origin-Agent-Cluster)" != "?1" ] || [ "$(header_values Strict-Transport-Security)" != "$hsts" ]; then
+    fail "$description: the plugin host's security headers are missing (Strict-Transport-Security [$(header_values Strict-Transport-Security)])"
     return
   fi
   pass "$description"
@@ -135,7 +137,8 @@ set_maintenance_flag() {
 }
 expect_spa() { # description, path, text of the SPA's file
   request "$alpha" "$2"
-  if [ "$status" = 200 ] && grep -qF "$3" "$work/body" && [ -z "$(header X-EpicStaff-Gateway-Deny)" ]; then
+  if [ "$status" = 200 ] && grep -qF "$3" "$work/body" && [ -z "$(header X-EpicStaff-Gateway-Deny)" ] \
+    && [ "$(header_values Strict-Transport-Security)" = "$hsts" ]; then
     pass "$1"
   else
     fail "$1: got $status $(head -c 120 "$work/body")"
@@ -155,6 +158,8 @@ expect_maintenance_page() { # path
     || problems="$problems Content-Security-Policy [$(header_values Content-Security-Policy)];"
   [ "$(header_values X-Content-Type-Options)" = nosniff ] || problems="$problems no nosniff;"
   [ "$(header_values Origin-Agent-Cluster)" = '?1' ] || problems="$problems no Origin-Agent-Cluster;"
+  [ "$(header_values Strict-Transport-Security)" = "$hsts" ] \
+    || problems="$problems Strict-Transport-Security [$(header_values Strict-Transport-Security)];"
   [ -z "$(header_values Set-Cookie)$(header_values X-Frame-Options)" ] || problems="$problems Set-Cookie or X-Frame-Options;"
   if [ -z "$problems" ]; then
     pass "with the flag, $1 is 503 with the maintenance page and its headers"
@@ -339,13 +344,19 @@ done
 request "$main_host" /api/other/
 [ "$status" = 200 ] && pass "control: EpicStaff's own server still proxies /api/" \
   || fail "control: /api/other/ got $status"
+if [ "$(header_values Strict-Transport-Security)" = "$hsts" ]; then
+  pass "EpicStaff's own server sends the same Strict-Transport-Security as the plugin hosts"
+else
+  fail "EpicStaff's own server: Strict-Transport-Security [$(header_values Strict-Transport-Security)]"
+fi
 status=$(curl -s -o /dev/null -w '%{http_code}' -H 'X-Plugin-Identifier: alpha' http://decision:8000/api/plugin-gateway/check/)
 [ "$status" = 404 ] && pass "the check itself answers 404 without the shared secret" \
   || fail "the check without the secret: $status"
 
 echo "# the internal API listener refuses everything off the plugins network"
 
-for path in /api/plugin-nodes/self/desired-state/ /api/other/ /; do
+# /nginx-health too: the health server answers only on nginx's own 127.0.0.1.
+for path in /api/plugin-nodes/self/desired-state/ /api/other/ / /nginx-health; do
   status=$(curl -s -o /dev/null -w '%{http_code}' "http://nginx:8081$path")
   [ "$status" = 403 ] && pass "8081 from outside the plugins network: $path is 403" \
     || fail "8081 from outside the plugins network: $path got $status"
@@ -356,7 +367,9 @@ fi
 if [ "$side" = inside ]; then
 echo "# the internal API listener (epicstaff-api:8081 on plugins-network)"
 
-for path in /api/auth/token/ /api/admin/plugins/ /api/plugin-gateway/check/ / /admin/; do
+# /nginx-health is the internal listener's own 404 here: the health server answers only on
+# nginx's 127.0.0.1, which shares the port.
+for path in /api/auth/token/ /api/admin/plugins/ /api/plugin-gateway/check/ / /admin/ /nginx-health; do
   probe="probe=refused${path//\//-}"
   status=$(curl -s -o /dev/null -w '%{http_code}' --path-as-is "$internal_api$path?$probe")
   if [ "$status" = 404 ] && ! grep -qF -- "$probe" /evidence/decision.log; then

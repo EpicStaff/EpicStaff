@@ -33,6 +33,9 @@ services:
       NGINX_ENTRYPOINT_QUIET_LOGS: "1"
       NGINX_SERVER_NAME: epicstaff.test
       NGINX_SSL_MODE: "off"
+      # As for a deployment reached over https with TLS ended in front of nginx: EpicStaff's server
+      # and the plugin hosts send Strict-Transport-Security over nginx's plain http.
+      NGINX_HSTS_ENABLED: "true"
       DJANGO_HOST: decision
       DJANGO_PORT: "8000"
       FRONTEND_HOST: frontend
@@ -56,8 +59,33 @@ services:
       PLUGINS_NETWORK_SUBNET: *plugins-subnet
     volumes:
       - ../../templates/:/etc/nginx/templates:ro
-      - ../../docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
-      - ../../docker-entrypoint.d/16-normalize-plugins-enabled.envsh:/docker-entrypoint.d/16-normalize-plugins-enabled.envsh:ro
+      # Every hook in src/nginx/docker-entrypoint.d, as src/docker-compose.yaml mounts them
+      # (tests/check_templates.sh fails when one is missing): the long syntax, so a missing file
+      # stops `up` instead of becoming an empty folder that nginx skips.
+      - type: bind
+        source: ../../docker-entrypoint.d/15-normalize-chat-enabled.envsh
+        target: /docker-entrypoint.d/15-normalize-chat-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../../docker-entrypoint.d/16-check-ssl-mode.envsh
+        target: /docker-entrypoint.d/16-check-ssl-mode.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../../docker-entrypoint.d/16-normalize-plugins-enabled.envsh
+        target: /docker-entrypoint.d/16-normalize-plugins-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../../docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+        target: /docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
       - plugin_spa:/srv/plugin-spa:ro
       - ../../plugin-platform:/usr/share/nginx/plugin-platform:ro
     ports:

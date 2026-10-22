@@ -26,7 +26,7 @@ from tables.models.llm_models import LLMModel
 from tables.models.graph_models import StartNode
 from tables.services.storage_service.db_sync import StorageFileSync
 
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
 
 pytestmark = [pytest.mark.django_db]
@@ -139,7 +139,9 @@ def test_a_graph_the_service_account_copies_is_owned_and_one_a_person_copies_is_
 
 def test_a_graph_the_service_account_imports_is_owned(owner, acme):
     source = Graph.objects.create(name="Imported forecast", org=acme)
-    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [source.pk], org_id=acme.pk)
+    export_data = ExportService(entity_registry).export_entities(
+        EntityType.GRAPH, [source.pk], org_id=acme.pk, policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
 
     response = owner.post(
         reverse("graphs-import-entity"),

@@ -18,6 +18,7 @@ from tables.models.graph_models import GraphSessionMessage
 from tables.models.session_models import SessionPrincipal
 from tables.services.graph_message_store import GraphMessageStore
 
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.plugins_tests.conftest import service_account_client
 from tests.plugins_tests.service_account_helpers import runnable_graph
 
@@ -52,7 +53,9 @@ def _add_message(session, **message_data):
 
 
 def _csv_rows(session):
-    data = ExportService(entity_registry).export_entities(EntityType.SESSION, [session.pk])
+    data = ExportService(entity_registry).export_entities(
+        EntityType.SESSION, [session.pk], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
     response = CsvExportFormatStrategy(SessionTabularProjection()).render(data, EntityType.SESSION, "session", str(session.pk))
     return list(csv.DictReader(io.StringIO(response.content.decode())))
 

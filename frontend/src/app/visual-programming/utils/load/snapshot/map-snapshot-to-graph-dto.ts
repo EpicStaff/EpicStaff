@@ -8,6 +8,7 @@ import {
     SnapshotNodeType,
     SnapshotSecretDeclarations,
 } from '../../../../features/flows/models/graph-version-preview.model';
+import { usableNodeNumberOrNull } from '../../../core/helpers/node-number.util';
 import { FlowModel } from '../../../core/models/flow.model';
 import { buildFlowModelFromGraphDto } from '../build-flow-model-from-graph-dto';
 import {
@@ -130,6 +131,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     ScheduleTriggerNode: (node) => ({
         id: node.id,
         node_name: node.node_name,
+        node_number: node.node_number,
         metadata: node.metadata,
         is_active: node.is_active,
         current_runs: node.current_runs ?? 0,
@@ -153,6 +155,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     KnowledgeNode: (node) => ({
         id: node.id,
         node_name: node.node_name,
+        node_number: node.node_number,
         metadata: node.metadata,
         input_map: node.input_map ?? {},
         output_variable_path: node.output_variable_path,
@@ -170,6 +173,7 @@ const SNAPSHOT_NODE_ADAPTERS: SnapshotNodeAdapters = {
     KeyValueNode: (node) => ({
         id: node.id,
         node_name: node.node_name,
+        node_number: node.node_number,
         metadata: node.metadata,
         input_map: node.input_map,
         output_variable_path: node.output_variable_path,
@@ -191,9 +195,9 @@ export function mapSnapshotToGraphDto(
 ): GraphDto {
     const context: AdapterContext = { secretsByName, secretDeclarations: snapshot.secret_declarations };
     const nodeLists = emptyNodeLists();
+    const knownNodes = (snapshot.nodes ?? []).filter((node) => Object.hasOwn(SNAPSHOT_NODE_ADAPTERS, node.node_type));
 
-    for (const node of snapshot.nodes ?? []) {
-        if (!Object.hasOwn(SNAPSHOT_NODE_ADAPTERS, node.node_type)) continue;
+    for (const node of knownNodes) {
         (nodeLists[SNAPSHOT_NODE_LIST_KEY[node.node_type]] as unknown[]).push(adaptNode(node, context));
     }
 
@@ -205,6 +209,7 @@ export function mapSnapshotToGraphDto(
         name: '',
         description: '',
         save_version: 0,
+        node_number_seq: highestStoredNodeNumber(knownNodes),
         created_at: '',
         ...NO_AUTHORSHIP,
         metadata: (snapshot.metadata ?? {}) as unknown as FlowModel,
@@ -262,7 +267,22 @@ export function mapNodeAuthorshipToCanvas(
 
 function adaptNode(node: SnapshotNode, context: AdapterContext): unknown {
     const adapter = SNAPSHOT_NODE_ADAPTERS[node.node_type] as (node: SnapshotNode, context: AdapterContext) => object;
-    return { ...adapter(node, context), ...NO_AUTHORSHIP };
+    const adapted = { ...adapter(node, context), ...NO_AUTHORSHIP };
+    return 'node_number' in adapted
+        ? { ...adapted, node_number: usableNodeNumberOrNull(adapted.node_number) }
+        : adapted;
+}
+
+/**
+ * The preview's counter floor: the highest usable number the version stores. A restore keeps the usable
+ * stored numbers and never lowers the counter, so the live counter can only be higher.
+ */
+function highestStoredNodeNumber(nodes: readonly SnapshotNode[]): number {
+    const storedNumbers = nodes.flatMap((node) => {
+        const storedNumber = 'node_number' in node ? usableNodeNumberOrNull(node.node_number) : null;
+        return storedNumber === null ? [] : [storedNumber];
+    });
+    return Math.max(0, ...storedNumbers);
 }
 
 function emptyNodeLists(): { [TKey in GraphDtoNodeListKey]-?: NonNullable<GraphDto[TKey]> } {

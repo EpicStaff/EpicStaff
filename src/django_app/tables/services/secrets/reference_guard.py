@@ -4,6 +4,8 @@ from rbac.access.resolver import PermissionResolver
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
 from rest_framework import exceptions, serializers
+from tables.models import Secret
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 from utils.logger import logger
 
 _DENIED = (
@@ -27,9 +29,11 @@ _MAY_USE_SECRETS_ATTRIBUTE = "_secret_reference_guard_may_use"
 class SecretReferenceGuard:
     """Gates the secrets a written row references.
 
-    Changing a reference needs secrets:USE. A pinned-org principal (a plugin's service
-    account) may also write only rows whose references, changed or not, it is allowed to
-    make (`PinnedOrgPrincipal.may_reference_secrets`): otherwise it could point a row it
+    A row references a secret through a link to it (a foreign key, a many-to-many) or
+    through an `epicstaff_secret(<name>)` marker in a header field. Changing a reference
+    needs secrets:USE. A pinned-org principal (a plugin's service account) may also write
+    only rows whose references, changed or not, it is allowed to make
+    (`PinnedOrgPrincipal.may_reference_secrets`): otherwise it could point a row it
     controls (an LLM config's `base_url`, a Python node's code) at a secret of the
     organization and receive its value.
     """
@@ -68,6 +72,76 @@ class SecretReferenceGuard:
             if principal is not None and not principal.may_reference_secrets(referenced):
                 raise serializers.ValidationError({field_name: _NOT_REFERENCEABLE})
 
+    def assert_no_new_markers_or_permitted(self, *, serializer, attrs, fields) -> None:
+        """Raise ValidationError for each guarded header field the caller may not write as it ends up.
+
+        A `epicstaff_secret(<name>)` marker makes a run send that secret's plaintext,
+        so adding one is a secret reference like `api_key_secret_id`. Markers the
+        persisted value already has, or removing markers, need no secrets:USE, so a
+        caller without USE can still edit the rest of the resource.
+
+        A pinned-org principal is checked as in `assert_unchanged_or_permitted`: on every
+        create and update, every marker of the field as it ends up (the incoming value
+        when the payload carries it, the persisted one when it does not) must name a
+        secret it may reference (`assert_may_reference_markers`).
+        """
+        principal = _pinned_principal(serializer=serializer)
+        for field_name in fields:
+            field = serializer.fields.get(field_name)
+            if field is None or field.read_only:
+                continue
+            source = field.source
+            if source in attrs:
+                named = extract_secret_marker_names(attrs[source])
+                if named - self._current_marker_names(
+                    serializer=serializer, source=source
+                ) and not self._caller_may_use(serializer=serializer):
+                    self._refuse_change(serializer=serializer, field_name=field_name)
+            elif principal is not None:
+                named = self._current_marker_names(serializer=serializer, source=source)
+            else:
+                continue
+            if principal is not None:
+                self.assert_may_reference_markers(
+                    principal=principal, names=named, field_name=field_name
+                )
+
+    def assert_may_reference_markers(self, *, principal, names, field_name: str) -> None:
+        """Raise ValidationError unless every one of `names` is a secret `principal` may reference.
+
+        A marker binds by name when a run starts, not by id when it is written. So every
+        non-system secret of the organization with that name counts, binned ones too (a
+        restore makes one the name's secret again), and a name no secret has is refused:
+        a person could create a secret of that name later and the run would send it.
+        Finding the secrets is one query for any number of names, and none for an
+        empty `names`.
+
+        Raises:
+            ValidationError: Keyed by `field_name`; the message names no secret.
+        """
+        if not names:
+            return
+        named_secrets = dict(
+            Secret.all_objects.filter(
+                org_id=principal.pinned_org_id, name__in=names, system=False
+            ).values_list("pk", "name")
+        )
+        if set(names) - set(named_secrets.values()) or not principal.may_reference_secrets(
+            frozenset(named_secrets)
+        ):
+            raise serializers.ValidationError({field_name: _NOT_REFERENCEABLE})
+
+    def assert_may_use(self, *, user, org_id: int | None, field_name: str) -> None:
+        """Raise ValidationError unless `user` holds secrets:USE in `org_id`.
+
+        For paths with no request to read the active org from, such as import.
+        """
+        if user is None:
+            raise serializers.ValidationError({field_name: _DENIED})
+        effective = self._resolver.resolve(user=user, org_id=org_id)
+        if not effective.can(ResourceType.SECRETS.value, Permission.USE):
+            raise serializers.ValidationError({field_name: _DENIED})
+
     def current_ids(self, *, serializer, source) -> frozenset:
         """The pks the persisted row links to through `source`, binned rows included.
 
@@ -76,6 +150,11 @@ class SecretReferenceGuard:
         KeptLinkPrimaryKeyRelatedField accepts it unchanged.
         """
         return self._normalize(value=self._current_value(serializer=serializer, source=source))
+
+    def _current_marker_names(self, *, serializer, source) -> set[str]:
+        return extract_secret_marker_names(
+            self._current_value(serializer=serializer, source=source)
+        )
 
     @staticmethod
     def _current_value(*, serializer, source):

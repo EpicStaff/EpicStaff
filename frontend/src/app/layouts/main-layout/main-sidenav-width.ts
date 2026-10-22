@@ -7,18 +7,18 @@ export const MAIN_SIDENAV_WIDTH_KEY = 'main-sidenav';
 export const MAIN_SIDENAV_COLLAPSED_WIDTH = 60;
 
 /**
- * Collapsed, or expanded between 210 and 320px. The logo row is the widest fixed content: 10px inset + 40px
- * logo mark + 8px gap + ~85px "EpicStaff" (text-h4) + 8px gap + 28px close button + 10px inset + 1px border
- * = ~190px, plus ~20px slack for font rendering. Dragging below 135px (halfway between the two states)
- * collapses the sidebar, at or above it expands it.
+ * Collapsed, or expanded between 200 and 320px. The minimum fits the widest nav row, "Conversations" (~161px),
+ * without an ellipsis. The "EpicStaff" wordmark is the only text that would not fit at the minimum: it shrinks
+ * with the sidebar instead (see the sidenav styles).
+ * Dragging below 130px (halfway between the two states) collapses the sidebar, at or above it expands it.
  */
 export const MAIN_SIDENAV_WIDTH_OPTIONS = {
     defaultWidth: MAIN_SIDENAV_COLLAPSED_WIDTH,
-    minWidth: 210,
+    minWidth: 200,
     maxWidth: 320,
     collapse: {
         collapsedWidth: MAIN_SIDENAV_COLLAPSED_WIDTH,
-        collapseThreshold: 135,
+        collapseThreshold: 130,
     },
 } as const satisfies SidebarWidthOptions;
 

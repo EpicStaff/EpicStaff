@@ -102,6 +102,8 @@ from tables.graph_versioning.serializers import (
 )
 from tables.graph_versioning.services import GraphVersioningService
 from tables.import_export.enums import EntityType
+from tables.import_export.export_format_strategies import apply_excluded_header
+from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportSettings
 from tables.import_export.services.partial_export_service import (
@@ -672,7 +674,7 @@ class PythonCodeToolViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
@@ -696,7 +698,9 @@ class PythonCodeToolViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**PYTHON_CODE_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")
@@ -882,7 +886,7 @@ class GraphViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @action(detail=False, methods=["post"], url_path="bulk-export")
@@ -900,7 +904,9 @@ class GraphViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
     @action(detail=True, methods=["post"], url_path="partial-export")
@@ -919,6 +925,7 @@ class GraphViewSet(
             node_refs,
             org_id=graph.org_id,
             edge_ids=serializer.validated_data.get("edge_list", []),
+            policy=ExportAccessPolicy.for_user(request.user, self.get_active_org_id()),
         )
 
         if result.has_errors:
@@ -927,6 +934,7 @@ class GraphViewSet(
         filename = generate_file_name(f"nodes_{graph.name}", prefix="graph_nodes")
         response = HttpResponse(json.dumps(result.data, indent=4), content_type="application/json")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        apply_excluded_header(response, result.excluded)
         return response
 
     @extend_schema(
@@ -1316,37 +1324,9 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         )
 
 
-class IdempotentNodeCreateMixin:
-    # TODO: change fields from (graph, node_name) to id (all nodes id's are consistent)
-    # """
-    # COMMIT_COMMENTS: Makes node POST idempotent — if a node with the same
-    # (graph, node_name) already exists, update it instead of failing with a
-    # unique constraint violation. This prevents orphan accumulation when
-    # forkJoin-based saves partially fail and retry.
-    # """
-
-    def create(self, request, *args, **kwargs):
-        graph_id = request.data.get("graph")
-        node_name = request.data.get("node_name")
-        if graph_id and node_name:
-            # Org-scoped queryset: an idempotent match only updates a node whose
-            # graph is in the active org; a node in another org is never touched.
-            queryset = self.get_queryset()
-            try:
-                existing = queryset.get(graph_id=graph_id, node_name=node_name)
-                serializer = self.get_serializer(existing, data=request.data)
-                serializer.is_valid(raise_exception=True)
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            except queryset.model.DoesNotExist:
-                pass
-        return super().create(request, *args, **kwargs)
-
-
 class PythonNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1360,7 +1340,6 @@ class PythonNodeViewSet(
 class FileExtractorNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1374,7 +1353,6 @@ class FileExtractorNodeViewSet(
 class KnowledgeNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1407,7 +1385,6 @@ class KnowledgeNodeViewSet(
 class AudioTranscriptionNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1421,7 +1398,6 @@ class AudioTranscriptionNodeViewSet(
 class TaskNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1463,7 +1439,6 @@ class TaskNodeViewSet(
 class AgentNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -2065,19 +2040,7 @@ class DecisionTableNodeModelViewSet(
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """
-        Create a DecisionTableNode along with nested ConditionGroups and Conditions.
-        If a node with the same (graph, node_name) already exists, update it instead.
-        """
-        graph_id = request.data.get("graph")
-        node_name = request.data.get("node_name")
-        if graph_id and node_name:
-            try:
-                existing = DecisionTableNode.objects.get(graph_id=graph_id, node_name=node_name)
-                node, _ = self._create_or_update_node(data=request.data, instance=existing)
-                return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
-            except DecisionTableNode.DoesNotExist:
-                pass
+        """Create a DecisionTableNode along with nested ConditionGroups and Conditions."""
         node, _ = self._create_or_update_node(data=request.data)
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
@@ -2234,13 +2197,17 @@ class ClassificationDecisionTableNodeModelViewSet(
     def export(self, request, pk=None):
         export_format = request.query_params.get("export_format", "json")
         result = self._node_service.export(
-            pk=pk, export_format=export_format, org_id=self.get_active_org_id()
+            pk=pk,
+            export_format=export_format,
+            org_id=self.get_active_org_id(),
+            user=request.user,
         )
         if result.errors is not None:
             return Response({"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST)
 
         response = HttpResponse(result.content, content_type=result.content_type)
         response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
+        apply_excluded_header(response, result.excluded)
         return response
 
     @extend_schema(
@@ -2437,7 +2404,7 @@ class McpToolViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
@@ -2456,7 +2423,9 @@ class McpToolViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**MCP_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")
@@ -2499,7 +2468,6 @@ class WebhookTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -2613,7 +2581,6 @@ class TelegramTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2662,7 +2629,6 @@ class ScheduleTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2678,7 +2644,6 @@ class ScheduleTriggerNodeViewSet(
 class GraphNoteViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2883,7 +2848,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def export(self, request, pk=None):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ALL)
@@ -2900,7 +2865,9 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**AUDIT_FILTER_PRESET_IMPORT)
     @action(detail=False, methods=["post"], url_path="import")

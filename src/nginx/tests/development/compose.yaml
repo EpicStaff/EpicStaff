@@ -28,6 +28,9 @@ x-nginx-environment: &nginx-environment
   NGINX_ENTRYPOINT_QUIET_LOGS: "1"
   NGINX_SERVER_NAME: epicstaff.localhost
   NGINX_SSL_MODE: "off"
+  # Plain http on the developer's machine, with nothing in front: no Strict-Transport-Security on
+  # the plugin hosts, the development server's page included (the gateway lab has it on).
+  NGINX_HSTS_ENABLED: "false"
   DJANGO_HOST: decision
   DJANGO_PORT: "8000"
   FRONTEND_HOST: frontend
@@ -54,8 +57,33 @@ x-nginx: &nginx
   environment: *nginx-environment
   volumes:
     - ../../templates/:/etc/nginx/templates:ro
-    - ../../docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
-    - ../../docker-entrypoint.d/16-normalize-plugins-enabled.envsh:/docker-entrypoint.d/16-normalize-plugins-enabled.envsh:ro
+    # Every hook in src/nginx/docker-entrypoint.d, as src/docker-compose.yaml mounts them
+    # (tests/check_templates.sh fails when one is missing): the long syntax, so a missing file
+    # stops `up` instead of becoming an empty folder that nginx skips.
+    - type: bind
+      source: ../../docker-entrypoint.d/15-normalize-chat-enabled.envsh
+      target: /docker-entrypoint.d/15-normalize-chat-enabled.envsh
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ../../docker-entrypoint.d/16-check-ssl-mode.envsh
+      target: /docker-entrypoint.d/16-check-ssl-mode.envsh
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ../../docker-entrypoint.d/16-normalize-plugins-enabled.envsh
+      target: /docker-entrypoint.d/16-normalize-plugins-enabled.envsh
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ../../docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+      target: /docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+      read_only: true
+      bind:
+        create_host_path: false
     - plugin_spa:/srv/plugin-spa:ro
     - ../../plugin-platform:/usr/share/nginx/plugin-platform:ro
   sysctls:

@@ -85,8 +85,9 @@ jobs:
 
           # nginx's templates, the start-up scripts that fill them in and the login
           # callback pages a plugin host serves, checked by rendering them in the
-          # pinned nginx image (check_templates.sh).
-          filter nginx '^(src/nginx/(templates|docker-entrypoint\.d|plugin-platform)/|src/nginx/tests/check_templates\.sh$|src/docker-compose\.yaml$|src/docker-compose\.plugins-dev\.yaml$|\.github/workflows/pr\.yml$)'
+          # pinned nginx image (check_templates.sh), which also checks that the stack
+          # and the labs' compose files mount every start-up script and set every variable.
+          filter nginx '^(src/nginx/(templates|docker-entrypoint\.d|plugin-platform)/|src/nginx/tests/check_templates\.sh$|src/nginx/tests/(gateway|development)/compose\.yaml$|src/docker-compose\.yaml$|src/docker-compose\.plugins-dev\.yaml$|\.github/workflows/pr\.yml$)'
 
           # The plugin host and API listener labs: the same templates and start-up scripts
           # under the pinned nginx image, against stand-ins, with development mode off

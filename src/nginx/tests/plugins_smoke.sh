@@ -2,7 +2,8 @@
 # Checks the plugin platform's nginx routes on a running stack with PLUGINS_ENABLED=true and at
 # least one approved plugin, through epicstaff-nginx, the way a browser reaches them:
 #
-#   - the plugin host serves the plugin's SPA with the security headers, every index.html with
+#   - the plugin host serves the plugin's SPA with the security headers (Strict-Transport-Security
+#     as EpicStaff's own server sends it: NGINX_HSTS_ENABLED decides both), every index.html with
 #     Cache-Control: no-cache, the platform config from Django, the platform's login callback
 #     pages (only GET and HEAD) with their own policy, and 404 for the platform's other paths;
 #   - its /api/ goes through the gateway: a declared public path reaches the plugin's backend with
@@ -169,8 +170,10 @@ expect_plugin_security_headers() { # $1 = what was requested
   expect_header "$1: Referrer-Policy" Referrer-Policy strict-origin-when-cross-origin
   expect_header "$1: Origin-Agent-Cluster" Origin-Agent-Cluster "?1"
   expect_no_header "$1: no X-Frame-Options" X-Frame-Options
-  if [ "$scheme" = https ]; then
-    expect_header "$1: HSTS" Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  if [ "$(header_values Strict-Transport-Security)" = "$epicstaff_hsts" ]; then
+    pass "$1: Strict-Transport-Security as EpicStaff's own server sends it [$epicstaff_hsts]"
+  else
+    fail "$1: Strict-Transport-Security is [$(header_values Strict-Transport-Security)], EpicStaff's own server sends [$epicstaff_hsts]"
   fi
 }
 
@@ -186,6 +189,13 @@ upload_decision() { # $1 = path on EpicStaff's server, $2 = Content-Length
     "$epicstaff_url$1" > /dev/null 2>&1 || true
   awk '/^HTTP\// { print $2; exit }' "$work_dir/headers"
 }
+
+# Strict-Transport-Security follows NGINX_HSTS_ENABLED, not the scheme (a load balancer may end
+# TLS in front of nginx): the plugin hosts must send what EpicStaff's own server sends, or nothing
+# when it sends nothing. The reference is an answer nginx gives itself, so no upstream adds to it.
+status=$(fetch "$epicstaff_url/api/plugin-gateway/check/")
+expect_status "EpicStaff's server answers /api/plugin-gateway/ itself (its Strict-Transport-Security is the plugin hosts' reference)" 404 "$status"
+epicstaff_hsts=$(header_values Strict-Transport-Security)
 
 echo "# plugin host $plugin_origin"
 

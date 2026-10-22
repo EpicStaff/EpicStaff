@@ -14,6 +14,7 @@ from tables.import_export.services.import_service import ImportService
 from tables.models import Graph, PythonCode
 from tables.models.graph_models import WebhookTriggerNode
 from tables.services.copy_services.graph_copy_service import GraphCopyService
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 PYTHON_CODE_DATA = {"code": "def main(**kwargs): ...", "entrypoint": "main", "libraries": []}
@@ -51,7 +52,11 @@ def _bulk_save(client, graph: Graph, entry: dict):
 
 
 def _export_and_import(graph: Graph, org_id: int) -> Graph:
-    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    export_data = (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
     id_mapper, _ = ImportService(entity_registry).import_data(
         export_data, EntityType.GRAPH, settings=ImportSettings(), org_id=org_id
     )

@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from django.db import transaction
 from loguru import logger
 from rbac.authorship import record_last_edits
@@ -14,6 +16,7 @@ from tables.import_export.registry import EntityRegistry
 from tables.import_export.strategies.graph import GraphStrategy
 from tables.models import Graph
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
+from tables.utils.legacy_node_number import move_legacy_badge_into_node_number
 
 # Node entity types that belong to a graph — handled via recreate_graph_children.
 # Start/end nodes are intentionally excluded: they are structural and every
@@ -180,11 +183,15 @@ class PartialImportService:
         """
         Gather node dicts from all node entity types and tag each with
         node_type so GraphStrategy._create_nodes can dispatch correctly.
+
+        Partial files carry no version, so VersionConverter never sees them; a
+        file written before node_number existed gets its "#N" badges moved here.
         """
         nodes = []
         for entity_type in _NODE_ENTITY_TYPES:
             for node_data in export_data.get(entity_type, []):
-                node_copy = dict(node_data)
+                node_copy = deepcopy(node_data)
                 node_copy["node_type"] = entity_type
+                move_legacy_badge_into_node_number(node_copy)
                 nodes.append(node_copy)
         return nodes

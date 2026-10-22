@@ -2,7 +2,7 @@ from typing import Literal, Self
 
 import httpx
 from src.shared.enums.knowledge_new import RAGStrategy
-from src.shared.models import FoundChunk, SearchConfig
+from src.shared.models import FoundChunk, SearchConfig, SearchOutcome, SearchUsage
 
 from clients.errors import (
     ClientBadGatewayError,
@@ -27,7 +27,7 @@ class KnowledgeClient:
     def close(self) -> None:
         self._client.close()
 
-    def search(
+    def search_with_usage(
         self,
         strategy: RAGStrategy,
         rag_id: int,
@@ -36,7 +36,10 @@ class KnowledgeClient:
         timeout: float,
         embedding_api_key: str,
         llm_api_key: str | None,
-    ) -> list[FoundChunk] | str:
+        embedding_extra_headers: dict[str, str] | None = None,
+        llm_extra_headers: dict[str, str] | None = None,
+    ) -> SearchOutcome:
+        """Search a RAG, returning its result with the embedding usage knowledge_new reports."""
         response = self._request(
             method="post",
             url=f"rags/{strategy}/{rag_id}/search/",
@@ -45,13 +48,16 @@ class KnowledgeClient:
                 "search_config": search_config.model_dump(mode="json"),
                 "embedding_api_key": embedding_api_key,
                 "llm_api_key": llm_api_key,
+                "embedding_extra_headers": embedding_extra_headers or {},
+                "llm_extra_headers": llm_extra_headers or {},
             },
             timeout=timeout,
         )
-        result = response.json()["result"]
+        body = response.json()
+        result = body["result"]
         if isinstance(result, list):
-            return [FoundChunk(**d) for d in result]
-        return result
+            result = [FoundChunk(**d) for d in result]
+        return SearchOutcome(result=result, usage=SearchUsage(**body.get("usage", {})))
 
     def _request(
         self,

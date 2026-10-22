@@ -4,6 +4,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { ExecutionTimeoutFormField } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
@@ -11,8 +12,13 @@ import { Subject } from 'rxjs';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { typeIntoExecutionTimeout } from '../../../../shared/components/execution-timeout-field/execution-timeout-field.testing';
 import { RuffDiagnosticsService } from '../../../../shared/ruff-linter/services/ruff-diagnostics.service';
 import { RuffWasmService } from '../../../../shared/ruff-linter/services/ruff-wasm.service';
+import {
+    provideLoadedExecutionTimeoutLimits,
+    TEST_EXECUTION_TIMEOUT_LIMITS,
+} from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
@@ -48,6 +54,7 @@ const SAVED_PAYLOAD = { order: { id: '104' } };
 const DTO: GetWebhookTriggerNodeRequest = {
     id: 21,
     graph: 1,
+    node_number: 1,
     node_name: 'Webhook Trigger #1',
     python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
     input_map: {},
@@ -78,6 +85,7 @@ describe('WebhookTriggerNodePanelComponent test payload', () => {
         toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: toast },
@@ -269,6 +277,7 @@ describe('WebhookTriggerNodePanelComponent storage', () => {
     beforeEach(() => {
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: { warning: vi.fn() } },
@@ -371,6 +380,7 @@ describe('WebhookTriggerNodePanelComponent code editor header', () => {
     beforeEach(() => {
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ToastService, useValue: {} },
@@ -460,6 +470,7 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
         runService = { runPythonCode: vi.fn(() => start$), pollResultWithEvents: vi.fn(() => poll$) };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 { provide: ToastService, useValue: { warning: vi.fn() } },
                 {
                     provide: PermissionsService,
@@ -531,8 +542,8 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
         fixture.detectChanges();
     }
 
-    function openExpanded(): RunCodePanel {
-        const runPanel = open();
+    function openExpanded(node: WebhookTriggerNodeModel = mapWebhookTriggerNodeToModel(DTO)): RunCodePanel {
+        const runPanel = open(node);
         fixture.componentRef.setInput('isExpanded', true);
         fixture.detectChanges();
         return runPanel;
@@ -734,6 +745,75 @@ describe('WebhookTriggerNodePanelComponent run python code', () => {
 
         expect(runService.runPythonCode).not.toHaveBeenCalled();
         expect(terminals()).toBe(0);
+    });
+
+    describe('execution timeout', () => {
+        const TIMED_DTO: GetWebhookTriggerNodeRequest = {
+            ...DTO,
+            python_code: { ...DTO.python_code, execution_timeout: 90 },
+        };
+
+        function timeoutField(): ExecutionTimeoutFormField {
+            return (panel() as unknown as { executionTimeout: ExecutionTimeoutFormField }).executionTimeout;
+        }
+
+        it('shows the stored timeout of the code, and the default for a code without one', () => {
+            open(mapWebhookTriggerNodeToModel(TIMED_DTO));
+            expect(timeoutField().control.value).toBe(90);
+
+            open(mapWebhookTriggerNodeToModel(DTO));
+            expect(timeoutField().control.value).toBe(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(panel().onSaveSilently()?.data.python_code.execution_timeout).toBeUndefined();
+        });
+
+        it('puts the edited timeout on the code of the node it saves', () => {
+            open();
+
+            timeoutField().edit(300);
+
+            expect(panel().onSaveSilently()?.data.python_code.execution_timeout).toBe(300);
+        });
+
+        it('saves a timeout still being typed when the panel closes before the input blurs (Esc, switching nodes)', () => {
+            open();
+
+            typeIntoExecutionTimeout(timeoutField(), '00:05:00');
+
+            expect(panel().isDirty()).toBe(true);
+            expect(panel().onSave()?.data.python_code.execution_timeout).toBe(300);
+        });
+
+        it('asks to save after a timeout edit, and clears once it is back to the stored one', () => {
+            const runPanel = open();
+
+            timeoutField().edit(300);
+            expect(runPanel.runCodeBlocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
+
+            timeoutField().edit(TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds);
+            expect(runPanel.runCodeBlocker()).toBeNull();
+        });
+
+        it('waits for the result as long as the stored code may run', () => {
+            bindStoredGraph(asStored(TIMED_DTO));
+            openExpanded(mapWebhookTriggerNodeToModel(TIMED_DTO));
+
+            runFromEditor();
+            start$.next({ execution_id: 'exec-1' });
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith('exec-1', 90);
+        });
+
+        it('waits for a stored code without a timeout as long as the default the backend applies to it', () => {
+            openExpanded();
+
+            runFromEditor();
+            start$.next({ execution_id: 'exec-1' });
+
+            expect(runService.pollResultWithEvents).toHaveBeenCalledWith(
+                'exec-1',
+                TEST_EXECUTION_TIMEOUT_LIMITS.defaultSeconds
+            );
+        });
     });
 
     describe('Save (the panel shell header button)', () => {
@@ -1012,6 +1092,7 @@ describe('WebhookTriggerNodePanelComponent and the Use permission on flows', () 
         toast = { info: vi.fn(), warning: vi.fn() };
         TestBed.configureTestingModule({
             providers: [
+                provideLoadedExecutionTimeoutLimits(),
                 provideHttpClient(),
                 { provide: ToastService, useValue: toast },
                 {

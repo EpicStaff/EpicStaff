@@ -9,6 +9,7 @@ import { of } from 'rxjs';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
+import { provideLoadedExecutionTimeoutLimits } from '../../../../shared/services/execution-timeout-limits/execution-timeout-limits.testing';
 import {
     EndNodeModel,
     NodeModel,
@@ -50,6 +51,7 @@ const endNode: EndNodeModel = {
 async function mount(isPreview: boolean): Promise<ComponentFixture<NodePanelShellComponent>> {
     TestBed.configureTestingModule({
         providers: [
+            provideLoadedExecutionTimeoutLimits(),
             { provide: FLOW_EDITOR_PREVIEW, useValue: isPreview },
             // A user who may edit flows: read-only below comes from the preview alone.
             { provide: PermissionsService, useValue: { can: () => true } },
@@ -262,6 +264,72 @@ describe('NodePanelShellComponent', () => {
         });
     });
 
+    describe('keyboard shortcuts', () => {
+        let fixture: ComponentFixture<NodePanelShellComponent>;
+        let emitted: NodeModel[];
+        const editedNode: EndNodeModel = { ...endNode, data: { output_map: { changed: 'value' } } };
+
+        function press(init: KeyboardEventInit, target: EventTarget = window): void {
+            target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+        }
+
+        function editPanel(): void {
+            panelOf(fixture).onOutputMapChange('{"changed": "value"}');
+            fixture.detectChanges();
+        }
+
+        function fieldInsidePanel(): HTMLInputElement {
+            document.body.appendChild(fixture.nativeElement);
+            const field = document.createElement('input');
+            (fixture.nativeElement as HTMLElement).querySelector('main')!.appendChild(field);
+            return field;
+        }
+
+        function selectedNodeId(): string | null {
+            return TestBed.inject(SidePanelService).selectedNodeId();
+        }
+
+        beforeEach(async () => {
+            fixture = await mount(false);
+            emitted = [];
+            fixture.componentInstance.save.subscribe((node) => emitted.push(node));
+        });
+
+        afterEach(() => (fixture.nativeElement as HTMLElement).remove());
+
+        it('saves an edited panel on Escape', () => {
+            editPanel();
+
+            press({ code: 'Escape', key: 'Escape' });
+
+            expect(emitted).toEqual([editedNode]);
+        });
+
+        it('saves an edited panel on Escape pressed in one of its fields', () => {
+            editPanel();
+
+            press({ code: 'Escape', key: 'Escape' }, fieldInsidePanel());
+
+            expect(emitted).toEqual([editedNode]);
+        });
+
+        it('closes an unchanged panel on Escape pressed in one of its fields', () => {
+            press({ code: 'Escape', key: 'Escape' }, fieldInsidePanel());
+
+            expect(emitted).toEqual([]);
+            expect(selectedNodeId()).toBeNull();
+        });
+
+        it('saves the panel and keeps it open on Ctrl+S', () => {
+            editPanel();
+
+            press({ code: 'KeyS', key: 's', ctrlKey: true });
+
+            expect(emitted).toEqual([editedNode]);
+            expect(selectedNodeId()).toBe(endNode.id);
+        });
+    });
+
     describe('trigger node for a user who may update but not run flows', () => {
         const scheduleNode: ScheduleTriggerNodeModel = {
             id: 'schedule-1',
@@ -392,6 +460,7 @@ describe('NodePanelShellComponent', () => {
         const shellFor = (type: NodeType): NodePanelShellComponent => {
             TestBed.configureTestingModule({
                 providers: [
+                    provideLoadedExecutionTimeoutLimits(),
                     {
                         provide: SidePanelService,
                         useValue: {
@@ -467,6 +536,7 @@ describe('NodePanelShellComponent', () => {
             const open = vi.fn();
             TestBed.configureTestingModule({
                 providers: [
+                    provideLoadedExecutionTimeoutLimits(),
                     { provide: FLOW_EDITOR_PREVIEW, useValue: options.isPreview ?? false },
                     {
                         provide: PermissionsService,
@@ -562,6 +632,30 @@ describe('NodePanelShellComponent', () => {
             detailsButton(fixture)!.click();
 
             expect(open).toHaveBeenCalledWith('Node Details', recorded, detailsButton(fixture));
+        });
+
+        const headerText = (fixture: { nativeElement: HTMLElement }, selector: string): string | undefined =>
+            fixture.nativeElement.querySelector(`.dialog-header ${selector}`)?.textContent?.trim();
+
+        it('heads the panel with the node name and its number beside it, so same-named nodes are told apart', async () => {
+            const { fixture } = await mountDetails({ ...savedPythonNode, node_name: 'Fetch', nodeNumber: 4 });
+
+            expect(headerText(fixture, '.title')).toBe('Fetch');
+            expect(headerText(fixture, '.node-number')).toBe('#4');
+        });
+
+        it('shows no lone number in the header while the node has no name', async () => {
+            const { fixture } = await mountDetails({ ...savedPythonNode, node_name: '', nodeNumber: 4 });
+
+            expect(headerText(fixture, '.title')).toBe('');
+            expect(headerText(fixture, '.node-number')).toBeUndefined();
+        });
+
+        it('heads an End node panel with its fixed name and no number', async () => {
+            const { fixture } = await mountDetails({ ...endNode, backendId: liveEnd.id });
+
+            expect(headerText(fixture, '.title')).toBe('End');
+            expect(headerText(fixture, '.node-number')).toBeUndefined();
         });
 
         it('shows no author for a node that is not saved yet', async () => {

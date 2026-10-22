@@ -3,8 +3,17 @@
 # docker-entrypoint.d scripts, then envsubst), with the nginx image pinned in
 # src/docker-compose.yaml, and runs `nginx -T` (test the configuration and print it) on the result:
 #
+#   - that it runs what the stack runs: every hook in src/nginx/docker-entrypoint.d, which
+#     src/docker-compose.yaml and the labs in tests/gateway and tests/development must mount too,
+#     and every variable src/docker-compose.yaml passes to epicstaff-nginx, which this script and
+#     each lab's nginx must set; and that the hooks refuse what they must: TLS on without a
+#     certificate, and an NGINX_HSTS_ENABLED that is not a boolean;
 #   - every combination of CHAT_ENABLED, PLUGINS_ENABLED and NGINX_SSL_MODE, with throwaway
-#     self-signed certificates; with the plugins flag off nothing plugin-related may be rendered;
+#     self-signed certificates, and every pair of NGINX_SSL_MODE and NGINX_HSTS_ENABLED among
+#     them; with the plugins flag off nothing plugin-related may be rendered;
+#   - in each, that Strict-Transport-Security follows NGINX_HSTS_ENABLED alone, whatever
+#     NGINX_SSL_MODE: every location of EpicStaff's own server and of the plugin hosts' sends it
+#     with the flag true, none with it false;
 #   - with plugins on, PLUGINS_DEV_MODE false and true: off, no page decision, no development
 #     server location and nothing on 8082; on, both SPA locations ask the page decision, the
 #     development server's location hides its cookies, framing rule and policy, asks for
@@ -31,8 +40,10 @@
 #   - live, inside the container: which upstreams receive the browser's cookies and may set
 #     one, the package upload route (with a 1 MiB and a 300 MiB package limit), the login callback
 #     pages a plugin host serves from src/nginx/plugin-platform, which listener answers a caller
-#     on the plugins subnet (127.0.0.0/8 stands in for it) and which refuses it, and the headers
-#     the internal API listener sends Django.
+#     on the plugins subnet (127.0.0.0/8 stands in for it) and which refuses it, the headers
+#     the internal API listener sends Django, and, with plugins off and on, the health server on
+#     127.0.0.1:8081 that the stack's healthcheck asks, next to the internal API listener on the
+#     container's other addresses.
 #
 # Needs Docker and openssl. The containers have no network and publish no ports; nothing is left
 # behind. Usage, from anywhere: bash src/nginx/tests/check_templates.sh
@@ -40,9 +51,17 @@ set -euo pipefail
 
 nginx_dir=$(cd "$(dirname "$0")/.." && pwd)
 compose_file="$nginx_dir/../docker-compose.yaml"
-plugins_envsh="$nginx_dir/docker-entrypoint.d/16-normalize-plugins-enabled.envsh"
-chat_envsh="$nginx_dir/docker-entrypoint.d/15-normalize-chat-enabled.envsh"
+hooks_dir="$nginx_dir/docker-entrypoint.d"
+gateway_lab_compose_file="$nginx_dir/tests/gateway/compose.yaml"
+development_lab_compose_file="$nginx_dir/tests/development/compose.yaml"
 platform_dir="$nginx_dir/plugin-platform"
+
+# The stack's start-up hooks, by file name. Each container here mounts all of them, and the
+# image's entrypoint runs them in the order of their names, as in the stack.
+hooks=()
+for hook_path in "$hooks_dir"/*; do
+  hooks+=("${hook_path##*/}")
+done
 
 image=$(awk '/^  epicstaff-nginx:$/ { in_service = 1; next }
              in_service && /^    image:/ { print $2; exit }' "$compose_file")
@@ -90,36 +109,42 @@ fail() {
   failures=$((failures + 1))
 }
 
-# Fills docker_arguments with the stack's nginx environment (the variables
-# src/docker-compose.yaml passes to epicstaff-nginx), overridden by the NAME=value arguments, and
-# the mounts the image's entrypoint needs. An argument "unset:NAME" leaves NAME out entirely.
+# The stack's nginx environment: every variable src/docker-compose.yaml passes to epicstaff-nginx
+# (a check below fails when one is missing here), with this script's values.
+stack_environment=(
+  NGINX_SERVER_NAME=epicstaff.test NGINX_SSL_MODE=off NGINX_HSTS_ENABLED=true
+  DJANGO_HOST=django DJANGO_PORT=8000 FRONTEND_HOST=frontend FRONTEND_PORT=80
+  REALTIME_HOST=realtime REALTIME_PORT=8050 WEBHOOK_HOST=webhook WEBHOOK_PORT=8009
+  AUDITOR_HOST=auditor AUDITOR_PORT=8010 CHAT_ENABLED=false CHAT_UPSTREAM_URL=http://chat:8200
+  PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test
+  PLUGINS_MAX_PACKAGE_MB=300 PLUGINS_MAX_REQUEST_BODY_MB=20 PLUGINS_GATEWAY_SECRET="$gateway_secret"
+  DJANGO_FRONTEND_BASE_URL=https://epicstaff.test PLUGINS_NETWORK_SUBNET=10.235.0.0/24
+)
+
+# Fills docker_arguments with the stack's nginx environment, overridden by the NAME=value
+# arguments, and the mounts the image's entrypoint needs: the templates, every hook and the
+# throwaway certificates. An argument "unset:NAME" leaves NAME out entirely; "certificates:DIR"
+# mounts DIR as /etc/nginx/certs instead.
 docker_arguments=()
 set_docker_arguments() {
-  local assignment argument unset_names=" "
+  local assignment argument hook unset_names=" " certificates_dir="$work_dir/certs"
   for argument in "$@"; do
-    case "$argument" in unset:*) unset_names="$unset_names${argument#unset:} " ;; esac
+    case "$argument" in
+      unset:*) unset_names="$unset_names${argument#unset:} " ;;
+      certificates:*) certificates_dir=${argument#certificates:} ;;
+    esac
   done
   docker_arguments=(--network none)
-  for assignment in \
-    NGINX_ENTRYPOINT_QUIET_LOGS=1 \
-    NGINX_SERVER_NAME=epicstaff.test NGINX_SSL_MODE=off \
-    DJANGO_HOST=django DJANGO_PORT=8000 FRONTEND_HOST=frontend FRONTEND_PORT=80 \
-    REALTIME_HOST=realtime REALTIME_PORT=8050 WEBHOOK_HOST=webhook WEBHOOK_PORT=8009 \
-    AUDITOR_HOST=auditor AUDITOR_PORT=8010 CHAT_ENABLED=false CHAT_UPSTREAM_URL=http://chat:8200 \
-    PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test \
-    PLUGINS_MAX_PACKAGE_MB=300 PLUGINS_MAX_REQUEST_BODY_MB=20 PLUGINS_GATEWAY_SECRET="$gateway_secret" \
-    DJANGO_FRONTEND_BASE_URL=https://epicstaff.test PLUGINS_NETWORK_SUBNET=10.235.0.0/24 \
-    "$@"; do
-    case "$assignment" in unset:*) continue ;; esac
+  for assignment in NGINX_ENTRYPOINT_QUIET_LOGS=1 "${stack_environment[@]}" "$@"; do
+    case "$assignment" in unset:* | certificates:*) continue ;; esac
     case "$unset_names" in *" ${assignment%%=*} "*) continue ;; esac
     docker_arguments+=(-e "$assignment")
   done
-  docker_arguments+=(
-    -v "$nginx_dir/templates:/etc/nginx/templates:ro"
-    -v "$chat_envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro"
-    -v "$plugins_envsh:/docker-entrypoint.d/16-normalize-plugins-enabled.envsh:ro"
-    -v "$work_dir/certs:/etc/nginx/certs:ro"
-  )
+  docker_arguments+=(-v "$nginx_dir/templates:/etc/nginx/templates:ro")
+  for hook in "${hooks[@]}"; do
+    docker_arguments+=(-v "$hooks_dir/$hook:/docker-entrypoint.d/$hook:ro")
+  done
+  docker_arguments+=(-v "$certificates_dir:/etc/nginx/certs:ro")
   # As the stack mounts it. Only when present: Docker would create a missing one on the host.
   if [ -d "$platform_dir" ]; then
     docker_arguments+=(-v "$platform_dir:/usr/share/nginx/plugin-platform:ro")
@@ -152,17 +177,25 @@ expect_valid() {
   return "$status"
 }
 
-# $1 = description, $2 = text the error must contain; the rest = overrides. Passes when the
-# container stops with exit status 64 and that error, as the envsh does for a value it refuses.
-expect_refused() {
-  local description=$1 message=$2 status=0
-  shift 2
+# $1 = description, $2 = the exit status, $3 = text the error must contain; the rest = overrides.
+# Passes when a hook stops the container with that status and that error.
+expect_stopped() {
+  local description=$1 expected_status=$2 message=$3 status=0
+  shift 3
   render "$@" || status=$?
-  if [ "$status" -eq 64 ] && grep -qF -- "$message" "$work_dir/err"; then
+  if [ "$status" -eq "$expected_status" ] && grep -qF -- "$message" "$work_dir/err"; then
     pass "$description"
   else
     fail "$description (exit $status): $(tail -n 3 "$work_dir/err" | tr '\n' ' ')"
   fi
+}
+
+# $1 = description, $2 = text the error must contain; the rest = overrides. Passes when the
+# container stops with exit status 64 and that error, as an envsh does for a value it refuses.
+expect_refused() {
+  local description=$1 message=$2
+  shift 2
+  expect_stopped "$description" 64 "$message" "$@"
 }
 
 # $1 = description; the rest = directive texts that must all be in the last rendered configuration.
@@ -680,16 +713,217 @@ expect_location_directive() {
   fi
 }
 
-if [ -x "$plugins_envsh" ]; then
-  pass "16-normalize-plugins-enabled.envsh is executable (the image ignores it otherwise)"
-else
-  fail "16-normalize-plugins-enabled.envsh is not executable: the image's entrypoint skips it"
+# Reads the flattened configuration twice (the file name, twice) and checks Strict-Transport-Security
+# in EpicStaff's own server (server 1) and the plugin hosts' server (the one whose server_name
+# captures plugin_identifier), location by location, the server level ("") among them: with
+# -v enabled=true each sends hsts-true.snippet's header exactly once, with false none sends one. A
+# location's add_header lines replace its server's, and the server's the http level's, only when
+# it has any; the check applies that. Prints one line per problem, then "checked <n> <m>": how many
+# locations of EpicStaff's server and of the plugin hosts' it checked.
+read -r -d '' hsts_check_program << 'AWK' || :
+BEGIN {
+  FS = "\t"
+  wanted = "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always"
+}
+NR == FNR {
+  if ($3 ~ /^server_name "~\^\(\?<plugin_identifier>/) plugin_server = $1
+  next
+}
+{
+  key = $1 SUBSEP $2
+  split($3, word, " ")
+  if (word[1] == "add_header") {
+    adds[key] = 1
+    if (tolower(word[2]) == "strict-transport-security") {
+      sent[key]++
+      if ($3 != wanted) other[key] = $3
+    }
+  }
+  # plugin_server is unset with plugins off, and an unset variable compares equal to 0 (the http
+  # level), hence the test for "".
+  if (($1 == 1 || (plugin_server != "" && $1 == plugin_server)) && !(key in seen)) {
+    seen[key] = 1
+    order[++count] = key
+  }
+}
+function header_level(server, location) {
+  if ((server SUBSEP location) in adds) return server SUBSEP location
+  if ((server SUBSEP "") in adds) return server SUBSEP ""
+  return 0 SUBSEP ""
+}
+END {
+  for (i = 1; i <= count; i++) {
+    split(order[i], part, SUBSEP)
+    label = (part[1] == 1 ? "EpicStaff's server" : "the plugin hosts' server") \
+      " [" (part[2] == "" ? "server level" : part[2]) "]"
+    level = header_level(part[1], part[2])
+    times = sent[level] + 0
+    if (enabled == "true" && times != 1) print label ": sends Strict-Transport-Security " times " times, not once"
+    else if (enabled == "true" && (level in other)) print label ": sends " other[level]
+    else if (enabled != "true" && times != 0) print label ": sends Strict-Transport-Security with NGINX_HSTS_ENABLED=false"
+    if (part[1] == 1) main_count++
+    else plugin_count++
+  }
+  print "checked " main_count + 0 " " plugin_count + 0
+}
+AWK
+
+# $1 = a file of `nginx -T` output, $2 = its NGINX_HSTS_ENABLED (true or false); prints the HSTS
+# check's problems, sorted.
+hsts_problems() {
+  flatten_configuration "$1" > "$work_dir/flat"
+  awk -v enabled="$2" "$hsts_check_program" "$work_dir/flat" "$work_dir/flat" \
+    | { grep -v '^checked ' || true; } | LC_ALL=C sort
+}
+
+# $1 = description, $2 = NGINX_HSTS_ENABLED of the last rendered configuration, $3 = whether it has
+# the plugin hosts' server (true or false).
+expect_hsts_rule() {
+  local problems counts main_count plugin_count
+  problems=$(hsts_problems "$work_dir/out" "$2")
+  counts=$(awk -v enabled="$2" "$hsts_check_program" "$work_dir/flat" "$work_dir/flat" | sed -n 's/^checked //p')
+  main_count=${counts% *}
+  plugin_count=${counts#* }
+  if [ -n "$problems" ]; then
+    fail "$1: $(printf '%s\n' "$problems" | paste -sd ';' -)"
+  elif [ "$main_count" -eq 0 ] || { [ "$3" = true ] && [ "$plugin_count" -eq 0 ]; } \
+    || { [ "$3" = false ] && [ "$plugin_count" -ne 0 ]; }; then
+    fail "$1: checked $main_count locations of EpicStaff's server and $plugin_count of the plugin hosts'"
+  else
+    pass "$1 ($main_count locations of EpicStaff's server, $plugin_count of the plugin hosts')"
+  fi
+}
+
+# Reads `docker compose config` and prints how it wires one nginx service (-v service): "image
+# <image>", "environment <NAME>", "hook <file name>" for each mount into /docker-entrypoint.d, and
+# "healthcheck <command>" for a CMD-SHELL healthcheck. Compose prints every service in one canonical
+# layout (two spaces per level, keys sorted, every mount in the long syntax), which this relies on.
+read -r -d '' compose_wiring_program << 'AWK' || :
+$0 == "  " service ":" { in_service = 1; next }
+!in_service { next }
+/^[^ ]/ || /^  [^ ]/ { exit }
+/^    [a-z_]+:/ {
+  section = $1
+  if (section == "image:") print "image " $2
+  next
+}
+section == "environment:" && /^      [A-Za-z_][A-Za-z0-9_]*:/ {
+  name = $1
+  sub(/:$/, "", name)
+  print "environment " name
+}
+section == "volumes:" && $1 == "target:" && index($2, "/docker-entrypoint.d/") == 1 {
+  print "hook " substr($2, length("/docker-entrypoint.d/") + 1)
+}
+section == "healthcheck:" && /^      [a-z_]+:/ { in_test = ($1 == "test:"); next }
+section == "healthcheck:" && in_test && /^        - / {
+  item = substr($0, 11)
+  if (item == "CMD-SHELL") shell = 1
+  else if (shell) print "healthcheck " item
+}
+AWK
+
+# $1 = compose file, $2 = service. --no-interpolate and an empty env file: no variable is read,
+# and src/.env is never opened. Every profile, so a service that only `compose run` starts counts.
+compose_nginx_wiring() {
+  docker compose -f "$1" --env-file /dev/null --profile '*' config --no-interpolate 2> "$work_dir/compose-err" \
+    | awk -v service="$2" "$compose_wiring_program"
+}
+# $1 = a wiring, $2 = image, environment, hook or healthcheck; prints its values of that kind, sorted.
+wiring_values() {
+  printf '%s\n' "$1" | sed -n "s/^$2 //p" | LC_ALL=C sort
+}
+
+for hook in "${hooks[@]}"; do
+  if [ -x "$hooks_dir/$hook" ]; then
+    pass "$hook is executable (the image's entrypoint skips it otherwise)"
+  else
+    fail "$hook is not executable: the image's entrypoint skips it"
+  fi
+done
+
+# What starts nginx for a test starts it as the stack does: every hook in docker-entrypoint.d (a
+# hook left out goes untested, and the configuration it would have changed with it), and every
+# variable the stack passes (one left out renders a template the stack never renders, or stops
+# nginx). This script and the two labs, which name their mounts and variables one by one.
+expected_hooks=$(printf '%s\n' "${hooks[@]}" | LC_ALL=C sort)
+stack_wiring=$(compose_nginx_wiring "$compose_file" epicstaff-nginx)
+stack_variables=$(wiring_values "$stack_wiring" environment)
+stack_healthcheck=$(wiring_values "$stack_wiring" healthcheck)
+if [ -z "$stack_variables" ] || [ -z "$stack_healthcheck" ]; then
+  fail "docker compose config shows no environment or healthcheck for epicstaff-nginx: $(tail -n 3 "$work_dir/compose-err" | tr '\n' ' ')"
 fi
+# $1 = whose wiring, $2 = the wiring.
+expect_stack_wiring() {
+  local missing
+  if [ "$(wiring_values "$2" hook)" = "$expected_hooks" ]; then
+    pass "$1 mounts every hook in docker-entrypoint.d, and no other"
+  else
+    fail "$1 mounts the hooks [$(wiring_values "$2" hook | paste -sd ' ' -)], not [$(printf '%s\n' "$expected_hooks" | paste -sd ' ' -)]"
+  fi
+  missing=$(printf '%s\n' "$stack_variables" | { grep -vxF -f <(wiring_values "$2" environment) || true; } \
+    | paste -sd ' ' -)
+  if [ -n "$stack_variables" ] && [ -z "$missing" ]; then
+    pass "$1 sets every variable src/docker-compose.yaml passes to epicstaff-nginx"
+  else
+    fail "$1 does not set [$missing], which src/docker-compose.yaml passes to epicstaff-nginx"
+  fi
+}
+expect_stack_wiring "src/docker-compose.yaml's epicstaff-nginx" "$stack_wiring"
+expect_stack_wiring "this script" "$(printf 'hook %s\n' "${hooks[@]}"; printf 'environment %s\n' "${stack_environment[@]%%=*}")"
+for lab_service in "tests/gateway's nginx|$gateway_lab_compose_file|nginx" \
+  "tests/development's nginx|$development_lab_compose_file|nginx" \
+  "tests/development's nginx-off|$development_lab_compose_file|nginx-off" \
+  "tests/development's nginx-unmarked|$development_lab_compose_file|nginx-unmarked"; do
+  IFS='|' read -r label lab_compose_file service <<< "$lab_service"
+  lab_wiring=$(compose_nginx_wiring "$lab_compose_file" "$service")
+  expect_stack_wiring "$label" "$lab_wiring"
+  lab_image=$(wiring_values "$lab_wiring" image)
+  case "$lab_image" in
+    # Named by a variable: its run.sh reads the stack's pin.
+    *\$\{*) ;;
+    "$image") pass "$label runs the stack's pinned nginx image" ;;
+    *) fail "$label runs [$lab_image], not the stack's pinned [$image]" ;;
+  esac
+done
+
+# The stack's TLS and HSTS hooks, as they run here: TLS on without a certificate, or with an empty
+# one, stops nginx (16-check-ssl-mode.envsh, exit 1) and names the file; NGINX_HSTS_ENABLED is read
+# like every other boolean (17-normalize-hsts-enabled.envsh).
+mkdir "$work_dir/no-certs" "$work_dir/empty-key"
+cp "$work_dir/certs/fullchain.pem" "$work_dir/empty-key/"
+: > "$work_dir/empty-key/privkey.pem"
+expect_stopped "NGINX_SSL_MODE=on without a certificate stops nginx, naming the file" 1 \
+  "NGINX_SSL_MODE=on) but /etc/nginx/certs/fullchain.pem is missing or empty" \
+  NGINX_SSL_MODE=on "certificates:$work_dir/no-certs"
+expect_stopped "NGINX_SSL_MODE=on with an empty key stops nginx, naming the file" 1 \
+  "NGINX_SSL_MODE=on) but /etc/nginx/certs/privkey.pem is missing or empty" \
+  NGINX_SSL_MODE=on "certificates:$work_dir/empty-key"
+if expect_valid "NGINX_HSTS_ENABLED=Yes is accepted" NGINX_HSTS_ENABLED=Yes PLUGINS_ENABLED=true; then
+  expect_hsts_rule "NGINX_HSTS_ENABLED=Yes is read as true" true true
+fi
+expect_refused "NGINX_HSTS_ENABLED=maybe is refused" "NGINX_HSTS_ENABLED='maybe' is not a boolean" \
+  NGINX_HSTS_ENABLED=maybe
+expect_refused "an unset NGINX_HSTS_ENABLED is refused" "environment variable NGINX_HSTS_ENABLED is not set" \
+  unset:NGINX_HSTS_ENABLED
+
+# The NGINX_HSTS_ENABLED of a run of the loops below, $1 = CHAT_ENABLED, $2 = NGINX_SSL_MODE: over
+# a loop's four runs each TLS mode gets both values. True with TLS in nginx, or ended by a load
+# balancer in front of it (TLS off); false with TLS off, or on with an internal certificate.
+hsts_for() {
+  case "$1:$2" in
+    false:on | true:off) echo true ;;
+    *) echo false ;;
+  esac
+}
 
 for chat_enabled in false true; do for ssl_mode in off on; do
-  flags="CHAT_ENABLED=$chat_enabled NGINX_SSL_MODE=$ssl_mode"
-  if expect_valid "nginx -t: PLUGINS_ENABLED=false $flags" \
-    PLUGINS_ENABLED=false NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled; then
+  hsts_enabled=$(hsts_for "$chat_enabled" "$ssl_mode")
+  flags="CHAT_ENABLED=$chat_enabled NGINX_SSL_MODE=$ssl_mode NGINX_HSTS_ENABLED=$hsts_enabled"
+  if expect_valid "nginx -t: PLUGINS_ENABLED=false $flags" PLUGINS_ENABLED=false \
+    NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled NGINX_HSTS_ENABLED="$hsts_enabled"; then
+    expect_hsts_rule "PLUGINS_ENABLED=false $flags: Strict-Transport-Security follows NGINX_HSTS_ENABLED" \
+      "$hsts_enabled" false
     expect_only_django_cookies "PLUGINS_ENABLED=false $flags: only Django gets and sets cookies"
     expect_django_headers_blanked "PLUGINS_ENABLED=false $flags: no caller can send Django the internal listener's headers" 6
     leaked=""
@@ -713,8 +947,10 @@ for chat_enabled in false true; do for ssl_mode in off on; do
     fi
   fi
 
-  if expect_valid "nginx -t: PLUGINS_ENABLED=true $flags" \
-    PLUGINS_ENABLED=true NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled; then
+  if expect_valid "nginx -t: PLUGINS_ENABLED=true $flags" PLUGINS_ENABLED=true \
+    NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled NGINX_HSTS_ENABLED="$hsts_enabled"; then
+    expect_hsts_rule "PLUGINS_ENABLED=true $flags: Strict-Transport-Security follows NGINX_HSTS_ENABLED on EpicStaff's server and the plugin hosts" \
+      "$hsts_enabled" true
     expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
     expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config and /api/) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 2
     expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals"
@@ -887,15 +1123,20 @@ flatten_configuration_lines_missing() { # $1 = location
 # test), the development server's answer gets the platform's headers and none of its own cookies,
 # framing rule or policy, and never a person's login, an API key or a plugin context, and the
 # development API listener serves the internal listener's routes to callers off the plugins subnet.
+# The development server's page and its unreachable answer follow NGINX_HSTS_ENABLED too.
 for chat_enabled in false true; do for ssl_mode in off on; do
-  flags="CHAT_ENABLED=$chat_enabled NGINX_SSL_MODE=$ssl_mode PLUGINS_DEV_MODE=true"
+  hsts_enabled=$(hsts_for "$chat_enabled" "$ssl_mode")
+  flags="CHAT_ENABLED=$chat_enabled NGINX_SSL_MODE=$ssl_mode NGINX_HSTS_ENABLED=$hsts_enabled PLUGINS_DEV_MODE=true"
   scheme=http
   if [ "$ssl_mode" = on ]; then
     scheme=https
   fi
   if expect_valid "nginx -t: PLUGINS_ENABLED=true $flags" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true \
-    NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
-    "DJANGO_FRONTEND_BASE_URL=$scheme://epicstaff.localhost" "$loopback_marker"; then
+    NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled NGINX_HSTS_ENABLED="$hsts_enabled" \
+    PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost "DJANGO_FRONTEND_BASE_URL=$scheme://epicstaff.localhost" \
+    "$loopback_marker"; then
+    expect_hsts_rule "PLUGINS_ENABLED=true $flags: Strict-Transport-Security follows NGINX_HSTS_ENABLED on EpicStaff's server and the plugin hosts" \
+      "$hsts_enabled" true
     expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
     expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config, /api/ and the development server's page) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 3
     expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals, and never the development server's page"
@@ -1169,6 +1410,43 @@ if expect_valid "nginx -t: PLUGINS_ENABLED=true, for the gateway deny check's se
   fi
 fi
 
+# The HSTS check itself, with development mode on (every location of the plugin hosts), from
+# configurations broken on purpose:
+#   - the include deleted from plugins-security-headers.snippet: it names every location of the
+#     plugin hosts' server, the server level among them, and none of EpicStaff's;
+#   - an add_header of its own in one location of EpicStaff's server, which then inherits none of
+#     the server's: it names exactly that location (nginx's inheritance, modelled right).
+if expect_valid "nginx -t: PLUGINS_DEV_MODE=true NGINX_HSTS_ENABLED=true, for the HSTS check's self-test" \
+  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true NGINX_HSTS_ENABLED=true \
+  PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost \
+  "$loopback_marker"; then
+  hsts_problems "$work_dir/out" true > /dev/null
+  plugin_locations=$(awk -v enabled=true "$hsts_check_program" "$work_dir/flat" "$work_dir/flat" \
+    | sed -n 's/^checked [0-9]* //p')
+  awk '/^# configuration file / { in_snippet = ($0 ~ /plugins-security-headers\.snippet:$/) }
+       !(in_snippet && /^include \/etc\/nginx\/conf\.d\/hsts-true\.snippet;/)' "$work_dir/out" \
+    > "$work_dir/out-broken"
+  found=$(hsts_problems "$work_dir/out-broken" true)
+  named=$(printf '%s\n' "$found" | grep -c "^the plugin hosts' server \[.*\]: sends Strict-Transport-Security 0 times" || true)
+  if [ "$plugin_locations" -gt 10 ] && [ "$named" = "$plugin_locations" ] \
+    && [ "$(printf '%s\n' "$found" | grep -c .)" = "$plugin_locations" ] \
+    && printf '%s\n' "$found" | grep -qF "the plugin hosts' server [server level]"; then
+    pass "the HSTS check finds every location of the plugin hosts without the header ($plugin_locations)"
+  else
+    fail "the HSTS check, without the plugin hosts' include, found [$(printf '%s\n' "$found" | paste -sd ';' -)] of $plugin_locations locations"
+  fi
+  awk '/^# configuration file / { in_default = ($0 ~ /\/default\.conf:$/) }
+       { print }
+       in_default && /^    location \/static\/ [{]/ { print "        add_header X-Check-Inheritance 1 always;" }' \
+    "$work_dir/out" > "$work_dir/out-broken"
+  found=$(hsts_problems "$work_dir/out-broken" true)
+  if [ "$found" = "EpicStaff's server [/static/]: sends Strict-Transport-Security 0 times, not once" ]; then
+    pass "the HSTS check applies nginx's add_header inheritance"
+  else
+    fail "the HSTS check, with an add_header of its own in /static/, found [$(printf '%s\n' "$found" | paste -sd ';' -)]"
+  fi
+fi
+
 # The maintenance page as committed: static, so it runs nothing and loads nothing from anywhere
 # (its policy allows only inline style), reloads itself, and says what is happening.
 maintenance_page="$platform_dir/maintenance.html"
@@ -1400,6 +1678,23 @@ upload() {
     "$@" http://127.0.0.1/api/admin/plugins/packages/' upload "$@" || true
 }
 reached_django() { live grep -q "^$1" /tmp/stub-django.log; }
+# Port 8081 has two servers (default.conf.template): the health server on 127.0.0.1, which the
+# stack's healthcheck asks, and, with plugins on, the internal API listener on every other address
+# of the container, as plugin backends reach it on plugins-network. nginx picks the server by the
+# address a connection arrives on, so curl in this container reaches the listener on another
+# loopback address (from 127.0.0.1, so still a caller on the plugins subnet when that is 127.0.0.0/8).
+internal_listener=http://127.0.0.2:8081
+# $1 = how the running container was started. Passes when /nginx-health on 127.0.0.1:8081 answers
+# 204 and the stack's own healthcheck command, as src/docker-compose.yaml runs it, succeeds.
+expect_health_server() {
+  local status
+  status=$(live curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/nginx-health || true)
+  if [ "$status" = 204 ] && [ -n "$stack_healthcheck" ] && live sh -c "$stack_healthcheck" > /dev/null 2>&1; then
+    pass "$1: /nginx-health on 127.0.0.1:8081 answers 204, and the stack's healthcheck passes"
+  else
+    fail "$1: /nginx-health on 127.0.0.1:8081 answered $status, or the stack's healthcheck [$stack_healthcheck] failed"
+  fi
+}
 for _ in $(seq 50); do
   if live curl -s -o /dev/null http://127.0.0.1:8000/ 2> /dev/null; then break; fi
   sleep 0.1
@@ -1445,11 +1740,19 @@ status=$(upload -H 'Authorization: Bearer superadmin' --data-binary @/tmp/too-la
 
 # 127.0.0.1 is not in this container's PLUGINS_NETWORK_SUBNET (10.235.0.0/24): a caller off the
 # plugins network.
-for path in /api/plugin-nodes/self/desired-state/ /api/auth/token/ /; do
-  status=$(live curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8081$path" || true)
+for path in /api/plugin-nodes/self/desired-state/ /api/auth/token/ / /nginx-health; do
+  status=$(live curl -s -o /dev/null -w '%{http_code}' "$internal_listener$path" || true)
   [ "$status" = 403 ] && pass "the internal API listener refuses a caller outside the plugins subnet: $path" \
     || fail "the internal API listener from outside the plugins subnet: $path expected 403, got $status"
 done
+expect_health_server "PLUGINS_ENABLED=true"
+live sh -c ': > /tmp/stub-django.log'
+status=$(live curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/api/plugin-nodes/self/desired-state/ || true)
+if [ "$status" = 404 ] && ! reached_django ""; then
+  pass "on 127.0.0.1:8081 only the health server answers: an API path gets its 404 and never reaches Django"
+else
+  fail "an API path on 127.0.0.1:8081: expected the health server's 404, got $status"
+fi
 status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Host: epicstaff.test' http://127.0.0.1/ || true)
 [ "$status" != 403 ] && pass "EpicStaff's server answers a caller outside the plugins subnet ($status)" \
   || fail "EpicStaff's server refused a caller outside the plugins subnet"
@@ -1519,6 +1822,9 @@ else
       || problems="$problems Cache-Control [$(header_values Cache-Control)];"
     [ "$(header_values X-Content-Type-Options)" = nosniff ] || problems="$problems no nosniff;"
     [ "$(header_values Origin-Agent-Cluster)" = '?1' ] || problems="$problems no Origin-Agent-Cluster;"
+    # NGINX_HSTS_ENABLED=true (this script's value), over plain http: by the flag, not the scheme.
+    [ "$(header_values Strict-Transport-Security)" = "max-age=31536000; includeSubDomains" ] \
+      || problems="$problems Strict-Transport-Security [$(header_values Strict-Transport-Security)];"
     [ -z "$(header_values X-Frame-Options)$(header_values Set-Cookie)" ] \
       || problems="$problems X-Frame-Options or Set-Cookie sent;"
     if live grep -q . /tmp/stub-django.log; then problems="$problems reached Django;"; fi
@@ -1620,7 +1926,7 @@ done
 live sh -c ': > /tmp/stub-django.log; : > /tmp/stub-headers.log'
 status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: PluginNodeKey k' \
   -H 'X-Plugin-Network-Secret: forged' -H 'X-Plugin-Development-Listener: 1' \
-  http://127.0.0.1:8081/api/plugin-nodes/self/desired-state/ || true)
+  "$internal_listener/api/plugin-nodes/self/desired-state/" || true)
 received=$(live cat /tmp/stub-headers.log)
 if ! reached_django "GET /api/plugin-nodes/self/desired-state/"; then
   fail "the internal API listener did not pass a plugins-subnet caller on to Django ($status)"
@@ -1642,7 +1948,7 @@ for case in "7|-H X-EpicStaff-On-Behalf-Of:7|$expected_secret on_behalf_of=[7]" 
   live sh -c ': > /tmp/stub-headers.log'
   # shellcheck disable=SC2086  # $extra is a list of curl arguments without spaces in them.
   status=$(live curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: PluginKey esp-check' \
-    -H 'X-Organization-Id: 3' $extra http://127.0.0.1:8081/api/plugin-runtime/me/ || true)
+    -H 'X-Organization-Id: 3' $extra "$internal_listener/api/plugin-runtime/me/" || true)
   received=$(live cat /tmp/stub-headers.log)
   # The internal listener never says it is the development one, whatever the caller sends.
   if [ "$status" = 200 ] && [ "$received" = "$expected development=[-] authorization=[PluginKey esp-check] organization=[3]" ]; then
@@ -1696,6 +2002,7 @@ for plugins_enabled in false true; do
     if live curl -s -o /dev/null http://127.0.0.1:8001/ 2> /dev/null; then break; fi
     sleep 0.1
   done
+  expect_health_server "PLUGINS_ENABLED=$plugins_enabled"
   wrong=""
   # "<path> <port of the upstream it must reach> <django: cookies both ways, or - for none>"
   for target in "/ 8001 -" "/plugins/weather 8001 -" "/chat 8001 -" "/chat/api/x 8200 -" \

@@ -51,6 +51,15 @@ else
   echo "ok - the internal API listener (8081) is not published"
 fi
 
+echo "# inside the nginx container, where the stack's healthcheck runs"
+code=$(compose exec -T nginx curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/nginx-health || true)
+if [ "$code" = 204 ]; then
+  echo "ok - /nginx-health on 127.0.0.1:8081 answers 204, next to the internal API listener on the same port"
+else
+  echo "not ok - /nginx-health on 127.0.0.1:8081 answered $code"
+  status=1
+fi
+
 echo "# load (wrk; 0 errors and 0 non-2xx expected)"
 {
   compose exec -T -e DURATION="${DURATION:-10s}" inside bash /lab/scripts/bench.sh direct

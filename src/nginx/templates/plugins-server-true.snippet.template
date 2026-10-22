@@ -8,13 +8,6 @@
 # platform's login callback pages and its maintenance page are the same static files on every
 # host; the platform's other paths answer 404.
 
-# HSTS for the plugin hosts when nginx terminates TLS (NGINX_SSL_MODE=on), as EpicStaff's own
-# server does. A variable, because the header has to be repeated in every location.
-map $scheme $plugin_strict_transport_security {
-    https   "max-age=31536000; includeSubDomains";
-    default "";
-}
-
 # Authorization reaches a plugin only on one of its declared public paths, where the token is
 # the plugin's own (the gateway check answers X-Plugin-Forward-Authorization: 1). On every other
 # path the header was meant for EpicStaff, and it stops here.

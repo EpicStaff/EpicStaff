@@ -34,8 +34,8 @@ import {
     NodeType,
     ResourceCode,
 } from '@shared/models';
-import { LABELS_STORE, LlmConfigStorageService } from '@shared/services';
-import { escapeHtml, extractHttpErrorMessage, generateUuid } from '@shared/utils';
+import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
+import { escapeHtml, extractHttpErrorMessage, formatNodeLabel, generateUuid } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -91,6 +91,7 @@ import { ConfigService } from '../../../../services/config';
 import { EasterEggTriggerService } from '../../../../services/easter-egg-trigger.service';
 import { ToastService } from '../../../../services/notifications';
 import { invalidKeyValueNodeMessages } from '../../../../visual-programming/core/helpers/key-value-node.helpers';
+import { renumberUnsavedNodesHolding } from '../../../../visual-programming/core/helpers/node-number.util';
 import { isTriggerNodeType } from '../../../../visual-programming/core/helpers/trigger-node-type.util';
 import {
     CdtExplanations,
@@ -113,6 +114,7 @@ import { CdtExplanationsApiService } from '../../../../visual-programming/servic
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { FlowReadOnlyService } from '../../../../visual-programming/services/flow-readonly.service';
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
+import { KeymapService } from '../../../../visual-programming/services/keymap.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
 import { ScheduleTriggerRuntimeService } from '../../../../visual-programming/services/schedule-trigger-runtime.service';
@@ -140,14 +142,16 @@ import {
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
     patchLiveFlowWithBackendIds,
-    toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
 import { withGraphScheduleTriggerRuntimeState } from '../../../../visual-programming/utils/save/schedule-trigger-runtime-state';
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
+import { invalidExecutionTimeoutMessages } from '../../../../visual-programming/utils/validation/execution-timeout.validator';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
-import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
-import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
+import {
+    SHORTCUTS_MODAL_HEIGHT_PX,
+    ShortcutsModalComponent,
+} from './components/shortcuts-modal/shortcuts-modal.component';
 import { SerialSaveQueue } from './serial-save-queue';
 
 /**
@@ -156,6 +160,35 @@ import { SerialSaveQueue } from './serial-save-queue';
  * short enough to catch a dialog closed right after a single one.
  */
 const CDT_EXPLANATIONS_SAVE_DEBOUNCE_MS = 1500;
+/** localStorage prefix of a decision table's grid layout, keyed `<graphId>_<node number, else backend id>`. */
+const CDT_GRID_STATE_PREFIX = 'cdt-grid-state-';
+
+/** The id each decision table's grid layout is stored under (its number, else its backend id), by node id. */
+function cdtGridStorageIds(flow: FlowModel): Map<string, number> {
+    const storageIds = new Map<string, number>();
+    for (const node of flow.nodes) {
+        const storageId = node.type === NodeType.CLASSIFICATION_TABLE ? (node.nodeNumber ?? node.backendId) : null;
+        if (storageId != null) storageIds.set(node.id, storageId);
+    }
+    return storageIds;
+}
+
+/** The numbers `nodes` show. */
+function numbersOf(nodes: NodeModel[]): Set<number> {
+    return new Set(nodes.map((node) => node.nodeNumber).filter((nodeNumber) => nodeNumber != null));
+}
+
+/** `flow` with the nodes listed in `numbersByNodeId` showing those numbers. */
+function withNodeNumbers(flow: FlowModel, numbersByNodeId: ReadonlyMap<string, number>): FlowModel {
+    if (numbersByNodeId.size === 0) return flow;
+    return {
+        ...flow,
+        nodes: flow.nodes.map((node) => {
+            const nodeNumber = numbersByNodeId.get(node.id);
+            return nodeNumber != null ? { ...node, nodeNumber } : node;
+        }),
+    };
+}
 
 export const TEST_RUN_NODE_GONE_MESSAGE = 'This node no longer exists — reload the flow';
 export const TEST_RUN_NODE_NOT_SAVED_MESSAGE = 'Click Save in the top panel to save the graph before running a test';
@@ -205,16 +238,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         () => new Map(this.flowService.nodes().map((node) => [node.id, node.color]))
     );
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly keymap = inject(KeymapService);
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly flowTestRunService = inject(FlowTestRunService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     /** The root instance, as for the live canvas and its panels; the version preview has its own. */
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
     private readonly usePermissionRefusal = inject(FlowUsePermissionRefusalService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
-    public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
     /** The latest save another user announced; `graphState` is outdated while its save_version is lower. */
@@ -230,6 +264,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     /** What the editor compares against as stored on the backend (e.g. the webhook panel's code-only run). */
     private readonly storedGraph = computed<GraphDto | null>(() => (this.isGraphOutdated() ? null : this.graphState()));
     protected readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
+    protected readonly currentFlowId = computed(() => this.graphState()?.id ?? null);
     /** The as-persisted snapshot used for dirty tracking; shared so panels can compare against it. */
     private readonly savedFlowStateService = inject(SavedFlowStateService);
     protected readonly collaborationEditors = this.wsService.editors;
@@ -239,11 +274,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return buildFlowModelFromGraphDto(graph);
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
-    public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
-        const current = toDirtyComparableFlowState(this.currentFlowState());
-        const saved = toDirtyComparableFlowState(this.savedFlowStateService.savedFlow());
-        return JSON.stringify(current) !== JSON.stringify(saved);
-    });
+    public readonly hasUnsavedChangesSignal = this.savedFlowStateService.hasUnsavedChanges;
 
     /**
      * Every request that writes the graph with its `save_version` goes through this,
@@ -303,8 +334,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private isDeactivating = false;
     private lastFetchedGraphId: number | null = null;
     private liveCdtStorageIds = new Set<string>();
-    // The nodeId/nodeName query opens its panel once; re-mounting the live canvas must not re-open it.
-    private lastNodeQueryKey: string | null = null;
+    // The nodeId query opens its panel once; re-mounting the live canvas must not re-open it.
+    private lastQueriedNodeId: string | null = null;
     private isNodeQueryConsumed = false;
 
     @ViewChild(FlowGraphComponent)
@@ -346,43 +377,26 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.flowService.bindSavedGraph(this.storedGraph);
         this.destroyRef.onDestroy(() => this.flowService.bindSavedGraph(null));
+        this.keymap.register('editing.save', () => this.saveFromShortcut(), {
+            allowInEditable: true,
+            destroyRef: this.destroyRef,
+        });
 
         effect(() => {
             const params = this.routeQueryParamMap();
-            const nodeQueryKey = [params.get('nodeId'), params.get('nodeName'), params.get('nodeType')].join('|');
-            if (nodeQueryKey !== this.lastNodeQueryKey) {
-                this.lastNodeQueryKey = nodeQueryKey;
+            const nodeId = params.get('nodeId');
+            if (nodeId !== this.lastQueriedNodeId) {
+                this.lastQueriedNodeId = nodeId;
                 this.isNodeQueryConsumed = false;
             }
-            if (this.isNodeQueryConsumed) {
+            if (this.isNodeQueryConsumed || !nodeId) {
                 this.initialNodeId = null;
                 return;
             }
-            const nodeId = params.get('nodeId');
-            if (nodeId) {
-                const match = this.currentFlowState().nodes.find(
-                    (n) => n.id === nodeId || String(n.backendId) === nodeId
-                );
-                this.initialNodeId = match?.id ?? nodeId;
-                this.initialNodeExpand = true;
-                return;
-            }
-
-            // Callers that only know a node by name (e.g. the Secret Usage dialog, whose backend
-            // response has no node id) use nodeName/nodeType instead — resolve it against the
-            // loaded graph once available. nodeType disambiguates same-named nodes of different types.
-            // This path only selects the node (small panel) rather than expanding it.
-            const nodeName = params.get('nodeName');
-            if (!nodeName) {
-                this.initialNodeId = null;
-                return;
-            }
-            const nodeType = params.get('nodeType');
             const match = this.currentFlowState().nodes.find(
-                (n) => n.node_name === nodeName && (!nodeType || n.type === nodeType)
+                (node) => node.id === nodeId || String(node.backendId) === nodeId
             );
-            this.initialNodeId = match?.id ?? null;
-            this.initialNodeExpand = false;
+            this.initialNodeId = match?.id ?? nodeId;
         });
 
         effect(() => {
@@ -540,6 +554,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     // buildFlowModelFromGraphDto (the shared post-load pipeline); also refresh availableFlowLights.
                     this.setGraphState(graph);
                     this.availableFlowLights.set(flows);
+                    this.flowService.setNodeNumberFloor(graph.node_number_seq);
 
                     const serverFlow = this.loadedFlowState();
 
@@ -560,26 +575,20 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
                     const currentState = this.flowService.getFlowState();
 
-                    // The backend numbers imported nodes against saved DB state only, so it has
-                    // no knowledge of unsaved canvas nodes. Re-issue numbers from the frontend
-                    // sequence (which sees all live nodes) to prevent collisions with unsaved nodes.
-                    // Only auto-numbered names ("... #N") are touched; custom names are left as-is.
-                    const renumberedNewNodes = newServerNodes.map((n) => {
-                        if (!/#\s*\d+\s*$/.test(n.node_name ?? '')) {
-                            return n;
-                        }
-                        const newNumber = this.flowService.getNextNodeNumber();
-                        return {
-                            ...n,
-                            nodeNumber: newNumber,
-                            node_name: (n.node_name ?? '').replace(/#\s*\d+\s*$/, `#${newNumber}`),
-                        };
-                    });
+                    // The imported nodes keep the numbers the backend gave them from the graph counter.
+                    // An unsaved canvas node may hold one of them (the backend never saw it): that
+                    // node moves to a number past the counter, set as the floor above.
+                    const localNodes = renumberUnsavedNodesHolding(currentState.nodes, numbersOf(newServerNodes), () =>
+                        this.flowService.getNextNodeNumber()
+                    );
 
                     const mergedFlow = normalizeFlowPorts({
-                        nodes: [...currentState.nodes, ...renumberedNewNodes],
+                        nodes: [...localNodes, ...newServerNodes],
                         connections: [...currentState.connections, ...newServerConnections],
                     });
+
+                    // An unsaved table moved off an imported number takes its grid layout along.
+                    this.carryCdtGridStateToNewNumbers(graphId, currentState, mergedFlow);
 
                     // setFlow retriggers ngOnChanges in flow-graph, which runs
                     // _shiftImportedNodes (using _preImportBackendIds set by doPartialImport)
@@ -789,7 +798,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.currentFlowState(),
             selectedNodeIds,
             generateUuid(),
-            newGraphDto.id
+            newGraphDto.id,
+            this.flowService.getNextNodeNumber()
         );
 
         // Step 4: Build the subflow save payload (empty previous = all creates).
@@ -851,7 +861,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (!this.isCurrentGraph(graphId)) return EMPTY;
 
         // Step 6: Run the unpack utility.
-        const unpackedModel = unpackSubflow(this.currentFlowState(), subGraphNodeId, subflowFlowModel);
+        const unpackedModel = unpackSubflow(this.currentFlowState(), subGraphNodeId, subflowFlowModel, () =>
+            this.flowService.getNextNodeNumber()
+        );
 
         // Step 7: Update the parent flow and save.
         this.flowService.setFlow(normalizeFlowPorts(unpackedModel));
@@ -917,6 +929,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 ...this.getInvalidClassificationTableMessages(flowState),
                 // The key-value panel puts invalid entries into the flow so the canvas follows it; they stop here.
                 ...invalidKeyValueNodeMessages(flowState.nodes),
+                // As for key-value nodes: a panel commits an invalid timeout to the flow for the save to stop it here.
+                ...invalidExecutionTimeoutMessages(flowState.nodes, this.executionTimeoutLimits.limits().minSeconds),
             ];
         } catch (error) {
             console.error('Node validation crashed before save — blocking the save defensively', error);
@@ -946,7 +960,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             if (missingFields.length === 0) return;
 
-            const label = taskNode.node_name?.trim() || `Untitled task #${index + 1}`;
+            const label = this.validationMessageLabel(taskNode, 'Untitled task', index);
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
         });
 
@@ -1001,7 +1015,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             if (missingFields.length === 0) return;
 
-            const label = agentNode.node_name?.trim() || `Untitled agent #${index + 1}`;
+            const label = this.validationMessageLabel(agentNode, 'Untitled agent', index);
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
         });
 
@@ -1038,13 +1052,95 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             if (invalidKeys.length === 0) return;
 
-            const label = cdtNode.node_name?.trim() || `Untitled decision table #${index + 1}`;
+            const label = this.validationMessageLabel(cdtNode, 'Untitled decision table', index);
             const detail =
                 invalidKeys.length <= 3 ? ` (${invalidKeys.join(', ')})` : ` (${invalidKeys.length} prompts)`;
             messages.push(`"${label}" is missing a valid prompt output schema${detail}`);
         });
 
         return messages;
+    }
+
+    /**
+     * The node's trimmed name with its badge number, so same-named nodes are told apart. A node without a name
+     * is labelled `fallbackName` with its badge; one with neither gets its list position in parentheses, which
+     * cannot be mistaken for a badge.
+     */
+    private validationMessageLabel(node: NodeModel, fallbackName: string, index: number): string {
+        const name = node.node_name?.trim();
+        if (name) return formatNodeLabel({ node_name: name, nodeNumber: node.nodeNumber });
+        if (node.nodeNumber == null) return `${fallbackName} (${index + 1})`;
+        return formatNodeLabel({ node_name: fallbackName, nodeNumber: node.nodeNumber });
+    }
+
+    /**
+     * Puts the canvas a save patched on screen, then moves every unsaved node off a number the save
+     * gave a saved node: the server numbered this save's new nodes from its counter, so an unsaved
+     * node may now show the number another node took. The canvas is set first so `getNextNodeNumber`
+     * counts from the numbers the server gave, not from the guesses they replaced. Decision tables
+     * that changed number take their grid layout along. Returns the moved numbers by node id, for
+     * the saved baseline to match.
+     */
+    private showSavedFlow(graphId: number, liveFlow: FlowModel): Map<string, number> {
+        const before = this.currentFlowState();
+        this.flowService.setFlow(liveFlow);
+
+        const savedNumbers = numbersOf(liveFlow.nodes.filter((node) => node.backendId != null));
+        const nodes = renumberUnsavedNodesHolding(liveFlow.nodes, savedNumbers, () =>
+            this.flowService.getNextNodeNumber()
+        );
+        const shownFlow = { ...liveFlow, nodes };
+        this.carryCdtGridStateToNewNumbers(graphId, before, shownFlow);
+
+        const movedNumbers = new Map<string, number>();
+        nodes.forEach((node, index) => {
+            if (node !== liveFlow.nodes[index] && node.nodeNumber != null) movedNumbers.set(node.id, node.nodeNumber);
+        });
+        if (movedNumbers.size > 0) this.flowService.setFlow(shownFlow);
+        return movedNumbers;
+    }
+
+    /**
+     * A decision table's grid layout is stored under its number (see the panel's `gridStorageId`).
+     * When a table's number changes (a save numbered it, or it was moved off a number another node
+     * took), the layout moves to the new key before the canvas takes the number. A key another
+     * table shows is never written: that layout is its own. The old key is removed unless a table
+     * that kept its number still shows it; a table that has just taken that number (an imported
+     * one) must not open with the layout of the table that left it.
+     */
+    private carryCdtGridStateToNewNumbers(graphId: number, before: FlowModel, after: FlowModel): void {
+        const storageIdBefore = cdtGridStorageIds(before);
+        const storageIdAfter = cdtGridStorageIds(after);
+        const keyOf = (storageId: number) => `${CDT_GRID_STATE_PREFIX}${graphId}_${storageId}`;
+        const keptStorageIds = new Set(
+            [...storageIdAfter]
+                .filter(([nodeId, storageId]) => storageIdBefore.get(nodeId) === storageId)
+                .map(([, storageId]) => storageId)
+        );
+
+        const carried: [string, string][] = [];
+        const vacated = new Set<number>();
+        for (const [nodeId, newStorageId] of storageIdAfter) {
+            const oldStorageId = storageIdBefore.get(nodeId);
+            if (oldStorageId == null || oldStorageId === newStorageId) continue;
+            // Another table shows this number too: its layout stays, and this one is not carried over it.
+            const heldByAnother = [...storageIdAfter].some(
+                ([otherId, storageId]) => otherId !== nodeId && storageId === newStorageId
+            );
+            if (heldByAnother) continue;
+            const layout = localStorage.getItem(keyOf(oldStorageId));
+            if (layout == null) continue;
+            carried.push([keyOf(newStorageId), layout]);
+            if (!keptStorageIds.has(oldStorageId)) vacated.add(oldStorageId);
+        }
+        // Every read comes before any removal or write, and removals before writes, so two tables
+        // trading numbers each end up with the other's old key holding their own layout.
+        for (const storageId of vacated) {
+            localStorage.removeItem(keyOf(storageId));
+        }
+        for (const [key, layout] of carried) {
+            localStorage.setItem(key, layout);
+        }
     }
 
     private cleanupCdtGridState(flowState: FlowModel): void {
@@ -1060,12 +1156,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             liveSuffixes.add(`${graphId}_${nodeNum}`);
         }
 
-        const prefix = 'cdt-grid-state-';
         const toRemove: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (!key || !key.startsWith(prefix)) continue;
-            const suffix = key.slice(prefix.length);
+            if (!key || !key.startsWith(CDT_GRID_STATE_PREFIX)) continue;
+            const suffix = key.slice(CDT_GRID_STATE_PREFIX.length);
             if (!suffix.startsWith(`${graphId}_`)) continue;
             if (!liveSuffixes.has(suffix)) toRemove.push(key);
         }
@@ -1174,6 +1269,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     ): void {
         this.setGraphState(graph);
         this.availableFlowLights.set(flows);
+        this.flowService.setNodeNumberFloor(graph.node_number_seq);
 
         // What was sent becomes the saved baseline; the canvas keeps what it holds now.
         // Patching the snapshot onto the canvas would revert anything that changed
@@ -1189,7 +1285,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             graph
         );
 
-        this.flowService.setFlow(liveFlow);
+        const movedNumbers = this.showSavedFlow(graph.id, liveFlow);
         // Sync isActive from the save response: patchFlowStateWithBackendIds only assigns
         // backend IDs and does not propagate other backend-authoritative fields like is_active.
         for (const dto of graph.schedule_trigger_node_list ?? []) {
@@ -1201,7 +1297,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.flowService.updateNode({ ...node, data: { ...node.data, isActive: dto.is_active } });
             }
         }
-        this.savedFlowStateService.setSavedFlow(cloneFlowState(buildCdtSavedBaseline(patchedFlow, graph)));
+        this.savedFlowStateService.setSavedFlow(
+            cloneFlowState(buildCdtSavedBaseline(withNodeNumbers(patchedFlow, movedNumbers), graph))
+        );
         this.sidePanelService.notifyGraphSaved();
         if (showSuccessToast) {
             this.toastService.success('Graph saved successfully');
@@ -1295,6 +1393,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             tap((responseGraph) => {
                 if (!this.isCurrentGraph(graphId)) return;
                 this.setGraphState(responseGraph);
+                this.flowService.setNodeNumberFloor(responseGraph.node_number_seq);
 
                 // The baseline records what was *sent*, patched with what the server
                 // assigned it. Reading the node back off the canvas would bake in
@@ -1308,9 +1407,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     nodeDiff,
                     responseGraph
                 );
-                this.flowService.setFlow(
-                    patchLiveFlowWithBackendIds(this.currentFlowState(), sentFlow, previous, nodeDiff, responseGraph)
+                const liveFlow = patchLiveFlowWithBackendIds(
+                    this.currentFlowState(),
+                    sentFlow,
+                    previous,
+                    nodeDiff,
+                    responseGraph
                 );
+                const movedNumbers = this.showSavedFlow(graphId, liveFlow);
 
                 const savedNode = sentFlow.nodes[0];
                 if (savedNode) {
@@ -1320,7 +1424,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                         ? prev.nodes.map((n) => (n.id === node.id ? savedNode : n))
                         : [...prev.nodes, savedNode];
                     this.savedFlowStateService.setSavedFlow(
-                        cloneFlowState({ nodes: nextNodes, connections: prev.connections })
+                        cloneFlowState(
+                            withNodeNumbers({ nodes: nextNodes, connections: prev.connections }, movedNumbers)
+                        )
                     );
                 }
 
@@ -1611,22 +1717,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
-    @HostListener('document:keydown', ['$event'])
-    public handleCtrlS(event: KeyboardEvent): void {
-        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
-            event.preventDefault();
-            if (this.previewedVersion()) {
-                this.toastService.info('Exit preview mode to save');
-                return;
-            }
-            if (this.flowReadOnly.isReadOnly()) {
-                this.flowReadOnly.notifyBlocked();
-                return;
-            }
-            this.onHeaderSave();
-        }
-    }
-
     public hasUnsavedChanges(): boolean {
         return this.hasUnsavedChangesSignal();
     }
@@ -1752,6 +1842,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private applyLoadedGraphState(graph: GraphDto, flows: GetGraphLightRequest[], showRefreshToast: boolean): void {
         this.setGraphState(graph);
         this.availableFlowLights.set(flows);
+        this.flowService.setNodeNumberFloor(graph.node_number_seq);
         const normalizedFlow = this.loadedFlowState();
         this.flowService.setFlow(normalizedFlow);
         // The saved baseline captures the as-persisted snapshot used for dirty-tracking.
@@ -1865,7 +1956,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public isShortcutsOpen = signal(false);
     public shortcutsPos = signal<{ top: number; left: number } | null>(null);
-    public readonly shortcutSections = FLOW_SHORTCUT_SECTIONS;
 
     public openShortcutsModal(rect: DOMRect): void {
         if (this.isShortcutsOpen()) {
@@ -1873,7 +1963,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             return;
         }
 
-        const top = rect.top;
+        const screenMargin = 16;
+        const lowestTop = window.innerHeight - screenMargin - SHORTCUTS_MODAL_HEIGHT_PX;
+        const top = Math.max(screenMargin, Math.min(rect.top, lowestTop));
         const left = rect.right + 8;
 
         this.shortcutsPos.set({ top, left });
@@ -2095,6 +2187,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 })
             )
             .subscribe(() => openVersionDialog());
+    }
+
+    private saveFromShortcut(): void {
+        if (this.previewedVersion()) {
+            this.toastService.info('Exit preview mode to save');
+            return;
+        }
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        this.onHeaderSave();
     }
 
     /**
