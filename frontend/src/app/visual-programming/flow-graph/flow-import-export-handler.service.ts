@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NodeType } from '@shared/models';
-import { downloadBlob } from '@shared/utils';
+import { downloadBlob, showExportExclusionWarning } from '@shared/utils';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
@@ -159,7 +159,7 @@ export class FlowImportExportService {
             .partialExport(currentFlowId, body)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (blob) => {
+                next: ({ blob, excluded }) => {
                     downloadBlob(blob, filename);
                     const count = Object.entries(body)
                         .filter(([key]) => key !== 'edge_list')
@@ -174,6 +174,8 @@ export class FlowImportExportService {
                             );
                     const suffix = isExportAll || hasStartOrEnd ? ' (Start and End nodes excluded)' : '';
                     this.toastService.success(`${count} nodes exported as JSON${suffix}`, 3000, 'bottom-right');
+
+                    showExportExclusionWarning(this.toastService, excluded, 'bottom-right');
                 },
                 error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
             });

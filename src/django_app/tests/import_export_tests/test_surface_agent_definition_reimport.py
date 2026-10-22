@@ -46,6 +46,7 @@ from tables.models import (
     StartNode,
 )
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.fixture
@@ -115,7 +116,11 @@ def agent_flow(default_org):
 
 @pytest.fixture
 def export_file(agent_flow, export_service):
-    return json.dumps(export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id]))
+    return json.dumps(
+        export_service.export_entities(
+            EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
+    )
 
 
 @pytest.fixture
@@ -386,7 +391,11 @@ class TestLegacyToolEntries:
         agent.description = ""
         agent.save(update_fields=["description"])
         data = json.loads(
-            json.dumps(export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id]))
+            json.dumps(
+                export_service.export_entities(
+                    EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+                ).data
+            )
         )
         for field_name in ("description", "metadata"):
             del data[EntityType.AGENT_DEFINITION][0][field_name]
@@ -452,7 +461,9 @@ class TestBuiltInTool:
             surface=agent_flow["owned_surface"], python_tool=built_in_tool, mode=ToolMode.ALLOW
         )
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         built_in_tool.python_code.code = "def main(): return 'new'"
         built_in_tool.python_code.save(update_fields=["code"])
@@ -730,7 +741,9 @@ class TestAgentDefinitionSurfacesNeverRewired:
         )
         old_second_surface_id = second_surface.id
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         second_surface.delete()
         agent_state_before = _surface_state(agent)
@@ -784,7 +797,9 @@ class TestAgentDefinitionSurfacesNeverRewired:
             for name in ("surf_two", "surf_three")
         ]
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         extra_surfaces[-1].delete()
         agent_state_before = _surface_state(agent)
@@ -921,6 +936,7 @@ class TestPartialImport:
         export_result = GraphPartialExportService(entity_registry).export(
             [NodeRef(entity_type=EntityType.AGENT_NODE, node_id=agent_flow["agent_node"].id)],
             org_id=default_org.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
         )
         assert not export_result.has_errors, export_result.errors
         partial_file = json.dumps(export_result.data)
@@ -977,7 +993,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
     ):
         agent_flow = owned_surface_referenced_everywhere
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         counts_before = _org_counts(default_org)
 
@@ -999,7 +1017,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
     ):
         agent_flow = owned_surface_referenced_everywhere
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         agent = agent_flow["agent"]
         agent.description = "changed after export"
@@ -1051,7 +1071,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
             agent_definition=agent, surface=twin, place=SurfacePlace.CHAT
         )
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         counts_before = _org_counts(default_org)
 
@@ -1138,7 +1160,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
     ):
         agent_flow = owned_surface_referenced_everywhere
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         AgentDefaultSurface.objects.filter(
             agent_definition=agent_flow["agent"], surface=agent_flow["owned_surface"]
@@ -1165,7 +1189,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
             for name in ("surf #2", "surf #3")
         ]
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         twins[1].instructions = "edited after export"
         twins[1].save(update_fields=["instructions"])
@@ -1227,6 +1253,7 @@ class TestOwnedSurfaceCreatePermission:
         export_result = GraphPartialExportService(entity_registry).export(
             [NodeRef(entity_type=EntityType.AGENT_NODE, node_id=agent_flow["agent_node"].id)],
             org_id=default_org.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
         )
         assert not export_result.has_errors, export_result.errors
         agent_flow["owned_surface"].delete()
@@ -1278,7 +1305,11 @@ class TestOwnedSurfacePairingCost:
     ):
         def _reimport_query_count(agent_name: str, surface_count: int) -> int:
             graph = _flow_with_identical_owned_surfaces(default_org, agent_name, surface_count)
-            export_file = json.dumps(export_service.export_entities(EntityType.GRAPH, [graph.id]))
+            export_file = json.dumps(
+                export_service.export_entities(
+                    EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+                ).data
+            )
             counts_before = _org_counts(default_org)
             with CaptureQueriesContext(connection) as queries:
                 id_mapper = import_file(export_file)
@@ -1371,6 +1402,7 @@ class TestHandEditedSurfaceValues:
         export_result = GraphPartialExportService(entity_registry).export(
             [NodeRef(entity_type=EntityType.AGENT_NODE, node_id=agent_flow["agent_node"].id)],
             org_id=default_org.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
         )
         data = json.loads(json.dumps(export_result.data))
         self._set_mode(agent_flow, data)
@@ -1395,7 +1427,9 @@ class TestReusedAgentSurfaceConflicts:
     ):
         agent_flow = owned_surface_default_flow
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         other_agent = AgentDefinition.objects.create(org=default_org, name="other agent")
         owned_surface = agent_flow["owned_surface"]

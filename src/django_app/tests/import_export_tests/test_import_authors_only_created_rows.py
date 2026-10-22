@@ -51,6 +51,7 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 NODE_ENTITY_TYPES = frozenset(NODE_TYPE_TO_ENTITY_TYPE.values())
@@ -281,7 +282,11 @@ def _import(export_data, entity_type, org, user):
 
 
 def _export(entity_type, source):
-    return ExportService(entity_registry).export_entities(entity_type, [source.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(entity_type, [source.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def test_authored_strategies_have_source_factories():
@@ -320,8 +325,15 @@ def test_import_authors_python_tool_configs_with_the_importing_user(
 ):
     source = _python_code_tool(beta, beta_author, openai_provider)
     # Tool configs are only exported org-scoped: an unscoped export cannot tell whose they are.
-    export_data = ExportService(entity_registry).export_entities(
-        EntityType.PYTHON_CODE_TOOL, [source.id], org_id=beta.id
+    export_data = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.PYTHON_CODE_TOOL,
+            [source.id],
+            org_id=beta.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data
     )
 
     _import(export_data, EntityType.PYTHON_CODE_TOOL, acme, admin_acme)

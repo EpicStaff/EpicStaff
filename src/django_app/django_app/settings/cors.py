@@ -15,3 +15,5 @@ CORS_ALLOW_HEADERS = (
     "x-twilio-auth-token",
     "x-organization-id",
 )
+
+CORS_EXPOSE_HEADERS = ("X-Export-Excluded",)
