@@ -522,7 +522,16 @@ services:
       CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
-      - ./nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh:/docker-entrypoint.d/15-normalize-chat-enabled.envsh:ro
+      # Entrypoint hooks use the long syntax so a missing file stops `up` with an
+      # error naming it: the short syntax creates an empty folder in its place, and
+      # nginx silently skips anything that is not a file. Only the Linux engine
+      # enforces this; Docker Desktop on Windows still creates the folder.
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh
+        target: /docker-entrypoint.d/15-normalize-chat-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
       - ./nginx/certs:/etc/nginx/certs:ro
       - media_data:/usr/share/nginx/html/media:ro
     networks:
@@ -535,6 +544,13 @@ services:
         condition: service_started
       realtime:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8081/nginx-health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      # Unhealthy about 40s after start, inside the 60s deploy.sh waits before its check.
+      retries: 3
+      start_period: 10s
     restart: always
 
 
