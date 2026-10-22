@@ -71,8 +71,8 @@ describe('convertDecisionTableToCdt', () => {
         expect(table.default_llm_config).toBeNull();
         expect(table.prompts).toEqual({});
         expect(table.pre_computation_code).toBe('');
-        expect(table.pre_computation).toEqual({ code: '', input_map: {}, libraries: [] });
-        expect(table.post_computation).toEqual({ code: '', input_map: {}, libraries: [] });
+        expect(table.pre_computation).toEqual({ code: '', input_map: {} });
+        expect(table.post_computation).toEqual({ code: '', input_map: {} });
     });
 
     it('auto-assigns route_code from the group name when not set', () => {
