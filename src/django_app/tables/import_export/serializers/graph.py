@@ -170,6 +170,8 @@ class GraphImportSerializer(serializers.ModelSerializer):
             "labels",
             "save_version",
             "created_by",
+            # The node-number counter belongs to the target graph, never to a file.
+            "node_number_seq",
             # Deletion goes through DeleteService, never through a crafted import file.
             *SOFT_DELETE_FIELD_NAMES,
         ]

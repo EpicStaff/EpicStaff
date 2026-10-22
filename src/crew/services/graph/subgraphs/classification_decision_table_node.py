@@ -7,6 +7,7 @@ import litellm
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
+from litellm.types.utils import CostPerToken
 from loguru import logger
 from services.run_python_code_service import RunPythonCodeService
 from src.crew.models.graph_models import (
@@ -16,7 +17,7 @@ from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
-from src.shared.models import LLMData, PythonCodeData, TokenUsage
+from src.shared.models import LLMConfigData, LLMData, PythonCodeData, TokenUsage
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
@@ -36,6 +37,17 @@ PROVIDER_ALIASES = {
     "aws_sagemaker": "sagemaker",
     "featherless-ai": "featherless_ai",
 }
+
+
+def _custom_cost_per_token(llm_config: LLMConfigData) -> CostPerToken | None:
+    """Return the config's own token prices, or None when it does not set both."""
+    if llm_config.input_cost_per_token is None or llm_config.output_cost_per_token is None:
+        return None
+    return CostPerToken(
+        input_cost_per_token=llm_config.input_cost_per_token,
+        output_cost_per_token=llm_config.output_cost_per_token,
+    )
+
 
 # Expressions arrive as data and are compiled one at a time, so a syntax error in a
 # row after the match never surfaces. Each row gets a fresh variable namespace;
@@ -506,12 +518,26 @@ def main(**kwargs) -> dict:
             "base_url": llm_config.base_url,
             "api_version": llm_config.api_version,
             "api_key": llm_config.api_key,
+            "extra_headers": llm_config.extra_headers,
             "stream": False,
         }
         resp = await litellm.acompletion(**{**params, "messages": messages})
 
+        custom_cost_per_token = _custom_cost_per_token(llm_config)
         try:
-            cost = litellm.completion_cost(completion_response=resp)
+            if custom_cost_per_token is not None:
+                # Not completion_cost: with a custom price it bills Anthropic cache reads
+                # twice, since litellm's prompt_tokens already include them. Cached
+                # prompt tokens are billed at the input price.
+                prompt_cost, completion_cost = litellm.cost_per_token(
+                    model=model,
+                    prompt_tokens=resp.usage.prompt_tokens,
+                    completion_tokens=resp.usage.completion_tokens,
+                    custom_cost_per_token=custom_cost_per_token,
+                )
+                cost = prompt_cost + completion_cost
+            else:
+                cost = litellm.completion_cost(completion_response=resp)
         except Exception:
             cost = 0.0  # litellm raises for models without a pricing entry — don't crash CDT
 

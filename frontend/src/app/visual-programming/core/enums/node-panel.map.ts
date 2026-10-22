@@ -37,3 +37,6 @@ export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<NodeModel>>> = {
     [NodeType.KNOWLEDGE_RETRIEVER]: asNodePanelComponent(KnowledgeRetrieverNodePanelComponent),
     [NodeType.KEY_VALUE]: asNodePanelComponent(KeyValueNodePanelComponent),
 };
+
+/** Panels whose header content is a 28px row, leaving the most height to their grid. */
+export const COMPACT_HEADER_NODE_TYPES: ReadonlySet<string> = new Set([NodeType.TABLE, NodeType.CLASSIFICATION_TABLE]);

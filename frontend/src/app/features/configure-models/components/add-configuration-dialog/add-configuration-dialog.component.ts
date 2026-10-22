@@ -27,12 +27,13 @@ import {
     SliderWithStepperComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { DEFAULT_STEP_SIZE } from '@shared/constants';
+import { DEFAULT_STEP_SIZE, TOKEN_PRICE_HINT } from '@shared/constants';
 import { EnterSubmitDirective } from '@shared/directives';
+import { pricePairValidator } from '@shared/form-validators';
 import { CreateEmbeddingConfigRequest, ModelTypes, ReasoningEffort } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractFieldErrorMessages, extractHttpErrorMessage } from '@shared/utils';
-import { catchError, EMPTY, Observable, tap } from 'rxjs';
+import { extractFieldErrorMessages, extractHttpErrorMessage, perMillionToPerToken } from '@shared/utils';
+import { catchError, EMPTY, map, merge, Observable, startWith, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-dialogs/llm-model-selector/llm-model-selector.component';
@@ -84,6 +85,7 @@ export class AddConfigurationDialogComponent implements OnInit {
     readonly dialogRef = inject(DialogRef);
     readonly data = inject<{ initialTab?: ConfigTab }>(DIALOG_DATA, { optional: true });
     protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
+    protected readonly TOKEN_PRICE_HINT = TOKEN_PRICE_HINT;
 
     activeTab = signal<ConfigTab>(this.data?.initialTab ?? 'llm');
     selectedProvider = signal<RealtimeProvider>('openai');
@@ -117,6 +119,37 @@ export class AddConfigurationDialogComponent implements OnInit {
     protected readonly reasoningEffortControl = new FormControl<ReasoningEffort | null>(null);
     llmForm!: FormGroup;
 
+    private readonly pricingGroup = this.fb.group(
+        {
+            input_price_per_million: [null as number | null, [Validators.min(0)]],
+            output_price_per_million: [null as number | null, [Validators.min(0)]],
+        },
+        { validators: pricePairValidator('input_price_per_million', 'output_price_per_million') }
+    );
+    private readonly isPricePairIncomplete = toSignal(
+        merge(this.pricingGroup.statusChanges, this.pricingGroup.valueChanges).pipe(
+            startWith(null),
+            map(() => this.pricingGroup.hasError('pricePair'))
+        ),
+        { requireSync: true }
+    );
+
+    private readonly isLlmHeadersInvalid = signal(false);
+    private readonly isEmbeddingHeadersInvalid = signal(false);
+
+    readonly hasInvalidHeaders = computed(() => {
+        switch (this.activeTab()) {
+            case 'llm':
+                return this.isLlmHeadersInvalid();
+            case 'embedding':
+                return this.isEmbeddingHeadersInvalid();
+            default:
+                return false;
+        }
+    });
+
+    readonly hasIncompletePricePair = computed(() => this.activeTab() === 'llm' && this.isPricePairIncomplete());
+
     openaiForm = this.fb.nonNullable.group({
         custom_name: ['', Validators.required],
         api_key_secret_id: [null as number | null],
@@ -144,6 +177,7 @@ export class AddConfigurationDialogComponent implements OnInit {
         model: [null as number | null, Validators.required],
         api_key_secret_id: [null as number | null, Validators.required],
         custom_name: ['', Validators.required],
+        extra_headers: this.fb.nonNullable.control<Record<string, string>>({}),
     });
 
     protected readonly ModelTypes = ModelTypes;
@@ -179,6 +213,19 @@ export class AddConfigurationDialogComponent implements OnInit {
             timeout: [120, [Validators.min(1), Validators.max(600)]],
             reasoning_effort: this.reasoningEffortControl,
             is_visible: [true],
+            pricing: this.pricingGroup,
+        });
+
+        this.llmForm
+            .get('extra_headers')
+            ?.statusChanges.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((status) => this.isLlmHeadersInvalid.set(status === 'INVALID'));
+        this.embeddingForm.controls.extra_headers.statusChanges
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((status) => this.isEmbeddingHeadersInvalid.set(status === 'INVALID'));
+
+        this.pricingGroup.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            if (this.pricingGroup.dirty) this.pricingGroup.markAsTouched();
         });
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((e: KeyboardEvent) => {
@@ -218,11 +265,14 @@ export class AddConfigurationDialogComponent implements OnInit {
             this.llmForm.markAllAsTouched();
             return;
         }
+        const { pricing, ...config } = this.llmForm.value;
         this.isSubmitting.set(true);
         this.llmStorage
             .createConfig({
-                ...this.llmForm.value,
+                ...config,
                 reasoning_effort: this.reasoningEffortField()?.submittedValue() ?? null,
+                input_cost_per_token: perMillionToPerToken(pricing.input_price_per_million),
+                output_cost_per_token: perMillionToPerToken(pricing.output_price_per_million),
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
@@ -279,7 +329,7 @@ export class AddConfigurationDialogComponent implements OnInit {
     }
 
     private submitEmbedding(): void {
-        const { model, api_key_secret_id, custom_name } = this.embeddingForm.getRawValue();
+        const { model, api_key_secret_id, custom_name, extra_headers } = this.embeddingForm.getRawValue();
         if (this.embeddingForm.invalid || model === null || this.isSubmitting()) {
             this.embeddingForm.markAllAsTouched();
             return;
@@ -295,7 +345,12 @@ export class AddConfigurationDialogComponent implements OnInit {
             return;
         }
 
-        const request: CreateEmbeddingConfigRequest = { model, api_key_secret_id, custom_name: trimmedName };
+        const request: CreateEmbeddingConfigRequest = {
+            model,
+            api_key_secret_id,
+            custom_name: trimmedName,
+            extra_headers,
+        };
         this.isSubmitting.set(true);
         this.embeddingConfigStorage
             .createConfig(request)

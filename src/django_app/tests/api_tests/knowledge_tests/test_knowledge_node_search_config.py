@@ -482,6 +482,12 @@ class TestKnowledgeNodeRunValidation:
         detail = str(exc.value.detail)
         assert f"#{n1.id}" in detail and f"#{n2.id}" in detail
 
+    def test_offending_node_is_named_by_its_runtime_name(self, validator, graph):
+        node = KnowledgeNode.objects.create(graph=graph, node_name="Search", node_number=3)
+        with pytest.raises(self._error()) as exc:
+            validator.validate_runnable([node])
+        assert f"Search #3 #{node.id} (" in str(exc.value.detail)
+
 
 @pytest.mark.django_db
 class TestKnowledgeNodeSearchConfigSharedBounds:

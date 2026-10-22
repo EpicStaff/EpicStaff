@@ -38,7 +38,7 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, FullLLMConfigService, SecretsStorageService } from '@shared/services';
-import { downloadBlob, getProviderIconPath } from '@shared/utils';
+import { downloadBlob, formatNodeLabel, getProviderIconPath } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -131,7 +131,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return match?.[1] ?? '0';
     })();
 
-    // Stable storage key: graphId + nodeNumber (nodeNumber is in metadata, survives save/delete cycles)
+    // Storage key: graphId + the number the server gave the node (its node_number). A save that gives a
+    // new table another number than it showed carries the stored layout to the new key.
     readonly gridStorageId = computed(() => {
         const nodeNum = this.node().nodeNumber ?? this.node().backendId ?? 0;
         return `${this.graphIdFromUrl}_${nodeNum}`;
@@ -351,7 +352,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             )
             .map((node) => ({
                 value: node.id,
-                name: node.node_name || node.id,
+                name: node.node_name ? formatNodeLabel(node) : node.id,
             }));
 
         return [{ name: 'Unselected', value: '' }, ...nodeItems];
@@ -979,6 +980,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             nodeId: this.node().id,
             backendId: this.node().backendId,
             nodeName: this.form.value.node_name ?? this.node().node_name ?? '',
+            nodeNumber: this.node().nodeNumber,
             preCode: this.preCode,
             postCode: this.postCode,
             preInputMap: this.serializeInputMap('pre_input_map'),

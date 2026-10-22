@@ -508,6 +508,7 @@ services:
     environment:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:?}
       NGINX_SSL_MODE: ${NGINX_SSL_MODE:?}
+      NGINX_HSTS_ENABLED: ${NGINX_HSTS_ENABLED:?}
       DJANGO_HOST: ${DJANGO_HOST:?}
       DJANGO_PORT: ${DJANGO_PORT:?}
       FRONTEND_HOST: ${FRONTEND_HOST:?}
@@ -529,6 +530,18 @@ services:
       - type: bind
         source: ./nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh
         target: /docker-entrypoint.d/15-normalize-chat-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/16-check-ssl-mode.envsh
+        target: /docker-entrypoint.d/16-check-ssl-mode.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+        target: /docker-entrypoint.d/17-normalize-hsts-enabled.envsh
         read_only: true
         bind:
           create_host_path: false
@@ -711,7 +724,6 @@ services:
       KNOWLEDGE_STORAGE_BUCKET: ${KNOWLEDGE_STORAGE_BUCKET:?}
       KNOWLEDGE_TOKENIZER_PATH: ${KNOWLEDGE_TOKENIZER_PATH:?}
       KNOWLEDGE_CUSTOM_EMBED_BASE_URL: ${KNOWLEDGE_CUSTOM_EMBED_BASE_URL:?}
-      KNOWLEDGE_EMBEDDING_HEADERS: ${KNOWLEDGE_EMBEDDING_HEADERS:?}
 
   # Chat service and its database. Gated behind profiles: ["chat"]: they start only when
   # COMPOSE_PROFILES includes "chat"; CHAT_ENABLED=true then exposes the feature in nginx and the UI.

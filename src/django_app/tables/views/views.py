@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -34,7 +35,11 @@ from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import CodeRunTargetNotFoundError
+from tables.exceptions import (
+    CodeRunTargetNotFoundError,
+    DocumentConfigNotFoundException,
+    InvalidChunkParametersException,
+)
 from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -70,6 +75,7 @@ from tables.serializers.serializers import (
     BulkExportSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
+    ProcessRagIndexingEstimateSerializer,
     ProcessRagIndexingSerializer,
     RunPythonCodeSerializer,
     RunSessionSerializer,
@@ -81,6 +87,7 @@ from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.converter_service import ConverterService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.knowledge_services.indexing_service import IndexingService
+from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.notification_email_sender import NotificationEmailSender
 from tables.services.quickstart_service import QuickstartService
 from tables.services.realtime_service import RealtimeService
@@ -129,6 +136,7 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.throttles import NotifyEmailThrottle
 from tables.utils.telegram_fields import load_telegram_trigger_fields
+from utils.graph_utils import runtime_node_name
 from utils.logger import logger
 
 from .default_config import *
@@ -936,14 +944,18 @@ class QuickstartApplyView(APIView):
         )
 
 
-class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
+class RagOrgLookupMixin:
+    """The RAG models by `rag_type` and the path to their owning org, for org-scoped lookups."""
+
+    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
+
+
+class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, APIView):
     """
     View for triggering RAG indexing (chunking + embedding).
     All business logic is handled by IndexingService.
     """
-
-    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
-    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
 
     @extend_schema(**PROCESS_RAG_INDEXING_POST)
     def post(self, request):
@@ -987,6 +999,17 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         else:
             llm_api_key = None
 
+        embedding_extra_headers = secret_resolver.resolve_header_markers(
+            headers=indexing_data["embedder_extra_headers"],
+            org_id=org_id,
+            context="EmbeddingConfig.extra_headers",
+        )
+        llm_extra_headers = secret_resolver.resolve_header_markers(
+            headers=indexing_data["llm_extra_headers"],
+            org_id=org_id,
+            context="LLMConfig.extra_headers",
+        )
+
         try:
             with KnowledgeClient() as client:
                 client.index(
@@ -995,6 +1018,8 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                     document_ids=frozenset(document_config_ids),
                     embedding_api_key=embedding_api_key,
                     llm_api_key=llm_api_key,
+                    embedding_extra_headers=embedding_extra_headers,
+                    llm_extra_headers=llm_extra_headers,
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)
@@ -1007,6 +1032,72 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, APIView):
+    """Read-only token and cost estimate for an indexing run, computed by knowledge_new.
+
+    Takes the same body and needs the same permission as `ProcessRagIndexingView`, so
+    the estimate is available to exactly the users who can start the indexing. A naive
+    body may add `document_configs`: chunking settings the user has not saved yet, which
+    are merged into the stored configs and validated, but never persisted.
+    """
+
+    # Chunking whole documents in memory is slower than the indexing hand-off call.
+    _KNOWLEDGE_TIMEOUT_SECONDS = 60.0
+
+    @extend_schema(
+        request=ProcessRagIndexingEstimateSerializer, responses={200: OpenApiTypes.OBJECT}
+    )
+    def post(self, request):
+        serializer = ProcessRagIndexingEstimateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        rag_id = serializer.validated_data["rag_id"]
+        rag_type = serializer.validated_data["rag_type"]
+        document_config_ids = serializer.validated_data["document_config_ids"]
+        document_configs = serializer.validated_data["document_configs"]
+
+        model = self._RAG_MODELS[rag_type]
+        # Enforces org scoping before the GraphRAG 400, so another org's RAG returns 404.
+        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
+
+        if rag_type == "graph":
+            return Response(
+                {"error": "Estimate is not available for GraphRAG."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            chunking_overrides = NaiveRagService.resolve_effective_document_configs(
+                rag_id, document_configs
+            )
+        except DocumentConfigNotFoundException as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except InvalidChunkParametersException as e:
+            return Response(
+                {"error": e.errors[0]["reason"], "errors": e.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
+                estimate = client.index_estimate(
+                    strategy=RAGStrategy(rag_type),
+                    rag_id=rag_id,
+                    document_ids=frozenset(document_config_ids),
+                    chunking_overrides=chunking_overrides,
+                )
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
+
+        return Response(estimate, status=status.HTTP_200_OK)
 
 
 class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
@@ -1086,7 +1177,11 @@ class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):
             PythonNode, pk, org_path=self._PYTHONNODE_ORG_PATH
         )
 
-        python_node_name = f"{python_node.node_name} #{python_node.pk}"
+        python_node_name = runtime_node_name(
+            node_name=python_node.node_name,
+            node_number=python_node.node_number,
+            node_id=python_node.pk,
+        )
         found_input = (
             GraphSessionMessage.objects.filter(
                 session__graph_id=python_node.graph_id,

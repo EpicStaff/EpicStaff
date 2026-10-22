@@ -643,7 +643,7 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
         open(undefined, undefined);
 
         typeTimeout('precomputation', '00:05:00');
-        typeTimeout('postcomputation', '45');
+        typeTimeout('postcomputation', '00:00:45');
 
         expect(panel.isDirty()).toBe(true);
         const table = panel.onSave()?.data.table;

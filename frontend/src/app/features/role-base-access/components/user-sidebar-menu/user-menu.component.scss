@@ -1,7 +1,6 @@
+// Placed by the sidebar that opens it.
 :host {
     position: absolute;
-    bottom: 0;
-    left: 100%;
     z-index: 1000;
 }
 
@@ -9,17 +8,29 @@
     background-color: var(--color-sidenav-background);
     border: 1px solid var(--color-divider-subtle);
     border-radius: 8px;
-    min-width: 220px;
-    max-width: 300px;
     box-shadow: 0 8px 24px var(--black-alpha-40);
+    overflow: hidden;
+}
+
+// Each block is set off from the next by a line.
+.menu-section {
+    padding: 4px 0;
+
+    & + & {
+        border-top: 1px solid var(--color-divider-subtle);
+    }
+}
+
+.section-label {
+    padding: 8px 16px 4px 16px;
+    color: var(--text-secondary-60);
 }
 
 .user-header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     padding: 8px 16px;
-    border-bottom: 1px solid var(--color-divider-subtle);
 }
 
 .user-info {
@@ -44,9 +55,66 @@
     text-overflow: ellipsis;
 }
 
+.org-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.org-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    padding: 5.5px 16px;
+
+    &:hover:not(.disabled) {
+        background-color: var(--color-secondary-btn-background-hover);
+    }
+
+    &.active {
+        .org-name {
+            color: var(--accent-color);
+            font-weight: 500;
+        }
+    }
+
+    &.disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+}
+
+.org-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.2;
+}
+
+.org-name {
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.15s ease;
+}
+
+.org-role {
+    font-size: 0.6875rem;
+    color: var(--text-secondary-60);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .nav-item {
     display: flex;
     align-items: center;
+    gap: 8px;
     width: 100%;
     padding: 8px 16px;
     background: none;
@@ -57,20 +125,41 @@
     font-size: 0.875rem;
     transition: background-color 0.15s ease;
 
-    &:not(:last-child) {
-        border-bottom: 1px solid var(--color-divider-subtle);
-    }
-
     &:hover {
         background-color: var(--color-secondary-btn-background-hover);
     }
+
+    &.active {
+        .nav-icon,
+        .nav-label {
+            color: var(--accent-color);
+        }
+    }
 }
 
+// The 16px icon sits centred in a 24px box, so every item's label starts at the same place.
 .nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
     color: var(--color-text-secondary);
 }
 
 .nav-label {
-    margin-left: 8px;
-    font-weight: 400;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+// At 16px the chevron's glyph is about 5.3 × 9.3px and sits 5.33px inside the right edge of its box,
+// so the negative margin puts the glyph itself 15px from the item's edge (the item pads 16px).
+.nav-chevron {
+    flex-shrink: 0;
+    margin-left: auto;
+    margin-right: calc(15px - 16px - 16px / 3);
+    color: var(--transparent-white-16);
 }

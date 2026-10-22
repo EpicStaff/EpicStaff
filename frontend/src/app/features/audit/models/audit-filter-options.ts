@@ -33,6 +33,7 @@ export const NODE_TYPE_OPTIONS: AuditEnumOption[] = [
     nodeTypeOption('AUDIO_TRANSCRIPTION', NodeType.AUDIO_TO_TEXT),
     nodeTypeOption('DECISION_TABLE', NodeType.TABLE),
     nodeTypeOption('CLASSIFICATION_DECISION_TABLE', NodeType.CLASSIFICATION_TABLE),
+    nodeTypeOption('KEY_VALUE', NodeType.KEY_VALUE),
     nodeTypeOption('END', NodeType.END),
     nodeTypeOption('SCHEDULE_TRIGGER', NodeType.SCHEDULE_TRIGGER),
     nodeTypeOption('WEBHOOK_TRIGGER', NodeType.WEBHOOK_TRIGGER),

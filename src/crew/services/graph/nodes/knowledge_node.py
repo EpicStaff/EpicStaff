@@ -29,6 +29,8 @@ class KnowledgeNode(BaseNode):
         knowledge_search_service: KnowledgeSearchService,
         embedder_api_key: str | None = None,
         llm_api_key: str | None = None,
+        embedder_extra_headers: dict[str, str] | None = None,
+        llm_extra_headers: dict[str, str] | None = None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
     ):
         super().__init__(
@@ -46,6 +48,8 @@ class KnowledgeNode(BaseNode):
         self.knowledge_search_service = knowledge_search_service
         self.embedder_api_key = embedder_api_key
         self.llm_api_key = llm_api_key
+        self.embedder_extra_headers = embedder_extra_headers
+        self.llm_extra_headers = llm_extra_headers
 
     def _build_query(self, input_: Any) -> str:
         """Interpolate mapped variables into the template ({name}).
@@ -101,6 +105,8 @@ class KnowledgeNode(BaseNode):
                 stop_event=self.stop_event,
                 rag_embedder_api_key=self.embedder_api_key,
                 rag_llm_api_key=self.llm_api_key,
+                rag_embedder_extra_headers=self.embedder_extra_headers,
+                rag_llm_extra_headers=self.llm_extra_headers,
                 writer=writer,
                 session_id=self.session_id,
                 node_name=self.node_name,

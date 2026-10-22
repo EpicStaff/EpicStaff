@@ -49,6 +49,56 @@
     max-width: 100%;
 }
 
+// Spacing between the footer and its neighbours comes from the container gap, so the callout needs no top margin.
+.dialog-footer-message {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+::ng-deep .dialog-footer-message .dialog-callout {
+    margin-top: 0;
+}
+
+// Callout classes for HTML content passed via `message` or `footerMessage`.
+::ng-deep .dialog-message .dialog-callout,
+::ng-deep .dialog-footer-message .dialog-callout {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--accent-color);
+    border-radius: 8px;
+    background: var(--color-ghost-btn-hover);
+    color: var(--color-text-primary);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+}
+
+::ng-deep .dialog-message .dialog-callout__title,
+::ng-deep .dialog-footer-message .dialog-callout__title {
+    color: var(--accent-color);
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
+    line-height: var(--text-body-small-large-line-height);
+}
+
+::ng-deep .dialog-message .dialog-callout__note,
+::ng-deep .dialog-footer-message .dialog-callout__note {
+    color: var(--color-text-secondary);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+}
+
+::ng-deep .dialog-message .dialog-callout--pending,
+::ng-deep .dialog-footer-message .dialog-callout--pending {
+    color: var(--color-text-secondary);
+    font-style: italic;
+}
+
 .breakdown {
     display: flex;
     flex-direction: column;

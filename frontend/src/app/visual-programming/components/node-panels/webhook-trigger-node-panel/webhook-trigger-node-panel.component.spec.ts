@@ -54,6 +54,7 @@ const SAVED_PAYLOAD = { order: { id: '104' } };
 const DTO: GetWebhookTriggerNodeRequest = {
     id: 21,
     graph: 1,
+    node_number: 1,
     node_name: 'Webhook Trigger #1',
     python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
     input_map: {},

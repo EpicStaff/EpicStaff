@@ -14,20 +14,44 @@ etc
 """
 
 
-def generate_node_name(id: int | None, node_name: str | None = None) -> str | None:
+def node_label(*, node_name: str, node_number: int | None) -> str:
+    """Return the label a user sees for a node: "name #N", or the bare name when unnumbered.
+
+    Mirrors the frontend `formatNodeLabel`, so a stored label matches the editor's.
+    """
+    if node_number is None:
+        return node_name
+    return f"{node_name} #{node_number}"
+
+
+def runtime_node_name(*, node_name: str, node_number: int | None, node_id: int) -> str:
+    """Return the name a node runs under: its label followed by " #<global id>".
+
+    This string is the node's key everywhere a session refers to it (LangGraph
+    node, edge ends, decision-table routes, session entrypoint, session message
+    name), so every builder must go through this function.
+    """
+    return f"{node_label(node_name=node_name, node_number=node_number)} #{node_id}"
+
+
+def generate_node_name(
+    id: int | None, node_name: str | None = None, node_number: int | None = None
+) -> str | None:
     if id is None:
         return None
 
     if node_name is not None:
-        return f"{node_name} #{id}"
+        return runtime_node_name(node_name=node_name, node_number=node_number, node_id=id)
 
     node = BaseGlobalNode.find_globally(id)
     try:
         node_name = node.node_name
+        node_number = getattr(node, "node_number", None)
     except Exception as e:
         logger.exception(e)
         node_name = "unknown node"
-    return f"{node_name} #{id}"
+        node_number = None
+    return runtime_node_name(node_name=node_name, node_number=node_number, node_id=id)
 
 
 def resolve_node_names(ids: Iterable[int], *, graph_ids: Iterable[int]) -> dict[int, str]:
@@ -35,7 +59,8 @@ def resolve_node_names(ids: Iterable[int], *, graph_ids: Iterable[int]) -> dict[
 
     Runs a single UNION ALL query to identify which concrete table each ID
     belongs to, then one bulk SELECT per matching table.
-    Returns ``{id: "name #id"}`` for every ID that is not None.
+    Returns ``{id: runtime name}`` ("name #N #id", or "name #id" for a node
+    without a number) for every ID that is not None.
 
     Only a node in one of ``graph_ids`` resolves to its name. Any other id
     (nonexistent, or in another graph or organization) becomes
@@ -80,7 +105,11 @@ def resolve_node_names(ids: Iterable[int], *, graph_ids: Iterable[int]) -> dict[
                 name = instance.node_name
             except AttributeError:
                 name = "unknown node"
-            result[instance.id] = f"{name} #{instance.id}"
+            result[instance.id] = runtime_node_name(
+                node_name=name,
+                node_number=getattr(instance, "node_number", None),
+                node_id=instance.id,
+            )
 
     for i in ids:
         if i not in result:

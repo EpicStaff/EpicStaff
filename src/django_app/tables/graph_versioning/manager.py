@@ -870,11 +870,14 @@ class GraphVersioningManager:
 
         id_mapper = self._build_identity_id_mapper(available_deps)
 
+        # The restored nodes keep the numbers the version stored, and the counter is not
+        # lowered: numbers issued since the version was saved are never issued again.
         node_mapper = self._graph_strategy.recreate_graph_children(
             graph,
             filtered_snapshot,
             id_mapper,
             user=user,
+            preserve_node_numbers=True,
         )
 
         return node_mapper
