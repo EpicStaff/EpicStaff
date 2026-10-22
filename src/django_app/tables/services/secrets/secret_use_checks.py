@@ -172,39 +172,40 @@ def check_telegram_trigger_node_write(actor: SecretActor | None, instance, data:
 
 
 def check_python_code_write(
-    actor: SecretActor | None,
-    python_code,
-    python_code_data: dict | None,
-    *,
-    field_path: tuple[str, ...],
+    actor: SecretActor | None, parent, parent_data: dict, *, attribute: str
 ) -> None:
-    """Gate a change of the secrets a PythonCode declares, reported under `field_path` + `secret_ids`.
+    """Gate a change of the secrets declared by the PythonCode a parent nests at `attribute`.
 
-    Only the declaration needs secrets:USE. Editing the `code` or `libraries` of a
-    PythonCode that already declares secrets is free, even though the new code
-    reads those secrets at run time: the declaration is what grants that access.
+    Reported under `attribute` + `secret_ids`. Only the declaration needs
+    secrets:USE. Editing the `code` or `libraries` of a PythonCode that already
+    declares secrets is free, even though the new code reads those secrets at run
+    time: the declaration is what grants that access.
 
     Args:
-        python_code: The persisted PythonCode the write updates, or None when the
-            write creates one.
-        python_code_data: The PythonCode's validated data, keyed by model attribute
-            names; None when the write leaves the PythonCode alone or detaches it.
-            Without a `secrets` key the declaration stays as it is.
-        field_path: Where the parent nests the PythonCode, e.g. `("python_code",)`.
+        parent: The persisted row nesting the PythonCode (a node or a tool), or None
+            when the write creates it.
+        parent_data: The parent's validated data, keyed by model attribute names.
+            An absent or None `attribute` leaves the PythonCode alone or detaches it;
+            PythonCode data without a `secrets` key leaves the declaration as it is.
+        attribute: The parent's attribute holding the PythonCode, e.g. `"python_code"`.
     """
+    python_code_data = parent_data.get(attribute)
+    # Checked before the persisted PythonCode is read: loading it costs a query per
+    # parent, which a write that leaves the declaration alone does not need.
     if python_code_data is None or "secrets" not in python_code_data:
         return
+    persisted_python_code = _persisted_value(parent, attribute)
     secret_use_service.check_references(
         actor,
-        field_path=(*field_path, "secret_ids"),
-        current=python_code.secrets if python_code is not None else None,
+        field_path=(attribute, "secret_ids"),
+        current=persisted_python_code.secrets if persisted_python_code is not None else None,
         incoming=python_code_data["secrets"],
     )
 
 
 def check_python_node_write(actor: SecretActor | None, instance, data: dict) -> None:
     """Gate a change of the secrets a PythonNode's code declares."""
-    _check_nested_python_code(actor, instance, data, attribute="python_code")
+    check_python_code_write(actor, instance, data, attribute="python_code")
 
 
 def check_webhook_trigger_node_write(actor: SecretActor | None, instance, data: dict) -> None:
@@ -213,12 +214,12 @@ def check_webhook_trigger_node_write(actor: SecretActor | None, instance, data: 
     The node's `webhook_trigger` is not gated: attaching a trigger moves none of its
     secrets, whose own changes are checked where the trigger is written.
     """
-    _check_nested_python_code(actor, instance, data, attribute="python_code")
+    check_python_code_write(actor, instance, data, attribute="python_code")
 
 
 def check_python_code_tool_write(actor: SecretActor | None, instance, data: dict) -> None:
     """Gate a change of the secrets a PythonCodeTool's code declares."""
-    _check_nested_python_code(actor, instance, data, attribute="python_code")
+    check_python_code_write(actor, instance, data, attribute="python_code")
 
 
 def check_cdt_node_write(actor: SecretActor | None, instance, data: dict) -> None:
@@ -227,8 +228,8 @@ def check_cdt_node_write(actor: SecretActor | None, instance, data: dict) -> Non
     Detaching a PythonCode (sending it as null) drops its declaration with it, which
     needs no secrets:USE.
     """
-    _check_nested_python_code(actor, instance, data, attribute="pre_python_code")
-    _check_nested_python_code(actor, instance, data, attribute="post_python_code")
+    check_python_code_write(actor, instance, data, attribute="pre_python_code")
+    check_python_code_write(actor, instance, data, attribute="post_python_code")
 
 
 def check_quickstart(actor: SecretActor | None, data: dict) -> None:
@@ -269,22 +270,6 @@ def check_config_import(
         )
 
 
-def _check_nested_python_code(
-    actor: SecretActor | None, instance, data: dict, *, attribute: str
-) -> None:
-    python_code_data = data.get(attribute)
-    # Checked before the persisted PythonCode is read: loading it costs a query per
-    # parent, which a write that leaves the declaration alone does not need.
-    if python_code_data is None or "secrets" not in python_code_data:
-        return
-    check_python_code_write(
-        actor,
-        _persisted_value(instance, attribute),
-        python_code_data,
-        field_path=(attribute,),
-    )
-
-
 def _check_api_key_and_header_markers(actor: SecretActor | None, instance, data: dict) -> None:
     _check_secret_reference(actor, instance, data, attribute="api_key_secret")
     current_headers = _persisted_value(instance, "extra_headers")
@@ -300,6 +285,10 @@ def _check_model_switch(
     actor: SecretActor | None, instance, data: dict, *, carries_secret: bool
 ) -> None:
     """A config sends its requests to its model's `base_url`, so switching models can move them."""
+    # Before either model is read: a config without a secret may switch freely, and
+    # loading a model costs a query on every config update.
+    if not carries_secret:
+        return
     current_model = _persisted_value(instance, "model")
     secret_use_service.check_destination(
         actor,

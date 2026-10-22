@@ -137,6 +137,26 @@ def test_base_url_change_on_marker_only_config_denied(no_use_client, default_org
 
 
 @pytest.mark.django_db
+def test_dropping_all_markers_while_changing_base_url_is_free(no_use_client, default_org):
+    # Whether the config carries a secret is judged after the write: once this
+    # request drops the only marker, nothing is sent to the new host.
+    config = LLMConfig.objects.create(
+        custom_name="destination-marker-dropped", extra_headers=MARKER_HEADERS, org=default_org
+    )
+
+    response = no_use_client.patch(
+        f"/api/llm-configs/{config.pk}/",
+        {"extra_headers": {}, "base_url": ATTACKER_URL},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.json()
+    config.refresh_from_db()
+    assert config.extra_headers == {}
+    assert config.base_url == ATTACKER_URL
+
+
+@pytest.mark.django_db
 def test_switch_to_custom_model_with_other_base_url_denied(
     no_use_client, secret_llm_config, gateway_llm_model, custom_llm_model
 ):
@@ -318,6 +338,24 @@ def test_embedding_model_base_url_edit_denied(
 
 
 @pytest.mark.django_db
+def test_embedding_model_base_url_edit_without_secret_config_is_free(
+    no_use_client, default_org, custom_embedding_model
+):
+    gateway_model = custom_embedding_model("gateway-embedder", GATEWAY_URL)
+    EmbeddingConfig.objects.create(
+        custom_name="destination-plain-embedder-user", model=gateway_model, org=default_org
+    )
+
+    response = no_use_client.patch(
+        f"/api/embedding-models/{gateway_model.pk}/", {"base_url": ATTACKER_URL}, format="json"
+    )
+
+    assert response.status_code == 200, response.json()
+    gateway_model.refresh_from_db()
+    assert gateway_model.base_url == ATTACKER_URL
+
+
+@pytest.mark.django_db
 def test_holder_of_use_may_change_destination(
     use_client, secret_llm_config, gateway_llm_model, secret_embedding_config, custom_embedding_model
 ):
@@ -455,6 +493,30 @@ def test_twilio_upsert_cross_org_channel_is_404_before_secret_check(no_use_clien
     beta_twilio.refresh_from_db()
     assert beta_twilio.auth_token_secret_id == beta_secret.pk
     assert beta_twilio.account_sid == "AC_beta"
+
+
+@pytest.mark.django_db
+def test_child_viewset_cross_org_parent_is_404_before_secret_check_through_the_api(
+    no_use_client, beta, secret_b
+):
+    # The beta channel has no Twilio row yet, so this create goes through the
+    # viewset's perform_create rather than the upsert branch. Linking a secret on
+    # create needs secrets:USE, so a secret check run before the parent check would
+    # answer 400 and tell the caller the channel exists.
+    beta_channel = RealtimeChannel.objects.create(name="beta-new-twilio-channel", org=beta)
+
+    response = no_use_client.post(
+        "/api/twilio-channels/",
+        {
+            "channel": beta_channel.pk,
+            "account_sid": "AC_hijacked",
+            "auth_token_secret_id": secret_b.pk,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 404, response.json()
+    assert not TwilioChannel.objects.filter(channel=beta_channel).exists()
 
 
 MCP_SERVER_URL = "https://mcp.example.com/sse"

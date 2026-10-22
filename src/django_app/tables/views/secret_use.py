@@ -1,18 +1,6 @@
 from rbac.scoping.mixins import OrgScopedChildViewSetMixin
-from rest_framework import serializers
-from tables.services.secrets import SecretUseDeniedError
 from tables.services.secrets.request_actor import actor_from_request
 from tables.services.secrets.secret_use_checks import SecretUseCheck
-
-
-def denial_as_validation_error(denial: SecretUseDeniedError) -> serializers.ValidationError:
-    """Turn a domain denial into the ValidationError a serializer would raise for that field.
-
-    The detail is nested along `denial.field_path`, so `("python_code", "secret_ids")`
-    renders like an error from the nested PythonCode serializer and the 400
-    envelope's message keeps naming the field.
-    """
-    return serializers.ValidationError(denial.field_errors())
 
 
 class SecretUseCheckedViewSetMixin:
@@ -53,16 +41,14 @@ class SecretUseCheckedViewSetMixin:
         """Run the secret Use check for a write of `data` over `instance` (None on create).
 
         Raises:
-            serializers.ValidationError: The write needs secrets:USE and the caller lacks it.
+            SecretUseDeniedError: The write needs secrets:USE and the caller lacks it;
+                the project exception handler renders it as a 400 naming the field.
         """
         # Read from the class: an instance lookup would bind a plain function as a method.
         check = type(self).secret_use_check
         if check is None:
             raise NotImplementedError(f"{type(self).__name__} must set secret_use_check.")
-        try:
-            check(actor_from_request(self.request), instance, data)
-        except SecretUseDeniedError as denial:
-            raise denial_as_validation_error(denial) from denial
+        check(actor_from_request(self.request), instance, data)
 
     def _assert_child_parent_in_active_org(self, serializer) -> None:
         if isinstance(self, OrgScopedChildViewSetMixin):

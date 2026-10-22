@@ -23,8 +23,8 @@ from tables.services.secrets import secret_encryption, secret_service
 def error_text(resp):
     """Validation details as one string, whatever shape the body has.
 
-    The view raises ValidationError, and utils/exception_handler.py flattens every
-    APIException into {"status_code", "code", "message"} — so the per-field dict
+    Serializer errors and secret Use denials both reach utils/exception_handler.py,
+    which flattens them into {"status_code", "code", "message"} — so the per-field dict
     DRF produces is not what reaches the client.
     """
     return str(resp.data)

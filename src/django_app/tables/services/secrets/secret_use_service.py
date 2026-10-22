@@ -34,8 +34,8 @@ class SecretUseService:
 
     Every check compares the persisted value with the value after the write, so a
     resend of what is already stored needs no permission. Knows nothing about
-    requests or serializers: callers pass plain values and translate
-    SecretUseDeniedError into their own error shape.
+    requests or serializers: callers pass plain values and let SecretUseDeniedError
+    propagate to the exception handler, or render it in their own shape (bulk save).
     """
 
     def __init__(self, resolver=None):
@@ -131,7 +131,6 @@ class SecretUseService:
                 "SecretUseService denied '{}': no actor, so secrets:USE cannot be resolved.",
                 ".".join(field_path),
             )
-            raise SecretUseDeniedError(field_path=field_path, message=message)
         if not self.may_use(actor):
             raise SecretUseDeniedError(field_path=field_path, message=message)
 

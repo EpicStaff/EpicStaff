@@ -46,8 +46,8 @@ class UndeclaredSecretError(CustomAPIExeption):
 class SecretUseDeniedError(Exception):
     """Raised when a write needs secrets:USE and the actor does not hold it.
 
-    A domain error, not an HTTP one: the write point that called SecretUseService
-    turns it into the response shape its clients expect, keyed by `field_path`.
+    A domain error, not an HTTP one: `utils.exception_handler` renders it as a 400
+    naming `field_path`, and the flow bulk save reports it as that node's errors.
     """
 
     def __init__(self, *, field_path: tuple[str, ...], message: str):

@@ -2,7 +2,6 @@ from copy import deepcopy
 
 from django.db.models import Q
 from rbac.authorship import resolve_author
-from rest_framework.exceptions import ValidationError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
@@ -28,7 +27,6 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
-from tables.services.secrets import SecretUseDeniedError
 from tables.services.secrets.secret_use_checks import check_config_import
 from tables.services.secrets.secret_use_service import SecretActor
 
@@ -113,12 +111,9 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         # Import has no request to read the actor from. Without a user there is no
         # one to hold secrets:USE, so a config with markers is denied.
         actor = SecretActor(user=user, org_id=org_id) if user is not None else None
-        try:
-            check_config_import(actor, data, marker_fields=self.marker_fields)
-        except SecretUseDeniedError as denial:
-            # Raised like the serializer's own errors, so the import reports a 400
-            # naming the field and rolls back like any invalid entry.
-            raise ValidationError(denial.field_errors()) from denial
+        # A denial propagates out of the import's transaction, rolling it back, and
+        # the exception handler renders it as a 400 naming the field.
+        check_config_import(actor, data, marker_fields=self.marker_fields)
 
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data

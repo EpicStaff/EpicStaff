@@ -93,7 +93,7 @@ from tables.services.quickstart_service import QuickstartService
 from tables.services.realtime_service import RealtimeService
 from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
-from tables.services.secrets import SecretResolver, SecretUseDeniedError
+from tables.services.secrets import SecretResolver
 from tables.services.secrets.request_actor import actor_from_request
 from tables.services.secrets.secret_use_checks import check_quickstart
 from tables.services.session_access import (
@@ -138,7 +138,6 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.throttles import NotifyEmailThrottle
 from tables.utils.telegram_fields import load_telegram_trigger_fields
-from tables.views.secret_use import denial_as_validation_error
 from utils.graph_utils import runtime_node_name
 from utils.logger import logger
 
@@ -876,10 +875,7 @@ class QuickstartView(APIView):
         )
         # After the CREATE gate, so a caller who may not create configs at all gets
         # its 403 rather than a secret Use 400.
-        try:
-            check_quickstart(actor_from_request(request), serializer.validated_data)
-        except SecretUseDeniedError as denial:
-            raise denial_as_validation_error(denial) from denial
+        check_quickstart(actor_from_request(request), serializer.validated_data)
 
         result = quickstart_service.quickstart(
             provider=provider,

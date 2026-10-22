@@ -185,10 +185,10 @@ class TestFkFieldsAreGated:
         )
         assert response.status_code == 400, response.json()
         # The project's global exception handler (`utils.exception_handler.
-        # custom_exception_handler`) flattens every DRF ValidationError into a
-        # `{status_code, code, message}` envelope, folding the per-field detail
-        # dict into the "message" string rather than keeping it as a top-level
-        # key -- so the field name is asserted against "message", not the body.
+        # custom_exception_handler`) renders the secret Use denial like any DRF
+        # ValidationError: a `{status_code, code, message}` envelope, folding the
+        # per-field detail dict into the "message" string rather than keeping it
+        # as a top-level key -- so the field name is asserted against "message".
         assert field in response.json()["message"]
 
     def test_resending_the_same_value_is_accepted(

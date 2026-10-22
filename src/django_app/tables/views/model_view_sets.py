@@ -476,8 +476,9 @@ class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
 class LLMModelReadWriteViewSet(
     # Built-in protection runs before the secret check: a built-in model is
     # immutable (403) whatever the caller holds, and the secret check counts the
-    # configs of every org that uses it. Neither mixin defines get_queryset or
-    # perform_create, so the org mixin still wraps the concrete viewset.
+    # configs of every org that uses it. Both mixins hand every perform_* they
+    # override on to super(), so the hybrid org mixin after them still runs: it
+    # scopes get_queryset and stamps the org on create.
     BuiltInWriteProtectedMixin,
     SecretUseCheckedViewSetMixin,
     OrgScopedHybridViewSetMixin,
@@ -502,8 +503,9 @@ class LLMModelReadWriteViewSet(
 class EmbeddingModelReadWriteViewSet(
     # Built-in protection runs before the secret check: a built-in model is
     # immutable (403) whatever the caller holds, and the secret check counts the
-    # configs of every org that uses it. Neither mixin defines get_queryset or
-    # perform_create, so the org mixin still wraps the concrete viewset.
+    # configs of every org that uses it. Both mixins hand every perform_* they
+    # override on to super(), so the hybrid org mixin after them still runs: it
+    # scopes get_queryset and stamps the org on create.
     BuiltInWriteProtectedMixin,
     SecretUseCheckedViewSetMixin,
     OrgScopedHybridViewSetMixin,

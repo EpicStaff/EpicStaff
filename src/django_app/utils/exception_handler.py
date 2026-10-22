@@ -1,7 +1,7 @@
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
 from django_app.settings import DEBUG
-from rest_framework.exceptions import APIException, NotFound
+from rest_framework.exceptions import APIException, NotFound, ValidationError
 from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
 from rest_framework.settings import api_settings
 from rest_framework.views import exception_handler
@@ -29,6 +29,10 @@ def _flatten_detail(detail) -> str:
 def custom_exception_handler(exc, context):
     """Render every exception as the project's `{status_code, code, message}` envelope."""
 
+    # Imported here, not at module level: the secrets package imports the models,
+    # and this util must stay importable without the app registry or a cycle via tables.
+    from tables.services.secrets.exceptions import SecretUseDeniedError
+
     # DRF's own `exception_handler()` converts Django's `Http404`/
     # `PermissionDenied` into `NotFound`/`PermissionDenied` APIExceptions,
     # but only on its own local `exc` binding -- the caller's `exc` here is
@@ -40,6 +44,10 @@ def custom_exception_handler(exc, context):
         exc = NotFound(*exc.args)
     elif isinstance(exc, PermissionDenied):
         exc = DRFPermissionDenied(*exc.args)
+    elif isinstance(exc, SecretUseDeniedError):
+        # A domain error raised by the secret Use check. Rendered as the field error
+        # a serializer would report, so the 400 message names the field.
+        exc = ValidationError(exc.field_errors())
 
     response = exception_handler(exc, context)
 

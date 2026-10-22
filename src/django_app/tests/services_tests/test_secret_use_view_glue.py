@@ -1,51 +1,18 @@
-"""The view-layer glue turns secret Use denials into the field errors clients already get."""
+"""The view-layer glue: the request actor, and the mixin running the secret Use check before the write."""
 
 from types import SimpleNamespace
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
 from rbac.scoping.mixins import OrgScopedChildViewSetMixin
-from rest_framework import mixins, serializers
+from rest_framework import mixins
 from rest_framework.exceptions import NotFound
 from rest_framework.test import APIRequestFactory
 from tables.services.secrets import SecretUseDeniedError
-from tables.views.secret_use import (
-    SecretUseCheckedViewSetMixin,
-    actor_from_request,
-    denial_as_validation_error,
-)
-from utils.exception_handler import custom_exception_handler
+from tables.services.secrets.request_actor import actor_from_request
+from tables.views.secret_use import SecretUseCheckedViewSetMixin
 
 _MESSAGE = "Changing the secrets referenced here requires Use."
-
-
-def _envelope(error: serializers.ValidationError) -> dict:
-    return custom_exception_handler(error, {}).data
-
-
-def test_denial_nests_along_field_path():
-    error = denial_as_validation_error(
-        SecretUseDeniedError(field_path=("python_code", "secret_ids"), message=_MESSAGE)
-    )
-
-    assert error.detail == {"python_code": {"secret_ids": [_MESSAGE]}}
-    assert _envelope(error) == {
-        "status_code": 400,
-        "code": "invalid",
-        "message": f"python_code: secret_ids: {_MESSAGE}",
-    }
-
-
-def test_single_segment_path():
-    error = denial_as_validation_error(
-        SecretUseDeniedError(field_path=("api_key_secret_id",), message=_MESSAGE)
-    )
-
-    assert error.detail == {"api_key_secret_id": [_MESSAGE]}
-    # Same envelope the serializer-level ValidationError({field: message}) produced.
-    assert _envelope(error) == _envelope(
-        serializers.ValidationError({"api_key_secret_id": _MESSAGE})
-    )
 
 
 @pytest.mark.parametrize(
@@ -138,10 +105,10 @@ def test_mixin_denial_blocks_save(action):
     def check(actor, instance, data):
         raise SecretUseDeniedError(field_path=("api_key_secret_id",), message=_MESSAGE)
 
-    with pytest.raises(serializers.ValidationError) as raised:
+    with pytest.raises(SecretUseDeniedError) as raised:
         _write(_viewset(check), action, _RecordingSerializer(log))
 
-    assert raised.value.detail == {"api_key_secret_id": [_MESSAGE]}
+    assert raised.value.field_path == ("api_key_secret_id",)
     assert log == []
 
 
