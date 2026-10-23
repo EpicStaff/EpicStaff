@@ -19,8 +19,8 @@ interface PendingLoad {
 }
 
 /**
- * The plugins the signed-in user may open in the active organization: the left bar and the plugin page guard read
- * them. Empty while the plugin platform is off.
+ * The plugins the signed-in user may open in the active organization: the sidebar's Apps list and the plugin page
+ * guard read them. Empty while the plugin platform is off.
  *
  * Loads as soon as the list can be asked for (see {@link loadableOrgId}) and again whenever the active organization
  * changes; a network failure or server error is retried once. Registered in `APP_STORAGE`, so `clear()` runs on org
@@ -31,6 +31,13 @@ export class AvailablePluginsStorageService implements StorageService {
     private readonly pluginsSignal = signal<AvailablePlugin[]>([]);
     /** Sorted by name. */
     public readonly plugins = this.pluginsSignal.asReadonly();
+
+    private readonly loadedOrgIdSignal = signal<number | null>(null);
+    /**
+     * The organization {@link plugins} belongs to; `null` until a list landed (and again after `clear()`), so an empty
+     * list can be told apart from one that is not known yet.
+     */
+    public readonly loadedOrgId = this.loadedOrgIdSignal.asReadonly();
 
     /**
      * The organization the list may be asked for: the active one, once the signed-in user's permissions in it are known
@@ -62,8 +69,6 @@ export class AvailablePluginsStorageService implements StorageService {
     private readonly activeOrgService = inject(ActiveOrgService);
     private readonly configService = inject(ConfigService);
     private readonly permissionsService = inject(PermissionsService);
-    /** The organization {@link plugins} belongs to; `null` until a list landed. */
-    private loadedOrgId: number | null = null;
     private pendingLoad: PendingLoad | null = null;
 
     /**
@@ -74,7 +79,7 @@ export class AvailablePluginsStorageService implements StorageService {
     loadForActiveOrg(): Observable<AvailablePlugin[]> {
         const orgId = this.loadableOrgId();
         if (orgId === null) return of([]);
-        if (this.loadedOrgId === orgId) return of(this.pluginsSignal());
+        if (this.loadedOrgIdSignal() === orgId) return of(this.pluginsSignal());
         if (this.pendingLoad?.orgId === orgId) return this.pendingLoad.response;
         return this.startLoad(orgId);
     }
@@ -106,7 +111,7 @@ export class AvailablePluginsStorageService implements StorageService {
                 if (!isCurrent() || this.activeOrgService.activeOrgId() !== orgId) return [];
                 const sorted = [...plugins].sort(byName);
                 this.pluginsSignal.set(sorted);
-                this.loadedOrgId = orgId;
+                this.loadedOrgIdSignal.set(orgId);
                 return sorted;
             }),
             catchError(() => of<AvailablePlugin[]>([])),
@@ -122,7 +127,7 @@ export class AvailablePluginsStorageService implements StorageService {
 
     private reset(): void {
         this.pendingLoad = null;
-        this.loadedOrgId = null;
+        this.loadedOrgIdSignal.set(null);
         this.pluginsSignal.set([]);
     }
 }

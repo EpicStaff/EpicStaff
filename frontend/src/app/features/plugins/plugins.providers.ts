@@ -2,6 +2,7 @@ import { Provider } from '@angular/core';
 import { APP_STORAGE, ORG_SWITCH_URL_RULES, ROLE_PERMISSION_EXTENSIONS } from '@shared/services';
 
 import { PluginRolePermissionExtension } from './role-permissions/plugin-role-permission-extension';
+import { AppReturnUrlService } from './services/app-return-url.service';
 import { AvailablePluginsStorageService } from './services/available-plugins-storage.service';
 import { PluginsAdminStorageService } from './services/plugins-admin-storage.service';
 import { pluginRootUrl } from './utils/plugin-root-url.util';
@@ -11,6 +12,7 @@ export function providePluginsStorages(): Provider[] {
     return [
         { provide: APP_STORAGE, useExisting: AvailablePluginsStorageService, multi: true },
         { provide: APP_STORAGE, useExisting: PluginsAdminStorageService, multi: true },
+        { provide: APP_STORAGE, useExisting: AppReturnUrlService, multi: true },
     ];
 }
 

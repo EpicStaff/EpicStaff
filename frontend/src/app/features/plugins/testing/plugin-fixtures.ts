@@ -1,4 +1,4 @@
-import { AvailablePlugin } from '../models/available-plugin.model';
+import { AvailablePlugin, AvailablePluginNavigationItem } from '../models/available-plugin.model';
 import { OrganizationServiceAccount, PluginActivityEvent } from '../models/plugin-activity.model';
 import {
     PackageReview,
@@ -131,15 +131,30 @@ export function buildPluginPurgeProgress(overrides: Partial<PluginPurgeProgress>
     };
 }
 
+/** Weather as a member sees it: one page, no app menu. */
 export function buildAvailablePlugin(overrides: Partial<AvailablePlugin> = {}): AvailablePlugin {
     return {
         identifier: 'weather',
         name: 'Weather',
+        description: 'Forecasts for the places your organization cares about.',
         icon_url: '/api/plugin-public/weather/icon/?v=0.1.0',
         frame_origin: 'https://weather.plugins.example.com',
         permissions: ['read'],
         availability: 'ready',
         development: false,
+        navigation: [],
+        ...overrides,
+    };
+}
+
+/** The Overview entry of Weather's app menu, its icon served from version 0.1.0. */
+export function buildAvailablePluginNavigationItem(
+    overrides: Partial<AvailablePluginNavigationItem> = {}
+): AvailablePluginNavigationItem {
+    return {
+        label: 'Overview',
+        path: '/',
+        icon_url: '/api/plugin-public/weather/icons/overview.svg/?v=0.1.0',
         ...overrides,
     };
 }

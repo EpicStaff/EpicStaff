@@ -10,19 +10,17 @@ import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ConfigService } from '../../../services/config';
 import { AvailablePlugin } from '../models/available-plugin.model';
 import { providePluginsStorages } from '../plugins.providers';
+import { buildAvailablePlugin } from '../testing/plugin-fixtures';
 import { AvailablePluginsApiService } from './available-plugins-api.service';
 import { AVAILABLE_PLUGINS_RETRY_DELAY_MS, AvailablePluginsStorageService } from './available-plugins-storage.service';
 
 function plugin(identifier: string, name: string): AvailablePlugin {
-    return {
+    return buildAvailablePlugin({
         identifier,
         name,
         icon_url: `/api/plugin-public/${identifier}/icon/?v=1.0.0`,
         frame_origin: `https://${identifier}.plugins.example.com`,
-        permissions: ['read'],
-        availability: 'ready',
-        development: false,
-    };
+    });
 }
 
 function permissionsIn(orgId: number): ActivePermissions {
@@ -151,6 +149,27 @@ describe('AvailablePluginsStorageService', () => {
         expect(api.list).toHaveBeenCalledTimes(2);
         responses[1].next([plugin('atlas', 'Atlas')]);
         expect(storage.plugins().map(({ identifier }) => identifier)).toEqual(['atlas']);
+    });
+
+    it('names the organization the list belongs to once it landed, an empty list too, and forgets it on clear', () => {
+        const storage = setup();
+        expect(storage.loadedOrgId()).toBeNull();
+
+        responses[0].next([]);
+        expect(storage.loadedOrgId()).toBe(1);
+
+        TestBed.inject(AppStorageService).clearAll();
+        expect(storage.loadedOrgId()).toBeNull();
+    });
+
+    it('names no organization for a response it dropped', () => {
+        const storage = setup();
+
+        TestBed.inject(AppStorageService).clearAll();
+        TestBed.inject(ActiveOrgService).set(2);
+        responses[0].next([plugin('weather', 'Weather')]);
+
+        expect(storage.loadedOrgId()).toBeNull();
     });
 
     it('drops the response of an organization that is no longer active, even without a clear', () => {
