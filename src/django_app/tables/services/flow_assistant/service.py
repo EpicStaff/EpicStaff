@@ -13,6 +13,7 @@ Responsibilities:
 import json
 from collections import Counter
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import timedelta
 
 from asgiref.sync import sync_to_async
@@ -30,8 +31,10 @@ from tables.models.flow_assistant_models import (
     FlowAssistantMessage,
 )
 from tables.services.llm_clients import (
+    TOOL_USE_FAILED_CODE,
     DoneEvent,
     InvalidLLMConfigError,
+    LLMProviderError,
     StreamEvent,
     StructuredEvent,
     TokenEvent,
@@ -57,6 +60,45 @@ from .helpers import (
 from .node_registry import FLOW_ASSISTANT_NODE_TYPES
 from .system_prompt import SystemPromptInputs, build_system_prompt
 from .tools import _TOOL_CALLABLES, TOOL_SPECS
+
+
+@dataclass
+class _ProviderRetryBudget:
+    """One retry per user turn, shared by every LLM iteration of that turn."""
+
+    used: bool = False
+
+
+async def _stream_with_provider_retry(
+    client, payload: list[dict], retry_budget: _ProviderRetryBudget, conversation_id: int
+) -> AsyncIterator[StreamEvent]:
+    """Stream one LLM iteration, restarting it once if the provider aborts it unseen.
+
+    The restart happens only when the provider fails with a retryable code before this
+    iteration yielded anything, so the caller never sees a partial first attempt.
+    """
+    yielded_any = False
+    while True:
+        try:
+            async for event in client.stream_completion(payload, TOOL_SPECS):
+                yielded_any = True
+                yield event
+            return
+        except LLMProviderError as exc:
+            if exc.code != TOOL_USE_FAILED_CODE or yielded_any or retry_budget.used:
+                raise
+            # A cancelled turn must end, not start another request; the caller's
+            # cancel handling cannot run while this generator is retrying.
+            if await _is_cancel_requested(conversation_id):
+                raise
+            retry_budget.used = True
+            logger.warning(
+                "Flow Assistant retrying after provider error ({}) for conversation {}: {}",
+                exc.code,
+                conversation_id,
+                exc.message,
+            )
+
 
 # ── Service ───────────────────────────────────────────────────────────────────
 
@@ -289,6 +331,7 @@ class FlowAssistantService:
         # These persist across tool-call iterations within a single turn.
         reasoning_observed_this_turn: bool = False
         tool_calls_this_turn: int = 0
+        provider_retry_budget = _ProviderRetryBudget()
 
         # True once working_messages has gained tool_call or tool entries during
         # this turn — used by the finally block to decide whether a partial
@@ -352,7 +395,9 @@ class FlowAssistantService:
                 # Django would otherwise keep it until the stream ends, for the whole reply.
                 # Thread-sensitive, so it closes the connection of the thread that holds it.
                 await sync_to_async(close_old_connections)()
-                async for event in client.stream_completion(payload, TOOL_SPECS):
+                async for event in _stream_with_provider_retry(
+                    client, payload, provider_retry_budget, conversation.pk
+                ):
                     if isinstance(event, DoneEvent):
                         if event.reasoning_observed:
                             reasoning_observed_this_turn = True

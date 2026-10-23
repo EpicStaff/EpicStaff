@@ -43,6 +43,11 @@ from tables.services.flow_assistant.conversation_access import get_streamable_co
 from tables.services.flow_assistant.helpers import request_cancel
 from tables.services.flow_assistant.organization_resolution import resolve_organization_user
 from tables.services.flow_assistant.stream_serializer import serialize_stream_event
+from tables.services.llm_clients import (
+    TOOL_USE_FAILED_CODE,
+    USER_VISIBLE_PROVIDER_ERROR_CODES,
+    LLMProviderError,
+)
 from tables.services.secrets import SecretResolutionError
 from tables.utils.mixins import SSEMixin
 from utils.logger import logger
@@ -273,6 +278,18 @@ class FlowAssistantSendMessageView(APIView):
 # ── SSE streaming endpoint ────────────────────────────────────────────────────
 
 
+def _provider_error_detail(error: LLMProviderError) -> str:
+    source = f"{error.provider}: {error.code}" if error.code else error.provider
+    if error.code not in USER_VISIBLE_PROVIDER_ERROR_CODES:
+        return (
+            f"The model provider rejected the request ({source}). "
+            "Check the LLM configuration or contact an admin."
+        )
+    detail = f"The model provider returned an error ({source}): {error.message}"
+    # Only this provider failure is random; retrying anything else repeats it.
+    return f"{detail} Try again." if error.code == TOOL_USE_FAILED_CODE else detail
+
+
 class FlowAssistantStreamView(SSEMixin):
     """
     GET /api/flow-assistants/<graph_id>/conversations/<conversation_id>/stream/?ticket=...
@@ -347,6 +364,9 @@ class FlowAssistantStreamView(SSEMixin):
         except (LLMConfigMissingError, LLMConfigInvalidError, SecretResolutionError) as exc:
             logger.warning("FlowAssistant stream error ({}): {}", type(exc).__name__, exc)
             error_detail = str(exc)
+        except LLMProviderError as exc:
+            logger.warning("FlowAssistant stream provider error: {}", exc)
+            error_detail = _provider_error_detail(exc)
         except Exception as exc:
             logger.exception("Unexpected error in FlowAssistantStreamView: {}", exc)
             error_detail = "Unexpected error."

@@ -7,6 +7,8 @@ import {
     CopyDocumentsRequest,
     CopyDocumentsResponse,
     DeleteDocumentResponse,
+    ImportFromStorageRequest,
+    ImportFromStorageResponse,
     UploadDocumentResponse,
 } from '../models/document.model';
 
@@ -31,6 +33,14 @@ export class DocumentsApiService {
         return this.http.post<UploadDocumentResponse>(
             `${this.apiUrl}/source-collection/${collectionId}/upload/`,
             formData
+        );
+    }
+
+    importFromStorage(collectionId: number, storageFileIds: number[]): Observable<ImportFromStorageResponse> {
+        const body: ImportFromStorageRequest = { storage_file_ids: storageFileIds };
+        return this.http.post<ImportFromStorageResponse>(
+            `${this.apiUrl}/source-collection/${collectionId}/from-storage/`,
+            body
         );
     }
 

@@ -1,6 +1,6 @@
 <div
     class="editor-wrapper"
-    [class.panel-open]="!!sidePanelService.selectedNode()"
+    [class.panel-open]="isNodePanelShown()"
     [class.readonly]="flowReadOnly.isReadOnly()"
 >
     <f-flow
@@ -126,6 +126,7 @@
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
                     (portMouseenter)="hoveredNodeId.set(node.id)"
+                    [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.nodeIds.has(node.id)"
                     (fNodePositionChange)="onNodePositionChanged($event, node)"
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
@@ -155,7 +156,7 @@
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="routingOrchestrator.backwardConnectionIds().has(connection.id)"
                     [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
-                    [class.node-hovered]="hoveredNodeConnectionIds().has(connection.id)"
+                    [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.connectionIds.has(connection.id)"
                     [style.z-index]="routingOrchestrator.backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()
@@ -304,10 +305,14 @@
         </div>
 
         <div class="top-right-controls">
-            <div class="top-right-actions">
+            <div
+                class="top-right-actions"
+                appHideOverflowingChildren
+            >
                 @if (selectionManager.selectedNodeCount() > 0 && !isPreview) {
                     <button
                         class="arrange-btn extract-subflow-btn"
+                        data-hide-on-overflow
                         matTooltip="Extract to Subflow"
                         matTooltipPosition="below"
                         (click)="onExtractToSubflow()"
@@ -317,6 +322,7 @@
                 }
                 @if (!isPreview) {
                     <app-flow-export-import-button
+                        data-hide-on-overflow
                         [selectedCount]="selectionManager.selectedNodeCount()"
                         [allSelectedAreCdt]="selectionManager.allSelectedAreCdt()"
                         (exportSelectedJson)="onExportSelectedAsJson()"
@@ -327,6 +333,7 @@
                 }
                 @if (currentFlowId && !isPreview && canReadFiles()) {
                     <app-flow-files-button
+                        data-hide-on-overflow
                         [flowId]="currentFlowId"
                         [flowName]="flowName"
                     ></app-flow-files-button>
@@ -334,6 +341,7 @@
                 @if (!flowReadOnly.isReadOnly()) {
                     <button
                         class="arrange-btn"
+                        data-hide-on-overflow
                         title="Auto arrange"
                         matTooltip="Auto arrange"
                         matTooltipPosition="below"
@@ -348,6 +356,7 @@
                 }
                 <button
                     class="arrange-btn settings-icon-btn"
+                    data-hide-on-overflow
                     (click)="openSettings()"
                     title="Flow Settings"
                     matTooltip="Flow settings"

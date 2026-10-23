@@ -32,6 +32,7 @@ dependencies = [
     "djangorestframework==3.17.2",
     "drf-spectacular==0.29.0",
     "filelock==3.32.5",
+    "foundation",
     "gunicorn==23.0.0",
     "httpx==0.28.1",
     "jsonschema==4.25.1",
@@ -73,6 +74,10 @@ transitive-pins = [
 
 [tool.uv]
 package = false
+no-binary-package = ["psycopg2", "foundation"]
+
+[tool.uv.sources]
+foundation = { path = "../foundation", editable = true}
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"

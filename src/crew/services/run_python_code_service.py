@@ -3,13 +3,14 @@ import uuid
 from typing import Any
 
 import settings
+from clients.sandbox import SandboxClient
 from loguru import logger
 from models.state import State
 from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.bench_log import BENCH_LEVEL
-from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
+from src.shared.models import CodeResultData, PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.redis_keys import crew_code_result_channel
 from utils.singleton_meta import SingletonMeta
@@ -33,8 +34,12 @@ def build_state_globals(state: State) -> dict[str, Any]:
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):
-    def __init__(self, redis_service: RedisService):
+    # sandbox_client is Optional only so the singleton's other construction sites
+    # (CDT subgraphs do `RunPythonCodeService(redis_service=...)`) stay valid; the
+    # real client is injected once in main.py at startup, before any run_code call.
+    def __init__(self, redis_service: RedisService, sandbox_client: SandboxClient | None = None):
         self.redis_service = redis_service
+        self.sandbox_client = sandbox_client
         self._result_channel = crew_code_result_channel(settings.CODE_RESULT_CHUNNEL)
         self._pending_results: dict[str, asyncio.Future[dict[str, Any]]] = {}
 
@@ -57,25 +62,20 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         stop_event: StopEvent | None = None,
         storage_credentials: StorageCredentials | None = None,
     ) -> dict[str, Any]:
-        """Publish the code to the sandbox and wait for its result on crew's result channel.
+        """Submit the code to the sandbox and wait for its result on crew's result channel.
 
-        The sandbox publishes the result to `crew_code_result_channel`, which only crew
-        reads; the one subscription made by `subscribe_to_results` hands each result to
-        the execution waiting for it. The result arrives over Redis pub/sub, which has no delivery guarantee. If none
-        arrives within settings.CODE_RESULT_TIMEOUT, this returns a synthesized
+        The submission goes over HTTP; the sandbox publishes the result to
+        `crew_code_result_channel`, which only crew reads, and the one subscription made
+        by `subscribe_to_results` hands each result to the execution waiting for it.
+        Pub/sub has no delivery guarantee, so if no result arrives within
+        settings.CODE_RESULT_TIMEOUT this returns a synthesized
         CodeResultData(returncode=TIMEOUT_RETURNCODE, result_data=None) instead of
         blocking forever -- the sandbox itself never produced this result, so callers
         must branch on returncode like they already do for every other non-zero outcome.
         CODE_RESULT_TIMEOUT is None means wait indefinitely.
         """
         additional_global_kwargs = additional_global_kwargs or {}
-        venv_name = python_code_data.venv_name
-        code = python_code_data.code
-        entrypoint = python_code_data.entrypoint
-        libraries = python_code_data.libraries
-
         global_kwargs = python_code_data.global_kwargs or {}
-
         merged_global_kwargs = {
             **global_kwargs,
             **additional_global_kwargs,
@@ -84,50 +84,48 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             merged_global_kwargs["org_id"] = python_code_data.org_id
 
         unique_task_id = str(uuid.uuid4())
-        try:
-            code_task_data = CodeTaskData(
-                venv_name=venv_name,
-                libraries=libraries,
-                code=code,
-                execution_id=unique_task_id,
-                entrypoint=entrypoint,
-                func_kwargs=inputs,
-                global_kwargs=merged_global_kwargs,
-                use_storage=python_code_data.use_storage,
-                storage_allowed_paths=python_code_data.storage_allowed_paths,
-                storage_org_prefix=python_code_data.storage_org_prefix,
-                session_id=python_code_data.session_id,
-                secrets=python_code_data.secrets,
-                org_id=python_code_data.org_id,
-                storage_credentials=storage_credentials,
-                execution_timeout=python_code_data.execution_timeout,
-                reply_to_crew_channel=True,
-            )
-        except ValidationError:
-            # Never log or return `error` itself: ValidationError's repr embeds the
-            # constructor input, including `secrets` and `storage_credentials`.
-            logger.error(
-                "Invalid storage scope for code execution (execution_id={})", unique_task_id
-            )
-            return CodeResultData(
-                execution_id=unique_task_id,
-                stderr="Invalid storage scope for code execution.",
-                stdout="",
-                returncode=1,
-            ).model_dump()
 
-        # Registered before publishing, so a result that arrives at once is not missed.
+        # Registered before submitting, so a result that arrives at once is not missed.
         result_future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._pending_results[unique_task_id] = result_future
         try:
-            await self.redis_service.apublish(
-                settings.CODE_EXEC_CHANNEL, code_task_data.model_dump_json()
-            )
+            try:
+                await self.sandbox_client.submit(
+                    execution_id=unique_task_id,
+                    venv_id=python_code_data.venv_id,
+                    session_id=python_code_data.session_id,
+                    code=python_code_data.code,
+                    entrypoint=python_code_data.entrypoint,
+                    func_kwargs=inputs,
+                    global_kwargs=merged_global_kwargs,
+                    secrets=python_code_data.secrets,
+                    use_storage=python_code_data.use_storage,
+                    storage_allowed_paths=python_code_data.storage_allowed_paths or [],
+                    storage_org_prefix=python_code_data.storage_org_prefix,
+                    storage_credentials=storage_credentials,
+                    timeout=python_code_data.execution_timeout,
+                    reply_to_crew_channel=True,
+                )
+            except Exception as error:
+                # The result will never arrive, so do not wait on it: fail the node now.
+                # The class name, never the traceback: the frame below holds the submit
+                # body with resolved secret plaintext and the storage secret key.
+                logger.error(
+                    "Sandbox submit failed for {} ({})", unique_task_id, type(error).__name__
+                )
+                return {
+                    "execution_id": unique_task_id,
+                    "result_data": None,
+                    "stdout": "",
+                    "stderr": f"Sandbox submit failed: {error}",
+                    "returncode": 1,
+                }
+
             logger.log(
                 BENCH_LEVEL,
                 "bench {checkpoint}",
                 checkpoint="sandbox_dispatched",
-                session_id=code_task_data.session_id,
+                session_id=python_code_data.session_id,
                 execution_id=unique_task_id,
             )
             logger.debug("Waiting for code result {}", unique_task_id)

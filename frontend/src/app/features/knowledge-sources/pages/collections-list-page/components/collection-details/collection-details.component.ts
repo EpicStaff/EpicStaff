@@ -31,6 +31,7 @@ import { RecycleBinSettingsService } from '../../../../../../services/recycle-bi
 import { CopyCollectionFilesDialogComponent } from '../../../../components/copy-collection-files-dialog/copy-collection-files-dialog.component';
 import { CreateCollectionDialogComponent } from '../../../../components/create-collection-dialog/create-collection-dialog.component';
 import { FILE_TYPES } from '../../../../constants/constants';
+import { CollectionDropTargetDirective } from '../../../../directives/collection-drop-target.directive';
 import { collectFileTypes, isStoredDocument } from '../../../../helpers/collection-stats.util';
 import { CreateCollectionDtoResponse } from '../../../../models/collection.model';
 import { DisplayedListDocument } from '../../../../models/document.model';
@@ -60,6 +61,7 @@ const ALL_FILE_TYPES_ITEM: SelectItem<string | null> = { name: 'All types', valu
         AppSvgIconComponent,
         MatTooltipModule,
         HasPermissionDirective,
+        CollectionDropTargetDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

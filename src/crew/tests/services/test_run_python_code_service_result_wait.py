@@ -5,7 +5,6 @@ execution waiting for it; a wait ends on the result, the timeout, or a stop.
 """
 
 import asyncio
-import json
 
 import fakeredis
 import pytest
@@ -16,25 +15,11 @@ from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
 from services.redis_service import RedisService
 from services.run_python_code_service import TIMEOUT_STDERR_MESSAGE, RunPythonCodeService
-from src.shared.models import CodeResultData, PythonCodeData
-from tests.services.conftest import (
-    CODE_EXEC_CHANNEL,
-    CREW_RESULT_CHANNEL,
-    SHARED_RESULT_CHANNEL,
-)
+from src.shared.models import CodeResultData
+from tests.services.conftest import CREW_RESULT_CHANNEL, SHARED_RESULT_CHANNEL
 from utils.singleton_meta import SingletonMeta
 
 pytestmark = pytest.mark.asyncio
-
-
-def make_python_code_data() -> PythonCodeData:
-    return PythonCodeData(
-        venv_name="default",
-        code="def main(**kw): return kw",
-        entrypoint="main",
-        libraries=[],
-        global_kwargs={},
-    )
 
 
 @pytest.fixture
@@ -63,43 +48,37 @@ async def redis_service_on_fakeredis(fake_server, code_channels):
 
 
 async def test_returns_the_sandbox_result_through_real_redis_pubsub(
-    redis_service_on_fakeredis, fake_server
+    redis_service_on_fakeredis, fake_server, sandbox, sandbox_client, make_python_code_data
 ):
-    service = RunPythonCodeService(redis_service=redis_service_on_fakeredis)
+    """The result path works over real pub/sub, not only over the in-memory double."""
+    service = RunPythonCodeService(
+        redis_service=redis_service_on_fakeredis, sandbox_client=sandbox_client
+    )
     await service.subscribe_to_results()
-    sandbox_client = fakeredis.FakeAsyncRedis(server=fake_server, decode_responses=True)
-    sandbox_pubsub = sandbox_client.pubsub()
-    await sandbox_pubsub.subscribe(CODE_EXEC_CHANNEL)
+    sandbox_redis = fakeredis.FakeAsyncRedis(server=fake_server, decode_responses=True)
 
-    async def answer_one_task() -> None:
-        async for message in sandbox_pubsub.listen():
-            if message["type"] != "message":
-                continue
-            task = json.loads(message["data"])
-            await sandbox_client.publish(
-                CREW_RESULT_CHANNEL,
-                CodeResultData(
-                    execution_id=task["execution_id"], result_data="42", stderr="", stdout=""
-                ).model_dump_json(),
-            )
-            return
-
-    sandbox = asyncio.ensure_future(answer_one_task())
+    run = asyncio.ensure_future(
+        service.run_code(python_code_data=make_python_code_data(), inputs={})
+    )
     try:
-        result = await asyncio.wait_for(
-            service.run_code(python_code_data=make_python_code_data(), inputs={}), timeout=5
+        [task] = await sandbox.wait_for_tasks(1)
+        await sandbox_redis.publish(
+            CREW_RESULT_CHANNEL,
+            CodeResultData(
+                execution_id=task["execution_id"], result_data="42", stderr="", stdout=""
+            ).model_dump_json(),
         )
+        result = await asyncio.wait_for(run, timeout=5)
     finally:
-        sandbox.cancel()
-        await sandbox_pubsub.aclose()
-        await sandbox_client.aclose()
+        run.cancel()
+        await sandbox_redis.aclose()
 
     assert result["result_data"] == "42"
     assert result["returncode"] == 0
 
 
 async def test_returns_the_result_the_sandbox_publishes_for_the_execution(
-    run_python_code_service, sandbox
+    run_python_code_service, sandbox, make_python_code_data
 ):
     run = asyncio.ensure_future(
         run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={})
@@ -116,7 +95,7 @@ async def test_returns_the_result_the_sandbox_publishes_for_the_execution(
 
 
 async def test_returns_a_result_published_before_the_wait_starts(
-    run_python_code_service, sandbox
+    run_python_code_service, sandbox, make_python_code_data
 ):
     sandbox.auto_reply = True
 
@@ -130,7 +109,7 @@ async def test_returns_a_result_published_before_the_wait_starts(
 
 
 async def test_returns_timeout_result_when_no_result_arrives(
-    run_python_code_service, sandbox, short_timeout
+    run_python_code_service, sandbox, short_timeout, make_python_code_data
 ):
     result = await asyncio.wait_for(
         run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={}),
@@ -144,7 +123,7 @@ async def test_returns_timeout_result_when_no_result_arrives(
 
 
 async def test_waits_until_the_result_when_timeout_is_none(
-    run_python_code_service, sandbox, monkeypatch
+    run_python_code_service, sandbox, monkeypatch, make_python_code_data
 ):
     monkeypatch.setattr(settings, "CODE_RESULT_TIMEOUT", None)
     run = asyncio.ensure_future(
@@ -159,7 +138,9 @@ async def test_waits_until_the_result_when_timeout_is_none(
     assert result["result_data"] == "late"
 
 
-async def test_stop_event_set_during_the_wait_aborts_it(run_python_code_service, sandbox):
+async def test_stop_event_set_during_the_wait_aborts_it(
+    run_python_code_service, sandbox, make_python_code_data
+):
     stop_event = StopEvent()
     run = asyncio.ensure_future(
         run_python_code_service.run_code(
@@ -181,7 +162,13 @@ async def test_stop_event_set_during_the_wait_aborts_it(run_python_code_service,
     ],
 )
 async def test_ignores_results_not_addressed_to_the_execution(
-    run_python_code_service, sandbox, pubsub, short_timeout, channel, foreign_execution_id
+    run_python_code_service,
+    sandbox,
+    pubsub,
+    short_timeout,
+    channel,
+    foreign_execution_id,
+    make_python_code_data,
 ):
     run = asyncio.ensure_future(
         run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={})
@@ -204,7 +191,7 @@ async def test_ignores_results_not_addressed_to_the_execution(
 
 
 async def test_unparseable_message_is_dropped_and_the_wait_continues(
-    run_python_code_service, sandbox, pubsub
+    run_python_code_service, sandbox, pubsub, make_python_code_data
 ):
     run = asyncio.ensure_future(
         run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={})
@@ -219,7 +206,7 @@ async def test_unparseable_message_is_dropped_and_the_wait_continues(
 
 
 async def test_concurrent_executions_each_get_their_own_result_from_one_subscription(
-    run_python_code_service, sandbox, pubsub
+    run_python_code_service, sandbox, pubsub, make_python_code_data
 ):
     runs = [
         asyncio.ensure_future(
@@ -242,7 +229,7 @@ async def test_concurrent_executions_each_get_their_own_result_from_one_subscrip
 
 @pytest.mark.parametrize("ending", ["result", "timeout", "stop", "cancelled"])
 async def test_wait_leaves_no_pending_execution_behind(
-    run_python_code_service, sandbox, short_timeout, ending
+    run_python_code_service, sandbox, short_timeout, ending, make_python_code_data
 ):
     stop_event = StopEvent()
     run = asyncio.ensure_future(

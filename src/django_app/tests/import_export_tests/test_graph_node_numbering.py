@@ -26,7 +26,7 @@ def _flow(org, name="Numbered Flow"):
 
 
 def _python_node(graph, node_name, node_number):
-    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main", libraries="")
+    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main")
     return PythonNode.objects.create(
         graph=graph, node_name=node_name, python_code=code, node_number=node_number
     )

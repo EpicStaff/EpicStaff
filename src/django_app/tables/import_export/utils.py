@@ -249,3 +249,22 @@ def attach_tool_labels(instance, id_mapper: IDMapper, label_ids: list) -> None:
     new_label_ids = [id_mapper.get(EntityType.LABEL, old_id) for old_id in label_ids]
     if new_label_ids:
         instance.labels.add(*Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.TOOL))
+
+
+def remap_python_code_venv(python_code_data: dict | None, id_mapper: IDMapper) -> dict | None:
+    """Point exported python code at this system's venv binding, not the source's.
+
+    The file carries the exporting system's binding pk, which means nothing here and
+    could name another organization's environment -- the column is a real foreign key,
+    so the database would accept it. Only an id the file also declares under `Venv`
+    resolves, which leaves nothing else the code can be pointed at.
+
+    Raises:
+        ValueError: The code names a venv the file does not carry.
+    """
+    if not python_code_data or not python_code_data.get("venv"):
+        return python_code_data
+    return {
+        **python_code_data,
+        "venv": id_mapper.get(EntityType.VENV, python_code_data["venv"]),
+    }

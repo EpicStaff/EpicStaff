@@ -30,8 +30,9 @@ location /chat/ {
     proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
     proxy_ssl_verify_depth 3;
     include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
-    # The service's largest legitimate bodies (a 100,000-character message or operator reply,
-    # fully escaped) are about 600 KB; the public API refuses over 1 MiB itself too.
+    # The largest legitimate body (a 100,000-character message, fully escaped, about 600 KB, with
+    # its action and chat_extra_data at their limits) stays under 1 MiB; the public API refuses
+    # over 1 MiB itself too.
     client_max_body_size 1m;
     proxy_http_version 1.1;
     # SSE: no buffering, long reads (same settings as /api/run-session/subscribe/).

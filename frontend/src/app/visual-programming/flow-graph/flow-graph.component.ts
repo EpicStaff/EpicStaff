@@ -65,12 +65,15 @@ import { NodePanelShellComponent } from '../components/node-panels/node-panel-sh
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
 import { FLOW_ACTION_PERMISSIONS } from '../core/constants/flow-action-permissions';
+import { HideOverflowingChildrenDirective } from '../core/directives/hide-overflowing-children.directive';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
+import { PANEL_COMPONENT_MAP } from '../core/enums/node-panel.map';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { buildInsertionConnections, findConnectionUnderNode } from '../core/helpers/drop-on-connection.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isConnectionValid } from '../core/helpers/helpers';
+import { computeHoverContext, HoverContext } from '../core/helpers/hover-context.util';
 import {
     CollisionBounds,
     findNearestFreePosition,
@@ -156,6 +159,7 @@ const CANVAS_PAN_FAST_STEP_PX = 200;
         FlowShortcutsButtonComponent,
         AppSvgIconComponent,
         WaypointTooltipDirective,
+        HideOverflowingChildrenDirective,
         FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
         MatTooltipModule,
@@ -246,6 +250,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             !this.hasUnarrangedChanges()
     );
 
+    /** Selecting a node whose type has no side panel opens nothing, so the toolbar keeps its full width. */
+    protected readonly isNodePanelShown = computed(() => {
+        const node = this.sidePanelService.selectedNode();
+        return !!node && !!PANEL_COMPONENT_MAP[node.type];
+    });
+
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
         for (const node of this.flowService.nodes()) {
@@ -259,7 +269,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const hiddenIds = this.hiddenConnectionIds();
         const hoveredId = this.hoveredConnectionId();
         const selectedIds = this.selectionManager.selectedConnectionIds();
-        const nodeHoveredIds = this.hoveredNodeConnectionIds();
 
         const connections = [...this.flowService.visibleConnections()].filter(
             (connection) => !hiddenIds.has(connection.id)
@@ -271,9 +280,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const bHovered = b.id === hoveredId ? 1 : 0;
             if (aHovered !== bHovered) return aHovered - bHovered;
 
-            // Node-hovered and selected above normal
-            const aRaised = selectedIds.has(a.id) || nodeHoveredIds.has(a.id) ? 1 : 0;
-            const bRaised = selectedIds.has(b.id) || nodeHoveredIds.has(b.id) ? 1 : 0;
+            // Selected above normal
+            const aRaised = selectedIds.has(a.id) ? 1 : 0;
+            const bRaised = selectedIds.has(b.id) ? 1 : 0;
             if (aRaised !== bRaised) return aRaised - bRaised;
 
             const aBackward = backwardIds.has(a.id) ? 1 : 0;
@@ -282,15 +291,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     });
 
-    protected readonly hoveredNodeConnectionIds = computed(() => {
+    protected readonly hoverContext = computed<HoverContext | null>(() => {
         const nodeId = this.hoveredNodeId();
-        if (!nodeId) return new Set<string>();
-        return new Set(
-            this.flowService
-                .connections()
-                .filter((c) => c.sourceNodeId === nodeId || c.targetNodeId === nodeId)
-                .map((c) => c.id)
-        );
+        const nodes = this.flowService.nodes();
+        if (!nodeId || !nodes.some((n) => n.id === nodeId)) return null;
+        const connections = this.flowService.connections();
+        if (!connections.some((c) => c.sourceNodeId === nodeId || c.targetNodeId === nodeId)) return null;
+        return computeHoverContext(nodeId, nodes, connections);
     });
 
     /** The node may not be changed here, so it cannot be dragged either (a trigger node without Flows:Use). */

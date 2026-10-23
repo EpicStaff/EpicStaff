@@ -233,7 +233,7 @@ class ConverterService(metaclass=SingletonMeta):
         Allowed paths are the graph's attached files followed by `extra_paths`, the
         folders the run itself may write to (`sessions/<id>/` in a real run). Both
         are None when the slot does not use storage or there is no graph to scope
-        it by, which tells the sandbox to mint no credentials.
+        it by, which means no storage credentials are minted for this run.
         """
         if not use_storage or graph_id is None:
             return None, None
@@ -434,15 +434,10 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         org_id: int | None = None,
     ):
-        libraries = python_code.get_libraries_list()
-        venv_name = str(python_code.pk)
-        if not libraries:
-            venv_name = "default"
         return PythonCodeData(
-            venv_name=venv_name,
+            venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
-            libraries=libraries,
             global_kwargs=python_code.global_kwargs,
             execution_timeout=python_code.execution_timeout,
             use_storage=use_storage,

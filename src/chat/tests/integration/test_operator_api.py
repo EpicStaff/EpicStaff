@@ -159,6 +159,9 @@ async def test_update_rotate_snippet(client, people, settings):
     snippet = await client.get(f"{BASE}/bindings/{binding['id']}/snippet", headers=h("admin"))
     assert snippet.status_code == 200
     assert snippet.json()["public_key"] == rotated.json()["public_key"] and settings.CHAT_PUBLIC_BASE_URL in snippet.json()["snippet"]
+    # The script comes from the widget's CDN; the chat service only serves the API under /chat/.
+    assert f'src="{settings.CHAT_WIDGET_URL}"' in snippet.json()["snippet"]
+    assert f'data-chat-url="{settings.CHAT_PUBLIC_BASE_URL}/chat/"' in snippet.json()["snippet"]
     assert (await client.post(f"{BASE}/bindings/{binding['id']}/rotate-key", headers=h("agent"))).status_code == 403
 
 
@@ -279,7 +282,9 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     taken_over_at = await _stored_handoff_at(uow_factory, conversation_id)
     assert taken_over_at is not None and datetime.fromisoformat(claimed.json()["handoff_at"]) == taken_over_at
     assert django.stopped == [100]
-    assert (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=visitor)).json() == {"mode": "human", "state": "idle", "bot_display_name": "Support", "operator_display_name": "Support", "status": "open", "close_reason": None, "closed_at": None}
+    state = (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=visitor)).json()
+    # The conversation part of the state; the desk's features and limits are covered by the public API tests.
+    assert {"mode": "human", "state": "idle", "bot_display_name": "Support", "operator_display_name": "Support", "status": "open", "close_reason": None, "closed_at": None}.items() <= state.items()
 
     other = await client.post(f"{BASE}/conversations/{conversation_id}/claim", json={}, headers=h("admin"))
     assert (other.status_code, other.json()["code"]) == (409, "claimed_by_other")

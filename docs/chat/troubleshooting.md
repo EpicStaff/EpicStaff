@@ -24,6 +24,9 @@ Logs, from `src/`: `docker compose logs chat` for the chat service, and `logs ep
   - Token budgets: 1 to 2147483647, and each `…_DEFAULT` no larger than its `…_MAX`.
   - Conversation lifecycle durations (`CHAT_RESPONSE_TIME_*`, `CHAT_CLOSE_AFTER_*`): whole
     seconds from 60 to 2147483647, and each `…_DEFAULT` no larger than its `…_MAX`.
+  - `CHAT_WIDGET_URL`: an absolute https URL (plain http only for a single-label host or a
+    private or loopback IP), with no `"`, `<`, `>` or whitespace: it goes into the embed snippet.
+  - `CHAT_ACTION_MAX_BYTES`, `CHAT_EXTRA_DATA_MAX_BYTES`: plain positive numbers.
 - **Migration failure in the log**: `alembic upgrade head` runs before uvicorn. Check that
   `CHAT_DB_*` match the `chatdb` container and that `chatdb` is healthy.
 - **`Can't locate revision identified by '0002'`** (or `'0003'`, `'0004'`), or **`column … does
@@ -63,6 +66,13 @@ EpicStaff's nginx cannot reach `CHAT_UPSTREAM_URL`. Its log names the cause.
 | 404 on every call | The user is not a member of that organization (introspection `org_ids`), or `/api/permissions/me/` answered 403/404. Cross-org access is reported as 404 on purpose. |
 | 403 `forbidden`, "chats:… is required" | The user's role lacks that `chats` action, or `/api/permissions/me/` answered 401. Role changes take up to `CHAT_IDENTITY_CACHE_TTL` to apply. The `chats` resource exists in EpicStaff only with `CHAT_ENABLED=true`. |
 | 503 `upstream_unavailable` | Django was unreachable, timed out (`CHAT_DJANGO_TIMEOUT`), or answered an unexpected status. A wrong `DJANGO_API_KEY` shows up here, because introspection is a system-key call. The chat log names the path and status. |
+
+## Widget errors on a message
+
+| Status / code | Cause |
+|---|---|
+| 400 `validation_error`, `errors[0].key` `action` or `chat_extra_data` | The object is larger than `CHAT_ACTION_MAX_BYTES` / `CHAT_EXTRA_DATA_MAX_BYTES` as compact JSON. The widget reads both limits from the conversation state. |
+| 413 without a JSON body | A `/chat/` request body over 1 MiB, refused by nginx or by the service. A TLS terminator in front of EpicStaff may have a lower limit of its own. |
 
 ## Replies never arrive
 

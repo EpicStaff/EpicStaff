@@ -151,6 +151,59 @@ def test_groq_with_schema_and_no_tools_sends_json_schema(model_name):
     assert kwargs["messages"] == MESSAGES
 
 
+# Gemini rejects a JSON response mime type together with function calling, and a
+# google_ai row only matches the rule through the provider litellm routes it to.
+GEMINI_ROWS = [
+    ("google_ai", "gemini-2.5-flash"),
+    ("google_ai", "gemini/gemini-2.5-flash"),
+    ("gemini", "gemini-2.5-flash"),
+]
+
+
+@pytest.mark.parametrize("provider_name, model_name", GEMINI_ROWS)
+def test_gemini_with_schema_and_tools_sends_schema_in_prompt_only(provider_name, model_name):
+    client = make_client(provider_name, model_name, output_schema=OUTPUT_SCHEMA)
+
+    kwargs = sent_request(client, MESSAGES, TOOLS)
+
+    assert "response_format" not in kwargs
+    assert json.dumps(OUTPUT_SCHEMA["schema"]) in kwargs["messages"][0]["content"]
+    assert kwargs["messages"][1:] == MESSAGES
+    assert kwargs["tools"][0]["function"]["name"] == "get_flow_overview"
+
+
+@pytest.mark.parametrize("provider_name, model_name", GEMINI_ROWS)
+def test_gemini_with_schema_and_no_tools_sends_json_schema(provider_name, model_name):
+    client = make_client(provider_name, model_name, output_schema=OUTPUT_SCHEMA)
+
+    kwargs = sent_request(client, MESSAGES, [])
+
+    assert kwargs["response_format"] == {
+        "type": "json_schema",
+        "json_schema": OUTPUT_SCHEMA,
+    }
+    assert kwargs["messages"] == MESSAGES
+
+
+# A row without a provider names it only in the model prefix, so the format rules must
+# follow the provider litellm routes to, not the row's name.
+@pytest.mark.parametrize(
+    "model_name, tools, expected_response_format",
+    [
+        ("deepseek/deepseek-chat", [], {"type": "json_object"}),
+        ("groq/llama-3.1-8b-instant", TOOLS, None),
+        ("gemini/gemini-2.5-flash", TOOLS, None),
+    ],
+)
+def test_response_format_follows_the_routed_provider(model_name, tools, expected_response_format):
+    client = make_client(None, model_name, output_schema=OUTPUT_SCHEMA)
+
+    kwargs = sent_request(client, MESSAGES, tools)
+
+    assert kwargs.get("response_format") == expected_response_format
+    assert json.dumps(OUTPUT_SCHEMA["schema"]) in kwargs["messages"][0]["content"]
+
+
 @pytest.mark.parametrize(
     "provider_name, model_name, expected_model",
     [

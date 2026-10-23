@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { CollapseOnOverflowDirective } from '@shared/directives';
 
 import {
     SelectStorageFilesDialogComponent,
@@ -15,10 +16,11 @@ import { FlowReadOnlyService } from '../../services/flow-readonly.service';
 
 @Component({
     selector: 'app-flow-files-button',
-    imports: [AppSvgIconComponent, MatTooltip],
+    imports: [AppSvgIconComponent, CollapseOnOverflowDirective, MatTooltip],
     templateUrl: './flow-files-button.component.html',
     styleUrls: ['./flow-files-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '[class.has-attached-files]': 'attachedCount() > 0' },
 })
 export class FlowFilesButtonComponent implements OnInit {
     readonly flowId = input.required<number>();

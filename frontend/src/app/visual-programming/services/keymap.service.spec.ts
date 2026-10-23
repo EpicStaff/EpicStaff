@@ -964,8 +964,6 @@ describe('KeymapService', () => {
                 postCode: '',
                 preInputMap: {},
                 postInputMap: {},
-                preLibraries: [],
-                postLibraries: [],
                 preOutputVariablePath: null,
                 postOutputVariablePath: null,
                 prompts: {},

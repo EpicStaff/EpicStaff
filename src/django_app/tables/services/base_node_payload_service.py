@@ -95,7 +95,7 @@ class BaseNodePayloadService:
 
         python_tools = (
             PythonCodeTool.objects.filter(pk__in=allowed_python_tool_ids)
-            .select_related("python_code")
+            .select_related("python_code__venv")
             .prefetch_related(secret_names_prefetch("python_code__secrets"))
         )
         for python_tool in python_tools:

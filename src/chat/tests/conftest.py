@@ -21,6 +21,7 @@ for name, value in {
     "CHAT_DJANGO_HOST_HEADER": "localhost",
     "DJANGO_API_KEY": "system-key-for-tests-0123456789ab",
     "CHAT_PUBLIC_BASE_URL": "http://localhost",
+    "CHAT_WIDGET_URL": "https://cdn.example.test/epicchat/embed.js",
     "CHAT_CALLBACK_URL": "http://chat:8200/chat/internal/v1/session-callbacks",
     "CHAT_DJANGO_TIMEOUT": "10s",
     "CHAT_IP_MESSAGE_RATE": "30/m",
@@ -44,6 +45,8 @@ for name, value in {
     "CHAT_RESPONSE_TIME_MAX": "1d",
     "CHAT_CLOSE_AFTER_DEFAULT": "24h",
     "CHAT_CLOSE_AFTER_MAX": "30d",
+    "CHAT_ACTION_MAX_BYTES": "262144",
+    "CHAT_EXTRA_DATA_MAX_BYTES": "8192",
 }.items():
     os.environ.setdefault(name, value)
 

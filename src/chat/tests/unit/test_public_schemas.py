@@ -1,13 +1,15 @@
 import json
 
 import pytest
+from application.orchestrators.conversation import PublicLimits
 from presentation.rest.schemas.public import (
-    ACTION_MAX_BYTES,
-    EXTRA_DATA_MAX_BYTES,
     CreateConversationInput,
     SendMessageInput,
+    oversized_objects,
 )
 from pydantic import ValidationError
+
+LIMITS = PublicLimits(action_max_bytes=2048, extra_data_max_bytes=8192)
 
 
 def _padded(size: int, filler: str = "a") -> dict:
@@ -26,19 +28,21 @@ def _nested(depth: int) -> dict:
 
 
 @pytest.mark.parametrize("filler", ["a", "é"])
-def test_an_action_at_the_byte_cap_is_accepted_and_one_byte_over_is_refused(filler):
-    assert SendMessageInput(action=_padded(ACTION_MAX_BYTES, filler)).action
-    over = ACTION_MAX_BYTES + len(filler.encode())
-    with pytest.raises(ValidationError, match="bytes"):
-        SendMessageInput(action=_padded(over, filler))
+def test_an_action_at_the_byte_limit_fits_and_one_character_over_is_named(filler):
+    assert oversized_objects(LIMITS, action=_padded(2048, filler)) == []
+    over = 2048 + len(filler.encode())
+    assert oversized_objects(LIMITS, action=_padded(over, filler)) == [
+        {"message": f"Must be at most 2048 bytes as compact JSON; got {over}.", "key": "action"}
+    ]
 
 
-@pytest.mark.parametrize("schema", [SendMessageInput, CreateConversationInput])
-def test_chat_extra_data_at_the_byte_cap_is_accepted_and_over_is_refused(schema):
-    required = {"public_key": "key"} if schema is CreateConversationInput else {"content": "hi"}
-    assert schema(**required, chat_extra_data=_padded(EXTRA_DATA_MAX_BYTES)).chat_extra_data
-    with pytest.raises(ValidationError, match="bytes"):
-        schema(**required, chat_extra_data=_padded(EXTRA_DATA_MAX_BYTES + 1))
+def test_chat_extra_data_has_its_own_limit_and_each_object_over_its_limit_is_named():
+    assert oversized_objects(LIMITS, chat_extra_data=_padded(8192)) == []
+    assert oversized_objects(LIMITS, action=_padded(2048), chat_extra_data=_padded(8193)) == [
+        {"message": "Must be at most 8192 bytes as compact JSON; got 8193.", "key": "chat_extra_data"}
+    ]
+    assert [error["key"] for error in oversized_objects(LIMITS, action=_padded(2049), chat_extra_data=_padded(8193))] == ["action", "chat_extra_data"]
+    assert oversized_objects(LIMITS) == []
 
 
 def test_ten_levels_of_nesting_are_accepted_and_eleven_refused():
