@@ -64,8 +64,10 @@ import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classificatio
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
+import { HideOverflowingChildrenDirective } from '../core/directives/hide-overflowing-children.directive';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
+import { PANEL_COMPONENT_MAP } from '../core/enums/node-panel.map';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { buildInsertionConnections, findConnectionUnderNode } from '../core/helpers/drop-on-connection.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
@@ -156,6 +158,7 @@ const CANVAS_PAN_FAST_STEP_PX = 200;
         FlowShortcutsButtonComponent,
         AppSvgIconComponent,
         WaypointTooltipDirective,
+        HideOverflowingChildrenDirective,
         FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
         MatTooltipModule,
@@ -240,6 +243,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             this.flowService.nodes().length - this.arrangeAnimator.pinnedNodeIds().size < 2 ||
             !this.hasUnarrangedChanges()
     );
+
+    /** Selecting a node whose type has no side panel opens nothing, so the toolbar keeps its full width. */
+    protected readonly isNodePanelShown = computed(() => {
+        const node = this.sidePanelService.selectedNode();
+        return !!node && !!PANEL_COMPONENT_MAP[node.type];
+    });
 
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
