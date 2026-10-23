@@ -113,6 +113,39 @@
         </table>
     </section>
 
+    @if (reviewed.navigation.length > 0) {
+        <section class="review__section">
+            <h4 class="review__section-title text-body-bold">App menu</h4>
+            <table class="review__table">
+                <thead>
+                    <tr>
+                        <th scope="col">Label</th>
+                        <th scope="col">Path</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (item of reviewed.navigation; track item.path) {
+                        <tr>
+                            <td>
+                                <span class="review__menu-item">
+                                    <app-plugin-menu-icon
+                                        [src]="item.icon_data_url"
+                                        size="1.25rem"
+                                    />
+                                    {{ item.label }}
+                                </span>
+                            </td>
+                            <td>
+                                <code>{{ item.path }}</code>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <p class="review__note text-body-small">{{ appMenuNote }}</p>
+        </section>
+    }
+
     <section class="review__section">
         <h4 class="review__section-title text-body-bold">Public addresses</h4>
         @if (reviewed.public_paths.length > 0) {

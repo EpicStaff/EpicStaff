@@ -16,6 +16,7 @@ import { createNeededSettingsForm, neededSettingValues } from '../../utils/plugi
 import { PluginAccessTableComponent } from '../plugin-access-table/plugin-access-table.component';
 import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
 import { PluginIconComponent } from '../plugin-icon/plugin-icon.component';
+import { PluginMenuIconComponent } from '../plugin-menu-icon/plugin-menu-icon.component';
 import { PluginNeededSettingsComponent } from '../plugin-needed-settings/plugin-needed-settings.component';
 import { PluginUpgradeReviewComponent } from '../plugin-upgrade-review/plugin-upgrade-review.component';
 
@@ -27,6 +28,10 @@ export const UNTRUSTED_PACKAGE_WARNING =
 /** Under the outbound hosts a package declares. */
 export const OUTBOUND_HOSTS_NOTE =
     'Reached over HTTPS on port 443 only, through the egress proxy. Every other host is refused.';
+
+/** Under the app menu a package declares: its labels show in EpicStaff's own sidebar, not in the plugin's page. */
+export const APP_MENU_NOTE =
+    "EpicStaff shows this menu in its own sidebar, under the plugin's name, while the plugin is open.";
 
 /** The Database section of a package that brings its database. */
 const DATABASE_SET_UP = "Gets its own database on this deployment's plugin database server, set up when you approve.";
@@ -41,9 +46,9 @@ const ICON_DATA_URL_PREFIXES = ['data:image/svg+xml;base64,', 'data:image/png;ba
 
 /**
  * Everything in a package a SuperAdmin decides on: identity and publisher, trust and signature, review warnings, the
- * access it declares to EpicStaff, the permissions it gives people (with the built-in role defaults), public paths,
- * outbound hosts, its database, settings, limits, hooks and the package itself. For a new version of an installed
- * plugin, first what upgrading to it means ({@link PluginUpgradeReviewComponent}) and the settings it needs.
+ * access it declares to EpicStaff, the permissions it gives people (with the built-in role defaults), its app menu,
+ * public paths, outbound hosts, its database, settings, limits, hooks and the package itself. For a new version of an
+ * installed plugin, first what upgrading to it means ({@link PluginUpgradeReviewComponent}) and the settings it needs.
  *
  * For a pending package it offers Approve ("Upgrade to <version>" for a new version) and Reject. Approving needs
  * every box the server asks for ticked (an untrusted package, new access) and every needed setting filled; the boxes
@@ -59,6 +64,7 @@ const ICON_DATA_URL_PREFIXES = ['data:image/svg+xml;base64,', 'data:image/png;ba
         PluginAccessTableComponent,
         PluginBadgeComponent,
         PluginIconComponent,
+        PluginMenuIconComponent,
         PluginNeededSettingsComponent,
         PluginUpgradeReviewComponent,
     ],
@@ -154,6 +160,7 @@ export class PluginReviewPanelComponent {
 
     protected readonly untrustedWarning = UNTRUSTED_PACKAGE_WARNING;
     protected readonly outboundHostsNote = OUTBOUND_HOSTS_NOTE;
+    protected readonly appMenuNote = APP_MENU_NOTE;
 
     private readonly confirmation = inject(ConfirmationDialogService);
     private readonly destroyRef = inject(DestroyRef);

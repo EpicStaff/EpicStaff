@@ -126,5 +126,6 @@ function changeLines(upgrade: PluginUpgradeReview): string[] {
         );
         lines.push(`Limits changed: ${limits.join(', ')}`);
     }
+    if (upgrade.navigation_changed) lines.push('The app menu changes.');
     return lines;
 }

@@ -6,11 +6,13 @@ import { PackageReview, PluginApproveRequest, PluginReviewWarning } from '../../
 import {
     buildAccessGrowth,
     buildPackageReview,
+    buildReviewNavigationItem,
     buildSettingNeeded,
     buildUpgradePackageReview,
     buildUpgradeReview,
 } from '../../testing/plugin-fixtures';
 import {
+    APP_MENU_NOTE,
     OUTBOUND_HOSTS_NOTE,
     PluginReviewPanelComponent,
     UNTRUSTED_PACKAGE_WARNING,
@@ -57,11 +59,15 @@ describe('PluginReviewPanelComponent', () => {
         );
     }
 
-    /** The text of a section below its title, one element after another. */
-    function section(title: string): string {
-        const found = Array.from(element.querySelectorAll('.review__section')).find(
+    function sectionElement(title: string): Element | undefined {
+        return Array.from(element.querySelectorAll('.review__section')).find(
             (candidate) => candidate.querySelector('h4')?.textContent?.trim() === title
         );
+    }
+
+    /** The text of a section below its title, one element after another. */
+    function section(title: string): string {
+        const found = sectionElement(title);
         return Array.from(found?.children ?? [])
             .slice(1)
             .map((child) => child.textContent?.replace(/\s+/g, ' ').trim() ?? '')
@@ -297,6 +303,71 @@ describe('PluginReviewPanelComponent', () => {
         });
     });
 
+    describe('the app menu', () => {
+        /** Each row of the App menu section: its label, its path and the icon it draws. */
+        function menuRows(): { label: string; path: string; icon: string }[] {
+            const rows = Array.from(sectionElement('App menu')?.querySelectorAll('tbody tr') ?? []);
+            return rows.map((row) => {
+                const [labelCell, pathCell] = Array.from(row.querySelectorAll('td'));
+                return {
+                    label: labelCell.textContent?.trim() ?? '',
+                    path: pathCell.textContent?.trim() ?? '',
+                    icon: labelCell
+                        .querySelector<HTMLElement>('app-plugin-menu-icon')!
+                        .style.getPropertyValue('mask-image'),
+                };
+            });
+        }
+
+        it("lists each item's icon, label and path in order, and says where EpicStaff shows them", () => {
+            render(
+                buildPackageReview({
+                    navigation: [
+                        buildReviewNavigationItem(),
+                        buildReviewNavigationItem({
+                            label: 'Projects',
+                            path: '/projects',
+                            icon_data_url: 'data:image/png;base64,iVBORw0KGgo=',
+                        }),
+                    ],
+                })
+            );
+
+            expect(menuRows()).toEqual([
+                { label: 'Overview', path: '/', icon: 'url("data:image/svg+xml;base64,PHN2Zy8+")' },
+                { label: 'Projects', path: '/projects', icon: 'url("data:image/png;base64,iVBORw0KGgo=")' },
+            ]);
+            expect(section('App menu')).toContain(APP_MENU_NOTE);
+            expect(APP_MENU_NOTE).toBe(
+                "EpicStaff shows this menu in its own sidebar, under the plugin's name, while the plugin is open."
+            );
+        });
+
+        it('draws no icon whose source is not an image data URL', () => {
+            render(
+                buildPackageReview({
+                    navigation: [buildReviewNavigationItem({ icon_data_url: 'https://evil.example/track.svg' })],
+                })
+            );
+
+            expect(menuRows()).toEqual([{ label: 'Overview', path: '/', icon: '' }]);
+        });
+
+        it('is left out for a package that declares no menu', () => {
+            render(buildPackageReview());
+
+            expect(sectionElement('App menu')).toBeUndefined();
+        });
+
+        it("shows a new version's menu", () => {
+            render(buildUpgradePackageReview({ navigation: [buildReviewNavigationItem()] }));
+
+            expect(menuRows()).toEqual([
+                { label: 'Overview', path: '/', icon: 'url("data:image/svg+xml;base64,PHN2Zy8+")' },
+            ]);
+        });
+    });
+
     describe('a new version of an installed plugin', () => {
         function growthAcknowledgement(): HTMLInputElement | null {
             return element.querySelector<HTMLInputElement>('.upgrade__acknowledge input[type="checkbox"]');
@@ -304,6 +375,13 @@ describe('PluginReviewPanelComponent', () => {
 
         function upgradeText(): string {
             return element.querySelector('app-plugin-upgrade-review')?.textContent?.replace(/\s+/g, ' ') ?? '';
+        }
+
+        /** The lines under "Changes", outside the new access to approve. */
+        function changes(): string[] {
+            return Array.from(element.querySelectorAll('.upgrade__changes li')).map(
+                (item) => item.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+            );
         }
 
         function settingField(key: string): HTMLElement {
@@ -338,6 +416,32 @@ describe('PluginReviewPanelComponent', () => {
             expect(text).toContain('2 organizations are offline until their upgrade finishes.');
             expect(text).not.toContain('cannot be cancelled');
             expect(approveButton().textContent?.trim()).toBe('Upgrade to 0.7.0');
+        });
+
+        it('says the app menu changes among the other changes, with nothing to approve for it', () => {
+            render(
+                buildUpgradePackageReview({
+                    access_growth: null,
+                    upgrade: buildUpgradeReview({ navigation_changed: true }),
+                })
+            );
+
+            expect(changes()).toEqual([
+                'Migrations: 003_place_conditions.sql',
+                'Hooks: upgrade (new)',
+                'The app menu changes.',
+            ]);
+            expect(upgradeText()).not.toContain('New access');
+            expect(growthAcknowledgement()).toBeNull();
+            approveButton().click();
+
+            expect(approvals).toEqual([{ reviewed_against_package_id: 10 }]);
+        });
+
+        it('says nothing about the app menu when it stays the same', () => {
+            render(buildUpgradePackageReview());
+
+            expect(upgradeText()).not.toContain('app menu');
         });
 
         it('keeps "Upgrade to" disabled until the new access is approved, and sends the reviewed baseline', () => {

@@ -10,6 +10,7 @@ import {
     PluginOrgRemovedJob,
     PluginPurgeProgress,
     PluginRestore,
+    PluginReviewNavigationItem,
     PluginSettingNeeded,
     PluginSummary,
     PluginUpgrade,
@@ -39,6 +40,7 @@ export function buildPackageReview(overrides: Partial<PackageReview> = {}): Pack
         description: 'Forecasts for the places your organization cares about.',
         publisher: { name: 'EpicStaff', url: null },
         icon_data_url: 'data:image/svg+xml;base64,PHN2Zy8+',
+        navigation: [],
         trust: 'trusted',
         signature: 'valid',
         signer: { key_name: 'release', key_id: '0123456789abcdef' },
@@ -77,6 +79,18 @@ export function buildPackageReview(overrides: Partial<PackageReview> = {}): Pack
         warnings: [],
         access_growth: null,
         upgrade: null,
+        ...overrides,
+    };
+}
+
+/** The Overview entry of a package's app menu, its icon inlined for the review. */
+export function buildReviewNavigationItem(
+    overrides: Partial<PluginReviewNavigationItem> = {}
+): PluginReviewNavigationItem {
+    return {
+        label: 'Overview',
+        path: '/',
+        icon_data_url: 'data:image/svg+xml;base64,PHN2Zy8+',
         ...overrides,
     };
 }
@@ -672,6 +686,7 @@ export function buildUpgradeReview(overrides: Partial<PluginUpgradeReview> = {})
         user_permissions: { added: [], removed: [], defaults_changed: [] },
         settings: { added: [], removed: [], needed: [] },
         limits_changed: [],
+        navigation_changed: false,
         backup: { required: true, database_name: 'plugin_weather', database_size_bytes: 7_654_321 },
         organizations_going_offline: 2,
         cancellable: true,

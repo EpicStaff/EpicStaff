@@ -130,7 +130,7 @@ describe('PluginRolePermissionExtension', () => {
         expect(saved?.granted).toEqual([{ code: 'plugin:weather', actions: [ActionCode.Read, ActionCode.Update] }]);
     });
 
-    it('refreshes the left bar only when the saved role belongs to the active organization', () => {
+    it('refreshes the Apps list only when the saved role belongs to the active organization', () => {
         extension.saveRole(7, []).subscribe();
         http.expectOne(`${BASE_URL}7/`).flush(buildPluginRolePermissions());
         expect(availablePlugins.refresh).toHaveBeenCalledTimes(1);

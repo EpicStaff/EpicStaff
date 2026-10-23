@@ -114,6 +114,12 @@
         word-break: break-all;
     }
 
+    &__menu-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
     &__table {
         width: 100%;
         border-collapse: collapse;

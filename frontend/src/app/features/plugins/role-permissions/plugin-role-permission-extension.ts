@@ -52,7 +52,7 @@ const PLUGIN_ACTIONS: Readonly<Partial<Record<ActionCode, PluginAction>>> = {
  * its manifest declares. Every action but View needs View: the matrix ticks View along with any other action, and
  * clearing View clears them.
  *
- * Saving a role's plugin rows refreshes the left bar's plugins when the role belongs to the active organization. The
+ * Saving a role's plugin rows refreshes the sidebar's Apps list when the role belongs to the active organization. The
  * extension is inactive while the plugin platform is off.
  */
 @Injectable({ providedIn: 'root' })
@@ -105,7 +105,7 @@ export class PluginRolePermissionExtension implements RolePermissionExtension {
         for (const row of rows) this.pluginNames.set(row.plugin_identifier, row.name);
     }
 
-    /** The left bar lists what the signed-in user's role allows, so a change to a role of the active org may move it. */
+    /** The Apps list follows the signed-in user's role, so a change to a role of the active org may change it. */
     private refreshAvailablePlugins(roleOrgId: number | null): void {
         if (roleOrgId === null || roleOrgId !== this.activeOrgService.activeOrgId()) return;
         this.availablePlugins.refresh().subscribe();

@@ -133,6 +133,15 @@ export interface PluginReviewWarning {
     message: string;
 }
 
+/** One entry of a package's app menu (`spa.navigation` in its manifest), as the review shows it. */
+export interface PluginReviewNavigationItem {
+    label: string;
+    /** `/` or `/`-separated segments below the plugin's address: `/projects` opens `/plugins/<identifier>/projects`. */
+    path: string;
+    /** `data:image/svg+xml;base64,…` or `data:image/png;base64,…`; drawn only as a CSS mask. */
+    icon_data_url: string;
+}
+
 /** What a new version adds that the SuperAdmin must approve before it can be installed. */
 export interface PluginAccessGrowth {
     requires_acknowledgement: boolean;
@@ -177,6 +186,11 @@ export interface PluginUpgradeReview {
     user_permissions: { added: PluginAction[]; removed: PluginAction[]; defaults_changed: PluginAction[] };
     settings: { added: string[]; removed: string[]; needed: PluginSettingNeeded[] };
     limits_changed: string[];
+    /**
+     * The app menu differs from the baseline's: an item's label, path or icon file name, or their order. A redrawn icon
+     * under the same file name does not count.
+     */
+    navigation_changed: boolean;
     /** `database_size_bytes` as the node last reported it. */
     backup: { required: boolean; database_name: string | null; database_size_bytes: number | null };
     /** Organizations active now that are offline until their upgrade finishes. */
@@ -195,6 +209,8 @@ export interface PackageReview {
     publisher: { name: string; url: string | null };
     /** `data:image/svg+xml;base64,…` or `data:image/png;base64,…`; rendered only as an `<img>`. */
     icon_data_url: string;
+    /** The app menu in the manifest's order; empty when the package declares none. EpicStaff's sidebar shows it. */
+    navigation: PluginReviewNavigationItem[];
     trust: PluginTrust;
     signature: PluginSignatureStatus;
     /** `key_id` is 16 hex characters; `key_name` only when the key is trusted. */
