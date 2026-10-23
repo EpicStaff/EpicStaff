@@ -12,7 +12,7 @@ from rbac.models.api_key import ApiKey
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection, StorageFile
 from tables.views.knowledge_views.document_management_views import _audit_actor
 from tables.services.storage_service.manager import StorageManager
-from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file, zip_bytes
 
 pytestmark = pytest.mark.django_db
 
@@ -170,24 +170,48 @@ class TestImportFromStorage:
         assert response.data["message"] == "Successfully imported 2 file(s), skipped 3"
         assert not DocumentMetadata.objects.filter(file_name="system.txt").exists()
 
-    def test_everything_skipped_is_400_with_skipped(
+    @override_settings(MAX_UPLOAD_FILE_SIZE=10)
+    def test_everything_skipped_is_400_nothing_to_import_with_skipped(
         self, auth_client, storage_manager, default_org, empty_collection
     ):
-        sheet = _store(storage_manager, default_org, "sheet.xlsx", b"xl")
+        sheet = _store(storage_manager, default_org, "docs/sheet.xlsx", b"xl")
+        big = _store(storage_manager, default_org, "docs/big.txt", b"x" * 11)
 
-        response = _post(auth_client, empty_collection, [sheet.id])
+        response = _post(auth_client, empty_collection, [sheet.id, big.id])
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        body = dict(response.data)
+        skipped = body.pop("skipped")
+        assert body == {
+            "status_code": 400,
+            "code": "nothing_to_import",
+            "message": "None of the selected storage files can be imported",
+        }
+        assert sorted(skipped, key=lambda item: item["path"]) == [
+            {"storage_file_id": big.id, "path": "docs/big.txt", "reason": "too_large"},
+            {"storage_file_id": sheet.id, "path": "docs/sheet.xlsx", "reason": "unsupported_type"},
+        ]
+        assert _document_count(empty_collection) == 0
+
+    def test_empty_folder_is_400_nothing_to_import_with_nothing_skipped(
+        self, auth_client, storage_manager, default_org, empty_collection
+    ):
+        storage_manager.mkdir(default_org.id, "empty", user=None)
+        folder = StorageFile.objects.get(org=default_org, path="empty/")
+
+        response = _post(auth_client, empty_collection, [folder.id])
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data == {
-            "error": "None of the selected storage files can be imported",
-            "skipped": [
-                {"storage_file_id": sheet.id, "path": "sheet.xlsx", "reason": "unsupported_type"}
-            ],
+            "status_code": 400,
+            "code": "nothing_to_import",
+            "message": "None of the selected storage files can be imported",
+            "skipped": [],
         }
         assert _document_count(empty_collection) == 0
 
     @override_settings(MAX_ARCHIVE_ENTRIES=2)
-    def test_over_the_count_limit_is_400(
+    def test_over_the_count_limit_is_400_limit_exceeded(
         self, auth_client, storage_manager, default_org, empty_collection
     ):
         ids = [
@@ -198,12 +222,15 @@ class TestImportFromStorage:
         response = _post(auth_client, empty_collection, ids)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert set(response.data) == {"error"}
-        assert "limit is 2" in response.data["error"]
+        assert response.data == {
+            "status_code": 400,
+            "code": "storage_import_limit_exceeded",
+            "message": "Cannot import 3 files at once; the limit is 2",
+        }
         assert _document_count(empty_collection) == 0
 
     @override_settings(MAX_UPLOAD_TOTAL_SIZE=10)
-    def test_over_the_total_size_limit_is_400(
+    def test_over_the_total_size_limit_is_400_limit_exceeded(
         self, auth_client, storage_manager, default_org, empty_collection
     ):
         ids = [
@@ -214,7 +241,38 @@ class TestImportFromStorage:
         response = _post(auth_client, empty_collection, ids)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Total import size" in response.data["error"]
+        assert response.data == {
+            "status_code": 400,
+            "code": "storage_import_limit_exceeded",
+            "message": "Total import size is 12 bytes, over the limit of 10 bytes",
+        }
+        assert _document_count(empty_collection) == 0
+
+    @override_settings(MAX_ARCHIVE_UNCOMPRESSED_SIZE=100)
+    def test_file_rejected_by_upload_validation_is_400_upload_rejected(
+        self, auth_client, storage_manager, default_org, empty_collection
+    ):
+        # A DOCX is a ZIP. What it unpacks to is known only from its downloaded
+        # bytes, so it passes the pre-download screening and reaches validation.
+        docx = _store(
+            storage_manager,
+            default_org,
+            "report.docx",
+            zip_bytes({"word/document.xml": b"A" * 500}),
+        )
+
+        response = _post(auth_client, empty_collection, [docx.id])
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data == {
+            "status_code": 400,
+            "code": "upload_rejected",
+            "message": (
+                "Upload rejected. Archive 'report.docx' expands to 500 bytes, "
+                "over the limit of 100 bytes"
+            ),
+        }
+        assert _document_count(empty_collection) == 0
 
     def test_duplicate_ids_are_imported_once(
         self, auth_client, storage_manager, default_org, empty_collection

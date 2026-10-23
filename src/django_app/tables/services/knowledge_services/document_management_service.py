@@ -10,11 +10,11 @@ from tables.exceptions import (
     CollectionNotFoundException,
     DocumentNotFoundException,
     DocumentsNotFoundException,
-    DocumentUploadException,
     FileSizeExceededException,
     InvalidCollectionIdException,
     InvalidFileTypeException,
     NoFilesProvidedException,
+    UploadRejectedException,
 )
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
 from tables.models.knowledge_models import GraphRagDocument, NaiveRag
@@ -103,9 +103,9 @@ class DocumentManagementService:
 
         Raises:
             NoFilesProvidedException: If no files provided
-            FileSizeExceededException: If any file exceeds size limit
-            InvalidFileTypeException: If any file has invalid type
-            DocumentUploadException: If the batch as a whole is rejected
+            UploadRejectedException: If any file is too large or of an invalid
+                type, or ``FileValidator`` rejects the batch; the message lists
+                every problem
         """
         if not uploaded_files:
             raise NoFilesProvidedException()
@@ -134,7 +134,7 @@ class DocumentManagementService:
                 f"[{e['index']}] {e['error']}" if e["index"] is not None else e["error"]
                 for e in errors
             ]
-            raise DocumentUploadException("\n".join(error_messages))
+            raise UploadRejectedException("\n".join(error_messages))
 
         return validated_files
 
@@ -266,8 +266,7 @@ class DocumentManagementService:
         Raises:
             CollectionNotFoundException: If collection not found
             NoFilesProvidedException: If no files provided
-            FileSizeExceededException: If any file exceeds size limit
-            InvalidFileTypeException: If any file has invalid type
+            UploadRejectedException: If any file fails validation
         """
         # Validate all files first
         validated_files = DocumentManagementService.validate_files_batch(uploaded_files)
@@ -315,7 +314,11 @@ class DocumentManagementService:
     @staticmethod
     @transaction.atomic
     def upload_new_files_batch(
-        collection_id: int, uploaded_files: list[UploadedFile], *, user: object | None
+        collection_id: int,
+        uploaded_files: list[UploadedFile],
+        *,
+        org_id: int,
+        user: object | None,
     ) -> tuple[list[DocumentMetadata], list[UploadedFile]]:
         """Upload the files the collection does not already hold, skipping the rest.
 
@@ -327,6 +330,10 @@ class DocumentManagementService:
         first's rows.
 
         Args:
+            org_id: The caller's organization. A collection of another
+                organization is treated as missing, so this method keeps the
+                write in the caller's organization without relying on the caller
+                to have checked it.
             user: Acting user, recorded as the collection's last editor when any
                 file is uploaded. Has no default so a caller cannot omit it
                 unnoticed; None records no edit.
@@ -336,14 +343,15 @@ class DocumentManagementService:
             file is a duplicate.
 
         Raises:
-            CollectionNotFoundException: The collection does not exist (or was deleted).
-            DocumentUploadException: The non-duplicate files failed validation.
+            CollectionNotFoundException: The collection does not exist, was
+                deleted, or belongs to another organization.
+            UploadRejectedException: The non-duplicate files failed validation.
         """
         try:
             # no_key: serializes imports into this collection without blocking
             # other transactions inserting rows that reference it by FK.
             collection = SourceCollection.objects.select_for_update(no_key=True).get(
-                collection_id=collection_id
+                collection_id=collection_id, org_id=org_id
             )
         except SourceCollection.DoesNotExist as e:
             raise CollectionNotFoundException(collection_id) from e

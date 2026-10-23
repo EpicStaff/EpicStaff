@@ -13,6 +13,7 @@ import {
     DisplayedListDocument,
     ImportFromStorageErrorResponse,
     ImportFromStorageResponse,
+    NOTHING_TO_IMPORT_ERROR_CODE,
     StorageImportCandidate,
     UploadDocumentResponse,
 } from '../models/document.model';
@@ -265,8 +266,8 @@ export class DocumentsStorageService implements StorageService {
         }
         if (error.status === 403) return;
         const message = extractHttpErrorMessage(error, 'Failed to add files to the collection');
-        const skipped =
-            error.status === 400 ? (error.error as ImportFromStorageErrorResponse | null)?.skipped : undefined;
+        const body = error.error as ImportFromStorageErrorResponse | null;
+        const skipped = body?.code === NOTHING_TO_IMPORT_ERROR_CODE ? body.skipped : undefined;
         this.toastService.error(skipped?.length ? `${message} (skipped: ${formatSkippedReasons(skipped)})` : message);
     }
 

@@ -23,7 +23,6 @@ from tables.exceptions import (
     InvalidFieldType,
     InvalidFileTypeException,
     NoFilesProvidedException,
-    NothingToImportException,
 )
 from tables.models import DocumentMetadata, SourceCollection
 from tables.serializers.knowledge_serializers import (
@@ -180,8 +179,10 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # StorageFilesNotFoundException is a 404 APIException and propagates
-        # to the exception handler as the same generic 404 as the collection.
+        # Every other error propagates to the exception handler:
+        # StorageFilesNotFoundException as the same generic 404 as the
+        # collection, the DocumentUploadException family (nothing importable,
+        # a limit exceeded, files rejected by validation) as a 400.
         try:
             result = StorageDocumentImportService(get_storage_manager()).import_files(
                 actor=_audit_actor(request),
@@ -191,15 +192,9 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
                 storage_file_ids=serializer.validated_data["storage_file_ids"],
             )
         except CollectionNotFoundException as e:
-            # Deleted after the org check above: same generic 404, not a 400.
+            # Deleted after the org check above: the same generic 404 as that
+            # check, without the collection id this exception's message names.
             raise NotFound() from e
-        except NothingToImportException as e:
-            return Response(
-                {"error": str(e), "skipped": [skipped.to_dict() for skipped in e.skipped]},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        except DocumentUploadException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         message = f"Successfully imported {len(result.documents)} file(s)"
         if result.skipped:

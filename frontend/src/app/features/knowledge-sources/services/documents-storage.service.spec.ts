@@ -6,7 +6,11 @@ import { TestBed } from '@angular/core/testing';
 import { of, Subject, throwError } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
-import { ImportFromStorageResponse, StorageImportCandidate } from '../models/document.model';
+import {
+    ImportFromStorageErrorResponse,
+    ImportFromStorageResponse,
+    StorageImportCandidate,
+} from '../models/document.model';
 import { CollectionsApiService } from './collections-api.service';
 import { CollectionsStorageService } from './collections-storage.service';
 import { DocumentsApiService } from './documents-api.service';
@@ -14,6 +18,17 @@ import { DocumentsStorageService } from './documents-storage.service';
 
 function candidate(id: number | null): StorageImportCandidate {
     return { id, name: `file-${id}.pdf`, type: 'file' };
+}
+
+/** The project error envelope the import endpoint sends for every 4xx. */
+function errorEnvelope(
+    status: number,
+    code: string,
+    message: string,
+    extra: Partial<ImportFromStorageErrorResponse> = {}
+): HttpErrorResponse {
+    const error: ImportFromStorageErrorResponse = { status_code: status, code, message, ...extra };
+    return new HttpErrorResponse({ status, error });
 }
 
 describe('DocumentsStorageService.importFromStorage', () => {
@@ -128,57 +143,67 @@ describe('DocumentsStorageService.importFromStorage', () => {
         expect(toast.error).toHaveBeenCalledWith('None of the selected items could be added');
     });
 
-    it('adds the 400 skipped reasons to the error toast', () => {
+    it('reports why each file was skipped when nothing could be imported', () => {
         documentsApi.importFromStorage.mockReturnValue(
-            throwError(
-                () =>
-                    new HttpErrorResponse({
-                        status: 400,
-                        error: {
-                            error: 'Nothing to import',
-                            skipped: [
-                                { storage_file_id: 1, path: 'a.exe', reason: 'unsupported_type' },
-                                { storage_file_id: 2, path: 'b.pdf', reason: 'too_large' },
-                            ],
-                        },
-                    })
-            )
-        );
-
-        importResult();
-
-        expect(toast.error).toHaveBeenCalledWith('Nothing to import (skipped: 1 unsupported type, 1 too large)');
-    });
-
-    it('shows the standard message of a 404', () => {
-        documentsApi.importFromStorage.mockReturnValue(
-            throwError(
-                () =>
-                    new HttpErrorResponse({
-                        status: 404,
-                        error: { status_code: 404, code: 'not_found', message: 'Storage file 9 not found' },
-                    })
-            )
-        );
-
-        importResult();
-
-        expect(toast.error).toHaveBeenCalledWith('Storage file 9 not found');
-    });
-
-    it('shows the server error text of a 400 and emits null', () => {
-        documentsApi.importFromStorage.mockReturnValue(
-            throwError(
-                () =>
-                    new HttpErrorResponse({
-                        status: 400,
-                        error: { error: 'No importable files', skipped: [] },
-                    })
+            throwError(() =>
+                errorEnvelope(400, 'nothing_to_import', 'None of the selected storage files can be imported', {
+                    skipped: [
+                        { storage_file_id: 1, path: 'a.exe', reason: 'unsupported_type' },
+                        { storage_file_id: 2, path: 'b.pdf', reason: 'too_large' },
+                        { storage_file_id: 3, path: 'c.pdf', reason: 'duplicate' },
+                    ],
+                })
             )
         );
 
         expect(importResult()).toBeNull();
-        expect(toast.error).toHaveBeenCalledWith('No importable files');
+        expect(toast.error).toHaveBeenCalledWith(
+            'None of the selected storage files can be imported (skipped: 1 unsupported type, 1 too large, 1 already in the collection)'
+        );
+        expect(collectionsStorage.getFullCollection).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        {
+            case: 'nothing to import, with no file to name',
+            status: 400,
+            code: 'nothing_to_import',
+            message: 'None of the selected storage files can be imported',
+            extra: { skipped: [] },
+        },
+        {
+            case: 'a selection over the import limits',
+            status: 400,
+            code: 'storage_import_limit_exceeded',
+            message: 'Too many files selected',
+            extra: {},
+        },
+        {
+            case: 'a file the validator rejects',
+            status: 400,
+            code: 'upload_rejected',
+            message: 'report.pdf is corrupted',
+            extra: {},
+        },
+        {
+            case: 'another error that carries skipped files',
+            status: 400,
+            code: 'upload_rejected',
+            message: 'report.pdf is corrupted',
+            extra: { skipped: [{ storage_file_id: 1, path: 'a.exe', reason: 'unsupported_type' as const }] },
+        },
+        {
+            case: 'a missing collection or storage file',
+            status: 404,
+            code: 'not_found',
+            message: 'Not found.',
+            extra: {},
+        },
+    ])('toasts just the server message for $case and emits null', ({ status, code, message, extra }) => {
+        documentsApi.importFromStorage.mockReturnValue(throwError(() => errorEnvelope(status, code, message, extra)));
+
+        expect(importResult()).toBeNull();
+        expect(toast.error).toHaveBeenCalledWith(message);
         expect(collectionsStorage.getFullCollection).not.toHaveBeenCalled();
     });
 
@@ -214,10 +239,10 @@ describe('DocumentsStorageService.importFromStorage', () => {
 
         service.importFromStorage(4, [candidate(1)]);
         expect(service.isImporting(4)).toBe(true);
-        pending.error(new HttpErrorResponse({ status: 500, error: { error: 'boom' } }));
+        pending.error(new HttpErrorResponse({ status: 500 }));
 
         expect(service.isImporting(4)).toBe(false);
-        expect(toast.error).toHaveBeenCalledWith('boom');
+        expect(toast.error).toHaveBeenCalledTimes(1);
     });
 });
 

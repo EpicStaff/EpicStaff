@@ -118,9 +118,11 @@ class StorageDocumentImportService:
             actor: Who is importing, as an audit label built by the caller
                 (e.g. ``"user:5"`` or ``"system api_key:12"``). Recorded in the
                 audit log line written after a successful import.
-            org_id: The caller's active organization; every storage id must belong to it.
-            collection_id: Target collection. The caller must already have
-                verified it belongs to ``org_id``.
+            org_id: The caller's active organization. Every storage id and the
+                target collection must belong to it.
+            collection_id: Target collection. One in another organization is
+                treated exactly like a missing one, so the import cannot write
+                outside ``org_id`` even if the caller skipped its own check.
             storage_file_ids: Ids of files and/or folders.
             user: The requesting user, recorded as the collection's last editor
                 when any document is created, as for a direct upload. Has no
@@ -131,8 +133,15 @@ class StorageDocumentImportService:
                 system file — or a file's bytes are gone from the object store.
             NothingToImportException: Every selected file was skipped.
             StorageImportLimitExceededException: Too many files or bytes selected.
-            CollectionNotFoundException: The collection was deleted during the import.
-            DocumentUploadException: ``FileValidator`` rejected the downloaded files.
+            CollectionNotFoundException: The collection does not exist, belongs to
+                another organization, or was deleted during the import. Checked
+                under the collection lock just before the write, so a selection
+                the collection could never take (only unsupported or too-large
+                files) raises NothingToImportException first, as it would for a
+                missing collection.
+            UploadRejectedException: The downloaded files failed upload
+                validation (``FileValidator``, or a downloaded file over the
+                per-file size limit its indexed size was under).
         """
         limits = default_upload_limits()
         max_candidates = max_storage_selection(limits)
@@ -143,7 +152,9 @@ class StorageDocumentImportService:
         self._check_file_count(supported_rows, limits)
 
         candidates = [self._with_known_size(org_id, row) for row in supported_rows]
-        importable, size_or_duplicate_skips = self._split_importable(collection_id, candidates)
+        importable, size_or_duplicate_skips = self._split_importable(
+            org_id, collection_id, candidates
+        )
         skipped.extend(size_or_duplicate_skips)
 
         if not importable:
@@ -153,7 +164,7 @@ class StorageDocumentImportService:
         downloads = self._download_all(org_id, importable, limits)
 
         documents, duplicate_files = DocumentManagementService.upload_new_files_batch(
-            collection_id=collection_id, uploaded_files=list(downloads), user=user
+            collection_id=collection_id, uploaded_files=list(downloads), org_id=org_id, user=user
         )
         # Another import may have added the same files since the first check.
         skipped.extend(
@@ -298,12 +309,15 @@ class StorageDocumentImportService:
 
     @staticmethod
     def _split_importable(
-        collection_id: int, candidates: list[_Candidate]
+        org_id: int, collection_id: int, candidates: list[_Candidate]
     ) -> tuple[list[_Candidate], list[SkippedStorageFile]]:
+        # Scoped to the org too: this runs before the org-checked lookup under the
+        # collection lock, and a duplicate skip computed from another org's
+        # collection would tell the caller which files that collection holds.
         taken_name_sizes = set(
-            DocumentMetadata.objects.filter(source_collection_id=collection_id).values_list(
-                "file_name", "file_size"
-            )
+            DocumentMetadata.objects.filter(
+                source_collection_id=collection_id, source_collection__org_id=org_id
+            ).values_list("file_name", "file_size")
         )
 
         importable: list[_Candidate] = []

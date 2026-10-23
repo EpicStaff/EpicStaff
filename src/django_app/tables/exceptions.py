@@ -1,4 +1,5 @@
 import math
+from typing import TYPE_CHECKING
 
 from rest_framework.exceptions import Throttled
 from utils.exceptions import CustomAPIExeption
@@ -6,6 +7,12 @@ from utils.exceptions import CustomAPIExeption
 from tables.constants.knowledge_constants import (
     ALLOWED_FILE_TYPES,
 )
+
+if TYPE_CHECKING:
+    # Only a type here: the import service imports this module.
+    from tables.services.knowledge_services.storage_document_import_service import (
+        SkippedStorageFile,
+    )
 
 __all__ = ["CustomAPIExeption"]
 
@@ -317,7 +324,24 @@ class PythonCodeToolConfigSerializerError(CustomAPIExeption):
 
 
 class DocumentUploadException(CustomAPIExeption):
-    """Base exception for document upload errors."""
+    """Base exception for document upload errors.
+
+    A 400 unless a subclass says otherwise: these describe what the client sent,
+    so one that reaches the exception handler must not render as a server error.
+    """
+
+    status_code = 400
+    default_detail = "The document upload was rejected."
+
+
+class UploadRejectedException(DocumentUploadException):
+    """Raised when files of an upload batch fail validation.
+
+    The message lists every problem: per-file size and type errors, and what
+    ``FileValidator`` rejected.
+    """
+
+    default_code = "upload_rejected"
 
 
 class FileSizeExceededException(DocumentUploadException):
@@ -361,6 +385,8 @@ class NoFilesProvidedException(DocumentUploadException):
 class DocumentNotFoundException(DocumentUploadException):
     """Raised when document is not found."""
 
+    status_code = 404
+
     def __init__(self, document_id):
         self.document_id = document_id
         super().__init__(f"Document with id {document_id} not found")
@@ -391,17 +417,23 @@ class StorageFilesNotFoundException(CustomAPIExeption):
 class StorageImportLimitExceededException(DocumentUploadException):
     """Raised when a storage import selects more files or bytes than one upload allows."""
 
-    status_code = 400
+    default_code = "storage_import_limit_exceeded"
 
 
 class NothingToImportException(DocumentUploadException):
-    """Raised when every selected storage file was skipped."""
+    """Raised when every selected storage file was skipped.
 
-    status_code = 400
+    The response also carries `skipped`: one `{storage_file_id, path, reason}`
+    per file, the same items a successful import lists.
+    """
 
-    def __init__(self, skipped: list):
+    default_detail = "None of the selected storage files can be imported"
+    default_code = "nothing_to_import"
+
+    def __init__(self, skipped: list["SkippedStorageFile"]):
+        super().__init__()
         self.skipped = skipped
-        super().__init__("None of the selected storage files can be imported")
+        self.extra_response_data = {"skipped": [item.to_dict() for item in skipped]}
 
 
 class InvalidFieldType(CustomAPIExeption):

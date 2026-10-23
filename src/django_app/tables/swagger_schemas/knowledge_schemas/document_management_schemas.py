@@ -1,5 +1,10 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
+from tables.exceptions import (
+    NothingToImportException,
+    StorageImportLimitExceededException,
+    UploadRejectedException,
+)
 from tables.serializers.knowledge_serializers import (
     DocumentDetailSerializer,
     DocumentListSerializer,
@@ -457,14 +462,27 @@ DOCUMENTS_IMPORT_FROM_STORAGE_POST = {
         400: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description=(
-                "Nothing importable, file-count or total-size limit exceeded, or the "
-                "files were rejected by upload validation."
+                "`{status_code, code, message}`; only `nothing_to_import` adds `skipped`. "
+                "Every 400 this endpoint returns, by `code`:\n"
+                "- `nothing_to_import`: every selected file was skipped, or a selected "
+                "folder holds no files; `skipped` lists the skipped files with the same "
+                "items as a 201.\n"
+                "- `storage_import_limit_exceeded`: too many files or bytes selected.\n"
+                "- `upload_rejected`: the downloaded files failed upload validation.\n"
+                "- `invalid`: the body failed validation: `storage_file_ids` missing, "
+                "empty, not a list of positive integers, or longer than the selection cap.\n"
+                "- `parse_error`: the body is not valid JSON.\n"
+                "- `error`: `collection_id` in the path is not an integer.\n"
+                "- `org_context_required`: the `X-Organization-Id` header is missing or "
+                "not an integer."
             ),
             examples=[
                 OpenApiExample(
                     name="Nothing importable",
                     value={
-                        "error": "None of the selected storage files can be imported",
+                        "status_code": 400,
+                        "code": NothingToImportException.default_code,
+                        "message": NothingToImportException.default_detail,
                         "skipped": [
                             {
                                 "storage_file_id": 42,
@@ -478,7 +496,24 @@ DOCUMENTS_IMPORT_FROM_STORAGE_POST = {
                 ),
                 OpenApiExample(
                     name="Limit exceeded",
-                    value={"error": "Cannot import 2500 files at once; the limit is 2000"},
+                    value={
+                        "status_code": 400,
+                        "code": StorageImportLimitExceededException.default_code,
+                        "message": "Cannot import 2500 files at once; the limit is 2000",
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+                OpenApiExample(
+                    name="Files rejected by upload validation",
+                    value={
+                        "status_code": 400,
+                        "code": UploadRejectedException.default_code,
+                        "message": (
+                            "Upload rejected. Archive 'report.docx' expands to 60000000 "
+                            "bytes, over the limit of 52428800 bytes"
+                        ),
+                    },
                     response_only=True,
                     status_codes=["400"],
                 ),

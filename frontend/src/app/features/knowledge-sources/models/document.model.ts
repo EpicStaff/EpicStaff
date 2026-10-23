@@ -35,9 +35,15 @@ export interface ImportFromStorageResponse {
     skipped: StorageImportSkippedFile[];
 }
 
-/** 400 body of `POST documents/source-collection/{id}/from-storage/`. */
+/** `code` of the 400 sent when every selected storage file was skipped. */
+export const NOTHING_TO_IMPORT_ERROR_CODE = 'nothing_to_import';
+
+/** 4xx body of `POST documents/source-collection/{id}/from-storage/` — the project error envelope. */
 export interface ImportFromStorageErrorResponse {
-    error: string;
+    status_code: number;
+    code: string;
+    message: string;
+    /** Sent only with `NOTHING_TO_IMPORT_ERROR_CODE`: every selected file and why it was skipped. */
     skipped?: StorageImportSkippedFile[];
 }
 

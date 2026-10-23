@@ -176,13 +176,22 @@ class TestImportFiles:
         self, import_service, storage_manager, acme, beta, collection
     ):
         _store(storage_manager, acme, "docs/mine.txt", b"mine")
-        _store(storage_manager, beta, "docs/x.txt", b"theirs")
+        own_sheet = _store(storage_manager, acme, "docs/own.xlsx", b"xl")
+        # Beta has a file at the same path as acme's, plus one of an unsupported
+        # type. Expanding into beta would download acme's bytes for beta's
+        # mine.txt (then skipped as a duplicate) and skip beta's sheet: the
+        # documents would look right, and only `skipped` would show beta's ids.
+        _store(storage_manager, beta, "docs/mine.txt", b"their bytes")
+        _store(storage_manager, beta, "docs/secret.xlsx", b"xl")
 
         result = import_service.import_files(
             _ACTOR, acme.id, collection.collection_id, [_folder(acme, "docs/").id], user=None
         )
 
         assert [document.file_name for document in result.documents] == ["mine.txt"]
+        assert result.skipped == [
+            SkippedStorageFile(own_sheet.id, "docs/own.xlsx", SkipReason.UNSUPPORTED_TYPE)
+        ]
         assert _document_names(collection) == ["mine.txt"]
 
     def test_folder_and_a_file_inside_it_import_the_file_once(
@@ -288,8 +297,10 @@ class TestImportFiles:
     def test_other_org_file_is_not_found_and_nothing_is_created(
         self, import_service, storage_manager, acme, beta, collection
     ):
-        mine = _store(storage_manager, acme, "mine.txt", b"mine")
-        theirs = _store(storage_manager, beta, "theirs.txt", b"theirs")
+        # One path in both orgs: a lookup that ignored the org would find bytes
+        # to download in acme, instead of failing on a missing object.
+        mine = _store(storage_manager, acme, "report.txt", b"mine")
+        theirs = _store(storage_manager, beta, "report.txt", b"their bytes")
 
         with pytest.raises(StorageFilesNotFoundException):
             import_service.import_files(
@@ -297,6 +308,28 @@ class TestImportFiles:
             )
 
         assert _document_names(collection) == []
+
+    @pytest.mark.parametrize(
+        "foreign_documents", [[], ["notes.txt"]], ids=["empty", "holding-the-same-file"]
+    )
+    def test_collection_of_another_org_is_not_found_and_not_edited(
+        self, import_service, storage_manager, acme, beta, admin_acme, foreign_documents
+    ):
+        foreign = SourceCollection.objects.create(collection_name="theirs", org=beta)
+        # Holding the same file: a duplicate check that read the other org's
+        # collection would skip it and raise NothingToImportException, naming
+        # what that collection holds, before the write could refuse it.
+        for file_name in foreign_documents:
+            _existing_document(foreign, file_name, b"notes")
+        stored = _store(storage_manager, acme, "notes.txt", b"notes")
+
+        with pytest.raises(CollectionNotFoundException):
+            import_service.import_files(
+                _ACTOR, acme.id, foreign.collection_id, [stored.id], user=admin_acme
+            )
+
+        assert _document_names(foreign) == foreign_documents
+        assert not foreign.last_edits.exists()
 
     def test_other_org_folder_is_not_found(
         self, import_service, storage_manager, acme, beta, collection
@@ -692,7 +725,10 @@ class TestUploadNewFilesBatch:
         in_batch_duplicate = SimpleUploadedFile("new.txt", b"new")
 
         created, duplicates = DocumentManagementService.upload_new_files_batch(
-            collection.collection_id, [existing_duplicate, first, in_batch_duplicate], user=None
+            collection.collection_id,
+            [existing_duplicate, first, in_batch_duplicate],
+            org_id=collection.org_id,
+            user=None,
         )
 
         assert [document.file_name for document in created] == ["new.txt"]
@@ -705,5 +741,24 @@ class TestUploadNewFilesBatch:
 
         with pytest.raises(CollectionNotFoundException):
             DocumentManagementService.upload_new_files_batch(
-                collection.collection_id, [SimpleUploadedFile("a.txt", b"a")], user=None
+                collection.collection_id,
+                [SimpleUploadedFile("a.txt", b"a")],
+                org_id=collection.org_id,
+                user=None,
             )
+
+    def test_collection_of_another_org_raises_not_found_and_is_not_edited(
+        self, acme, beta, admin_acme
+    ):
+        foreign = SourceCollection.objects.create(collection_name="theirs", org=beta)
+
+        with pytest.raises(CollectionNotFoundException):
+            DocumentManagementService.upload_new_files_batch(
+                foreign.collection_id,
+                [SimpleUploadedFile("a.txt", b"a")],
+                org_id=acme.id,
+                user=admin_acme,
+            )
+
+        assert _document_names(foreign) == []
+        assert not foreign.last_edits.exists()
