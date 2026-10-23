@@ -72,3 +72,21 @@ def test_the_crew_result_channel_is_derived_from_the_services_own_channel(
     reloaded = reload_settings_with_env(CODE_RESULT_CHANNEL="somewhere:else")
 
     assert reloaded.CREW_JOB_RESULT_CHANNEL == "somewhere:else:crew"
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [("BENCH", "BENCH"), ("bench", "BENCH"), (" warning ", "WARNING")],
+)
+def test_log_level_accepts_every_loguru_level_and_bench(
+    reload_settings_with_env, configured, expected
+):
+    reloaded = reload_settings_with_env(SANDBOX_LOG_LEVEL=configured)
+
+    assert reloaded.LOG_LEVEL == expected
+
+
+@pytest.mark.parametrize("configured", ["VERBOSE", "none", ""])
+def test_an_unknown_log_level_refuses_startup(reload_settings_with_env, configured):
+    with pytest.raises(ValueError, match="SANDBOX_LOG_LEVEL"):
+        reload_settings_with_env(SANDBOX_LOG_LEVEL=configured)
