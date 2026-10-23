@@ -140,6 +140,11 @@ export interface PluginReviewNavigationItem {
     path: string;
     /** `data:image/svg+xml;base64,…` or `data:image/png;base64,…`; drawn only as a CSS mask. */
     icon_data_url: string;
+    /**
+     * The plugin's own permission a person needs to see the item; `null`: everyone who can open the plugin sees it. The
+     * sidebar gets only the items a person may see, already filtered by the server.
+     */
+    permission: PluginAction | null;
 }
 
 /** What a new version adds that the SuperAdmin must approve before it can be installed. */
@@ -187,8 +192,8 @@ export interface PluginUpgradeReview {
     settings: { added: string[]; removed: string[]; needed: PluginSettingNeeded[] };
     limits_changed: string[];
     /**
-     * The app menu differs from the baseline's: an item's label, path or icon file name, or their order. A redrawn icon
-     * under the same file name does not count.
+     * The app menu differs from the baseline's: an item's label, path, icon file name or permission, or their order. A
+     * redrawn icon under the same file name does not count.
      */
     navigation_changed: boolean;
     /** `database_size_bytes` as the node last reported it. */

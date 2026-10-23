@@ -7,11 +7,17 @@ import { switchMap } from 'rxjs';
 
 import {
     PackageReview,
+    PluginAction,
     PluginApproveRequest,
     PluginBuiltInRoleDefaults,
     PluginSettingDeclaration,
 } from '../../models/plugin-admin.model';
-import { PLUGIN_SIGNATURE_LABELS, PLUGIN_TRUST_LABELS, pluginTrustTone } from '../../utils/plugin-display.util';
+import {
+    PLUGIN_ACTION_LABELS,
+    PLUGIN_SIGNATURE_LABELS,
+    PLUGIN_TRUST_LABELS,
+    pluginTrustTone,
+} from '../../utils/plugin-display.util';
 import { createNeededSettingsForm, neededSettingValues } from '../../utils/plugin-setting-value.util';
 import { PluginAccessTableComponent } from '../plugin-access-table/plugin-access-table.component';
 import { PluginBadgeComponent } from '../plugin-badge/plugin-badge.component';
@@ -31,7 +37,9 @@ export const OUTBOUND_HOSTS_NOTE =
 
 /** Under the app menu a package declares: its labels show in EpicStaff's own sidebar, not in the plugin's page. */
 export const APP_MENU_NOTE =
-    "EpicStaff shows this menu in its own sidebar, under the plugin's name, while the plugin is open.";
+    "EpicStaff shows this menu in its own sidebar, under the plugin's name, while the plugin is open. An item shown " +
+    'only to people with a permission is hidden from everyone else, not locked: the plugin must still refuse its page ' +
+    'to them.';
 
 /** The Database section of a package that brings its database. */
 const DATABASE_SET_UP = "Gets its own database on this deployment's plugin database server, set up when you approve.";
@@ -46,8 +54,8 @@ const ICON_DATA_URL_PREFIXES = ['data:image/svg+xml;base64,', 'data:image/png;ba
 
 /**
  * Everything in a package a SuperAdmin decides on: identity and publisher, trust and signature, review warnings, the
- * access it declares to EpicStaff, the permissions it gives people (with the built-in role defaults), its app menu,
- * public paths, outbound hosts, its database, settings, limits, hooks and the package itself. For a new version of an
+ * access it declares to EpicStaff, the permissions it gives people (with the built-in role defaults), its app menu
+ * (with who sees each item), public paths, outbound hosts, its database, settings, limits, hooks and the package itself. For a new version of an
  * installed plugin, first what upgrading to it means ({@link PluginUpgradeReviewComponent}) and the settings it needs.
  *
  * For a pending package it offers Approve ("Upgrade to <version>" for a new version) and Reject. Approving needs
@@ -128,6 +136,10 @@ export class PluginReviewPanelComponent {
             matchLabel: publicPath.match === 'prefix' ? 'and below' : '',
             methodsLabel: publicPath.methods.join(', '),
         }))
+    );
+    /** The app menu with who sees each item in EpicStaff's sidebar. */
+    protected readonly navigation = computed(() =>
+        this.review().navigation.map((item) => ({ ...item, shownTo: menuItemAudience(item.permission) }))
     );
     /**
      * What approving sets up for a package with a database; `null` without one. An upgrade runs only the migrations its
@@ -221,6 +233,12 @@ export class PluginReviewPanelComponent {
         if (values && Object.keys(values).length > 0) request.settings = values;
         return request;
     }
+}
+
+/** "People with the Delete permission" for an item that needs one, else "Everyone who can open the plugin". */
+function menuItemAudience(permission: PluginAction | null): string {
+    if (!permission) return 'Everyone who can open the plugin';
+    return `People with the ${PLUGIN_ACTION_LABELS[permission]} permission`;
 }
 
 /** "1 migration runs", "3 new migrations run". */

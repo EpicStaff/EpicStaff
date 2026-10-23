@@ -304,14 +304,17 @@ describe('PluginReviewPanelComponent', () => {
     });
 
     describe('the app menu', () => {
-        /** Each row of the App menu section: its label, its path and the icon it draws. */
-        function menuRows(): { label: string; path: string; icon: string }[] {
+        const EVERYONE = 'Everyone who can open the plugin';
+
+        /** Each row of the App menu section: its label, its path, who sees it and the icon it draws. */
+        function menuRows(): { label: string; path: string; shownTo: string; icon: string }[] {
             const rows = Array.from(sectionElement('App menu')?.querySelectorAll('tbody tr') ?? []);
             return rows.map((row) => {
-                const [labelCell, pathCell] = Array.from(row.querySelectorAll('td'));
+                const [labelCell, pathCell, shownToCell] = Array.from(row.querySelectorAll('td'));
                 return {
                     label: labelCell.textContent?.trim() ?? '',
                     path: pathCell.textContent?.trim() ?? '',
+                    shownTo: shownToCell.textContent?.trim() ?? '',
                     icon: labelCell
                         .querySelector<HTMLElement>('app-plugin-menu-icon')!
                         .style.getPropertyValue('mask-image'),
@@ -319,7 +322,7 @@ describe('PluginReviewPanelComponent', () => {
             });
         }
 
-        it("lists each item's icon, label and path in order, and says where EpicStaff shows them", () => {
+        it("lists each item's icon, label, path and who sees it in order, and says where EpicStaff shows them", () => {
             render(
                 buildPackageReview({
                     navigation: [
@@ -334,13 +337,55 @@ describe('PluginReviewPanelComponent', () => {
             );
 
             expect(menuRows()).toEqual([
-                { label: 'Overview', path: '/', icon: 'url("data:image/svg+xml;base64,PHN2Zy8+")' },
-                { label: 'Projects', path: '/projects', icon: 'url("data:image/png;base64,iVBORw0KGgo=")' },
+                { label: 'Overview', path: '/', shownTo: EVERYONE, icon: 'url("data:image/svg+xml;base64,PHN2Zy8+")' },
+                {
+                    label: 'Projects',
+                    path: '/projects',
+                    shownTo: EVERYONE,
+                    icon: 'url("data:image/png;base64,iVBORw0KGgo=")',
+                },
             ]);
             expect(section('App menu')).toContain(APP_MENU_NOTE);
             expect(APP_MENU_NOTE).toBe(
-                "EpicStaff shows this menu in its own sidebar, under the plugin's name, while the plugin is open."
+                "EpicStaff shows this menu in its own sidebar, under the plugin's name, while the plugin is open. " +
+                    'An item shown only to people with a permission is hidden from everyone else, not locked: ' +
+                    'the plugin must still refuse its page to them.'
             );
+        });
+
+        it('names the permission an item needs, and shows an item that needs none to everyone who can open it', () => {
+            render(
+                buildPackageReview({
+                    navigation: [
+                        buildReviewNavigationItem(),
+                        buildReviewNavigationItem({ label: 'Trash', path: '/trash', permission: 'delete' }),
+                        buildReviewNavigationItem({ label: 'Reports', path: '/reports', permission: 'read' }),
+                    ],
+                })
+            );
+
+            expect(menuRows().map(({ label, shownTo }) => ({ label, shownTo }))).toEqual([
+                { label: 'Overview', shownTo: EVERYONE },
+                { label: 'Trash', shownTo: 'People with the Delete permission' },
+                { label: 'Reports', shownTo: 'People with the View permission' },
+            ]);
+        });
+
+        it('keeps a table whose columns are headed Label, Path and Shown to, a cell under each', () => {
+            render(
+                buildPackageReview({
+                    navigation: [buildReviewNavigationItem({ label: 'Trash', path: '/trash', permission: 'delete' })],
+                })
+            );
+
+            const table = sectionElement('App menu')!.querySelector('table')!;
+            const headers = Array.from(table.querySelectorAll('thead th'));
+            expect(headers.map((header) => [header.getAttribute('scope'), header.textContent?.trim()])).toEqual([
+                ['col', 'Label'],
+                ['col', 'Path'],
+                ['col', 'Shown to'],
+            ]);
+            expect(table.querySelectorAll('tbody tr td')).toHaveLength(headers.length);
         });
 
         it('draws no icon whose source is not an image data URL', () => {
@@ -350,7 +395,7 @@ describe('PluginReviewPanelComponent', () => {
                 })
             );
 
-            expect(menuRows()).toEqual([{ label: 'Overview', path: '/', icon: '' }]);
+            expect(menuRows()).toEqual([{ label: 'Overview', path: '/', shownTo: EVERYONE, icon: '' }]);
         });
 
         it('is left out for a package that declares no menu', () => {
@@ -363,7 +408,7 @@ describe('PluginReviewPanelComponent', () => {
             render(buildUpgradePackageReview({ navigation: [buildReviewNavigationItem()] }));
 
             expect(menuRows()).toEqual([
-                { label: 'Overview', path: '/', icon: 'url("data:image/svg+xml;base64,PHN2Zy8+")' },
+                { label: 'Overview', path: '/', shownTo: EVERYONE, icon: 'url("data:image/svg+xml;base64,PHN2Zy8+")' },
             ]);
         });
     });

@@ -83,7 +83,7 @@ export function buildPackageReview(overrides: Partial<PackageReview> = {}): Pack
     };
 }
 
-/** The Overview entry of a package's app menu, its icon inlined for the review. */
+/** The Overview entry of a package's app menu, its icon inlined for the review; it needs no permission. */
 export function buildReviewNavigationItem(
     overrides: Partial<PluginReviewNavigationItem> = {}
 ): PluginReviewNavigationItem {
@@ -91,6 +91,7 @@ export function buildReviewNavigationItem(
         label: 'Overview',
         path: '/',
         icon_data_url: 'data:image/svg+xml;base64,PHN2Zy8+',
+        permission: null,
         ...overrides,
     };
 }

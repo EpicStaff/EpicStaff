@@ -121,10 +121,11 @@
                     <tr>
                         <th scope="col">Label</th>
                         <th scope="col">Path</th>
+                        <th scope="col">Shown to</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @for (item of reviewed.navigation; track item.path) {
+                    @for (item of navigation(); track item.path) {
                         <tr>
                             <td>
                                 <span class="review__menu-item">
@@ -138,6 +139,7 @@
                             <td>
                                 <code>{{ item.path }}</code>
                             </td>
+                            <td>{{ item.shownTo }}</td>
                         </tr>
                     }
                 </tbody>
