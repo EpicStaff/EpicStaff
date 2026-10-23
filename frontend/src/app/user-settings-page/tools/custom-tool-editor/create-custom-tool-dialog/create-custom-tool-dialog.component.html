@@ -65,6 +65,11 @@
             </div>
         </header>
 
+        <app-error-banner
+            class="save-error"
+            [message]="errorMessage()"
+        />
+
         <div
             class="dialog-content"
             [class.right-collapsed]="activeEditor() === ActiveEditor.None"

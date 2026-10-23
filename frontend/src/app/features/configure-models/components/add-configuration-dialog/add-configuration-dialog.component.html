@@ -42,6 +42,11 @@
         </button>
     </div>
 
+    <app-error-banner
+        class="error-banner"
+        [message]="errorMessage()"
+    />
+
     @if (activeTab() === 'llm') {
         <form
             class="form"
@@ -255,11 +260,6 @@
                 class="form"
                 [formGroup]="openaiForm"
             >
-                @if (errorMessage()) {
-                    <div class="error">
-                        <p>{{ errorMessage() }}</p>
-                    </div>
-                }
                 <div>
                     <app-custom-input
                         label="Name"
@@ -336,11 +336,6 @@
                 class="form"
                 [formGroup]="elevenLabsForm"
             >
-                @if (errorMessage()) {
-                    <div class="error">
-                        <p>{{ errorMessage() }}</p>
-                    </div>
-                }
                 <div>
                     <app-custom-input
                         label="Name"
@@ -392,11 +387,6 @@
                 class="form"
                 [formGroup]="geminiForm"
             >
-                @if (errorMessage()) {
-                    <div class="error">
-                        <p>{{ errorMessage() }}</p>
-                    </div>
-                }
                 <div>
                     <app-custom-input
                         label="Name"
