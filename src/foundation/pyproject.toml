@@ -19,3 +19,17 @@ litestar = [
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    # The litestar helpers are tested too, and `make uv-sync` installs groups, not extras.
+    "litestar==2.24.0",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `make uv-sync` does not install the project itself, so the package is imported from source.
+pythonpath = ["src"]
+asyncio_mode = "auto"

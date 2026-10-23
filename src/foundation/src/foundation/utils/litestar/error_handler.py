@@ -39,12 +39,19 @@ def get_handlers() -> dict[type[Exception], Callable[[Request, Exception], Respo
 
 
 def create_response(
-    status_code: int, errors: list[ErrorDetailSchema]
+    status_code: int,
+    errors: list[ErrorDetailSchema],
+    headers: dict[str, str] | None = None,
 ) -> Response[ErrorResponseSchema]:
-    """Wrap the shared error envelope in a Litestar response."""
+    """Wrap the shared error envelope in a Litestar response.
+
+    Args:
+        headers: Extra response headers, such as `Retry-After` on a 503.
+    """
     return Response(
         content=ErrorResponseSchema.for_status(status_code, errors),
         status_code=status_code,
+        headers=headers,
     )
 
 
