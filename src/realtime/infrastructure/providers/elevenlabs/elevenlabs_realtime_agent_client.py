@@ -10,7 +10,7 @@ from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
 from starlette.websockets import WebSocketDisconnect
-from utils.public_error import (
+from src.shared.public_error import (
     PublicErrorMessage,
     build_public_error_message,
     new_error_correlation_id,
