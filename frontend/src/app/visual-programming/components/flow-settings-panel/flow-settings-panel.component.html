@@ -55,6 +55,14 @@
             />
         </div>
 
+        <div class="form-section form-section--toggle">
+            <span class="section-label">Highlight unused nodes</span>
+            <app-toggle-switch
+                [checked]="flowSettings.highlightUnusedNodes()"
+                (checkedChange)="flowSettings.highlightUnusedNodes.set($event)"
+            />
+        </div>
+
         <div class="form-section">
             <span class="section-label">Timezone</span>
             <app-timezone-selector
