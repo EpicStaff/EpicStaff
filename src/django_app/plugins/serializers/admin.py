@@ -192,8 +192,8 @@ class PackageReviewSerializer(serializers.ModelSerializer):
         return _data_url(package.icon_media_type, bytes(package.icon_bytes))
 
     def get_navigation(self, package: PluginPackage) -> list[dict]:
-        """The app menu in the manifest's order, each item's icon as a `data:` URL; one query,
-        none without a menu."""
+        """The app menu in the manifest's order, each item's icon as a `data:` URL and the action
+        it is shown for (null: everyone); one query, none without a menu."""
         spa = package.parsed_manifest.spa
         if spa is None or not spa.navigation:
             return []
@@ -205,6 +205,7 @@ class PackageReviewSerializer(serializers.ModelSerializer):
                 "icon_data_url": _data_url(
                     icons[item.icon].media_type, bytes(icons[item.icon].icon_bytes)
                 ),
+                "permission": item.permission,
             }
             for item in spa.navigation
         ]

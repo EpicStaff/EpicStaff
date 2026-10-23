@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from epicstaff_plugin.contracts.manifest import (
+    ACTIONS,
     MAX_NAVIGATION_ITEMS,
     MAX_NAVIGATION_LABEL_LENGTH,
     MAX_NAVIGATION_PATH_LENGTH,
@@ -400,6 +401,38 @@ def test_a_full_menu_may_share_icons_and_lists_each_icon_once(manifest_document)
     assert manifest.navigation_icon_paths == ("icons/a.png", "icons/b.svg")
 
 
+def test_a_menu_entry_names_no_permission_unless_it_says_so(manifest_document):
+    manifest_document["spa"]["navigation"] = [MENU_ITEM, {**MENU_ITEM, "label": "Home", "path": "/home", "permission": None}]
+
+    assert [item.permission for item in validate_manifest(manifest_document).spa.navigation] == [None, None]
+
+
+@pytest.mark.parametrize("action", ["read", "update", "delete"])
+def test_a_menu_entry_may_name_any_action_user_permissions_declares(full_manifest_document, action):
+    full_manifest_document["spa"]["navigation"] = [{**MENU_ITEM, "permission": action}]
+
+    assert validate_manifest(full_manifest_document).spa.navigation[0].permission == action
+
+
+def test_every_menu_entry_naming_an_undeclared_action_is_reported_at_its_own_index(full_manifest_document):
+    # The complete example declares read, update and delete; drop delete.
+    full_manifest_document["user_permissions"] = full_manifest_document["user_permissions"][:2]
+    full_manifest_document["spa"]["navigation"] = [
+        {**MENU_ITEM, "permission": "update"},
+        {"label": "Reports", "path": "/reports", "icon": "icons/reports.svg", "permission": "export"},
+        {"label": "Places", "path": "/places", "icon": "icons/places.svg"},
+        {"label": "Settings", "path": "/settings", "icon": "icons/settings.svg", "permission": "delete"},
+    ]
+
+    with pytest.raises(PackageProblemsError) as raised:
+        validate_manifest(full_manifest_document)
+
+    assert [problem.as_dict() for problem in raised.value.problems] == [
+        {"loc": "manifest.spa.navigation[1].permission", "message": "names 'export', which user_permissions does not declare"},
+        {"loc": "manifest.spa.navigation[3].permission", "message": "names 'delete', which user_permissions does not declare"},
+    ]
+
+
 @pytest.mark.parametrize(
     ("first", "second"),
     [
@@ -551,8 +584,13 @@ ICON_MESSAGE = (
         ([MENU_ITEM, {**MENU_ITEM, "label": "Home"}], ("spa", "navigation"), "duplicate", "lists path '/' more than once"),
         ([MENU_ITEM, {**MENU_ITEM, "path": "/home"}], ("spa", "navigation"), "duplicate", "lists label 'Overview' more than once"),
         (_menu_of(13), ("spa", "navigation"), "too_long", "List should have at most 12 items after validation, not 13"),
+        ([{**MENU_ITEM, "permission": "delete"}], ("spa", "navigation", 0, "permission"), "undeclared_permission", "names 'delete', which user_permissions does not declare"),
+        ([{**MENU_ITEM, "permission": "list"}], ("spa", "navigation", 0, "permission"), "literal_error", "Input should be 'read', 'create', 'update', 'delete', 'export' or 'use'"),
     ],
-    ids=["trailing slash", "dot-dot segment", "path too long", "icon in a subfolder", "blank label", "control character", "label too long", "path twice", "label twice", "too many items"],
+    ids=[
+        "trailing slash", "dot-dot segment", "path too long", "icon in a subfolder", "blank label", "control character", "label too long",
+        "path twice", "label twice", "too many items", "undeclared permission", "permission that is no action",
+    ],
 )
 def test_a_menu_rule_says_exactly_what_is_wrong(manifest_document, navigation, loc, error_type, message):
     manifest_document["spa"]["navigation"] = navigation
@@ -576,6 +614,8 @@ def test_the_json_schema_describes_the_menu():
     assert item["properties"]["path"]["pattern"] == NAVIGATION_PATH_PATTERN
     assert item["properties"]["path"]["maxLength"] == 256
     assert item["properties"]["icon"]["pattern"] == NAVIGATION_ICON_PATTERN
+    assert item["properties"]["permission"]["anyOf"] == [{"enum": list(ACTIONS), "type": "string"}, {"type": "null"}]
+    assert item["properties"]["permission"]["default"] is None
 
 
 def test_user_permission_defaults_lists_the_actions_a_built_in_role_gets(full_manifest_document):

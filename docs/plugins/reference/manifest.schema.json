@@ -261,6 +261,27 @@
           "pattern": "^icons/[a-z0-9][a-z0-9_-]{0,62}\\.(?:svg|png)$",
           "title": "Icon",
           "type": "string"
+        },
+        "permission": {
+          "anyOf": [
+            {
+              "enum": [
+                "read",
+                "create",
+                "update",
+                "delete",
+                "export",
+                "use"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "An action user_permissions declares: only people who hold it on the plugin see the entry. Hiding an entry is not access control; the page it opens stays reachable.",
+          "title": "Permission"
         }
       },
       "required": [

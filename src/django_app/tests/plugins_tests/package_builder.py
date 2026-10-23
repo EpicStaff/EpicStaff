@@ -49,6 +49,25 @@ SAMPLE_NAVIGATION = [
     {"label": "Saved places", "path": "/places/saved", "icon": "icons/forecast.svg"},
 ]
 
+# Read for everyone who may open the app, delete for Org Admins only: a Member holds only read.
+SETTINGS_PERMISSIONS = [
+    {
+        "action": "read",
+        "description": "Open Weather and see forecasts.",
+        "defaults": {"org_admin": True, "member": True, "viewer": False},
+    },
+    {
+        "action": "delete",
+        "description": "Change the organization's Weather settings.",
+        "defaults": {"org_admin": True, "member": False, "viewer": False},
+    },
+]
+# An app menu whose last entry only people holding `delete` see.
+GATED_NAVIGATION = [
+    {"label": "Forecast", "path": "/", "icon": "icons/forecast.svg"},
+    {"label": "Organization settings", "path": "/settings", "icon": "icons/settings.svg", "permission": "delete"},
+]
+
 BACKEND = {"python": "3.12", "entrypoint": "plugin.app:app"}
 # Every backend's lock pins the SDK and uvicorn, each with a sha256.
 BACKEND_LOCK = (
@@ -120,6 +139,11 @@ def menu_spa(navigation: list[dict] | None = None) -> dict:
 def menu_manifest(navigation: list[dict] | None = None, **changes) -> dict:
     """The Weather sample with an app menu (`menu_spa`) and top-level `changes` applied."""
     return sample_manifest(spa=menu_spa(navigation), **changes)
+
+
+def gated_menu_manifest(**changes) -> dict:
+    """The Weather sample with `GATED_NAVIGATION` and the `SETTINGS_PERMISSIONS` it gates on."""
+    return menu_manifest(GATED_NAVIGATION, **{"user_permissions": copy.deepcopy(SETTINGS_PERMISSIONS), **changes})
 
 
 def menu_icon_for(path: str) -> bytes:

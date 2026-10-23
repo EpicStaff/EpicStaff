@@ -266,12 +266,12 @@ def _limits_changed(baseline: PluginManifest, new: PluginManifest) -> list[str]:
     return [name for name in LIMIT_NAMES if before.get(name) != after.get(name)]
 
 
-def _navigation(manifest: PluginManifest) -> list[tuple[str, str, str]]:
-    """The app menu as the review compares it: label, path and icon file name of each item, in
-    order. A redrawn icon under the same name is not a change."""
+def _navigation(manifest: PluginManifest) -> list[tuple[str, str, str, str | None]]:
+    """The app menu as the review compares it: label, path, icon file name and permission of
+    each item, in order. A redrawn icon under the same name is not a change."""
     if manifest.spa is None:
         return []
-    return [(item.label, item.path, item.icon) for item in manifest.spa.navigation]
+    return [(item.label, item.path, item.icon, item.permission) for item in manifest.spa.navigation]
 
 
 def _backup_required(upgrade: PluginUpgrade | None, database: PluginDatabase | None) -> bool:

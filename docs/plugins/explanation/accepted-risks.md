@@ -49,7 +49,8 @@ name and icon too. A plugin named "EpicStaff", with an icon like EpicStaff's log
 "Change password", can make the whole sidebar look like EpicStaff's own.
 
 What protects people is the SuperAdmin's review. The review of every install and upgrade shows the plugin's name, its
-icon and its menu (icon, label and path), and an upgrade that changes the menu says so. Read them before approving,
+icon and its menu (every entry's icon, label, path and permission, whoever the entry is shown to), and an upgrade that
+changes the menu says so. Read them before approving,
 and refuse a plugin that looks like EpicStaff or like another app. An upgrade's review shows the new icons, but does not
 point out an icon redrawn under the same file name: look at them.
 
@@ -68,6 +69,14 @@ EpicStaff does not judge what a name or a label says or what an icon shows. An S
 in different places, as its file allows: a CSS media query or a `<switch>` element picks what to draw by the size the
 icon is drawn at, the theme or the browser's language, so the review can show a different picture than a member's
 sidebar. When that matters, read the icon's SVG source before approving.
+
+An SVG icon can also be built to draw slowly. The checks cap `<use>` elements and refuse chains of them, but not the
+other elements that make a browser do much work for a small file: a `<pattern>` tiled across the icon, a `<filter>`
+(blurs, lighting, turbulence), or an `<feImage>` that draws another part of the same file. Such an icon slows down
+every page that draws it: the Apps list, EpicStaff's sidebar while the app is open, and the review itself. This holds
+for the plugin's icon and its menu icons alike. The planned fix is an allow-list of SVG elements and attributes for
+both, so that only plain shapes, paths and fills pass. Until then, refuse a plugin whose icons are slow to draw in the
+review.
 
 ## Keeping organizations apart inside a plugin is the plugin's job
 

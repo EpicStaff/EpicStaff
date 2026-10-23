@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from epicstaff_plugin.contracts.manifest import NavigationItem
+
 from plugins.access.plugin_access import accesses_in_organization
 from plugins.development.development_targets import served_from_development
 from plugins.models import GrantState, Plugin, PluginGrant, PluginState
@@ -22,6 +24,23 @@ class AvailablePlugin:
     permissions: list[str]
     availability: str
     development: bool
+
+    @property
+    def visible_navigation(self) -> list[NavigationItem]:
+        """The running version's app menu entries this person sees, in the manifest's order.
+
+        An entry that names a `permission` shows only when it is among `permissions`, the
+        person's actions in this organization. Hiding an entry is not access control: its page
+        stays reachable by its path, so the plugin checks the permission there itself.
+        """
+        spa = self.plugin.current_package.parsed_manifest.spa
+        if spa is None:
+            return []
+        return [
+            item
+            for item in spa.navigation
+            if item.permission is None or item.permission in self.permissions
+        ]
 
 
 def plugins_available_to(user, org_id: int) -> list[AvailablePlugin]:

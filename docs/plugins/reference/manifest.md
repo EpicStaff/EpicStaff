@@ -81,7 +81,8 @@ A manifest with every section filled in:
     "entry": "index.html",
     "navigation": [
       { "label": "Forecast", "path": "/", "icon": "icons/forecast.svg" },
-      { "label": "Saved places", "path": "/places", "icon": "icons/places.svg" }
+      { "label": "Saved places", "path": "/places", "icon": "icons/places.svg" },
+      { "label": "Settings", "path": "/settings", "icon": "icons/settings.svg", "permission": "delete" }
     ]
   },
   "backend": { "python": "3.13", "entrypoint": "weather_plugin.app:app" },
@@ -189,6 +190,7 @@ Each entry is `{action, description, defaults}`: one action people can be given 
   `member: true`, and `member: true` needs `org_admin: true` (refused at
   `manifest.user_permissions[<i>].defaults`). People assign roles only up to their own plugin
   actions, so without this an Org Admin could not assign Member.
+- *Cross-field:* an [app menu](#app-menu) entry's `permission` names one of these actions.
 
 ### settings
 
@@ -205,7 +207,7 @@ Each entry is `{key, type, label, description, required, default, values}`:
 
 `spa.navigation` lists the pages of the app. While the app is open, EpicStaff draws the list in its own
 sidebar, under the app's name, so the page needs no menu of its own. A menu needs a single-page app, which is
-why it lives inside `spa`. Each entry is `{label, path, icon}`:
+why it lives inside `spa`. Each entry is `{label, path, icon, permission}`:
 
 - `label`: 1–32 characters of plain text that shows everything it holds. EpicStaff shows it as it is, cut off with an
   ellipsis when the sidebar is narrow. A label
@@ -225,6 +227,13 @@ why it lives inside `spa`. Each entry is `{label, path, icon}`:
   page can be sent.
 - `icon`: `icons/<name>.svg` or `icons/<name>.png`, where `<name>` is 1 to 63 lower-case letters, digits, `-` and
   `_`, starting with a letter or a digit. Several entries may name the same file.
+- `permission` (optional, default `null`): an action `user_permissions` declares, such as `"delete"`. Only people who
+  hold that action on the plugin, in the organization they are working in, see the entry. An entry without one shows
+  to everyone who may open the app, and so does an entry that names `read`, which they all hold.
+  **Hiding an entry is not access control.** The page it opens stays reachable by its path, typed, bookmarked or
+  linked, by everyone who may open the app. Check the action wherever it protects something: on your backend, in the
+  [gateway context](gateway-context.md)'s `permissions`, for every request that reads or changes it, and on the page,
+  in the [JS SDK](js-sdk.md)'s `session.permissions`, so that a person without it is told so.
 - At most 12 entries. Paths are distinct, and so are labels, compared after Unicode NFKC normalization and case
   folding, because labels that differ only there look alike in the sidebar: `Projects`, `projects`, `PROJECTS` and
   `Projects` written in fullwidth letters are one label, and so are `files` and the same word written with the `fi`
@@ -235,10 +244,14 @@ why it lives inside `spa`. Each entry is `{label, path, icon}`:
   "entry": "index.html",
   "navigation": [
     { "label": "Overview", "path": "/", "icon": "icons/overview.svg" },
-    { "label": "Projects", "path": "/projects", "icon": "icons/projects.svg" }
+    { "label": "Projects", "path": "/projects", "icon": "icons/projects.svg" },
+    { "label": "Settings", "path": "/settings", "icon": "icons/settings.svg", "permission": "delete" }
   ]
 }
 ```
+
+Here everyone who may open the app sees Overview and Projects, and only people who hold `delete`, which
+`user_permissions` must declare, also see Settings.
 
 The icon files are in the package under `icons/`, next to the `icon` of the manifest's root; see
 [Package layout](#package-layout) and [Menu icons](#menu-icons).
@@ -251,6 +264,10 @@ What people see:
   `/projects/2` the `/projects` entry. The `/` entry is highlighted on the root page only. The highlight follows
   EpicStaff's address, which follows the page's `nav.changed`. So it follows links inside the app only when the page
   speaks the frame protocol, as the JS SDK's `startPlugin` does.
+- An entry with a `permission` is left out of the menu of everyone who does not hold that action. EpicStaff filters
+  the menu on the server, with the person's actions in the organization they are working in: the same `permissions`
+  the Apps list reports. After an Org Admin changes what a role holds, the menu follows once the list of apps
+  refreshes.
 - An app with no menu gets the same sidebar, without the entries.
 - The menu is the one of the version that runs. While a plugin is stopped for an upgrade its menu stays; the new
   menu shows once the list of apps refreshes.
@@ -279,6 +296,7 @@ validate`, `pack`, `sign` and `verify` print the same problems as `loc: message`
 | `manifest.spa.navigation[i].label` | `must not be blank` (blank_text), `must not contain control characters` (control_character), `must not start or end with whitespace` (label_whitespace), `must not contain invisible formatting characters` (invisible_character: a format or default-ignorable character), `must not contain whitespace other than plain spaces` (whitespace_character), `must contain at least one visible character` (visible_character_required), `String should have at least 1 character`, `String should have at most 32 characters` |
 | `manifest.spa.navigation[i].path` | `must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', without a query, a '.' or '..' segment, or a trailing '/'` (navigation_path), `String should have at most 256 characters` |
 | `manifest.spa.navigation[i].icon` | `must be icons/<name>.svg or icons/<name>.png, where <name> is 1 to 63 lower-case letters, digits, '-' and '_', starting with a letter or a digit` (navigation_icon), `names icons/x.svg, which is not in the package` |
+| `manifest.spa.navigation[i].permission` | `Input should be 'read', 'create', 'update', 'delete', 'export' or 'use'` (literal_error), `names 'x', which user_permissions does not declare` (undeclared_permission; `x` is the action the entry names. Checked once the rest of the manifest is valid, so it shows only after every other manifest problem is fixed) |
 | `package.icons/<name>` | `is not an icon spa.navigation names`, `is larger than 16384 bytes`, `is not a PNG image`, and the SVG messages of the [icon](#icon-errors) |
 | `package.icons` | `holds more than 12 files` |
 

@@ -104,13 +104,32 @@ every rule.
    }
    ```
 
-3. Make your router answer each path. A click on an entry reaches your page as a navigation EpicStaff starts (the
+3. To show an entry only to some people, give it a `permission`: an action your `user_permissions` declares. Only
+   people who hold that action on your plugin see the entry; here, only those who may change the organization's
+   settings (`delete`, given to Org Admins by default):
+
+   ```json
+   "spa": {
+     "entry": "index.html",
+     "navigation": [
+       { "label": "Overview", "path": "/", "icon": "icons/overview.svg" },
+       { "label": "Settings", "path": "/settings", "icon": "icons/settings.svg", "permission": "delete" }
+     ]
+   }
+   ```
+
+   **Hiding an entry is not access control.** Everyone who may open your app can still reach `/settings` by its path:
+   typed, bookmarked or linked. Your plugin must check the permission itself: on your backend, in the gateway
+   context's `permissions`, for every request that reads or changes the settings
+   ([Give people permissions in your plugin](user-permissions.md#use-them-in-your-plugin)), and on the page, in the
+   SDK's `session.permissions`, so that a person without it is told so instead of seeing a broken page.
+4. Make your router answer each path. A click on an entry reaches your page as a navigation EpicStaff starts (the
    frame protocol's `nav.navigate`), and the SDK's `startPlugin` moves your router there, as it does for EpicStaff's
    Back and Forward.
-4. Keep `startPlugin` running. The entry EpicStaff highlights follows EpicStaff's address, which follows the paths
+5. Keep `startPlugin` running. The entry EpicStaff highlights follows EpicStaff's address, which follows the paths
    your page reports (`nav.changed`). A page that does not speak the frame protocol never reports them, so the
    highlight does not follow its links; it stays on the entry that was clicked.
-5. Remove the menu your page drew itself, if it had one.
+6. Remove the menu your page drew itself, if it had one.
 
 `epicstaff-plugin validate` and `pack` check the menu and its icons, and `pack` takes only the icon files the menu
 names. A menu change ships like any other change: with a new version ([Local development](local-development.md#ship-a-change)).

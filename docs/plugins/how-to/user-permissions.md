@@ -65,9 +65,11 @@ the plugin. Copying a role to another organization does not copy its plugin acti
 
 ## Use them in your plugin
 
-EpicStaff uses `read` to decide who sees your plugin in the Apps list. Every request your backend
-receives in `user` mode carries the person's actions in the
-[gateway context](../reference/gateway-context.md) as `permissions` (for example
+EpicStaff uses `read` to decide who sees your plugin in the Apps list, and the action an
+[app menu](../reference/manifest.md#app-menu) entry names (`permission`) to decide who sees that
+entry. Hiding an entry protects nothing: its page is still reachable by its path for everyone who
+may open the plugin. Every request your backend receives in `user` mode carries the person's
+actions in the [gateway context](../reference/gateway-context.md) as `permissions` (for example
 `["read", "update"]`): check them on the server for anything that changes data, never only in
 the page. When your backend acts for a person outside a request of theirs, the
 [service account API](../reference/service-account-api.md)'s people endpoint gives the same

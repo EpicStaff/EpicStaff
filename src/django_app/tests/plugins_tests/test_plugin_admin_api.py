@@ -27,6 +27,7 @@ from tests.plugins_tests.package_builder import (
     MENU_ICON_SVG,
     backend_manifest,
     build_package,
+    gated_menu_manifest,
     menu_manifest,
     sample_files,
     sample_manifest,
@@ -216,20 +217,30 @@ def test_the_review_shows_the_menu_with_each_icon_as_a_data_url(superadmin_clien
     review = _upload(superadmin_client, build_package(manifest=menu_manifest())).json()
 
     assert review["navigation"] == [
-        {"label": "Forecast", "path": "/", "icon_data_url": _data_url("image/svg+xml", MENU_ICON_SVG)},
-        {"label": "Places", "path": "/places", "icon_data_url": _data_url("image/png", MENU_ICON_PNG)},
-        {"label": "Saved places", "path": "/places/saved", "icon_data_url": _data_url("image/svg+xml", MENU_ICON_SVG)},
+        {"label": "Forecast", "path": "/", "icon_data_url": _data_url("image/svg+xml", MENU_ICON_SVG), "permission": None},
+        {"label": "Places", "path": "/places", "icon_data_url": _data_url("image/png", MENU_ICON_PNG), "permission": None},
+        {"label": "Saved places", "path": "/places/saved", "icon_data_url": _data_url("image/svg+xml", MENU_ICON_SVG), "permission": None},
     ]
     assert superadmin_client.get(f"{PACKAGES_URL}{review['id']}/review/").json()["navigation"] == review["navigation"]
 
 
+def test_the_review_shows_which_menu_entries_a_permission_restricts(superadmin_client):
+    review = _upload(superadmin_client, build_package(manifest=gated_menu_manifest())).json()
+
+    assert [(entry["label"], entry["permission"]) for entry in review["navigation"]] == [
+        ("Forecast", None),
+        ("Organization settings", "delete"),
+    ]
+
+
 def test_the_plugin_detail_shows_the_current_package_s_menu(superadmin_client):
-    review = _upload(superadmin_client, build_package(manifest=menu_manifest())).json()
+    review = _upload(superadmin_client, build_package(manifest=gated_menu_manifest())).json()
     _approve(superadmin_client, review["id"], untrusted_acknowledged=True)
 
     detail = superadmin_client.get(f"{PLUGINS_URL}weather/").json()
 
     assert detail["current_package"]["navigation"] == review["navigation"]
+    assert [entry["permission"] for entry in detail["current_package"]["navigation"]] == [None, "delete"]
 
 
 def _queries(client, url) -> int:

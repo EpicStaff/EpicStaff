@@ -1,5 +1,7 @@
 """The review of a new version: the access it needs approved, and everything else it changes."""
 
+import copy
+
 import pytest
 from plugins.models import PluginDatabase, PluginPackage, PluginSettingValue, PluginUpgrade, Trust
 from plugins.packages.upgrade_review import access_growth
@@ -19,8 +21,10 @@ from tests.plugins_tests.upgrade_fixtures import (  # noqa: F401 (fixtures)
     weather_manifest,
 )
 from tests.plugins_tests.package_builder import (
+    GATED_NAVIGATION,
     GEOCODING_HOST,
     SAMPLE_NAVIGATION,
+    SETTINGS_PERMISSIONS,
     menu_manifest,
     menu_spa,
     sample_manifest,
@@ -300,12 +304,13 @@ def _with(index, **changes):
         pytest.param(_with(1, label="Locations"), True, id="label"),
         pytest.param(_with(1, path="/locations"), True, id="path"),
         pytest.param(_with(1, icon="icons/forecast.svg"), True, id="icon file"),
+        pytest.param(_with(1, permission="read"), True, id="permission added"),
         pytest.param([SAMPLE_NAVIGATION[1], SAMPLE_NAVIGATION[0], SAMPLE_NAVIGATION[2]], True, id="order"),
         pytest.param(SAMPLE_NAVIGATION[:2], True, id="item removed"),
         pytest.param([], True, id="menu removed"),
     ],
 )
-def test_the_menu_is_compared_by_label_path_icon_file_and_order(running_plugin, installation, superadmin, superadmin_client, navigation, changed):
+def test_the_menu_is_compared_by_label_path_icon_file_permission_and_order(running_plugin, installation, superadmin, superadmin_client, navigation, changed):
     running_plugin(version="0.6.0", spa=menu_spa())
 
     review = _review(superadmin_client, upload(installation, superadmin, menu_manifest(navigation, version="0.7.0")))
@@ -321,4 +326,29 @@ def test_a_redrawn_icon_under_the_same_name_is_no_navigation_change(running_plug
     package = upload(installation, superadmin, manifest, {**sample_files(manifest), "icons/forecast.svg": redrawn})
 
     assert _review(superadmin_client, package)["upgrade"]["navigation_changed"] is False
+
+
+def _gated_with(permission):
+    """`GATED_NAVIGATION` with its gated entry naming `permission`, or naming none."""
+    items = copy.deepcopy(GATED_NAVIGATION)
+    if permission is None:
+        del items[1]["permission"]
+    else:
+        items[1]["permission"] = permission
+    return items
+
+
+@pytest.mark.parametrize(
+    ("permission", "changed"),
+    [("delete", False), ("read", True), (None, True)],
+    ids=["same permission", "another permission", "permission dropped"],
+)
+def test_a_menu_entry_s_permission_is_part_of_the_menu(running_plugin, installation, superadmin, superadmin_client, permission, changed):
+    running_plugin(version="0.6.0", spa=menu_spa(GATED_NAVIGATION), user_permissions=SETTINGS_PERMISSIONS)
+    manifest = menu_manifest(_gated_with(permission), version="0.7.0", user_permissions=SETTINGS_PERMISSIONS)
+
+    review = _review(superadmin_client, upload(installation, superadmin, manifest))
+
+    assert review["upgrade"]["navigation_changed"] is changed
+    assert review["access_growth"]["requires_acknowledgement"] is False
 

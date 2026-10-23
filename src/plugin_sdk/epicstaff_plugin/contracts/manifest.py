@@ -27,7 +27,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_core import PydanticCustomError
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from epicstaff_plugin.json_documents import load_json_object
 from epicstaff_plugin.paths import path_problem
@@ -288,6 +288,13 @@ class NavigationItem(_ManifestPart):
             json_schema_extra={"pattern": NAVIGATION_ICON_PATTERN},
         ),
     ]
+    permission: Action | None = Field(
+        default=None,
+        description=(
+            "An action user_permissions declares: only people who hold it on the plugin see the "
+            "entry. Hiding an entry is not access control; the page it opens stays reachable."
+        ),
+    )
 
 
 class Spa(_ManifestPart):
@@ -575,6 +582,31 @@ class PluginManifest(_ManifestPart):
                     role=role,
                 )
         return permissions
+
+    # A rule across `spa` and `user_permissions`, so it runs only once every field is valid.
+    # Raised as a ValidationError, each problem keeps its own location: the menu entry, not the
+    # manifest's root.
+    @model_validator(mode="after")
+    def _menu_permissions_are_declared(self) -> "PluginManifest":
+        if self.spa is None:
+            return self
+        declared = {permission.action for permission in self.user_permissions}
+        problems = [
+            InitErrorDetails(
+                type=_rule_error(
+                    "undeclared_permission",
+                    "names '{action}', which user_permissions does not declare",
+                    action=item.permission,
+                ),
+                loc=("spa", "navigation", index, "permission"),
+                input=item.permission,
+            )
+            for index, item in enumerate(self.spa.navigation)
+            if item.permission is not None and item.permission not in declared
+        ]
+        if problems:
+            raise ValidationError.from_exception_data(type(self).__name__, problems)
+        return self
 
     @property
     def navigation_icon_paths(self) -> tuple[str, ...]:

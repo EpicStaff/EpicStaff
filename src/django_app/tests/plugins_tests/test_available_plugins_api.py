@@ -10,7 +10,13 @@ from rbac.models.enums import Permission, ResourceType
 from rest_framework.test import APIClient
 
 from tests.plugins_tests.conftest import upload_file
-from tests.plugins_tests.package_builder import build_package, menu_manifest, menu_spa
+from tests.plugins_tests.package_builder import (
+    GATED_NAVIGATION,
+    SETTINGS_PERMISSIONS,
+    build_package,
+    menu_manifest,
+    menu_spa,
+)
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -93,6 +99,80 @@ def test_the_menu_name_and_description_follow_the_running_version_not_a_pending_
     [listed] = _available(client_as, member_only, acme).json()
 
     assert (listed["description"], listed["navigation"]) == ("Forecasts for the places your organization cares about.", MENU)
+
+
+# ---- menu entries gated on a permission ----
+
+
+FORECAST_ENTRY = {"label": "Forecast", "path": "/", "icon_url": "/api/plugin-public/weather/icons/forecast.svg/?v=0.1.0"}
+SETTINGS_ENTRY = {"label": "Organization settings", "path": "/settings", "icon_url": "/api/plugin-public/weather/icons/settings.svg/?v=0.1.0"}
+
+
+def _gated_weather(running_plugin):
+    return running_plugin(spa=menu_spa(GATED_NAVIGATION), user_permissions=SETTINGS_PERMISSIONS)
+
+
+@pytest.fixture
+def weather_with_a_gated_menu_in_acme(running_plugin, grant_to, acme):
+    plugin = _gated_weather(running_plugin)
+    grant_to(plugin, acme)
+    return plugin
+
+
+def test_a_member_without_an_entry_s_permission_does_not_get_that_entry(client_as, member_only, acme, weather_with_a_gated_menu_in_acme):
+    [listed] = _available(client_as, member_only, acme).json()
+
+    assert (listed["permissions"], listed["navigation"]) == (["read"], [FORECAST_ENTRY])
+
+
+def test_an_org_admin_holding_an_entry_s_permission_gets_that_entry(client_as, admin_acme, acme, weather_with_a_gated_menu_in_acme):
+    [listed] = _available(client_as, admin_acme, acme).json()
+
+    assert (listed["permissions"], listed["navigation"]) == (["read", "delete"], [FORECAST_ENTRY, SETTINGS_ENTRY])
+
+
+@pytest.mark.parametrize(
+    ("actions", "labels"),
+    [(("read",), ["Forecast"]), (("read", "delete"), ["Forecast", "Organization settings"])],
+    ids=["read only", "read and delete"],
+)
+def test_a_custom_role_gets_the_entries_of_the_actions_ticked_for_it(client_as, make_member, make_custom_role, acme, running_plugin, grant_to, actions, labels):
+    grant = grant_to(_gated_weather(running_plugin), acme)
+    role = make_custom_role(acme, "Forecasters")
+    _store_actions(grant, role, *actions)
+    forecaster = make_member(acme, role, "gated-forecaster@example.com")
+
+    [listed] = _available(client_as, forecaster, acme).json()
+
+    assert (listed["permissions"], [entry["label"] for entry in listed["navigation"]]) == (list(actions), labels)
+
+
+def test_an_entry_follows_the_permission_held_in_the_active_organization_not_another(
+    client_as, make_member, role_member, role_org_admin, acme, beta, running_plugin, grant_to
+):
+    plugin = _gated_weather(running_plugin)
+    grant_to(plugin, acme)
+    grant_to(plugin, beta)
+    person = make_member(beta, role_org_admin, "admin-in-beta-member-in-acme@example.com")
+    OrganizationUser.objects.create(user=person, org=acme, role=role_member)
+
+    in_acme = _available(client_as, person, acme).json()[0]["navigation"]
+    in_beta = _available(client_as, person, beta).json()[0]["navigation"]
+
+    assert (in_acme, in_beta) == ([FORECAST_ENTRY], [FORECAST_ENTRY, SETTINGS_ENTRY])
+
+
+def test_an_org_admin_of_another_organization_gets_nothing_of_a_gated_menu(
+    client_as, make_member, role_org_admin, admin_acme, acme, beta, weather_with_a_gated_menu_in_acme
+):
+    beta_admin = make_member(beta, role_org_admin, "admin-beta-gated@example.com")
+
+    response = _available(client_as, beta_admin, beta)
+
+    assert response.status_code == 200
+    assert response.json() == []
+    # The gated entry is there: an Org Admin of the plugin's own organization gets it.
+    assert _available(client_as, admin_acme, acme).json()[0]["navigation"] == [FORECAST_ENTRY, SETTINGS_ENTRY]
 
 
 def test_an_org_admin_sees_the_plugin(client_as, admin_acme, acme, weather_in_acme):
@@ -232,16 +312,17 @@ def test_plugins_are_sorted_by_name(client_as, member_only, acme, running_plugin
 
 
 def test_the_list_runs_a_fixed_number_of_queries(client_as, member_only, acme, running_plugin, grant_to, django_assert_max_num_queries):
-    # With app menus: the menu comes from the manifest the list already loads.
+    # With app menus gated on a permission: the menu comes from the manifest the list already
+    # loads, and the entries are filtered by the actions the list already resolved.
     for identifier in ("one", "two", "three"):
-        grant_to(running_plugin(id=identifier, spa=menu_spa()), acme)
+        grant_to(running_plugin(id=identifier, spa=menu_spa(GATED_NAVIGATION), user_permissions=SETTINGS_PERMISSIONS), acme)
     client = client_as(member_only)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
 
     with django_assert_max_num_queries(3):
         response = client.get(AVAILABLE_URL)
 
-    assert len(response.json()) == 3
+    assert [[entry["label"] for entry in plugin["navigation"]] for plugin in response.json()] == [["Forecast"]] * 3
 
 
 def test_a_member_s_api_key_sees_what_the_member_sees(issue_api_key, member_only, acme, weather_in_acme):

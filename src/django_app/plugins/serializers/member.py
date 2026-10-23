@@ -9,7 +9,8 @@ class AvailablePluginSerializer(serializers.Serializer):
     """A plugin a member may open, as the Apps list, the app menu and the framed page need it.
 
     Name, description and menu follow the running version: the menu comes from the current
-    package's manifest, which `plugins_available_to` already loaded, so it costs no query.
+    package's manifest, which `plugins_available_to` already loaded, and is filtered by the
+    `permissions` it already resolved, so it costs no query.
     """
 
     identifier = serializers.CharField(source="plugin.identifier")
@@ -31,16 +32,13 @@ class AvailablePluginSerializer(serializers.Serializer):
         return PluginOrigins().frame_origin(available.plugin.identifier)
 
     def get_navigation(self, available: AvailablePlugin) -> list[dict]:
-        """The app menu in the manifest's order; empty when the plugin declares none."""
-        plugin = available.plugin
-        spa = plugin.current_package.parsed_manifest.spa
-        if spa is None:
-            return []
+        """The app menu entries the person sees, in the manifest's order; empty when the plugin
+        declares none."""
         return [
             {
                 "label": item.label,
                 "path": item.path,
-                "icon_url": navigation_icon_url(plugin, item.icon),
+                "icon_url": navigation_icon_url(available.plugin, item.icon),
             }
-            for item in spa.navigation
+            for item in available.visible_navigation
         ]

@@ -7,7 +7,15 @@ from plugins.exceptions import InvalidPluginError
 from plugins.models import Plugin
 
 from tests.plugins_tests.conftest import upload_file
-from tests.plugins_tests.package_builder import BACKEND, SAMPLE_NAVIGATION, build_package, menu_manifest, sample_manifest
+from tests.plugins_tests.package_builder import (
+    BACKEND,
+    GATED_NAVIGATION,
+    SAMPLE_NAVIGATION,
+    build_package,
+    gated_menu_manifest,
+    menu_manifest,
+    sample_manifest,
+)
 
 ACCESS = {"resource_type": "flows", "actions": ["read"], "reason": "Reads flows."}
 PUBLIC_PATH = {"path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0}
@@ -142,6 +150,8 @@ RULES = [
     ("navigation icon svg or png", _menu(_menu_item(icon="icons/a.gif")), "manifest.spa.navigation[0].icon"),
     ("navigation icon directly under icons/", _menu(_menu_item(icon="icons/sub/a.svg")), "manifest.spa.navigation[0].icon"),
     ("navigation belongs to spa", _manifest(navigation=SAMPLE_NAVIGATION), "manifest.navigation"),
+    ("navigation permission is an action", _menu(_menu_item(permission="list")), "manifest.spa.navigation[0].permission"),
+    ("navigation permission declared in user_permissions", _menu(_menu_item(permission="delete")), "manifest.spa.navigation[0].permission"),
     ("unknown fields are refused", _manifest(ports=[8443]), "manifest.ports"),
     ("min_epicstaff_version was dropped", _manifest(platform={"frame_protocol": 1, "gateway_context": 1, "hook_api": 1, "min_epicstaff_version": "1.0"}), "manifest.platform.min_epicstaff_version"),
 ]
@@ -216,8 +226,19 @@ def test_a_manifest_with_a_menu_round_trips(installation, superadmin):
 
     package = installation.upload(upload_file(data), len(data), superadmin)
 
-    assert package.manifest["spa"] == {"entry": "index.html", "navigation": SAMPLE_NAVIGATION}
+    # Stored as the model dumps it: an entry that names no permission says so.
+    assert package.manifest["spa"] == {"entry": "index.html", "navigation": [{**item, "permission": None} for item in SAMPLE_NAVIGATION]}
     assert package.parsed_manifest.navigation_icon_paths == ("icons/forecast.svg", "icons/places.png")
+
+
+@pytest.mark.django_db
+def test_a_menu_entry_gated_on_a_declared_action_round_trips(installation, superadmin):
+    data = build_package(manifest=gated_menu_manifest())
+
+    package = installation.upload(upload_file(data), len(data), superadmin)
+
+    assert package.manifest["spa"]["navigation"] == [{**GATED_NAVIGATION[0], "permission": None}, GATED_NAVIGATION[1]]
+    assert [item.permission for item in package.parsed_manifest.spa.navigation] == [None, "delete"]
 
 
 @pytest.mark.django_db
@@ -264,6 +285,11 @@ def test_a_manifest_with_a_menu_round_trips(installation, superadmin):
             _menu(_menu_item(), _menu_item(label="FORECAST", path="/home")),
             {"loc": "manifest.spa.navigation", "message": "lists label 'FORECAST' more than once"},
             id="duplicate label in another case",
+        ),
+        pytest.param(
+            _menu(_menu_item(), _menu_item(label="Settings", path="/settings", permission="delete")),
+            {"loc": "manifest.spa.navigation[1].permission", "message": "names 'delete', which user_permissions does not declare"},
+            id="permission user_permissions does not declare",
         ),
     ],
 )
