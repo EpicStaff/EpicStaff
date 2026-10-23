@@ -445,7 +445,7 @@ async def test_provisioning_that_runs_too_long_fails_and_its_statement_stops_on_
 
 
 def test_an_error_text_a_plugin_chose_stays_on_one_line():
-    error = psycopg.Error("line one\nplugins.database.provisioned plugin=forged\r\x07 end ")
+    error = psycopg.Error("line one\nplugins.database.provisioned plugin=forged\r\x07 end\u2028")
 
     # A Unicode line separator counts as a line break too.
     assert describe_error(error) == "line one plugins.database.provisioned plugin=forged end"

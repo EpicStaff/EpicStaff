@@ -58,7 +58,7 @@ MASK = "***"
 # psycopg's `pq.TransactionStatus.INTRANS`: a transaction is open and has not failed.
 _IN_TRANSACTION = 2
 _MAX_ERROR_TEXT = 500
-_BYTE_ORDER_MARK = "﻿"
+_BYTE_ORDER_MARK = "\ufeff"
 _UNQUOTED_IDENTIFIER = re.compile(r"[a-z_][a-z0-9_]*")
 _PASSWORD_PARAMETER = "password"
 

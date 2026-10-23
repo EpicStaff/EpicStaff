@@ -463,7 +463,7 @@ async def test_a_ledger_whose_name_column_a_migration_made_an_integer_is_read_wi
 
 
 def test_a_byte_order_mark_at_the_start_of_a_migration_is_dropped():
-    text = migration_runner._migration_text(migration("001_a.sql", "﻿CREATE TABLE a (x int);"), {})
+    text = migration_runner._migration_text(migration("001_a.sql", "\ufeffCREATE TABLE a (x int);"), {})
 
     assert text == "CREATE TABLE a (x int);"
 

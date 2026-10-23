@@ -138,7 +138,7 @@ def test_migrations_apply_in_name_order_each_with_its_ledger_row_and_the_roles_i
     connection = FakeConnection()
     migrations = [
         _migration("002_grants.sql", "GRANT SELECT ON weather.places TO ${job_role};\n"),
-        _migration("001_tables.sql", "﻿CREATE TABLE weather.places ();\nALTER TABLE weather.places OWNER TO ${owner_role};\nGRANT ALL ON weather.places TO ${app_role};\n"),
+        _migration("001_tables.sql", "\ufeffCREATE TABLE weather.places ();\nALTER TABLE weather.places OWNER TO ${owner_role};\nGRANT ALL ON weather.places TO ${app_role};\n"),
     ]
 
     run = apply_migrations(connection, ROLES, migrations)
