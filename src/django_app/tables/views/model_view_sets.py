@@ -970,15 +970,21 @@ class GraphViewSet(
         org_id = self.get_active_org_id()
         effective_permissions = PermissionResolver().resolve(user=request.user, org_id=org_id)
         partial_import_service = PartialImportService(entity_registry)
-        id_mapper = partial_import_service.import_data(
+        result = partial_import_service.import_data(
             export_data=data,
             graph=graph,
             org_id=org_id,
             user=request.user,
             effective_permissions=effective_permissions,
+            serializer_context=self.get_serializer_context(),
         )
-        summary = id_mapper.get_detailed_summary(entity_registry)
-        return Response(summary, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "content": result.content,
+                "summary": result.id_mapper.get_detailed_summary(entity_registry),
+            },
+            status=status.HTTP_200_OK,
+        )
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
@@ -2466,7 +2472,11 @@ class WebhookTriggerNodeViewSet(
 class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "flows_using_trigger": Permission.READ, **RECYCLE_BIN_ACTION_MAP}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "flows_using_trigger": Permission.READ,
+        **RECYCLE_BIN_ACTION_MAP,
+    }
     recycle_bin_resource_key = RecycleBinSource.WEBHOOK_TRIGGER
     queryset = WebhookTrigger.objects.select_related(
         "ngrok", "localhost", "auth", "auth__secret"

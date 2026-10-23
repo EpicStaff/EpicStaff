@@ -58,11 +58,9 @@
                 [initialNodeId]="initialNodeId"
                 [initialViewport]="savedViewport()"
                 [isSaving]="isSaving()"
-                [hasUnsavedChanges]="hasUnsavedChanges()"
                 (save)="onGraphSave($event)"
                 (openShortcuts)="openShortcutsModal($event)"
                 (requestReload)="refreshCurrentFlow()"
-                (importComplete)="handlePartialImportComplete()"
                 (extractToSubflow)="onExtractToSubflow($event)"
                 (unpackSubflow)="onUnpackSubflow($event)"
             ></app-flow-graph>

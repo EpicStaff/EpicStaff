@@ -1,5 +1,5 @@
-"""Import is a writer of a CDT node's `metadata["explanations"]` too: full and partial
-(copy-paste) import store only what `PUT …/explanations/` would accept, and never
+"""Import is a writer of a CDT node's `metadata["explanations"]` too: full import stores, and
+partial (copy-paste) import returns, only what `PUT …/explanations/` would accept, and never
 fail over an explanation."""
 
 import pytest
@@ -68,7 +68,7 @@ def test_graph_import_stores_only_storable_explanations(
 
 @pytest.mark.parametrize(("exported", "imported"), CASES)
 @pytest.mark.django_db
-def test_partial_import_stores_only_storable_explanations(default_org, exported, imported):
+def test_partial_import_returns_only_storable_explanations(default_org, exported, imported):
     source = _source_node(default_org, exported)
     export = GraphPartialExportService(entity_registry).export(
         [NodeRef(entity_type=EntityType.CLASSIFICATION_DECISION_TABLE_NODE, node_id=source.id)],
@@ -77,8 +77,10 @@ def test_partial_import_stores_only_storable_explanations(default_org, exported,
     assert not export.has_errors, export.errors
     target = Graph.objects.create(name="cdt-explanations-target", org=default_org)
 
-    PartialImportService(entity_registry).import_data(export.data, target, org_id=default_org.id)
+    result = PartialImportService(entity_registry).import_data(
+        export.data, target, org_id=default_org.id
+    )
 
-    node = ClassificationDecisionTableNode.objects.get(graph=target)
-    assert node.metadata["explanations"] == imported
-    assert node.metadata["color"] == "#fff"
+    [node] = result.content["classification_decision_table_node_list"]
+    assert node["metadata"]["explanations"] == imported
+    assert node["metadata"]["color"] == "#fff"

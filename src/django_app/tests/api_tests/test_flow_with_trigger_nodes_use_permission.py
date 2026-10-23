@@ -386,9 +386,10 @@ class TestPartialImport:
         response = _partial_import(editor_client, target, export_data)
 
         assert response.status_code == status.HTTP_200_OK, response.content
-        assert target.python_node_list.count() == 2
+        assert len(response.data["content"]["python_node_list"]) == 1
+        assert target.python_node_list.count() == 1
 
-    def test_with_use_imports_the_trigger(self, runner_client, acme):
+    def test_with_use_returns_the_trigger_unsaved(self, runner_client, acme):
         source = _flow_with_triggers(acme)
         target = _plain_flow(acme, name="Target")
         export_data = _partial_export(
@@ -402,11 +403,12 @@ class TestPartialImport:
         response = _partial_import(runner_client, target, export_data)
 
         assert response.status_code == status.HTTP_200_OK, response.content
-        assert target.webhook_trigger_node_list.count() == 1
+        assert len(response.data["content"]["webhook_trigger_node_list"]) == 1
+        assert not target.webhook_trigger_node_list.exists()
 
     def test_a_flow_entry_it_does_not_import_does_not_matter(self, editor_client, acme):
         """A crafted partial file: a loose Python node plus a `Flow` entry holding
-        trigger nodes. Partial import creates only the loose node, so no USE is needed."""
+        trigger nodes. Partial import returns only the loose node, so no USE is needed."""
         source = _plain_flow(acme, name="Source")
         target = _plain_flow(acme, name="Target")
         export_data = _partial_export(
@@ -419,7 +421,8 @@ class TestPartialImport:
         response = _partial_import(editor_client, target, export_data)
 
         assert response.status_code == status.HTTP_200_OK, response.content
-        assert target.python_node_list.count() == 2
+        assert len(response.data["content"]["python_node_list"]) == 1
+        assert response.data["content"]["webhook_trigger_node_list"] == []
         after = _row_counts()
         assert after["graphs"] == before["graphs"]
         assert all(after[model.__name__] == before[model.__name__] for model in TRIGGER_MODELS)

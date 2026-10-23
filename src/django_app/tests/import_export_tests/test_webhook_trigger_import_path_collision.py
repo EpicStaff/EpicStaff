@@ -164,15 +164,14 @@ class TestWebhookTriggerImportPathCollision:
         assert not export_result.has_errors, export_result.errors
         target_graph = Graph.objects.create(name="paste-target", org=beta)
 
-        PartialImportService(entity_registry).import_data(
+        result = PartialImportService(entity_registry).import_data(
             export_data=export_result.data, graph=target_graph, org_id=beta.id
         )
 
-        pasted_node = WebhookTriggerNode.objects.select_related("webhook_trigger").get(
-            graph=target_graph
-        )
-        assert pasted_node.webhook_trigger.org_id == beta.id
-        assert pasted_node.webhook_trigger.path == f"pasted-path-org{beta.id}"
+        [pasted_node] = result.content["webhook_trigger_node_list"]
+        pasted_trigger = WebhookTrigger.objects.get(pk=pasted_node["webhook_trigger"])
+        assert pasted_trigger.org_id == beta.id
+        assert pasted_trigger.path == f"pasted-path-org{beta.id}"
         assert WebhookTrigger.objects.get(path="pasted-path").org_id == acme.id
 
 
