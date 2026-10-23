@@ -100,6 +100,7 @@ function renderPage(): Page {
                     uploadingDocuments: signal<DisplayedListDocument[]>([]),
                     getDocumentsByCollectionId: () => of(null),
                     isDeleting: () => false,
+                    isImporting: () => false,
                 },
             },
         ],

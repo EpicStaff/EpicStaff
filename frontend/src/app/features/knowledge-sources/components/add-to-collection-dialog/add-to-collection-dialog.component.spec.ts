@@ -17,12 +17,14 @@ const collection: GetCollectionRequest = {
     collection_id: 3,
     collection_name: 'Specs',
     description: null,
-    user_id: '1',
     status: CollectionStatus.COMPLETED,
     document_count: 0,
     rag_configurations: [],
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
+    created_by: null,
+    last_edited_by: null,
+    last_edited_at: null,
 };
 
 const data: AddToCollectionDialogData = { items: [{ id: 5, name: 'report.pdf', type: 'file' }] };
