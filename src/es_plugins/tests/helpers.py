@@ -27,6 +27,7 @@ from src.shared.models.plugin_nodes import (
 )
 
 from es_plugins.agent.launcher_client import SpawnedProcess
+from es_plugins.process_table import ProcessEntry, ProcessTable
 
 NODE_KEY = "n" * 64
 API_URL = "http://epicstaff-api:8081/api/"
@@ -609,6 +610,22 @@ class FakeLauncher:
                 if process.poll() is None:
                     process.kill()
                 process.wait()
+
+
+class OwnProcessTable(ProcessTable):
+    """The node's process table, read from the real /proc, listing only the process that made it.
+
+    A plugin UID runs nothing but its plugin. A test that serves its own UID instead shares it
+    with everything else the user runs: on a CI runner that includes processes that are not
+    dumpable, whose open files the disk measurement may not see and so (rightly) gives up on.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._pid = os.getpid()
+
+    def read(self) -> list[ProcessEntry]:
+        return [entry for entry in super().read() if entry.pid == self._pid]
 
 
 def free_port() -> int:

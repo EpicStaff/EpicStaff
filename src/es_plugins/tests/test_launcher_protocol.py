@@ -32,6 +32,7 @@ from es_plugins.launcher.privileged_launcher import (
 from es_plugins.launcher.process_spawn import LISTEN_FD, SpawnError, SpawnSpec, spawn_process
 from es_plugins.process_table import ProcessTable
 from es_plugins.uid_range import UidRange
+from tests.helpers import OwnProcessTable
 
 PLUGIN_UID = 20011
 
@@ -269,7 +270,7 @@ SERVED_UID = os.getuid() or PLUGIN_UID
 @pytest.fixture
 def own_uid_operations(layout, unprivileged_setup):
     return LauncherOperations(
-        layout, UidRange(SERVED_UID, SERVED_UID), unprivileged_setup, ProcessTable()
+        layout, UidRange(SERVED_UID, SERVED_UID), unprivileged_setup, OwnProcessTable()
     )
 
 

@@ -4,6 +4,7 @@ import pytest
 
 from es_plugins import disk_usage
 from es_plugins.disk_usage import DiskUsage, measure_plugin_data
+from tests.helpers import OwnProcessTable
 
 MIB = 1024 * 1024
 LIMITS = {"max_bytes": 10**12, "max_files": 10**9}
@@ -128,7 +129,7 @@ def test_a_deleted_file_a_process_of_the_uid_holds_open_counts(tmp_path):
         os.fsync(held.fileno())
         os.unlink(home / "deleted-but-open")
 
-        usage = measure(home)
+        usage = measure(home, process_table=OwnProcessTable())
     finally:
         held.close()
 
