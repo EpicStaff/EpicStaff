@@ -41,3 +41,27 @@ class UndeclaredSecretError(CustomAPIExeption):
     status_code = 400
     default_detail = "Code reads a secret that was not declared for it."
     default_code = "undeclared_secret"
+
+
+class SecretUseDeniedError(Exception):
+    """Raised when a write needs secrets:USE and the actor does not hold it.
+
+    A domain error, not an HTTP one: `utils.exception_handler` renders it as a 400
+    naming `field_path`, and the flow bulk save reports it as that node's errors.
+    """
+
+    def __init__(self, *, field_path: tuple[str, ...], message: str):
+        super().__init__(message)
+        self.field_path = field_path
+        self.message = message
+
+    def field_errors(self) -> dict:
+        """Return the message nested along `field_path`, shaped like a serializer's `errors`.
+
+        `("python_code", "secret_ids")` gives `{"python_code": {"secret_ids": [message]}}`,
+        what the nested PythonCode serializer would report for that field.
+        """
+        errors = [self.message]
+        for segment in reversed(self.field_path):
+            errors = {segment: errors}
+        return errors

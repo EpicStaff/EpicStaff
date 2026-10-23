@@ -105,7 +105,7 @@ class Permission(IntFlag):
     UPDATE = 4
     DELETE = 8
     EXPORT = 16  # 32 retired (was DOWNLOAD, folded into EXPORT)
-    USE = 64  # catalog action of `secrets` only; enforced by SecretReferenceGuard
+    USE = 64  # catalog action of `secrets` only; enforced by SecretUseService
     LIST = 128  # reserved — not in the catalog, checked nowhere
     RUN = 256  # catalog action of `flows` only; start/stop runs and write trigger nodes
 ```
@@ -440,45 +440,121 @@ invariant.
 
 ---
 
-### 5.6 Serializer-level guards — `secrets:USE` on secret references
+### 5.6 Write-point checks — `secrets:USE` on what a write does with secrets
 
-One check lives in neither the view nor the service: whether the caller may change
-**which Secret a resource references**. It is enforced in the serializer layer, and
-the reason is worth understanding before you move it.
+One check is neither a verb gate nor a structural invariant: whether this write changes
+**which secrets a resource uses, or where it sends them**. It needs `secrets:USE` on top of
+the endpoint's own permission.
 
-`SecretReferenceGuardMixin` (`tables/serializers/utils/secret_reference_guard_mixin.py`)
-declares the guarded fields and hooks `validate()`; the decision lives in
-`SecretReferenceGuard` (`tables/services/secrets/reference_guard.py`):
+**Serializers never check permissions.** They validate shape. The rule lives in
+`SecretUseService` (`tables/services/secrets/secret_use_service.py`), which knows nothing
+about requests or serializers, with one `check_<entity>_write(actor, instance, data)` per
+entity in `tables/services/secrets/secret_use_checks.py`. `instance` is the persisted row
+(`None` on create); `data` is `serializer.validated_data`, and a key absent from it means
+"unchanged". The write point calls the check **after** validation and **before** the write.
 
-```python
-class McpToolSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
-    secret_reference_fields = ("auth_secret_id",)
-```
+**The four rules.** Each compares "after this write" with "persisted now", so a resend of the
+stored value is free — that is what makes `graph/{id}/save`, which resubmits the whole graph
+on every save, usable without `USE`.
 
-**The delta rule.** A secret reference is *state, not an operation*. Omitted from the
-payload → skip; present but equal to the persisted value → skip; different → require
-`secrets:USE`. This is what makes the guard usable from `graph/{id}/save`, which
-submits the whole graph on every save and would otherwise demand `USE` from anyone
-editing an unrelated node.
+1. **Reference change** — the set of secret ids a FK/M2M links to changes (including
+   clearing it, and any value on create). Binned secrets the row already links to count as
+   linked (`tables/services/secrets/linked_ids.py`).
+2. **New header marker** — an `extra_headers` dict gains an `epicstaff_secret(<name>)` name
+   it does not have now. Keeping or removing markers is free.
+3. **Destination change on a secret-bearing row** — the row, after the write, carries a
+   secret, and the place it sends requests changes:
+   - `LLMConfig`: its own `base_url` and its model's `base_url`. Switching `model` to one with
+     a different `base_url` counts; to one with the same `base_url` does not.
+     `LLMConfig.base_url` is not read at run time today and is gated anyway.
+   - `EmbeddingConfig`: its model's `base_url` (via a `model` switch).
+   - `OpenAIRealtimeConfig`: `base_url`, when either API-key secret is set.
+   - `McpTool`: `transport` (the URL the agent connects to, sending `auth_secret`), when
+     `auth_secret` is set. A PUT that resends the stored `transport` is not a change. A PUT
+     that omits `transport` never reaches the check: `McpToolViewSet.update` back-fills the
+     missing field with `None`, which the serializer rejects with a 400.
 
-`_assert_may_use` denies when there is no `request` in serializer context, because the
-active org cannot be resolved without one — fail-safe, not fail-open. Any service that
-drives these serializers must thread the request through (`GraphBulkSaveService` does).
+   "Carries a secret" means an API-key secret reference or any header marker.
+4. **Model `base_url` change while a secret-bearing config uses it** — `LLMModel` /
+   `EmbeddingModel` `base_url` changes while any config of that model carries a secret.
+   Not narrowed to the active org: a custom model belongs to one org, and counting more
+   configs can only deny more.
 
-**Diverging one request path.** `secret_reference_fields` is read through
-`get_secret_reference_fields()`, so a subclass may differ from the class its siblings
-share — e.g. a `*BulkSerializer` (graph save subclasses the node serializers) or an
-endpoint-specific variant:
+Only `base_url` and McpTool `transport` are destinations; provider, `deployment_id` and
+`api_version` cannot send a request to a host the caller picks. `None` and `""` are the same
+destination (both mean "the provider's default"), so a client sending `""` where `null` is
+stored is not denied.
 
-```python
-class McpToolBulkSerializer(McpToolSerializer):
-    def get_secret_reference_fields(self):
-        """Guard nothing on this path."""
-        return ()
-```
+No actor (no user to resolve), or an actor that is not a member of the org, is denied when a
+change needs `USE` — fail-safe, not fail-open.
 
-The coverage checks ask instances, not classes, so an override stays inside the
-guarantee.
+**Concurrent writes.** Rules 3 (model switch) and 4 read another row, so they lock the model
+row (`select_for_update`, two models in ascending pk order) and read `base_url` from the
+locked row; rule 4 locks before it counts configs. The LLM / embedding config and model
+viewsets set `secret_use_check_locks_rows = True`, which makes `SecretUseCheckedViewSetMixin` run the
+check and the save in one `transaction.atomic()`, so a concurrent model edit and config
+switch cannot both pass. Quickstart locks a reused org model the same way. Not covered: an
+admin adding a secret to a config while someone edits its (unchanged) model's `base_url` —
+the config write locks no model.
+
+**Write points.** Every place that saves a secret-bearing entity runs its check:
+
+| Write point | How |
+|---|---|
+| Model viewsets (LLM / embedding configs and models, realtime configs, Twilio channel, MCP tool, Python code tool, Python / webhook-trigger / Telegram-trigger node, webhook trigger) | `SecretUseCheckedViewSetMixin` (`tables/views/secret_use.py`) with `secret_use_check = check_<entity>_write`; place it **before** the `OrgScoped*` mixin, whose `perform_create` does not call `super()` |
+| Paths that bypass `perform_create` / `perform_update` (Twilio channel upsert in `create`, `WebhookTriggerViewSet`'s own overrides) | `self.run_secret_use_check(instance, data)` |
+| Graph bulk save | `NodeTypeConfig.secret_use_check` in `tables/services/graph_bulk_save_service/registry.py`; run per node after its serializer validates |
+| Classification decision table node | `ClassificationDecisionTableNodeService.create_or_update` calls `check_cdt_node_write` |
+| Quickstart | `QuickstartView.post` calls `check_quickstart` before `quickstart_service.quickstart` |
+| Config import | `BaseConfigStrategy` calls `check_config_import` with the strategy's `marker_fields`; actor from the importing user |
+
+PythonCode is always nested: each parent's check calls `check_python_code_write` with the
+attribute it nests it under.
+
+**Error shape.** A check raises the domain error `SecretUseDeniedError(field_path, message)`
+and the write point lets it propagate (rolling back any open transaction).
+`custom_exception_handler` (`utils/exception_handler.py`) renders it as a `ValidationError`
+of `denial.field_errors()`, nested along `field_path`: the usual 400 envelope with the field
+named in `message`, e.g. `("python_code", "secret_ids")` →
+`{"python_code": {"secret_ids": [...]}}`. Graph bulk save catches it and reports it per node, as
+`{"errors": {"<list_key>": [{"index", "errors": {...}}]}}`. The config import strategy also
+catches it and raises the same `ValidationError`, like every other rejection in that strategy
+(its callers and unit tests handle one kind of error). Because the check runs after
+validation, a shape error (an undeclared `get_secret`) wins over a `USE` denial.
+
+**Adding a secret-referencing field.**
+
+1. Add or extend the entity's `check_<entity>_write` in `secret_use_checks.py` (reference,
+   marker, and destination rules as they apply).
+2. Wire it at **every** write point that saves the entity — viewset `secret_use_check`, any
+   custom write path (`run_secret_use_check`), the bulk-save `NodeTypeConfig`, services.
+3. Map the serializer to the check in `SECRET_USE_CHECK_BY_SERIALIZER`
+   (`tests/services_tests/test_secret_reference_coverage.py`). That test discovers every
+   writable serializer field targeting `Secret` and fails on one whose serializer is not
+   mapped and not in `EXEMPT` (which needs a written reason). It proves the mapping, not the
+   wiring — add an API test for the write point too (`tests/api_tests/test_secret_use_*.py`).
+
+**Deliberately ungated.**
+
+- **PythonCode content.** `USE` is needed only to *declare* secrets (`secret_ids`). Editing
+  the `code` or `venv_id` of a PythonCode that already declares secrets is free: the
+  declaration is what grants the access.
+- **Copy, graph-version restore, graph-import key re-link** reproduce an existing reference
+  inside one org rather than choosing a new one (pinned by `TestUngatedPathsStayUngated`
+  and `tests/graph_versioning_tests/test_secret_declarations.py`). An edit of the copy is
+  checked as usual.
+- **No user-chosen destination**: the Telegram bot key (always the Telegram Bot API), the
+  ElevenLabs and Gemini realtime configs (fixed provider hosts), the Twilio channel token
+  (only verifies inbound signatures). Only their reference rule applies.
+- **Quickstart** names no destination: it prefers the built-in catalog model, and refuses an
+  org's custom model of the same name that has its own `base_url`
+  (`QuickstartService._get_or_create_model`), so it never attaches the key to a URL the
+  caller chose.
+
+Kept links to binned secrets are not a permission rule: `KeptLinkPrimaryKeyRelatedField`
+reads "what the row links to now" from `tables/serializers/utils/persisted_links.py`
+(`current_linked_ids`, through the nested serializers' `parent_attribute` /
+`get_current_secret_reference` hooks).
 
 ---
 
@@ -636,7 +712,8 @@ References to it from other serializers: `OrgVisiblePrimaryKeyRelatedField`.
 `org` explicitly, and must state a *precedence* when both a built-in and an own-org row can
 match: `org_visible_queryset(...)` returns both, and `.first()` on it has no `ORDER BY`, so
 the result is whatever Postgres feels like returning. See
-`QuickstartService._get_or_create_llm_model` for the pattern (own-org wins), and
+`QuickstartService._get_or_create_model` for the pattern (the built-in wins; the org's own
+row is used only when it has no `base_url`, see §5.6), and
 `upload_models.py` for the built-ins-only form (`org__isnull=True`) — Django strips
 `__`-lookups from `get_or_create`/`update_or_create` create params, so that filter narrows
 the lookup without leaking into the created row.

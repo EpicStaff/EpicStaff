@@ -1,4 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -6,6 +7,7 @@ import {
     BinnedSecretNoteComponent,
     ButtonComponent,
     CustomInputComponent,
+    ErrorBannerComponent,
     HelpTooltipComponent,
     HintMessageComponent,
     SelectComponent,
@@ -15,7 +17,7 @@ import {
 import { EnterSubmitDirective } from '@shared/directives';
 import { ElevenLabsRealtimeConfig, GeminiRealtimeConfig, OpenAIRealtimeConfig } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { trackPickedSecrets } from '@shared/utils';
+import { extractHttpErrorMessage, isClientError, trackPickedSecrets } from '@shared/utils';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
@@ -38,6 +40,7 @@ export interface RealtimeConfigDialogData {
         BinnedSecretNoteComponent,
         ReactiveFormsModule,
         CustomInputComponent,
+        ErrorBannerComponent,
         SelectComponent,
         ButtonComponent,
         ValidationErrorsComponent,
@@ -202,6 +205,7 @@ export class RealtimeConfigDialogComponent implements OnInit {
         }
 
         this.isSubmitting.set(true);
+        this.errorMessage.set(null);
         const v = activeForm.getRawValue();
 
         let obs: Observable<unknown>;
@@ -227,8 +231,9 @@ export class RealtimeConfigDialogComponent implements OnInit {
 
         obs.pipe(
             tap(() => this.dialogRef.close(true)),
-            catchError(() => {
-                this.errorMessage.set('Failed to save configuration.');
+            catchError((error: HttpErrorResponse) => {
+                const fallback = 'Failed to save configuration.';
+                this.errorMessage.set(isClientError(error) ? extractHttpErrorMessage(error, fallback) : fallback);
                 this.isSubmitting.set(false);
                 return EMPTY;
             }),

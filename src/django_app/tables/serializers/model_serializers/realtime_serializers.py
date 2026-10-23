@@ -29,7 +29,6 @@ from tables.models.webhook_models import (
 )
 from tables.serializers.base_serializer import OpenAIRealtimeModelNameValidationMixin
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
-from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.serializers.utils.soft_delete_fields import (
     ExcludeSoftDeleteFieldsMixin,
     KeptLinkPrimaryKeyRelatedField,
@@ -128,11 +127,8 @@ class OpenAIRealtimeConfigSerializer(
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
     OpenAIRealtimeModelNameValidationMixin,
-    SecretReferenceGuardMixin,
     serializers.ModelSerializer,
 ):
-    secret_reference_fields = ("api_key_secret_id", "transcription_api_key_secret_id")
-
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",
@@ -167,11 +163,8 @@ class OpenAIRealtimeConfigSerializer(
 class ElevenLabsRealtimeConfigSerializer(
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
-    SecretReferenceGuardMixin,
     serializers.ModelSerializer,
 ):
-    secret_reference_fields = ("api_key_secret_id",)
-
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",
@@ -197,11 +190,8 @@ class ElevenLabsRealtimeConfigSerializer(
 class GeminiRealtimeConfigSerializer(
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
-    SecretReferenceGuardMixin,
     serializers.ModelSerializer,
 ):
-    secret_reference_fields = ("api_key_secret_id",)
-
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
         source="api_key_secret",
@@ -233,9 +223,7 @@ class TwilioAuthTokenSecretSerializer(serializers.Serializer):
     auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(queryset=Secret.objects.all())
 
 
-class TwilioChannelSerializer(SecretReferenceGuardMixin, serializers.ModelSerializer):
-    secret_reference_fields = ("auth_token_secret_id",)
-
+class TwilioChannelSerializer(serializers.ModelSerializer):
     webhook_trigger = KeptLinkPrimaryKeyRelatedField(
         queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )

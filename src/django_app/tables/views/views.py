@@ -94,6 +94,8 @@ from tables.services.realtime_service import RealtimeService
 from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
+from tables.services.secrets.request_actor import actor_from_request
+from tables.services.secrets.secret_use_checks import check_quickstart
 from tables.services.session_access import (
     assert_parent_session_in_org,
     get_accessible_session,
@@ -877,6 +879,9 @@ class QuickstartView(APIView):
             resource_type=self.rbac_resource_type,
             action=Permission.CREATE,
         )
+        # After the CREATE gate, so a caller who may not create configs at all gets
+        # its 403 rather than a secret Use 400.
+        check_quickstart(actor_from_request(request), serializer.validated_data)
 
         result = quickstart_service.quickstart(
             provider=provider,
@@ -887,9 +892,15 @@ class QuickstartView(APIView):
         )
 
         if not result.get("success", False):
+            # A curated refusal is the caller's to fix (400); anything else is a
+            # server failure, and its message is already the generic one.
             return Response(
                 data={"detail": "Error quickstart", "error": result.get("error")},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR
+                    if result.get("unexpected", False)
+                    else status.HTTP_400_BAD_REQUEST
+                ),
             )
 
         config_name = result["config_name"]

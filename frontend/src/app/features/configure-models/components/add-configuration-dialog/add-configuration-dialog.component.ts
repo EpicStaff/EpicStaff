@@ -15,6 +15,7 @@ import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } 
 import {
     ButtonComponent,
     CustomInputComponent,
+    ErrorBannerComponent,
     HelpTooltipComponent,
     HintMessageComponent,
     IconButtonComponent,
@@ -32,7 +33,7 @@ import { EnterSubmitDirective } from '@shared/directives';
 import { pricePairValidator } from '@shared/form-validators';
 import { CreateEmbeddingConfigRequest, ModelTypes, ReasoningEffort } from '@shared/models';
 import { EmbeddingConfigStorageService, LlmConfigStorageService, SecretsStorageService } from '@shared/services';
-import { extractFieldErrorMessages, extractHttpErrorMessage, perMillionToPerToken } from '@shared/utils';
+import { extractFieldErrorMessages, extractHttpErrorMessage, isClientError, perMillionToPerToken } from '@shared/utils';
 import { catchError, EMPTY, map, merge, Observable, startWith, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -57,6 +58,7 @@ const DUPLICATE_EMBEDDING_NAME_MESSAGE =
         HelpTooltipComponent,
         ButtonComponent,
         CustomInputComponent,
+        ErrorBannerComponent,
         SelectComponent,
         HintMessageComponent,
         ValidationErrorsComponent,
@@ -267,6 +269,7 @@ export class AddConfigurationDialogComponent implements OnInit {
         }
         const { pricing, ...config } = this.llmForm.value;
         this.isSubmitting.set(true);
+        this.errorMessage.set(null);
         this.llmStorage
             .createConfig({
                 ...config,
@@ -290,7 +293,12 @@ export class AddConfigurationDialogComponent implements OnInit {
                     ) {
                         return;
                     }
-                    this.toast.error(extractHttpErrorMessage(error, 'Failed to create LLM configuration.'));
+                    const message = extractHttpErrorMessage(error, 'Failed to create LLM configuration.');
+                    if (isClientError(error)) {
+                        this.errorMessage.set(message);
+                        return;
+                    }
+                    this.toast.error(message);
                 },
             });
     }
@@ -306,6 +314,7 @@ export class AddConfigurationDialogComponent implements OnInit {
         }
 
         this.isSubmitting.set(true);
+        this.errorMessage.set(null);
         const v = activeForm.getRawValue();
 
         let obs: Observable<unknown>;
@@ -319,8 +328,9 @@ export class AddConfigurationDialogComponent implements OnInit {
 
         obs.pipe(
             tap(() => this.dialogRef.close(true)),
-            catchError(() => {
-                this.errorMessage.set('Failed to save configuration.');
+            catchError((error: HttpErrorResponse) => {
+                const fallback = 'Failed to save configuration.';
+                this.errorMessage.set(isClientError(error) ? extractHttpErrorMessage(error, fallback) : fallback);
                 this.isSubmitting.set(false);
                 return EMPTY;
             }),
@@ -334,6 +344,8 @@ export class AddConfigurationDialogComponent implements OnInit {
             this.embeddingForm.markAllAsTouched();
             return;
         }
+        // Cleared before the duplicate-name check, so an old refusal does not sit beside its toast.
+        this.errorMessage.set(null);
 
         const trimmedName = custom_name.trim();
         const normalizedName = trimmedName.toLowerCase();
@@ -363,17 +375,14 @@ export class AddConfigurationDialogComponent implements OnInit {
                 },
                 error: (error: HttpErrorResponse) => {
                     this.isSubmitting.set(false);
-                    this.toast.error(this.parseEmbeddingError(error));
+                    const fallback = 'Failed to create embedding configuration.';
+                    if (isClientError(error)) {
+                        this.errorMessage.set(extractHttpErrorMessage(error, fallback));
+                        return;
+                    }
+                    this.toast.error(fallback);
                 },
             });
-    }
-
-    private parseEmbeddingError(error: HttpErrorResponse): string {
-        const nameError = error?.error?.custom_name?.[0] as string | undefined;
-        if (nameError?.toLowerCase().includes('already exists')) {
-            return DUPLICATE_EMBEDDING_NAME_MESSAGE;
-        }
-        return 'Failed to create embedding configuration.';
     }
 
     onCancel(): void {

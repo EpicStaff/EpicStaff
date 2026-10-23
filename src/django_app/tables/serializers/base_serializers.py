@@ -14,16 +14,14 @@ from tables.models.webhook_models import (
     WebhookTrigger,
     WebhookTriggerAuthKind,
 )
-from tables.serializers.utils.secret_reference_guard_mixin import (
-    SecretReferenceGuardMixin,
-)
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
 from tables.services.webhook_trigger_service import validate_path_uniqueness
 from utils.logger import logger
 
 
-class NgrokConfigInlineSerializer(SecretReferenceGuardMixin, serializers.Serializer):
-    secret_reference_fields = ("auth_token_secret_id",)
+class NgrokConfigInlineSerializer(serializers.Serializer):
+    # Nested, so this serializer has no instance of its own: the kept-link field reads
+    # the persisted token from the parent trigger's `ngrok` row.
     parent_attribute = "ngrok"
 
     name = serializers.CharField(max_length=50)
@@ -52,11 +50,8 @@ class LocalhostConfigInlineSerializer(serializers.Serializer):
 class WebhookTriggerNestedSerializer(
     AuthorStampingSerializerMixin,
     LastEditFieldsSerializerMixin,
-    SecretReferenceGuardMixin,
     serializers.ModelSerializer,
 ):
-    secret_reference_fields = ("auth_secret_id",)
-
     provider_type = serializers.ChoiceField(
         choices=ProviderType.choices, required=False, allow_null=True
     )
@@ -263,8 +258,12 @@ class WebhookTriggerNestedSerializer(
         return rep
 
     def get_current_secret_reference(self, source):
-        """The persisted secret on this trigger's user-settable auth row, for the one field this hook supports."""
-        assert source == "auth_secret_id", f"unexpected guarded field source: {source!r}"
+        """The persisted secret on this trigger's auth row, for the `auth_secret_id` kept-link field.
+
+        `auth_secret_id` is not a model attribute, so the kept-link field cannot read
+        what the trigger links to now by its source.
+        """
+        assert source == "auth_secret_id", f"unexpected kept-link field source: {source!r}"
         existing = getattr(self.instance, "auth", None)
         return existing.secret if existing is not None else None
 

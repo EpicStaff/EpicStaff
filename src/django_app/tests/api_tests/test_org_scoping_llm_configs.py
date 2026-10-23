@@ -227,15 +227,15 @@ def test_quickstart_reuses_an_existing_builtin(org_a):
 
 
 @pytest.mark.django_db
-def test_quickstart_prefers_own_org_row_over_builtin(org_a):
-    """When BOTH a built-in and the org's own row match, resolution must be
-    deterministic and pick the org's row — the more specific intent."""
+def test_quickstart_prefers_builtin_over_own_org_row_with_same_name(org_a):
+    """A same-named custom model can carry a custom base_url, so quickstart must
+    not attach its secret to it; the built-in wins, deterministically."""
     provider = Provider.objects.create(name="openai")
     name = QuickstartService().PROVIDER_CONFIGS["openai"]["llm_model"]
-    LLMModel.objects.create(
+    builtin = LLMModel.objects.create(
         name=name, llm_provider=provider, is_custom=False, predefined=True
     )
-    mine = LLMModel.objects.create(
+    LLMModel.objects.create(
         name=name,
         llm_provider=provider,
         is_custom=True,
@@ -248,7 +248,7 @@ def test_quickstart_prefers_own_org_row_over_builtin(org_a):
             QuickstartService()
             ._get_or_create_llm_model(provider=provider, org_id=org_a.id, author=None)
             .id
-            == mine.id
+            == builtin.id
         )
 
 
