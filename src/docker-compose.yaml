@@ -835,6 +835,7 @@ services:
     restart: unless-stopped
 
   sandbox_new:
+    image: ghcr.io/epicstaff/sandbox_new:${IMAGE_TAG:?}
     container_name: sandbox_new
     build:
       context: .

@@ -1,6 +1,9 @@
 <button
     class="flow-files-btn"
     [class.flow-files-btn--active]="attachedCount() > 0"
+    [appCollapseOnOverflow]="true"
+    collapseOnOverflowTarget=".flow-files-btn__label"
+    collapseOnOverflowClass="flow-files-btn--icon-only"
     (click)="openDialog()"
     [matTooltip]="isReadOnly() ? 'View flow files' : 'Add files to flow'"
 >

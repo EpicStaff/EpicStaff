@@ -26,8 +26,9 @@ JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
 
 # These providers reject any response_format in a request that also carries tools: Groq
 # answers "json mode cannot be combined with tool/function calling" for models with native
-# structured outputs, and litellm refuses its tool-call emulation for the others.
-NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq"}
+# structured outputs, and litellm refuses its tool-call emulation for the others. Gemini
+# answers "Function calling with a response mime type: 'application/json' is unsupported".
+NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq", "gemini"}
 
 
 def _provider_error_from(exc: BaseException) -> tuple[str | None, str] | None:
@@ -158,14 +159,15 @@ class LiteLLMClient(BaseLLMClient):
         # set on the config for agents could cut that reply short.
         kwargs.update(config.to_litellm_kwargs(provider=self._routed_provider, exclude={"stop"}))
         # Structured-output requests pass an output_schema, which becomes the
-        # response_format sent to the model.
+        # response_format sent to the model. The provider litellm routes to decides
+        # the format: a google_ai row is called as gemini.
         if self._output_schema:
-            if self._provider_name in JSON_OBJECT_ONLY_PROVIDERS:
+            if self._routed_provider in JSON_OBJECT_ONLY_PROVIDERS:
                 kwargs["response_format"] = {"type": "json_object"}
                 # json_object mode carries no schema, so the model only learns the
                 # expected shape from the prompt.
                 kwargs["messages"] = self._with_schema_instruction(messages)
-            elif self._provider_name in NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS and tools:
+            elif self._routed_provider in NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS and tools:
                 # No response_format: the schema reaches the model only through the prompt,
                 # and the reply is parsed leniently by the caller.
                 kwargs["messages"] = self._with_schema_instruction(messages)
