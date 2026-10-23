@@ -262,6 +262,20 @@
         }
     }
 
+    // Declared before .is-dimmed so the hover dimming still wins on an unused node.
+    app-flow-base-node.is-unused {
+        opacity: var(--vp-unused-node-opacity);
+        filter: var(--vp-unused-node-filter);
+        transition:
+            opacity 0.15s ease,
+            filter 0.15s ease;
+
+        &:hover {
+            opacity: 1;
+            filter: none;
+        }
+    }
+
     app-flow-base-node.is-dimmed {
         opacity: 0.25;
         transition: opacity 0.15s ease;
@@ -344,6 +358,10 @@
             }
             &.End:not(.f-selected) {
                 fill: var(--slate-215);
+            }
+            // Last, so it overrides the node-type colour above.
+            &.is-unused:not(.f-selected) {
+                fill: var(--vp-unused-minimap-node-color);
             }
         }
     }

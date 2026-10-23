@@ -15,6 +15,11 @@
     --vp-node-border-color: #333;
     --vp-node-selected-color: hsl(0, 0%, 57%);
 
+    // "Highlight unused nodes" flow setting — placeholder look until the design lands
+    --vp-unused-node-opacity: 0.45;
+    --vp-unused-node-filter: grayscale(1);
+    --vp-unused-minimap-node-color: var(--vp-minimap-node-color);
+
     // nodes
     --agent-node-accent-color: #8e5cd9;
     --task-node-accent-color: #30a46c;

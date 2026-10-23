@@ -85,6 +85,7 @@ import {
 } from '../core/helpers/node-placement.utils';
 import { normalizeTableNodeSize } from '../core/helpers/node-size.util';
 import { subgraphFlowOptions, subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
+import { findUnusedNodeIds } from '../core/helpers/unused-nodes.util';
 import { CanvasPan, EDITOR_ACTIONS } from '../core/keymap/editor-actions';
 import { flowIdOf } from '../core/keymap/shortcut-params';
 import { FlowModel } from '../core/models/flow.model';
@@ -213,7 +214,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
     private readonly MIN_HORIZONTAL_NODE_GAP = GRID_CELL_SIZE;
-    protected readonly getMinimapClassForNode = getMinimapClassForNode;
     protected readonly eMarkerType = EFMarkerType;
     protected readonly CONNECTION_DELETE_BUTTON_POSITION = 0.56;
     protected readonly eResizeHandleType = EFResizeHandleType;
@@ -293,6 +293,17 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (!connections.some((c) => c.sourceNodeId === nodeId || c.targetNodeId === nodeId)) return null;
         return computeHoverContext(nodeId, nodes, connections);
     });
+
+    protected readonly unusedNodeIds = computed<ReadonlySet<string>>(() =>
+        this.flowSettings.highlightUnusedNodes()
+            ? findUnusedNodeIds(this.flowService.nodes(), this.flowService.connections())
+            : new Set()
+    );
+
+    protected getMinimapClasses(node: NodeModel): string[] {
+        const classes = getMinimapClassForNode(node);
+        return this.unusedNodeIds().has(node.id) ? [...classes, 'is-unused'] : classes;
+    }
 
     /** The node may not be changed here, so it cannot be dragged either (a trigger node without Flows:Use). */
     public isNodeReadOnly(node: NodeModel): boolean {
