@@ -65,8 +65,14 @@ the untrusted acknowledgement, whatever its predecessor was
 The review also shows, without an approval of its own: a change of trust or signer, whether the
 plugin goes offline, a backend or database it adds, the migrations it will run, hooks added and
 removed, user permissions added, removed or with other defaults, settings added, removed and
-needed, the limits that changed, the backup and the database's size, how many organizations go
-offline, and whether the upgrade can be cancelled.
+needed, the limits that changed, whether the app menu changes, the backup and the database's size, how many
+organizations go offline, and whether the upgrade can be cancelled.
+
+The app menu row reads "The app menu changes." It appears when the label, path or icon file name of any entry of
+`spa.navigation` differs from the baseline's, or the order does, and when a version drops its menu. The row is
+information, not new access: it needs no acknowledgement. The package preview of an install and of an upgrade lists
+the menu (icon, label and path) in an "App menu" section, because the labels appear in EpicStaff's own sidebar. An icon
+redrawn under the same file name is not flagged.
 
 ## Settings, built-in defaults and custom roles
 

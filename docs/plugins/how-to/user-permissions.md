@@ -41,7 +41,7 @@ A person's actions on your plugin come from their role in the organization they 
 Actions are kept per organization: ticking View for a custom role of one organization gives
 nothing in another, and a plugin row appears in an organization's Roles matrix only while the
 plugin is running and granted to that organization. A person with `read` sees the plugin in the
-left bar.
+Apps list.
 
 ## The Roles matrix
 
@@ -65,7 +65,7 @@ the plugin. Copying a role to another organization does not copy its plugin acti
 
 ## Use them in your plugin
 
-EpicStaff uses `read` to decide who sees your plugin in the left bar. Every request your backend
+EpicStaff uses `read` to decide who sees your plugin in the Apps list. Every request your backend
 receives in `user` mode carries the person's actions in the
 [gateway context](../reference/gateway-context.md) as `permissions` (for example
 `["read", "update"]`): check them on the server for anything that changes data, never only in

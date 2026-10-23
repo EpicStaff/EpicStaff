@@ -1,7 +1,7 @@
 # EpicStaff plugins
 
 A plugin is a product that runs on top of EpicStaff. A SuperAdmin installs it once for the whole
-deployment and grants it to organizations; their members then open it from EpicStaff's left bar,
+deployment and grants it to organizations; their members then open it from the Apps list in EpicStaff's sidebar,
 where it shows inside EpicStaff's layout in a frame, on an address of its own
 (`<id>.<plugins base domain>`), with EpicStaff's theme. A plugin may also have a Python backend,
 which EpicStaff runs as a process of its own on the deployment's plugin node and reaches through

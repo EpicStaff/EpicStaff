@@ -38,6 +38,15 @@ Two things they still share:
   count. The node checks once a second, so a plugin can press on the ports for up to a second
   before it is stopped ([Runtime](../reference/runtime.md#how-the-backend-is-started)).
 
+## A plugin chooses words in EpicStaff's own sidebar
+
+The labels of a plugin's app menu (`spa.navigation`) appear in EpicStaff's own sidebar, not inside the plugin's frame,
+and its icons are drawn there too. A label such as "Change password" would look like part of EpicStaff, although it
+opens a page of the plugin. EpicStaff limits the room a plugin gets: at most 12 entries, 32 characters each, shown
+under the app's name and switcher, with icons drawn as one-colour shapes after the same safety checks as the plugin's
+icon. It does not judge what a label says. The labels are listed in the SuperAdmin's review of every install and
+upgrade, and an upgrade that changes them says so: read them before approving.
+
 ## Keeping organizations apart inside a plugin is the plugin's job
 
 EpicStaff keeps each organization's data apart in EpicStaff, and gives a plugin a key per

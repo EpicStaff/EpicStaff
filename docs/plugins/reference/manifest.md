@@ -77,7 +77,13 @@ A manifest with every section filled in:
   "publisher": { "name": "EpicStaff" },
   "icon": "icon.svg",
   "platform": { "frame_protocol": 1, "gateway_context": 1, "hook_api": 1 },
-  "spa": { "entry": "index.html" },
+  "spa": {
+    "entry": "index.html",
+    "navigation": [
+      { "label": "Forecast", "path": "/", "icon": "icons/forecast.svg" },
+      { "label": "Saved places", "path": "/places", "icon": "icons/places.svg" }
+    ]
+  },
   "backend": { "python": "3.13", "entrypoint": "weather_plugin.app:app" },
   "database": {},
   "access": [
@@ -120,12 +126,12 @@ A manifest with every section filled in:
 | `manifest_version` | `1` | yes | Only `1`. |
 | `id` | string | yes | `^[a-z][a-z0-9-]{0,30}[a-z0-9]$` (2–32 characters). Reserved: `www`, `api`, `admin`, `plugins`, `epicstaff`, `static`, `postgres`, `public`, `packages`, and anything starting with `pg`. The plugin's address is `<id>.<plugin base domain>`, so the id never changes between versions. |
 | `version` | string | yes | [SemVer 2.0](https://semver.org/) with ASCII digits, at most 64 characters: `1.2.3`, `1.0.0-beta.1`, `1.0.0+build.5`. For an installed plugin, it must be newer than the latest approved version, in SemVer order: build metadata does not count, so `1.0.0+build.6` is not newer than `1.0.0+build.5`. Otherwise the upload is refused with 409 `plugin_version_not_newer`; there are no downgrades. `epicstaff_plugin.versions` compares versions the same way. |
-| `name` | string | yes | 1–64 characters. Shown in the left bar. |
+| `name` | string | yes | 1–64 characters. Shown in the Apps list and in the app switcher. |
 | `description` | string | yes | 1–500 characters. |
 | `publisher` | object | yes | `name` (1–64 characters, required) and `url` (optional, `https://` only, no credentials). Shown as *claimed* unless the package is Trusted. |
 | `icon` | string | yes | `icon.svg` or `icon.png`, a file at the package root. See [Icon](#icon). |
 | `platform` | object | yes | `frame_protocol`, `gateway_context` and `hook_api`, each `1`: the versions of the platform contracts the plugin is written for. |
-| `spa` | object | no | The plugin's single-page app. `entry` (default `index.html`) is a path inside `spa/` that must exist in the package. |
+| `spa` | object | no | The plugin's single-page app. `entry` (default `index.html`) is a path inside `spa/` that must exist in the package. `navigation` (default `[]`) is the app's menu, which EpicStaff draws in its own sidebar; see [App menu](#app-menu). |
 | `backend` | object | no | `python`: `"3.12"` or `"3.13"`; `entrypoint`: `module.path:attribute` of an ASGI app, whose module is `backend/src/<module/path>.py` or `backend/src/<module/path>/__init__.py`. Its files are under `backend/` ([backend/requirements.lock](#backendrequirementslock)); [Runtime](runtime.md) says how it is run. A new version of a plugin with a backend keeps one: dropping it is refused with 409 `plugin_upgrade_unavailable`. A new version may add one. |
 | `database` | `{}` | no | Present when the plugin needs its own database; takes no fields. Its migrations are `database/migrations/NNN_<name>.sql` in the package ([Plugin database](database.md), [Write database migrations](../how-to/database-migrations.md)). A new version of a plugin with a database keeps it, and keeps every migration file that already ran unchanged; it adds new files. Dropping the database, or changing an applied file, is refused with 409 `plugin_upgrade_unavailable`. *Cross-field:* needs `backend`. |
 | `access` | array | no (default `[]`) | What the plugin's backend may do in EpicStaff; see [access](#access). *Cross-field:* non-empty `access` needs `backend`. |
@@ -194,6 +200,75 @@ Each entry is `{key, type, label, description, required, default, values}`:
 - `default`: optional, of the setting's type (an integer for `integer`, a boolean for `boolean`,
   an `http(s)` URL for `url`, one of `values` for `enum`). A `secret` has no default.
 
+### App menu
+
+`spa.navigation` lists the pages of the app. While the app is open, EpicStaff draws the list in its own
+sidebar, under the app's name, so the page needs no menu of its own. A menu needs a single-page app, which is
+why it lives inside `spa`. Each entry is `{label, path, icon}`:
+
+- `label`: 1–32 characters, not blank, no control characters. EpicStaff shows it as it is, cut off with an
+  ellipsis when the sidebar is narrow.
+- `path`: the page the entry opens. `/`, or `/`-separated segments of letters, digits, `-`, `.`, `_` and `~`, at
+  most 256 characters. No query, no `%` escape, no `.` or `..` segment, no empty segment and no trailing `/`. It is a
+  strict subset of the frame protocol's [path grammar](frame-protocol.md#path-grammar), so every menu path is one the
+  page can be sent.
+- `icon`: `icons/<name>.svg` or `icons/<name>.png`, where `<name>` is 1 to 63 lower-case letters, digits, `-` and
+  `_`, starting with a letter or a digit. Several entries may name the same file.
+- At most 12 entries. Paths are distinct, and labels are distinct (compared exactly: `Projects` and `projects ` are
+  two labels).
+
+```json
+"spa": {
+  "entry": "index.html",
+  "navigation": [
+    { "label": "Overview", "path": "/", "icon": "icons/overview.svg" },
+    { "label": "Projects", "path": "/projects", "icon": "icons/projects.svg" }
+  ]
+}
+```
+
+The icon files are in the package under `icons/`, next to the `icon` of the manifest's root; see
+[Package layout](#package-layout) and [Menu icons](#menu-icons).
+
+What people see:
+
+- A click on an entry opens its page: EpicStaff sends the page `nav.navigate` with the entry's path
+  ([Navigation](frame-protocol.md#navigation)).
+- The entry highlighted is the one whose path is the longest prefix of the page's path, segment by segment: on
+  `/projects/2` the `/projects` entry. The `/` entry is highlighted on the root page only. The highlight follows
+  EpicStaff's address, which follows the page's `nav.changed`. So it follows links inside the app only when the page
+  speaks the frame protocol, as the JS SDK's `startPlugin` does.
+- An app with no menu gets the same sidebar, without the entries.
+- The menu is the one of the version that runs. While a plugin is stopped for an upgrade its menu stays; the new
+  menu shows once the list of apps refreshes.
+- The menu comes from the approved package, never from a [development](../how-to/local-development.md) server,
+  so a change to it needs a new version.
+
+#### Menu icons
+
+Every file under `icons/` must be one that an entry names, and every named file must be in the package. The same
+checks apply as for the [icon](#icon) of the manifest's root, with the format taken from the file's extension, except
+that a menu icon is at most 16 KiB, and the package holds at most 12 files under `icons/`.
+
+EpicStaff draws a menu icon as a mask in the colour of the row, so it follows the light and dark themes. Only the
+shape counts: the parts of the image that are not transparent are painted in that one colour, and its own colours,
+gradients and fills are lost. Draw an icon that reads as one shape, on a transparent background.
+
+#### App menu errors
+
+An upload or an approval of a package with a bad menu is answered `400 invalid_plugin`, and `epicstaff-plugin
+validate`, `pack`, `sign` and `verify` print the same problems as `loc: message` lines:
+
+| `loc` | Message |
+|---|---|
+| `manifest.spa.navigation` | `lists path '/x' more than once` (duplicate), `lists label 'X' more than once` (duplicate), `List should have at most 12 items after validation, not 13` (too_long) |
+| `manifest.navigation` | `Extra inputs are not permitted`: the menu goes under `spa`, not at the top level |
+| `manifest.spa.navigation[i].label` | `must not be blank`, `must not contain control characters`, `String should have at least 1 character`, `String should have at most 32 characters` |
+| `manifest.spa.navigation[i].path` | `must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', without a query, a '.' or '..' segment, or a trailing '/'` (navigation_path), `String should have at most 256 characters` |
+| `manifest.spa.navigation[i].icon` | `must be icons/<name>.svg or icons/<name>.png, where <name> is 1 to 63 lower-case letters, digits, '-' and '_', starting with a letter or a digit` (navigation_icon), `names icons/x.svg, which is not in the package` |
+| `package.icons/<name>` | `is not an icon spa.navigation names`, `is larger than 16384 bytes`, `is not a PNG image`, and the SVG messages of the [icon](#icon) |
+| `package.icons` | `holds more than 12 files` |
+
 ### Platform maximums
 
 The schema bounds above are the most any deployment may allow. Each deployment sets its own
@@ -224,6 +299,7 @@ manifest.json
 CONTENTS.json
 CONTENTS.json.minisig                 optional: the signature
 icon.svg | icon.png                   the one the manifest names
+icons/<name>.svg | icons/<name>.png   the menu icons spa.navigation names, and no others
 spa/<entry>, spa/**                   with "spa"
 backend/src/**                        with "backend"
 backend/requirements.lock             with "backend" (required)
@@ -280,6 +356,7 @@ refused when the node installs the backend, naming the wheel and the platform.
 | SPA | At most 2000 files and 50 MiB in total |
 | Migrations | At most 64 MiB in total under `database/migrations/` |
 | Icon | At most 64 KiB |
+| Menu icons | At most 16 KiB each, and at most 12 files under `icons/` |
 | Secrets | No file but a wheel may hold an EpicStaff service-account key (`esp-` and 43 more characters) in its first MiB, or be a runtime file (a JSON object with both `service_accounts` and `secret_settings`): `package.<path>: holds an EpicStaff key or runtime file; never package it`. See [Keep secrets out of a package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package) |
 
 ### Icon
@@ -288,7 +365,8 @@ refused when the node installs the backend, naming the wheel and the platform.
 no `<script>` or `<foreignObject>` element, no event-handler attribute (`onload`, `onclick`, …),
 no DOCTYPE or entity declaration, no stylesheet processing instruction, and no reference outside
 the file (an `href` or `src` that is not `#…`, a CSS `url(…)` that is not `url(#…)`, or
-`@import`). EpicStaff only ever shows the icon as an image.
+`@import`). EpicStaff only ever shows the icon as an image. EpicStaff draws the icon at the root as an
+image, in its own colours; the [menu icons](#menu-icons) are drawn as one-colour shapes.
 
 ### CONTENTS.json
 

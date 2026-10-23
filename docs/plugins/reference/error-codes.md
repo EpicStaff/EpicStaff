@@ -38,7 +38,7 @@ back.
 | `plugin_package_not_found` | 404 | No such package; for a plugin node, a package that is neither the current package nor an open upgrade's target of one of its placements |
 | `package_not_pending` | 409 | Approve or reject of a package that was already decided |
 | `untrusted_not_acknowledged` | 400 | Approve of an untrusted package without `untrusted_acknowledged: true` |
-| `plugin_not_found` | 404 | No plugin with this identifier, a deleted plugin included (its activity is still served); on the public endpoints and the login endpoints, a plugin that is neither running nor stopped for an upgrade; on the login endpoints (`plugin-authorize`, `login-organizations`), also a plugin without a backend, which nobody can log in to |
+| `plugin_not_found` | 404 | No plugin with this identifier, a deleted plugin included (its activity is still served); on the public endpoints and the login endpoints, a plugin that is neither running nor stopped for an upgrade; on the menu-icon endpoint (`GET /api/plugin-public/<id>/icons/<file name>/`), also a file the plugin's current package does not hold (an unknown file, or one only another package has); on the login endpoints (`plugin-authorize`, `login-organizations`), also a plugin without a backend, which nobody can log in to |
 | `plugin_not_running` | 409 | A grant for a plugin that is not running (a plugin with a backend runs once its node reports it healthy); in plugin development mode, also setting development ports or downloading the development runtime file of a plugin that is not running |
 | `plugin_already_granted` | 409 | The organization already has a grant for the plugin |
 | `organization_inactive` | 409 | A grant to a deactivated organization |

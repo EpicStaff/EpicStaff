@@ -285,9 +285,16 @@ do not apply to your backend locally, though they do on EpicStaff, where the app
 FORCE ROW LEVEL SECURITY` to your migrations, or test against the node's roles. And when the runtime file is inside a
 git work tree that no ignore rule covers, it warns that the file, which holds keys, could be committed.
 
+## The app menu
+
+The sidebar menu of your app comes from the approved package's manifest (`spa.navigation`), also while the plugin is
+in development mode: neither the development server nor a changed `manifest.json` on your machine changes it. Your
+page's routes can change at once; to see a new or changed menu, ship a new version ([Ship a change](#ship-a-change)).
+
 ## Ship a change
 
-1. Raise `version` in the manifest, and add a migration file for every schema change.
+1. Raise `version` in the manifest, and add a migration file for every schema change. A change to the app menu or its
+   icons is a change too: it needs a new version.
 2. Pack and sign the new version ([Sign and package a plugin](sign-and-package.md)).
 3. Upload it with **Upload plugin** on the Plugins list and upgrade to it ([Bring organizations to a new version](upgrade-hook.md),
    [the plugin lifecycle](../explanation/lifecycle.md#upgrades)).

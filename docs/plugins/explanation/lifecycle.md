@@ -12,7 +12,7 @@ deletes, and what plugin authors should do about it.
 | State | Shown as | What it means |
 |---|---|---|
 | `granting` | Waiting for the plugin to start, then Installing… | The plugin was granted and its install hook has not finished. Its service account holds a key, so the hook can call EpicStaff, but people cannot open the plugin yet |
-| `active` | Active | People with the plugin's View open it from the left bar, and its backend acts in the organization |
+| `active` | Active | People with the plugin's View open it from the Apps list, and its backend acts in the organization |
 | `install_failed` | Install failed | The install hook failed. The SuperAdmin can retry it ("Retry install") |
 | `upgrading` | Upgrading… | The plugin is being upgraded, or is back on a new version and its upgrade hook has not finished in this organization. Its service account holds a key; people see that the plugin is being updated, and runs that use what it owns wait |
 | `upgrade_failed` | Upgrade failed | The upgrade hook failed in this organization after its automatic retries. People cannot use the plugin there until the SuperAdmin retries it ("Retry") or a newer version is approved |
@@ -41,7 +41,7 @@ Suspending takes effect at once:
 - **Keys.** Every key of the plugin's service account in the organization stops working, the
   one still inside its 10-minute overlap included. The organization leaves the plugin's
   runtime file within seconds, at the plugin node's next credentials fetch.
-- **People.** The plugin leaves the left bar and the Roles matrix of the organization. The
+- **People.** The plugin leaves the Apps list and the Roles matrix of the organization. The
   actions custom roles gave on it are kept, and come back on resume. A person's plugin login is
   refused within about 10 seconds: the gateway keeps its decision about a person for that long.
 - **Runs.** Every run that uses anything the plugin owns in the organization is refused with

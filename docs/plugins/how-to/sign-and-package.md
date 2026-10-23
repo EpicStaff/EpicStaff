@@ -36,6 +36,7 @@ Every command exits with `0` when it succeeds, `1` when the package or source br
 weather/
 ├── manifest.json                 the manifest
 ├── icon.svg                      the icon the manifest names
+├── icons/                        with "spa.navigation": the menu's icon files, SVG or PNG
 ├── spa/                          your app's sources, built into a directory of static files
 ├── backend/                      with a "backend" section:
 │   ├── src/weather_plugin/       your Python code (the entrypoint's module is here)
@@ -122,7 +123,7 @@ Everything under `backend/` and `database/` goes into the package as it is, so k
 what you would publish:
 
 - **Keep your virtual environment at the plugin's root** (`weather/.venv`), never under
-  `backend/`. `pack` takes only `backend/`, `database/`, the manifest, the icon and the built app,
+  `backend/`. `pack` takes only `backend/`, `database/`, the manifest, the icon, the menu icons the manifest names and the built app,
   so a `.venv` beside them stays out; one under `backend/` would be packed, and its symbolic links
   make `pack` refuse the source.
 - **Keep runtime files out of the source altogether**, the development runtime file a SuperAdmin

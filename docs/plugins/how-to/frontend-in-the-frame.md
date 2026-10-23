@@ -80,6 +80,38 @@ this version. Until it can:
   on a declared [public path](public-paths.md) that checks the ticket. The public path's context has no person: your
   backend links the ticket to the person when it issues it.
 
+## Give your app a menu
+
+Your app does not need a menu of its own inside the frame: list its pages under `spa.navigation` in the manifest, and
+EpicStaff draws the list in its own sidebar while the app is open. [App menu](../reference/manifest.md#app-menu) has
+every rule.
+
+1. Add an icon file for each page under `icons/`, in your plugin's source next to `manifest.json`: SVG or PNG, at most
+   16 KiB, drawn as one shape on a transparent background. EpicStaff paints it in the colour of the row, so it
+   follows the light and dark themes, and the icon's own colours do not show.
+2. List the pages in the manifest, each with a label of at most 32 characters, a path of your routes and its icon:
+
+   ```json
+   "spa": {
+     "entry": "index.html",
+     "navigation": [
+       { "label": "Overview", "path": "/", "icon": "icons/overview.svg" },
+       { "label": "Projects", "path": "/projects", "icon": "icons/projects.svg" }
+     ]
+   }
+   ```
+
+3. Make your router answer each path. A click on an entry reaches your page as a navigation EpicStaff starts (the
+   frame protocol's `nav.navigate`), and the SDK's `startPlugin` moves your router there, as it does for EpicStaff's
+   Back and Forward.
+4. Keep `startPlugin` running. The entry EpicStaff highlights follows EpicStaff's address, which follows the paths
+   your page reports (`nav.changed`). A page that does not speak the frame protocol never reports them, so the
+   highlight does not follow its links; it stays on the entry that was clicked.
+5. Remove the menu your page drew itself, if it had one.
+
+`epicstaff-plugin validate` and `pack` check the menu and its icons, and `pack` takes only the icon files the menu
+names. A menu change ships like any other change: with a new version ([Local development](local-development.md#ship-a-change)).
+
 ## Theme
 
 Take every colour from the `--es-*` tokens, with defaults in `:root` for the page outside EpicStaff
@@ -112,7 +144,7 @@ What your page's code has to do for it:
 
 ## Check it
 
-- Inside EpicStaff: open the plugin from the left bar, move between your routes, use EpicStaff's Back and Forward, and
+- Inside EpicStaff: open the plugin from the Apps list, move between your routes and your app's menu entries, use EpicStaff's Back and Forward, and
   switch organization (the frame reloads in the new organization).
 - On its own: open `https://<id>.<plugins base domain>/<route>` in a new tab; EpicStaff's login or organization chooser
   appears and brings you back to the same route.

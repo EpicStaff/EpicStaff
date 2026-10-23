@@ -41,7 +41,7 @@ Read the sample's files alongside: each part explains them in the order they mat
 | Path | What it is |
 |---|---|
 | `plugin-samples/weather/manifest.json` | What the plugin is, what it may do in EpicStaff, who may use it, its database and its outbound host |
-| `plugin-samples/weather/icon.svg` | The icon in EpicStaff's left bar |
+| `plugin-samples/weather/icon.svg` | The icon in EpicStaff's Apps list |
 | `plugin-samples/weather/backend/requirements.in` | The backend's dependencies; `requirements.lock` pins them with hashes |
 | `plugin-samples/weather/backend/src/weather_plugin/app.py` | The FastAPI app: the routes the page calls, the lifespan that opens the database, and the organization removed hook (part 4) |
 | `plugin-samples/weather/backend/src/weather_plugin/install_hook.py` | The install hook |

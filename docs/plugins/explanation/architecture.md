@@ -30,7 +30,7 @@ epicstaff-nginx
 | **es_plugins**, the plugin node | **Runs plugin code.** It installs each backend offline from its package, runs it as a process of its own under its own Unix user, checks its health, applies its limits, writes its runtime file, calls its hooks, and sets up and backs up its database ([Runtime](../reference/runtime.md)) |
 | **plugins_db** | A PostgreSQL server with one database and three roles per plugin. Only the plugin node and the plugin backends reach it; django_app never connects to it ([Plugin database](../reference/database.md)) |
 | **plugins_egress** | The egress proxy: the only way from a plugin backend to the internet, to the hosts its manifest declares ([Call the internet from your backend](../how-to/outbound-hosts.md)) |
-| **frontend** | EpicStaff's web app: the plugins in the left bar, the frame a plugin's page shows in, and the SuperAdmin's plugin pages |
+| **frontend** | EpicStaff's web app: the Apps list, each app's menu in the sidebar, the frame a plugin's page shows in, and the SuperAdmin's plugin pages |
 
 A plugin without a backend needs only nginx and django_app: its page is static files.
 
@@ -38,8 +38,10 @@ A plugin without a backend needs only nginx and django_app: its page is static f
 
 ### Loading a plugin's page
 
-1. A person opens the plugin from EpicStaff's left bar, which lists the plugins whose View they hold in the
-   organization ([Give people permissions](../how-to/user-permissions.md)).
+1. A person opens the plugin from the Apps list in EpicStaff's sidebar, which lists the plugins whose View they hold in the
+   organization ([Give people permissions](../how-to/user-permissions.md)). While the app is open, the
+   sidebar shows the app instead: a way back to EpicStaff, a switcher between apps and the menu the app's
+   manifest declares ([App menu](../reference/manifest.md#app-menu)).
 2. EpicStaff's address `/plugins/<id>/<path>` shows a frame of `https://<id>.<plugins base domain>/<path>`, with the
    organization in `es_org` ([Frame protocol](../reference/frame-protocol.md#the-frame)).
 3. nginx serves the plugin's published files, from the approved package, and lets only EpicStaff frame them.

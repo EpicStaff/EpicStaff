@@ -13,7 +13,7 @@ EpicStaff frontend test both assert their constants equal it.
 
 ## The frame
 
-A person opens a plugin from the left bar of EpicStaff. EpicStaff's address `/plugins/<id>/<rest>?<query>` shows the
+A person opens a plugin from the Apps list in EpicStaff's sidebar. EpicStaff's address `/plugins/<id>/<rest>?<query>` shows the
 plugin page `/<rest>?<query>` in a frame:
 
 ```html
@@ -112,6 +112,10 @@ session history, so a page in the frame must not push its own entries; it report
   or replacing an entry); the frame is not reloaded.
 - **EpicStaff navigates** (Back, Forward, a link to `/plugins/<id>/…`): EpicStaff sends `nav.navigate`; the page moves
   to that path without reporting it back.
+- **The app menu:** a click on an entry of the manifest's [app menu](manifest.md#app-menu) is a navigation EpicStaff
+  starts: it sends `nav.navigate` with the entry's path. The entry EpicStaff highlights follows its address, which
+  follows `nav.changed`. A page that does not speak the protocol never reports where it went, so the highlight stays on
+  the last page EpicStaff opened and does not follow the links inside the app.
 - **Both at once:** a navigation the person starts in EpicStaff wins over a `nav.changed` that arrives meanwhile.
 - **Routing modes:** the page may keep its route in the address path (`/forecast`, the default) or in the hash
   (`#/forecast`). Either way the protocol carries the same path form.

@@ -1,7 +1,7 @@
 # Enable the plugin platform
 
 Plugins add pages to EpicStaff. A SuperAdmin uploads a plugin package, reviews it, approves it and
-grants it to organizations; members of those organizations then find the plugin in the left bar.
+grants it to organizations; members of those organizations then find the plugin in the Apps list.
 Each plugin is served from its own host name, `<identifier>.<PLUGINS_BASE_DOMAIN>` (for example
 `weather.plugins.example.com`), and shown inside EpicStaff in a frame. This page is what an
 operator sets up for that. How to build and sign a package is in [the plugin docs](../README.md).
