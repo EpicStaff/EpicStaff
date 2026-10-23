@@ -7,7 +7,7 @@ from plugins.exceptions import InvalidPluginError
 from plugins.models import Plugin
 
 from tests.plugins_tests.conftest import upload_file
-from tests.plugins_tests.package_builder import BACKEND, build_package, sample_manifest
+from tests.plugins_tests.package_builder import BACKEND, SAMPLE_NAVIGATION, build_package, menu_manifest, sample_manifest
 
 ACCESS = {"resource_type": "flows", "actions": ["read"], "reason": "Reads flows."}
 PUBLIC_PATH = {"path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0}
@@ -22,6 +22,14 @@ def _manifest(backend=False, **changes):
     if backend:
         manifest["backend"] = dict(BACKEND)
     return manifest
+
+
+def _menu_item(**changes):
+    return {**SAMPLE_NAVIGATION[0], **changes}
+
+
+def _menu(*items):
+    return menu_manifest(list(items))
 
 
 def _without(key, *path):
@@ -108,6 +116,24 @@ RULES = [
     ("install timeout at most 900", _manifest(backend=True, hooks={"install": True, "timeouts_seconds": {"install": 901}}), "manifest.hooks.timeouts_seconds.install"),
     ("upgrade timeout at most 1800", _manifest(backend=True, hooks={"upgrade": True, "timeouts_seconds": {"upgrade": 1801}}), "manifest.hooks.timeouts_seconds.upgrade"),
     ("org_removed timeout at most 900", _manifest(backend=True, hooks={"org_removed": True, "timeouts_seconds": {"org_removed": 901}}), "manifest.hooks.timeouts_seconds.org_removed"),
+    # Thirteen items sharing one icon: thirteen files would stop the read at the icons/ cap first.
+    ("navigation at most 12 items", _menu(*(_menu_item(label=f"Page {index}", path=f"/page-{index}") for index in range(13))), "manifest.spa.navigation"),
+    ("navigation paths distinct", _menu(_menu_item(), _menu_item(label="Home")), "manifest.spa.navigation"),
+    ("navigation labels distinct", _menu(_menu_item(), _menu_item(path="/home")), "manifest.spa.navigation"),
+    ("navigation label not blank", _menu(_menu_item(label="   ")), "manifest.spa.navigation[0].label"),
+    ("navigation label 1-32", _menu(_menu_item(label="l" * 33)), "manifest.spa.navigation[0].label"),
+    ("navigation label without control characters", _menu(_menu_item(label="Fore\u0007cast")), "manifest.spa.navigation[0].label"),
+    ("navigation path starts with /", _menu(_menu_item(path="projects")), "manifest.spa.navigation[0].path"),
+    ("navigation path without a trailing /", _menu(_menu_item(path="/projects/")), "manifest.spa.navigation[0].path"),
+    ("navigation path without an empty segment", _menu(_menu_item(path="/a//b")), "manifest.spa.navigation[0].path"),
+    ("navigation path without a query", _menu(_menu_item(path="/projects?x=1")), "manifest.spa.navigation[0].path"),
+    ("navigation path without a % escape", _menu(_menu_item(path="/a%20b")), "manifest.spa.navigation[0].path"),
+    ("navigation path without a .. segment", _menu(_menu_item(path="/a/..")), "manifest.spa.navigation[0].path"),
+    ("navigation path at most 256", _menu(_menu_item(path="/" + "p" * 256)), "manifest.spa.navigation[0].path"),
+    ("navigation icon lower case", _menu(_menu_item(icon="icons/A.svg")), "manifest.spa.navigation[0].icon"),
+    ("navigation icon svg or png", _menu(_menu_item(icon="icons/a.gif")), "manifest.spa.navigation[0].icon"),
+    ("navigation icon directly under icons/", _menu(_menu_item(icon="icons/sub/a.svg")), "manifest.spa.navigation[0].icon"),
+    ("navigation belongs to spa", _manifest(navigation=SAMPLE_NAVIGATION), "manifest.navigation"),
     ("unknown fields are refused", _manifest(ports=[8443]), "manifest.ports"),
     ("min_epicstaff_version was dropped", _manifest(platform={"frame_protocol": 1, "gateway_context": 1, "hook_api": 1, "min_epicstaff_version": "1.0"}), "manifest.platform.min_epicstaff_version"),
 ]
@@ -174,3 +200,47 @@ def test_the_upload_api_reports_manifest_problems_in_the_error_envelope(plugins_
     assert body["status_code"] == 400
     assert {"loc": "manifest.id", "message": "'admin' is reserved"} in body["errors"]
     assert {error["loc"] for error in body["errors"]} >= {"manifest.id", "manifest.user_permissions"}
+
+
+@pytest.mark.django_db
+def test_a_manifest_with_a_menu_round_trips(installation, superadmin):
+    data = build_package(manifest=menu_manifest())
+
+    package = installation.upload(upload_file(data), len(data), superadmin)
+
+    assert package.manifest["spa"] == {"entry": "index.html", "navigation": SAMPLE_NAVIGATION}
+    assert package.parsed_manifest.navigation_icon_paths == ("icons/forecast.svg", "icons/places.png")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("manifest", "error"),
+    [
+        pytest.param(
+            _menu(_menu_item(), _menu_item(label="Home")),
+            {"loc": "manifest.spa.navigation", "message": "lists path '/' more than once"},
+            id="duplicate path",
+        ),
+        pytest.param(
+            _menu(_menu_item(), _menu_item(label="Projects", path="/projects/")),
+            {
+                "loc": "manifest.spa.navigation[1].path",
+                "message": (
+                    "must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', "
+                    "without a query, a '.' or '..' segment, or a trailing '/'"
+                ),
+            },
+            id="trailing slash",
+        ),
+    ],
+)
+def test_the_upload_api_reports_menu_problems_in_the_error_envelope(plugins_enabled, package_store, spa_root, superadmin_client, manifest, error):
+    data = build_package(manifest=manifest)
+
+    response = superadmin_client.post("/api/admin/plugins/packages/", {"file": upload_file(data)}, format="multipart")
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "invalid_plugin"
+    assert body["errors"] == [error]
+    assert not Plugin.objects.exists()

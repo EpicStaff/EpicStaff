@@ -242,6 +242,9 @@ class UpgradeReviewSerializer(serializers.Serializer):
     user_permissions = UserPermissionChangesSerializer()
     settings = UpgradeSettingsSerializer(source="*")
     limits_changed = serializers.ListField(child=serializers.CharField())
+    navigation_changed = serializers.BooleanField(
+        help_text="The app menu's items differ from the baseline's: label, path, icon file or order."
+    )
     backup = UpgradeBackupSerializer(source="*")
     organizations_going_offline = serializers.IntegerField()
     cancellable = serializers.BooleanField()

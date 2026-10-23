@@ -64,6 +64,7 @@ def _assert_refused(response):
         ("post", AUTHORIZE_URL),
         ("get", TOKEN_URL),
         ("get", "/api/plugin-public/weather/config/"),
+        ("get", "/api/plugin-public/weather/icons/forecast.svg/"),
     ],
 )
 def test_a_plugin_page_is_refused_everywhere_else(plugin_page, method, path):

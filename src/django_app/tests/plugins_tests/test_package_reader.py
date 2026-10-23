@@ -14,9 +14,12 @@ from plugins.packages.package_reader import read_uploaded_package
 from tests.plugins_tests.package_builder import (
     APP_JS,
     ICON_SVG,
+    MENU_ICON_PNG,
+    MENU_ICON_SVG,
     PNG_ICON,
     build_package,
     contents_for,
+    menu_manifest,
     sample_files,
     sample_manifest,
     set_entry_flag,
@@ -369,3 +372,64 @@ def test_manifest_problems_are_located_under_manifest():
     manifest = sample_manifest(id="Weather!")
 
     assert "manifest.id" in _locs(build_package(manifest=manifest))
+
+
+# ---- the app menu's icons ----
+
+
+def test_a_package_with_a_menu_is_read_with_the_icons_it_names():
+    package = read_uploaded_package(io.BytesIO(build_package(manifest=menu_manifest())))
+
+    assert dict(package.navigation_icons) == {"icons/forecast.svg": MENU_ICON_SVG, "icons/places.png": MENU_ICON_PNG}
+
+
+def test_a_package_without_a_menu_has_no_menu_icons():
+    assert dict(read_uploaded_package(io.BytesIO(build_package())).navigation_icons) == {}
+
+
+def test_a_menu_icon_missing_from_the_package_is_rejected():
+    manifest = menu_manifest()
+    files = {path: data for path, data in sample_files(manifest).items() if path != "icons/places.png"}
+
+    assert _messages(build_package(files, manifest=manifest)) == [
+        "manifest.spa.navigation[1].icon: names icons/places.png, which is not in the package"
+    ]
+
+
+def test_a_file_under_icons_the_menu_does_not_name_is_rejected():
+    manifest = menu_manifest()
+
+    assert _messages(_with_file("icons/unused.svg", MENU_ICON_SVG, manifest)) == [
+        "package.icons/unused.svg: is not an icon spa.navigation names"
+    ]
+
+
+def test_a_menu_icon_is_capped_at_16_kb():
+    filler = secrets.token_hex(9 * 1024).encode()
+    manifest = menu_manifest()
+    files = {**sample_files(manifest), "icons/forecast.svg": MENU_ICON_SVG.replace(b"</svg>", b"<!--" + filler + b"--></svg>")}
+
+    assert _messages(build_package(files, manifest=manifest)) == ["package.icons/forecast.svg: is larger than 16384 bytes"]
+
+
+def test_a_png_menu_icon_must_be_a_png():
+    manifest = menu_manifest()
+    files = {**sample_files(manifest), "icons/places.png": b"GIF89a"}
+
+    assert _messages(build_package(files, manifest=manifest)) == ["package.icons/places.png: is not a PNG image"]
+
+
+def test_an_unsafe_svg_menu_icon_is_rejected():
+    manifest = menu_manifest()
+    files = {**sample_files(manifest), "icons/forecast.svg": b'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'}
+
+    assert _messages(build_package(files, manifest=manifest)) == [
+        "package.icons/forecast.svg: has an event handler attribute (onload)"
+    ]
+
+
+def test_more_than_twelve_files_under_icons_are_rejected():
+    manifest = menu_manifest([{"label": f"Page {index}", "path": f"/page-{index}", "icon": f"icons/page-{index}.svg"} for index in range(12)])
+
+    assert _messages(_with_file("icons/page-12.svg", MENU_ICON_SVG, manifest)) == ["package.icons: holds more than 12 files"]
+

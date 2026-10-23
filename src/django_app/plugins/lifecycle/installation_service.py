@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from epicstaff_plugin.contracts.manifest import PluginManifest
-from epicstaff_plugin.package_layout import PackageArchive
+from epicstaff_plugin.package_layout import PackageArchive, icon_media_type_of
 from epicstaff_plugin.problems import MANIFEST_LOC, Problem
 from epicstaff_plugin.signing import SignatureVerdict
 from utils.logger import logger
@@ -29,7 +29,14 @@ from plugins.exceptions import (
 from plugins.lifecycle.lifecycle_locks import lock_plugin
 from plugins.lifecycle.plugin_actions import assert_plugin_in_service
 from plugins.lifecycle.upgrade_service import ApprovalRequest, PluginUpgradeService
-from plugins.models import Plugin, PluginPackage, PluginState, ReviewState, Trust
+from plugins.models import (
+    Plugin,
+    PluginPackage,
+    PluginPackageNavigationIcon,
+    PluginState,
+    ReviewState,
+    Trust,
+)
 from plugins.nodes.placement_service import PlacementService
 from plugins.packages.package_reader import migration_files, read_uploaded_package
 from plugins.packages.package_store import (
@@ -199,6 +206,12 @@ class PluginInstallationService:
             migration_count=package.summary.migration_count,
             migration_files=candidate.migration_files,
             uploaded_by=uploaded_by,
+        )
+        PluginPackageNavigationIcon.objects.bulk_create(
+            PluginPackageNavigationIcon(
+                package=pending, path=path, media_type=icon_media_type_of(path), icon_bytes=data
+            )
+            for path, data in package.navigation_icons.items()
         )
         if replaced_keys:
             self._after_commit_robustly(self._delete_unreferenced, replaced_keys)

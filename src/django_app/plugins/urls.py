@@ -65,7 +65,12 @@ from plugins.views.node_api import (
     RuntimeCredentialsView,
     UpgradeAdvanceView,
 )
-from plugins.views.public_config import PluginIconView, PluginJwksView, PluginPublicConfigView
+from plugins.views.public_config import (
+    PluginIconView,
+    PluginJwksView,
+    PluginNavigationIconView,
+    PluginPublicConfigView,
+)
 from plugins.views.runtime_api import PeopleLookupView, PluginPersonView, ServiceAccountMeView
 
 role_plugin_rows = PluginRolePermissionViewSet.as_view({"get": "rows"})
@@ -270,6 +275,11 @@ urlpatterns = [
         "api/plugin-public/<str:identifier>/icon/",
         PluginIconView.as_view(),
         name="plugin-public-icon",
+    ),
+    path(
+        "api/plugin-public/<str:identifier>/icons/<str:file_name>/",
+        PluginNavigationIconView.as_view(),
+        name="plugin-public-navigation-icon",
     ),
     path("api/plugin-gateway/check/", gateway_check, name="plugin-gateway-check"),
     path(

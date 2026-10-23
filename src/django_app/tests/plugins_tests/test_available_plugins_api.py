@@ -9,6 +9,9 @@ from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from rest_framework.test import APIClient
 
+from tests.plugins_tests.conftest import upload_file
+from tests.plugins_tests.package_builder import build_package, menu_manifest, menu_spa
+
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
 AVAILABLE_URL = "/api/plugins/available/"
@@ -41,13 +44,55 @@ def test_a_member_whose_role_has_view_by_default_sees_the_plugin(client_as, memb
         {
             "identifier": "weather",
             "name": "Weather",
+            "description": "Forecasts for the places your organization cares about.",
             "icon_url": "/api/plugin-public/weather/icon/?v=0.1.0",
             "frame_origin": "http://weather.plugins.epicstaff.localhost",
             "permissions": ["read"],
             "availability": "ready",
             "development": False,
+            "navigation": [],
         }
     ]
+
+
+MENU = [
+    {"label": "Forecast", "path": "/", "icon_url": "/api/plugin-public/weather/icons/forecast.svg/?v=0.1.0"},
+    {"label": "Places", "path": "/places", "icon_url": "/api/plugin-public/weather/icons/places.png/?v=0.1.0"},
+    {"label": "Saved places", "path": "/places/saved", "icon_url": "/api/plugin-public/weather/icons/forecast.svg/?v=0.1.0"},
+]
+
+
+@pytest.fixture
+def weather_with_a_menu_in_acme(running_plugin, grant_to, acme):
+    plugin = running_plugin(spa=menu_spa())
+    grant_to(plugin, acme)
+    return plugin
+
+
+def test_the_app_menu_is_listed_in_the_manifest_s_order(client_as, member_only, acme, weather_with_a_menu_in_acme):
+    [listed] = _available(client_as, member_only, acme).json()
+
+    assert listed["navigation"] == MENU
+
+
+def test_the_menu_stays_while_the_plugin_is_stopped_for_an_upgrade(client_as, member_only, acme, weather_with_a_menu_in_acme):
+    Plugin.objects.filter(pk=weather_with_a_menu_in_acme.pk).update(state=PluginState.MAINTENANCE)
+
+    [listed] = _available(client_as, member_only, acme).json()
+
+    assert (listed["availability"], listed["navigation"]) == ("maintenance", MENU)
+
+
+def test_the_menu_name_and_description_follow_the_running_version_not_a_pending_one(
+    client_as, member_only, acme, weather_with_a_menu_in_acme, installation, superadmin
+):
+    newer = menu_manifest([{"label": "Alerts", "path": "/alerts", "icon": "icons/alerts.svg"}], version="0.2.0", description="Alerts only.")
+    data = build_package(manifest=newer)
+    installation.upload(upload_file(data), len(data), superadmin)
+
+    [listed] = _available(client_as, member_only, acme).json()
+
+    assert (listed["description"], listed["navigation"]) == ("Forecasts for the places your organization cares about.", MENU)
 
 
 def test_an_org_admin_sees_the_plugin(client_as, admin_acme, acme, weather_in_acme):
@@ -84,13 +129,15 @@ def test_built_in_roles_get_the_manifest_defaults(client_as, make_member, admin_
     assert permissions == {"org_admin": ["read", "update", "delete"], "member": ["read", "update"], "viewer": ["read"]}
 
 
-def test_a_member_of_another_organization_gets_nothing_of_it(client_as, make_member, role_member, beta, weather_in_acme):
+def test_a_member_of_another_organization_gets_nothing_of_it(client_as, make_member, role_member, member_only, acme, beta, weather_with_a_menu_in_acme):
     beta_member = make_member(beta, role_member, "member-beta-plugins@example.com")
 
     response = _available(client_as, beta_member, beta)
 
     assert response.status_code == 200
     assert response.json() == []
+    # The plugin and its menu are there: a member of its own organization sees both.
+    assert _available(client_as, member_only, acme).json()[0]["navigation"] == MENU
 
 
 def test_naming_an_organization_one_is_not_a_member_of_is_refused(client_as, make_member, role_member, acme, beta, weather_in_acme):
@@ -185,8 +232,9 @@ def test_plugins_are_sorted_by_name(client_as, member_only, acme, running_plugin
 
 
 def test_the_list_runs_a_fixed_number_of_queries(client_as, member_only, acme, running_plugin, grant_to, django_assert_max_num_queries):
+    # With app menus: the menu comes from the manifest the list already loads.
     for identifier in ("one", "two", "three"):
-        grant_to(running_plugin(id=identifier), acme)
+        grant_to(running_plugin(id=identifier, spa=menu_spa()), acme)
     client = client_as(member_only)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
 

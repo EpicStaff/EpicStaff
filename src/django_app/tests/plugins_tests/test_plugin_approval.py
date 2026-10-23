@@ -6,11 +6,26 @@ import os
 import pytest
 from plugins.exceptions import UntrustedNotAcknowledgedError
 from plugins.lifecycle.installation_service import PluginInstallationService
-from plugins.models import Plugin, PluginPackage, PluginState, ReviewState, SignatureStatus, Trust
+from plugins.models import (
+    Plugin,
+    PluginPackage,
+    PluginPackageNavigationIcon,
+    PluginState,
+    ReviewState,
+    SignatureStatus,
+    Trust,
+)
 from plugins.packages.spa_publisher import SpaPublisher
 
 from tests.plugins_tests.conftest import InMemoryPackageStore, upload_file
-from tests.plugins_tests.package_builder import INDEX_HTML, build_package, sample_manifest
+from tests.plugins_tests.package_builder import (
+    INDEX_HTML,
+    MENU_ICON_PNG,
+    MENU_ICON_SVG,
+    build_package,
+    menu_manifest,
+    sample_manifest,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -106,6 +121,21 @@ def test_a_stored_file_that_is_gone_or_changed_is_a_conflict(superadmin_client, 
     assert logged["expected"] == review["sha256"]
     expected_found = "nothing" if change == "missing" else hashlib.sha256(other_package).hexdigest()
     assert logged["found"] == expected_found
+
+
+def test_approving_a_package_with_a_menu_checks_the_stored_file_again_and_keeps_its_icons(installation, superadmin):
+    package = _upload(installation, superadmin, build_package(manifest=menu_manifest()))
+
+    plugin = installation.approve(package.pk, superadmin, untrusted_acknowledged=True)
+
+    assert (plugin.state, plugin.current_package_id) == (PluginState.RUNNING, package.pk)
+    assert [
+        (icon.package_id, icon.path, icon.media_type, bytes(icon.icon_bytes))
+        for icon in PluginPackageNavigationIcon.objects.order_by("path")
+    ] == [
+        (package.pk, "icons/forecast.svg", "image/svg+xml", MENU_ICON_SVG),
+        (package.pk, "icons/places.png", "image/png", MENU_ICON_PNG),
+    ]
 
 
 def test_the_spa_is_served_only_once_the_approval_commits(

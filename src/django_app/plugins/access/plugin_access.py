@@ -1,4 +1,4 @@
-"""Who may use a plugin in an organization: the one rule behind the left bar, login and the gateway.
+"""Who may use a plugin in an organization: the one rule for the Apps list, login and the gateway.
 
 A person may use a plugin in an organization when all of these hold:
 
@@ -92,7 +92,7 @@ def accesses_in_organization(
 ) -> list[PersonPluginAccess]:
     """Return `user`'s access to each plugin of `grants` they may use in organization `org_id`.
 
-    `grants` are usable grants of that organization (`.usable()`), or the left bar's
+    `grants` are usable grants of that organization (`.usable()`), or the Apps list's
     (`.listed()`), read only when the person is an active member of it; the result keeps
     their order. At most three queries: the membership, the grants, and the stored actions of
     a custom role.
@@ -207,7 +207,7 @@ def awaits_an_upgrade(user, plugin: Plugin, org_id: int | None = None) -> bool:
     """Whether `user` may use `plugin` once its upgrade finishes: in `org_id`, or in any
     organization when None.
 
-    The rule above, with the grants the left bar lists (`listed()`) that are not usable yet:
+    The rule above, with the grants the Apps list shows (`listed()`) that are not usable yet:
     the plugin is stopped for its upgrade, or the organization's upgrade hook has not
     finished. Two queries, plus one for a custom role.
     """

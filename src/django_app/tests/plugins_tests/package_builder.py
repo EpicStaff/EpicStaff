@@ -14,6 +14,12 @@ ICON_SVG = (
     b'<circle cx="12" cy="12" r="5" fill="currentColor"/></svg>'
 )
 PNG_ICON = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+MENU_ICON_SVG = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+    b'<path d="M4 4h16v16H4z" fill="currentColor"/></svg>'
+)
+# The format check reads only the PNG signature.
+MENU_ICON_PNG = b"\x89PNG\r\n\x1a\n" + b"\x01" * 32
 INDEX_HTML = b"<!doctype html><title>Weather</title><script src=app.js></script>"
 APP_JS = b"document.title = 'Weather';\n"
 
@@ -35,6 +41,13 @@ SAMPLE_MANIFEST = {
         }
     ],
 }
+
+# An app menu with an SVG and a PNG icon; the third item shares the first one's icon.
+SAMPLE_NAVIGATION = [
+    {"label": "Forecast", "path": "/", "icon": "icons/forecast.svg"},
+    {"label": "Places", "path": "/places", "icon": "icons/places.png"},
+    {"label": "Saved places", "path": "/places/saved", "icon": "icons/forecast.svg"},
+]
 
 BACKEND = {"python": "3.12", "entrypoint": "plugin.app:app"}
 # Every backend's lock pins the SDK and uvicorn, each with a sha256.
@@ -98,8 +111,25 @@ def backend_manifest(**changes) -> dict:
     )
 
 
+def menu_spa(navigation: list[dict] | None = None) -> dict:
+    """The sample's `spa` section with an app menu, `SAMPLE_NAVIGATION` unless `navigation` is given."""
+    navigation = SAMPLE_NAVIGATION if navigation is None else navigation
+    return {"entry": "index.html", "navigation": copy.deepcopy(navigation)}
+
+
+def menu_manifest(navigation: list[dict] | None = None, **changes) -> dict:
+    """The Weather sample with an app menu (`menu_spa`) and top-level `changes` applied."""
+    return sample_manifest(spa=menu_spa(navigation), **changes)
+
+
+def menu_icon_for(path: str) -> bytes:
+    """The bytes the sample files hold for a menu icon: the PNG or the SVG, by extension."""
+    return MENU_ICON_PNG if path.endswith(".png") else MENU_ICON_SVG
+
+
 def sample_files(manifest: dict | None = None) -> dict[str, bytes]:
-    """The files of a frontend-only package for `manifest`, without CONTENTS.json."""
+    """The files of a frontend-only package for `manifest`, without CONTENTS.json; with every
+    icon its app menu names."""
     manifest = manifest or sample_manifest()
     files = {
         "manifest.json": json.dumps(manifest).encode("utf-8"),
@@ -107,6 +137,8 @@ def sample_files(manifest: dict | None = None) -> dict[str, bytes]:
         "spa/index.html": INDEX_HTML,
         "spa/assets/app.js": APP_JS,
     }
+    for item in (manifest.get("spa") or {}).get("navigation", []):
+        files[item["icon"]] = menu_icon_for(item["icon"])
     if "backend" in manifest:
         files.update(BACKEND_FILES)
     if "database" in manifest:

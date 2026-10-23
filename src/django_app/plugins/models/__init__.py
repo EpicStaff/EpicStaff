@@ -26,7 +26,7 @@ from plugins.models.grant import PluginGrant
 from plugins.models.hook_job import HookJobKind, HookJobState, PluginHookJob
 from plugins.models.node import PluginNode, PluginPlacement
 from plugins.models.ownership import PluginOwnedResource
-from plugins.models.plugin import Plugin, PluginPackage
+from plugins.models.plugin import Plugin, PluginPackage, PluginPackageNavigationIcon
 from plugins.models.role_permission import PluginRolePermission
 from plugins.models.service_account import (
     KEY_HOLDING_GRANT_STATES,
@@ -61,6 +61,7 @@ __all__ = [
     "PluginNode",
     "PluginOwnedResource",
     "PluginPackage",
+    "PluginPackageNavigationIcon",
     "PluginPlacement",
     "PluginRolePermission",
     "PluginServiceAccount",

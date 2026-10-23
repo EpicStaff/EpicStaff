@@ -3,6 +3,7 @@ import base64
 from django.db.models import Count
 from drf_spectacular.utils import extend_schema_field
 from epicstaff_plugin.contracts.manifest import PluginManifest
+from epicstaff_plugin.package_layout import NAVIGATION_ICONS_DIRECTORY
 from rest_framework import serializers
 
 from plugins.development.development_mode import development_mode_on
@@ -48,6 +49,20 @@ def icon_url(plugin: Plugin) -> str | None:
     if plugin.current_package is None:
         return None
     return f"/api/plugin-public/{plugin.identifier}/icon/?v={plugin.current_package.version}"
+
+
+def navigation_icon_url(plugin: Plugin, path: str) -> str:
+    """Public URL of an app menu icon (`icons/<file>`) of a plugin's approved package; the
+    version busts browser caches on upgrade."""
+    file_name = path.removeprefix(NAVIGATION_ICONS_DIRECTORY)
+    return (
+        f"/api/plugin-public/{plugin.identifier}/icons/{file_name}/"
+        f"?v={plugin.current_package.version}"
+    )
+
+
+def _data_url(media_type: str, data: bytes) -> str:
+    return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
 
 
 def declared_access_rows(manifest: PluginManifest) -> list[dict]:
@@ -107,6 +122,7 @@ class PackageReviewSerializer(serializers.ModelSerializer):
     description = serializers.SerializerMethodField()
     publisher = serializers.SerializerMethodField()
     icon_data_url = serializers.SerializerMethodField()
+    navigation = serializers.SerializerMethodField()
     signature = serializers.CharField(source="signature_status")
     signer = serializers.SerializerMethodField()
     uploaded_by = UserRefSerializer(allow_null=True)
@@ -135,6 +151,7 @@ class PackageReviewSerializer(serializers.ModelSerializer):
             "description",
             "publisher",
             "icon_data_url",
+            "navigation",
             "trust",
             "signature",
             "signer",
@@ -172,8 +189,25 @@ class PackageReviewSerializer(serializers.ModelSerializer):
         return {"name": publisher.name, "url": publisher.url}
 
     def get_icon_data_url(self, package: PluginPackage) -> str:
-        encoded = base64.b64encode(bytes(package.icon_bytes)).decode("ascii")
-        return f"data:{package.icon_media_type};base64,{encoded}"
+        return _data_url(package.icon_media_type, bytes(package.icon_bytes))
+
+    def get_navigation(self, package: PluginPackage) -> list[dict]:
+        """The app menu in the manifest's order, each item's icon as a `data:` URL; one query,
+        none without a menu."""
+        spa = package.parsed_manifest.spa
+        if spa is None or not spa.navigation:
+            return []
+        icons = {icon.path: icon for icon in package.navigation_icons.all()}
+        return [
+            {
+                "label": item.label,
+                "path": item.path,
+                "icon_data_url": _data_url(
+                    icons[item.icon].media_type, bytes(icons[item.icon].icon_bytes)
+                ),
+            }
+            for item in spa.navigation
+        ]
 
     def get_signer(self, package: PluginPackage) -> dict | None:
         if package.signature_status == SignatureStatus.ABSENT:

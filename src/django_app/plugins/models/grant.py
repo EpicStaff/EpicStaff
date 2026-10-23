@@ -65,7 +65,7 @@ class PluginGrantQuerySet(models.QuerySet):
         )
 
     def listed(self) -> "PluginGrantQuerySet":
-        """Grants that give their organization a plugin row in the left bar: usable ones, and
+        """Grants that give their organization a plugin in the Apps list: usable ones, and
         ones whose plugin or organization is being upgraded (its page then says so).
 
         `active` or `upgrading` grants of a plugin `running` or in `maintenance`. Only the list
@@ -84,7 +84,7 @@ class PluginGrantQuerySet(models.QuerySet):
     def usable(self) -> "PluginGrantQuerySet":
         """Grants that make their plugin usable: the grant is active and the plugin running.
 
-        Only these give an organization a plugin row in the left bar and the Roles matrix.
+        Only these give an organization a plugin in the Apps list and the Roles matrix.
         Each comes with its plugin and current package (without the icon), sorted by plugin
         name.
         """

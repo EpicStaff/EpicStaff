@@ -18,7 +18,13 @@ from tests.plugins_tests.upgrade_fixtures import (  # noqa: F401 (fixtures)
     weather,
     weather_manifest,
 )
-from tests.plugins_tests.package_builder import GEOCODING_HOST, sample_manifest
+from tests.plugins_tests.package_builder import (
+    GEOCODING_HOST,
+    SAMPLE_NAVIGATION,
+    menu_manifest,
+    menu_spa,
+    sample_manifest,
+)
 from tests.plugins_tests.upgrade_fixtures import upload
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
@@ -265,3 +271,54 @@ def test_a_frontend_only_version_is_reviewed_without_maintenance(running_plugin,
     upgrade = _review(superadmin_client, package)["upgrade"]
 
     assert (upgrade["maintenance"], upgrade["backend"], upgrade["database"]) == (False, "unchanged", "none")
+
+
+# ---- the app menu ----
+
+
+def test_a_new_menu_is_a_navigation_change_that_needs_no_acknowledgement(weather, newer, superadmin_client):
+    review = _review(superadmin_client, newer(spa=menu_spa()))
+
+    assert review["upgrade"]["navigation_changed"] is True
+    assert review["access_growth"] == {"requires_acknowledgement": False, "access": [], "outbound_hosts": [], "public_paths": []}
+
+
+def test_a_version_without_menus_on_either_side_has_no_navigation_change(weather, newer, superadmin_client):
+    assert _review(superadmin_client, newer())["upgrade"]["navigation_changed"] is False
+
+
+def _with(index, **changes):
+    items = [dict(item) for item in SAMPLE_NAVIGATION]
+    items[index].update(changes)
+    return items
+
+
+@pytest.mark.parametrize(
+    ("navigation", "changed"),
+    [
+        pytest.param(SAMPLE_NAVIGATION, False, id="same menu"),
+        pytest.param(_with(1, label="Locations"), True, id="label"),
+        pytest.param(_with(1, path="/locations"), True, id="path"),
+        pytest.param(_with(1, icon="icons/forecast.svg"), True, id="icon file"),
+        pytest.param([SAMPLE_NAVIGATION[1], SAMPLE_NAVIGATION[0], SAMPLE_NAVIGATION[2]], True, id="order"),
+        pytest.param(SAMPLE_NAVIGATION[:2], True, id="item removed"),
+        pytest.param([], True, id="menu removed"),
+    ],
+)
+def test_the_menu_is_compared_by_label_path_icon_file_and_order(running_plugin, installation, superadmin, superadmin_client, navigation, changed):
+    running_plugin(version="0.6.0", spa=menu_spa())
+
+    review = _review(superadmin_client, upload(installation, superadmin, menu_manifest(navigation, version="0.7.0")))
+
+    assert review["upgrade"]["navigation_changed"] is changed
+
+
+def test_a_redrawn_icon_under_the_same_name_is_no_navigation_change(running_plugin, installation, superadmin, superadmin_client):
+    running_plugin(version="0.6.0", spa=menu_spa())
+    manifest = menu_manifest(version="0.7.0")
+    redrawn = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/></svg>'
+
+    package = upload(installation, superadmin, manifest, {**sample_files(manifest), "icons/forecast.svg": redrawn})
+
+    assert _review(superadmin_client, package)["upgrade"]["navigation_changed"] is False
+

@@ -138,8 +138,9 @@ class PluginPackage(models.Model):
     """One uploaded `.esplugin` file of a plugin, with what its review needs.
 
     The file itself lives in the plugin package bucket under `storage_key`. `manifest` holds
-    the validated manifest; the icon is copied out so the review and the public icon endpoint
-    never open the package. At most one package per plugin is pending review.
+    the validated manifest; the icon, and the app menu's icons (`navigation_icons`), are
+    copied out so the review and the public icon endpoints never open the package. At most
+    one package per plugin is pending review.
     """
 
     plugin = models.ForeignKey(Plugin, on_delete=models.CASCADE, related_name="packages")
@@ -194,3 +195,30 @@ class PluginPackage(models.Model):
     @cached_property
     def parsed_manifest(self) -> PluginManifest:
         return PluginManifest.model_validate(self.manifest)
+
+
+class PluginPackageNavigationIcon(models.Model):
+    """One icon file of a package's app menu (`spa.navigation`), copied out of the package.
+
+    A row of its own rather than a column on `PluginPackage`, so the queries that load
+    packages never carry these bytes. The upload stores every icon the menu names, and only
+    those: the package reader refuses any other file under `icons/`.
+    """
+
+    package = models.ForeignKey(
+        PluginPackage, on_delete=models.CASCADE, related_name="navigation_icons"
+    )
+    # The package path the manifest names, `icons/<name>.svg|png`: 73 characters at most.
+    path = models.CharField(max_length=80)
+    media_type = models.CharField(max_length=32)
+    icon_bytes = models.BinaryField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["package", "path"], name="plugins_navigation_icon_package_path_uniq"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.package_id}:{self.path}"

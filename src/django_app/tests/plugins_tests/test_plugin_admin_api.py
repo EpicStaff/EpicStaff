@@ -9,15 +9,25 @@ from drf_spectacular.generators import SchemaGenerator
 from drf_spectacular.renderers import OpenApiYamlRenderer
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
-from plugins.models import Plugin, PluginDevelopmentTarget, PluginPackage, PluginState, ReviewState
+from plugins.models import (
+    Plugin,
+    PluginDevelopmentTarget,
+    PluginPackage,
+    PluginPackageNavigationIcon,
+    PluginState,
+    ReviewState,
+)
 from rest_framework.test import APIClient
 
 from tests.plugins_tests.conftest import reload_root_urlconf, upload_file
 from tests.plugins_tests.package_builder import (
     ICON_SVG,
     INDEX_HTML,
+    MENU_ICON_PNG,
+    MENU_ICON_SVG,
     backend_manifest,
     build_package,
+    menu_manifest,
     sample_files,
     sample_manifest,
 )
@@ -46,6 +56,7 @@ def test_upload_returns_the_package_review(superadmin_client, superadmin_user, t
     assert review["name"] == "Weather"
     assert review["publisher"] == {"name": "EpicStaff", "url": None}
     assert review["icon_data_url"].startswith("data:image/svg+xml;base64,")
+    assert review["navigation"] == []
     assert (review["trust"], review["signature"], review["review_state"]) == ("trusted", "valid", "pending")
     assert review["signer"] == {"key_name": "release", "key_id": trusts_release_key.public_key.display_id}
     assert review["uploaded_by"] == {"id": superadmin_user.id, "email": superadmin_user.email}
@@ -173,6 +184,101 @@ def test_a_new_upload_replaces_the_pending_package(superadmin_client, package_st
     assert Plugin.objects.get().name == "Weather 2"
     assert list(package_store.objects) == [f"packages/weather/0.1.1/{second['sha256']}.esplugin"]
     assert first["id"] != second["id"]
+
+
+def _stored_menu_icons() -> list[tuple]:
+    return [
+        (icon.package_id, icon.path, icon.media_type, bytes(icon.icon_bytes))
+        for icon in PluginPackageNavigationIcon.objects.order_by("package_id", "path")
+    ]
+
+
+def _data_url(media_type: str, data: bytes) -> str:
+    return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
+
+
+def test_an_upload_stores_each_menu_icon_once(superadmin_client):
+    review = _upload(superadmin_client, build_package(manifest=menu_manifest())).json()
+
+    assert _stored_menu_icons() == [
+        (review["id"], "icons/forecast.svg", "image/svg+xml", MENU_ICON_SVG),
+        (review["id"], "icons/places.png", "image/png", MENU_ICON_PNG),
+    ]
+
+
+def test_an_upload_without_a_menu_stores_no_menu_icons(superadmin_client):
+    _upload(superadmin_client)
+
+    assert not PluginPackageNavigationIcon.objects.exists()
+
+
+def test_the_review_shows_the_menu_with_each_icon_as_a_data_url(superadmin_client):
+    review = _upload(superadmin_client, build_package(manifest=menu_manifest())).json()
+
+    assert review["navigation"] == [
+        {"label": "Forecast", "path": "/", "icon_data_url": _data_url("image/svg+xml", MENU_ICON_SVG)},
+        {"label": "Places", "path": "/places", "icon_data_url": _data_url("image/png", MENU_ICON_PNG)},
+        {"label": "Saved places", "path": "/places/saved", "icon_data_url": _data_url("image/svg+xml", MENU_ICON_SVG)},
+    ]
+    assert superadmin_client.get(f"{PACKAGES_URL}{review['id']}/review/").json()["navigation"] == review["navigation"]
+
+
+def test_the_plugin_detail_shows_the_current_package_s_menu(superadmin_client):
+    review = _upload(superadmin_client, build_package(manifest=menu_manifest())).json()
+    _approve(superadmin_client, review["id"], untrusted_acknowledged=True)
+
+    detail = superadmin_client.get(f"{PLUGINS_URL}weather/").json()
+
+    assert detail["current_package"]["navigation"] == review["navigation"]
+
+
+def _queries(client, url) -> int:
+    with CaptureQueriesContext(connection) as queries:
+        assert client.get(url).status_code == 200
+    return len(queries)
+
+
+def test_the_review_and_the_detail_read_the_menu_icons_in_one_query_whatever_the_menu_s_size(superadmin_client):
+    menus = {
+        "plain": None,
+        "small": [{"label": "Home", "path": "/", "icon": "icons/home.svg"}],
+        "full": [{"label": f"Page {index}", "path": f"/page-{index}", "icon": f"icons/page-{index}.svg"} for index in range(12)],
+    }
+    counts = {}
+    for identifier, navigation in menus.items():
+        manifest = sample_manifest(id=identifier) if navigation is None else menu_manifest(navigation, id=identifier)
+        review = _upload(superadmin_client, build_package(manifest=manifest)).json()
+        _approve(superadmin_client, review["id"], untrusted_acknowledged=True)
+        counts[identifier] = (
+            _queries(superadmin_client, f"{PACKAGES_URL}{review['id']}/review/"),
+            _queries(superadmin_client, f"{PLUGINS_URL}{identifier}/"),
+        )
+
+    # Both serialize one package's review: its icons cost one query with a menu, none without.
+    assert counts["small"] == counts["full"] == tuple(count + 1 for count in counts["plain"])
+
+
+def test_a_new_upload_deletes_the_replaced_package_s_menu_icons(superadmin_client, django_capture_on_commit_callbacks):
+    _upload(superadmin_client, build_package(manifest=menu_manifest()))
+    newer = menu_manifest([{"label": "Alerts", "path": "/", "icon": "icons/alerts.svg"}], version="0.1.1")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        second = _upload(superadmin_client, build_package(manifest=newer)).json()
+
+    assert _stored_menu_icons() == [(second["id"], "icons/alerts.svg", "image/svg+xml", MENU_ICON_SVG)]
+
+
+def test_a_menu_problem_refuses_the_upload_and_stores_nothing(superadmin_client, package_store):
+    manifest = menu_manifest()
+    files = {**sample_files(manifest), "icons/places.png": b"GIF89a"}
+
+    response = _upload(superadmin_client, build_package(files, manifest=manifest))
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_plugin"
+    assert response.json()["errors"] == [{"loc": "package.icons/places.png", "message": "is not a PNG image"}]
+    assert package_store.objects == {}
+    assert not PluginPackageNavigationIcon.objects.exists()
 
 
 def test_uploading_identical_bytes_again_keeps_the_file(superadmin_client, package_store, django_capture_on_commit_callbacks):
@@ -428,7 +534,13 @@ def test_anonymous_callers_must_log_in(anonymous_client, method, url):
 
 @pytest.mark.parametrize(
     "url",
-    [PLUGINS_URL, PACKAGES_URL, "/api/plugins/available/", "/api/plugin-public/weather/config/"],
+    [
+        PLUGINS_URL,
+        PACKAGES_URL,
+        "/api/plugins/available/",
+        "/api/plugin-public/weather/config/",
+        "/api/plugin-public/weather/icons/forecast.svg/",
+    ],
 )
 def test_no_plugin_route_exists_while_the_platform_is_off(superadmin_client, settings, url):
     settings.PLUGINS_ENABLED = False

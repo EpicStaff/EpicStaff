@@ -148,6 +148,7 @@ class UpgradeReview:
     settings_removed: list[str]
     settings_needed: list[NeededSetting]
     limits_changed: list[str]
+    navigation_changed: bool
     backup_required: bool
     database_size_bytes: int | None
     database_name: str | None
@@ -196,6 +197,7 @@ def review_upgrade(package: PluginPackage) -> PackageUpgradeReview | None:
         settings_removed=sorted(_keys(baseline_manifest) - _keys(new)),
         settings_needed=settings_needed(new, plugin.setting_values.all()),
         limits_changed=_limits_changed(baseline_manifest, new),
+        navigation_changed=_navigation(baseline_manifest) != _navigation(new),
         backup_required=_backup_required(upgrade, database),
         database_size_bytes=database.size_bytes if database is not None else None,
         database_name=database.database_name if database is not None else None,
@@ -262,6 +264,14 @@ def _limits_changed(baseline: PluginManifest, new: PluginManifest) -> list[str]:
     before = baseline.limits.model_dump() if baseline.limits else {}
     after = new.limits.model_dump() if new.limits else {}
     return [name for name in LIMIT_NAMES if before.get(name) != after.get(name)]
+
+
+def _navigation(manifest: PluginManifest) -> list[tuple[str, str, str]]:
+    """The app menu as the review compares it: label, path and icon file name of each item, in
+    order. A redrawn icon under the same name is not a change."""
+    if manifest.spa is None:
+        return []
+    return [(item.label, item.path, item.icon) for item in manifest.spa.navigation]
 
 
 def _backup_required(upgrade: PluginUpgrade | None, database: PluginDatabase | None) -> bool:

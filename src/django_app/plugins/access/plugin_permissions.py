@@ -1,6 +1,6 @@
 """A membership role's actions on a plugin: the one resolution every plugin check uses.
 
-The left bar (`available`) and the Roles matrix ceiling both ask here, so a role that can
+The Apps list (`available`) and the Roles matrix ceiling both ask here, so a role that can
 open a plugin is exactly a role the matrix shows with View.
 """
 
@@ -81,7 +81,7 @@ def stored_permissions_by_grant(role: Role, grant_ids: Iterable[int]) -> dict[in
 def role_actions_by_grant(role: Role, grants: Iterable[PluginGrant]) -> dict[int, list[str]]:
     """Return `role`'s actions on each grant's plugin, by grant id, in one query at most.
 
-    One role on many grants, as the left bar, the Roles matrix, role assignment and the
+    One role on many grants, as the Apps list, the Roles matrix, role assignment and the
     gateway ask it. `plugin_access.eligible_people` asks the other way round (many people's
     roles on one grant) and reads the stored actions in its own query; both resolve through
     `role_plugin_actions`. Each grant must come with its plugin's current package.
