@@ -17,9 +17,10 @@ DRY_RUN_PARAMETER = OpenApiParameter(
     description=(
         "Preview only: report what would be deleted and the usage that blocks "
         "the rest, without deleting anything. This is a **query parameter** — "
-        "a `dry_run` field in the request body is ignored and the call runs as "
-        "a real delete. An unparseable, blank (`?dry_run`, `?dry_run=`) or "
-        "repeated value is rejected with 400."
+        "a `dry_run` field in the request body is rejected with 400, as is any "
+        "body key other than `ids`. Takes `true` or `false` in any case; any "
+        "other, blank (`?dry_run`, `?dry_run=`) or repeated value is rejected "
+        "with 400."
     ),
 )
 
@@ -142,8 +143,9 @@ def _bulk_delete_post_schema(
                 response=OpenApiTypes.STR,
                 description=(
                     "`ids` is missing, empty, over 500 long, or not a list of "
-                    "positive integers — or `dry_run` is not a boolean, is "
-                    "blank, or is repeated."
+                    "positive integers; the body holds a key other than `ids` "
+                    "(`dry_run` included); or `?dry_run` is not `true`/`false`, "
+                    "is blank, or is repeated."
                 ),
             ),
             401: UNAUTHORIZED_401_RESPONSE,
