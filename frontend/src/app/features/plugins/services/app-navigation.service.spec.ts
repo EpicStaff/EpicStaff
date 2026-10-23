@@ -100,10 +100,10 @@ describe('AppNavigationService', () => {
                 name: 'ASG',
                 navigation: [
                     // A zero-width space; bidi marks and a word joiner; spaces around a zero-width joiner.
-                    buildAvailablePluginNavigationItem({ label: '​', path: '/zero-width' }),
-                    buildAvailablePluginNavigationItem({ label: '‎‮⁠', path: '/bidi' }),
-                    buildAvailablePluginNavigationItem({ label: '  ‍ ', path: '/spaces' }),
-                    buildAvailablePluginNavigationItem({ label: '​Projects', path: '/projects' }),
+                    buildAvailablePluginNavigationItem({ label: '\u200B', path: '/zero-width' }),
+                    buildAvailablePluginNavigationItem({ label: '\u200E\u202E\u2060', path: '/bidi' }),
+                    buildAvailablePluginNavigationItem({ label: ' \u00A0\u200D ', path: '/spaces' }),
+                    buildAvailablePluginNavigationItem({ label: '\u200BProjects', path: '/projects' }),
                 ],
             }),
         ]);
@@ -111,6 +111,47 @@ describe('AppNavigationService', () => {
         await router.navigateByUrl('/plugins/asg');
 
         expect(service.menu().map(({ path }) => path)).toEqual(['/projects']);
+    });
+
+    it.each([
+        { name: 'a Hangul filler', label: '\u3164' },
+        { name: 'a braille pattern blank', label: '\u2800' },
+        { name: 'an emoji variation selector', label: '\uFE0F' },
+        { name: 'a combining grapheme joiner', label: '\u034F' },
+    ])('drops an item whose label is only $name, which draws nothing', async ({ label }) => {
+        plugins.set([
+            buildAvailablePlugin({
+                identifier: 'asg',
+                name: 'ASG',
+                navigation: [
+                    buildAvailablePluginNavigationItem({ label, path: '/filler' }),
+                    buildAvailablePluginNavigationItem({ label: 'Projects', path: '/projects' }),
+                ],
+            }),
+        ]);
+
+        await router.navigateByUrl('/plugins/asg');
+
+        expect(service.menu().map(({ path }) => path)).toEqual(['/projects']);
+    });
+
+    it('keeps a label with a space inside, one in another script, and one with an emoji', async () => {
+        plugins.set([
+            buildAvailablePlugin({
+                identifier: 'asg',
+                name: 'ASG',
+                navigation: [
+                    buildAvailablePluginNavigationItem({ label: 'All projects', path: '/projects' }),
+                    buildAvailablePluginNavigationItem({ label: '프로젝트', path: '/korean' }),
+                    // A star with the variation selector that asks for its emoji style.
+                    buildAvailablePluginNavigationItem({ label: '\u2B50\uFE0F Starred', path: '/starred' }),
+                ],
+            }),
+        ]);
+
+        await router.navigateByUrl('/plugins/asg');
+
+        expect(service.menu().map(({ label }) => label)).toEqual(['All projects', '프로젝트', '\u2B50\uFE0F Starred']);
     });
 
     it("tells the item's own page from a page below it, for aria-current", async () => {

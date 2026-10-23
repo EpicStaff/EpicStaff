@@ -16,8 +16,12 @@ import { SeenAppsService } from './seen-apps.service';
 /** Where a SuperAdmin manages the installed plugins. */
 export const MANAGE_APPS_URL = '/workspace/plugins';
 
-/** Whitespace and Unicode format characters (`Cf`): neither shows anything on its own. */
-const INVISIBLE_CHARACTERS = /[\s\p{Cf}]/gu;
+/**
+ * Characters that show nothing on their own: whitespace, format characters (`Cf`), default-ignorable code points
+ * (Hangul fillers, variation selectors, the combining grapheme joiner) and the braille pattern blank (U+2800), which
+ * draws an empty cell. The same set the backend counts as invisible in a menu label.
+ */
+const INVISIBLE_CHARACTERS = /[\s\p{Cf}\p{Default_Ignorable_Code_Point}\u2800]/gu;
 
 /** An app menu entry, as the sidebar draws it. */
 export interface AppMenuItem {
@@ -123,8 +127,8 @@ function toMenuItems(app: AvailablePlugin): AppMenuItem[] {
 }
 
 /**
- * Blank to the eye: only whitespace and invisible format characters (zero-width spaces and joiners, bidi marks), which
- * the manifest accepts in a label.
+ * Blank to the eye: nothing but invisible characters. The backend refuses such a label; the sidebar drops one anyway
+ * rather than trust that.
  */
 function isBlankLabel(label: string): boolean {
     return label.replace(INVISIBLE_CHARACTERS, '') === '';
