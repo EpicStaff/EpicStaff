@@ -1,11 +1,13 @@
+@use '../../../../../directives/collection-drop-target' as drop-target;
+
 .collection {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    border-radius: 10px;
     background-color: var(--color-card-background);
     padding: 0.75rem 1rem;
     user-select: none;
+    @include drop-target.collection-drop-target(10px);
 
     &.selected {
         border: 1px solid var(--accent-color);
