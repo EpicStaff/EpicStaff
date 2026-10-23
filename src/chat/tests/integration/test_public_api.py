@@ -9,7 +9,7 @@ from application.orchestrators.conversation import ConversationOrchestrator
 from application.tokens import visitor_token_hash
 from common.humanize import Rate
 from common.utils import new_id, utcnow
-from domain.enums import IdentityMode, Role, Stream
+from domain.enums import IdentityMode, Mode, Role, RunState, Stream
 from domain.models import Message
 from infrastructure.database.models import ConversationRow, VisitorTokenRow
 from litestar.testing import AsyncTestClient
@@ -20,6 +20,14 @@ from tests.infrastructure.test_django_client import CHAT_FLOW
 from tests.integration.test_callback_endpoint import CALLBACKS, _payload, _signed
 
 ORIGIN = "https://example.com"
+# What create and every state read add for the widget, on the `binding` fixture (max_message_length=20).
+FEATURES = {
+    "capabilities": ["stop"],
+    "max_message_length": 20,
+    "action_max_bytes": 262_144,
+    "extra_data_max_bytes": 8192,
+}
+MESSAGE_KEYS = {"id", "role", "content", "actions", "action", "visible_name", "created_at"}
 
 
 @pytest.fixture
@@ -43,12 +51,13 @@ async def test_create_and_read_state(client, binding):
     created = await client.post("/chat/public/v1/conversations", json={"public_key": binding.public_key}, headers={"Origin": ORIGIN})
     assert created.status_code == 201
     body = created.json()
-    assert set(body) == {"conversation_id", "visitor_token", "bot_display_name", "operator_display_name"}
+    assert set(body) == {"conversation_id", "visitor_token", "bot_display_name", "operator_display_name", *FEATURES}
     assert (body["bot_display_name"], body["operator_display_name"]) == ("Bot", "Support")
+    assert {key: body[key] for key in FEATURES} == FEATURES
     headers = {"Authorization": f"Bearer {body['visitor_token']}", "Origin": ORIGIN}
     response = await client.get(f"/chat/public/v1/conversations/{body['conversation_id']}", headers=headers)
     assert response.status_code == 200
-    assert response.json() == {"mode": "bot", "state": "idle", "bot_display_name": "Bot", "operator_display_name": "Support", "status": "open", "close_reason": None, "closed_at": None}
+    assert response.json() == {"mode": "bot", "state": "idle", "bot_display_name": "Bot", "operator_display_name": "Support", "status": "open", "close_reason": None, "closed_at": None, **FEATURES}
 
 
 async def test_a_renamed_binding_shows_its_new_names_on_the_next_read(client, binding, uow_factory):
@@ -69,7 +78,7 @@ async def test_public_messages_carry_no_author_only_the_name_visitors_may_see(cl
         await uow.messages.add(Message(id=new_id(), conversation_id=UUID(conversation_id), role=Role.OPERATOR, content="Hi", actions=None, session_id=None, created_at=utcnow(), author_user_id=7, visible_name="Mike"))
         await uow.commit()
     visitor_message, operator_message = (await client.get(f"/chat/public/v1/conversations/{conversation_id}/messages", headers=headers)).json()
-    assert set(operator_message) == {"id", "role", "content", "actions", "action", "visible_name", "created_at"}
+    assert set(operator_message) == MESSAGE_KEYS
     assert (operator_message["role"], operator_message["visible_name"]) == ("operator", "Mike")
     assert visitor_message["visible_name"] is None
 
@@ -104,7 +113,7 @@ async def test_send_message_and_page(client, binding, django):
     assert (again.status_code, again.json()["code"]) == (409, "run_in_progress")
     page = await client.get(f"/chat/public/v1/conversations/{conversation_id}/messages?limit=50", headers=headers)
     assert page.status_code == 200
-    assert [m["role"] for m in page.json()] == ["user"] and set(page.json()[0]) == {"id", "role", "content", "actions", "action", "visible_name", "created_at"}
+    assert [m["role"] for m in page.json()] == ["user"] and set(page.json()[0]) == MESSAGE_KEYS
 
 
 async def test_message_errors(client, binding):
@@ -321,7 +330,7 @@ async def test_an_action_reply_round_trips_to_messages_stream_and_flow(client, b
     {"action": None},
     {"action": ["yes"]},
     {"action": "yes"},
-    {"action": {"k": "x" * 2048}},
+    {"action": {"k": "x" * 262_144}},
     {"action": {"a": {"b": {"__properties__": {"x": "1"}}}}},
     {"content": "hi", "chat_extra_data": {"k": "x" * 8192}},
     {"content": "hi", "chat_extra_data": {"__setters__": {}}},
@@ -370,7 +379,7 @@ async def test_action_replies_count_for_the_message_rate_and_turns(client, uow_f
 
 async def test_chat_extra_data_from_create_reaches_the_flow_and_a_send_replaces_it(client, binding, django, uow_factory):
     created = await client.post("/chat/public/v1/conversations", json={"public_key": binding.public_key, "chat_extra_data": {"plan": "pro"}}, headers={"Origin": ORIGIN})
-    assert created.status_code == 201 and set(created.json()) == {"conversation_id", "visitor_token", "bot_display_name", "operator_display_name"}
+    assert created.status_code == 201 and set(created.json()) == {"conversation_id", "visitor_token", "bot_display_name", "operator_display_name", *FEATURES}
     conversation_id = created.json()["conversation_id"]
     headers = {"Authorization": f"Bearer {created.json()['visitor_token']}", "Origin": ORIGIN}
     url = f"/chat/public/v1/conversations/{conversation_id}/messages"
@@ -429,13 +438,35 @@ async def test_a_body_over_one_mebibyte_is_413_before_any_handler_work(client, b
     assert create.status_code == 413
 
 
-async def test_a_largest_legitimate_body_fits_under_the_cap(client, uow_factory, django):
+async def test_a_largest_legitimate_body_fits_under_the_ceiling(client, uow_factory, django):
     binding = await _add_binding(uow_factory, django, max_message_length=100_000)
     conversation_id, headers = await _create(client, binding)
-    # Worst case: every character escaped as \uXXXX, plus both objects at their caps.
-    body = json.dumps({"content": " " * 100_000, "action": {"k": "x" * 2000}, "chat_extra_data": {"k": "x" * 8000}}, ensure_ascii=True)
+    # Every character escaped as \uXXXX, plus both objects at their limits.
+    body = json.dumps({"content": "é" * 100_000, "action": _padded(262_144), "chat_extra_data": _padded(8192)}, ensure_ascii=True)
     response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", content=body, headers={**headers, "Content-Type": "application/json"})
     assert response.status_code == 202, response.text
+
+
+def _padded(size: int) -> dict:
+    """An object whose compact JSON is exactly `size` bytes."""
+    return {"k": "x" * (size - len('{"k":""}'))}
+
+
+@pytest.mark.parametrize(("body", "key", "limit"), [
+    ({"action": _padded(262_145)}, "action", 262_144),
+    ({"content": "hi", "chat_extra_data": _padded(8193)}, "chat_extra_data", 8192),
+])
+async def test_an_object_over_the_deployments_limit_is_400_naming_it_and_one_at_the_limit_runs(client, binding, django, body, key, limit):
+    conversation_id, headers = await _create(client, binding)
+    url = f"/chat/public/v1/conversations/{conversation_id}/messages"
+    refused = await client.post(url, json=body, headers=headers)
+    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert refused.json()["errors"] == [{"message": f"Must be at most {limit} bytes as compact JSON; got {limit + 1}.", "key": key}]
+    assert not _run_variables(django)
+    # Ten times what the old fixed 2 KB action cap allowed, and still within the deployment's limit.
+    accepted = await client.post(url, json={"content": "hi", key: _padded(limit)}, headers=headers)
+    assert accepted.status_code == 202, accepted.text
+    assert _run_variables(django)[0][key] == _padded(limit)
 
 
 @pytest.mark.parametrize("body", [
@@ -468,7 +499,7 @@ async def test_ending_closes_the_conversation_and_answers_its_state_again_and_ag
     assert ended.status_code == 200, ended.text
     body = ended.json()
     assert {key: body[key] for key in ("mode", "state", "status", "close_reason")} == {"mode": "bot", "state": "idle", "status": "closed", "close_reason": "ended"}
-    assert body["closed_at"] is not None and set(body) == {"mode", "state", "bot_display_name", "operator_display_name", "status", "close_reason", "closed_at"}
+    assert body["closed_at"] is not None and set(body) == {"mode", "state", "bot_display_name", "operator_display_name", "status", "close_reason", "closed_at", *FEATURES}
     again = await client.post(f"{url}/end", headers=headers)
     assert (again.status_code, again.json()) == (200, body)
     assert (await client.get(url, headers=headers)).json() == body
@@ -510,3 +541,78 @@ async def test_ending_needs_the_conversations_token_and_an_allowed_origin_on_a_l
         assert (response.status_code, response.json()["code"]) == (status, code), name
     async with uow_factory() as uow:
         assert (await uow.conversations.get(UUID(conversation_id))).is_open
+
+
+# ---- the visitor stops the run (Stop) ------------------------------------------------------------
+
+async def _events_of(uow_factory, conversation_id):
+    async with uow_factory() as uow:
+        return await uow.events.replay(Stream.CONVERSATION, conversation_id=UUID(conversation_id), after_seq=None)
+
+
+async def test_stop_ends_the_run_keeps_the_conversation_with_the_bot_and_posts_nothing(client, binding, django, uow_factory):
+    conversation_id, headers = await _create(client, binding)
+    url = f"/chat/public/v1/conversations/{conversation_id}"
+    assert (await client.post(f"{url}/messages", json={"content": "long job"}, headers=headers)).status_code == 202
+    async with uow_factory() as uow:
+        run_id = (await uow.conversations.get(UUID(conversation_id))).active_run_id
+        secret = (await uow.receipts.get(run_id)).secret
+    stopped = await client.post(f"{url}/stop", headers=headers)
+    assert stopped.status_code == 200, stopped.text
+    assert stopped.json() == {"mode": "bot", "state": "idle", "bot_display_name": "Bot", "operator_display_name": "Support", "status": "open", "close_reason": None, "closed_at": None, **FEATURES}
+    assert django.stopped == [100]
+    run_events = [(e.type, e.payload) for e in await _events_of(uow_factory, conversation_id) if e.type.startswith("run.")]
+    assert run_events == [("run.started", {}), ("run.finished", {"status": "stop"})]
+    # Django then reports the run as stopped: its tokens count, and nobody is told or asked for.
+    body, signed_headers = _signed(secret, _payload(status="stop", tokens=5))
+    assert (await client.post(f"{CALLBACKS}/{run_id}", content=body, headers=signed_headers)).json() == {"result": "ignored"}
+    assert [m["role"] for m in (await client.get(f"{url}/messages", headers=headers)).json()] == ["user"]
+    stored = await _stored_conversation(uow_factory, conversation_id)
+    assert (stored.mode, stored.run_state, stored.tokens_used, stored.handoff_reason) == (Mode.BOT, RunState.IDLE, 5, "")
+    # The conversation takes the next message at once.
+    assert (await client.post(f"{url}/messages", json={"content": "something else"}, headers=headers)).status_code == 202
+
+
+async def test_stop_with_nothing_running_answers_the_state_and_changes_nothing(client, binding, django, uow_factory):
+    conversation_id, headers = await _create(client, binding)
+    url = f"/chat/public/v1/conversations/{conversation_id}"
+    idle = await client.post(f"{url}/stop", headers=headers)
+    assert (idle.status_code, idle.json()["state"]) == (200, "idle")
+    await client.post(f"{url}/messages", json={"content": "hi"}, headers=headers)
+    first = await client.post(f"{url}/stop", headers=headers)
+    again = await client.post(f"{url}/stop", headers=headers)
+    assert (again.status_code, again.json()) == (200, first.json())
+    assert [e.type for e in await _events_of(uow_factory, conversation_id)].count("run.finished") == 1
+    assert django.stopped == [100]
+    await client.post(f"{url}/end", headers=headers)
+    closed = await client.post(f"{url}/stop", headers=headers)
+    assert (closed.status_code, closed.json()["status"], closed.json()["close_reason"]) == (200, "closed", "ended")
+
+
+async def test_stop_while_a_person_has_the_conversation_changes_nothing(client, binding, uow_factory):
+    conversation_id, headers = await _create(client, binding)
+    async with uow_factory() as uow:
+        stored = await uow.conversations.get(UUID(conversation_id))
+        stored.change_mode(Mode.AWAITING_HUMAN, utcnow())
+        await uow.conversations.update(stored)
+        await uow.commit()
+    before = await _events_of(uow_factory, conversation_id)
+    response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/stop", headers=headers)
+    assert (response.status_code, response.json()["mode"]) == (200, "awaiting_human")
+    assert await _events_of(uow_factory, conversation_id) == before
+
+
+async def test_stop_needs_the_conversations_token_and_an_allowed_origin(client, binding, django):
+    conversation_id, headers = await _create(client, binding)
+    _, other_headers = await _create(client, binding)
+    await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "hi"}, headers=headers)
+    url = f"/chat/public/v1/conversations/{conversation_id}/stop"
+    refusals = {
+        "no token": (await client.post(url, headers={"Origin": ORIGIN}), 401, "invalid_token"),
+        "another conversation's token": (await client.post(url, headers=other_headers), 404, "not_found"),
+        "another origin": (await client.post(url, headers={**headers, "Origin": "https://evil.example"}), 403, "origin_not_allowed"),
+    }
+    for name, (response, status, code) in refusals.items():
+        assert (response.status_code, response.json()["code"]) == (status, code), name
+    assert django.stopped == []
+    assert (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)).json()["state"] == "processing"
