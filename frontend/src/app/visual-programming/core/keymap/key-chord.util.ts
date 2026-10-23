@@ -39,11 +39,19 @@ const MODIFIER_TOKENS: ReadonlySet<string> = new Set(['Mod', 'Ctrl', 'Alt', 'Shi
 
 const WELL_FORMED_CHORD = /^(?:Mod\+)?(?:Ctrl\+)?(?:Alt\+)?(?:Shift\+)?([A-Z][A-Za-z0-9]*)$/;
 
+const LETTER_CODE = /^Key[A-Z]$/;
+
 const LETTER_OR_DIGIT_CODE = /^(?:Key[A-Z]|Digit[0-9])$/;
 
 const MAC_MODIFIER_LABELS: Readonly<Record<string, string>> = { Mod: '⌘', Ctrl: '⌃', Alt: '⌥', Shift: '⇧' };
 
 const MODIFIER_LABELS: Readonly<Record<string, string>> = { Mod: 'Ctrl', Ctrl: 'Ctrl', Alt: 'Alt', Shift: 'Shift' };
+
+// Some layouts print punctuation on a US letter key (AZERTY has "," where US has M). Only there is the printed
+// character used; elsewhere the physical key wins, so a Russian "." on the US "/" key still means Slash.
+const PUNCTUATION_ON_LETTER_KEYS: Readonly<Record<string, string>> = { ',': 'Comma', '.': 'Period' };
+
+const MAC_KEY_LABELS: Readonly<Record<string, string>> = { Enter: '↩' };
 
 const KEY_LABELS: Readonly<Record<string, string>> = {
     Slash: '/',
@@ -90,13 +98,20 @@ export function mainKeyFromEvent(event: Pick<KeyboardEvent, 'key' | 'code'>): st
     if (event.key === '/') {
         return 'Slash';
     }
+    const punctuationCode = PUNCTUATION_ON_LETTER_KEYS[event.key];
+    if (punctuationCode && LETTER_CODE.test(event.code)) {
+        return punctuationCode;
+    }
+    if (event.key === 'Enter') {
+        return 'Enter';
+    }
     return event.code;
 }
 
 export function formatChord(chord: KeyChord, isMac: boolean): string[] {
     const parts = chord.split('+');
     const code = parts.pop() ?? '';
-    return [...formatKeyLabels(parts, isMac), keyLabel(code)];
+    return [...formatKeyLabels(parts, isMac), keyLabel(code, isMac)];
 }
 
 export function formatKeyLabels(keys: readonly string[], isMac: boolean): string[] {
@@ -133,7 +148,10 @@ export function checkUserChord(chord: KeyChord): ChordRejection | null {
     return null;
 }
 
-function keyLabel(code: string): string {
+function keyLabel(code: string, isMac: boolean): string {
+    if (isMac && MAC_KEY_LABELS[code]) {
+        return MAC_KEY_LABELS[code];
+    }
     if (KEY_LABELS[code]) {
         return KEY_LABELS[code];
     }

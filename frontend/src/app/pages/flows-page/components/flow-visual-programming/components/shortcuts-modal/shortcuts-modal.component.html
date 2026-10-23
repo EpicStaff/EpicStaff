@@ -79,9 +79,9 @@
 
                             <div class="shortcuts__card-body">
                                 @for (row of section.rows; track row.id; let i = $index) {
-                                    @if (row.id === editedNodeId()) {
+                                    @if (row.id === editedKeyActionId()) {
                                         <app-shortcut-editor
-                                            [nodeAction]="row.id"
+                                            [keyAction]="row.id"
                                             [flows]="flows()"
                                             [currentFlowId]="currentFlowId()"
                                             (closed)="closeEditor()"
@@ -175,7 +175,7 @@
                                                             class="shortcuts__reset-key"
                                                             matTooltip="Reset"
                                                             [attr.aria-label]="'Reset ' + row.label + ' key'"
-                                                            (click)="resetNodeKey(row.id)"
+                                                            (click)="resetKey(row.id)"
                                                         >
                                                             <app-svg-icon
                                                                 icon="arrow-back-up"
@@ -184,10 +184,10 @@
                                                         </button>
                                                     }
                                                     <app-edit-button
-                                                        #nodeEdit
+                                                        #keyEdit
                                                         tooltip="Edit"
                                                         [ariaLabel]="'Edit ' + row.label + ' key'"
-                                                        (triggered)="startEditingNodeKey(row.id)"
+                                                        (triggered)="startEditingKey(row.id)"
                                                     />
                                                 </div>
                                             }

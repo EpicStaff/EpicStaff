@@ -45,11 +45,11 @@ import {
     ICurrentSelection,
 } from '@foblex/flow';
 import { AppSvgIconComponent, AuthorshipDetailsSource } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, NodeType, ResourceCode, ShortcutParams } from '@shared/models';
+import { NodeType, ShortcutParams } from '@shared/models';
 import { fromEvent, Subject } from 'rxjs';
 
 import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent, DomainDialogData } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
@@ -64,6 +64,7 @@ import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classificatio
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
+import { FLOW_ACTION_PERMISSIONS } from '../core/constants/flow-action-permissions';
 import { HideOverflowingChildrenDirective } from '../core/directives/hide-overflowing-children.directive';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
@@ -162,7 +163,6 @@ const CANVAS_PAN_FAST_STEP_PX = 200;
         FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
         MatTooltipModule,
-        HasPermissionDirective,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -206,6 +206,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @ViewChild(NodesSearchComponent) private nodesSearchComponent?: NodesSearchComponent;
     private readonly shortcutsAnchor = viewChild.required<ElementRef<HTMLElement>>('shortcutsAnchor');
     private readonly flowHost = viewChild.required('flowHost', { read: ElementRef<HTMLElement> });
+    private readonly filesButton = viewChild(FlowFilesButtonComponent);
+    private readonly exportImportButton = viewChild(FlowExportImportButtonComponent);
 
     public closeNodesSearch(): void {
         this.nodesSearchComponent?.closeSearch();
@@ -224,6 +226,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private lastPointer: IPoint | null = null;
     protected isLoaded = signal(false);
     protected showContextMenu = signal(false);
+    /** The node menu is open; keys outside the canvas should leave the flow alone meanwhile. */
+    public readonly isNodeMenuOpen = this.showContextMenu.asReadonly();
     private readonly arrangeAnimator = inject(FlowArrangeAnimatorService);
     protected readonly hasUnarrangedChanges = this.arrangeAnimator.hasUnarrangedChanges;
     protected readonly isArranging = this.arrangeAnimator.isArranging;
@@ -236,6 +240,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     /** Gates every Foblex gesture that edits the graph (move, resize, rotate, connect, reassign, waypoints). */
     readonly editGestureTrigger = (): boolean => !this.flowReadOnly.isReadOnly();
+
+    protected readonly canReadFiles = computed(() => this.permissions.meets(FLOW_ACTION_PERMISSIONS.files));
 
     protected readonly isAutoArrangeDisabled = computed(
         () =>
@@ -329,6 +335,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly injector = inject(Injector);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
     private readonly keymap = inject(KeymapService);
+    private readonly permissions = inject(PermissionsService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly ngZone = inject(NgZone);
 
@@ -386,6 +393,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
         this.keymap.register('node.subgraph', (_event, { params }) => this.onSubgraphShortcut(params), options);
+        this.registerToolbarShortcuts();
         for (const action of EDITOR_ACTIONS) {
             if ('pan' in action) {
                 const pan = action.pan;
@@ -396,6 +404,56 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 });
             }
         }
+    }
+
+    // Each key does what its toolbar button does. Where the button is not shown (read-only, preview, permissions)
+    // the key says why, as node keys do. The keymap already keeps these keys away from text fields and dialogs.
+    private registerToolbarShortcuts(): void {
+        // The node menu's backdrop takes any click on the toolbar while it is open.
+        const options = { destroyRef: this.destroyRef, when: () => !this.showContextMenu() };
+        this.keymap.register('flow.auto-arrange', () => this.onAutoArrangeShortcut(), options);
+        this.keymap.register('flow.add-files', () => this.onAddFilesShortcut(), options);
+        this.keymap.register('flow.export-import', () => this.onExportImportShortcut(), options);
+        this.keymap.register('flow.extract-subflow', () => this.onExtractToSubflowShortcut(), options);
+        this.keymap.register('flow.settings', () => this.openSettings(), options);
+        this.keymap.register('flow.domain', () => this.onDomainClick(), options);
+    }
+
+    private onAutoArrangeShortcut(): void {
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        if (!this.isAutoArrangeDisabled()) {
+            this.onAutoArrange();
+        }
+    }
+
+    // Without Files:Read or a flow id there is no files button, but the flow is not read-only: nothing to say.
+    private onAddFilesShortcut(): void {
+        if (this.isPreview) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        this.filesButton()?.openDialog();
+    }
+
+    // The menu is not there in a version preview, and empty without Flows:Export and Flows:Update.
+    private onExportImportShortcut(): void {
+        const menu = this.exportImportButton();
+        if (!menu?.canUseMenu()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        menu.toggleMenuFromKeyboard();
+    }
+
+    private onExtractToSubflowShortcut(): void {
+        if (this.isPreview) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        this.onExtractToSubflow();
     }
 
     private isCanvasKeyTarget(target: EventTarget | null): boolean {
@@ -1491,7 +1549,4 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         });
     }
-
-    protected readonly ResourceCode = ResourceCode;
-    protected readonly ActionCode = ActionCode;
 }

@@ -2,11 +2,15 @@
     type="button"
     class="flow-shortcuts-btn"
     [class.flow-shortcuts-btn--active]="active()"
+    [attr.aria-label]="ariaLabel()"
     matTooltip="Keyboard shortcuts"
     matTooltipPosition="right"
     (click)="clicked.emit()"
 >
-    <span class="flow-shortcuts-btn__icon">
+    <span
+        class="flow-shortcuts-btn__icon"
+        [style.translate]="'0 ' + iconOffsetY()"
+    >
         <app-svg-icon
             [icon]="icon()"
             [size]="iconSize()"

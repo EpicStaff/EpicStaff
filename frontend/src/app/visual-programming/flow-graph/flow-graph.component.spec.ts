@@ -30,7 +30,7 @@ import { EMPTY, of } from 'rxjs';
 
 import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
 import { USE_PERMISSION_REQUIRED_TITLE } from '../../features/flows/services/flow-use-permission-refusal.service';
-import { PermissionsService } from '../../services/auth/permissions.service';
+import { PermissionRequirement, PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
 import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classification-decision-table-node-panel/cdt.constants';
@@ -144,6 +144,8 @@ function mount(
                 useValue: {
                     can: (_resource: unknown, action: ActionCode) =>
                         action === ActionCode.Use ? canRunFlows : canUpdateFlows,
+                    meets: (requirement: PermissionRequirement) =>
+                        requirement.anyOf.some((action) => (action === ActionCode.Use ? canRunFlows : canUpdateFlows)),
                 },
             },
             { provide: Dialog, useValue: { open: vi.fn(), openDialogs: [] } },
