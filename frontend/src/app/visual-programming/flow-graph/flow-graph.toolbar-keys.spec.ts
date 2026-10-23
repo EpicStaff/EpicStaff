@@ -240,6 +240,16 @@ describe('FlowGraphComponent canvas toolbar keys', () => {
             expect(exportMenuItems()).toEqual([]);
         });
 
+        it('Alt+X does nothing while the toolbar hides the Export / Import button for lack of room', () => {
+            mount();
+            host().querySelector<HTMLElement>('app-flow-export-import-button')!.style.display = 'none';
+
+            press(EXPORT_IMPORT);
+            TestBed.tick();
+
+            expect(exportMenuItems()).toEqual([]);
+        });
+
         it('moves through the Export / Import menu with the arrow keys, wrapping at both ends, and Home / End', () => {
             mount();
             press(EXPORT_IMPORT);

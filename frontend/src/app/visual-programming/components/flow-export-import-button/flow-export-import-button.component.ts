@@ -48,6 +48,7 @@ export class FlowExportImportButtonComponent {
     private readonly permissions = inject(PermissionsService);
     private readonly injector = inject(Injector);
     private readonly focusMonitor = inject(FocusMonitor);
+    private readonly host: HTMLElement = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
     @HostListener('mousedown', ['$event'])
     onMouseDown(event: MouseEvent): void {
@@ -60,6 +61,9 @@ export class FlowExportImportButtonComponent {
             this.close();
             return;
         }
+        // The toolbar hides this button when it runs out of room (the node side panel is open); a menu anchored
+        // to a hidden button would open in the corner of the screen, so the key does nothing until it is back.
+        if (getComputedStyle(this.host).display === 'none') return;
         this.isOpen.set(true);
         // Focus set by code, not by the user's Tab: the item's tooltip opens only on keyboard focus, and an open
         // tooltip would take the first Esc that should close this menu and reach the editor.
