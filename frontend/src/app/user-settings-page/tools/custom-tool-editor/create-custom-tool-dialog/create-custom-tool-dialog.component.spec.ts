@@ -31,7 +31,6 @@ const STORED_TOOL: GetPythonCodeToolRequest = {
         id: 70,
         code: 'def main():\n    return 1\n',
         entrypoint: 'main',
-        libraries: [],
         secrets: [],
         execution_timeout: 300,
     },

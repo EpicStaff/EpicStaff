@@ -32,7 +32,7 @@ def _telegram_registration_mocked(mock_telegram_service):
 
 
 def _python_code():
-    return PythonCode.objects.create(code="def main(): ...", entrypoint="main", libraries="")
+    return PythonCode.objects.create(code="def main(): ...", entrypoint="main")
 
 
 def _python_node(graph, node_name, node_number):

@@ -254,7 +254,7 @@ class TestWebhookAndGraphCrossOrg:
         wt = WebhookTrigger.objects.create(path="shared-path", org=default_org)
         graph = Graph.objects.create(name="src flow", org=default_org)
         code = PythonCode.objects.create(
-            code="def main(): ...", entrypoint="main", libraries=""
+            code="def main(): ...", entrypoint="main"
         )
         WebhookTriggerNode.objects.create(
             graph=graph, node_name="wt", webhook_trigger=wt, python_code=code

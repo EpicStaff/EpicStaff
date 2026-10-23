@@ -1,19 +1,31 @@
+"""Doubles shared by the RunPythonCodeService tests.
+
+crew submits an execution to sandbox_new over HTTP and reads the result back from
+its own Redis channel, so the harness is split the same way: a real SandboxClient
+over an httpx MockTransport records the JSON body crew actually submits, and an
+in-memory pub/sub carries the sandbox's result back to the one subscription
+`subscribe_to_results` makes.
+"""
+
 import asyncio
 import json
 from collections import defaultdict
+from typing import Any
 
+import httpx
 import pytest
 import pytest_asyncio
 
 import settings
+from clients.sandbox import SandboxClient
 from services.redis_service import AsyncPubsubSubscriber
 from services.run_python_code_service import RunPythonCodeService
-from src.shared.models import CodeResultData
+from src.shared.models import CodeResultData, PythonCodeData
 from utils.singleton_meta import SingletonMeta
 
-CODE_EXEC_CHANNEL = "code_exec_tasks"
 SHARED_RESULT_CHANNEL = "code_results"
 CREW_RESULT_CHANNEL = "code_results:crew"
+SANDBOX_BASE_URL = "http://sandbox:8000"
 
 
 class InMemoryPubSub:
@@ -33,19 +45,34 @@ class InMemoryPubSub:
 
 
 class FakeSandbox:
-    """Plays the sandbox: records every task crew publishes and answers on
-    crew's result channel, either at once (`auto_reply`) or when told to."""
+    """Plays sandbox_new's intake: records the body of every execution crew submits
+    over HTTP and answers on crew's result channel, either at once (`auto_reply`)
+    or when told to.
+
+    Setting `rejects_with` makes every submit answer 400 with that text, the way
+    sandbox_new refuses an execution it will not run.
+    """
 
     def __init__(self, pubsub: InMemoryPubSub):
         self.pubsub = pubsub
         self.tasks: list[dict] = []
         self.auto_reply = False
+        self.rejects_with: str | None = None
 
-    async def on_task(self, message: dict) -> None:
-        task = json.loads(message["data"])
+    async def handle(self, request: httpx.Request) -> httpx.Response:
+        task = json.loads(request.content)
         self.tasks.append(task)
+        if self.rejects_with is not None:
+            return httpx.Response(400, text=self.rejects_with)
         if self.auto_reply:
             await self.reply(task["execution_id"], result_data="ok")
+        return httpx.Response(202, json={"status": "accepted"})
+
+    @property
+    def submitted(self) -> dict[str, Any]:
+        """The one execution submitted so far."""
+        assert len(self.tasks) == 1, f"expected one submitted execution, got {len(self.tasks)}"
+        return self.tasks[0]
 
     async def reply(self, execution_id: str, result_data: str) -> None:
         await self.pubsub.apublish(
@@ -64,7 +91,7 @@ class FakeSandbox:
             if len(self.tasks) >= count:
                 return self.tasks
             await asyncio.sleep(0)
-        raise AssertionError(f"crew published {len(self.tasks)} task(s), expected {count}")
+        raise AssertionError(f"crew submitted {len(self.tasks)} execution(s), expected {count}")
 
 
 @pytest.fixture(autouse=True)
@@ -77,7 +104,6 @@ def _reset_run_python_code_service():
 
 @pytest.fixture
 def code_channels(monkeypatch):
-    monkeypatch.setattr(settings, "CODE_EXEC_CHANNEL", CODE_EXEC_CHANNEL)
     monkeypatch.setattr(settings, "CODE_RESULT_CHUNNEL", SHARED_RESULT_CHANNEL)
 
 
@@ -86,16 +112,45 @@ def pubsub(code_channels) -> InMemoryPubSub:
     return InMemoryPubSub()
 
 
-@pytest_asyncio.fixture
-async def sandbox(pubsub) -> FakeSandbox:
-    fake_sandbox = FakeSandbox(pubsub)
-    await pubsub.asubscribe(CODE_EXEC_CHANNEL, AsyncPubsubSubscriber(fake_sandbox.on_task))
-    return fake_sandbox
+@pytest.fixture
+def sandbox(pubsub) -> FakeSandbox:
+    return FakeSandbox(pubsub)
+
+
+@pytest.fixture
+def sandbox_client(sandbox: FakeSandbox) -> SandboxClient:
+    return SandboxClient(base_url=SANDBOX_BASE_URL, transport=httpx.MockTransport(sandbox.handle))
 
 
 @pytest_asyncio.fixture
-async def run_python_code_service(pubsub) -> RunPythonCodeService:
-    service = RunPythonCodeService(redis_service=pubsub)
+async def run_python_code_service(pubsub, sandbox_client) -> RunPythonCodeService:
+    service = RunPythonCodeService(redis_service=pubsub, sandbox_client=sandbox_client)
     await service.subscribe_to_results()
     return service
 
+
+@pytest.fixture
+def make_python_code_data():
+    def make(**overrides) -> PythonCodeData:
+        defaults = dict(
+            code="def main(**kw): return kw",
+            entrypoint="main",
+            global_kwargs={},
+        )
+        defaults.update(overrides)
+        return PythonCodeData(**defaults)
+
+    return make
+
+
+@pytest.fixture
+def run_code(run_python_code_service, sandbox: FakeSandbox):
+    """Run run_code() and answer the submitted execution with a successful result."""
+
+    async def run(result_data: str = "ok", **run_code_kwargs) -> dict[str, Any]:
+        running = asyncio.ensure_future(run_python_code_service.run_code(**run_code_kwargs))
+        [task] = await sandbox.wait_for_tasks(1)
+        await sandbox.reply(task["execution_id"], result_data=result_data)
+        return await asyncio.wait_for(running, timeout=5)
+
+    return run

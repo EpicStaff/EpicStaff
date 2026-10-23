@@ -68,8 +68,6 @@ function input(overrides: Partial<CdtDecisionTreeInput> = {}): CdtDecisionTreeIn
         postCode: '',
         preInputMap: {},
         postInputMap: {},
-        preLibraries: [],
-        postLibraries: [],
         preOutputVariablePath: null,
         postOutputVariablePath: null,
         prompts: {},

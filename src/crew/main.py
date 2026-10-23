@@ -3,6 +3,7 @@ import gc
 
 import settings
 from clients.key_value import KeyValueClient
+from clients.sandbox import SandboxClient
 from services.agent_task_service import AgentTaskService
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.knowledge_search_service import KnowledgeSearchService
@@ -24,7 +25,13 @@ async def main():
         user=settings.REDIS_USER,
         password=settings.REDIS_PASSWORD,
     )
-    python_code_executor_service = RunPythonCodeService(redis_service=redis_service)
+    sandbox_client = SandboxClient(
+        base_url=f"http://{settings.SANDBOX_HOST}:{settings.SANDBOX_PORT}",
+        timeout=settings.SANDBOX_TIMEOUT,
+    )
+    python_code_executor_service = RunPythonCodeService(
+        redis_service=redis_service, sandbox_client=sandbox_client
+    )
     knowledge_search_service = KnowledgeSearchService(redis_service=redis_service)
     agent_task_service = AgentTaskService(
         redis_service=redis_service,
@@ -77,6 +84,7 @@ async def main():
         logger.error(f"An error occurred: {e}", exc_info=True)
     finally:
         await key_value_client.stop()
+        await sandbox_client.aclose()
         logger.info("Shutting down...")
         # Best-effort drain of whatever's still queued in the audit client.
         # NOTE: this only runs on an exception or KeyboardInterrupt (Ctrl+C) -
