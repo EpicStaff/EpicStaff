@@ -423,19 +423,21 @@ async def test_an_action_on_a_non_user_message_is_refused(uow_factory, role):
 async def test_history_includes_the_action_only_when_the_message_has_one(uow_factory):
     conversation = await _stored_conversation(uow_factory)
     async with uow_factory() as uow:
-        await uow.messages.add(_message(conversation, Role.USER, "", action={"type": "button", "id": "yes"}))
+        action = {"type": "table", "action": "save", "text": "Save", "params": {"row": 3}, "tables": [{"rows": [["x"] * 50]}]}
+        await uow.messages.add(_message(conversation, Role.USER, "", action=action))
         await uow.messages.add(_message(conversation, Role.ASSISTANT, "ok"))
         await uow.messages.add(_message(conversation, Role.USER, "plain"))
         await uow.commit()
     async with uow_factory() as uow:
         history = await uow.messages.history(conversation.id, window=10)
         (first, *_) = await uow.messages.page(conversation.id, before=None, limit=10)
+    # Only which action and what it said: its tables and params went to its own run, not to every later one.
     assert history == [
-        {"role": "user", "content": "", "action": {"type": "button", "id": "yes"}},
+        {"role": "user", "content": "", "action": {"type": "table", "action": "save", "text": "Save"}},
         {"role": "assistant", "content": "ok"},
         {"role": "user", "content": "plain"},
     ]
-    assert first.action == {"type": "button", "id": "yes"}
+    assert first.action == action
 
 
 async def test_conversation_extra_data_and_is_signed_round_trip(uow_factory):
