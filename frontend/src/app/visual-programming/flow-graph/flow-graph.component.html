@@ -275,10 +275,10 @@
 
                 <app-flow-shortcuts-button
                     icon="multi-select"
-                    label="⇧"
-                    ariaLabel="Multi-select"
-                    iconSize="14px"
+                    iconOffsetY="-2px"
+                    label="Shift"
                     [textEnd]="true"
+                    ariaLabel="Multi-select"
                     [active]="selectionManager.multiSelectActive()"
                     matTooltip="Multi-select"
                     matTooltipPosition="right"
@@ -289,8 +289,10 @@
                     #shortcutsAnchor
                     #shortcutsButton
                 >
-                    <app-flow-shortcuts-button (clicked)="onOpenShortcuts(shortcutsAnchor)">
-                    </app-flow-shortcuts-button>
+                    <app-flow-shortcuts-button
+                        [textEnd]="true"
+                        (clicked)="onOpenShortcuts(shortcutsAnchor)"
+                    ></app-flow-shortcuts-button>
                 </div>
             </div>
 

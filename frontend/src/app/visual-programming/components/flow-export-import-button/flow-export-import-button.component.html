@@ -43,7 +43,10 @@
         (detach)="close()"
     >
         <!-- Esc closes this menu and goes on to the editor in the same press, unlike the node menu, which keeps it. -->
-        <div class="action-dropdown-panel__inner">
+        <div
+            class="action-dropdown-panel__inner"
+            (keydown)="onMenuKeydown($event)"
+        >
             @if (selectedCount() > 0) {
                 <button
                     #menuItem

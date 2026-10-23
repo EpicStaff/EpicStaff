@@ -240,6 +240,29 @@ describe('FlowGraphComponent canvas toolbar keys', () => {
             expect(exportMenuItems()).toEqual([]);
         });
 
+        it('moves through the Export / Import menu with the arrow keys, wrapping at both ends, and Home / End', () => {
+            mount();
+            press(EXPORT_IMPORT);
+            TestBed.tick();
+            const [exportAll, importItem] = exportMenuItems();
+
+            const down = press({ code: 'ArrowDown', key: 'ArrowDown' }, document.activeElement!);
+            expect(document.activeElement).toBe(importItem);
+            expect(down.defaultPrevented).toBe(true);
+
+            press({ code: 'ArrowDown', key: 'ArrowDown' }, document.activeElement!);
+            expect(document.activeElement).toBe(exportAll);
+
+            press({ code: 'ArrowUp', key: 'ArrowUp' }, document.activeElement!);
+            expect(document.activeElement).toBe(importItem);
+
+            press({ code: 'Home', key: 'Home' }, document.activeElement!);
+            expect(document.activeElement).toBe(exportAll);
+
+            press({ code: 'End', key: 'End' }, document.activeElement!);
+            expect(document.activeElement).toBe(importItem);
+        });
+
         // A real key press starts at the focused element, so Angular CDK sees it and treats the focus that follows
         // as keyboard focus; the menu items have tooltips, which show on keyboard focus.
         it.each([
@@ -459,13 +482,15 @@ describe('FlowGraphComponent canvas toolbar keys', () => {
         it.each([
             ['Windows', false],
             ['a Mac', true],
-        ])('shows the Shift symbol on %s, as the word does not fit the button', (_platform, isMac) => {
+        ])('shows "Shift" in the bottom-right corner on %s', (_platform, isMac) => {
             mount({ isMac });
 
             const multiSelect = host().querySelector('app-flow-shortcuts-button[icon="multi-select"]')!;
+            const hint = multiSelect.querySelector('.flow-shortcuts-btn__text')!;
 
-            expect(multiSelect.querySelector('.flow-shortcuts-btn__text')?.textContent?.trim()).toBe('⇧');
-            // Read out as "Multi-select", not as the arrow symbol.
+            expect(hint.textContent?.trim()).toBe('Shift');
+            expect(hint.classList).toContain('flow-shortcuts-btn__text--end');
+            // Read out as "Multi-select", not as the key name.
             expect(multiSelect.querySelector('button')?.getAttribute('aria-label')).toBe('Multi-select');
         });
     });

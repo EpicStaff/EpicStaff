@@ -72,6 +72,16 @@ export class FlowExportImportButtonComponent {
         );
     }
 
+    /** Arrow keys move between the items, Home and End jump to the ends; Enter clicks the focused item button. */
+    protected onMenuKeydown(event: KeyboardEvent): void {
+        const items = this.menuItems().map((item) => item.nativeElement);
+        const current = items.indexOf(event.target as HTMLButtonElement);
+        const next = nextMenuItemIndex(event.key, current, items.length);
+        if (next === null) return;
+        event.preventDefault();
+        this.focusMonitor.focusVia(items[next], 'program');
+    }
+
     protected toggle(event: Event): void {
         event.stopPropagation();
         this.isOpen.update((v) => !v);
@@ -108,4 +118,20 @@ export class FlowExportImportButtonComponent {
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
+}
+
+function nextMenuItemIndex(key: string, current: number, count: number): number | null {
+    if (count === 0) return null;
+    switch (key) {
+        case 'ArrowDown':
+            return (current + 1) % count;
+        case 'ArrowUp':
+            return (current - 1 + count) % count;
+        case 'Home':
+            return 0;
+        case 'End':
+            return count - 1;
+        default:
+            return null;
+    }
 }
