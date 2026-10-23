@@ -137,9 +137,10 @@ describe('ScheduleTriggerNodePanelComponent with a node just dropped on the canv
                 { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
             ],
         });
+        TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
+        // After the component override: granting permissions instantiates the test module.
         // Without Flows:Use a trigger node is read-only and the panel disables its whole form.
         grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
-        TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
         const node = TestBed.inject(NodeFactoryService).createNode(
             NodeType.SCHEDULE_TRIGGER
         ) as ScheduleTriggerNodeModel;
