@@ -22,6 +22,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { KeyValueTablesPageComponent } from '../../../key-value-tables/pages/key-value-tables-page/key-value-tables-page.component';
 import { CreateCollectionDialogComponent } from '../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
+import { canImportStorageToKnowledge } from '../../../knowledge-sources/helpers/storage-import.util';
 import { CollectionsListPageComponent } from '../../../knowledge-sources/pages/collections-list-page/collections-list-page.component';
 import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
 import {
@@ -79,7 +80,7 @@ export class FilesListPageComponent {
     private readonly collectionsStorageService = inject(CollectionsStorageService);
     private readonly toastService = inject(ToastService);
     private readonly permissionService = inject(PermissionsService);
-    protected readonly storageDrag = inject(StorageDragService);
+    private readonly storageDrag = inject(StorageDragService);
     readonly filesSearchService = inject(FilesSearchService);
 
     readonly tabs: FilesTabConfig[] = [
@@ -129,6 +130,18 @@ export class FilesListPageComponent {
         computation: ({ isActive, isDragging }, previous) => isActive || (isDragging && (previous?.value ?? false)),
     });
 
+    /**
+     * The tab a live storage drag highlights and spring-loads: Knowledge Sources, the only other tab
+     * with drop targets (its collections), and only for users those targets accept. `null` otherwise.
+     */
+    protected readonly storageDropTab = computed<FilesTab | null>(() =>
+        this.storageDrag.isDragging() &&
+        !this.isKnowledgeSourcesActive() &&
+        canImportStorageToKnowledge(this.permissionService)
+            ? FILES_TAB.KnowledgeSources
+            : null
+    );
+
     protected readonly tabSpringLoadDelay = TAB_SPRING_LOAD_DELAY_MS;
 
     /** The one search box means something different on each tab, so a term never carries over a tab switch. */
@@ -161,9 +174,9 @@ export class FilesListPageComponent {
         return;
     });
 
-    /** Spring-loaded tab: a storage drag resting on another tab opens it. */
+    /** Spring-loaded tab: a storage drag resting on the drop tab opens it. */
     onTabDragHover(tab: FilesTabConfig): void {
-        if (!this.storageDrag.isDragging() || !tab.isPermitted() || this.activeTab() === tab.link) return;
+        if (tab.link !== this.storageDropTab()) return;
         void this.router.navigate([tab.link], { relativeTo: this.route });
     }
 

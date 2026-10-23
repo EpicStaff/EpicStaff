@@ -7,6 +7,7 @@ import { Component, inject, OnDestroy } from '@angular/core';
 import { ComponentFixture, DeferBlockBehavior, DeferBlockState, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
@@ -48,6 +49,8 @@ describe('FilesListPageComponent', () => {
     let storageDrag: StorageDragService;
     let canReadKnowledge: boolean;
     let canAll: boolean;
+    /** False gives the built-in Viewer and Member roles: everything readable, no knowledge-source create. */
+    let canCreateKnowledge: boolean;
 
     function fixture(): ComponentFixture<unknown> {
         return harness.fixture;
@@ -91,6 +94,7 @@ describe('FilesListPageComponent', () => {
         lifecycle.deepLinkPath = null;
         canReadKnowledge = true;
         canAll = true;
+        canCreateKnowledge = true;
         // jsdom has no ResizeObserver; the header's overflow directives need one.
         vi.stubGlobal(
             'ResizeObserver',
@@ -125,7 +129,13 @@ describe('FilesListPageComponent', () => {
                 { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
                 {
                     provide: PermissionsService,
-                    useValue: { can: () => canAll },
+                    useValue: {
+                        can: (resource: ResourceCode, action: ActionCode) =>
+                            canAll &&
+                            (canCreateKnowledge ||
+                                resource !== ResourceCode.KnowledgeSources ||
+                                action !== ActionCode.Create),
+                    },
                 },
             ],
         });
@@ -315,6 +325,14 @@ describe('FilesListPageComponent', () => {
             await waitForSpringLoad();
         }
 
+        /** The tabs showing the "you can drop here" haze. */
+        function highlightedTabs(): (string | null)[] {
+            const highlighted = (fixture().nativeElement as HTMLElement).querySelectorAll(
+                'app-tab-button.tab-drop-available'
+            );
+            return Array.from(highlighted, (element) => element.getAttribute('data-tab'));
+        }
+
         it('opens Knowledge Sources when a storage drag rests on its tab', async () => {
             await navigate('/storage/files');
             storageDrag.start(file);
@@ -365,6 +383,53 @@ describe('FilesListPageComponent', () => {
 
             expect(TestBed.inject(Router).url).toBe('/storage/files');
             expect(query('.storage-stub')).not.toBeNull();
+        });
+
+        it('highlights only the Knowledge Sources tab, and only while the storage drag is live', async () => {
+            await navigate('/storage/files');
+            storageDrag.start(file);
+            await settle();
+
+            expect(highlightedTabs()).toEqual(['knowledge-sources']);
+
+            storageDrag.end();
+            await settle();
+
+            expect(highlightedTabs()).toEqual([]);
+        });
+
+        it.each([
+            { tabLink: 'key-value-tables', openUrl: '/storage/files' },
+            { tabLink: 'files', openUrl: '/storage/knowledge-sources' },
+        ])('neither highlights, rings nor opens the $tabLink tab from $openUrl', async ({ tabLink, openUrl }) => {
+            await navigate('/storage/files');
+            storageDrag.start(file);
+            await navigate(openUrl);
+
+            expect(highlightedTabs()).not.toContain(tabLink);
+            tab(tabLink).dispatchEvent(new Event('dragenter', { bubbles: true }));
+            fixture().detectChanges();
+            expect(tab(tabLink).classList).not.toContain('tab-spring-loading');
+            await waitForSpringLoad();
+
+            expect(TestBed.inject(Router).url).toBe(openUrl);
+        });
+
+        it('offers no tab to a user who may not import into knowledge sources (Viewer, Member)', async () => {
+            await navigate('/storage/files');
+            // Only now, after the page was built: a permission read once at construction would miss it.
+            canCreateKnowledge = false;
+            storageDrag.start(file);
+            await settle();
+
+            expect(highlightedTabs()).toEqual([]);
+            tab('knowledge-sources').dispatchEvent(new Event('dragenter', { bubbles: true }));
+            fixture().detectChanges();
+            expect(tab('knowledge-sources').classList).not.toContain('tab-spring-loading');
+            await waitForSpringLoad();
+            await restOnTab('key-value-tables');
+
+            expect(TestBed.inject(Router).url).toBe('/storage/files');
         });
     });
 });

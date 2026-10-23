@@ -39,8 +39,8 @@
                             [active]="rla.isActive"
                             [attr.data-tab]="tab.link"
                             [dragHoverDelay]="tabSpringLoadDelay"
-                            [dragHoverDisabled]="!storageDrag.isDragging() || rla.isActive"
-                            [class.tab-drop-available]="storageDrag.isDragging() && !rla.isActive"
+                            [dragHoverDisabled]="tab.link !== storageDropTab()"
+                            [class.tab-drop-available]="tab.link === storageDropTab()"
                             [class.tab-spring-loading]="springLoad.isHovering()"
                             (dragHover)="onTabDragHover(tab)"
                         >
