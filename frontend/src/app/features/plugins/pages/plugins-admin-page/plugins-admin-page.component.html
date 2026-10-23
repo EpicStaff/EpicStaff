@@ -1,0 +1,137 @@
+<div class="toolbar">
+    <span class="count-label">{{ countLabel() }}</span>
+    <div class="toolbar-actions">
+        <app-button
+            type="primary"
+            leftIcon="upload"
+            (click)="upload()"
+        >
+            Upload plugin
+        </app-button>
+    </div>
+</div>
+
+<app-table
+    class="plugins-table"
+    [columns]="columns"
+    [data]="rows()"
+    rowId="id"
+    (rowClick)="openPlugin($event)"
+>
+    <ng-template
+        appTableCell="icon"
+        let-row
+    >
+        @if (pluginOf(row); as plugin) {
+            <app-plugin-icon
+                [src]="plugin.icon_url"
+                size="24px"
+            />
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="name"
+        let-row
+    >
+        @if (pluginOf(row); as plugin) {
+            <span class="cell-text cell-text--strong">{{ plugin.name }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="identifier"
+        let-row
+    >
+        @if (pluginOf(row); as plugin) {
+            <code class="cell-text">{{ plugin.identifier }}</code>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="version"
+        let-row
+    >
+        @if (pluginOf(row); as plugin) {
+            <span class="cell-text">{{ plugin.current_version ?? '—' }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="state"
+        let-row
+    >
+        @if (pluginOf(row); as plugin) {
+            <div class="state-badges">
+                <app-plugin-badge
+                    [label]="stateLabel(plugin)"
+                    [tone]="stateTone(plugin)"
+                />
+                @if (upgradeBadge(plugin); as upgrade) {
+                    <app-plugin-badge
+                        class="upgrade-state"
+                        [label]="upgrade.label"
+                        [tone]="upgrade.tone"
+                    />
+                }
+                @if (plugin.development) {
+                    <app-plugin-badge
+                        class="development"
+                        label="Development"
+                        tone="warning"
+                    />
+                }
+                @if (plugin.needs_attention) {
+                    <app-plugin-badge
+                        class="needs-attention"
+                        label="Needs attention"
+                        tone="danger"
+                    />
+                }
+            </div>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="trust"
+        let-row
+    >
+        @if (pluginOf(row); as plugin) {
+            <app-plugin-badge
+                [label]="trustLabel(plugin)"
+                [tone]="trustTone(plugin)"
+            />
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="grants"
+        let-row
+    >
+        @if (pluginOf(row); as plugin) {
+            <span class="cell-text">{{ plugin.grant_count }}</span>
+        }
+    </ng-template>
+    <ng-template
+        appTableCell="pending"
+        let-row
+    >
+        @if (pluginOf(row); as plugin) {
+            @if (plugin.pending_package; as pending) {
+                <app-button
+                    type="outline-primary"
+                    mod="small"
+                    [ariaLabel]="reviewLabel(plugin, pending)"
+                    (click)="reviewPending(plugin, $event)"
+                >
+                    Review {{ pending.version }}
+                </app-button>
+            } @else {
+                <span class="cell-text cell-text--muted">—</span>
+            }
+        }
+    </ng-template>
+
+    <div tableEmpty>
+        @if (isLoading()) {
+            <app-loading-spinner size="sm" />
+        } @else {
+            <h4 class="empty-title">No plugins yet</h4>
+            <p class="empty-subtitle">Upload a plugin package to review and install it.</p>
+        }
+    </div>
+</app-table>

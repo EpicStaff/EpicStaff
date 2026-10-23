@@ -24,7 +24,7 @@ class SessionPrincipalExportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SessionPrincipal
-        fields = ["kind", "user", "api_key", "api_key_name", "email"]
+        fields = ["kind", "user", "api_key", "api_key_name", "email", "plugin_identifier"]
 
 
 class SessionExportSerializer(serializers.ModelSerializer):

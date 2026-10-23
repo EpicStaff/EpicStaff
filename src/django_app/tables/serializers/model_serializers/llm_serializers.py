@@ -30,6 +30,10 @@ from tables.validators.token_price_validator import validate_token_prices_set_to
 
 from ..utils.llm_config_data_validation import LLMConfigDataFieldsValidationMixin
 from ..utils.mixins import TagHandlingMixin
+from ..utils.secret_destination_guard_mixin import (
+    LLM_MODEL_ENDPOINT_FIELDS,
+    SecretDestinationGuardMixin,
+)
 from ..utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 
 
@@ -174,8 +178,13 @@ class LLMConfigSerializer(
 
 
 class LLMModelSerializer(
-    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
+    AuthorSummarySerializerMixin,
+    SecretDestinationGuardMixin,
+    TagHandlingMixin,
+    serializers.ModelSerializer,
 ):
+    secret_destination_fields = LLM_MODEL_ENDPOINT_FIELDS
+
     capabilities = LLMModelTagSerializer(source="tags", many=True, required=False)
     tag_model = LLMModelTag
     supports_reasoning = serializers.SerializerMethodField()

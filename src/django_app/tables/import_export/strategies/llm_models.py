@@ -24,6 +24,14 @@ from tables.models import (
     RealtimeModel,
     RealtimeTranscriptionModel,
 )
+from tables.serializers.utils.secret_destination_guard_mixin import (
+    EMBEDDING_MODEL_ENDPOINT_FIELDS,
+    LLM_MODEL_ENDPOINT_FIELDS,
+)
+from tables.services.secrets.reference_guard import (
+    pinned_principal_of_user,
+    secret_destination_guard,
+)
 
 
 class BaseProviderModelStrategy(EntityImportExportStrategy):
@@ -31,6 +39,8 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
     serializer_class = None
     tag_entity = None
     provider_field = "provider"
+    # The fields that decide where the model sends requests: never set by a plugin.
+    endpoint_fields: tuple[str, ...] = ()
 
     def get_instance(self, entity_id: int):
         return self.model_class.objects.filter(id=entity_id).first()
@@ -53,6 +63,13 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
         return Q(is_custom=False) | Q(org_id=org_id)
 
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
+        # The organization's configs may come to use an imported model with their own keys.
+        secret_destination_guard.assert_endpoints_untouched(
+            principal=pinned_principal_of_user(kwargs.get("user")),
+            instance=None,
+            values=data,
+            fields=self.endpoint_fields,
+        )
         organization = resolve_import_organization(kwargs.get("org_id"))
         if "name" in data:
             existing_names = self.model_class.objects.filter(org=organization).values_list(
@@ -117,6 +134,7 @@ class LLMModelStrategy(BaseProviderModelStrategy):
     model_class = LLMModel
     serializer_class = LLMModelImportSerializer
     provider_field = "llm_provider"
+    endpoint_fields = LLM_MODEL_ENDPOINT_FIELDS
 
 
 class EmbeddingModelStrategy(BaseProviderModelStrategy):
@@ -125,6 +143,7 @@ class EmbeddingModelStrategy(BaseProviderModelStrategy):
     model_class = EmbeddingModel
     serializer_class = EmbeddingModelImportSerializer
     provider_field = "embedding_provider"
+    endpoint_fields = EMBEDDING_MODEL_ENDPOINT_FIELDS
 
 
 class RealtimeModelStrategy(BaseProviderModelStrategy):

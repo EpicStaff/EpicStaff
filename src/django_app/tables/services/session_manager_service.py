@@ -2,6 +2,7 @@ from dataclasses import replace
 
 from django.db import transaction
 from django.utils import timezone
+from rbac.access.principals import is_pinned_org_principal
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import (
@@ -51,6 +52,13 @@ from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService, secret_names_prefetch
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import (
+    RunAdmissionRefusedError,
+    RunKind,
+    RunSubject,
+    assert_run_admitted,
+    assert_still_admitted,
+)
 from tables.services.secrets import (
     UndeclaredSecretError,
     secret_declaration_validator,
@@ -244,6 +252,25 @@ class SessionManagerService(metaclass=SingletonMeta):
             run_type=run_type,
         )
 
+    def _stop_refused_session(self, session: Session, refusal: RunAdmissionRefusedError) -> None:
+        """End a session that run admission refused after it was created.
+
+        Crew never hears of the session, so nothing else would end it or revoke the
+        storage account issued for it.
+        """
+        now = timezone.now()
+        Session.objects.filter(pk=session.pk).update(
+            status=Session.SessionStatus.STOP,
+            status_data={"reason": str(refusal.detail)},
+            status_updated_at=now,
+            finished_at=now,
+        )
+        from storage_credentials.services.session_credential_service import (
+            session_credential_service,
+        )
+
+        session_credential_service.revoke_for_session(session.pk)
+
     def _mark_session_error(self, session: Session, reason: str) -> None:
         now = timezone.now()
         Session.objects.filter(pk=session.pk).update(
@@ -272,6 +299,11 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         `callback_url` / `callback_secret`: delivered on the terminal status by the
         callback sender; validated by the caller.
+
+        Raises:
+            RunAdmissionRefusedError: The run is refused. Before the session is created,
+                nothing is written; refused again just before the publish, the session
+                is stopped and nothing is published.
         """
         variables = self._get_actual_variables(variables)
         # Keys only: values hold user input and base64-encoded uploads, and the log
@@ -281,6 +313,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         # Nothing on the run path reads the canvas JSON in metadata; org is joined
         # here because issuing session storage credentials reads graph.org.
         graph = Graph.objects.defer("metadata").select_related("org").get(pk=graph_id)
+        # Before anything is written: building the run variables can create
+        # persistent-variable rows.
+        admission = assert_run_admitted(RunSubject(RunKind.FLOW, graph.pk, graph.org_id))
         # The server does not require a start node (the editor only hides its delete
         # button); without one, the run needs an entrypoint from its trigger.
         start_node = StartNode.objects.filter(graph_id=graph_id).first()
@@ -337,6 +372,9 @@ class SessionManagerService(metaclass=SingletonMeta):
             Session.objects.filter(pk=session.pk).update(
                 graph_schema=session_data.graph.model_dump(mode="json"),
             )
+            # Again just before crew hears of the session: a suspension that committed
+            # while it was being built must not reach crew.
+            assert_still_admitted(admission)
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,
@@ -358,6 +396,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
             logger.info("Session data published in Redis for session ID: {}.", session.pk)
 
+        except RunAdmissionRefusedError as refusal:
+            self._stop_refused_session(session=session, refusal=refusal)
+            raise
         except Exception as e:
             msg = f"Error occured running a session: {e}"
             logger.exception(msg)
@@ -777,6 +818,16 @@ class SessionManagerService(metaclass=SingletonMeta):
         )
 
     def _resolve_principal_fields(self, user, api_key) -> dict:
+        # First: a plugin credential is not an ApiKey, so the run view passes
+        # api_key=None and the USER branch would otherwise read a missing email.
+        if is_pinned_org_principal(user):
+            person = user.person
+            return {
+                "kind": SessionPrincipal.ActionKind.PLUGIN,
+                "plugin_identifier": user.plugin_identifier,
+                "user": person,
+                "email": person.email if person is not None else None,
+            }
         if user is None:
             return {"kind": SessionPrincipal.ActionKind.TRIGGER}
         if isinstance(user, SystemServicePrincipal):

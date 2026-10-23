@@ -31,6 +31,10 @@ urlpatterns = [
     path("ht/", include("health_check.urls")),
 ]
 
+# With the plugin platform off, every plugin route is a plain 404.
+if settings.PLUGINS_ENABLED:
+    urlpatterns.append(path("", include("plugins.urls")))
+
 urlpatterns += doc_urls
 
 if settings.DEBUG:

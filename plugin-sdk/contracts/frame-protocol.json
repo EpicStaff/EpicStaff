@@ -1,0 +1,160 @@
+{
+    "protocol": 1,
+    "message_types": [
+        "es:ready",
+        "es:init",
+        "es:error",
+        "nav.changed",
+        "nav.navigate",
+        "theme.changed",
+        "availability.changed"
+    ],
+    "error_codes": ["unsupported_protocol"],
+    "limits": {
+        "max_nav_path_length": 1024,
+        "max_nav_changes_per_minute": 120,
+        "init_timeout_ms": 3000,
+        "max_availability_changes_per_minute": 6
+    },
+    "nav_path_pattern": "^/([A-Za-z0-9\\-._~%]+(/[A-Za-z0-9\\-._~%]+)*)?(\\?[A-Za-z0-9\\-._~%=&+]*)?$",
+    "theme_modes": ["dark", "light"],
+    "availability_states": ["available", "maintenance", "unavailable"],
+    "theme_tokens": [
+        "--es-color-background",
+        "--es-color-surface",
+        "--es-color-surface-raised",
+        "--es-color-sidenav",
+        "--es-color-text",
+        "--es-color-text-secondary",
+        "--es-color-text-tertiary",
+        "--es-color-text-disabled",
+        "--es-color-accent",
+        "--es-color-accent-hover",
+        "--es-color-accent-active",
+        "--es-color-input-background",
+        "--es-color-input-border",
+        "--es-color-input-placeholder",
+        "--es-color-border",
+        "--es-color-divider",
+        "--es-color-divider-subtle",
+        "--es-color-success",
+        "--es-color-warning",
+        "--es-color-error",
+        "--es-focus-ring",
+        "--es-font-family"
+    ],
+    "canonical_vectors": [
+        {
+            "path": "/",
+            "canonical": "/"
+        },
+        {
+            "path": "/forecast",
+            "canonical": "/forecast"
+        },
+        {
+            "path": "/forecast/berlin?days=3&units=metric",
+            "canonical": "/forecast/berlin?days=3&units=metric"
+        },
+        {
+            "path": "/a%7e%2fb?q=a+b",
+            "canonical": "/a~%2Fb?q=a%20b"
+        },
+        {
+            "path": "/caf%C3%A9",
+            "canonical": "/caf%C3%A9"
+        },
+        {
+            "path": "/x%3ay",
+            "canonical": "/x%3Ay"
+        },
+        {
+            "path": "/a%20b/x%2Fy",
+            "canonical": "/a%20b/x%2Fy"
+        },
+        {
+            "path": "/x?flag",
+            "canonical": "/x?flag="
+        },
+        {
+            "path": "/x?",
+            "canonical": "/x"
+        },
+        {
+            "path": "/c?=nameless&a=1",
+            "canonical": "/c?a=1"
+        },
+        {
+            "path": "/c?a=1&b=2&a=3",
+            "canonical": "/c?a=1&a=3&b=2"
+        },
+        {
+            "path": "/c?b=1&10=x&2=y",
+            "canonical": "/c?2=y&10=x&b=1"
+        },
+        {
+            "path": "/c?q=%2B",
+            "canonical": "/c?q=%2B"
+        },
+        {
+            "path": "forecast",
+            "canonical": null
+        },
+        {
+            "path": "",
+            "canonical": null
+        },
+        {
+            "path": "/a//b",
+            "canonical": null
+        },
+        {
+            "path": "/a/",
+            "canonical": null
+        },
+        {
+            "path": "/a/./b",
+            "canonical": null
+        },
+        {
+            "path": "/a/../b",
+            "canonical": null
+        },
+        {
+            "path": "/%2e%2e/admin",
+            "canonical": null
+        },
+        {
+            "path": "/%2E",
+            "canonical": null
+        },
+        {
+            "path": "/a#b",
+            "canonical": null
+        },
+        {
+            "path": "/a%2",
+            "canonical": null
+        },
+        {
+            "path": "/%FF",
+            "canonical": null
+        },
+        {
+            "path": "/a?q=%zz",
+            "canonical": null
+        },
+        {
+            "path": "/a:b",
+            "canonical": null
+        },
+        {
+            "path": "/a?b?c",
+            "canonical": null
+        },
+        {
+            "path": "https://evil.example/",
+            "canonical": null
+        }
+    ]
+}

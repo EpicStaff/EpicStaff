@@ -1,0 +1,85 @@
+@let reviewed = upgrade();
+<section class="upgrade">
+    <h4 class="upgrade__title text-body-bold">{{ fromText() }}</h4>
+    @if (trustChangeText(); as trustChange) {
+        <p class="upgrade__warning text-body">{{ trustChange }}</p>
+    }
+
+    @if (hasGrowth()) {
+        <div class="upgrade__growth">
+            <h5 class="upgrade__growth-title text-body-bold">New access — approve it to upgrade</h5>
+            @if (growthComparedWith(); as comparedWith) {
+                <p class="upgrade__muted text-body-small">{{ comparedWith }}</p>
+            }
+            @if (accessGrowth(); as growth) {
+                @if (growth.access.length > 0) {
+                    <app-plugin-access-table [access]="growth.access" />
+                }
+                @if (growth.outbound_hosts.length > 0) {
+                    <ul class="upgrade__list text-body">
+                        @for (outboundHost of growth.outbound_hosts; track outboundHost.host) {
+                            <li>
+                                Outbound host <code>{{ outboundHost.host }}</code>
+                                <span class="upgrade__muted">{{ outboundHost.reason }}</span>
+                            </li>
+                        }
+                    </ul>
+                }
+                @if (publicPaths().length > 0) {
+                    <ul class="upgrade__list text-body">
+                        @for (publicPath of publicPaths(); track publicPath.path + publicPath.match) {
+                            <li>
+                                {{ publicPath.changeLabel }} public address <code>{{ publicPath.path }}</code>
+                                {{ publicPath.matchLabel }} · {{ publicPath.methodsLabel }} ·
+                                {{ publicPath.rate_limit_per_minute }} a minute · {{ publicPath.max_body_kb }} KB
+                            </li>
+                        }
+                    </ul>
+                }
+                @if (growth.requires_acknowledgement && showAcknowledgement()) {
+                    <label class="upgrade__acknowledge text-body">
+                        <app-checkbox
+                            [checked]="growthAcknowledged()"
+                            [disabled]="disabled()"
+                            (changed)="growthAcknowledged.set($event)"
+                        />
+                        <span>I approve the new access</span>
+                    </label>
+                }
+            }
+        </div>
+    }
+
+    <div class="upgrade__changes">
+        <h5 class="upgrade__growth-title text-body-bold">Changes</h5>
+        @if (changes().length > 0) {
+            <ul class="upgrade__list text-body">
+                @for (line of changes(); track line) {
+                    <li>{{ line }}</li>
+                }
+            </ul>
+        } @else {
+            <p class="upgrade__muted text-body">Nothing else changes.</p>
+        }
+    </div>
+
+    <ul class="upgrade__facts text-body">
+        @if (backupText(); as backup) {
+            <li>{{ backup }}</li>
+        }
+        @if (offlineText(); as offline) {
+            <li>{{ offline }}</li>
+        }
+        @if (keepsRunningText(); as keepsRunning) {
+            <li>{{ keepsRunning }}</li>
+        }
+        @if (notCancellableText(); as notCancellable) {
+            <li class="upgrade__warning">{{ notCancellable }}</li>
+        }
+    </ul>
+    @if (reviewed.has_upgrade_hook) {
+        <p class="upgrade__muted text-body-small">
+            Each organization runs the plugin's upgrade hook once the new version has started.
+        </p>
+    }
+</section>

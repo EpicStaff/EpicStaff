@@ -1,0 +1,370 @@
+"""Every plugin decision is logged with the acting SuperAdmin, like the governance services' actions."""
+
+import hashlib
+
+import jwt
+import pytest
+from plugins.databases.database_records import app_password_of
+from plugins.exceptions import NoPluginDatabaseServerError, UntrustedNotAcknowledgedError
+from plugins.lifecycle.grant_service import PluginGrantService
+from plugins.models import GrantState, PluginDatabase, PluginGrant, PluginHookJob
+from rest_framework.test import APIClient
+
+from src.shared.models.plugin_nodes import HookInvocation
+from tests.plugins_tests.conftest import service_account_client, upload_file
+from tests.plugins_tests.login_helpers import (
+    STATE,
+    WEATHER_ORIGIN,
+    authorize,
+    code_for,
+    exchange,
+    pkce_pair,
+    redirect_parts,
+    session_cookie,
+)
+from tests.plugins_tests.package_builder import backend_manifest, build_package, sample_manifest
+
+pytestmark = pytest.mark.django_db
+
+# utils.logger cuts a message at 200 characters; every line must fit with realistic values.
+MAX_MESSAGE_LENGTH = 200
+
+
+def _lines(messages, prefix):
+    return [message for message in messages if message.startswith(prefix)]
+
+
+def _actor(user):
+    return f"actor={user.email} (id {user.pk})"
+
+
+def test_an_upload_names_the_superadmin_the_package_and_its_digest(installation, superadmin, log_messages, trusts_release_key):
+    data = build_package(signed_with=trusts_release_key)
+
+    package = installation.upload(upload_file(data), len(data), superadmin)
+
+    [action, digest] = _lines(log_messages, "PluginInstallationService.upload")
+    assert action == (
+        f"PluginInstallationService.upload {_actor(superadmin)} package={package.pk} plugin=weather "
+        f"version=0.1.0 size={len(data)} trust=trusted signer=release"
+    )
+    assert digest == (
+        f"PluginInstallationService.upload package={package.pk} sha256={hashlib.sha256(data).hexdigest()}"
+    )
+    assert all(len(line) <= MAX_MESSAGE_LENGTH for line in (action, digest))
+
+
+def test_replacing_a_pending_package_logs_what_was_replaced(installation, superadmin, log_messages):
+    first_data = build_package()
+    first = installation.upload(upload_file(first_data), len(first_data), superadmin)
+    second_data = build_package(manifest=sample_manifest(version="0.1.1"))
+
+    second = installation.upload(upload_file(second_data), len(second_data), superadmin)
+
+    [action, digest] = _lines(log_messages, "PluginInstallationService.replace_pending")
+    assert action == (
+        f"PluginInstallationService.replace_pending {_actor(superadmin)} package={first.pk} "
+        f"plugin=weather version=0.1.0 replaced_by={second.pk}"
+    )
+    assert digest == (
+        f"PluginInstallationService.replace_pending package={first.pk} "
+        f"sha256={hashlib.sha256(first_data).hexdigest()}"
+    )
+
+
+@pytest.mark.parametrize("acknowledged", [True, False])
+def test_an_approval_logs_trust_signer_and_the_acknowledgement(
+    installation, superadmin, log_messages, trusts_release_key, acknowledged
+):
+    data = build_package(signed_with=trusts_release_key)
+    package = installation.upload(upload_file(data), len(data), superadmin)
+
+    installation.approve(package.pk, superadmin, untrusted_acknowledged=acknowledged)
+
+    [action, digest] = _lines(log_messages, "PluginInstallationService.approve")
+    assert action == (
+        f"PluginInstallationService.approve {_actor(superadmin)} package={package.pk} plugin=weather "
+        f"version=0.1.0 trust=trusted signer=release untrusted_acknowledged={acknowledged}"
+    )
+    assert digest == f"PluginInstallationService.approve package={package.pk} sha256={package.sha256}"
+    assert len(action) <= MAX_MESSAGE_LENGTH
+
+
+def test_a_refused_approval_logs_no_approval(installation, superadmin, log_messages):
+    data = build_package()
+    package = installation.upload(upload_file(data), len(data), superadmin)
+
+    with pytest.raises(UntrustedNotAcknowledgedError):
+        installation.approve(package.pk, superadmin, untrusted_acknowledged=False)
+
+    assert _lines(log_messages, "PluginInstallationService.approve") == []
+
+
+def test_a_rejection_logs_the_package_taken_before_its_row_was_deleted(installation, superadmin, log_messages):
+    data = build_package()
+    package = installation.upload(upload_file(data), len(data), superadmin)
+
+    installation.reject(package.pk, superadmin)
+
+    [action, digest] = _lines(log_messages, "PluginInstallationService.reject")
+    assert action == (
+        f"PluginInstallationService.reject {_actor(superadmin)} package={package.pk} plugin=weather "
+        "version=0.1.0 plugin_removed=True"
+    )
+    assert digest == f"PluginInstallationService.reject package={package.pk} sha256={hashlib.sha256(data).hexdigest()}"
+
+
+def test_a_grant_logs_the_plugin_and_the_organization(running_plugin, superadmin, acme, log_messages):
+    running_plugin()
+
+    grant = PluginGrantService().grant("weather", acme.id, superadmin)
+
+    assert _lines(log_messages, "PluginGrantService.grant") == [
+        f"PluginGrantService.grant {_actor(superadmin)} plugin=weather grant={grant.pk} "
+        f"org={acme.id} org_name='{acme.name}'"
+    ]
+
+
+@pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")
+def test_the_api_logs_the_logged_in_superadmin(superadmin_client, superadmin_user, log_messages):
+    review = superadmin_client.post(
+        "/api/admin/plugins/packages/", {"file": upload_file(build_package())}, format="multipart"
+    ).json()
+
+    superadmin_client.post(f"/api/admin/plugins/packages/{review['id']}/reject/")
+
+    for prefix in ("PluginInstallationService.upload", "PluginInstallationService.reject"):
+        assert _actor(superadmin_user) in _lines(log_messages, prefix)[0]
+
+
+def test_no_log_line_carries_file_contents(installation, superadmin, log_messages, trusts_release_key):
+    data = build_package(signed_with=trusts_release_key)
+    package = installation.upload(upload_file(data), len(data), superadmin)
+    installation.approve(package.pk, superadmin, untrusted_acknowledged=False)
+
+    plugin_lines = [line for line in log_messages if line.startswith("PluginInstallationService.")]
+    assert plugin_lines
+    for forbidden in ("<!doctype", "<svg", "untrusted comment", "manifest_version"):
+        assert not any(forbidden in line for line in plugin_lines), forbidden
+
+
+# ---- plugin login: ids only, never a code, verifier, token, cookie or state ----
+
+
+def _login_lines(messages):
+    return [message for message in messages if message.startswith(("plugins.login.", "plugins.origin_refused"))]
+
+
+def _assert_no_secret(lines, *secrets):
+    for line in lines:
+        assert len(line) <= MAX_MESSAGE_LENGTH
+        for secret in secrets:
+            assert secret not in line
+
+
+@pytest.mark.usefixtures("login_platform")
+def test_a_token_issued_is_logged_with_ids_only(loginable_weather, grant_to, acme, member_only, log_messages):
+    grant_to(loginable_weather, acme)
+    client = APIClient()
+    verifier, challenge = pkce_pair()
+    cookie = session_cookie(member_only)
+    _, result = redirect_parts(authorize(client, cookie=cookie, challenge=challenge))
+    code = result["code"]
+
+    response = exchange(client, code, verifier)
+
+    token = response.json()["access_token"]
+    jti = jwt.decode(token, options={"verify_signature": False})["jti"]
+    assert _lines(log_messages, "plugins.login.token_issued") == [
+        f"plugins.login.token_issued user_id={member_only.pk} org_id={acme.pk} plugin=weather jti={jti}"
+    ]
+    _assert_no_secret(_login_lines(log_messages), code, verifier, challenge, token, STATE, cookie.partition("=")[2])
+
+
+@pytest.mark.usefixtures("login_platform")
+def test_refused_logins_are_logged_with_their_reason(loginable_weather, grant_to, acme, beta, member_only, make_member, role_member, log_messages):
+    grant = grant_to(loginable_weather, acme)
+    client = APIClient()
+    stranger = make_member(beta, role_member, "stranger-audit@example.com")
+    authorize(client, cookie=session_cookie(stranger))
+    authorize(client, cookie=session_cookie(member_only), org=str(beta.pk))
+    verifier, challenge = pkce_pair()
+    code = code_for(client, member_only, challenge=challenge)
+    PluginGrant.objects.filter(pk=grant.pk).update(state=GrantState.SUSPENDED)
+    exchange(client, code, verifier)
+
+    assert _lines(log_messages, "plugins.login.access_denied") == [
+        f"plugins.login.access_denied user_id={stranger.pk} plugin=weather reason=no_eligible_org",
+        f"plugins.login.access_denied user_id={member_only.pk} plugin=weather reason=org_not_eligible",
+        f"plugins.login.access_denied user_id={member_only.pk} plugin=weather reason=not_eligible",
+    ]
+    _assert_no_secret(_login_lines(log_messages), code, verifier, challenge, STATE)
+
+
+@pytest.mark.usefixtures("login_platform")
+def test_an_origin_refusal_is_logged_without_the_request_s_credentials(member_only, log_messages):
+    cookie = session_cookie(member_only)
+    client = APIClient()
+    client.credentials(HTTP_ORIGIN=WEATHER_ORIGIN, HTTP_AUTHORIZATION="Bearer bearer-secret")
+
+    client.post(f"/api/auth/logout/?state={STATE}", HTTP_COOKIE=cookie)
+
+    assert _lines(log_messages, "plugins.origin_refused") == [
+        f"plugins.origin_refused origin='{WEATHER_ORIGIN}' method='POST' path='/api/auth/logout/'"
+    ]
+    _assert_no_secret(_login_lines(log_messages), cookie.partition("=")[2], "bearer-secret", STATE)
+
+
+# ---- service accounts and hooks ----
+
+
+def test_service_account_and_hook_lines_never_carry_a_key_hash_assertion_or_body(
+    weather_backend, service_account_key, acme, node_client, log_messages, superadmin_client, django_capture_on_commit_callbacks
+):
+    plugin = weather_backend(hooks={"install": True})
+    superadmin_client.post("/api/admin/plugins/weather/grants/", {"organization_id": acme.pk}, format="json")
+    # The minted keys are logged once their transaction commits.
+    with django_capture_on_commit_callbacks(execute=True):
+        key = service_account_key(plugin, acme)
+    service_account_client("esp-" + "q" * 43, acme).get("/api/plugin-runtime/me/")
+    job = PluginHookJob.objects.get()
+    invocation = HookInvocation.model_validate_json(
+        node_client.post(f"/api/plugin-nodes/self/hook-jobs/{job.pk}/claim/").content
+    )
+    node_client.post(
+        f"/api/plugin-nodes/self/hook-jobs/{job.pk}/result/",
+        {"attempt": 1, "outcome": "succeeded", "duration_ms": 42},
+        format="json",
+    )
+
+    lines = [message for message in log_messages if message.startswith(("plugins.service_account", "plugins.hook"))]
+    assert {line.split(" ")[0] for line in lines} == {
+        "plugins.service_account.keys_minted",
+        "plugins.service_account.refused",
+        "plugins.hook.claimed",
+        "plugins.hook.finished",
+    }
+    secrets = (key, hashlib.sha256(key.encode()).hexdigest(), invocation.assertion, invocation.body)
+    assert not [line for line in log_messages if any(secret in line for secret in secrets)]
+    assert all(len(line) <= MAX_MESSAGE_LENGTH for line in lines)
+    assert f"plugins.hook.finished plugin=weather job={job.pk} kind=install org={acme.pk} attempt=1 outcome=succeeded duration_ms=42" in lines
+
+
+# ---- suspension: names and ids, never a key ----
+
+
+@pytest.mark.usefixtures("plugins_enabled")
+def test_suspension_lines_name_the_actor_and_the_grant_and_never_a_key(
+    weather_backend, service_account_key, acme, superadmin_client, superadmin_user, log_messages, django_capture_on_commit_callbacks
+):
+    plugin = weather_backend()
+    key = service_account_key(plugin, acme)
+    grant = PluginGrant.objects.get(org=acme)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant.pk}/suspend/")
+    superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant.pk}/resume/")
+
+    lines = _lines(log_messages, "plugins.grant.")
+    assert [line.split(" ")[0] for line in lines] == [
+        "plugins.grant.suspended",
+        "plugins.grant.sessions_stopped",
+        "plugins.grant.resumed",
+    ]
+    assert _actor(superadmin_user) in lines[0] and _actor(superadmin_user) in lines[2]
+    assert f"plugin=weather grant={grant.pk} org={acme.pk}" in lines[1]
+    _assert_no_secret(lines, key, hashlib.sha256(key.encode()).hexdigest())
+
+
+@pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")
+def test_uninstall_purge_and_deletion_lines_carry_no_phrase_key_or_password(
+    database_plugin, service_account_key, acme, superadmin_client, superadmin_user, log_messages, django_capture_on_commit_callbacks
+):
+    from tests.plugins_tests.conftest import mark_running
+
+    plugin = mark_running(database_plugin(access=[], hooks={"install": False, "org_removed": True}))
+    key = service_account_key(plugin, acme)
+    grant = PluginGrant.objects.get(org=acme)
+    grant_phrase = f"purge-weather-{acme.name}"
+
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.post("/api/admin/plugins/weather/uninstall/")
+        superadmin_client.post("/api/admin/plugins/weather/reinstall/")
+        superadmin_client.delete(f"/api/admin/plugins/weather/grants/{grant.pk}/", {"verification_phrase": grant_phrase}, format="json")
+        superadmin_client.delete("/api/admin/plugins/weather/", {"verification_phrase": "purge-weather"}, format="json")
+
+    lines = _lines(log_messages, "plugins.plugin.") + _lines(log_messages, "plugins.grant.purge")
+    assert {line.split(" ")[0] for line in lines} == {
+        "plugins.plugin.uninstalled",
+        "plugins.plugin.reinstalled",
+        "plugins.plugin.purge_started",
+        "plugins.grant.purge_started",
+    }
+    assert all(_actor(superadmin_user) in line for line in lines)
+    _assert_no_secret(lines, key, grant_phrase, "verification_phrase", app_password_of(PluginDatabase.objects.get()))
+
+
+# ---- a plugin's database record: names only, never its password ----
+
+
+@pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")
+def test_a_database_record_is_logged_with_its_names_and_never_its_password(database_plugin, log_messages):
+    # The fixture approves inside a captured transaction and runs its commit callbacks.
+    database_plugin()
+
+    lines = _lines(log_messages, "plugins.database.")
+    assert lines == ["plugins.database.record_created plugin=weather database=plugin_weather server=plugins_db"]
+    record = PluginDatabase.objects.get()
+    _assert_no_secret(lines, app_password_of(record), record.app_password_encrypted)
+
+
+@pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")
+def test_an_approval_refused_for_want_of_a_server_logs_no_record(
+    installation, superadmin, plugin_node, log_messages, django_capture_on_commit_callbacks
+):
+    data = build_package(manifest=backend_manifest(database={}))
+    package = installation.upload(upload_file(data), len(data), superadmin)
+
+    with django_capture_on_commit_callbacks(execute=True), pytest.raises(NoPluginDatabaseServerError):
+        installation.approve(package.pk, superadmin, untrusted_acknowledged=True)
+
+    assert _lines(log_messages, "plugins.database.") == []
+
+
+# ---- plugin development mode: ports, counts and reasons, never a key, a file or a secret ----
+
+
+@pytest.mark.usefixtures("plugins_enabled", "development_mode", "development_host_unresolved")
+def test_development_lines_never_carry_a_key_the_runtime_file_or_a_secret(
+    weather_backend, service_account_key, acme, superadmin_client, superadmin_user, log_messages,
+    django_capture_on_commit_callbacks,
+):
+    plugin = weather_backend()
+    service_account_key(plugin, acme)
+    secret_value = "token-for-the-forecast-provider-0123456789"
+    url = "/api/admin/plugins/weather/development/"
+    superadmin_client.patch(
+        "/api/admin/plugins/weather/settings/", {"values": {"forecast_api_token": secret_value}}, format="json"
+    )
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.put(url, {"backend_port": 8001, "spa_port": 5173}, format="json")
+        response = superadmin_client.post(f"{url}runtime-file/")
+        superadmin_client.get(url)
+    runtime_file = response.content.decode()
+    key = response.json()["service_accounts"][str(acme.pk)]["key"]
+    service_account_client(key, acme).get("/api/plugin-runtime/me/")
+    with django_capture_on_commit_callbacks(execute=True):
+        superadmin_client.delete(url)
+
+    lines = _lines(log_messages, "plugins.development") + _lines(log_messages, "plugins.service_account.refused")
+    # The PUT's answer resolves the host at once; the change lines follow when the block commits.
+    assert lines == [
+        "plugins.development.host_unresolved host=host.docker.internal",
+        f"plugins.development.target_set {_actor(superadmin_user)} plugin=weather backend_port=8001 spa_port=5173",
+        f"plugins.development.runtime_file_issued {_actor(superadmin_user)} plugin=weather organizations=1",
+        f"plugins.development.target_cleared {_actor(superadmin_user)} plugin=weather revoked_keys=1",
+        "plugins.service_account.refused plugin=weather reason=wrong_listener",
+    ]
+    secrets = (key, hashlib.sha256(key.encode()).hexdigest(), key[12:], secret_value, runtime_file)
+    assert not [line for line in log_messages if any(secret in line for secret in secrets)]
+    assert all(len(line) <= MAX_MESSAGE_LENGTH for line in lines)

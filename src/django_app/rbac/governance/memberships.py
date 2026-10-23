@@ -22,6 +22,7 @@ from rbac.governance.authorship import (
 )
 from rbac.governance.cross_org_base import CrossOrgResourceService
 from rbac.governance.guards import UserManagementGuards
+from rbac.governance.role_assignment_checks import assert_role_assignment_allowed
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
 
@@ -147,6 +148,7 @@ class MembershipManagementService(CrossOrgResourceService):
         role = self._resolve_role(role_id)
         UserManagementGuards.assert_role_is_assignable(role, org_id=org_id)
         assert_within_ceiling(effective, EffectivePermissions.bits_of(role))
+        assert_role_assignment_allowed(effective=effective, role=role, org_id=org_id)
         if OrganizationUser.objects.filter(user=target, org_id=org_id).exists():
             raise MembershipAlreadyExistsError()
         try:
@@ -184,6 +186,7 @@ class MembershipManagementService(CrossOrgResourceService):
         new_role = self._resolve_role(role_id)
         UserManagementGuards.assert_role_is_assignable(new_role, org_id=membership.org_id)
         assert_within_ceiling(effective, EffectivePermissions.bits_of(new_role))
+        assert_role_assignment_allowed(effective=effective, role=new_role, org_id=membership.org_id)
         if membership.role_id != new_role.pk:
             membership.role = new_role
             membership.save(update_fields=["role"])

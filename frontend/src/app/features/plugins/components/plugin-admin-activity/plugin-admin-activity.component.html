@@ -1,0 +1,42 @@
+<div class="admin-activity__toolbar">
+    <app-select
+        class="admin-activity__filter"
+        label="Organization"
+        mod="small"
+        [placeholder]="allOrganizationsLabel"
+        [items]="organizationItems()"
+        [loading]="isLoadingOrganizations()"
+        [showSearch]="true"
+        searchPlaceholder="Search organizations..."
+        [selectedValue]="organizationId()"
+        (changed)="onOrganizationChange($event)"
+    />
+    <span class="admin-activity__count text-body">{{ count() }} {{ count() === 1 ? 'event' : 'events' }}</span>
+</div>
+
+@if (loadError(); as message) {
+    <div
+        class="admin-activity__error text-body"
+        role="alert"
+    >
+        <span>{{ message }}</span>
+        <app-button
+            type="outline-primary"
+            mod="small"
+            (click)="reload()"
+        >
+            Retry
+        </app-button>
+    </div>
+}
+
+<app-plugin-activity-list
+    [events]="events()"
+    [showOrganization]="true"
+    [totalCount]="count()"
+    [page]="page()"
+    [pageSize]="pageSize"
+    [isLoading]="isLoading()"
+    [emptyMessage]="emptyMessage()"
+    (pageChange)="onPageChange($event)"
+/>

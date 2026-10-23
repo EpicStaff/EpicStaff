@@ -1,12 +1,21 @@
 :host {
     position: relative;
+    display: inline-flex;
+    flex: 0 1 auto;
+    // Shrinks no further than the icon-only button, so the toolbar hides buttons after the label is gone.
+    min-width: 36px;
+}
+
+// The count replaces the label and has no icon-only state, so shrinking would only clip it.
+:host(.has-attached-files) {
+    flex-shrink: 0;
 }
 
 .flow-files-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.5rem 1.25rem;
+    padding: 0.5rem 10px;
     font-size: 0.75rem;
     border-radius: 4px;
     border: 1.5px solid var(--color-divider-subtle);
@@ -19,6 +28,9 @@
         border-color 0.15s;
     white-space: nowrap;
     height: 36px;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
 
     &:hover,
     &:focus {
@@ -39,6 +51,18 @@
         }
     }
 
+    &--icon-only {
+        width: 36px;
+        min-width: 36px;
+        padding: 0;
+        gap: 0;
+        justify-content: center;
+
+        .flow-files-btn__label {
+            display: none;
+        }
+    }
+
     &__icon {
         color: var(--gray-118);
         flex-shrink: 0;
@@ -46,6 +70,9 @@
 
     &__label {
         line-height: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     &__count {

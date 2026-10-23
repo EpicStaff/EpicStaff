@@ -13,6 +13,7 @@ _STARTED_BY_TYPES = {
     "api_key_user": "api_key",
     "api_key_system": "system_api_key",
     "trigger": "trigger",
+    "plugin": "plugin",
 }
 
 
@@ -164,6 +165,9 @@ def _started_by(session: dict) -> tuple[str, str | None]:
         return started_by_type, email
     if started_by_type == "trigger":
         return started_by_type, session.get("trigger_node_name")
+    if started_by_type == "plugin":
+        plugin = f"{principal.get('plugin_identifier')} (plugin)"
+        return started_by_type, f"{plugin} on behalf of {email}" if email else plugin
     if started_by_type in ("api_key", "system_api_key"):
         # api_key_name is None once the key is deleted (the FK is SET_NULL).
         key_name = principal.get("api_key_name")

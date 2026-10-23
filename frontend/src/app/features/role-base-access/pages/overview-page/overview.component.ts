@@ -5,6 +5,7 @@ import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ConfigService } from '../../../../services/config';
 
 @Component({
     selector: 'app-overview',
@@ -15,6 +16,7 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 })
 export class OverviewComponent {
     private readonly permissionsService = inject(PermissionsService);
+    private readonly configService = inject(ConfigService);
 
     protected readonly tabs: RouteTab[] = [
         {
@@ -46,6 +48,12 @@ export class OverviewComponent {
             icon: 'key',
             label: 'API Keys',
             isPermitted: () => this.permissionsService.canInAnyOrg(ResourceCode.ApiKeys, ActionCode.Read),
+        },
+        {
+            routerLink: 'plugins',
+            iconClass: 'ti ti-puzzle',
+            label: 'Plugins',
+            isPermitted: () => this.configService.isPluginsEnabled && this.permissionsService.isSuperadmin,
         },
     ];
 }
