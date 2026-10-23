@@ -57,6 +57,8 @@ class Job(ValueObject):
     # Carried for the manager's benefit only: the worker echoes it onto the result so the
     # manager can publish to the channel the submitter listens on. Nothing here reads it.
     reply_to_crew_channel: bool = False
+    # `time.monotonic()` seconds after which the job is failed instead of run.
+    queue_deadline: float | None = None
 
 
 class Jail(ValueObject):
@@ -82,6 +84,8 @@ class ExecutionResult(ValueObject):
     returncode: int = 0
     # Echoed from the job; see ``Job.reply_to_crew_channel``.
     reply_to_crew_channel: bool = False
+    # The job was really executed, as opposed to failed without running.
+    ran: bool = False
 
 
 class StorageMutations(ValueObject):

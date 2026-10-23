@@ -14,7 +14,9 @@ import pytest
 
 from common.contracts import ExecutionJobMessage, ExecutionResultMessage
 from manager.application.holding import JobHoldingRegistry
+from manager.application.intake import IntakeGate
 from manager.application.orchestrators import JobOrchestrator
+from manager.application.registry import ExecutionRegistry
 from manager.domain.enums import VenvStatus
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
@@ -87,6 +89,20 @@ def runtime(tmp_path):
     }
 
 
+def build_manager(uow, runtime) -> JobOrchestrator:
+    registry = ExecutionRegistry()
+    return JobOrchestrator(
+        uow,
+        QueueJobDispatcher(runtime["job_queue"]),
+        JobHoldingRegistry(),
+        QueueJobFailureSink(runtime["result_queue"]),
+        registry,
+        IntakeGate(registry, lambda: True, max_accepted=10, max_held=10, queue_timeout=120),
+        queue_timeout=120,
+        hold_timeout=1800,
+    )
+
+
 def build_worker(runtime) -> ExecutionOrchestrator:
     """The worker pipeline, with only the kernel probe faked out."""
     pipeline = (
@@ -129,12 +145,7 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
     venv = uow.venv_repo.seed(
         make_venv(status=VenvStatus.COMPLETED, hash=VENV_HASH)
     )[0]
-    manager = JobOrchestrator(
-        uow,
-        QueueJobDispatcher(runtime["job_queue"]),
-        JobHoldingRegistry(),
-        QueueJobFailureSink(runtime["result_queue"]),
-    )
+    manager = build_manager(uow, runtime)
 
     await manager.submit(
         execution_id=EXECUTION_ID,
@@ -157,12 +168,14 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
     assert job.venv_hash == VENV_HASH
     assert job.func_kwargs == {"value": "x"}
     assert job.secrets == {"TOKEN": "s3cret"}
+    assert job.queue_deadline is not None
 
     await build_worker(runtime).execute(job)
 
     message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
     assert message.execution_id == EXECUTION_ID
     assert message.returncode == 0
+    assert message.ran is True
     assert json.loads(message.result) == {"echo": "x", "limit": 3}
     assert "token=[REDACTED]" in message.stdout
     assert "s3cret" not in message.stdout
@@ -170,12 +183,7 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
 
 async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uow, runtime):
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.FAILED, error="uv blew up"))[0]
-    manager = JobOrchestrator(
-        uow,
-        QueueJobDispatcher(runtime["job_queue"]),
-        JobHoldingRegistry(),
-        QueueJobFailureSink(runtime["result_queue"]),
-    )
+    manager = build_manager(uow, runtime)
 
     await manager.submit(
         execution_id=EXECUTION_ID,
@@ -198,18 +206,14 @@ async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uo
     message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
     assert message.execution_id == EXECUTION_ID
     assert message.returncode == 1
+    assert message.ran is False
     assert "failed to build" in message.stderr
 
 
 async def test_storage_credentials_reach_the_worker_unchanged(uow, runtime):
     """The credentials the caller issued must survive the manager-to-worker encoding."""
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash=VENV_HASH))[0]
-    manager = JobOrchestrator(
-        uow,
-        QueueJobDispatcher(runtime["job_queue"]),
-        JobHoldingRegistry(),
-        QueueJobFailureSink(runtime["result_queue"]),
-    )
+    manager = build_manager(uow, runtime)
 
     await manager.submit(
         execution_id=EXECUTION_ID,
@@ -240,12 +244,7 @@ async def test_a_crew_submission_is_still_flagged_on_the_result_that_comes_back(
     would send crew's result to the shared channel and leave crew waiting.
     """
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash=VENV_HASH))[0]
-    manager = JobOrchestrator(
-        uow,
-        QueueJobDispatcher(runtime["job_queue"]),
-        JobHoldingRegistry(),
-        QueueJobFailureSink(runtime["result_queue"]),
-    )
+    manager = build_manager(uow, runtime)
 
     await manager.submit(
         execution_id=EXECUTION_ID,
@@ -274,12 +273,7 @@ async def test_a_crew_submission_is_still_flagged_on_the_result_that_comes_back(
 
 async def test_a_crew_submission_whose_venv_failed_is_still_flagged(uow, runtime):
     venv = uow.venv_repo.seed(make_venv(status=VenvStatus.FAILED, error="uv blew up"))[0]
-    manager = JobOrchestrator(
-        uow,
-        QueueJobDispatcher(runtime["job_queue"]),
-        JobHoldingRegistry(),
-        QueueJobFailureSink(runtime["result_queue"]),
-    )
+    manager = build_manager(uow, runtime)
 
     await manager.submit(
         execution_id=EXECUTION_ID,

@@ -135,3 +135,32 @@ async def test_a_failing_pipeline_step_still_produces_a_result(result_sink):
     result, _ = result_sink.sent[0]
     assert result.returncode == 1
     assert "resolve venv blew up" in result.stderr
+
+
+async def test_a_run_is_marked_as_having_run(result_sink):
+    orchestrator = build(pipeline_that(returncode=1, stderr="boom"), result_sink)
+
+    await orchestrator.execute(make_worker_job())
+
+    assert result_sink.sent[0][0].ran is True
+
+
+async def test_failing_a_job_sends_a_failed_result_without_running_it(result_sink):
+    ran = []
+
+    async def step(context):
+        ran.append(context.job.execution_id)
+        context.complete()
+
+    orchestrator = build(Pipeline().register(step), result_sink)
+
+    await orchestrator.fail("exec-1", "Sandbox failed to run the job.", reply_to_crew_channel=True)
+
+    [(result, mutations)] = result_sink.sent
+    assert ran == []
+    assert result.execution_id == "exec-1"
+    assert result.stderr == "Sandbox failed to run the job."
+    assert result.returncode == 1
+    assert result.ran is False
+    assert result.reply_to_crew_channel is True
+    assert mutations is None

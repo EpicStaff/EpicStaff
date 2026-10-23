@@ -21,6 +21,8 @@ _TEST_ENVIRONMENT = {
     "REDIS_PORT": "6379",
     "SANDBOX_MAX_EXECUTION_TIMEOUT": "30m",
     "SANDBOX_DEFAULT_EXECUTION_TIMEOUT": "5m",
+    "SANDBOX_QUEUE_TIMEOUT": "2m",
+    "SANDBOX_HOLD_TIMEOUT": "30m",
     "STORAGE_PORT": "9000",
     "STORAGE_HOST": "localhost",
     "STORAGE_SSL": "false",
@@ -34,6 +36,7 @@ import pytest  # noqa: E402
 
 from tests.builders import make_venv  # noqa: E402
 from tests.fakes import (  # noqa: E402
+    FakeClock,
     FakeIsolationProbe,
     FakeJobDispatcher,
     FakeJobFailureSink,
@@ -77,6 +80,11 @@ def result_sink() -> FakeResultSink:
 @pytest.fixture
 def isolation_probe() -> FakeIsolationProbe:
     return FakeIsolationProbe()
+
+
+@pytest.fixture
+def clock() -> FakeClock:
+    return FakeClock()
 
 
 @pytest.fixture

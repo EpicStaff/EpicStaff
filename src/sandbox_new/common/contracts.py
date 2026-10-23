@@ -51,6 +51,10 @@ class ExecutionJobMessage(Schema):
     # Routing hint only, echoed back on the result so the manager can publish it to the
     # channel crew alone reads. The worker never acts on it.
     reply_to_crew_channel: bool = False
+    # `time.monotonic()` seconds after which the worker fails the job instead of running
+    # it. A monotonic reading means nothing in another process: this is valid only
+    # because the manager and the worker are one process.
+    queue_deadline: float | None = None
 
 
 class StorageMutationsMessage(Schema):
@@ -72,3 +76,7 @@ class ExecutionResultMessage(Schema):
     mutations: StorageMutationsMessage | None = None
     # Echoed from the job so the publisher knows which result channel this one belongs on.
     reply_to_crew_channel: bool = False
+    # True only when the worker really executed the job. A job failed without running
+    # (venv failed, dispatch failed, expired in the queue) keeps False, so it does not
+    # count towards the drain rate admission control predicts queue waits from.
+    ran: bool = False

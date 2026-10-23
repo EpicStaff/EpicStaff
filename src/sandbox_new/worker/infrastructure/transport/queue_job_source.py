@@ -9,8 +9,9 @@ touch the pipeline.
 import asyncio
 
 from common.contracts import ExecutionJobMessage
+from pydantic import ValidationError
 
-from worker.application.ports.job_source import AbstractJobSource
+from worker.application.ports.job_source import AbstractJobSource, UndecodableJobError
 from worker.domain.models import Job
 
 __all__ = ["QueueJobSource"]
@@ -22,4 +23,11 @@ class QueueJobSource(AbstractJobSource):
 
     async def get(self) -> Job:
         message = await self._queue.get()
-        return Job(**message.model_dump())
+        try:
+            return Job(**message.model_dump())
+        except ValidationError:
+            # `from None`: the validation error quotes the job's fields, secrets included,
+            # and a chained cause would carry it into any traceback that gets logged.
+            raise UndecodableJobError(
+                message.execution_id, reply_to_crew_channel=message.reply_to_crew_channel
+            ) from None

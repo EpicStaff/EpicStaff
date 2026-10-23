@@ -2,6 +2,8 @@ import asyncio
 import hashlib
 import os
 import shutil
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -9,18 +11,26 @@ import settings
 from loguru import logger
 
 from manager.application.holding import JobHoldingRegistry
+from manager.application.intake import IntakeGate
 from manager.application.ports import (
     AbstractJobDispatcher,
     AbstractJobFailureSink,
     AbstractUnitOfWork,
     AbstractUVProvider,
 )
-from manager.domain.enums import VenvStatus
-from manager.domain.errors import VenvNotFoundError
+from manager.application.registry import ExecutionRegistry
+from manager.domain.enums import ExecutionStatus, VenvStatus
+from manager.domain.errors import SandboxOverloadedError, VenvNotFoundError
 from manager.domain.models import Job, Library, StorageCredentials, Venv
 
 _VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
 _DISPATCH_FAILED_MESSAGE = "The job could not be handed to the worker and was not run."
+_HOLD_TIMED_OUT_MESSAGE = (
+    "The execution environment did not finish building in time; the job was not run."
+)
+# A re-POST that arrives while the first request for its id is still being admitted is
+# told to come back this soon: by then the first request has its outcome.
+_SUBMISSION_IN_PROGRESS_RETRY_AFTER_SECONDS = 1
 
 __all__ = ["JobOrchestrator", "VenvBuildOrchestrator", "VenvCRUDOrchestrator"]
 
@@ -173,6 +183,12 @@ class JobOrchestrator:
 
     The readiness gate lives only here: the dispatcher is a dumb transport adapter,
     so this is the single place that decides dispatch vs hold vs fail by venv status.
+
+    Every submission is recorded in the execution registry, and a job that would run
+    (held or queued) passes the intake gate first. A held job gets a hold deadline; it
+    is failed without running if its venv is not built by then. A job handed to the
+    worker queue gets a queue deadline; the worker fails it instead of running it once
+    that has passed.
     """
 
     def __init__(
@@ -181,11 +197,22 @@ class JobOrchestrator:
         dispatcher: AbstractJobDispatcher,
         holding: JobHoldingRegistry,
         failure_sink: AbstractJobFailureSink,
+        registry: ExecutionRegistry,
+        intake_gate: IntakeGate,
+        *,
+        queue_timeout: float,
+        hold_timeout: float,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.uow = uow
         self.dispatcher = dispatcher
         self.holding = holding
         self.failure_sink = failure_sink
+        self.registry = registry
+        self.intake_gate = intake_gate
+        self.queue_timeout = queue_timeout
+        self.hold_timeout = hold_timeout
+        self.clock = clock
 
     async def submit(
         self,
@@ -204,28 +231,62 @@ class JobOrchestrator:
         storage_credentials: StorageCredentials | None,
         timeout: float | None,
         reply_to_crew_channel: bool,
-    ) -> Job:
-        venv = await self._resolve_venv(venv_id)
+    ) -> ExecutionStatus:
+        """Accept a submission, or answer for the one already accepted under its id.
 
-        job = Job(
-            session_id=session_id,
-            execution_id=execution_id,
-            venv_id=venv.id,
-            venv_hash=venv.hash,
-            code=code,
-            result="",
-            entrypoint=entrypoint,
-            secrets=secrets,
-            global_kwargs=global_kwargs,
-            func_kwargs=func_kwargs,
-            use_storage=use_storage,
-            storage_allowed_paths=storage_allowed_paths,
-            storage_org_prefix=storage_org_prefix,
-            storage_credentials=storage_credentials,
-            timeout=timeout,
-            reply_to_crew_channel=reply_to_crew_channel,
-            error=None,
-        )
+        A re-POST of a known `execution_id` (a producer retrying after a lost 202) is
+        not enqueued again: it gets the first submission's current status. While the
+        first submission is still resolving its venv or being admitted, its outcome is
+        not known yet -- it may still be refused -- so the re-POST is told to retry
+        rather than answered QUEUED for a job that might never be queued.
+
+        Returns:
+            Where the execution is now.
+
+        Raises:
+            VenvNotFoundError: `venv_id` names no venv, or there is no default venv.
+            SandboxOverloadedError: The sandbox cannot take the job now, or the first
+                submission of this id is still being admitted.
+        """
+        if self.registry.is_reserved(execution_id):
+            logger.info("Execution {} is still being admitted; re-POST told to retry", execution_id)
+            raise SandboxOverloadedError(retry_after=_SUBMISSION_IN_PROGRESS_RETRY_AFTER_SECONDS)
+
+        known_status = self.registry.status(execution_id)
+        if known_status is not None:
+            logger.info("Execution {} is already known; not enqueued again", execution_id)
+            return known_status
+
+        # Reserved before the first await, so a concurrent re-POST sees the id as known.
+        self.registry.reserve(execution_id)
+        try:
+            venv = await self._resolve_venv(venv_id)
+            if venv.status is not VenvStatus.FAILED:
+                self.intake_gate.admit(will_be_held=venv.status is not VenvStatus.COMPLETED)
+            job = Job(
+                session_id=session_id,
+                execution_id=execution_id,
+                venv_id=venv.id,
+                venv_hash=venv.hash,
+                code=code,
+                result="",
+                entrypoint=entrypoint,
+                secrets=secrets,
+                global_kwargs=global_kwargs,
+                func_kwargs=func_kwargs,
+                use_storage=use_storage,
+                storage_allowed_paths=storage_allowed_paths,
+                storage_org_prefix=storage_org_prefix,
+                storage_credentials=storage_credentials,
+                timeout=timeout,
+                reply_to_crew_channel=reply_to_crew_channel,
+                error=None,
+            )
+        except BaseException:
+            # Refused or interrupted before anything was enqueued: no result will ever
+            # finish this id, so it must not stay reserved and count against the cap.
+            self.registry.forget(execution_id)
+            raise
 
         if venv.status is VenvStatus.FAILED:
             logger.warning("Execution {} rejected: venv {} failed to build", execution_id, venv.id)
@@ -234,12 +295,26 @@ class JobOrchestrator:
             await self._dispatch(job)
         else:
             logger.info("Execution {} held until venv {} finishes building", execution_id, venv.id)
-            self.holding.hold(venv.id, job)
+            self.registry.mark_held(execution_id)
+            self.holding.hold(venv.id, job, deadline=self.clock() + self.hold_timeout)
 
-        return job
+        return self.registry.get_status(execution_id)
 
     async def flush_pending(self) -> None:
-        """Release held jobs: dispatch when the venv is COMPLETED, fail them if it failed."""
+        """Release held jobs: dispatch when the venv is COMPLETED, fail them if it failed.
+
+        A job held past its hold deadline is failed first, whatever its venv's status:
+        a venv stuck building (or rebuilt on purpose) must not keep jobs waiting longer
+        than their producers wait for a result.
+
+        A released job is dispatched even when the in-flight cap is full: it was
+        admitted already and has waited for its venv, and the worker's run gate still
+        bounds what runs at once. The cap is thus exceeded by at most the held cap.
+        """
+        for job in self.holding.release_overdue(self.clock()):
+            logger.warning("Execution {} held past its hold deadline; not run", job.execution_id)
+            await self._fail(job, _HOLD_TIMED_OUT_MESSAGE)
+
         for venv_id in self.holding.pending_venv_ids():
             async with self.uow:
                 venv = await self.uow.venv_repo.retrieve(venv_id)
@@ -258,14 +333,20 @@ class JobOrchestrator:
     async def _dispatch(self, job: Job) -> None:
         """Hand a job to the worker, reporting a failed dispatch as a failed run.
 
+        The queue deadline starts here, not at submission: time spent held while the
+        venv builds is not queue time.
+
         The caller was already answered 202, so the only way it learns about a job
         that never reached the worker is a result. Staying silent would leave it
         waiting for one for good, and the credentials it issued unrevoked.
         """
+        job.queue_deadline = self.clock() + self.queue_timeout
+        self.registry.mark_queued(job.execution_id)
         try:
             await self.dispatcher.dispatch(job)
-        except Exception:
-            logger.exception("Failed to dispatch job {}", job.execution_id)
+        except Exception as error:
+            # Type only: a validation error's text would quote the job's secrets.
+            logger.error("Failed to dispatch job {}: {}", job.execution_id, type(error).__name__)
             await self._fail(job, _DISPATCH_FAILED_MESSAGE)
 
     async def _fail(self, job: Job, message: str) -> None:

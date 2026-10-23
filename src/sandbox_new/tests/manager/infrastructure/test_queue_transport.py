@@ -35,6 +35,7 @@ async def test_dispatch_maps_every_field_onto_the_wire_message():
         storage_credentials=StorageCredentials(access_key="AK123", secret_key="SK456"),
         session_id=11,
         timeout=12.5,
+        queue_deadline=1120.0,
     )
 
     await QueueJobDispatcher(queue).dispatch(job)
@@ -56,6 +57,7 @@ async def test_dispatch_maps_every_field_onto_the_wire_message():
         ),
         session_id=11,
         timeout=12.5,
+        queue_deadline=1120.0,
     )
 
 
@@ -87,6 +89,7 @@ async def test_the_failure_sink_produces_a_failed_result_message():
     assert message.stderr == "the venv failed to build"
     assert message.returncode == 1
     assert message.result is None
+    assert message.ran is False
 
 
 async def test_dispatch_carries_the_crew_reply_flag_to_the_worker():

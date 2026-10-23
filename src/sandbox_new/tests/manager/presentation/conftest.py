@@ -23,9 +23,17 @@ from litestar.testing import create_test_client
 
 import manager.bootstrap  # noqa: F401  registers the error handlers below
 from manager.application.holding import JobHoldingRegistry
+from manager.application.intake import IntakeGate
 from manager.application.ports import AbstractUnitOfWork
+from manager.application.registry import ExecutionRegistry
 from manager.presentation.rest.controllers import ExecutionController, VenvController
 from tests.fakes import FakeJobDispatcher, FakeJobFailureSink
+
+# Small, so a test reaches either cap with a few reservations.
+MAX_ACCEPTED = 3
+MAX_HELD = 2
+QUEUE_TIMEOUT = 120.0
+HOLD_TIMEOUT = 1800.0
 
 
 @dataclass
@@ -33,6 +41,10 @@ class JobIntakeDouble:
     dispatcher: FakeJobDispatcher
     holding: JobHoldingRegistry
     failure_sink: FakeJobFailureSink
+    registry: ExecutionRegistry
+    intake_gate: IntakeGate
+    queue_timeout: float
+    hold_timeout: float
 
 
 @pytest.fixture
@@ -41,8 +53,28 @@ def holding() -> JobHoldingRegistry:
 
 
 @pytest.fixture
-def job_intake(dispatcher, holding, failure_sink) -> JobIntakeDouble:
-    return JobIntakeDouble(dispatcher=dispatcher, holding=holding, failure_sink=failure_sink)
+def registry(clock) -> ExecutionRegistry:
+    return ExecutionRegistry(clock=clock)
+
+
+@pytest.fixture
+def job_intake(dispatcher, holding, failure_sink, registry) -> JobIntakeDouble:
+    intake_gate = IntakeGate(
+        registry,
+        lambda: True,
+        max_accepted=MAX_ACCEPTED,
+        max_held=MAX_HELD,
+        queue_timeout=QUEUE_TIMEOUT,
+    )
+    return JobIntakeDouble(
+        dispatcher=dispatcher,
+        holding=holding,
+        failure_sink=failure_sink,
+        registry=registry,
+        intake_gate=intake_gate,
+        queue_timeout=QUEUE_TIMEOUT,
+        hold_timeout=HOLD_TIMEOUT,
+    )
 
 
 @pytest.fixture

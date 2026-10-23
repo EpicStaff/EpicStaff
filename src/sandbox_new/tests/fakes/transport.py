@@ -10,7 +10,7 @@ from common.contracts import ExecutionResultMessage
 from manager.application.ports import AbstractJobDispatcher, AbstractJobFailureSink
 from manager.domain.models import Job as ManagerJob
 from manager.infrastructure.transport.result_publisher import AbstractResultPublisher
-from worker.application.ports import AbstractJobSource, AbstractResultSink
+from worker.application.ports import AbstractJobSource, AbstractResultSink, UndecodableJobError
 from worker.domain.models import ExecutionResult, Job as WorkerJob, StorageMutations
 
 __all__ = [
@@ -49,17 +49,21 @@ class FakeJobSource(AbstractJobSource):
 
     Blocking rather than raising matches the real source: ``JobConsumer`` loops on
     ``get()``, so a source that raised on exhaustion would turn a normal idle worker
-    into an error path.
+    into an error path. An ``UndecodableJobError`` among the prepared items is raised
+    in its turn, the way the real source reports a message it could not decode.
     """
 
-    def __init__(self, *jobs: WorkerJob) -> None:
+    def __init__(self, *jobs: WorkerJob | UndecodableJobError) -> None:
         self._pending = list(jobs)
         self.gets = 0
 
     async def get(self) -> WorkerJob:
         self.gets += 1
         if self._pending:
-            return self._pending.pop(0)
+            item = self._pending.pop(0)
+            if isinstance(item, UndecodableJobError):
+                raise item
+            return item
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
@@ -67,10 +71,14 @@ class FakeJobSource(AbstractJobSource):
 class FakeResultSink(AbstractResultSink):
     def __init__(self) -> None:
         self.sent: list[tuple[ExecutionResult, StorageMutations | None]] = []
+        self.failures_left = 0
 
     async def send(
         self, result: ExecutionResult, mutations: StorageMutations | None = None
     ) -> None:
+        if self.failures_left > 0:
+            self.failures_left -= 1
+            raise RuntimeError("result queue is gone")
         self.sent.append((result, mutations))
 
 

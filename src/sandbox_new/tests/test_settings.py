@@ -5,6 +5,9 @@ bounded duration of at least MIN_EXECUTION_TIMEOUT seconds and not above
 SANDBOX_MAX_EXECUTION_TIMEOUT, because a job without a timeout of its own runs under that
 default. SANDBOX_MAX_EXECUTION_TIMEOUT may be none (no upper limit).
 
+The admission settings refuse startup too when out of range: a queue or hold timeout that
+is none or not positive, caps below 1, a negative minimum, a threshold outside (0, 100].
+
 Both are import-time behavior, so each case reloads settings.py under a patched
 environment.
 """
@@ -72,3 +75,53 @@ def test_the_crew_result_channel_is_derived_from_the_services_own_channel(
     reloaded = reload_settings_with_env(CODE_RESULT_CHANNEL="somewhere:else")
 
     assert reloaded.CREW_JOB_RESULT_CHANNEL == "somewhere:else:crew"
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("SANDBOX_QUEUE_TIMEOUT", "none"),
+        ("SANDBOX_QUEUE_TIMEOUT", "0s"),
+        ("SANDBOX_HOLD_TIMEOUT", "none"),
+        ("SANDBOX_HOLD_TIMEOUT", "0s"),
+        ("SANDBOX_MAX_ACCEPTED_EXECUTIONS", "0"),
+        ("SANDBOX_MAX_HELD_EXECUTIONS", "0"),
+        ("SANDBOX_MIN_CONCURRENT_EXECUTIONS", "-1"),
+        ("SANDBOX_MAX_CONCURRENT_EXECUTIONS", "0"),
+        ("SANDBOX_CPU_ADMIT_THRESHOLD", "0"),
+        ("SANDBOX_CPU_ADMIT_THRESHOLD", "100.5"),
+        ("SANDBOX_MEMORY_ADMIT_THRESHOLD", "0"),
+        ("SANDBOX_MEMORY_ADMIT_THRESHOLD", "101"),
+    ],
+)
+def test_an_admission_setting_out_of_range_refuses_startup(reload_settings_with_env, name, value):
+    with pytest.raises(ValueError, match=name):
+        reload_settings_with_env(**{name: value})
+
+
+def test_the_admission_settings_have_their_defaults(reload_settings_with_env):
+    reloaded = reload_settings_with_env(SANDBOX_QUEUE_TIMEOUT="2m", SANDBOX_HOLD_TIMEOUT="30m")
+
+    assert (
+        reloaded.QUEUE_TIMEOUT,
+        reloaded.HOLD_TIMEOUT,
+        reloaded.MAX_ACCEPTED_EXECUTIONS,
+        reloaded.MAX_HELD_EXECUTIONS,
+        reloaded.MIN_CONCURRENT_EXECUTIONS,
+        reloaded.MAX_CONCURRENT_EXECUTIONS,
+        reloaded.CPU_ADMIT_THRESHOLD,
+        reloaded.MEMORY_ADMIT_THRESHOLD,
+    ) == (120, 1800, 300, 100, 0, 256, 85, 80)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("SANDBOX_CPU_ADMIT_THRESHOLD", "100"),
+        ("SANDBOX_MIN_CONCURRENT_EXECUTIONS", "0"),
+        ("SANDBOX_HOLD_TIMEOUT", "1s"),
+        ("SANDBOX_MAX_HELD_EXECUTIONS", "1"),
+    ],
+)
+def test_an_admission_setting_at_its_bound_is_accepted(reload_settings_with_env, name, value):
+    reload_settings_with_env(**{name: value})

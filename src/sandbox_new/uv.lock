@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -199,6 +199,13 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.13.4" },
 ]
 provides-extras = ["litestar"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "litestar", specifier = "==2.24.0" },
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "pytest-asyncio", specifier = "==1.4.0" },
+]
 
 [[package]]
 name = "h11"

@@ -7,6 +7,7 @@ from litestar.params import Parameter
 from manager.application.orchestrators import JobOrchestrator, VenvCRUDOrchestrator
 from manager.application.ports import AbstractUnitOfWork
 from manager.presentation.rest import schemas
+from manager.presentation.rest.guards import reject_when_full
 
 ERROR_RESPONSES = {
     400: ResponseSpec(
@@ -24,6 +25,28 @@ ERROR_RESPONSES_WITH_NOT_FOUND = ERROR_RESPONSES | {
     404: ResponseSpec(
         ErrorResponseSchema,
         description="No venv with this id.",
+        generate_examples=False,
+    ),
+}
+SUBMIT_RESPONSES = ERROR_RESPONSES_WITH_NOT_FOUND | {
+    503: ResponseSpec(
+        ErrorResponseSchema,
+        description=(
+            "The sandbox is full, the job would wait in its queue longer than the "
+            "queue timeout, or its venv is still building and the sandbox already holds "
+            "as many jobs as it may. Nothing was accepted; re-post the same body after the "
+            "`Retry-After` seconds."
+        ),
+        generate_examples=False,
+    ),
+}
+STATUS_RESPONSES = ERROR_RESPONSES | {
+    404: ResponseSpec(
+        ErrorResponseSchema,
+        description=(
+            "The sandbox does not know this execution: it was never accepted, the "
+            "sandbox restarted, or its result went out more than a minute ago."
+        ),
         generate_examples=False,
     ),
 }
@@ -164,19 +187,27 @@ class ExecutionController(Controller):
 
     @post(
         status_code=status_codes.HTTP_202_ACCEPTED,
+        guards=[reject_when_full],
         summary="Submit code for execution",
         description=(
-            "Accepts a submission and answers immediately with its `execution_id`. The "
-            "result is not in this response: it is published out of band, and the caller "
-            "correlates it by that id.\n\n"
+            "Accepts a submission and answers immediately with its `execution_id` and "
+            "`status`. The result is not in this response: it is published out of band, "
+            "and the caller correlates it by that id.\n\n"
             "What happens next depends on the venv, chosen by `venv_id` or the default "
-            "one when it is omitted. A built venv has the job dispatched at once; a venv "
-            "still building holds the job until its build finishes; a venv whose build "
-            "failed produces a failed result rather than a run. All three answer 202 -- "
-            "acceptance says the submission was understood, not that the code will run."
+            "one when it is omitted. A built venv has the job queued at once; a venv "
+            "still building holds the job until its build finishes (a job still held "
+            "when the hold timeout passes gets a failed result instead of a run); a venv "
+            "whose build failed produces a failed result rather than a run. All three "
+            "answer 202 -- "
+            "acceptance says the submission was understood, not that the code will run.\n\n"
+            "Re-posting an `execution_id` the sandbox already knows does not run it again: "
+            "it answers 202 with that execution's current status.\n\n"
+            "A full sandbox answers 503 with `Retry-After` instead of accepting work it "
+            "could not start within its queue timeout. So does a submission that would be "
+            "held while the most jobs the sandbox holds are already waiting on venv builds."
         ),
         response_description="The submission was accepted; the result arrives out of band.",
-        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
+        responses=SUBMIT_RESPONSES,
     )
     async def submit(
         self, data: schemas.ExecutionSubmitSchema, state: State, uow: AbstractUnitOfWork
@@ -186,6 +217,7 @@ class ExecutionController(Controller):
         Raises:
             VenvNotFoundError: `venv_id` names no venv, or none is given and there is no
                 default venv. Rendered as 404.
+            SandboxOverloadedError: The sandbox cannot take the job now. Rendered as 503.
         """
         intake = state.job_intake
         orchestrator = JobOrchestrator(
@@ -193,8 +225,12 @@ class ExecutionController(Controller):
             intake.dispatcher,
             intake.holding,
             intake.failure_sink,
+            intake.registry,
+            intake.intake_gate,
+            queue_timeout=intake.queue_timeout,
+            hold_timeout=intake.hold_timeout,
         )
-        job = await orchestrator.submit(
+        status = await orchestrator.submit(
             execution_id=data.execution_id,
             session_id=data.session_id,
             code=data.code,
@@ -212,4 +248,25 @@ class ExecutionController(Controller):
             timeout=data.timeout,
             reply_to_crew_channel=data.reply_to_crew_channel,
         )
-        return schemas.ExecutionAcceptedSchema(execution_id=job.execution_id, status=job.status)
+        return schemas.ExecutionAcceptedSchema(execution_id=data.execution_id, status=status)
+
+    @get(
+        path="/{execution_id:str}",
+        summary="Retrieve the status of an execution",
+        description=(
+            "Says whether the sandbox still has the execution: `held` while its venv "
+            "builds, `queued` until its result is out, then `done` for one minute. After "
+            "that, or after a sandbox restart, the execution is unknown and this answers "
+            "404 -- a caller still waiting for its result should stop waiting."
+        ),
+        response_description="Where the execution is.",
+        responses=STATUS_RESPONSES,
+    )
+    async def retrieve(self, execution_id: str, state: State) -> schemas.ExecutionStatusSchema:
+        """Return where an accepted execution is.
+
+        Raises:
+            ExecutionNotFoundError: The sandbox does not know the execution, rendered as 404.
+        """
+        status = state.job_intake.registry.get_status(execution_id)
+        return schemas.ExecutionStatusSchema(execution_id=execution_id, status=status)
