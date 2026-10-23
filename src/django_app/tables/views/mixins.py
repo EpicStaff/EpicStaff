@@ -3,11 +3,10 @@ from rbac.access.effective import EffectivePermissions
 from rbac.access.resolver import PermissionResolver
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from tables.serializers.serializers import (
-    BulkDeleteQuerySerializer,
     BulkDeleteRequestSerializer,
     BulkDeleteResultSerializer,
     InspectImportRequestSerializer,
@@ -131,8 +130,7 @@ class BulkDeleteActionMixin:
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
         self._check_delete_service_class()
-        query = BulkDeleteQuerySerializer(data=request.query_params)
-        query.is_valid(raise_exception=True)
+        dry_run = self._read_dry_run(request.query_params)
         body = BulkDeleteRequestSerializer(data=request.data)
         body.is_valid(raise_exception=True)
 
@@ -141,7 +139,7 @@ class BulkDeleteActionMixin:
             body.validated_data["ids"],
             org_id,
             self.get_effective_permissions(),
-            dry_run=query.validated_data["dry_run"],
+            dry_run=dry_run,
             deleted_by=request.user,
         )
         logger.info(
@@ -167,6 +165,20 @@ class BulkDeleteActionMixin:
     def _check_delete_service_class(self) -> None:
         if not self.delete_service_class:
             raise NotImplementedError(f"{self.__class__.__name__} must set delete_service_class.")
+
+    @staticmethod
+    def _read_dry_run(query_params) -> bool:
+        """Read `?dry_run` strictly: anything but one true/false is a 400.
+
+        A lax read would turn a mistyped, blank or repeated preview flag into a
+        real delete of up to 500 rows.
+        """
+        values = query_params.getlist("dry_run")
+        if not values:
+            return False
+        if len(values) == 1 and values[0].lower() in ("true", "false"):
+            return values[0].lower() == "true"
+        raise ValidationError({"dry_run": ["Pass dry_run once, as true or false."]})
 
 
 class ToolUsageActionsMixin:

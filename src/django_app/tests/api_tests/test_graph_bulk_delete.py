@@ -177,17 +177,47 @@ def test_bulk_delete_dry_run_does_not_delete(django_user_model, org_a):
 
 
 @pytest.mark.django_db
-def test_bulk_delete_unparseable_dry_run_is_rejected(django_user_model, org_a):
-    """A mistyped preview must be a 400, never read as False and executed."""
+@pytest.mark.parametrize(
+    "value", ["notabool", "1", "yes"], ids=["typo", "numeric-true", "word-true"]
+)
+def test_bulk_delete_dry_run_other_than_true_or_false_is_rejected(
+    django_user_model, org_a, value
+):
+    """Only `true` / `false` are read; anything else is a 400, never a delete.
+
+    A typo must never be read as False and executed. `1` and `yes` are
+    rejected too, so the flag has exactly one spelling per meaning.
+    """
     client = org_admin_client(django_user_model, org_a, "admin@example.com")
-    g = _graph(org_a, "g")
+    graph = _graph(org_a, "graph")
 
     resp = client.post(
-        "/api/graphs/bulk-delete/?dry_run=notabool", {"ids": [g.id]}, format="json"
+        f"/api/graphs/bulk-delete/?dry_run={value}", {"ids": [graph.id]}, format="json"
     )
 
     assert resp.status_code == 400, resp.data
-    assert Graph.objects.filter(id=g.id).exists()
+    assert Graph.objects.filter(id=graph.id).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("value", "deleted"),
+    [("TRUE", False), ("false", True)],
+    ids=["true-in-any-case-previews", "explicit-false-deletes"],
+)
+def test_bulk_delete_dry_run_reads_true_and_false(
+    django_user_model, org_a, value, deleted
+):
+    client = org_admin_client(django_user_model, org_a, "admin@example.com")
+    graph = _graph(org_a, "graph")
+
+    resp = client.post(
+        f"/api/graphs/bulk-delete/?dry_run={value}", {"ids": [graph.id]}, format="json"
+    )
+
+    assert resp.status_code == 200, resp.data
+    assert resp.data["dry_run"] is not deleted
+    assert Graph.objects.filter(id=graph.id).exists() is not deleted
 
 
 @pytest.mark.django_db
@@ -201,8 +231,8 @@ def test_bulk_delete_blank_or_repeated_dry_run_is_rejected(
 ):
     """A value-less or ambiguous `dry_run` is malformed, not an absent one.
 
-    DRF reads a blank query value on an optional field as "not given", which
-    would fall back to `False` and turn the preview into a real delete.
+    Reading a blank value as "not given" would fall back to `False` and turn
+    the preview into a real delete.
     """
     client = org_admin_client(django_user_model, org_a, "admin@example.com")
     g = _graph(org_a, "g")

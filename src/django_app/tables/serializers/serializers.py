@@ -231,8 +231,8 @@ class BulkDeleteRequestSerializer(serializers.Serializer):
 
     The algorithm is shared through BaseDeleteService; each entity declares only
     its deletable scope and its referencing sources. `dry_run` is not part of the
-    body — it selects the operation, so it travels as a query parameter
-    (BulkDeleteQuerySerializer).
+    body — it selects the operation, so it travels as a query parameter, read by
+    BulkDeleteActionMixin.
     """
 
     ids = serializers.ListField(
@@ -253,34 +253,6 @@ class BulkDeleteRequestSerializer(serializers.Serializer):
         if isinstance(ids, list) and len(ids) > ids_field.max_length:
             message = ids_field.error_messages["max_length"].format(max_length=ids_field.max_length)
             raise serializers.ValidationError({"ids": [message]})
-        return super().to_internal_value(data)
-
-
-class BulkDeleteQuerySerializer(serializers.Serializer):
-    """Query-string modifiers for the bulk-delete actions.
-
-    A DRF BooleanField rather than a truthiness check on the raw string: a
-    malformed `dry_run` must be a 400, never silently read as `False` — that
-    would turn a mistyped preview into a real deletion of up to 500 rows.
-    `to_internal_value` closes the two ways DRF would otherwise read it as
-    `False`: a blank value (`?dry_run`, `?dry_run=`) and a repeated key.
-    """
-
-    dry_run = serializers.BooleanField(
-        required=False,
-        default=False,
-        help_text="Preview only: report usage and what would be deleted, "
-        "without deleting anything.",
-    )
-
-    def to_internal_value(self, data):
-        if hasattr(data, "getlist"):
-            if len(data.getlist("dry_run")) > 1:
-                raise serializers.ValidationError({"dry_run": ["Pass dry_run at most once."]})
-            # A QueryDict is treated as HTML form input, where a blank optional
-            # value counts as absent and falls back to the default. A plain dict
-            # hands the blank to BooleanField, which rejects it.
-            data = data.dict()
         return super().to_internal_value(data)
 
 
