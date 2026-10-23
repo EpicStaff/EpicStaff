@@ -75,6 +75,10 @@ if DEFAULT_EXECUTION_TIMEOUT < MIN_EXECUTION_TIMEOUT or (
         "and not above SANDBOX_MAX_EXECUTION_TIMEOUT."
     )
 
+# Bytes. Caps the result and storage mutations files the worker reads back from a run.
+MAX_RESULT_SIZE = env.byte_size("SANDBOX_MAX_RESULT_SIZE")
+if MAX_RESULT_SIZE is None or MAX_RESULT_SIZE <= 0:
+    raise ValueError("SANDBOX_MAX_RESULT_SIZE must be a positive size, not none.")
 
 # Defaults are the confining value: a missing setting must not unconfine the sandbox.
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET", True)

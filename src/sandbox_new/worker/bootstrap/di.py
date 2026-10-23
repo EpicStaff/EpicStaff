@@ -57,8 +57,8 @@ def build_pipeline() -> Pipeline:
                 max_timeout=settings.MAX_EXECUTION_TIMEOUT,
             )
         )
-        .register(CaptureMutationsStep())
-        .register(CaptureResultStep())
+        .register(CaptureMutationsStep(max_bytes=settings.MAX_RESULT_SIZE))
+        .register(CaptureResultStep(max_bytes=settings.MAX_RESULT_SIZE))
     )
 
 

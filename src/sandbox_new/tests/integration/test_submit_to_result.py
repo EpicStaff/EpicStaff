@@ -112,8 +112,8 @@ def build_worker(runtime) -> ExecutionOrchestrator:
             )
         )
         .register(LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None))
-        .register(CaptureMutationsStep())
-        .register(CaptureResultStep())
+        .register(CaptureMutationsStep(max_bytes=16 * 1024 * 1024))
+        .register(CaptureResultStep(max_bytes=16 * 1024 * 1024))
     )
     return ExecutionOrchestrator(
         pipeline,
