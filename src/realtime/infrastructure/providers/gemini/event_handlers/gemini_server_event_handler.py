@@ -141,6 +141,10 @@ class GeminiServerEventHandler:
             if response.tool_call is not None:
                 await self._handle_tool_call(response.tool_call)
 
+            if response.session_resumption_update is not None:
+                update = response.session_resumption_update
+                self.client.record_resumption_update(update.new_handle, update.resumable)
+
             # A message that is only audio chunks has nothing to record once its audio is
             # redacted, so skip it like the other providers' audio frames.
             if config.PERSIST_RAW_AUDIO or not _carries_only_audio(response):
@@ -276,12 +280,6 @@ class GeminiServerEventHandler:
                 {"type": "response.done", "response": {"id": rid, "status": "completed"}}
             )
 
-        # Save completed model turn to history for context injection on reconnect.
-        if self._current_transcript:
-            self.client._conversation_history.append(
-                {"role": "model", "text": self._current_transcript}
-            )
-
         self._current_response_id = None
         self._current_item_id = None
         self._current_user_item_id = None
@@ -316,9 +314,6 @@ class GeminiServerEventHandler:
         )
 
     async def _handle_input_transcription(self, text: str) -> None:
-        # Save user turn to history for context injection on reconnect.
-        self.client._conversation_history.append({"role": "user", "text": text})
-
         if not self._current_user_item_id:
             self._current_user_item_id = f"msg_user_{uuid.uuid4().hex[:10]}"
             await self._send_to_client(
