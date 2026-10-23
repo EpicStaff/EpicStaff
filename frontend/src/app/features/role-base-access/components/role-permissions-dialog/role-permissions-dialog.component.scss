@@ -1,0 +1,252 @@
+.dialog {
+    display: flex;
+    flex-direction: column;
+    max-height: min(800px, 90vh);
+    background: var(--color-nodes-sidepanel-bg);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+
+    .header {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+
+        .title {
+            margin: 0;
+            font-size: var(--text-h3-size);
+            font-weight: var(--text-h3-weight);
+            line-height: var(--text-h3-line-height);
+            color: var(--text);
+        }
+
+        .close {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary-60);
+            cursor: pointer;
+            border-radius: 4px;
+
+            &:hover {
+                background: var(--transparent-white-8);
+                color: var(--text);
+            }
+        }
+    }
+
+    .body {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-height: 0;
+        padding: 20px;
+        overflow-y: auto;
+    }
+}
+
+.role-identity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .role-avatar {
+        width: 40px;
+        height: 40px;
+    }
+
+    .role-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+    }
+
+    .role-name {
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
+        line-height: var(--text-h4-line-height);
+        color: var(--text);
+    }
+
+    .org-name {
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--text-secondary-60);
+    }
+}
+
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 40px;
+    padding: 0 16px 0 12px;
+    border: none;
+    border-radius: 10px;
+    background-color: var(--color-ks-line);
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+
+    // The design's hover fill has no token; an 8% white overlay on top of the line fill lightens it.
+    &:hover {
+        background-image: linear-gradient(var(--transparent-white-8), var(--transparent-white-8));
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+
+    .chevron {
+        color: var(--text-secondary-60);
+    }
+
+    .group-label {
+        flex: 1;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+    }
+
+    .group-count {
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--text-secondary-60);
+    }
+}
+
+.matrix {
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.matrix-row {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &:last-child {
+        border-bottom: none;
+    }
+}
+
+.matrix-head {
+    height: 40px;
+    padding: 0 8px 0 16px;
+
+    .resource-head {
+        flex: 1;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        text-transform: uppercase;
+        color: var(--text-secondary-60);
+    }
+
+    .action-head {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        width: 48px;
+        color: var(--text-secondary-60);
+
+        .action-label {
+            max-width: 100%;
+            overflow: hidden;
+            font-size: var(--text-caption-size);
+            font-weight: var(--text-caption-weight);
+            line-height: var(--text-caption-line-height);
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    }
+}
+
+.resource-row {
+    min-height: 52px;
+    padding: 8px 8px 8px 16px;
+
+    &:hover {
+        background: var(--color-ks-hover-row);
+    }
+
+    .resource-info {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+    }
+
+    .resource-label {
+        font-size: var(--text-body-small-large-size);
+        font-weight: var(--text-body-small-large-weight);
+        line-height: var(--text-body-small-large-line-height);
+        color: var(--text);
+    }
+
+    .resource-description {
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--text-secondary-60);
+    }
+
+    .action-cell {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        width: 48px;
+        height: 28px;
+
+        .granted {
+            color: var(--accent-color);
+        }
+    }
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 32px 16px;
+    text-align: center;
+
+    .empty-title {
+        margin: 0;
+        font-size: var(--text-h4-size);
+        font-weight: var(--text-h4-weight);
+        line-height: var(--text-h4-line-height);
+        color: var(--text);
+    }
+
+    .empty-subtitle {
+        margin: 0;
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+        color: var(--text-secondary-60);
+    }
+}

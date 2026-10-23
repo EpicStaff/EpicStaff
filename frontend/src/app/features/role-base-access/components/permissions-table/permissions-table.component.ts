@@ -2,14 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, input
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent, SearchComponent } from '@shared/components';
 import { ActionCode, CatalogAction, CatalogResourceType, CatalogResponse, ResourceCode } from '@shared/models';
 
-import { ACTION_ICONS, GROUP_META, GroupMeta } from '../../constants/permission-table.constant';
-
-interface CatalogGroup {
-    key: string;
-    label: string;
-    icon: string;
-    resources: CatalogResourceType[];
-}
+import { ACTION_ICONS } from '../../constants/permission-table.constant';
+import { CatalogGroup, groupCatalogResources } from '../../utils';
 
 type TriState = 'checked' | 'indeterminate' | 'empty';
 
@@ -52,19 +46,7 @@ export class PermissionsTableComponent {
 
     totalSelected = computed(() => this.selectedPermissions().size);
 
-    private readonly groupedCatalog = computed<CatalogGroup[]>(() => {
-        const catalog = this.catalog();
-        const groupMap = new Map<string, CatalogResourceType[]>();
-        for (const rt of catalog.resource_types) {
-            const arr = groupMap.get(rt.group) ?? [];
-            arr.push(rt);
-            groupMap.set(rt.group, arr);
-        }
-        return Array.from(groupMap.entries()).map(([key, resources]) => {
-            const meta: GroupMeta = GROUP_META[key] ?? { label: key, icon: 'settings' };
-            return { key, label: meta.label, icon: meta.icon, resources };
-        });
-    });
+    private readonly groupedCatalog = computed<CatalogGroup[]>(() => groupCatalogResources(this.catalog()));
 
     filteredGroups = computed<CatalogGroup[]>(() => {
         const term = this.searchTerm().toLowerCase().trim();
