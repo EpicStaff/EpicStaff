@@ -102,3 +102,37 @@ async def test_a_failing_job_frees_its_slot_and_leaves_the_loop_running():
 
     assert orchestrator.started == ["exec-1", "exec-2"]
     assert orchestrator.finished == ["exec-2"]
+
+
+async def test_exec_start_counts_the_executions_running_including_its_own(checkpoints):
+    gate = asyncio.Event()
+    orchestrator = RecordingOrchestrator(gate=gate)
+    source = FakeJobSource(
+        make_worker_job(execution_id="exec-1", session_id=3),
+        make_worker_job(execution_id="exec-2", session_id=4),
+    )
+    consumer = JobConsumer(source, orchestrator, concurrency=2)
+
+    await run_consumer(consumer, lambda: len(orchestrator.started) == 2)
+    gate.set()
+
+    assert checkpoints == [
+        {"checkpoint": "exec_start", "session_id": 3, "execution_id": "exec-1", "running": 1},
+        {"checkpoint": "exec_start", "session_id": 4, "execution_id": "exec-2", "running": 2},
+    ]
+
+
+async def test_a_finished_execution_no_longer_counts_as_running(checkpoints):
+    orchestrator = RecordingOrchestrator()
+    source = FakeJobSource(
+        make_worker_job(execution_id="exec-1"), make_worker_job(execution_id="exec-2")
+    )
+    consumer = JobConsumer(source, orchestrator, concurrency=1)
+
+    await run_consumer(consumer, lambda: len(orchestrator.finished) == 2)
+
+    assert orchestrator.finished == ["exec-1", "exec-2"]
+    assert [(item["execution_id"], item["running"]) for item in checkpoints] == [
+        ("exec-1", 1),
+        ("exec-2", 1),
+    ]

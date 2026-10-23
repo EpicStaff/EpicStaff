@@ -82,6 +82,8 @@ class ExecutionResult(ValueObject):
     returncode: int = 0
     # Echoed from the job; see ``Job.reply_to_crew_channel``.
     reply_to_crew_channel: bool = False
+    # Echoed from the job so the manager's BENCH checkpoint can name the session.
+    session_id: int | None = None
 
 
 class StorageMutations(ValueObject):
