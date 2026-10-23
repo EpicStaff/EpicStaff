@@ -91,11 +91,19 @@
                         size="14px"
                         class="collapse-icon"
                     />
-                    <app-svg-icon
-                        [icon]="group.icon"
-                        size="14px"
-                        class="group-icon"
-                    />
+                    @if (group.iconClass) {
+                        <i
+                            class="group-icon group-icon--font"
+                            [class]="group.iconClass"
+                            aria-hidden="true"
+                        ></i>
+                    } @else if (group.icon) {
+                        <app-svg-icon
+                            [icon]="group.icon"
+                            size="14px"
+                            class="group-icon"
+                        />
+                    }
                     <span class="group-name">{{ group.label }}</span>
                     <span class="group-count">
                         {{ groupCounts().get(group.key)?.selected }} /
@@ -108,10 +116,11 @@
                     class="group-content"
                     [class.is-collapsed]="isGroupCollapsed(group.key)"
                 >
-                    @if (!readonly()) {
+                    @if (!readonly() && group.rows.length > 0) {
                         <div class="resource-row bulk">
                             <app-checkbox
                                 color="secondary"
+                                [ariaLabel]="'All ' + group.label + ' permissions'"
                                 [checked]="groupCheckboxChecked(group)"
                                 [indeterminate]="groupCheckboxIndeterminate(group)"
                                 (changed)="onGroupBulkToggle(group)"
@@ -124,6 +133,7 @@
                                     @if (hasGroupApplicableAction(group, action.code)) {
                                         <app-checkbox
                                             color="secondary"
+                                            [ariaLabel]="actionLabel(action) + ' for all ' + group.label"
                                             [checked]="groupActionCheckboxChecked(group, action.code)"
                                             [indeterminate]="groupActionCheckboxIndeterminate(group, action.code)"
                                             (changed)="onGroupActionToggleClick(group, action.code)"
@@ -136,7 +146,7 @@
                         </div>
                     }
 
-                    @for (resource of group.resources; track resource.code) {
+                    @for (resource of group.rows; track resource.code) {
                         <div
                             class="resource-row"
                             [attr.data-resource-code]="resource.code"
@@ -145,6 +155,7 @@
                                 @if (!readonly()) {
                                     <app-checkbox
                                         color="secondary"
+                                        [ariaLabel]="'All ' + resource.label + ' permissions'"
                                         [checked]="resourceCheckboxChecked(resource)"
                                         [indeterminate]="resourceCheckboxIndeterminate(resource)"
                                         (changed)="onResourceRowToggle(resource)"
@@ -152,16 +163,38 @@
                                 }
                             </div>
                             <div class="resource-info">
-                                <span class="resource-name">{{ resource.label }}</span>
-                                <span class="resource-desc">{{ resource.description }}</span>
+                                <span class="resource-name">
+                                    @if (resource.iconUrl) {
+                                        <img
+                                            class="resource-icon"
+                                            [src]="resource.iconUrl"
+                                            alt=""
+                                            decoding="async"
+                                            referrerpolicy="no-referrer"
+                                        />
+                                    }
+                                    {{ resource.label }}
+                                </span>
+                                @if (resource.description) {
+                                    <span class="resource-desc">{{ resource.description }}</span>
+                                }
                             </div>
                             @for (action of catalog().actions; track action.code) {
-                                <div class="action-cell">
+                                <!-- The description also shows while the cell's checkbox has the keyboard focus. -->
+                                <div
+                                    #cellTooltipRef="matTooltip"
+                                    class="action-cell"
+                                    [matTooltip]="cellTooltip(resource, action.code)"
+                                    matTooltipPosition="above"
+                                    (focusin)="cellTooltipRef.show()"
+                                    (focusout)="cellTooltipRef.hide()"
+                                >
                                     @if (isApplicable(resource, action)) {
                                         @if (!readonly() || isChecked(resource.code, action.code)) {
                                             <app-checkbox
                                                 [class.recommended]="isRecommended(resource.code, action.code)"
                                                 color="secondary"
+                                                [ariaLabel]="cellAriaLabel(resource, action.code)"
                                                 [checked]="isChecked(resource.code, action.code)"
                                                 [disabled]="isCellDisabled(resource.code, action.code)"
                                                 (checkedChange)="onPermissionCellToggle(resource.code, action.code)"

@@ -1,3 +1,4 @@
+from rbac.access.principals import is_pinned_org_principal
 from rest_framework.throttling import SimpleRateThrottle
 
 
@@ -15,13 +16,19 @@ class NotifyEmailThrottle(SimpleRateThrottle):
     a mail relay to spam arbitrary external addresses. Rate is driven by the
     `notify_email` scope (default 10/hour, env var
     `DJANGO_NOTIFY_EMAIL_THROTTLE_RATE`).
+
+    A pinned principal has no user id; it is keyed on its own
+    `rate_limit_key`. The view refuses plugin credentials before throttling,
+    so this only keeps the key well-defined.
     """
 
     scope = "notify_email"
 
     def get_cache_key(self, request, view):
         user = getattr(request, "user", None)
-        if user is not None and user.is_authenticated:
+        if is_pinned_org_principal(user):
+            ident = user.rate_limit_key
+        elif user is not None and user.is_authenticated:
             ident = str(user.pk)
         else:
             ident = self.get_ident(request)

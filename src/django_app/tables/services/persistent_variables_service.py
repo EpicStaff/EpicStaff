@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 
 from django.db import transaction
 from loguru import logger
+from rbac.access.principals import acting_person
 from rbac.models import OrganizationUser
 from rest_framework import serializers
 from tables.constants.variables_constants import (
@@ -233,15 +234,18 @@ class PersistentVariablesService:
     def _resolve_graph_user(self, graph, user):
         """The runner's per-flow row, get_or_create'd from their membership.
 
-        None for anonymous/trigger runs and for superadmin (no membership row).
-        No user-level variables flow through it in org-only scope; the row
-        exists so `Session.graph_user` is a correct FK.
+        The runner is the acting person: the user, or the person a plugin runs
+        the flow on behalf of. None for anonymous/trigger runs, for a plugin
+        running on its own and for superadmin (no membership row). No
+        user-level variables flow through it in org-only scope; the row exists
+        so `Session.graph_user` is a correct FK.
         """
         # TODO refactor to use user_variable for persistent variables
-        if user is None or getattr(user, "is_superadmin", False):
+        person = acting_person(user)
+        if person is None or person.is_superadmin:
             return None
         membership = OrganizationUser.objects.filter(
-            user=user, org_id=graph.org_id, org__is_active=True
+            user=person, org_id=graph.org_id, org__is_active=True
         ).first()
         if membership is None:
             return None

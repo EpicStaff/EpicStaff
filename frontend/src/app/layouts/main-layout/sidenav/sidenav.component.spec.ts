@@ -1,4 +1,6 @@
+import { InteractivityChecker } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, signal, WritableSignal } from '@angular/core';
@@ -8,6 +10,13 @@ import { provideRouter, Router } from '@angular/router';
 import { GetMeResponse, ResourceCode } from '@shared/models';
 
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { AvailablePlugin } from '../../../features/plugins/models/available-plugin.model';
+import { AppReturnUrlService } from '../../../features/plugins/services/app-return-url.service';
+import { AvailablePluginsStorageService } from '../../../features/plugins/services/available-plugins-storage.service';
+import {
+    buildAvailablePlugin,
+    buildAvailablePluginNavigationItem,
+} from '../../../features/plugins/testing/plugin-fixtures';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
@@ -29,17 +38,62 @@ const USER = {
     memberships: [{ organization: { id: 1, name: ORG_NAME }, role: { name: 'Admin' } }],
 } as unknown as GetMeResponse;
 
+const WEATHER = buildAvailablePlugin();
+const ATLAS = buildAvailablePlugin({
+    identifier: 'atlas',
+    name: 'Atlas',
+    description: 'Maps of everything',
+    icon_url: '/api/plugin-public/atlas/icon/?v=2.0.0',
+    frame_origin: 'https://atlas.plugins.example.com',
+    navigation: [
+        buildAvailablePluginNavigationItem({
+            label: 'Overview',
+            path: '/',
+            icon_url: '/api/plugin-public/atlas/icons/overview.svg/?v=2.0.0',
+        }),
+        buildAvailablePluginNavigationItem({
+            label: 'Projects',
+            path: '/projects',
+            icon_url: '/api/plugin-public/atlas/icons/projects.svg/?v=2.0.0',
+        }),
+        buildAvailablePluginNavigationItem({
+            label: 'Reports',
+            path: '/reports',
+            icon_url: '/api/plugin-public/atlas/icons/reports.svg/?v=2.0.0',
+        }),
+    ],
+});
+/** The fixed top items this setup shows, in order (Audit is off). */
+const STATIC_TOP_LABELS = ['Agents', 'Tools', 'Virtual Environments', 'Storage', 'Flows', 'Chats', 'Conversations'];
+
+/** Everything counts as on screen: jsdom lays nothing out, so the focus trap would find nothing to focus. */
+class LaidOutInteractivityChecker extends InteractivityChecker {
+    override isVisible(): boolean {
+        return true;
+    }
+}
+
 describe('LeftSidebarComponent', () => {
     let fixture: ComponentFixture<LeftSidebarComponent>;
     let element: HTMLElement;
     let activeOrgId: WritableSignal<number | null>;
+    /** What the storage holds: the plugins available in the active organization, sorted by name. */
+    let availablePlugins: WritableSignal<AvailablePlugin[]>;
+    /** The organization the held list belongs to (`null` before one landed). */
+    let loadedOrgId: WritableSignal<number | null>;
+    let isSuperadmin: boolean;
 
     beforeEach(() => {
         activeOrgId = signal<number | null>(1);
+        availablePlugins = signal<AvailablePlugin[]>([]);
+        loadedOrgId = signal<number | null>(null);
+        isSuperadmin = false;
         TestBed.configureTestingModule({
             providers: [
                 provideHttpClient(),
                 provideHttpClientTesting(),
+                { provide: AvailablePluginsStorageService, useValue: { plugins: availablePlugins, loadedOrgId } },
+                { provide: InteractivityChecker, useClass: LaidOutInteractivityChecker },
                 provideRouter([
                     { path: 'workspace', children: [] },
                     { path: '**', children: [] },
@@ -54,9 +108,16 @@ describe('LeftSidebarComponent', () => {
                         canOpenConfigureModelsDialog: () => true,
                         canApplyQuickstart: () => false,
                         canAccessWorkspace: () => true,
+                        resolveDefaultRoute: () => '/agents',
+                        get isSuperadmin(): boolean {
+                            return isSuperadmin;
+                        },
                     },
                 },
-                { provide: ConfigService, useValue: { isAuditTrailEnabled: false, isChatEnabled: true } },
+                {
+                    provide: ConfigService,
+                    useValue: { isAuditTrailEnabled: false, isChatEnabled: true, isPluginsEnabled: true },
+                },
                 {
                     provide: ChatInboxStreamService,
                     useValue: { waitingCount: signal(WAITING_COUNT), start: vi.fn(), stop: vi.fn() },
@@ -66,6 +127,11 @@ describe('LeftSidebarComponent', () => {
 
         fixture = TestBed.createComponent(LeftSidebarComponent);
         element = fixture.nativeElement as HTMLElement;
+    });
+
+    afterEach(() => {
+        localStorage.clear();
+        sessionStorage.clear();
     });
 
     function render(width: number): void {
@@ -112,6 +178,67 @@ describe('LeftSidebarComponent', () => {
 
     function sidebarToggle(): HTMLButtonElement {
         return element.querySelector<HTMLButtonElement>('.logo-container app-sidebar-toggle-button button')!;
+    }
+
+    /** The labels of the top links, in order: the visible text when expanded, the aria-label when collapsed. */
+    function topLinkLabels(): string[] {
+        return Array.from(element.querySelectorAll<HTMLElement>('.main-nav a.sidenav-nav-link')).map(
+            (link) =>
+                link.querySelector('.sidenav-row-label')?.textContent?.trim() ?? link.getAttribute('aria-label') ?? ''
+        );
+    }
+
+    /** What the storage does when a list lands: the list and its organization together. */
+    function showPlugins(plugins: AvailablePlugin[]): void {
+        availablePlugins.set(plugins);
+        loadedOrgId.set(1);
+        fixture.detectChanges();
+    }
+
+    /** A row that opens a list: by its aria-label (collapsed) or its visible label (expanded). */
+    function listRow(label: string): HTMLButtonElement | undefined {
+        return Array.from(element.querySelectorAll<HTMLButtonElement>('.sidenav-nav-button')).find(
+            (button) =>
+                button.getAttribute('aria-label') === label ||
+                button.querySelector('.sidenav-row-label')?.textContent?.trim() === label
+        );
+    }
+
+    function popover(): HTMLElement | null {
+        return TestBed.inject(OverlayContainer).getContainerElement().querySelector<HTMLElement>('.apps-popover');
+    }
+
+    function appLinks(container: ParentNode): HTMLAnchorElement[] {
+        return Array.from(container.querySelectorAll<HTMLAnchorElement>('a.apps-list__item'));
+    }
+
+    function hrefs(links: HTMLAnchorElement[]): (string | null)[] {
+        return links.map((link) => link.getAttribute('href'));
+    }
+
+    async function open(row: HTMLButtonElement): Promise<void> {
+        row.click();
+        fixture.detectChanges();
+        await fixture.whenStable();
+        fixture.detectChanges();
+    }
+
+    async function navigate(url: string): Promise<void> {
+        await TestBed.inject(Router).navigateByUrl(url);
+        fixture.detectChanges();
+    }
+
+    /** The rows between the logo and the bottom block, by their visible labels (expanded). */
+    function mainLabels(): string[] {
+        return Array.from(element.querySelectorAll('.main-nav > li > .tooltip-wrapper .sidenav-row-label')).map(
+            (label) => label.textContent!.trim()
+        );
+    }
+
+    function menuLinks(): HTMLAnchorElement[] {
+        return Array.from(element.querySelectorAll<HTMLAnchorElement>('.main-nav a.sidenav-nav-link')).filter(
+            (link) => link.querySelector('app-plugin-menu-icon') !== null
+        );
     }
 
     function emittedToggles(): number {
@@ -287,6 +414,310 @@ describe('LeftSidebarComponent', () => {
             expect(badgeLink.getAttribute('aria-label')).toBe('Conversations inbox: 4 waiting for a person');
         });
     });
+
+    describe('Apps row', () => {
+        it('replaces the per-plugin rows: one row below a divider, after the fixed items', () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([ATLAS, WEATHER]);
+
+            expect(topLinkLabels()).toEqual(STATIC_TOP_LABELS);
+            expect(element.querySelector('.main-nav a[href^="/plugins/"]')).toBeNull();
+            const appsItem = listRow('Apps')!.closest('li')!;
+            expect(appsItem.previousElementSibling?.getAttribute('role')).toBe('separator');
+            expect(appsItem.nextElementSibling).toBeNull();
+        });
+
+        it('is absent, divider and all, when no app is available (platform off, no organization, none granted)', () => {
+            render(EXPANDED_WIDTH);
+
+            expect(listRow('Apps')).toBeUndefined();
+            expect(element.querySelector('.main-nav [role="separator"]')).toBeNull();
+        });
+
+        it('follows the list: gone on an org switch, back when the new list arrives', () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([WEATHER]);
+            expect(listRow('Apps')).toBeDefined();
+
+            showPlugins([]);
+            expect(listRow('Apps')).toBeUndefined();
+
+            showPlugins([ATLAS]);
+            expect(listRow('Apps')).toBeDefined();
+        });
+
+        it('opens a popover of the apps, headed with the organization, focused on the first app', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([ATLAS, WEATHER]);
+            const row = listRow('Apps')!;
+            expect(row.getAttribute('aria-expanded')).toBe('false');
+            expect(row.getAttribute('aria-haspopup')).toBe('dialog');
+
+            await open(row);
+
+            expect(row.getAttribute('aria-expanded')).toBe('true');
+            expect(popover()!.getAttribute('role')).toBe('dialog');
+            expect(popover()!.getAttribute('aria-label')).toBe('Apps');
+            expect(popover()!.querySelector('.apps-list__organization')!.textContent!.trim()).toBe(ORG_NAME);
+            expect(hrefs(appLinks(popover()!))).toEqual(['/plugins/atlas', '/plugins/weather']);
+            expect(document.activeElement).toBe(appLinks(popover()!)[0]);
+        });
+
+        it('focuses the search field when the popover has one', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins(
+                Array.from({ length: 7 }, (_, index) =>
+                    buildAvailablePlugin({ identifier: `app-${index}`, name: `App ${index}` })
+                )
+            );
+
+            await open(listRow('Apps')!);
+
+            expect(document.activeElement).toBe(popover()!.querySelector('app-search input'));
+        });
+
+        it('closes on Escape and gives the focus back to its row', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([ATLAS, WEATHER]);
+            const row = listRow('Apps')!;
+            await open(row);
+
+            popover()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            fixture.detectChanges();
+
+            expect(popover()).toBeNull();
+            expect(row.getAttribute('aria-expanded')).toBe('false');
+            expect(document.activeElement).toBe(row);
+        });
+
+        it('closes when the row is pressed again, and when an app is followed', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([ATLAS, WEATHER]);
+            await open(listRow('Apps')!);
+
+            await open(listRow('Apps')!);
+            expect(popover()).toBeNull();
+
+            await open(listRow('Apps')!);
+            appLinks(popover()!)[1].click();
+            await fixture.whenStable();
+            fixture.detectChanges();
+
+            expect(TestBed.inject(Router).url).toBe('/plugins/weather');
+            expect(popover()).toBeNull();
+        });
+
+        it.each([
+            { superadmin: true, shown: true },
+            { superadmin: false, shown: false },
+        ])('offers "Manage apps" to a SuperAdmin only ($superadmin)', async ({ superadmin, shown }) => {
+            isSuperadmin = superadmin;
+            render(EXPANDED_WIDTH);
+            showPlugins([WEATHER]);
+
+            await open(listRow('Apps')!);
+
+            const manage = popover()!.querySelector<HTMLAnchorElement>('.apps-list-footer-link');
+            expect(manage !== null).toBe(shown);
+            if (manage) {
+                expect(manage.textContent!.trim()).toBe('Manage apps');
+                expect(manage.getAttribute('href')).toBe('/workspace/plugins');
+            }
+        });
+
+        it('marks a newly granted app: a dot on the row until the list opens, a tag while it is open', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([WEATHER]);
+            TestBed.tick();
+            showPlugins([ATLAS, WEATHER]);
+            const row = listRow('Apps')!;
+            expect(row.querySelector('.sidenav-new-dot')).not.toBeNull();
+            expect(row.querySelector('.visually-hidden')!.textContent!.trim()).toBe(', new apps available');
+
+            await open(row);
+
+            expect(row.querySelector('.sidenav-new-dot')).toBeNull();
+            const tagged = appLinks(popover()!).filter((link) => link.querySelector('.apps-list__new'));
+            expect(hrefs(tagged)).toEqual(['/plugins/atlas']);
+
+            await open(row);
+            await open(row);
+            expect(popover()!.querySelector('.apps-list__new')).toBeNull();
+        });
+
+        it('lists the apps inline under the row in the drawer, not in a popover', async () => {
+            fixture.componentRef.setInput('inDrawer', true);
+            isSuperadmin = true;
+            render(EXPANDED_WIDTH);
+            showPlugins([ATLAS, WEATHER]);
+            const row = listRow('Apps')!;
+            expect(row.hasAttribute('aria-haspopup')).toBe(false);
+
+            await open(row);
+
+            expect(popover()).toBeNull();
+            const inline = element.querySelector<HTMLElement>('#sidenav-apps-list')!;
+            expect(row.getAttribute('aria-controls')).toBe('sidenav-apps-list');
+            expect(inline.previousElementSibling).toBe(row.closest('li'));
+            expect(hrefs(appLinks(inline))).toEqual(['/plugins/atlas', '/plugins/weather']);
+            expect(inline.querySelector('app-search')).toBeNull();
+            expect(inline.querySelector('.apps-list-footer-link')!.textContent!.trim()).toBe('Manage apps');
+        });
+
+        it('opens a popover from a collapsed drawer, where names do not fit under the row', async () => {
+            fixture.componentRef.setInput('inDrawer', true);
+            render(COLLAPSED_WIDTH);
+            showPlugins([WEATHER]);
+
+            await open(listRow('Apps')!);
+
+            expect(popover()).not.toBeNull();
+        });
+
+        it('is an icon named by its aria-label when collapsed, its tooltip hidden while its popover is open', async () => {
+            render(COLLAPSED_WIDTH);
+            showPlugins([WEATHER]);
+            const row = listRow('Apps')!;
+            expect(row.getAttribute('aria-label')).toBe('Apps');
+
+            hoverItem('Apps');
+            expect(visibleTooltipTexts()).toContain('Apps');
+
+            await open(row);
+            expect(visibleTooltipTexts()).not.toContain('Apps');
+        });
+    });
+
+    describe('in an app', () => {
+        async function openApp(url: string, width = EXPANDED_WIDTH): Promise<void> {
+            render(width);
+            showPlugins([ATLAS, WEATHER]);
+            await navigate(url);
+        }
+
+        it("swaps EpicStaff's rows for the way back, the app switcher and the app's menu", async () => {
+            await openApp('/plugins/atlas/projects/2');
+
+            expect(mainLabels()).toEqual(['Back to EpicStaff', 'Atlas', 'Overview', 'Projects', 'Reports']);
+            const separators = element.querySelectorAll('.main-nav > [role="separator"]');
+            expect(separators.length).toBe(1);
+            expect(separators[0].nextElementSibling!.textContent).toContain('Overview');
+        });
+
+        it('leads back to the last EpicStaff page shown in this tab', async () => {
+            render(EXPANDED_WIDTH);
+            showPlugins([ATLAS]);
+            TestBed.inject(AppReturnUrlService).record('/storage/files?folder=7');
+
+            await navigate('/plugins/atlas');
+
+            expect(navLink('Back to EpicStaff')!.getAttribute('href')).toBe('/storage/files?folder=7');
+        });
+
+        it("links each menu item to its page in the app, drawn with the item's own icon", async () => {
+            await openApp('/plugins/atlas');
+
+            expect(hrefs(menuLinks())).toEqual(['/plugins/atlas', '/plugins/atlas/projects', '/plugins/atlas/reports']);
+            expect(
+                menuLinks()[1].querySelector<HTMLElement>('app-plugin-menu-icon')!.style.getPropertyValue('mask-image')
+            ).toBe('url("/api/plugin-public/atlas/icons/projects.svg/?v=2.0.0")');
+        });
+
+        it('marks the item the page belongs to, following every navigation, as one a plugin page makes', async () => {
+            await openApp('/plugins/atlas');
+            const current = (): [string | null, string | null][] =>
+                menuLinks()
+                    .filter((link) => link.hasAttribute('aria-current'))
+                    .map((link) => [link.getAttribute('href'), link.getAttribute('aria-current')]);
+            expect(current()).toEqual([['/plugins/atlas', 'page']]);
+
+            // What the host page does when the page reports `nav.changed`. A page below the item's: not its page.
+            await TestBed.inject(Router).navigate(['/plugins', 'atlas', 'projects', '2'], { replaceUrl: true });
+            fixture.detectChanges();
+            expect(current()).toEqual([['/plugins/atlas/projects', 'true']]);
+            expect(menuLinks()[1].classList).toContain('active');
+
+            await navigate('/plugins/atlas/projects?tab=1');
+            expect(current()).toEqual([['/plugins/atlas/projects', 'page']]);
+
+            await navigate('/plugins/atlas/settings');
+            expect(current()).toEqual([]);
+        });
+
+        it('shows no divider and no menu for an app without one', async () => {
+            await openApp('/plugins/weather');
+
+            expect(mainLabels()).toEqual(['Back to EpicStaff', 'Weather']);
+            expect(element.querySelector('.main-nav [role="separator"]')).toBeNull();
+        });
+
+        it('names an app missing from the list by its identifier, with a placeholder icon and no menu', async () => {
+            await openApp('/plugins/gone/projects');
+
+            expect(mainLabels()).toEqual(['Back to EpicStaff', 'gone']);
+            expect(listRow('gone')!.querySelector('app-plugin-icon .plugin-icon--placeholder')).not.toBeNull();
+        });
+
+        it('keeps only the account row at the bottom: no Recycle Bin, no Settings', async () => {
+            await openApp('/plugins/atlas');
+
+            expect(navLink('Recycle Bin')).toBeUndefined();
+            expect(navLink('Settings')).toBeUndefined();
+            expect(accountRow()).not.toBeNull();
+        });
+
+        it('switches apps from a popover that checks the current one and opens the page in a new tab', async () => {
+            await openApp('/plugins/atlas/projects?tab=1');
+            const switcher = listRow('Atlas')!;
+            expect(switcher.querySelector('.visually-hidden')!.textContent!.trim()).toBe(', switch app');
+
+            await open(switcher);
+
+            expect(popover()!.getAttribute('aria-label')).toBe('Switch app');
+            const links = appLinks(popover()!);
+            expect(hrefs(links)).toEqual(['/plugins/atlas', '/plugins/weather']);
+            expect(links[0].getAttribute('aria-current')).toBe('true');
+            expect(links[1].hasAttribute('aria-current')).toBe(false);
+            const newTab = popover()!.querySelector<HTMLAnchorElement>('.apps-list-footer-link')!;
+            expect(newTab.textContent!.trim()).toBe('Open in a new tab');
+            expect(newTab.getAttribute('href')).toBe('/plugins/atlas/projects?tab=1');
+            expect(newTab.getAttribute('target')).toBe('_blank');
+            expect(newTab.getAttribute('rel')).toBe('noopener');
+        });
+
+        it("goes back to EpicStaff's rows when the address leaves the app", async () => {
+            await openApp('/plugins/atlas');
+
+            await navigate('/flows');
+
+            expect(topLinkLabels()).toEqual(STATIC_TOP_LABELS);
+            expect(listRow('Apps')).toBeDefined();
+            expect(navLink('Back to EpicStaff')).toBeUndefined();
+        });
+
+        it('names every row by its aria-label and shows it as a tooltip when collapsed', async () => {
+            await openApp('/plugins/atlas', COLLAPSED_WIDTH);
+
+            expect(labelTexts()).toEqual([]);
+            expect(navLink('Back to EpicStaff')).toBeDefined();
+            expect(listRow('Atlas, switch app')).toBeDefined();
+            expect(menuLinks().map((link) => link.getAttribute('aria-label'))).toEqual([
+                'Overview',
+                'Projects',
+                'Reports',
+            ]);
+
+            hoverItem('Projects');
+            expect(visibleTooltipTexts()).toContain('Projects');
+
+            listRow('Atlas, switch app')!.closest('li')!.dispatchEvent(new MouseEvent('mouseenter'));
+            fixture.detectChanges();
+            expect(visibleTooltipTexts()).toContain('Atlas, switch app');
+
+            await open(listRow('Atlas, switch app')!);
+            expect(visibleTooltipTexts()).not.toContain('Atlas, switch app');
+        });
+    });
 });
 
 @Component({ template: '' })
@@ -300,6 +731,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
     let workspaceAllowed: boolean;
     let settingsAllowed: boolean;
     let config: { isAuditTrailEnabled: boolean };
+    let availablePlugins: WritableSignal<AvailablePlugin[]>;
 
     beforeEach(() => {
         hiddenResources = new Set();
@@ -307,8 +739,13 @@ describe('LeftSidebarComponent page shortcuts', () => {
         workspaceAllowed = true;
         settingsAllowed = true;
         config = { isAuditTrailEnabled: false };
+        availablePlugins = signal<AvailablePlugin[]>([]);
         TestBed.configureTestingModule({
             providers: [
+                {
+                    provide: AvailablePluginsStorageService,
+                    useValue: { plugins: availablePlugins, loadedOrgId: signal(1) },
+                },
                 provideRouter([
                     { path: 'workspace', children: [{ path: 'users', children: [] }] },
                     { path: 'agents', children: [] },
@@ -322,6 +759,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
                     { path: 'recycle-bin', children: [{ path: 'flows', children: [] }] },
                     { path: 'settings', children: [] },
                     { path: 'profile', children: [{ path: 'overview', children: [] }] },
+                    { path: 'plugins', children: [{ path: '**', children: [] }] },
                     { path: 'unlisted', children: [] },
                 ]),
                 { provide: ProfileService, useValue: { currentUserSignal: signal(USER) } },
@@ -334,6 +772,8 @@ describe('LeftSidebarComponent page shortcuts', () => {
                         canOpenConfigureModelsDialog: () => settingsAllowed,
                         canApplyQuickstart: () => false,
                         canAccessWorkspace: () => workspaceAllowed,
+                        resolveDefaultRoute: () => '/agents',
+                        isSuperadmin: false,
                     },
                 },
                 { provide: ConfigService, useValue: config },
@@ -421,6 +861,25 @@ describe('LeftSidebarComponent page shortcuts', () => {
         await press('ArrowDown');
 
         expect(router.url).toBe('/audit');
+    });
+
+    it('steps from Chats to Recycle Bin past the Apps row, which leads to no page', async () => {
+        availablePlugins.set([ATLAS, WEATHER]);
+        await startAt('/chats');
+
+        await press('ArrowDown');
+
+        expect(router.url).toBe('/recycle-bin');
+    });
+
+    it.each(['ArrowDown', 'ArrowUp'] as const)('leaves Alt+%s to the page in an app', async (code) => {
+        availablePlugins.set([ATLAS, WEATHER]);
+        await startAt('/plugins/atlas/projects');
+
+        const event = await press(code);
+
+        expect(router.url).toBe('/plugins/atlas/projects');
+        expect(event.defaultPrevented).toBe(false);
     });
 
     it.each([

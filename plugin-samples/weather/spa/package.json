@@ -1,0 +1,22 @@
+{
+    "name": "epicstaff-plugin-sample-weather-spa",
+    "version": "0.1.0",
+    "description": "The Weather sample plugin's page: vanilla TypeScript on the EpicStaff JS SDK, bundled with esbuild.",
+    "private": true,
+    "license": "SEE LICENSE IN ../../../LICENSE.md",
+    "type": "module",
+    "engines": {
+        "node": ">=24.15.0"
+    },
+    "scripts": {
+        "build": "node scripts/build.mjs",
+        "dev": "node scripts/serve-development.mjs",
+        "typecheck": "tsc --noEmit",
+        "test": "node --test \"test/**/*.test.mjs\""
+    },
+    "devDependencies": {
+        "@epicstaff/plugin-sdk": "file:../../../plugin-sdk",
+        "esbuild": "0.28.2",
+        "typescript": "6.0.3"
+    }
+}

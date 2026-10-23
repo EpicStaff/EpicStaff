@@ -32,6 +32,7 @@ from tables.models.webhook_models import (
     WebhookTriggerAuth,
     WebhookTriggerAuthKind,
 )
+from tables.services.run_admission import RunAdmissionRefusedError, log_trigger_refusal_once
 from tables.services.secrets import secret_resolver
 from tables.services.secrets.exceptions import SecretResolutionError
 from tables.services.session_manager_service import SessionManagerService
@@ -546,6 +547,13 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                     variables={"telegram_payload": payload},
                     trigger=TriggerSpec.telegram(telegram_trigger_node, payload),
                     allow_persistent_override=True,
+                )
+            except RunAdmissionRefusedError as error:
+                log_trigger_refusal_once(
+                    trigger="telegram",
+                    node_id=telegram_trigger_node.pk,
+                    graph_id=telegram_trigger_node.graph_id,
+                    error=error,
                 )
             except Exception:
                 logger.exception(
