@@ -111,10 +111,11 @@
                     @if (!readonly()) {
                         <div class="resource-row bulk">
                             <app-checkbox
+                                #groupBox
                                 color="secondary"
                                 [checked]="groupCheckboxChecked(group)"
                                 [indeterminate]="groupCheckboxIndeterminate(group)"
-                                (changed)="onGroupBulkToggle(group)"
+                                (changed)="onGroupBulkToggle(group, groupBox)"
                             />
                             <div class="resource-info">
                                 <span class="resource-name bulk">BULK SELECT</span>
@@ -123,10 +124,11 @@
                                 <div class="action-cell">
                                     @if (hasGroupApplicableAction(group, action.code)) {
                                         <app-checkbox
+                                            #groupActionBox
                                             color="secondary"
                                             [checked]="groupActionCheckboxChecked(group, action.code)"
                                             [indeterminate]="groupActionCheckboxIndeterminate(group, action.code)"
-                                            (changed)="onGroupActionToggleClick(group, action.code)"
+                                            (changed)="onGroupActionToggleClick(group, action.code, groupActionBox)"
                                         />
                                     } @else {
                                         <span class="empty-cell">—</span>
@@ -144,10 +146,11 @@
                             <div class="row-select">
                                 @if (!readonly()) {
                                     <app-checkbox
+                                        #resourceBox
                                         color="secondary"
                                         [checked]="resourceCheckboxChecked(resource)"
                                         [indeterminate]="resourceCheckboxIndeterminate(resource)"
-                                        (changed)="onResourceRowToggle(resource)"
+                                        (changed)="onResourceRowToggle(resource, resourceBox)"
                                     />
                                 }
                             </div>

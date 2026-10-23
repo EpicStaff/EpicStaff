@@ -358,9 +358,10 @@ export class PermissionsTableComponent {
     }
 
     /** Bulk-action click: toggle the action across every applicable & grantable resource in the group. */
-    onGroupActionToggleClick(group: CatalogGroup, actionCode: ActionCode): void {
+    onGroupActionToggleClick(group: CatalogGroup, actionCode: ActionCode, checkbox: CheckboxComponent): void {
         if (this.readonly()) return;
-        const select = this.groupActionState(group, actionCode) !== 'checked';
+        const select = this.groupActionState(group, actionCode) === 'empty';
+        checkbox.checked.set(select);
         const disabled = this.disabledPermissions();
         this.lastToggledResources.set(
             new Set(
@@ -374,18 +375,24 @@ export class PermissionsTableComponent {
         this.groupActionToggle.emit({ groupKey: group.key, actionCode, select });
     }
 
-    /** Row-checkbox click: any non-checked state selects everything grantable; fully-checked clears the row. */
-    onResourceRowToggle(resource: CatalogResourceType): void {
+    /**
+     * Row-checkbox click: an empty row selects everything grantable; a "-" or fully-checked row clears it.
+     * Every tri-state handler here sets the box's own state: clicking a "-" box makes the browser tick it,
+     * and when the click clears instead, `[checked]` stays false — an unchanged binding Angular won't rewrite.
+     */
+    onResourceRowToggle(resource: CatalogResourceType, checkbox: CheckboxComponent): void {
         if (this.readonly()) return;
-        const select = this.resourceState(resource) !== 'checked';
+        const select = this.resourceState(resource) === 'empty';
+        checkbox.checked.set(select);
         this.lastToggledResources.set(new Set([resource.code]));
         this.resourceToggle.emit({ resourceCode: resource.code, select });
     }
 
     /** BULK SELECT row leading checkbox: toggle every applicable & grantable action in the group. */
-    onGroupBulkToggle(group: CatalogGroup): void {
+    onGroupBulkToggle(group: CatalogGroup, checkbox: CheckboxComponent): void {
         if (this.readonly()) return;
-        const select = this.groupState(group) !== 'checked';
+        const select = this.groupState(group) === 'empty';
+        checkbox.checked.set(select);
         this.lastToggledResources.set(new Set(group.resources.map((rt) => rt.code)));
         this.groupToggle.emit({ groupKey: group.key, select });
     }
