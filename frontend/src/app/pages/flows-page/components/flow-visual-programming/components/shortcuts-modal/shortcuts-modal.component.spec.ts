@@ -2,13 +2,14 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { NgZone } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { GetMeResponse, ShortcutSettings } from '@shared/models';
+import { ActionCode, GetMeResponse, ResourceCode, ShortcutSettings } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../../../../features/flows/models/graph.model';
 import { ProfileService } from '../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../services/config';
 import { ToastMessage, ToastService } from '../../../../../../services/notifications';
 import { KeymapService, PLATFORM_IS_MAC } from '../../../../../../visual-programming/services/keymap.service';
+import { grantPermissions } from '../../../../../../visual-programming/utils/testing/permissions.fixture';
 import { ShortcutsModalComponent } from './shortcuts-modal.component';
 
 const PROFILE_URL = '/api/profile/';
@@ -74,6 +75,12 @@ const FLOW_ROWS_MAC: readonly RenderedRow[] = [
     { label: 'Domain', chords: [['⌥', 'M']] },
 ];
 
+/** Every permission a flow toolbar button checks, so all ten Flow actions rows show. */
+const EVERY_FLOW_PERMISSION: Partial<Record<ResourceCode, ActionCode[]>> = {
+    [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Use, ActionCode.Export],
+    [ResourceCode.Files]: [ActionCode.Read],
+};
+
 interface RenderedRow {
     label: string;
     chords: string[][];
@@ -137,6 +144,7 @@ describe('ShortcutsModalComponent', () => {
             ],
         });
         httpMock = TestBed.inject(HttpTestingController);
+        grantPermissions(EVERY_FLOW_PERMISSION);
         toasts = [];
         TestBed.inject(ToastService).toasts$.subscribe((current) => (toasts = current));
     }
@@ -456,6 +464,163 @@ describe('ShortcutsModalComponent', () => {
         openModal();
 
         expect(rowsOf('Flow actions')).toEqual(expected);
+    });
+
+    describe('flow actions the user may not use', () => {
+        const FLOW_LABELS = FLOW_ROWS_WINDOWS.map((row) => row.label);
+
+        function flowRowLabels(): string[] {
+            return rowsOf('Flow actions').map((row) => row.label);
+        }
+
+        function pickableFlowActions(): string[] {
+            startAdding();
+            const input = actionPicker();
+            input.value = '';
+            input.dispatchEvent(new Event('input'));
+            render();
+            const options = Array.from(editor()!.querySelectorAll('[role="option"]'), text);
+            click(buttonNamed('Cancel', editor()!));
+            return options.filter((label) => FLOW_LABELS.includes(label));
+        }
+
+        function without(...hidden: string[]): string[] {
+            return FLOW_LABELS.filter((label) => !hidden.includes(label));
+        }
+
+        it.each([
+            [
+                'no access to files',
+                { [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Use, ActionCode.Export] },
+                ['Add files'],
+            ],
+            [
+                'no Use on flows',
+                {
+                    [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Export],
+                    [ResourceCode.Files]: [ActionCode.Read],
+                },
+                ['Run', 'Get cURL'],
+            ],
+            [
+                'neither Export nor Update on flows',
+                { [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Use], [ResourceCode.Files]: [ActionCode.Read] },
+                ['Export / Import menu'],
+            ],
+            [
+                'Export without Update on flows',
+                {
+                    [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Use, ActionCode.Export],
+                    [ResourceCode.Files]: [ActionCode.Read],
+                },
+                [],
+            ],
+            [
+                'Update without Export on flows',
+                {
+                    [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Use],
+                    [ResourceCode.Files]: [ActionCode.Read],
+                },
+                [],
+            ],
+        ])(
+            'with %s, leaves the actions whose buttons are hidden out of the list and the picker',
+            (_user, permissions, hidden) => {
+                setUp();
+                grantPermissions(permissions);
+                openModal();
+
+                expect(flowRowLabels()).toEqual(without(...hidden));
+                expect(pickableFlowActions()).toEqual(without(...hidden));
+            }
+        );
+
+        it('shows the rows once the permission arrives while the list is open', () => {
+            setUp();
+            loadUser([{ action: 'flow.add-files', keys: 'Alt+KeyJ' }]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update, ActionCode.Export] });
+            openModal();
+            expect(flowRowLabels()).toEqual(without('Run', 'Get cURL', 'Add files'));
+            expect(sectionTitles()).toEqual(BASE_SECTIONS);
+
+            grantPermissions(EVERY_FLOW_PERMISSION);
+            render();
+
+            expect(flowRowLabels()).toEqual(FLOW_LABELS);
+            expect(customRows()).toEqual([{ label: 'Add files', keys: 'Alt J' }]);
+        });
+
+        it('hides a saved Additional row for such an action but keeps it in what is saved', () => {
+            setUp();
+            loadUser([
+                { action: 'flow.run', keys: 'Alt+KeyJ' },
+                { action: 'node.task', keys: 'Alt+KeyB' },
+            ]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update] });
+            openModal();
+            expect(customRows()).toEqual([{ label: 'Task Node', keys: 'Alt B' }]);
+
+            click(buttonNamed('Delete Task Node shortcut'));
+
+            expect(sectionTitles()).toEqual(BASE_SECTIONS);
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { overrides: {}, custom: [{ action: 'flow.run', keys: 'Alt+KeyJ' }] },
+            });
+        });
+
+        it('treats the key of an action the user cannot see as free, and saving takes it from that action', () => {
+            setUp();
+            loadUser([]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update] });
+            openModal();
+
+            startAdding();
+            pickAction('Save');
+            record({ key: 'u', code: 'KeyU', altKey: true });
+
+            expect(feedback()).toBe('');
+            click(saveButton());
+            expect(customRows()).toEqual([{ label: 'Save', keys: 'Alt U' }]);
+            const patch = nextPatch();
+            expect(patch.body).toEqual({
+                custom_shortcuts: { overrides: {}, custom: [{ action: 'editing.save', keys: 'Alt+KeyU' }] },
+            });
+            patch.succeed();
+
+            grantPermissions(EVERY_FLOW_PERMISSION);
+            render();
+            const addFiles = rowElementsOf('Flow actions').find((row) => readRow(row).label === 'Add files')!;
+            expect(text(addFiles.querySelector('.shortcuts__keys')!)).toBe('Not set');
+        });
+
+        it('refuses a key a hidden Additional row holds without naming that row', () => {
+            setUp();
+            loadUser([{ action: 'flow.add-files', keys: 'Alt+KeyJ' }]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update] });
+            openModal();
+
+            startAdding();
+            pickAction('Save');
+            record({ key: 'j', code: 'KeyJ', altKey: true });
+
+            expect(feedback()).toBe('Alt+J is already in use');
+            expect(saveButton().disabled).toBe(true);
+        });
+
+        it('counts a hidden Additional row among the keys Reset to defaults clears, as it changes what is saved', () => {
+            setUp();
+            loadUser([{ action: 'flow.add-files', keys: 'Shift+KeyP' }]);
+            grantPermissions({ [ResourceCode.Flows]: [ActionCode.Read, ActionCode.Update] });
+            openModal();
+
+            click(buttonNamed('Reset to defaults'));
+            const dialog = document.querySelector('app-confirmation-dialog')!;
+
+            expect(text(dialog.querySelector('.dialog-message')!)).toBe(
+                '1 additional shortcut will lose its key. Every node and flow action gets its own key back.'
+            );
+            click(buttonNamed('Cancel', dialog));
+        });
     });
 
     describe('base rows', () => {

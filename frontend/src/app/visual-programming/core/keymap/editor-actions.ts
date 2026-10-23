@@ -1,5 +1,7 @@
 import { NodeType } from '@shared/models';
 
+import { PermissionRequirement } from '../../../services/auth/permissions.service';
+import { FLOW_ACTION_PERMISSIONS } from '../constants/flow-action-permissions';
 import { MenuNodeType, NODE_MENU_LABELS } from '../constants/node-menu-groups';
 import { KeyChord } from './key-chord.util';
 
@@ -28,6 +30,8 @@ export interface EditorAction<Id extends string = EditorActionId> {
     readonly param?: EditorActionParam;
     readonly pan?: CanvasPan;
     readonly listed?: false;
+    /** The permission its button needs; without it the action is left out of the shortcuts list and picker. */
+    readonly requires?: PermissionRequirement;
 }
 
 function panAction<const Id extends `navigating.pan-${string}`>(id: Id, chord: KeyChord, pan: CanvasPan) {
@@ -42,13 +46,19 @@ function panAction<const Id extends `navigating.pan-${string}`>(id: Id, chord: K
     } as const satisfies EditorAction<Id>;
 }
 
-function flowAction<const Id extends `flow.${string}`>(id: Id, label: string, chord: KeyChord) {
+function flowAction<const Id extends `flow.${string}`>(
+    id: Id,
+    label: string,
+    chord: KeyChord,
+    requires?: PermissionRequirement
+) {
     return {
         id,
         label,
         section: 'Flow actions',
         defaultChords: [chord],
         customizable: true,
+        ...(requires ? { requires } : {}),
     } as const satisfies EditorAction<Id>;
 }
 
@@ -64,13 +74,13 @@ function nodeAction<const Id extends `node.${string}`>(id: Id, nodeType: MenuNod
 }
 
 export const EDITOR_ACTIONS = [
-    flowAction('flow.run', 'Run', 'Mod+Enter'),
+    flowAction('flow.run', 'Run', 'Mod+Enter', FLOW_ACTION_PERMISSIONS.useFlow),
     flowAction('flow.sessions', 'Sessions', 'Alt+KeyS'),
     flowAction('flow.chat', 'Open / close chat', 'Alt+KeyC'),
-    flowAction('flow.curl', 'Get cURL', 'Alt+KeyK'),
+    flowAction('flow.curl', 'Get cURL', 'Alt+KeyK', FLOW_ACTION_PERMISSIONS.useFlow),
     flowAction('flow.auto-arrange', 'Auto arrange', 'Alt+KeyL'),
-    flowAction('flow.add-files', 'Add files', 'Alt+KeyU'),
-    flowAction('flow.export-import', 'Export / Import menu', 'Alt+KeyX'),
+    flowAction('flow.add-files', 'Add files', 'Alt+KeyU', FLOW_ACTION_PERMISSIONS.files),
+    flowAction('flow.export-import', 'Export / Import menu', 'Alt+KeyX', FLOW_ACTION_PERMISSIONS.exportImport),
     flowAction('flow.extract-subflow', 'Extract to Subflow', 'Alt+KeyG'),
     flowAction('flow.settings', 'Flow settings', 'Alt+Comma'),
     flowAction('flow.domain', 'Domain', 'Alt+KeyM'),

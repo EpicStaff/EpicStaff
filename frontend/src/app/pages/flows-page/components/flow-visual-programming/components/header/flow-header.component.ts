@@ -1,6 +1,16 @@
 import { Dialog as CdkDialog, DialogModule } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, input, Output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    EventEmitter,
+    inject,
+    Input,
+    input,
+    Output,
+    signal,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 // import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
@@ -14,6 +24,9 @@ import { EditorInfo } from 'src/app/features/flows/services/graph-collaboration.
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
 import { LabelsStorageService } from '../../../../../../features/flows/services/labels-storage.service';
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
+import { FLOW_ACTION_PERMISSIONS } from '../../../../../../visual-programming/core/constants/flow-action-permissions';
+import { PREVIEW_BLOCKED_MESSAGES } from './flow-header.constants';
 import { GraphPresenceIndicatorsComponent } from './presence-indicator/graph-presence-indicators.component';
 import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 
@@ -59,8 +72,12 @@ export class FlowHeaderComponent {
     @Output() viewVersionHistory = new EventEmitter<void>();
 
     public isSaveDropdownOpen = signal(false);
+    /** Shows Run and Get cURL; their shortcuts check the same requirement. */
+    protected readonly canUseFlow = computed(() => this.permissions.meets(FLOW_ACTION_PERMISSIONS.useFlow));
+    protected readonly previewBlockedMessages = PREVIEW_BLOCKED_MESSAGES;
 
     private readonly dialog = inject(CdkDialog);
+    private readonly permissions = inject(PermissionsService);
 
     constructor(private router: Router) {}
 

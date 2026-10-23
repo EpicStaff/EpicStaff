@@ -1,4 +1,4 @@
-<ng-container *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Update]]">
+@if (canUseMenu()) {
     <button
         #origin="cdkOverlayOrigin"
         cdkOverlayOrigin
@@ -42,9 +42,11 @@
         (overlayOutsideClick)="close()"
         (detach)="close()"
     >
+        <!-- Esc closes this menu and goes on to the editor in the same press, unlike the node menu, which keeps it. -->
         <div class="action-dropdown-panel__inner">
             @if (selectedCount() > 0) {
                 <button
+                    #menuItem
                     *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                     class="action-dropdown-panel__item"
                     matTooltip="Start and End nodes excluded"
@@ -54,6 +56,7 @@
                 </button>
                 @if (allSelectedAreCdt()) {
                     <button
+                        #menuItem
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                         class="action-dropdown-panel__item"
                         matTooltip="Start and End nodes excluded"
@@ -65,6 +68,7 @@
                 <div class="action-dropdown-panel__separator"></div>
             }
             <button
+                #menuItem
                 *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                 class="action-dropdown-panel__item"
                 matTooltip="Start and End nodes excluded"
@@ -74,6 +78,7 @@
             </button>
             <div class="action-dropdown-panel__separator"></div>
             <button
+                #menuItem
                 *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                 class="action-dropdown-panel__item"
                 (click)="onImport()"
@@ -82,4 +87,4 @@
             </button>
         </div>
     </ng-template>
-</ng-container>
+}

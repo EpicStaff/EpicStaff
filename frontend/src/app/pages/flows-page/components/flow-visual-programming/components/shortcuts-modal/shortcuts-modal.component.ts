@@ -147,9 +147,12 @@ export class ShortcutsModalComponent {
         const builtInBindings = this.keymap.builtInBindings();
         const unboundIds = this.keymap.unboundIds();
         const overriddenIds = this.keymap.overriddenIds();
+        const unavailableIds = this.keymap.unavailableActionIds();
         return SECTION_ORDER.map((title) => ({
             title,
-            rows: EDITOR_ACTIONS.filter((action) => action.section === title && isListed(action)).map(
+            rows: EDITOR_ACTIONS.filter(
+                (action) => action.section === title && isListed(action) && !unavailableIds.has(action.id)
+            ).map(
                 (action: EditorAction): ShortcutRow => ({
                     id: action.id,
                     label: action.label,
@@ -167,15 +170,20 @@ export class ShortcutsModalComponent {
             names: new Map(this.flows().map((flow) => [flow.id, flow.name])),
             currentFlowId: this.currentFlowId(),
         };
-        return this.keymap.customShortcuts().map((shortcut) => {
-            const label = shortcutLabel(shortcut.action, shortcut.params, flows);
-            return {
-                shortcut,
-                label: label.text,
-                isMuted: label.isMuted,
-                keys: shortcut.chord === null ? null : formatChord(shortcut.chord, this.keymap.isMac),
-            };
-        });
+        const unavailableIds = this.keymap.unavailableActionIds();
+        // Rows for an action this user cannot use stay saved, only out of sight; they come back with the permission.
+        return this.keymap
+            .customShortcuts()
+            .filter((shortcut) => !unavailableIds.has(shortcut.action))
+            .map((shortcut) => {
+                const label = shortcutLabel(shortcut.action, shortcut.params, flows);
+                return {
+                    shortcut,
+                    label: label.text,
+                    isMuted: label.isMuted,
+                    keys: shortcut.chord === null ? null : formatChord(shortcut.chord, this.keymap.isMac),
+                };
+            });
     });
 
     protected readonly resetClearCount = computed(() => this.keymap.defaultsResetClearCount());
@@ -372,7 +380,10 @@ export class ShortcutsModalComponent {
             names: new Map(this.flows().map((flow) => [flow.id, flow.name])),
             currentFlowId: this.currentFlowId(),
         };
-        this.rowMessage.set({ actionId, text: takenByMessage(result.takenBy, keys, flows) });
+        this.rowMessage.set({
+            actionId,
+            text: takenByMessage(result.takenBy, keys, flows, this.keymap.unavailableActionIds()),
+        });
     }
 
     protected closeEditor(): void {

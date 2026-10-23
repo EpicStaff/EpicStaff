@@ -25,6 +25,8 @@ export class FlowShortcutsButtonComponent {
     iconSize = input<string>('12px');
     textEnd = input<boolean>(false);
     active = input<boolean>(false);
+    /** The button's name for screen readers when its label is a symbol. */
+    ariaLabel = input<string | null>(null);
 
     clicked = output<void>();
 }

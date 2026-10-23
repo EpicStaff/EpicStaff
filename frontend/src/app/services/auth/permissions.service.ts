@@ -13,6 +13,12 @@ import { Observable, of, tap } from 'rxjs';
 
 import { ConfigService } from '../config';
 
+/** Met when the user may do any one of these actions on the resource. */
+export interface PermissionRequirement {
+    readonly resource: ResourceCode;
+    readonly anyOf: readonly ActionCode[];
+}
+
 @Injectable({
     providedIn: 'root',
 })
@@ -71,8 +77,12 @@ export class PermissionsService implements StorageService {
         return Array.isArray(actions) && actions.includes(action);
     }
 
-    canAny(resource: ResourceCode, actions: ActionCode[]): boolean {
+    canAny(resource: ResourceCode, actions: readonly ActionCode[]): boolean {
         return actions.some((action) => this.can(resource, action));
+    }
+
+    meets(requirement: PermissionRequirement): boolean {
+        return this.canAny(requirement.resource, requirement.anyOf);
     }
 
     /** Multi-org gate: can the current user do `action` on `resource` in org `orgId`?

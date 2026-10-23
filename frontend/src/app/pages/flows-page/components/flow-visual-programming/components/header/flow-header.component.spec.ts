@@ -5,7 +5,7 @@ import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { ActionCode, ResourceCode } from '@shared/models';
 
-import { PermissionsService } from '../../../../../../services/auth/permissions.service';
+import { PermissionRequirement, PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../services/config';
 import { FlowHeaderComponent } from './flow-header.component';
@@ -30,7 +30,11 @@ describe('FlowHeaderComponent', () => {
                 provideRouter([]),
                 {
                     provide: PermissionsService,
-                    useValue: { can: () => true, canAny: () => true } as unknown as PermissionsService,
+                    useValue: {
+                        can: () => true,
+                        canAny: () => true,
+                        meets: () => true,
+                    } as unknown as PermissionsService,
                 },
                 {
                     provide: ProfileService,
@@ -119,6 +123,8 @@ describe('FlowHeaderComponent Run and Get cURL buttons', () => {
                         can,
                         canAny: (resource: ResourceCode, actions: ActionCode[]) =>
                             actions.some((action) => can(resource, action)),
+                        meets: (requirement: PermissionRequirement) =>
+                            requirement.anyOf.some((action) => can(requirement.resource, action)),
                     } as unknown as PermissionsService,
                 },
                 {

@@ -1,13 +1,20 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { createEnvironmentInjector, DestroyRef, EnvironmentInjector } from '@angular/core';
+import { Component, createEnvironmentInjector, DestroyRef, EnvironmentInjector, NO_ERRORS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { GetMeResponse, ShortcutParams, ShortcutSettings } from '@shared/models';
+import { FFlowModule, FZoomDirective } from '@foblex/flow';
+import { GetMeResponse, NodeType, ShortcutParams, ShortcutSettings } from '@shared/models';
 
 import { ProfileService } from '../../services/auth/profile.service';
 import { ConfigService } from '../../services/config';
 import { ToastMessage, ToastService } from '../../services/notifications';
+import { CdtDecisionTreeInput } from '../components/node-panels/classification-decision-table-node-panel/cdt-decision-tree-dialog/cdt-decision-tree.model';
+import { CdtDecisionTreeBlockComponent } from '../components/node-panels/classification-decision-table-node-panel/cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
+import { CdtDecisionTreeDialogComponent } from '../components/node-panels/classification-decision-table-node-panel/cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
 import { chordFromEvent } from '../core/keymap/key-chord.util';
+import { ClassificationDecisionTableNodeModel } from '../core/models/node.model';
+import { FlowService } from './flow.service';
 import { KeymapService, PLATFORM_IS_MAC } from './keymap.service';
 
 const PROFILE_URL = '/api/profile/';
@@ -831,6 +838,12 @@ describe('KeymapService', () => {
             ['Alt+C on a Cyrillic layout', false, { key: 'с', code: 'KeyC', altKey: true }, 'flow.chat'],
             ['Option+C on a mac', true, { key: 'ç', code: 'KeyC', altKey: true }, 'flow.chat'],
             ['Alt+,', false, { key: ',', code: 'Comma', altKey: true }, 'flow.settings'],
+            [
+                'Alt+S, the Firefox History menu key on Windows',
+                false,
+                { key: 's', code: 'KeyS', altKey: true },
+                'flow.sessions',
+            ],
         ] as const)('fires the flow action on %s', (_case, isMac, init, action) => {
             setUp(isMac);
             const handler = vi.fn();
@@ -868,6 +881,20 @@ describe('KeymapService', () => {
             expect(keymap().unboundIds().has('flow.chat')).toBe(true);
         });
 
+        it('fires from the side panel outside a text field, never from a text field in it', () => {
+            setUp();
+            const openDomain = vi.fn();
+            keymap().register('flow.domain', openDomain);
+            const sidePanel = attach(document.createElement('app-node-panel-shell'));
+            const button = sidePanel.appendChild(document.createElement('button'));
+            const textarea = sidePanel.appendChild(document.createElement('textarea'));
+
+            pressOn(button, { key: 'm', code: 'KeyM', altKey: true });
+            pressOn(textarea, { key: 'm', code: 'KeyM', altKey: true });
+
+            expect(openDomain).toHaveBeenCalledOnce();
+        });
+
         it('gives a flow action a new key, saves the override and fires on it', () => {
             setUp();
             const toggleChat = vi.fn();
@@ -881,6 +908,128 @@ describe('KeymapService', () => {
             press({ key: 'j', code: 'KeyJ', altKey: true });
             press({ key: 'c', code: 'KeyC', altKey: true });
             expect(toggleChat).toHaveBeenCalledOnce();
+        });
+    });
+
+    describe('flow actions behind a dialog', () => {
+        @Component({ template: '<button type="button">Inside the dialog</button>' })
+        class PlainDialogComponent {}
+
+        const CTRL_ENTER = { key: 'Enter', code: 'Enter', ctrlKey: true };
+        const ALT_L = { key: 'l', code: 'KeyL', altKey: true };
+        const ALT_S = { key: 's', code: 'KeyS', altKey: true };
+
+        function dialogButton(): HTMLButtonElement {
+            return document.querySelector<HTMLButtonElement>('.cdk-dialog-container button')!;
+        }
+
+        afterEach(() => TestBed.inject(Dialog).closeAll());
+
+        it('fires no flow action while a dialog is open, and fires again once it is closed', () => {
+            setUp();
+            const arrange = vi.fn();
+            keymap().register('flow.auto-arrange', arrange);
+            const dialogRef = TestBed.inject(Dialog).open(PlainDialogComponent);
+            TestBed.tick();
+
+            pressOn(dialogButton(), ALT_L);
+            press(ALT_L);
+            expect(arrange).not.toHaveBeenCalled();
+
+            dialogRef.close();
+            press(ALT_L);
+            expect(arrange).toHaveBeenCalledOnce();
+        });
+
+        it('keeps keys outside the flow actions working while a dialog is open', () => {
+            setUp();
+            const save = vi.fn();
+            keymap().register('editing.save', save);
+            TestBed.inject(Dialog).open(PlainDialogComponent);
+            TestBed.tick();
+
+            pressOn(dialogButton(), { key: 's', code: 'KeyS', ctrlKey: true });
+
+            expect(save).toHaveBeenCalledOnce();
+        });
+
+        describe('the read-only Decision Tree dialog', () => {
+            const NODE_ID = 'table1';
+
+            const DECISION_TREE: CdtDecisionTreeInput = {
+                nodeId: NODE_ID,
+                backendId: 21,
+                nodeName: 'Triage',
+                preCode: '',
+                postCode: '',
+                preInputMap: {},
+                postInputMap: {},
+                preLibraries: [],
+                postLibraries: [],
+                preOutputVariablePath: null,
+                postOutputVariablePath: null,
+                prompts: {},
+                rows: [],
+                canvasRows: [],
+                defaultNextNode: null,
+                errorNextNode: null,
+                connections: [],
+                nodes: [],
+                defaultLlmConfig: null,
+                llmConfigOptions: [],
+                readOnly: true,
+            };
+
+            beforeAll(() => {
+                // The detail window measures its code block with a ResizeObserver; jsdom has none.
+                const scope = globalThis as unknown as { ResizeObserver?: unknown };
+                scope.ResizeObserver ??= class {
+                    observe(): void {}
+                    unobserve(): void {}
+                    disconnect(): void {}
+                };
+            });
+
+            // The dialog shields only the keys it lists (Ctrl+S, Delete...): Ctrl+Enter and the Alt keys pass it.
+            it.each([
+                ['Ctrl+Enter', CTRL_ENTER, 'flow.run'],
+                ['Alt+L', ALT_L, 'flow.auto-arrange'],
+                ['Alt+S', ALT_S, 'flow.sessions'],
+            ] as const)('keeps %s from reaching the flow behind it', (_key, init, action) => {
+                // jsdom cannot lay out the Foblex canvas the diagram is drawn on, and nothing here needs it.
+                TestBed.overrideComponent(CdtDecisionTreeDialogComponent, {
+                    remove: { imports: [FFlowModule, FZoomDirective] },
+                    add: { schemas: [NO_ERRORS_SCHEMA] },
+                });
+                TestBed.overrideComponent(CdtDecisionTreeBlockComponent, {
+                    remove: { imports: [FFlowModule] },
+                    add: { schemas: [NO_ERRORS_SCHEMA] },
+                });
+                setUp();
+                TestBed.inject(FlowService).setFlow({
+                    nodes: [
+                        {
+                            id: NODE_ID,
+                            backendId: 21,
+                            type: NodeType.CLASSIFICATION_TABLE,
+                            node_name: 'Triage',
+                            data: { name: 'Triage', table: { condition_groups: [] } },
+                        } as unknown as ClassificationDecisionTableNodeModel,
+                    ],
+                    connections: [],
+                });
+                const handler = vi.fn();
+                keymap().register(action, handler);
+                TestBed.inject(Dialog).open(CdtDecisionTreeDialogComponent, {
+                    data: DECISION_TREE,
+                    disableClose: true,
+                });
+                TestBed.tick();
+
+                pressOn(document.querySelector<HTMLElement>('.cdk-dialog-container')!, init);
+
+                expect(handler).not.toHaveBeenCalled();
+            });
         });
     });
 

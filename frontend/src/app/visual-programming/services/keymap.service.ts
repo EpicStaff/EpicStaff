@@ -1,8 +1,10 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { computed, DestroyRef, inject, Injectable, InjectionToken, linkedSignal, NgZone, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CustomShortcutEntry, ShortcutParams, ShortcutSettings } from '@shared/models';
 import { catchError, concatMap, EMPTY, finalize, fromEvent, Subject } from 'rxjs';
 
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
 import { EDITOR_ACTIONS, EditorAction, EditorActionId } from '../core/keymap/editor-actions';
@@ -76,6 +78,8 @@ export class KeymapService {
     private readonly toastService = inject(ToastService);
     private readonly ngZone = inject(NgZone);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly dialog = inject(Dialog);
+    private readonly permissions = inject(PermissionsService);
 
     private readonly pendingSaves = signal(0);
     private lastRowId = 0;
@@ -120,6 +124,19 @@ export class KeymapService {
     readonly overriddenIds = computed<ReadonlySet<EditorActionId>>(() => new Set(this.resolved().overrides.keys()));
 
     readonly defaultsResetClearCount = computed(() => this.resolved().defaultsResetClearCount);
+
+    /**
+     * Actions whose button this user never sees: the shortcuts list and picker leave them out. Their keys and stored
+     * rows stay as they are, and the reset counts include them, since resetting changes the stored value.
+     */
+    readonly unavailableActionIds = computed<ReadonlySet<EditorActionId>>(
+        () =>
+            new Set(
+                EDITOR_ACTIONS.filter(
+                    (action: EditorAction) => action.requires !== undefined && !this.permissions.meets(action.requires)
+                ).map((action) => action.id)
+            )
+    );
 
     readonly canResetToDefaults = computed(
         () => this.resolved().defaultsResetClearCount > 0 || this.resolved().overrides.size > 0
@@ -303,7 +320,9 @@ export class KeymapService {
             return event.repeat || fromSidePanel;
         }
         if (FLOW_ACTION_IDS.has(actionId)) {
-            return event.repeat;
+            // A flow action behind a dialog would act on a flow the user cannot see. Dialogs only shield the keys
+            // they know (the Decision Tree dialog stops Ctrl+S, Delete…, not Ctrl+Enter or the Alt keys).
+            return event.repeat || this.dialog.openDialogs.length > 0;
         }
         if (PAN_ACTION_IDS.has(actionId)) {
             return fromSidePanel;

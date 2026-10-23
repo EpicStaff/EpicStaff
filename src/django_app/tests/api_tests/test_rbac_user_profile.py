@@ -372,6 +372,8 @@ def test_patch_without_custom_shortcuts_keeps_them(member_acme):
         overrides({" !~": " !~"}),
         shortcuts([custom_entry(keys=None)], {"node.python": "Shift+KeyT"}),
         shortcuts([custom_entry(keys="Shift+KeyA")], {"node.python": "Shift+KeyB", "node.llm": None}),
+        overrides({"flow.run": "Alt+KeyR", "flow.chat": None}),
+        shortcuts([custom_entry(action="flow.curl", keys="Alt+KeyC")], {"flow.chat": None}),
     ],
     ids=[
         "empty", "unknown-action", "two-keys", "same-action-twice", "null-keys", "repeated-null-keys",
@@ -381,7 +383,7 @@ def test_patch_without_custom_shortcuts_keeps_them(member_acme):
         "entries-with-and-without-params", "override-chord", "override-null", "overrides-all-null",
         "overrides-at-limit", "overrides-at-limit-all-null", "override-action-and-chord-at-limit",
         "override-printable-ascii-edges", "override-chord-beside-a-null-custom-keys",
-        "overrides-and-custom-with-different-chords",
+        "overrides-and-custom-with-different-chords", "flow-action-overrides", "flow-action-custom-entry",
     ],
 )
 def test_patch_accepts_custom_shortcuts_up_to_the_limits(member_acme, payload):

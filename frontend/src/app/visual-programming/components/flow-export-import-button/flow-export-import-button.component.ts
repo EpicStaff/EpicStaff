@@ -1,9 +1,26 @@
+import { FocusMonitor } from '@angular/cdk/a11y';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, HostListener, input, output, signal } from '@angular/core';
+import {
+    afterNextRender,
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    ElementRef,
+    HostListener,
+    inject,
+    Injector,
+    input,
+    output,
+    signal,
+    viewChildren,
+} from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+
+import { PermissionsService } from '../../../services/auth/permissions.service';
+import { FLOW_ACTION_PERMISSIONS } from '../../core/constants/flow-action-permissions';
 
 @Component({
     selector: 'app-flow-export-import-button',
@@ -22,11 +39,37 @@ export class FlowExportImportButtonComponent {
     exportCsv = output<void>();
     import = output<void>();
 
+    private readonly menuItems = viewChildren<ElementRef<HTMLButtonElement>>('menuItem');
+
     protected isOpen = signal(false);
+
+    readonly canUseMenu = computed(() => this.permissions.meets(FLOW_ACTION_PERMISSIONS.exportImport));
+
+    private readonly permissions = inject(PermissionsService);
+    private readonly injector = inject(Injector);
+    private readonly focusMonitor = inject(FocusMonitor);
 
     @HostListener('mousedown', ['$event'])
     onMouseDown(event: MouseEvent): void {
         event.stopPropagation();
+    }
+
+    /** Opens or closes the menu like a click on the button; an opened menu gets the keyboard focus. */
+    toggleMenuFromKeyboard(): void {
+        if (this.isOpen()) {
+            this.close();
+            return;
+        }
+        this.isOpen.set(true);
+        // Focus set by code, not by the user's Tab: the item's tooltip opens only on keyboard focus, and an open
+        // tooltip would take the first Esc that should close this menu and reach the editor.
+        afterNextRender(
+            () => {
+                const firstItem = this.menuItems()[0]?.nativeElement;
+                if (firstItem) this.focusMonitor.focusVia(firstItem, 'program');
+            },
+            { injector: this.injector }
+        );
     }
 
     protected toggle(event: Event): void {

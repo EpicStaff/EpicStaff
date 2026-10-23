@@ -90,12 +90,14 @@ export class ShortcutEditorComponent implements OnInit {
     protected readonly actionGroups = computed<readonly PickerGroup[]>(() => {
         const hasOtherFlows = subgraphFlowOptions(this.flows(), this.currentFlowId()).length > 0;
         const editedAction = this.shortcut()?.action;
+        const unavailableIds = this.keymap.unavailableActionIds();
         return PICKER_SECTIONS.map((title) => ({
             title,
             options: EDITOR_ACTIONS.filter(
                 (action) =>
                     action.customizable &&
                     action.section === title &&
+                    !unavailableIds.has(action.id) &&
                     (ACTION_PARAMS.get(action.id) !== 'flow' || hasOtherFlows || action.id === editedAction)
             ).map((action) => ({ id: action.id, label: action.label })),
         }));
@@ -335,7 +337,8 @@ export class ShortcutEditorComponent implements OnInit {
     private describe(check: ShortcutCheck): Feedback | null {
         const keys = this.chordText() ?? '';
         if (check.accepted) {
-            if (check.displaces === null) {
+            // A key of an action this user cannot see counts as free: saving still takes it, without naming it.
+            if (check.displaces === null || this.keymap.unavailableActionIds().has(check.displaces)) {
                 return null;
             }
             const owner = actionLabel(check.displaces);
@@ -354,7 +357,9 @@ export class ShortcutEditorComponent implements OnInit {
                 if (check.takenBy === null) {
                     return error("This key can't be used");
                 }
-                return error(takenByMessage(check.takenBy, keys, this.flowLookup()));
+                return error(
+                    takenByMessage(check.takenBy, keys, this.flowLookup(), this.keymap.unavailableActionIds())
+                );
             }
             case 'invalid':
                 return error("This key can't be used");
