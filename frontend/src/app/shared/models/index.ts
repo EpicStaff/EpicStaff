@@ -7,6 +7,7 @@ export * from './date-range-filter.model';
 export * from './embeddings/embedding.model';
 export * from './embeddings/embedding-config.model';
 export * from './execution-timeout-limits.model';
+export * from './export-result.model';
 export * from './http-status.enum';
 export * from './label.model';
 export * from './llms/llm.model';

@@ -17,6 +17,8 @@
     &__control {
         display: flex;
         align-items: stretch;
+        box-sizing: border-box;
+        width: 160px;
         background-color: var(--color-input-background);
         border: 1px solid var(--color-input-border);
         border-radius: 4px;
@@ -26,31 +28,80 @@
         &:has(.execution-timeout__input:focus) {
             border-color: var(--accent-color);
         }
+    }
 
-        &--invalid,
-        &--invalid:has(.execution-timeout__input:focus) {
-            border-color: var(--color-status-error);
+    // The input and the mirror under it lay out the same text the same way, so the input's caret and selection sit
+    // on the digits the mirror draws.
+    &__field {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+    }
+
+    &__mirror,
+    &__input {
+        padding: 8px 4px;
+        font-variant-numeric: tabular-nums;
+        // Each mirror character is its own box: kerning in the input's single text run would shift its caret.
+        font-kerning: none;
+    }
+
+    &__mirror {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-text-primary);
+        white-space: pre;
+        pointer-events: none;
+
+        &:has(+ .execution-timeout__input:disabled) {
+            opacity: 0.6;
         }
     }
 
+    &__cell--untyped {
+        color: var(--color-input-text-placeholder);
+    }
+
+    &__cell--separator {
+        color: var(--color-text-tertiary);
+    }
+
+    // Above the mirror, its own text transparent: only the caret and the selection show.
     &__input {
-        box-sizing: content-box;
-        // Fits the longest timeout, `99999:99:99`.
-        width: 11ch;
-        padding: 8px 12px;
+        position: relative;
+        box-sizing: border-box;
+        width: 100%;
         background-color: transparent;
         border: none;
-        color: var(--color-text-primary);
+        color: transparent;
+        caret-color: var(--color-text-primary);
         text-align: center;
-        font-variant-numeric: tabular-nums;
+
+        &::selection {
+            background-color: var(--color-ghost-btn-active);
+        }
 
         &:focus {
             outline: none;
         }
 
         &:disabled {
-            opacity: 0.6;
             cursor: not-allowed;
+        }
+    }
+
+    // Forced colors override the input's transparent text, which would then draw over the mirror: show the input
+    // alone. After the rules above, so it wins over their `color: transparent`.
+    @media (forced-colors: active) {
+        &__mirror {
+            display: none;
+        }
+
+        &__input {
+            color: FieldText;
         }
     }
 
@@ -107,7 +158,7 @@
         margin: 4px 0 0;
         padding: 4px 8px;
         background-color: var(--color-status-error-subtle);
-        border: 1px solid var(--color-status-error);
+        border-left: 2px solid var(--color-status-error);
         border-radius: 4px;
         color: var(--color-status-error);
     }

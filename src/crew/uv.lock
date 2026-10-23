@@ -404,10 +404,11 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
+    { name = "idna", marker = "extra == 'transitive-pins'", specifier = "==3.18" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = "==2.24.0" },
     { name = "pydantic", specifier = "==2.13.4" },
 ]
-provides-extras = ["litestar"]
+provides-extras = ["litestar", "transitive-pins"]
 
 [package.metadata.requires-dev]
 dev = [

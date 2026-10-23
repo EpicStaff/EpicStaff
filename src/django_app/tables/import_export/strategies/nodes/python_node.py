@@ -39,4 +39,7 @@ class PythonNodeStrategy(EntityImportExportStrategy):
             data={**data, "graph": graph_id, "python_code_id": python_code.id}
         )
         serializer.is_valid(raise_exception=True)
-        return serializer.save(created_by=resolve_author(kwargs.get("user")))
+        return serializer.save(
+            created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
+        )

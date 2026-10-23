@@ -14,9 +14,11 @@
         position: sticky;
         top: 0;
         z-index: 5;
+        display: flex;
+        align-items: center;
         width: 100%;
-        height: 80px;
-        padding: 2rem 2.5rem 0;
+        height: header.$page-header-height;
+        padding: header.$page-header-padding;
         box-sizing: border-box;
         background-color: var(--color-background-body);
         flex-shrink: 0;
@@ -24,9 +26,9 @@
 
         .header {
             display: flex;
+            flex: 1 1 auto;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 1rem;
 
             .header-titles {
                 display: flex;

@@ -10,6 +10,7 @@ const CHAT_START_VARIABLES: Readonly<Record<string, unknown>> = {
     action: null,
     chat_extra_data: {},
     chat_user_id: null,
+    chat_conversation_id: '',
     reply: '',
     actions: [],
     request_human: false,

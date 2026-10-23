@@ -9,7 +9,7 @@ GraphStrategy resolves each node's strategy from the registry via
 This module only maps each node type to:
 
 * the Django reverse-relation accessor on the Graph model (used for node
-  export and node-name numbering), and
+  export), and
 * the EntityType used to resolve the node's strategy from the registry.
 """
 

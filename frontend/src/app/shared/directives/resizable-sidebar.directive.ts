@@ -30,6 +30,11 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
     /** When set, dragging below the collapse threshold snaps the sidebar to its collapsed width. */
     sidebarCollapse = input<SidebarCollapseOptions | null>(null);
     sidebarAriaLabel = input('Resize sidebar');
+    /**
+     * Which side of the layout the sidebar sits on. A left sidebar has its handle on its right edge and grows
+     * when dragged right; a right sidebar has its handle on its left edge and grows when dragged left.
+     */
+    sidebarSide = input<'left' | 'right'>('left');
 
     protected readonly currentWidth = computed(() =>
         this.sidebarWidthService.getWidth(this.storageKey(), this.widthOptions())()
@@ -104,11 +109,15 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
         const collapse = this.sidebarCollapse();
         const isCollapsed = collapse !== null && width <= collapse.collapsedWidth;
         const step = event.shiftKey ? SIDEBAR_KEYBOARD_LARGE_STEP_PX : SIDEBAR_KEYBOARD_STEP_PX;
+        // The arrow pointing away from the sidebar moves its handle outward, so it grows the sidebar.
+        const isRightSide = this.sidebarSide() === 'right';
+        const growKey = isRightSide ? 'ArrowLeft' : 'ArrowRight';
+        const shrinkKey = isRightSide ? 'ArrowRight' : 'ArrowLeft';
 
         switch (event.key) {
-            case 'ArrowRight':
+            case growKey:
                 return isCollapsed ? minWidth : width + step;
-            case 'ArrowLeft':
+            case shrinkKey:
                 // Stop at the minimum width first; only the next press collapses, so no step skips it.
                 if (collapse !== null && width <= minWidth) {
                     return collapse.collapsedWidth;
@@ -152,7 +161,7 @@ export class ResizableSidebarDirective implements OnInit, OnDestroy {
             return;
         }
         this.hasDragged = true;
-        this.pendingWidth = this.startWidth + travel;
+        this.pendingWidth = this.sidebarSide() === 'right' ? this.startWidth - travel : this.startWidth + travel;
         if (this.frameId !== null) {
             return;
         }

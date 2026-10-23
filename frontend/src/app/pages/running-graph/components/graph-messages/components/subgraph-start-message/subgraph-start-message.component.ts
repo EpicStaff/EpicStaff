@@ -2,11 +2,18 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewEn
 import { AppSvgIconComponent, CopyButtonComponent, JsonViewerComponent } from '@shared/components';
 
 import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../models/graph-session-message.model';
+import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe';
 import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-button/view-nested-messages-button.component';
 
 @Component({
     selector: 'app-subgraph-start-message',
-    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, ViewNestedMessagesButtonComponent],
+    imports: [
+        JsonViewerComponent,
+        AppSvgIconComponent,
+        CopyButtonComponent,
+        ViewNestedMessagesButtonComponent,
+        RuntimeNodeLabelPipe,
+    ],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
         <div class="subgraph-start-container">
@@ -29,7 +36,8 @@ import { ViewNestedMessagesButtonComponent } from '../view-nested-messages-butto
                     />
                 </div>
                 <h3>
-                    <span class="node-name">{{ message.name }}</span> subgraph started {{ subgraphName }}
+                    <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> subgraph started
+                    {{ subgraphName }}
                 </h3>
 
                 @if (showViewNestedMessages) {

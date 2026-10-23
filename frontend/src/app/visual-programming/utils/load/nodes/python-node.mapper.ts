@@ -13,7 +13,7 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
         type: NodeType.PYTHON,
         test_input: pn.test_input ?? {},
         node_name: pn.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: pn.node_number ?? undefined,
         data: {
             name: pn.node_name,
             code: pn.python_code.code,

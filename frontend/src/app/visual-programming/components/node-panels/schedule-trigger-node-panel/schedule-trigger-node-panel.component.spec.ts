@@ -8,6 +8,7 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 import { ToastService } from '../../../../services/notifications';
 import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';
+import { NodeFactoryService } from '../../../services/node-factory.service';
 import { SavedFlowStateService } from '../../../services/saved-flow-state.service';
 import { ScheduleTriggerRuntimeService } from '../../../services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../services/side-panel.service';
@@ -88,6 +89,100 @@ describe('ScheduleTriggerNodePanelComponent with backendId null', () => {
         const timezoneButton = fixture.nativeElement.querySelector('.tz-selector__btn') as HTMLButtonElement;
         expect(timezoneButton).not.toBeNull();
         expect(timezoneButton.disabled).toBe(true);
+        fixture.destroy();
+    });
+});
+
+describe('ScheduleTriggerNodePanelComponent naming', () => {
+    function updatedName(nodeName: string): string {
+        TestBed.configureTestingModule({
+            providers: [{ provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } }],
+        });
+        TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
+        const node = { ...unsavedScheduleNode, id: 'schedule-2', node_name: nodeName, nodeNumber: 2 };
+        TestBed.inject(FlowService).setFlow({
+            nodes: [{ ...unsavedScheduleNode, node_name: 'Every hour', nodeNumber: 1 }, node],
+            connections: [],
+        });
+        const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+        const name = fixture.componentInstance.createUpdatedNode().node_name;
+        fixture.destroy();
+        return name;
+    }
+
+    // The node's schedule is every hour; another node is already called "Every hour".
+    it.each(['Schedule Trigger', 'Schedule Trigger #4', 'Every hour #2', 'Every day'])(
+        'renames auto-generated "%s" after its schedule, with no suffix, even when the name is taken',
+        (nodeName) => {
+            expect(updatedName(nodeName)).toBe('Every hour');
+        }
+    );
+
+    it('keeps a name the user gave it', () => {
+        expect(updatedName('Nightly import')).toBe('Nightly import');
+    });
+});
+
+describe('ScheduleTriggerNodePanelComponent with a node just dropped on the canvas', () => {
+    afterEach(() => vi.useRealTimers());
+
+    function openFreshNode() {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 9, 23, 12, 41, 7));
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
+            ],
+        });
+        TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
+        // After the component override: granting permissions instantiates the test module.
+        // Without Flows:Use a trigger node is read-only and the panel disables its whole form.
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
+        const node = TestBed.inject(NodeFactoryService).createNode(
+            NodeType.SCHEDULE_TRIGGER
+        ) as ScheduleTriggerNodeModel;
+        // Hours later: the panel must show the start the canvas shows, not a new one.
+        vi.setSystemTime(new Date(2026, 9, 23, 16, 5, 0));
+        const fixture = TestBed.createComponent(ScheduleTriggerNodePanelComponent);
+        fixture.componentRef.setInput('node', node);
+        fixture.detectChanges();
+        return fixture;
+    }
+
+    it('shows the name, start and inactive state the canvas shows', () => {
+        const fixture = openFreshNode();
+        const form = fixture.componentInstance.form;
+
+        expect(form.get('node_name')!.value).toBe('Once on 23 Oct 2026 at 13-00');
+        expect(form.get('start_date')!.value).toBe('23.10.2026');
+        expect(form.get('start_time')!.value).toBe('13:00');
+        expect(form.get('is_active')!.value).toBe(false);
+        expect(form.get('is_active')!.enabled).toBe(true);
+        expect(fixture.componentInstance.isDirty()).toBe(false);
+        fixture.destroy();
+    });
+
+    it('saves it unchanged when nothing was edited', () => {
+        const fixture = openFreshNode();
+
+        const saved = fixture.componentInstance.createUpdatedNode();
+
+        expect(saved.node_name).toBe('Once on 23 Oct 2026 at 13-00');
+        expect(saved.data.startDateTime).toBe('2026-10-23T13:00:00');
+        expect(saved.data.isActive).toBe(false);
+        fixture.destroy();
+    });
+
+    it('renames it after a new start time', () => {
+        const fixture = openFreshNode();
+
+        fixture.componentInstance.form.get('start_time')!.setValue('15:30');
+        const saved = fixture.componentInstance.createUpdatedNode();
+
+        expect(saved.node_name).toBe('Once on 23 Oct 2026 at 15-30');
         fixture.destroy();
     });
 });

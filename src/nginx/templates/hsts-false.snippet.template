@@ -1,0 +1,1 @@
+# NGINX_HSTS_ENABLED=false: nginx sends no Strict-Transport-Security header.

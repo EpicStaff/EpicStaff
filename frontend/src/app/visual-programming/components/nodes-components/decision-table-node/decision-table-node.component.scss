@@ -1,3 +1,5 @@
+@use '../../../styles/flow-node-mixins' as mixins;
+
 .decision-table {
     position: relative;
     display: flex;
@@ -6,7 +8,7 @@
     min-height: 100%;
     background-color: var(--color-nodes-background);
     box-shadow: inset 0 0 0 2px var(--color-divider-subtle);
-    border-radius: 16px;
+    border-radius: mixins.$node-border-radius;
     cursor: pointer;
     overflow: visible;
     transition: box-shadow 0.18s ease;
@@ -72,14 +74,8 @@
             }
         }
 
-        .node-number-badge {
-            flex-shrink: 0;
-            background-color: var(--color-nodes-actionbar-bg);
-            color: var(--gray-204);
-            font-size: 0.75rem;
-            padding: 2px 6px;
-            border-radius: 3px;
-            white-space: nowrap;
+        .title-column {
+            @include mixins.node-title-with-number;
         }
 
         .title {
@@ -97,11 +93,6 @@
                 text-overflow: ellipsis;
                 white-space: nowrap;
                 min-width: 0;
-            }
-
-            &__badge {
-                flex-shrink: 0;
-                white-space: nowrap;
             }
         }
     }
@@ -208,8 +199,7 @@
     color: var(--white-alpha-70);
 }
 
-:host-context(app-flow-base-node:hover) .decision-table,
-:host-context(.f-selected) .decision-table {
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
+// The node hover, as on every other node. As deep as the rule that hides the number, so :hover wins.
+:host-context(app-flow-base-node:hover) .decision-table__header .title-column.has-node-number {
+    @include mixins.node-title-with-number-shown;
 }

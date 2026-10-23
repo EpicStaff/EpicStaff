@@ -28,6 +28,11 @@ def client_a(db, django_user_model, org_a):
         resource_type=ResourceType.FLOWS,
         permissions=int(Permission.CREATE | Permission.READ | Permission.EXPORT),
     )
+    RolePermission.objects.create(
+        role=role,
+        resource_type=ResourceType.TOOLS,
+        permissions=int(Permission.READ | Permission.EXPORT),
+    )
     user = django_user_model.objects.create_user(
         email="flow_exporter_a@example.com", password="StrongPass123!"
     )

@@ -70,6 +70,7 @@ class ClassificationDecisionTableNodeStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         node = serializer.save(
             created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
             pre_python_code=pre_python_code,
             post_python_code=post_python_code,
         )

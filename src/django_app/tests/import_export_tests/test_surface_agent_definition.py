@@ -25,6 +25,7 @@ from tables.import_export.id_mapper import IDMapper
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.registry import entity_registry
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.fixture
@@ -122,8 +123,10 @@ class TestSurfaceRoundTrip:
         owned_surface = surface_agent_seeded_db["owned_surface"]
 
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [owned_surface.id]
-        )
+            EntityType.SURFACE,
+            [owned_surface.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         assert EntityType.AGENT_DEFINITION not in export_data
 
@@ -153,8 +156,10 @@ class TestSurfaceRoundTrip:
     ):
         owned_surface = surface_agent_seeded_db["owned_surface"]
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [owned_surface.id]
-        )
+            EntityType.SURFACE,
+            [owned_surface.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         id_mapper, _ = import_service.import_data(export_data, EntityType.SURFACE)
 
@@ -168,8 +173,10 @@ class TestSurfaceRoundTrip:
     ):
         owned_surface = surface_agent_seeded_db["owned_surface"]
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [owned_surface.id]
-        )
+            EntityType.SURFACE,
+            [owned_surface.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         id_mapper, _ = import_service.import_data(export_data, EntityType.SURFACE)
 
@@ -202,8 +209,10 @@ class TestAgentDefinitionRoundTrip:
         agent_def = surface_agent_seeded_db["agent_def"]
 
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_def.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_def.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         agent_definition_count_before = AgentDefinition.objects.count()
         surface_count_before = Surface.objects.count()
@@ -236,8 +245,10 @@ class TestAgentDefinitionRoundTrip:
         owned_surface = surface_agent_seeded_db["owned_surface"]
 
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_def.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_def.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.AGENT_DEFINITION
         )
@@ -261,8 +272,10 @@ class TestAgentDefinitionRoundTrip:
         default_surface = surface_agent_seeded_db["default_surface"]
 
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_def.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_def.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         id_mapper, _ = import_service.import_data(
             export_data, EntityType.AGENT_DEFINITION
         )
@@ -293,8 +306,10 @@ class TestNoStorageOrKnowledgeLeakage:
     ):
         owned_surface = surface_agent_seeded_db["owned_surface"]
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [owned_surface.id]
-        )
+            EntityType.SURFACE,
+            [owned_surface.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         import_service.import_data(export_data, EntityType.SURFACE)
 
@@ -306,8 +321,10 @@ class TestNoStorageOrKnowledgeLeakage:
     ):
         agent_def = surface_agent_seeded_db["agent_def"]
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_def.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_def.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         import_service.import_data(export_data, EntityType.AGENT_DEFINITION)
 
@@ -335,8 +352,10 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
         active_org = Organization.objects.create(name="Active Org")
 
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [owned_surface.id]
-        )
+            EntityType.SURFACE,
+            [owned_surface.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         surface_data = export_data[EntityType.SURFACE][0]
 
         strategy = entity_registry.get_strategy(EntityType.SURFACE)
@@ -356,8 +375,10 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
         default_org.save(update_fields=["name", "is_default"])
 
         export_data = export_service.export_entities(
-            EntityType.SURFACE, [owned_surface.id]
-        )
+            EntityType.SURFACE,
+            [owned_surface.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         surface_data = export_data[EntityType.SURFACE][0]
 
         strategy = entity_registry.get_strategy(EntityType.SURFACE)
@@ -372,8 +393,10 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
         active_org = Organization.objects.create(name="Active Org")
 
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_def.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_def.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         agent_definition_data = export_data[EntityType.AGENT_DEFINITION][0]
 
         strategy = entity_registry.get_strategy(EntityType.AGENT_DEFINITION)
@@ -393,8 +416,10 @@ class TestSurfaceAndAgentDefinitionOrganizationResolution:
         default_org.save(update_fields=["name", "is_default"])
 
         export_data = export_service.export_entities(
-            EntityType.AGENT_DEFINITION, [agent_def.id]
-        )
+            EntityType.AGENT_DEFINITION,
+            [agent_def.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         agent_definition_data = export_data[EntityType.AGENT_DEFINITION][0]
 
         strategy = entity_registry.get_strategy(EntityType.AGENT_DEFINITION)

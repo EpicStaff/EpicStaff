@@ -2,6 +2,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from tables.import_export.enums import EntityType
+from tables.import_export.export_exclusions import ExcludedEntity, ExcludedEntityRecorder
+from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.serializers.graph import EdgeImportSerializer
 from tables.models.graph_models import Edge
@@ -37,6 +39,7 @@ class NodeRef:
 class PartialExportResult:
     data: dict = field(default_factory=dict)
     errors: list[dict] = field(default_factory=list)
+    excluded: list[ExcludedEntity] = field(default_factory=list)
 
     @property
     def has_errors(self) -> bool:
@@ -68,8 +71,10 @@ class GraphPartialExportService:
         *,
         org_id: int,
         edge_ids: list[int] | None = None,
+        policy: ExportAccessPolicy,
     ) -> PartialExportResult:
         result = PartialExportResult()
+        exclusions = ExcludedEntityRecorder(self.registry, policy, org_id)
 
         if not node_refs:
             result.errors.append({"error": "No nodes provided for export."})
@@ -109,8 +114,10 @@ class GraphPartialExportService:
                 entity_id=instance.id,
                 collected=collected,
                 org_id=org_id,
+                exclusions=exclusions,
                 exclude_graphs=True,
             )
+        result.excluded = exclusions.excluded
 
         # Pass 3: include explicitly requested edges
         if edge_ids:
@@ -131,6 +138,7 @@ class GraphPartialExportService:
         entity_id: int,
         collected: dict,
         org_id: int,
+        exclusions: ExcludedEntityRecorder,
         exclude_graphs: bool = False,
     ) -> None:
         """Recursively collect entity and its dependencies."""
@@ -150,13 +158,14 @@ class GraphPartialExportService:
             if exclude_graphs and dep_type == EntityType.GRAPH:
                 continue
             for dep_id in dep_ids:
-                if dep_id is None:
+                if not exclusions.admits(dep_type, dep_id):
                     continue
                 self._collect(
                     entity_type=dep_type,
                     entity_id=dep_id,
                     collected=collected,
                     org_id=org_id,
+                    exclusions=exclusions,
                     exclude_graphs=exclude_graphs,
                 )
 

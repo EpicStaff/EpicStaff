@@ -24,6 +24,8 @@ export class ButtonComponent {
     @Input() mod: 'default' | 'small' = 'default';
     @Input() leftIcon?: string; // e.g., 'ui/x'
     @Input() iconSize: string = '1.1rem';
+    /** Overrides `iconSize` horizontally, for icons narrower than they are tall. */
+    @Input() iconWidth?: string;
     @Input() leftIconColor?: string;
     @Input() rightIcon?: string;
     @Input() rightIconColor?: string;

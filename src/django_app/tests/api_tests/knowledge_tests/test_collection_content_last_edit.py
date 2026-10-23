@@ -1,6 +1,7 @@
 """Document and RAG-settings changes are edits of their collection; system writes are not."""
 
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
@@ -12,7 +13,7 @@ from rest_framework import status
 
 from rbac.authorship import record_last_edit
 from rbac.models import OrganizationUser, ResourceLastEdit
-from tables.models import DocumentContent, DocumentMetadata, SourceCollection
+from tables.models import DocumentContent, DocumentMetadata, SourceCollection, StorageFile
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.knowledge_models import (
     BaseRagType,
@@ -23,10 +24,13 @@ from tables.models.llm_models import LLMConfig, LLMModel
 from tables.models.provider import Provider
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
+from tables.services.storage_service.manager import StorageManager
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 
 PREVIOUS_EDIT_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
 LAST_EDIT_UPSERT_PREFIX = 'INSERT INTO "rbac_resourcelastedit"'
+VIEW_STORAGE_MANAGER = "tables.views.knowledge_views.document_management_views.get_storage_manager"
 
 
 def _last_edit_of(collection) -> ResourceLastEdit | None:
@@ -77,6 +81,19 @@ def _document(collection, file_name="notes.txt") -> DocumentMetadata:
     )
 
 
+def _stored_file(storage_manager, org, path, content=b"text") -> StorageFile:
+    seed_file(storage_manager._backend, org.id, path, content)
+    return StorageFile.objects.get(org=org, path=path)
+
+
+def _import_from_storage(client, collection, storage_file_ids):
+    return client.post(
+        reverse("document-import-from-storage", args=[collection.collection_id]),
+        {"storage_file_ids": storage_file_ids},
+        format="json",
+    )
+
+
 def _embedder(org, name="embedder", provider_name="embedding-provider") -> EmbeddingConfig:
     provider, _ = Provider.objects.get_or_create(name=provider_name)
     model, _ = EmbeddingModel.objects.get_or_create(
@@ -99,6 +116,13 @@ def collection(acme, member_only):
 @pytest.fixture
 def foreign_collection(beta, member_only):
     return _collection(beta, member_only, name="Foreign collection")
+
+
+@pytest.fixture
+def storage_manager():
+    manager = StorageManager(InMemoryStorageBackend(organization_prefix=""))
+    with patch(VIEW_STORAGE_MANAGER, return_value=manager):
+        yield manager
 
 
 @pytest.fixture
@@ -157,6 +181,36 @@ def test_upload_of_several_documents_records_collection_in_one_statement(
     assert response.status_code == status.HTTP_201_CREATED, response.content
     _assert_edited_by(collection, admin_acme)
     assert _upserts(context) == 1
+
+
+@pytest.mark.django_db
+def test_storage_import_of_several_documents_records_collection_in_one_statement(
+    acme_admin_client, admin_acme, acme, storage_manager, collection
+):
+    storage_file_ids = [
+        _stored_file(storage_manager, acme, "first.txt", b"one").id,
+        _stored_file(storage_manager, acme, "second.txt", b"two").id,
+    ]
+
+    with CaptureQueriesContext(connection) as context:
+        response = _import_from_storage(acme_admin_client, collection, storage_file_ids)
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert len(response.data["documents"]) == 2
+    _assert_edited_by(collection, admin_acme)
+    assert _upserts(context) == 1
+
+
+@pytest.mark.django_db
+def test_storage_import_that_skips_every_file_records_nothing(
+    acme_admin_client, acme, member_only, storage_manager, collection
+):
+    sheet = _stored_file(storage_manager, acme, "sheet.xlsx", b"xl")
+
+    response = _import_from_storage(acme_admin_client, collection, [sheet.id])
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    _assert_untouched(collection, member_only)
 
 
 @pytest.mark.django_db
@@ -245,6 +299,19 @@ def test_cross_org_upload_is_404_and_records_nothing(
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+    _assert_untouched(foreign_collection, member_only)
+
+
+@pytest.mark.django_db
+def test_cross_org_storage_import_is_404_and_records_nothing(
+    acme_admin_client, acme, member_only, storage_manager, foreign_collection
+):
+    stored = _stored_file(storage_manager, acme, "mine.txt")
+
+    response = _import_from_storage(acme_admin_client, foreign_collection, [stored.id])
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert not DocumentMetadata.objects.filter(source_collection=foreign_collection).exists()
     _assert_untouched(foreign_collection, member_only)
 
 

@@ -1,5 +1,7 @@
 import { AuthorshipFields } from '@shared/models';
 
+import { NumberedNodeDto } from './numbered-node-dto.model';
+
 export type WeekdayCode = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
 export type ScheduleRunMode = 'once' | 'repeat';
@@ -63,7 +65,7 @@ export interface GetScheduleBlock {
 // ── HTTP DTOs ────────────────────────────────────────────────────────────────
 
 /** Shape returned by GET /api/schedule-trigger-nodes/{id}/ and as the response body of POST/PUT/PATCH. */
-export interface GetScheduleTriggerNodeRequest extends AuthorshipFields {
+export interface GetScheduleTriggerNodeRequest extends AuthorshipFields, NumberedNodeDto {
     id: number;
     node_name: string;
     graph: number;

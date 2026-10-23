@@ -21,6 +21,7 @@ from tables.import_export.utils import (
     remap_python_code_venv,
 )
 from tables.models import PythonCode, PythonCodeTool, User
+from tables.serializers.utils.description_sanitizer import sanitize_description
 
 # Scalar fields compared for reuse, next to the rename-aware name match,
 # get_org_scope_q and python_code_key. An explicit allowlist, not
@@ -148,9 +149,18 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         # SQL narrows on stored columns: venv, entrypoint, global_kwargs and
         # execution_timeout exactly (create stores them so, and jsonb equality
         # keeps true apart from 1). Only the code itself is compared in Python.
-        filters, null_filters = create_filters(
-            compared_values(PythonCodeTool, self.serializer_class, data, COMPARED_FIELDS)
-        )
+        # Description is compared cleaned on both sides: create stores it
+        # sanitized, but a built-in tool keeps upload_tools' text, which can exceed
+        # the sanitizer's cap. Org rows still narrow on it in SQL (as written or
+        # cleaned), so tools that differ only in description never crowd the right
+        # one out of the candidate window.
+        compared = compared_values(PythonCodeTool, self.serializer_class, data, COMPARED_FIELDS)
+        description = compared.pop("description", None)
+        filters, null_filters = create_filters(compared)
+        description_q = Q()
+        if description is not None:
+            stored_forms = [description, sanitize_description(description)]
+            description_q = Q(description__in=stored_forms) | Q(built_in=True)
         python_code = self.validated_python_code(
             remap_python_code_venv(data.get("python_code"), id_mapper)
         )
@@ -160,6 +170,7 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         candidates = filter_by_name_or_renamed_copy(
             PythonCodeTool.objects.filter(**filters, **null_filters)
             .filter(
+                description_q,
                 self.get_org_scope_q(org_id),
                 python_code__venv_id=code_key[1],
                 python_code__entrypoint=code_key[2],
@@ -169,19 +180,26 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
             .select_related("python_code"),
             import_values(self.serializer_class, data, ("name",)).get("name"),
         )[:MAX_REUSE_CANDIDATES]
-        return next(
-            (
-                candidate
-                for candidate in candidates
-                if python_code_key(
-                    candidate.python_code.code,
-                    candidate.python_code.venv_id,
-                    candidate.python_code.entrypoint,
-                )
-                == code_key
-            ),
-            None,
+        matches = [
+            candidate
+            for candidate in candidates
+            if python_code_key(
+                candidate.python_code.code,
+                candidate.python_code.venv_id,
+                candidate.python_code.entrypoint,
+            )
+            == code_key
+            and (
+                description is None
+                or sanitize_description(candidate.description) == sanitize_description(description)
+            )
+        ]
+        # A tool stored with the file's exact text wins over one that matches only
+        # once cleaned, so a built-in stays the tool reused.
+        exact_match = next(
+            (candidate for candidate in matches if candidate.description == description), None
         )
+        return exact_match or (matches[0] if matches else None)
 
     @staticmethod
     def validated_python_code(python_code_data: dict) -> dict:

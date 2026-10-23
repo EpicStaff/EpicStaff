@@ -483,19 +483,21 @@ describe('key-value node helpers', () => {
     });
 
     it('names each key-value node the flow save must refuse, and no other node', () => {
-        const keyValue = (node_name: string, entries: KeyValueEntry[]): NodeModel =>
+        const keyValue = (node_name: string, nodeNumber: number, entries: KeyValueEntry[]): NodeModel =>
             ({
                 type: NodeType.KEY_VALUE,
                 node_name,
+                nodeNumber,
                 data: { key_value_table: 1, mode: 'write', entries },
             }) as unknown as NodeModel;
         const nodes: NodeModel[] = [
-            keyValue('Ok', [{ key: 'a', value: 'variables.a' }]),
-            keyValue('Unfinished', [{ key: 'a', value: 'variables.' }]),
+            keyValue('Unfinished', 1, [{ key: 'a', value: 'variables.a' }]),
+            keyValue('Unfinished', 2, [{ key: 'a', value: 'variables.' }]),
             { type: NodeType.PYTHON, node_name: 'Code', data: {} } as unknown as NodeModel,
         ];
 
-        expect(invalidKeyValueNodeMessages(nodes)).toEqual(['"Unfinished" has invalid keys or variable paths']);
+        // Same-named nodes are told apart by their number.
+        expect(invalidKeyValueNodeMessages(nodes)).toEqual(['"Unfinished #2" has invalid keys or variable paths']);
         expect(invalidKeyValueNodeMessages(nodes.slice(0, 1))).toEqual([]);
     });
 

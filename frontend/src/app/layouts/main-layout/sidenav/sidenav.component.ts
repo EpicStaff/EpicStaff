@@ -24,7 +24,6 @@ import { ChatInboxStreamService } from '../../../features/chat/services/chat-inb
 import { QUICK_START_TOUR_ANCHORS } from '../../../features/quick-start-tour/quick-start-tour-anchors';
 import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
-import { OrganizationsMenuComponent } from '../../../features/role-base-access/components/organizations-sidebar-menu/organizations-menu.component';
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../services/auth/permissions.service';
@@ -54,6 +53,8 @@ interface NavItem {
     badgeLabel?: (count: number) => string;
     action?: () => void;
     customClass?: string;
+    /** Draws a divider above the item, separating it from the group before it. */
+    separatedAbove?: boolean;
 }
 
 const PAGE_STEP_BY_CODE: Partial<Record<'ArrowUp' | 'ArrowDown', 1 | -1>> = { ArrowUp: -1, ArrowDown: 1 };
@@ -76,7 +77,6 @@ function isEditableTarget(element: Element): boolean {
         OverlayModule,
         PortalModule,
         UserMenuComponent,
-        OrganizationsMenuComponent,
         AppSvgIconComponent,
         UserAvatarComponent,
         OrgAvatarComponent,
@@ -111,9 +111,7 @@ export class LeftSidebarComponent {
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
-    public isOrgMenuOpen = signal<boolean>(false);
     public showAccountTooltip = false;
-    public showOrgTooltip = false;
     protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
 
     private router = inject(Router);
@@ -123,19 +121,6 @@ export class LeftSidebarComponent {
             map(() => this.readCurrentPath())
         ),
         { initialValue: this.readCurrentPath() }
-    );
-    public isWorkspaceRoute = computed(() => this.currentPath().startsWith('/workspace'));
-
-    public activeMembership = computed(() => {
-        const user = this.user();
-        if (!user) return null;
-        const orgId = this.activeOrgService.activeOrgId();
-        return user.memberships.find((m) => m.organization.id === orgId) ?? null;
-    });
-
-    /** Mirrors the org switcher icon: the workspace icon on workspace pages, the org avatar elsewhere. */
-    protected readonly orgSwitcherLabel = computed(() =>
-        this.isWorkspaceRoute() ? 'Workspace' : (this.activeMembership()?.organization.name ?? '')
     );
 
     /**
@@ -150,6 +135,21 @@ export class LeftSidebarComponent {
         untracked(() =>
             permitted && orgId && userId ? this.chatInboxStream.start(orgId, userId) : this.chatInboxStream.stop()
         );
+    });
+
+    /** Workspace and My Profile are reached from the account menu, so their pages highlight its row. */
+    protected readonly isAccountRoute = computed(() =>
+        ['/workspace', '/profile'].some(
+            (prefix) => this.currentPath() === prefix || this.currentPath().startsWith(`${prefix}/`)
+        )
+    );
+
+    /** The account row shows the organization the user is working in. */
+    protected readonly activeMembership = computed(() => {
+        const user = this.user();
+        if (!user) return null;
+        const orgId = this.activeOrgService.activeOrgId();
+        return user.memberships.find((membership) => membership.organization.id === orgId) ?? null;
     });
 
     /** Same fallback as the user menu header: the display name, or the email when there is none. */
@@ -259,6 +259,7 @@ export class LeftSidebarComponent {
                     this.configService.isAuditTrailEnabled &&
                     this.permissionService.can(ResourceCode.Audit, ActionCode.Read),
                 showTooltip: false,
+                separatedAbove: true,
             },
         ];
 
@@ -300,15 +301,6 @@ export class LeftSidebarComponent {
         this.isUserMenuOpen.update((prev) => !prev);
     }
 
-    public closeOrgMenu(): void {
-        this.isOrgMenuOpen.set(false);
-    }
-
-    public toggleOrgMenu(event: MouseEvent): void {
-        event.stopPropagation();
-        this.isOrgMenuOpen.update((prev) => !prev);
-    }
-
     public handleItemClick(item: NavItem, event: MouseEvent): void {
         if (item.action) {
             event.preventDefault();
@@ -327,7 +319,6 @@ export class LeftSidebarComponent {
 
         event.preventDefault();
         this.closeUserMenu();
-        this.closeOrgMenu();
         void this.router.navigate([nextItem.routeLink], { relativeTo: this.activatedRoute });
     }
 

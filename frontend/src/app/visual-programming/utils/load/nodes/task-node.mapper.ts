@@ -12,7 +12,7 @@ export function mapTaskNodeToModel(tn: TaskNode): TaskNodeModel {
         backendId: tn.id,
         type: NodeType.TASK,
         node_name: tn.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: tn.node_number ?? undefined,
         data: {
             name: tn.node_name,
             instructions: tn.instructions,

@@ -10,6 +10,7 @@ import {
     NodeStreamToolResultData,
     TaskNodeStreamMessageData,
 } from '../../../../models/graph-session-message.model';
+import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe';
 
 type NodeStreamMessageData = TaskNodeStreamMessageData | AgentNodeStreamMessageData;
 type NodeStreamType = MessageType.TASK_NODE_STREAM | MessageType.AGENT_NODE_STREAM;
@@ -41,7 +42,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
 
 @Component({
     selector: 'app-node-stream-message',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, RuntimeNodeLabelPipe],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -70,7 +71,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                     />
                 </div>
                 <div class="header-text">
-                    <span class="node-name">{{ message().name }}</span>
+                    <span class="node-name">{{ message().name | runtimeNodeLabel }}</span>
                     @if (!isDone()) {
                         <span class="status-badge">working...</span>
                     }

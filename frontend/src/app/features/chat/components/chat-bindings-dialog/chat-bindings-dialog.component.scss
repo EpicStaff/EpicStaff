@@ -92,6 +92,11 @@
         &[hidden] {
             display: none;
         }
+
+        // A lone stepper lines up with the left column of a paired row
+        > app-input-number {
+            max-width: calc(50% - 8px);
+        }
     }
 
     &__row {
@@ -223,6 +228,10 @@
 
         &__row {
             grid-template-columns: 1fr;
+        }
+
+        &__tab > app-input-number {
+            max-width: none;
         }
 
         &__actions {

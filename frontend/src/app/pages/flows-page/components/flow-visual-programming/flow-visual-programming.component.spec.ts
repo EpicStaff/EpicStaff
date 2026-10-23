@@ -67,9 +67,16 @@ import { NodeAuthorshipStore } from '../../../../visual-programming/services/nod
 import { ScheduleTriggerRuntimeService } from '../../../../visual-programming/services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
+import { mapClassificationDecisionTableNodeToModel } from '../../../../visual-programming/utils/load/nodes/classification-decision-table-node.mapper';
 import { mapGraphNoteToModel } from '../../../../visual-programming/utils/load/nodes/graph-note.mapper';
 import { mapWebhookTriggerNodeToModel } from '../../../../visual-programming/utils/load/nodes/webhook-trigger-node.mapper';
-import { liveGraph, livePython, liveTask } from '../../../../visual-programming/utils/testing/live-graph.fixture';
+import {
+    liveAgent,
+    liveClassificationTable,
+    liveGraph,
+    livePython,
+    liveTask,
+} from '../../../../visual-programming/utils/testing/live-graph.fixture';
 import {
     extractParentNotUpdatedMessage,
     FlowVisualProgrammingComponent,
@@ -126,7 +133,6 @@ class FlowGraphStubComponent {
     readonly availableFlows = input<GetGraphLightRequest[]>([]);
     readonly flowName = input<string>();
     readonly initialNodeId = input<string | null>(null);
-    readonly initialNodeExpand = input(true);
     readonly initialViewport = input<FlowViewport | null>(null);
     readonly isSaving = input(false);
     readonly hasUnsavedChanges = input(false);
@@ -227,6 +233,7 @@ describe('FlowVisualProgrammingComponent', () => {
     let unsavedChangesDialog: { confirm: ReturnType<typeof vi.fn>; confirmUnsavedChanges: ReturnType<typeof vi.fn> };
     let toast: Record<string, ReturnType<typeof vi.fn>>;
     let paramMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+    let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
     /** A signal, so FlowReadOnlyService's computed re-reads it when a test revokes Flows:Update. */
     let canUpdateFlows: WritableSignal<boolean>;
     let runGraph: Record<string, ReturnType<typeof vi.fn>>;
@@ -262,6 +269,7 @@ describe('FlowVisualProgrammingComponent', () => {
         const paramMap = convertToParamMap({ id: '1' });
         paramMap$ = new BehaviorSubject(paramMap);
         const queryParamMap = convertToParamMap({});
+        queryParamMap$ = new BehaviorSubject(queryParamMap);
 
         TestBed.configureTestingModule({
             imports: [FlowVisualProgrammingComponent],
@@ -271,7 +279,7 @@ describe('FlowVisualProgrammingComponent', () => {
                     provide: ActivatedRoute,
                     useValue: {
                         paramMap: paramMap$,
-                        queryParamMap: of(queryParamMap),
+                        queryParamMap: queryParamMap$,
                         snapshot: { paramMap, queryParamMap },
                     },
                 },
@@ -497,6 +505,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 node_type: 'WebhookTriggerNode',
                 node_name: 'Orders hook',
                 metadata: {},
+                node_number: null,
                 webhook_trigger: null,
                 input_map: {},
                 output_variable_path: null,
@@ -868,6 +877,7 @@ describe('FlowVisualProgrammingComponent', () => {
         const savedWebhook: GetWebhookTriggerNodeRequest = {
             id: 21,
             graph: 1,
+            node_number: 1,
             node_name: 'Webhook Trigger #1',
             python_code: { id: 5, code: 'def main(trigger_payload): pass', entrypoint: 'main' },
             input_map: {},
@@ -1070,6 +1080,7 @@ describe('FlowVisualProgrammingComponent', () => {
                             {
                                 id: 21,
                                 graph: graphId,
+                                node_number: 1,
                                 node_name: 'Webhook Trigger #1',
                                 python_code: STORED_PYTHON_CODE,
                                 input_map: {},
@@ -1242,6 +1253,452 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(toast['warning']).toHaveBeenCalledWith(REMOTE_SAVE_RELOAD_FAILED_MESSAGE);
             expect(component.versionHistoryGraphSaveVersion()).toBe(1);
+        });
+    });
+
+    describe('a link to one node of the flow', () => {
+        it('opens the node with that backend id, not another node with the same name', () => {
+            queryParamMap$.next(convertToParamMap({ nodeId: '42' }));
+            flowsApi['getGraphById'].mockReturnValue(
+                of(
+                    graphDto({
+                        id: 5,
+                        python_node_list: [
+                            { ...livePython, id: 41, node_number: 1, node_name: 'Fetch' },
+                            { ...livePython, id: 42, node_number: 2, node_name: 'Fetch' },
+                        ],
+                    })
+                )
+            );
+            paramMap$.next(convertToParamMap({ id: '5' }));
+            fixture.detectChanges();
+
+            const linkedNode = flowService.getFlowState().nodes.find((node) => node.backendId === 42)!;
+            expect(liveCanvas()!.initialNodeId()).toBe(linkedNode.id);
+        });
+    });
+
+    describe('save blocked by an invalid node', () => {
+        let nextRouteId = 300;
+
+        function openFlow(graph: GraphDto): void {
+            flowsApi['getGraphById'].mockReturnValue(of(graph));
+            paramMap$.next(convertToParamMap({ id: String(nextRouteId++) }));
+            fixture.detectChanges();
+        }
+
+        function saveAndReadToast(): string {
+            component.onGraphSave(flowService.getFlowState());
+            expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
+            return toast['error'].mock.calls.at(-1)![0] as string;
+        }
+
+        it('names a nameless task by its badge number, like the badge on the canvas', () => {
+            openFlow(graphDto({ task_node_list: [{ ...liveTask, node_name: '  ', node_number: 8 }] }));
+
+            expect(saveAndReadToast()).toContain('"Untitled task #8" is missing node name');
+        });
+
+        it('names a nameless agent by its badge number', () => {
+            openFlow(graphDto({ agent_node_list: [{ ...liveAgent, node_name: '', node_number: 9 }] }));
+
+            expect(saveAndReadToast()).toContain('"Untitled agent #9" is missing node name');
+        });
+
+        it('shows the position in parentheses when a nameless node has no badge number yet', () => {
+            openFlow(graphDto({ task_node_list: [{ ...liveTask, node_name: '' }] }));
+            const flow = flowService.getFlowState();
+            flowService.setFlow({
+                ...flow,
+                nodes: flow.nodes.map((node) => ({ ...node, nodeNumber: undefined })),
+            });
+            const position = flow.nodes.findIndex((node) => node.type === NodeType.TASK) + 1;
+
+            expect(saveAndReadToast()).toContain(`"Untitled task (${position})" is missing node name`);
+        });
+
+        it('keeps the trimmed name and its badge number for a named node', () => {
+            openFlow(
+                graphDto({
+                    task_node_list: [{ ...liveTask, node_name: ' Summarise ', node_number: 4, instructions: '' }],
+                })
+            );
+
+            expect(saveAndReadToast()).toContain('"Summarise #4" is missing instructions');
+        });
+    });
+
+    describe('graph node counter', () => {
+        // The graph has issued numbers up to 12 (nodes since deleted); the canvas only holds #1.
+        const counterGraph = graphDto({ python_node_list: [livePython], node_number_seq: 12 });
+        let nextRouteId = 200;
+        const livePythonNode = () => flowService.getFlowState().nodes.find((node) => node.type === NodeType.PYTHON)!;
+
+        function openFlow(graph: GraphDto): void {
+            flowsApi['getGraphById'].mockReturnValue(of(graph));
+            paramMap$.next(convertToParamMap({ id: String(nextRouteId++) }));
+            fixture.detectChanges();
+        }
+
+        it('numbers a new node after the loaded graph counter, not after the canvas', () => {
+            openFlow(counterGraph);
+
+            expect(flowService.getNextNodeNumber()).toBe(13);
+        });
+
+        it('continues from the counter a flow save returns', () => {
+            openFlow(counterGraph);
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(graphDto({ save_version: 2, python_node_list: [livePython], node_number_seq: 20 }))
+            );
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(flowService.getNextNodeNumber()).toBe(21);
+        });
+
+        it('continues from the counter a single-node save returns', () => {
+            openFlow(counterGraph);
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                of(graphDto({ save_version: 2, python_node_list: [livePython], node_number_seq: 30 }))
+            );
+
+            TestBed.inject(SidePanelService).requestSaveNode({ ...livePythonNode(), node_name: 'Renamed' });
+
+            expect(flowService.getNextNodeNumber()).toBe(31);
+        });
+
+        describe('a new node the save numbers', () => {
+            const NEW_NODE_ID = 'new-python';
+            const newNode = () => flowService.getFlowState().nodes.find((node) => node.id === NEW_NODE_ID)!;
+
+            /** The canvas holds the saved #1 plus a new node showing #4, which the counter at 12 has already issued. */
+            function openFlowWithNewNode(): void {
+                openFlow(counterGraph);
+                const flow = flowService.getFlowState();
+                const unsaved = { ...livePythonNode(), id: NEW_NODE_ID, backendId: null, nodeNumber: 4 };
+                flowService.setFlow({ ...flow, nodes: [...flow.nodes, unsaved] });
+            }
+
+            /** The server ordered the new node by hint 4 and numbered it #13, the next one its counter issues. */
+            function respondWithNodeNumbered13(): void {
+                flowsApi['bulkSaveGraph'].mockReturnValue(
+                    of(
+                        graphDto({
+                            save_version: 2,
+                            python_node_list: [livePython, { ...livePython, id: 40, node_number: 13 }],
+                            node_number_seq: 13,
+                        })
+                    )
+                );
+            }
+
+            it('sends the number it shows as a hint, then shows the number the flow save gave it, saved', () => {
+                openFlowWithNewNode();
+                respondWithNodeNumbered13();
+
+                component.onGraphSave(flowService.getFlowState());
+
+                const payload = flowsApi['bulkSaveGraph'].mock.calls[0][1] as Record<string, unknown>;
+                expect(payload['python_node_list']).toEqual([
+                    expect.objectContaining({ id: null, temp_id: NEW_NODE_ID, node_number_hint: 4 }),
+                ]);
+                expect(newNode()).toEqual(expect.objectContaining({ backendId: 40, nodeNumber: 13 }));
+                expect(component.hasUnsavedChangesSignal()).toBe(false);
+            });
+
+            it('shows the number a single-node save gave it, saved', () => {
+                openFlowWithNewNode();
+                respondWithNodeNumbered13();
+
+                TestBed.inject(SidePanelService).requestSaveNode(newNode());
+
+                expect(newNode()).toEqual(expect.objectContaining({ backendId: 40, nodeNumber: 13 }));
+                expect(component.hasUnsavedChangesSignal()).toBe(false);
+            });
+
+            it('changes no other number after a full save when no unsaved node is left', () => {
+                openFlowWithNewNode();
+                respondWithNodeNumbered13();
+
+                component.onGraphSave(flowService.getFlowState());
+
+                const shownNumbers = flowService.getFlowState().nodes.flatMap((node) => node.nodeNumber ?? []);
+                expect(shownNumbers).toEqual([1, 13]);
+                expect(flowService.getNextNodeNumber()).toBe(14);
+            });
+
+            it('moves an unsaved table off the number a single-node save gave another, each layout with it', () => {
+                localStorage.clear();
+                openFlow(counterGraph);
+                const table = mapClassificationDecisionTableNodeToModel(liveClassificationTable);
+                const flow = flowService.getFlowState();
+                flowService.setFlow({
+                    ...flow,
+                    nodes: [
+                        ...flow.nodes,
+                        { ...table, id: 'table-a', backendId: null, nodeNumber: 13 },
+                        { ...table, id: 'table-b', backendId: null, nodeNumber: 14 },
+                    ],
+                });
+                localStorage.setItem('cdt-grid-state-1_13', 'layout of A');
+                localStorage.setItem('cdt-grid-state-1_14', 'layout of B');
+                // Only B is saved; the server numbers it from its counter: #13, the number A shows.
+                flowsApi['bulkSaveGraph'].mockReturnValue(
+                    of(
+                        graphDto({
+                            save_version: 2,
+                            python_node_list: [livePython],
+                            classification_decision_table_node_list: [
+                                { ...liveClassificationTable, id: 42, node_number: 13 },
+                            ],
+                            node_number_seq: 13,
+                        })
+                    )
+                );
+                const tableNode = (id: string) => flowService.getFlowState().nodes.find((node) => node.id === id)!;
+
+                TestBed.inject(SidePanelService).requestSaveNode(tableNode('table-b'));
+
+                expect(tableNode('table-b')).toEqual(expect.objectContaining({ backendId: 42, nodeNumber: 13 }));
+                expect(tableNode('table-a')).toEqual(expect.objectContaining({ backendId: null, nodeNumber: 14 }));
+                expect(localStorage.getItem('cdt-grid-state-1_13')).toBe('layout of B');
+                expect(localStorage.getItem('cdt-grid-state-1_14')).toBe('layout of A');
+                expect(component.hasUnsavedChangesSignal()).toBe(true);
+                localStorage.clear();
+            });
+
+            it('keeps the layout key of a saved table when an unsaved table showing its number moves off it', () => {
+                localStorage.clear();
+                const savedTableDto = { ...liveClassificationTable, id: 31, node_number: 13 };
+                const graph = graphDto({
+                    python_node_list: [livePython],
+                    classification_decision_table_node_list: [savedTableDto],
+                    node_number_seq: 13,
+                });
+                openFlow(graph);
+                const flow = flowService.getFlowState();
+                const unsavedTable = {
+                    ...mapClassificationDecisionTableNodeToModel(liveClassificationTable),
+                    id: 'unsaved-table',
+                    backendId: null,
+                    nodeNumber: 13,
+                };
+                flowService.setFlow({ ...flow, nodes: [...flow.nodes, unsavedTable] });
+                localStorage.setItem('cdt-grid-state-1_13', 'layout of the saved table');
+                flowsApi['bulkSaveGraph'].mockReturnValue(of({ ...graph, save_version: 2 }));
+
+                TestBed.inject(SidePanelService).requestSaveNode({ ...livePythonNode(), node_name: 'Renamed' });
+
+                const unsaved = flowService.getFlowState().nodes.find((node) => node.id === 'unsaved-table')!;
+                expect(unsaved.nodeNumber).toBe(14);
+                expect(localStorage.getItem('cdt-grid-state-1_13')).toBe('layout of the saved table');
+                localStorage.clear();
+            });
+
+            it('never writes a new table layout over the key a saved table without a server number shows', () => {
+                localStorage.clear();
+                // A saved table the server never numbered: the loader shows it #13, past the canvas, which
+                // the counter (12) has not issued yet; its layout is stored under that number.
+                const unnumberedTable = { ...liveClassificationTable, id: 30, node_number: null };
+                openFlow(
+                    graphDto({
+                        python_node_list: [{ ...livePython, node_number: 12 }],
+                        classification_decision_table_node_list: [unnumberedTable],
+                        node_number_seq: 12,
+                    })
+                );
+                const savedTable = () => flowService.getFlowState().nodes.find((node) => node.backendId === 30)!;
+                expect(savedTable().nodeNumber).toBe(13);
+                localStorage.setItem('cdt-grid-state-1_13', 'layout of the saved table');
+                const flow = flowService.getFlowState();
+                const newTable = {
+                    ...mapClassificationDecisionTableNodeToModel(liveClassificationTable),
+                    id: 'new-table',
+                    backendId: null,
+                    nodeNumber: 14,
+                };
+                flowService.setFlow({ ...flow, nodes: [...flow.nodes, newTable] });
+                localStorage.setItem('cdt-grid-state-1_14', 'layout of the new table');
+                // The server numbers the new table from its counter: #13, the number the saved one shows.
+                flowsApi['bulkSaveGraph'].mockReturnValue(
+                    of(
+                        graphDto({
+                            save_version: 2,
+                            python_node_list: [{ ...livePython, node_number: 12 }],
+                            classification_decision_table_node_list: [
+                                unnumberedTable,
+                                { ...liveClassificationTable, id: 41, node_number: 13 },
+                            ],
+                            node_number_seq: 13,
+                        })
+                    )
+                );
+
+                component.onGraphSave(flowService.getFlowState());
+
+                expect(localStorage.getItem('cdt-grid-state-1_13')).toBe('layout of the saved table');
+                localStorage.clear();
+            });
+
+            it('keeps the grid layout of a new decision table the save renumbers', () => {
+                localStorage.clear();
+                const cdtDto: GetClassificationDecisionTableNodeRequest = {
+                    ...liveClassificationTable,
+                    id: 41,
+                    node_number: 13,
+                };
+                openFlow(counterGraph);
+                const flow = flowService.getFlowState();
+                const unsavedCdt = {
+                    ...mapClassificationDecisionTableNodeToModel(liveClassificationTable),
+                    id: 'new-cdt',
+                    backendId: null,
+                    nodeNumber: 4,
+                };
+                flowService.setFlow({ ...flow, nodes: [...flow.nodes, unsavedCdt] });
+                localStorage.setItem('cdt-grid-state-1_4', '{"widths":{"group_name":240}}');
+                flowsApi['bulkSaveGraph'].mockReturnValue(
+                    of(
+                        graphDto({
+                            save_version: 2,
+                            python_node_list: [livePython],
+                            classification_decision_table_node_list: [cdtDto],
+                            node_number_seq: 13,
+                        })
+                    )
+                );
+
+                component.onGraphSave(flowService.getFlowState());
+
+                expect(localStorage.getItem('cdt-grid-state-1_13')).toBe('{"widths":{"group_name":240}}');
+                localStorage.clear();
+            });
+        });
+
+        describe('partial import', () => {
+            /** The canvas holds the saved #1 plus an unsaved node numbered `localNumber`. */
+            function openFlowWithUnsavedNode(localNumber: number): void {
+                openFlow(graphDto({ python_node_list: [livePython], node_number_seq: 10 }));
+                const unsavedNode = {
+                    ...livePythonNode(),
+                    id: 'unsaved-python',
+                    backendId: null,
+                    node_name: 'Local',
+                    nodeNumber: localNumber,
+                };
+                const flow = flowService.getFlowState();
+                flowService.setFlow({ ...flow, nodes: [...flow.nodes, unsavedNode] });
+            }
+
+            /** The backend numbered the imported node #11 from its counter, which now reads 12. */
+            function importNodeNumbered11(): void {
+                flowsApi['getGraphById'].mockReturnValue(
+                    of(
+                        graphDto({
+                            python_node_list: [
+                                livePython,
+                                { ...livePython, id: 50, node_number: 11, node_name: 'Report #2' },
+                            ],
+                            node_number_seq: 12,
+                        })
+                    )
+                );
+                component.handlePartialImportComplete();
+            }
+
+            const numberOf = (nodeName: string) =>
+                flowService.getFlowState().nodes.find((node) => node.node_name === nodeName)?.nodeNumber;
+
+            it('keeps the imported node its number and name, and moves an unsaved node holding that number past the counter', () => {
+                openFlowWithUnsavedNode(11);
+
+                importNodeNumbered11();
+
+                expect(numberOf('Report #2')).toBe(11);
+                expect(numberOf('Local')).toBe(13);
+                expect(numberOf(livePython.node_name)).toBe(1);
+            });
+
+            it('moves every unsaved node an imported number collides with, one after another', () => {
+                openFlowWithUnsavedNode(11);
+                const flow = flowService.getFlowState();
+                const secondUnsaved = {
+                    ...flow.nodes.at(-1)!,
+                    id: 'unsaved-python-2',
+                    node_name: 'Local 2',
+                    nodeNumber: 12,
+                };
+                flowService.setFlow({ ...flow, nodes: [...flow.nodes, secondUnsaved] });
+                flowsApi['getGraphById'].mockReturnValue(
+                    of(
+                        graphDto({
+                            python_node_list: [
+                                livePython,
+                                { ...livePython, id: 50, node_number: 11, node_name: 'Imported 1' },
+                                { ...livePython, id: 51, node_number: 12, node_name: 'Imported 2' },
+                            ],
+                            node_number_seq: 12,
+                        })
+                    )
+                );
+
+                component.handlePartialImportComplete();
+
+                expect(['Imported 1', 'Imported 2', 'Local', 'Local 2'].map(numberOf)).toEqual([11, 12, 13, 14]);
+            });
+
+            it('moves the grid layout of an unsaved table it renumbers, leaving none for the imported table', () => {
+                localStorage.clear();
+                openFlow(graphDto({ python_node_list: [livePython], node_number_seq: 10 }));
+                const flow = flowService.getFlowState();
+                const unsavedTable = {
+                    ...mapClassificationDecisionTableNodeToModel(liveClassificationTable),
+                    id: 'unsaved-table',
+                    backendId: null,
+                    nodeNumber: 11,
+                };
+                flowService.setFlow({ ...flow, nodes: [...flow.nodes, unsavedTable] });
+                localStorage.setItem('cdt-grid-state-1_11', 'layout of the unsaved table');
+                // The import brings a table the backend numbered #11, the number the unsaved one shows.
+                flowsApi['getGraphById'].mockReturnValue(
+                    of(
+                        graphDto({
+                            python_node_list: [livePython],
+                            classification_decision_table_node_list: [
+                                { ...liveClassificationTable, id: 50, node_number: 11 },
+                            ],
+                            node_number_seq: 12,
+                        })
+                    )
+                );
+
+                component.handlePartialImportComplete();
+
+                const numbers = flowService.getFlowState().nodes.map(({ id, backendId, nodeNumber }) => ({
+                    id,
+                    backendId,
+                    nodeNumber,
+                }));
+                expect(numbers).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({ id: 'unsaved-table', nodeNumber: 13 }),
+                        expect.objectContaining({ backendId: 50, nodeNumber: 11 }),
+                    ])
+                );
+                expect(localStorage.getItem('cdt-grid-state-1_13')).toBe('layout of the unsaved table');
+                expect(localStorage.getItem('cdt-grid-state-1_11')).toBeNull();
+                localStorage.clear();
+            });
+
+            it('leaves an unsaved node alone when no imported node holds its number', () => {
+                openFlowWithUnsavedNode(13);
+
+                importNodeNumbered11();
+
+                expect(numberOf('Local')).toBe(13);
+                expect(flowService.getNextNodeNumber()).toBe(14);
+            });
         });
     });
 
@@ -1843,6 +2300,7 @@ describe('FlowVisualProgrammingComponent', () => {
             ...UNEDITED_NODE,
             id: 50,
             metadata: {},
+            node_number: 1,
             node_name: 'Agent #1',
             input_map: {},
             output_variable_path: null,
@@ -1921,6 +2379,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 ...UNEDITED_NODE,
                 id,
                 graph: 1,
+                node_number: id,
                 node_name: name,
                 pre_python_code: null,
                 pre_input_map: {},
@@ -1956,6 +2415,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
         const CDT_GRAPH = graphDto({
             save_version: 1,
+            node_number_seq: 22,
             classification_decision_table_node_list: [cdtDto(21, 'Triage', 'spam'), cdtDto(22, 'Refunds', 'refund')],
         });
 
@@ -2451,6 +2911,14 @@ describe('FlowVisualProgrammingComponent', () => {
                 expect(toast['success']).toHaveBeenCalledWith('Extracted selection into subflow "Spam handling"');
             });
 
+            it('numbers the new subgraph node after the parent graph counter', () => {
+                component.onExtractToSubflow(new Set([table(21).id]));
+                answerSubflowSave();
+
+                const subgraphNode = flowService.nodes().find((node) => node.type === NodeType.SUBGRAPH);
+                expect(subgraphNode?.nodeNumber).toBe(23);
+            });
+
             it('holds an explanation save until it is done, and then sends nothing for the extracted table', () => {
                 explanationsApi.saveExplanations.mockReturnValue(of({ explanations: {}, save_version: 4 }));
                 component.onExtractToSubflow(new Set([table(21).id]));
@@ -2472,6 +2940,7 @@ describe('FlowVisualProgrammingComponent', () => {
             const SUBGRAPH_NODE: SubGraphNode = {
                 ...UNEDITED_NODE,
                 id: 41,
+                node_number: 1,
                 node_name: 'Inner flow',
                 graph: 1,
                 subgraph: 9,
@@ -2520,6 +2989,14 @@ describe('FlowVisualProgrammingComponent', () => {
                 );
                 expect(flowsStorage.deleteFlow).toHaveBeenCalledWith(9);
                 expect(component.isSaving()).toBe(false);
+            });
+
+            it('numbers the inlined nodes after the parent graph counter and keeps their names', () => {
+                component.onUnpackSubflow(subgraphNodeOnCanvas()!.id);
+
+                const inlined = flowService.nodes().find((node) => node.node_name === 'Inner');
+                // The inner flow numbered it #31; in the parent it takes the next number after #22.
+                expect(inlined?.nodeNumber).toBe(23);
             });
         });
 

@@ -86,6 +86,7 @@ describe('PythonNodePanelComponent secrets', () => {
 /** The Python node as the backend stores it. */
 const STORED_NODE: PythonNode = {
     id: 31,
+    node_number: 1,
     node_name: 'Python #1',
     graph: 1,
     python_code: { id: 5, code: 'def main(count): return count', entrypoint: 'main' },
@@ -364,6 +365,46 @@ describe('PythonNodePanelComponent test run', () => {
                 TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds
             );
         });
+    });
+});
+
+describe('PythonNodePanelComponent node name', () => {
+    function openPanelBesideNodeNamed(otherNodeName: string): PythonNodePanelComponent {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+                provideLoadedExecutionTimeoutLimits(),
+            ],
+        });
+        TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
+        const otherNode = { ...pythonNode, id: 'python-2', node_name: otherNodeName };
+        TestBed.inject(FlowService).setFlow({ nodes: [pythonNode, otherNode], connections: [] });
+        const fixture = TestBed.createComponent(PythonNodePanelComponent);
+        fixture.componentRef.setInput('node', pythonNode);
+        fixture.detectChanges();
+        return fixture.componentInstance;
+    }
+
+    it('accepts a name another node in the flow already has: the #N under the name tells them apart', () => {
+        const panel = openPanelBesideNodeNamed('Fetch orders');
+
+        panel.form.controls['node_name'].setValue('Fetch orders');
+
+        expect(panel.form.controls['node_name'].valid).toBe(true);
+    });
+
+    it.each([
+        { name: '', valid: false },
+        { name: '   ', valid: false },
+        { name: 'x'.repeat(255), valid: true },
+        { name: 'x'.repeat(256), valid: false },
+    ])('validates a name of $name.length characters as valid=$valid', ({ name, valid }) => {
+        const panel = openPanelBesideNodeNamed('Other');
+
+        panel.form.controls['node_name'].setValue(name);
+
+        expect(panel.form.controls['node_name'].valid).toBe(valid);
     });
 });
 
