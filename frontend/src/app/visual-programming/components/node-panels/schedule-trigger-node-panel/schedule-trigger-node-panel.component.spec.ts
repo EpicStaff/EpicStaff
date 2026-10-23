@@ -132,8 +132,13 @@ describe('ScheduleTriggerNodePanelComponent with a node just dropped on the canv
         vi.useFakeTimers();
         vi.setSystemTime(new Date(2026, 9, 23, 12, 41, 7));
         TestBed.configureTestingModule({
-            providers: [{ provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } }],
+            providers: [
+                provideHttpClient(),
+                { provide: FlowsApiService, useValue: { getScheduleTriggerNode: vi.fn() } },
+            ],
         });
+        // Without Flows:Use a trigger node is read-only and the panel disables its whole form.
+        grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE });
         TestBed.overrideComponent(ScheduleTriggerNodePanelComponent, { set: { template: '', imports: [] } });
         const node = TestBed.inject(NodeFactoryService).createNode(
             NodeType.SCHEDULE_TRIGGER
