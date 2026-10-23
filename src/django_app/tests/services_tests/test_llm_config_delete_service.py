@@ -1,8 +1,7 @@
 """Service-level tests for LLMConfigDeleteService.
 
-LLMConfig is where the usage rules earn their keep: four buckets over eleven FK
-columns, the same parent reachable several ways, and an AGENTS bucket that
-merges two tables whose ids overlap -- the `(kind, id)` case.
+LLMConfig is where the usage rules earn their keep: three buckets over six FK
+columns, and the same parent reachable several ways.
 """
 
 import pytest
@@ -59,7 +58,6 @@ def _can_read(*resource_types):
 
 _ALL_BUCKETS = (
     ResourceType.AGENTS,
-    ResourceType.PROJECTS,
     ResourceType.FLOWS,
     ResourceType.KNOWLEDGE_SOURCES,
 )
@@ -74,19 +72,11 @@ def _bucket(result, config_id, resource_type):
 
 
 @pytest.mark.django_db
-def test_agent_and_agent_definition_sharing_an_id_stay_two_references(org_a):
-    """The `(kind, id)` key, end to end.
-
-    `tables.Agent` and `AgentDefinition` ids come from different sequences.
-    Pinning both to the same id is exactly the collision a bare-id dedup key
-    would silently fold into one reference.
-    """
+def test_agent_using_one_config_as_both_models_is_one_agent(org_a):
+    """`llm_config` and `fcm_llm_config` on the same config are one agent, not two."""
     config = _config(org_a)
-    Agent.objects.create(
-        id=9001, org=org_a, role="legacy", goal="g", backstory="b", llm_config=config
-    )
-    AgentDefinition.objects.create(
-        id=9001, org=org_a, name="current", llm_config=config
+    agent = AgentDefinition.objects.create(
+        org=org_a, name="bot", llm_config=config, fcm_llm_config=config
     )
 
     result = LLMConfigDeleteService().bulk_delete(
@@ -94,32 +84,9 @@ def test_agent_and_agent_definition_sharing_an_id_stay_two_references(org_a):
     )
 
     agents = _bucket(result, config.id, ResourceType.AGENTS)
-    assert agents.visible_count == 2
-    assert {(ref.kind, ref.id) for ref in agents.visible_refs} == {
-        (RefKind.AGENT, 9001),
-        (RefKind.AGENT_DEFINITION, 9001),
-    }
-
-
-@pytest.mark.django_db
-def test_crew_using_one_config_three_ways_is_one_project(org_a):
-    """Manager, memory and planning on the same config are one crew, not three."""
-    config = _config(org_a)
-    Crew.objects.create(
-        org=org_a,
-        name="crew",
-        manager_llm_config=config,
-        memory_llm_config=config,
-        planning_llm_config=config,
-    )
-
-    result = LLMConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read(*_ALL_BUCKETS), dry_run=True, deleted_by=None
-    )
-
-    projects = _bucket(result, config.id, ResourceType.PROJECTS)
-    assert projects.visible_count == 1
-    assert projects.visible_refs[0].kind == RefKind.CREW
+    assert [(ref.kind, ref.id, ref.name) for ref in agents.visible_refs] == [
+        (RefKind.AGENT, agent.id, "bot")
+    ]
 
 
 @pytest.mark.django_db
@@ -164,14 +131,11 @@ def test_graph_rag_reports_its_collection(org_a):
 
 
 @pytest.mark.django_db
-def test_deprecated_agent_the_caller_cannot_see_still_blocks(org_a):
-    """Legacy `tables.Agent` counts: old flows with a CrewNode still execute."""
+def test_an_agent_the_caller_cannot_see_blocks(org_a):
     config = _config(org_a)
-    Agent.objects.create(
-        org=org_a, role="r", goal="g", backstory="b", llm_config=config
-    )
+    AgentDefinition.objects.create(org=org_a, name="hidden", llm_config=config)
     everything_but_agents = _can_read(
-        ResourceType.PROJECTS, ResourceType.FLOWS, ResourceType.KNOWLEDGE_SOURCES
+        ResourceType.FLOWS, ResourceType.KNOWLEDGE_SOURCES
     )
 
     result = LLMConfigDeleteService().bulk_delete(
@@ -183,6 +147,45 @@ def test_deprecated_agent_the_caller_cannot_see_still_blocks(org_a):
         SkipEntry(id=config.id, reason=SkipReason.IN_USE_RESTRICTED)
     ]
     assert LLMConfig.objects.filter(id=config.id).exists()
+
+
+@pytest.mark.django_db
+def test_deprecated_agent_and_crew_are_not_usage(org_a):
+    """`tables.Agent` and `tables.Crew` have no API or UI, so they never block.
+
+    A caller who can read nothing still deletes the config, and SET_NULL
+    clears every legacy link.
+    """
+    config = _config(org_a)
+    agent = Agent.objects.create(
+        org=org_a,
+        role="legacy",
+        goal="g",
+        backstory="b",
+        llm_config=config,
+        fcm_llm_config=config,
+    )
+    crew = Crew.objects.create(
+        org=org_a,
+        name="legacy",
+        manager_llm_config=config,
+        memory_llm_config=config,
+        planning_llm_config=config,
+    )
+
+    result = LLMConfigDeleteService().bulk_delete(
+        [config.id], org_a.id, _can_read(), deleted_by=None
+    )
+
+    assert result.deleted_ids == [config.id]
+    agent.refresh_from_db()
+    crew.refresh_from_db()
+    assert (agent.llm_config_id, agent.fcm_llm_config_id) == (None, None)
+    assert (
+        crew.manager_llm_config_id,
+        crew.memory_llm_config_id,
+        crew.planning_llm_config_id,
+    ) == (None, None, None)
 
 
 @pytest.mark.django_db
@@ -200,31 +203,16 @@ def test_unreferenced_configs_are_removed_on_the_queryset_path(org_a):
 
 @pytest.mark.django_db
 def test_another_orgs_references_are_not_usage(org_a, org_b):
-    """Every one of the 11 source queries filters the referencing row by org.
+    """Every one of the 6 source queries filters the referencing row by org.
 
     Each source below lives in org B and points at org A's config. Cross-org
     FKs cannot be created through the API, but the guard must not depend on
     that: a single missing `org_id=` filter would put another org's agent,
-    crew, flow or collection name in this org's preview.
+    flow or collection name in this org's preview.
     """
     config = _config(org_a)
-    Agent.objects.create(
-        org=org_b,
-        role="foreign",
-        goal="g",
-        backstory="b",
-        llm_config=config,
-        fcm_llm_config=config,
-    )
     AgentDefinition.objects.create(
         org=org_b, name="foreign", llm_config=config, fcm_llm_config=config
-    )
-    Crew.objects.create(
-        org=org_b,
-        name="foreign",
-        manager_llm_config=config,
-        memory_llm_config=config,
-        planning_llm_config=config,
     )
     graph = _graph(org_b, "foreign")
     node = ClassificationDecisionTableNode.objects.create(

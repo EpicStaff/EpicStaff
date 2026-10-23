@@ -5,7 +5,7 @@ export const BULK_DELETE_MAX_IDS = 500;
 
 export type BulkDeleteSkipReason = 'in_use_restricted' | 'protected';
 
-export type BulkDeleteUsageKind = 'flow' | 'agent' | 'agent_definition' | 'crew' | 'collection';
+export type BulkDeleteUsageKind = 'flow' | 'agent' | 'collection';
 
 export interface BulkDeleteUsageRef {
     resource_type: string;

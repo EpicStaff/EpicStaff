@@ -1,13 +1,13 @@
 """API tests for EmbeddingConfigReadWriteViewSet bulk delete, via the mixin.
 
-Two referencing buckets: PROJECTS (the deprecated Crew.embedding_config) and
-KNOWLEDGE_SOURCES (GraphRag.embedder + NaiveRag.embedder, merged). Usage is read
-from a `?dry_run=true` preview; a real delete returns it empty.
+One referencing bucket: KNOWLEDGE_SOURCES (GraphRag.embedder + NaiveRag.embedder,
+merged). Usage is read from a `?dry_run=true` preview; a real delete returns it
+empty.
 """
 
 import pytest
 
-from tables.models import Crew, EmbeddingConfig
+from tables.models import EmbeddingConfig
 from tables.models.knowledge_models.collection_models import (
     BaseRagType,
     SourceCollection,
@@ -108,26 +108,6 @@ def test_bulk_delete_without_delete_permission_forbidden(django_user_model, org_
 
 
 @pytest.mark.django_db
-def test_bulk_delete_projects_bucket_visible_proceeds(django_user_model, org_a):
-    client = org_admin_client(django_user_model, org_a, "admin@example.com")
-    config = _config(org_a, "c")
-    crew = Crew.objects.create(org=org_a, name="crew", embedding_config=config)
-
-    projects_usage = by_type(_preview_usage(client, config.id), "projects")
-    assert projects_usage["visible_sample"] == [
-        {"resource_type": "projects", "kind": "crew", "id": crew.id, "name": crew.name}
-    ]
-
-    resp = client.post(
-        "/api/embedding-configs/bulk-delete/", {"ids": [config.id]}, format="json"
-    )
-
-    assert resp.status_code == 200, resp.data
-    crew.refresh_from_db()
-    assert crew.embedding_config_id is None
-
-
-@pytest.mark.django_db
 def test_bulk_delete_knowledge_sources_bucket_merges_graphrag_and_naiverag(
     django_user_model, org_a
 ):
@@ -211,7 +191,11 @@ def test_bulk_delete_dry_run_does_not_delete(django_user_model, org_a):
 @pytest.mark.django_db
 def test_single_destroy_hidden_usage_blocked(django_user_model, org_a):
     config = _config(org_a, "c")
-    Crew.objects.create(org=org_a, name="crew", embedding_config=config)
+    collection = SourceCollection.objects.create(org=org_a, collection_name="Docs")
+    rag_type = BaseRagType.objects.create(
+        source_collection=collection, rag_type=BaseRagType.RagType.NAIVE
+    )
+    NaiveRag.objects.create(base_rag_type=rag_type, embedder=config)
 
     deleter = custom_role_client(
         django_user_model,

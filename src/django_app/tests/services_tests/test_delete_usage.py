@@ -13,22 +13,23 @@ from tables.services.delete_services.usage import (
 
 
 def test_same_id_under_different_kinds_stays_two_references():
-    """The AGENTS bucket merges `tables.Agent` and `agents.AgentDefinition`.
+    """References are keyed on `(kind, id)`, not the bare id.
 
-    Their ids come from different sequences, so Agent#5 and AgentDefinition#5
-    are two different parents. Keying on the bare id would fold them into
-    one, under-counting usage and under-reporting `blocked`.
+    No production bucket mixes kinds today; this guards the collector for the
+    day one does. Ids of different kinds overlap, so Flow#5 and Collection#5
+    are two different parents, and keying on the bare id would fold them into
+    one and under-count usage.
     """
-    agents = BucketCollector("agents", visible=True)
-    agents.add(1, 5, "Legacy bot", kind=RefKind.AGENT)
-    agents.add(1, 5, "New bot", kind=RefKind.AGENT_DEFINITION)
+    collector = BucketCollector("mixed", visible=True)
+    collector.add(1, 5, "Support flow", kind=RefKind.FLOW)
+    collector.add(1, 5, "Docs", kind=RefKind.COLLECTION)
 
-    bucket = agents.bucket_for(1)
+    bucket = collector.bucket_for(1)
 
     assert bucket.visible_count == 2
     assert {(ref.kind, ref.id) for ref in bucket.visible_refs} == {
-        (RefKind.AGENT, 5),
-        (RefKind.AGENT_DEFINITION, 5),
+        (RefKind.FLOW, 5),
+        (RefKind.COLLECTION, 5),
     }
 
 
@@ -90,15 +91,15 @@ def test_refs_come_back_sorted_whatever_order_the_queries_returned():
     The source queries have no ORDER BY, so rows can arrive in any order; the
     collector sorts on `(kind, id)` so the capped sample does not shift.
     """
-    agents = BucketCollector("agents", visible=True)
-    agents.add(1, 9, "b", kind=RefKind.AGENT_DEFINITION)
-    agents.add(1, 7, "a", kind=RefKind.AGENT)
-    agents.add(1, 3, "c", kind=RefKind.AGENT_DEFINITION)
+    collector = BucketCollector("mixed", visible=True)
+    collector.add(1, 9, "b", kind=RefKind.FLOW)
+    collector.add(1, 7, "a", kind=RefKind.COLLECTION)
+    collector.add(1, 3, "c", kind=RefKind.FLOW)
 
-    refs = agents.bucket_for(1).visible_refs
+    refs = collector.bucket_for(1).visible_refs
 
     assert [(ref.kind, ref.id) for ref in refs] == [
-        (RefKind.AGENT, 7),
-        (RefKind.AGENT_DEFINITION, 3),
-        (RefKind.AGENT_DEFINITION, 9),
+        (RefKind.COLLECTION, 7),
+        (RefKind.FLOW, 3),
+        (RefKind.FLOW, 9),
     ]

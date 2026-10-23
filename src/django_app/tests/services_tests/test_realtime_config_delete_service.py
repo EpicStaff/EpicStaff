@@ -91,38 +91,34 @@ def test_a_past_session_alone_does_not_block(org_a, config_model, service_class,
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("config_model,service_class,fk", PROVIDERS)
-def test_both_agent_kinds_are_reported(org_a, config_model, service_class, fk):
+def test_an_agent_definition_is_reported(org_a, config_model, service_class, fk):
     config = config_model.objects.create(org=org_a, custom_name="cfg")
-    legacy = Agent.objects.create(org=org_a, role="legacy", goal="g", backstory="b")
-    current = AgentDefinition.objects.create(org=org_a, name="current")
-    RealtimeAgent.objects.create(agent=legacy, **{fk: config})
-    RealtimeAgentDefinition.objects.create(agent_definition=current, **{fk: config})
+    agent = AgentDefinition.objects.create(org=org_a, name="voice bot")
+    RealtimeAgentDefinition.objects.create(agent_definition=agent, **{fk: config})
 
     result = service_class().bulk_delete(
         [config.id], org_a.id, _permissions(ResourceType.AGENTS), dry_run=True, deleted_by=None
     )
 
     agents = _agents_bucket(result, config.id)
-    assert {(ref.kind, ref.id) for ref in agents.visible_refs} == {
-        (RefKind.AGENT, legacy.id),
-        (RefKind.AGENT_DEFINITION, current.id),
-    }
+    assert [(ref.kind, ref.id, ref.name) for ref in agents.visible_refs] == [
+        (RefKind.AGENT, agent.id, "voice bot")
+    ]
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("config_model,service_class,fk", PROVIDERS)
-def test_an_agent_the_caller_cannot_see_blocks(org_a, config_model, service_class, fk):
-    """The deprecated RealtimeAgent -> tables.Agent path still counts."""
+def test_a_deprecated_realtime_agent_is_not_usage(org_a, config_model, service_class, fk):
+    """`RealtimeAgent` has no API or UI, so it never blocks; SET_NULL clears the link."""
     config = config_model.objects.create(org=org_a, custom_name="cfg")
     legacy = Agent.objects.create(org=org_a, role="legacy", goal="g", backstory="b")
-    RealtimeAgent.objects.create(agent=legacy, **{fk: config})
+    realtime_agent = RealtimeAgent.objects.create(agent=legacy, **{fk: config})
 
     result = service_class().bulk_delete([config.id], org_a.id, _permissions(), deleted_by=None)
 
-    assert result.skipped == [
-        SkipEntry(id=config.id, reason=SkipReason.IN_USE_RESTRICTED)
-    ]
-    assert config_model.objects.filter(id=config.id).exists()
+    assert result.deleted_ids == [config.id]
+    realtime_agent.refresh_from_db()
+    assert getattr(realtime_agent, f"{fk}_id") is None
 
 
 @pytest.mark.django_db
@@ -163,16 +159,14 @@ def test_another_orgs_config_is_not_found(
 def test_another_orgs_agents_are_not_usage(
     org_a, org_b, config_model, service_class, fk
 ):
-    """Both agent sources filter the referencing row by org.
+    """The agent source filters the referencing row by org.
 
     Cross-org references cannot be created through the API, but the guard must
     not depend on that: its own org filter keeps another org's agent names out.
     """
     config = config_model.objects.create(org=org_a, custom_name="cfg")
-    legacy = Agent.objects.create(org=org_b, role="foreign", goal="g", backstory="b")
-    current = AgentDefinition.objects.create(org=org_b, name="foreign")
-    RealtimeAgent.objects.create(agent=legacy, **{fk: config})
-    RealtimeAgentDefinition.objects.create(agent_definition=current, **{fk: config})
+    foreign = AgentDefinition.objects.create(org=org_b, name="foreign")
+    RealtimeAgentDefinition.objects.create(agent_definition=foreign, **{fk: config})
 
     preview = service_class().bulk_delete(
         [config.id], org_a.id, _permissions(ResourceType.AGENTS), dry_run=True, deleted_by=None

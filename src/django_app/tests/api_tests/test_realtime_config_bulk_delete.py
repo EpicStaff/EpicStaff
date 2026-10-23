@@ -10,7 +10,6 @@ frontend's Voice Configs section already calls.
 import pytest
 
 from agents.models import AgentDefinition
-from tables.models import Agent
 from rbac.models import (
     Organization,
 )
@@ -19,7 +18,6 @@ from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
-    RealtimeAgent,
     RealtimeAgentChat,
     RealtimeAgentDefinition,
 )
@@ -49,10 +47,6 @@ def org_a(db):
 @pytest.fixture
 def org_b(db):
     return Organization.objects.create(name="Org B")
-
-
-def _legacy_agent(org):
-    return Agent.objects.create(org=org, role="voice", goal="g", backstory="b")
 
 
 @pytest.mark.django_db
@@ -157,7 +151,8 @@ def test_single_delete_is_blocked_by_an_agent_the_caller_cannot_see(
         **{ResourceType.LLM_CONFIGS: Permission.DELETE},
     )
     config = config_model.objects.create(org=org_a, custom_name="cfg")
-    RealtimeAgent.objects.create(agent=_legacy_agent(org_a), **{fk: config})
+    hidden = AgentDefinition.objects.create(org=org_a, name="secret agent")
+    RealtimeAgentDefinition.objects.create(agent_definition=hidden, **{fk: config})
 
     resp = client.delete(f"/api/{route}/{config.id}/")
 

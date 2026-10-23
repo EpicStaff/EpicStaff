@@ -34,11 +34,12 @@ def _can_read_everything():
     return EffectivePermissions(
         is_superadmin=False,
         role=None,
-        by_resource={
-            ResourceType.PROJECTS.value: int(Permission.READ),
-            ResourceType.KNOWLEDGE_SOURCES.value: int(Permission.READ),
-        },
+        by_resource={ResourceType.KNOWLEDGE_SOURCES.value: int(Permission.READ)},
     )
+
+
+def _can_read_nothing():
+    return EffectivePermissions(is_superadmin=False, role=None, by_resource={})
 
 
 def _bucket(result, config_id, resource_type):
@@ -73,17 +74,18 @@ def test_collection_with_both_rag_kinds_on_one_embedder_is_one_collection(org_a)
 
 
 @pytest.mark.django_db
-def test_deprecated_crew_still_counts_as_usage(org_a):
-    """Legacy `tables.Crew` counts: old flows with a CrewNode still execute."""
+def test_deprecated_crew_is_not_usage(org_a):
+    """`tables.Crew` has no API or UI, so it never blocks; SET_NULL clears the link."""
     config = _config(org_a)
-    Crew.objects.create(org=org_a, name="crew", embedding_config=config)
+    crew = Crew.objects.create(org=org_a, name="crew", embedding_config=config)
 
     result = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_everything(), dry_run=True, deleted_by=None
+        [config.id], org_a.id, _can_read_nothing(), deleted_by=None
     )
 
-    projects = _bucket(result, config.id, ResourceType.PROJECTS)
-    assert [ref.kind for ref in projects.visible_refs] == [RefKind.CREW]
+    assert result.deleted_ids == [config.id]
+    crew.refresh_from_db()
+    assert crew.embedding_config_id is None
 
 
 @pytest.mark.django_db
@@ -100,13 +102,12 @@ def test_unreferenced_config_is_deleted(org_a):
 
 @pytest.mark.django_db
 def test_another_orgs_references_are_not_usage(org_a, org_b):
-    """The crew and both RAG sources filter the referencing row by org.
+    """Both RAG sources filter the referencing row by org.
 
-    Each source lives in org B and points at org A's config; none of them may
-    reach org A's preview or block its delete.
+    Each source lives in org B and points at org A's config; neither may reach
+    org A's preview or block its delete.
     """
     config = _config(org_a)
-    Crew.objects.create(org=org_b, name="foreign", embedding_config=config)
     for rag_model, rag_kind in (
         (GraphRag, BaseRagType.RagType.GRAPH),
         (NaiveRag, BaseRagType.RagType.NAIVE),
@@ -122,11 +123,12 @@ def test_another_orgs_references_are_not_usage(org_a, org_b):
     preview = EmbeddingConfigDeleteService().bulk_delete(
         [config.id], org_a.id, _can_read_everything(), dry_run=True, deleted_by=None
     )
-    assert [bucket.total_count for bucket in preview.usage[config.id].buckets] == [
-        0,
-        0,
-    ]
+    assert [
+        (bucket.resource_type, bucket.total_count)
+        for bucket in preview.usage[config.id].buckets
+    ] == [(ResourceType.KNOWLEDGE_SOURCES.value, 0)]
 
-    nobody = EffectivePermissions(is_superadmin=False, role=None, by_resource={})
-    result = EmbeddingConfigDeleteService().bulk_delete([config.id], org_a.id, nobody, deleted_by=None)
+    result = EmbeddingConfigDeleteService().bulk_delete(
+        [config.id], org_a.id, _can_read_nothing(), deleted_by=None
+    )
     assert result.deleted_ids == [config.id]

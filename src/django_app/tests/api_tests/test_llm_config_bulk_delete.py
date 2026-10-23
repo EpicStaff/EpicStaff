@@ -1,11 +1,10 @@
 """API tests for LLMConfigReadWriteViewSet bulk delete, via BulkDeleteActionMixin.
 
-LLMConfig has FOUR referencing resource-type buckets: AGENTS (deprecated
-tables.Agent + agents.AgentDefinition, merged), PROJECTS (the deprecated Crew's
-three llm-config fields, merged), FLOWS (ClassificationDecisionTableNode/Prompt
-+ FlowAssistant, merged), and KNOWLEDGE_SOURCES (GraphRag.llm). `blocked` is
-true if ANY bucket has a hidden portion; each bucket's `visible_sample` is
-independent.
+LLMConfig has THREE referencing resource-type buckets: AGENTS
+(agents.AgentDefinition's two llm-config fields, merged), FLOWS
+(ClassificationDecisionTableNode/Prompt + FlowAssistant, merged), and
+KNOWLEDGE_SOURCES (GraphRag.llm). `blocked` is true if ANY bucket has a hidden
+portion; each bucket's `visible_sample` is independent.
 
 Usage is the preview payload: it is reported on `?dry_run=true` and returned
 empty on a real delete, so tests read it from a preview and check the deletion
@@ -16,8 +15,6 @@ import pytest
 
 from agents.models import AgentDefinition
 from tables.models import (
-    Agent,
-    Crew,
     Graph,
     LLMConfig,
 )
@@ -137,31 +134,7 @@ def test_bulk_delete_without_delete_permission_forbidden(django_user_model, org_
 
 
 @pytest.mark.django_db
-def test_bulk_delete_agents_bucket_old_agent_visible_proceeds(django_user_model, org_a):
-    client = org_admin_client(django_user_model, org_a, "admin@example.com")
-    config = _config(org_a, "c")
-    agent = Agent.objects.create(
-        org=org_a, role="r", goal="g", backstory="b", llm_config=config
-    )
-
-    agents_usage = by_type(_preview_usage(client, config.id), "agents")
-    assert agents_usage["visible_count"] == 1
-    assert agents_usage["visible_sample"] == [_ref("agents", "agent", agent.id, "r")]
-
-    resp = client.post(
-        "/api/llm-configs/bulk-delete/", {"ids": [config.id]}, format="json"
-    )
-
-    assert resp.status_code == 200, resp.data
-    assert not LLMConfig.objects.filter(id=config.id).exists()
-    agent.refresh_from_db()
-    assert agent.llm_config_id is None
-
-
-@pytest.mark.django_db
-def test_bulk_delete_agents_bucket_new_agent_definition_visible_proceeds(
-    django_user_model, org_a
-):
+def test_bulk_delete_agents_bucket_visible_proceeds(django_user_model, org_a):
     client = org_admin_client(django_user_model, org_a, "admin@example.com")
     config = _config(org_a, "c")
     agent_def = AgentDefinition.objects.create(
@@ -171,7 +144,7 @@ def test_bulk_delete_agents_bucket_new_agent_definition_visible_proceeds(
     agents_usage = by_type(_preview_usage(client, config.id), "agents")
     assert agents_usage["visible_count"] == 1
     assert agents_usage["visible_sample"] == [
-        _ref("agents", "agent_definition", agent_def.id, "ad1")
+        _ref("agents", "agent", agent_def.id, "ad1")
     ]
 
     resp = client.post(
@@ -193,9 +166,7 @@ def test_bulk_delete_agents_bucket_hidden_blocked(django_user_model, org_a):
         **{ResourceType.LLM_CONFIGS: Permission.DELETE},
     )
     config = _config(org_a, "c")
-    Agent.objects.create(
-        org=org_a, role="r", goal="g", backstory="b", llm_config=config
-    )
+    AgentDefinition.objects.create(org=org_a, name="hidden", llm_config=config)
 
     resp = client.post(
         "/api/llm-configs/bulk-delete/", {"ids": [config.id]}, format="json"
@@ -213,26 +184,6 @@ def test_bulk_delete_agents_bucket_hidden_blocked(django_user_model, org_a):
         "visible_sample": [],
         "truncated": False,
     }
-
-
-@pytest.mark.django_db
-def test_bulk_delete_projects_bucket_visible_proceeds(django_user_model, org_a):
-    client = org_admin_client(django_user_model, org_a, "admin@example.com")
-    config = _config(org_a, "c")
-    crew = Crew.objects.create(org=org_a, name="crew", manager_llm_config=config)
-
-    projects_usage = by_type(_preview_usage(client, config.id), "projects")
-    assert projects_usage["visible_sample"] == [
-        _ref("projects", "crew", crew.id, crew.name)
-    ]
-
-    resp = client.post(
-        "/api/llm-configs/bulk-delete/", {"ids": [config.id]}, format="json"
-    )
-
-    assert resp.status_code == 200, resp.data
-    crew.refresh_from_db()
-    assert crew.manager_llm_config_id is None
 
 
 @pytest.mark.django_db
@@ -312,9 +263,7 @@ def test_bulk_delete_mixed_buckets_one_hidden_still_blocked(django_user_model, o
         },
     )
     config = _config(org_a, "c")
-    agent = Agent.objects.create(
-        org=org_a, role="r", goal="g", backstory="b", llm_config=config
-    )
+    agent = AgentDefinition.objects.create(org=org_a, name="r", llm_config=config)
     collection = SourceCollection.objects.create(org=org_a, collection_name="Docs")
     rag_type = BaseRagType.objects.create(
         source_collection=collection, rag_type=BaseRagType.RagType.GRAPH
@@ -362,9 +311,7 @@ def test_single_destroy_hidden_usage_blocked(django_user_model, org_a):
         **{ResourceType.LLM_CONFIGS: Permission.DELETE},
     )
     config = _config(org_a, "c")
-    Agent.objects.create(
-        org=org_a, role="r", goal="g", backstory="b", llm_config=config
-    )
+    AgentDefinition.objects.create(org=org_a, name="hidden", llm_config=config)
 
     resp = client.delete(f"/api/llm-configs/{config.id}/")
 

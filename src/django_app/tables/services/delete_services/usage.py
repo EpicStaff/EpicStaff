@@ -32,17 +32,10 @@ class SkipReason(models.TextChoices):
 
 
 class RefKind(models.TextChoices):
-    """What kind of entity a usage reference points at -- see UsageRef.
-
-    `agent` and `crew` are the deprecated `tables.Agent` / `tables.Crew`. They
-    still count as usage: existing flows with a CrewNode keep executing, so a
-    config they reference is a live dependency even with no API or UI left.
-    """
+    """What kind of entity a usage reference points at -- see UsageRef."""
 
     FLOW = "flow", "Flow"
     AGENT = "agent", "Agent"
-    AGENT_DEFINITION = "agent_definition", "Agent definition"
-    CREW = "crew", "Crew"
     COLLECTION = "collection", "Collection"
 
 
@@ -50,11 +43,10 @@ class RefKind(models.TextChoices):
 class UsageRef:
     """One referencing entity in a usage sample.
 
-    `kind` names the referencing entity's own type, which `resource_type` cannot:
-    the AGENTS bucket merges legacy `tables.Agent` rows with
-    `agents.AgentDefinition` rows, and their ids come from different sequences.
-    Without `kind`, Agent#5 and AgentDefinition#5 are indistinguishable -- to a
-    client labelling the ref, and to the dedup key in BucketCollector.
+    `kind` names the referencing entity's own type; `resource_type` names the
+    permission bucket it is counted under, which decides whether the caller
+    may see it. Today every bucket holds a single kind; the two stay separate
+    so a bucket can merge several entity types without changing the wire shape.
     """
 
     resource_type: str
@@ -112,20 +104,20 @@ class UsageReport:
 class BucketCollector:
     """Accumulates deduplicated references for one resource-type bucket.
 
-    Several FK paths routinely reach the same parent -- a Crew naming one
-    LLMConfig as its manager, memory and planning model is *one* project, not
-    three; a Flow reaching a config through both a decision-table node and an
-    assistant is one flow. Collecting through a keyed map makes double-counting
-    structurally impossible, instead of leaving each collector to remember a
-    dedup pass. Forgetting that pass is exactly how `visible_count` came to
-    report "used by 3 projects" for a single project.
+    Several FK paths routinely reach the same parent -- an AgentDefinition
+    naming one LLMConfig as both its `llm_config` and its `fcm_llm_config` is
+    *one* agent, not two; a Flow reaching a config through both a
+    decision-table node and an assistant is one flow. Collecting through a
+    keyed map makes double-counting structurally impossible, instead of
+    leaving each collector to remember a dedup pass.
 
     `.distinct()` on the underlying queryset does not help: it is per-query, so
     it cannot deduplicate rows that several queries append into one bucket.
 
-    References are keyed on `(kind, ref_id)`, never `ref_id` alone. A bucket may
-    merge several tables whose ids overlap -- see UsageRef -- and keying on the
-    bare id would silently fold two different parents into one.
+    References are keyed on `(kind, ref_id)`, never `ref_id` alone. Ids of
+    different kinds of parent overlap, so if a bucket mixes parents of two
+    kinds, keying on the bare id would silently fold two different parents
+    into one.
     """
 
     def __init__(self, resource_type: str, *, visible: bool) -> None:

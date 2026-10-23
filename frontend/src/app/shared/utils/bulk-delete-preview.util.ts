@@ -12,7 +12,6 @@ import {
 const KNOWN_USAGE_LABELS: Record<string, BulkDeleteLabel> = {
     flows: { singular: 'flow', plural: 'flows' },
     agents: { singular: 'agent', plural: 'agents' },
-    projects: { singular: 'project', plural: 'projects' },
     knowledge_sources: { singular: 'knowledge source', plural: 'knowledge sources' },
 };
 

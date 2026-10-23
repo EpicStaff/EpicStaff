@@ -124,11 +124,11 @@ describe('buildBulkDeletePreview', () => {
             deletable_ids: [1],
             usage: {
                 '1': usageReport([
-                    bucket({ resource_type: 'agents', visible_count: 0, visible_sample: [] }),
+                    bucket({ resource_type: 'flows', visible_count: 0, visible_sample: [] }),
                     bucket({
-                        resource_type: 'projects',
+                        resource_type: 'agents',
                         visible_count: 1,
-                        visible_sample: [{ resource_type: 'projects', kind: 'crew', id: 11, name: 'P1' }],
+                        visible_sample: [{ resource_type: 'agents', kind: 'agent', id: 11, name: 'A1' }],
                     }),
                 ]),
             },
@@ -136,9 +136,7 @@ describe('buildBulkDeletePreview', () => {
 
         const preview = buildBulkDeletePreview(group(items), res);
 
-        expect(preview.deletable[0].usage).toEqual([
-            { label: 'project', count: 1, sampleNames: ['P1'], hasMore: false },
-        ]);
+        expect(preview.deletable[0].usage).toEqual([{ label: 'agent', count: 1, sampleNames: ['A1'], hasMore: false }]);
     });
 
     it('falls back to "#<id>" for a null sample name', () => {

@@ -176,7 +176,6 @@ LLM_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
     gate=ResourceType.LLM_CONFIGS,
     bucket_types=(
         ResourceType.AGENTS,
-        ResourceType.PROJECTS,
         ResourceType.FLOWS,
         ResourceType.KNOWLEDGE_SOURCES,
     ),
@@ -184,7 +183,7 @@ LLM_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
 EMBEDDING_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
     model_name="EmbeddingConfig",
     gate=ResourceType.LLM_CONFIGS,
-    bucket_types=(ResourceType.PROJECTS, ResourceType.KNOWLEDGE_SOURCES),
+    bucket_types=(ResourceType.KNOWLEDGE_SOURCES,),
 )
 _REALTIME_CONFIG = {"gate": ResourceType.LLM_CONFIGS, "bucket_types": (ResourceType.AGENTS,)}
 OPENAI_REALTIME_CONFIG_BULK_DELETE_POST = _bulk_delete_post_schema(
