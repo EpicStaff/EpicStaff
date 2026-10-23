@@ -93,6 +93,43 @@ describe('AppNavigationService', () => {
         ]);
     });
 
+    it('drops an item whose label is only invisible characters, as one with a blank label', async () => {
+        plugins.set([
+            buildAvailablePlugin({
+                identifier: 'asg',
+                name: 'ASG',
+                navigation: [
+                    // A zero-width space; bidi marks and a word joiner; spaces around a zero-width joiner.
+                    buildAvailablePluginNavigationItem({ label: '​', path: '/zero-width' }),
+                    buildAvailablePluginNavigationItem({ label: '‎‮⁠', path: '/bidi' }),
+                    buildAvailablePluginNavigationItem({ label: '  ‍ ', path: '/spaces' }),
+                    buildAvailablePluginNavigationItem({ label: '​Projects', path: '/projects' }),
+                ],
+            }),
+        ]);
+
+        await router.navigateByUrl('/plugins/asg');
+
+        expect(service.menu().map(({ path }) => path)).toEqual(['/projects']);
+    });
+
+    it("tells the item's own page from a page below it, for aria-current", async () => {
+        await router.navigateByUrl('/plugins/asg');
+        expect(service.activeMenuItemAriaCurrent()).toBe('page');
+
+        await router.navigateByUrl('/plugins/asg/projects?tab=1');
+        expect(service.activeMenuItemAriaCurrent()).toBe('page');
+
+        await router.navigateByUrl('/plugins/asg/projects/2');
+        expect(service.activeMenuItemAriaCurrent()).toBe('true');
+
+        await router.navigateByUrl('/plugins/asg/reports');
+        expect(service.activeMenuItemAriaCurrent()).toBeNull();
+
+        await router.navigateByUrl('/flows/my');
+        expect(service.activeMenuItemAriaCurrent()).toBeNull();
+    });
+
     it('moves the highlight with every navigation, as the one a plugin page asks for with nav.changed', async () => {
         await router.navigateByUrl('/plugins/asg');
         expect(service.activeMenuItem()?.label).toBe('Overview');

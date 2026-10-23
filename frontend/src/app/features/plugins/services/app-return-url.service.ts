@@ -13,7 +13,8 @@ const RETURN_URL_KEY = 'epicstaff.appReturnUrl';
  * one), else the signed-in user's default page.
  *
  * Kept in `sessionStorage`, so a reload inside an app still knows the way back. Registered in `APP_STORAGE`: an
- * organization switch or a logout forgets it, as the page may not exist for the next organization or user.
+ * organization switch or a sign-out (asked for, or forced by a failed token refresh) forgets it, as the page may not
+ * exist for the next organization or user.
  */
 @Injectable({ providedIn: 'root' })
 export class AppReturnUrlService implements StorageService {

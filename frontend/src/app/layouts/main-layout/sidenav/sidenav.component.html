@@ -166,7 +166,7 @@
                                 class="sidenav-nav-link"
                                 [routerLink]="item.link"
                                 [class.active]="isActive"
-                                [attr.aria-current]="isActive ? 'page' : null"
+                                [attr.aria-current]="isActive ? activeMenuItemAriaCurrent() : null"
                                 [attr.aria-label]="isExpanded() ? null : item.label"
                             >
                                 <div class="sidenav-link-icon">

@@ -76,6 +76,7 @@ describe('MainLayoutComponent', () => {
                         component: MainLayoutComponent,
                         children: [
                             { path: 'agents', component: PageStubComponent },
+                            { path: 'profile', component: PageStubComponent },
                             {
                                 // The flag counts anywhere in the active route tree: here on the parent.
                                 path: 'chat-bindings',
@@ -130,6 +131,31 @@ describe('MainLayoutComponent', () => {
 
         await harness.navigateByUrl('/plugin-choose-org?continue=%2Fauthorize');
         expect(returnUrl.url()).toBe('/agents?tab=1');
+    });
+
+    it('does not record a page shown without changing the address, as the reload an organization switch makes', async () => {
+        const router = TestBed.inject(Router);
+        const returnUrl = TestBed.inject(AppReturnUrlService);
+        await harness.navigateByUrl('/agents');
+        await harness.navigateByUrl('/plugins/asg/projects');
+
+        // An organization switch in an app: a hidden visit to My Profile reloads the page, then the app opens again.
+        await router.navigateByUrl('/profile', { skipLocationChange: true });
+        await router.navigateByUrl('/plugins/asg');
+        harness.detectChanges();
+
+        expect(returnUrl.url()).toBe('/agents');
+    });
+
+    it('does not record the page it opens with when that page is shown without changing the address', async () => {
+        const returnUrl = TestBed.inject(AppReturnUrlService);
+        await harness.navigateByUrl('/plugin-choose-org');
+
+        // A refused request's reload from a page out of this layout: the layout opens on the hidden visit.
+        await TestBed.inject(Router).navigateByUrl('/profile', { skipLocationChange: true });
+        harness.detectChanges();
+
+        expect(returnUrl.url()).toBe('/chat-bindings/all');
     });
 
     it('keeps the sidenav in the layout on wider screens, and on phones for pages that do not opt in', async () => {

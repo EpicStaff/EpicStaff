@@ -148,6 +148,7 @@ export class LeftSidebarComponent {
     protected readonly switcherLabel = computed(() => `${this.currentAppName()}, switch app`);
     protected readonly menu = this.appNavigation.menu;
     protected readonly activeMenuItem = this.appNavigation.activeMenuItem;
+    protected readonly activeMenuItemAriaCurrent = this.appNavigation.activeMenuItemAriaCurrent;
     protected readonly returnUrl = this.appNavigation.returnUrl;
     protected readonly currentHref = this.appNavigation.currentHref;
     protected readonly canManageApps = this.appNavigation.canManageApps;

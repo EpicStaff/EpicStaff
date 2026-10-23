@@ -16,6 +16,9 @@ import { SeenAppsService } from './seen-apps.service';
 /** Where a SuperAdmin manages the installed plugins. */
 export const MANAGE_APPS_URL = '/workspace/plugins';
 
+/** Whitespace and Unicode format characters (`Cf`): neither shows anything on its own. */
+const INVISIBLE_CHARACTERS = /[\s\p{Cf}]/gu;
+
 /** An app menu entry, as the sidebar draws it. */
 export interface AppMenuItem {
     readonly label: string;
@@ -66,6 +69,16 @@ export class AppNavigationService {
         const context = this.context();
         return context.kind === 'app' ? activeMenuItem(this.menu(), context.pageSegments) : null;
     });
+    /**
+     * The active item's `aria-current`: `page` on the item's own page (whatever its query), `true` on a page below it
+     * (`/projects/2` under Projects), which is not the page the item links to; `null` without an active item.
+     */
+    readonly activeMenuItemAriaCurrent = computed<'page' | 'true' | null>(() => {
+        const item = this.activeMenuItem();
+        const context = this.context();
+        if (item === null || context.kind !== 'app') return null;
+        return menuPathSegments(item.path)?.length === context.pageSegments.length ? 'page' : 'true';
+    });
     /** Where "Back to EpicStaff" leads: the last EpicStaff page of this tab, its query included. */
     readonly returnUrl = computed<UrlTree>(() => this.router.parseUrl(this.appReturnUrl.url()));
     /** The address shown, for a plain link that opens it in a new tab. */
@@ -96,8 +109,8 @@ export class AppNavigationService {
 function toMenuItems(app: AvailablePlugin): AppMenuItem[] {
     return app.navigation.flatMap((item) => {
         const segments = menuPathSegments(item.path);
-        // A blank label would leave a link without a name.
-        if (segments === null || item.label.trim() === '') return [];
+        // A label that shows nothing would leave a link without a name.
+        if (segments === null || isBlankLabel(item.label)) return [];
         return [
             {
                 label: item.label,
@@ -107,4 +120,12 @@ function toMenuItems(app: AvailablePlugin): AppMenuItem[] {
             },
         ];
     });
+}
+
+/**
+ * Blank to the eye: only whitespace and invisible format characters (zero-width spaces and joiners, bidi marks), which
+ * the manifest accepts in a label.
+ */
+function isBlankLabel(label: string): boolean {
+    return label.replace(INVISIBLE_CHARACTERS, '') === '';
 }

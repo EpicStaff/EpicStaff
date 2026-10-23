@@ -625,15 +625,20 @@ describe('LeftSidebarComponent', () => {
 
         it('marks the item the page belongs to, following every navigation, as one a plugin page makes', async () => {
             await openApp('/plugins/atlas');
-            const current = (): (string | null)[] =>
-                hrefs(menuLinks().filter((link) => link.getAttribute('aria-current') === 'page'));
-            expect(current()).toEqual(['/plugins/atlas']);
+            const current = (): [string | null, string | null][] =>
+                menuLinks()
+                    .filter((link) => link.hasAttribute('aria-current'))
+                    .map((link) => [link.getAttribute('href'), link.getAttribute('aria-current')]);
+            expect(current()).toEqual([['/plugins/atlas', 'page']]);
 
-            // What the host page does when the page reports `nav.changed`.
+            // What the host page does when the page reports `nav.changed`. A page below the item's: not its page.
             await TestBed.inject(Router).navigate(['/plugins', 'atlas', 'projects', '2'], { replaceUrl: true });
             fixture.detectChanges();
-            expect(current()).toEqual(['/plugins/atlas/projects']);
+            expect(current()).toEqual([['/plugins/atlas/projects', 'true']]);
             expect(menuLinks()[1].classList).toContain('active');
+
+            await navigate('/plugins/atlas/projects?tab=1');
+            expect(current()).toEqual([['/plugins/atlas/projects', 'page']]);
 
             await navigate('/plugins/atlas/settings');
             expect(current()).toEqual([]);

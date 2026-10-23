@@ -239,7 +239,7 @@ export class MainLayoutComponent implements OnInit {
     ngOnInit(): void {
         this.destroyRef.onDestroy(() => this.quickStartTourService.stop());
         // The page this layout opened with: its navigation ended before the subscription below.
-        this.appReturnUrl.record(this.router.url);
+        this.recordReturnUrl(this.router.url);
 
         this.router.events
             .pipe(
@@ -252,9 +252,8 @@ export class MainLayoutComponent implements OnInit {
                 const url = e.urlAfterRedirects;
                 if (urlPath(url) !== this.shownPath) this.navigationDrawer.close();
                 this.shownPath = urlPath(url);
-                // Only pages in this layout get here (it is gone on the sign-in and organization chooser pages); the
-                // service keeps EpicStaff's own, for "Back to EpicStaff" from an app.
-                this.appReturnUrl.record(url);
+                // Only pages in this layout get here (it is gone on the sign-in and organization chooser pages).
+                this.recordReturnUrl(url);
                 this.routeHidesSidenavOnPhone.set(routeTreeHidesSidenav(this.router.routerState.snapshot.root));
                 for (const [parent, tabs] of Object.entries(TABBED_ROUTES)) {
                     if (tabs.includes(url)) {
@@ -279,6 +278,17 @@ export class MainLayoutComponent implements OnInit {
     /** The sidenav's open/close control: the layout owns the width, so it applies and persists the change. */
     protected toggleSidenav(): void {
         this.sidebarWidthService.toggleCollapsed(MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS);
+    }
+
+    /**
+     * Hands the page shown to the service that keeps EpicStaff's own, for "Back to EpicStaff" from an app, unless the
+     * navigation that showed it left the address as it was: the hidden visit to `/profile` that reloads the page on an
+     * organization switch or a refused request is no page the user went to. That navigation is the last successful one
+     * both at its `NavigationEnd` and when it opens this layout (whose `ngOnInit` runs after it ended).
+     */
+    private recordReturnUrl(url: string): void {
+        if (this.router.lastSuccessfulNavigation()?.extras.skipLocationChange) return;
+        this.appReturnUrl.record(url);
     }
 }
 
