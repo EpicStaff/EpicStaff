@@ -88,7 +88,7 @@ def _note_contents(graph):
 def _flow_with_webhook(org, path):
     graph = _flow(org, "Hook Flow")
     trigger = WebhookTrigger.objects.create(path=path, org=org)
-    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main", libraries="")
+    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main")
     WebhookTriggerNode.objects.create(
         graph=graph, node_name="wt", webhook_trigger=trigger, python_code=code
     )

@@ -86,8 +86,6 @@ export interface CdtDecisionTreeInput {
     readonly postCode: string;
     readonly preInputMap: Readonly<Record<string, string>>;
     readonly postInputMap: Readonly<Record<string, string>>;
-    readonly preLibraries: readonly string[];
-    readonly postLibraries: readonly string[];
     readonly preOutputVariablePath: string | null;
     readonly postOutputVariablePath: string | null;
     readonly prompts: Readonly<Record<string, PromptConfig>>;

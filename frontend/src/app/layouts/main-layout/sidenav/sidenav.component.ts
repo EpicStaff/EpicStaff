@@ -201,6 +201,15 @@ export class LeftSidebarComponent {
                 showTooltip: false,
             },
             {
+                id: 'venvs',
+                routeLink: 'venvs',
+                activePaths: ['/venvs'],
+                icon: 'venvs',
+                label: 'Virtual Environments',
+                isPermitted: () => this.permissionService.can(ResourceCode.Venvs, ActionCode.Read),
+                showTooltip: false,
+            },
+            {
                 id: 'files',
                 routeLink: 'storage',
                 activePaths: ['/storage'],

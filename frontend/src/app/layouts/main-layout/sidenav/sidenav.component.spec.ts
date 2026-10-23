@@ -313,6 +313,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
                     { path: 'workspace', children: [{ path: 'users', children: [] }] },
                     { path: 'agents', children: [] },
                     { path: 'tools', children: [] },
+                    { path: 'venvs', children: [] },
                     { path: 'storage', children: [] },
                     { path: 'flows', children: [] },
                     { path: 'flows/:id', children: [], canDeactivate: [() => leaveFlowAllowed] },
@@ -428,7 +429,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
             hide: () => hiddenResources.add(ResourceCode.Tools),
             start: '/agents',
             code: 'ArrowDown',
-            expected: '/storage',
+            expected: '/venvs',
         },
         {
             name: 'Workspace',

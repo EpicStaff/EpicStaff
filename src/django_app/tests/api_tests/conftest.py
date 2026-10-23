@@ -48,7 +48,6 @@ def python_code_tool_pointing_at_secret_a(default_org, secret_a) -> PythonCodeTo
     python_code = PythonCode.objects.create(
         code="def main(**kwargs):\n    return 1\n",
         entrypoint="main",
-        libraries="",
         global_kwargs={},
     )
     python_code.secrets.set([secret_a])

@@ -23,13 +23,14 @@ class AudioTranscriptionNode(PythonNode):
             raise ValueError("AudioTranscriptionNode input cannot be empty.")
 
         arg_names = input_map.keys()
+        # TODO: this code imports faster_whisper and pydub, and needs PyAV below 19
+        # (faster_whisper up to 1.2.1 calls av.open(metadata_errors=...), a keyword
+        # PyAV 19 removed). Libraries now come only from the venv, and this node
+        # declares none, so it runs in the sandbox's default venv and fails there
+        # until it is given its own.
         code_data = PythonCodeData(
-            venv_name="default",
             code=self._get_code(arg_names),
             entrypoint="main",
-            # faster_whisper (up to 1.2.1) calls av.open(metadata_errors=...),
-            # a keyword PyAV 19 removed.
-            libraries=["faster_whisper", "pydub", "av<19"],
             use_storage=True,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,

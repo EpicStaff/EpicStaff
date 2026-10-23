@@ -27,6 +27,7 @@ urlpatterns = [
     path("api/audit/token/", AuditTokenView.as_view(), name="audit_token"),
     path("api/", include("tables.urls")),
     path("api/", include("agents.urls")),
+    path("api/", include("proxies.urls")),
     path("ht/", include("health_check.urls")),
 ]
 
