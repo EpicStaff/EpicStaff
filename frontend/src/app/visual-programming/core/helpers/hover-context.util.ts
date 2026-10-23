@@ -113,6 +113,12 @@ export function computeBackwardContext(
         for (const conn of incomingMap.get(currentId) ?? []) {
             const sourceId = conn.sourceNodeId;
 
+            // Self-loop on a CDT: the outgoing connection comes back to the CDT itself.
+            // Always treat it as a cyclic outgoing branch — exclude it.
+            if (forwardReachable !== null && sourceId === currentId) {
+                continue;
+            }
+
             // Source is reachable through the CDT's outgoing branches.
             // Exclude it only if it has no ancestors outside the cycle (i.e., it is
             // exclusively part of the cyclic branch and not a genuine upstream node).
