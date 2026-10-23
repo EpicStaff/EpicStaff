@@ -409,7 +409,7 @@ class TestRestoreFailsClosed:
                 "missing_name": "STRIPE_KEY",
                 "reason": (
                     'Secret "STRIPE_KEY" was declared when this version was saved, but it '
-                    "no longer exists in this organization. The declaration was not restored."
+                    "no longer exists in this organization. The declaration is dropped."
                 ),
             }
         ]
@@ -431,7 +431,11 @@ class TestRestoreFailsClosed:
         assert warning["node_id"] == restored.pk
         assert warning["field"] == "telegram_bot_api_key_secret"
         assert warning["missing_name"] == "TG_TOKEN"
-        assert "so the bot token was not restored" in warning["reason"]
+        assert warning["reason"] == (
+            'Secret "TG_TOKEN" was declared when this version was saved, but it no longer '
+            "exists in this organization, so the bot token is left empty. "
+            "The declaration is dropped."
+        )
 
 
 @pytest.mark.django_db
@@ -607,7 +611,7 @@ class TestPreviewResolvesDeclarationsLikeARestore:
                 "missing_name": "GONE_KEY",
                 "reason": (
                     'Secret "GONE_KEY" was declared when this version was saved, but it '
-                    "no longer exists in this organization. The declaration was not restored."
+                    "no longer exists in this organization. The declaration is dropped."
                 ),
             }
         ]
@@ -669,8 +673,8 @@ class TestPreviewResolvesDeclarationsLikeARestore:
                 "missing_name": "TG_TOKEN",
                 "reason": (
                     'Secret "TG_TOKEN" was declared when this version was saved, but it '
-                    "no longer exists in this organization, so the bot token was not "
-                    "restored. The declaration was not restored."
+                    "no longer exists in this organization, so the bot token is left "
+                    "empty. The declaration is dropped."
                 ),
             }
         ]
@@ -716,18 +720,94 @@ class TestPreviewResolvesDeclarationsLikeARestore:
         assert restore_warning["node_id"] == restored_node.pk
         assert {**preview_warning, "node_id": None} == {**restore_warning, "node_id": None}
 
-    def test_a_binned_secret_resolves_without_a_warning(self, service, graph, default_org):
-        """A restore links a binned secret again, so the preview resolves it too. Unlike
-        the restore it gives no `secret_in_recycle_bin` warning yet: a known gap."""
+    def test_a_binned_secret_resolves_and_is_warned_about_on_its_node_and_field(
+        self, service, graph, default_org
+    ):
+        """A restore links a binned secret again, so the preview resolves it too, and
+        gives the restore's recycle-bin warning."""
         secret = _secret(org=default_org, name="STRIPE_KEY")
-        _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+        node = _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
         version = _save(graph=graph)
         secret.delete()
 
         preview = service.preview_version(version)
 
         assert preview["resolved_secrets"] == {"STRIPE_KEY": secret.pk}
-        assert preview["warnings"] == []
+        assert preview["warnings"] == [
+            {
+                "type": "secret_in_recycle_bin",
+                "node_name": "Python-Node #1",
+                "node_id": node.pk,
+                "field": "python_code",
+                "reason": (
+                    'Secret "STRIPE_KEY" is in the recycle bin. It was linked again; '
+                    "restore it from the Recycle Bin for the code to read it."
+                ),
+            }
+        ]
+
+    def test_a_binned_telegram_bot_key_resolves_and_is_warned_about_on_the_bot_key_field(
+        self, service, graph, default_org
+    ):
+        secret = _secret(org=default_org, name="TG_TOKEN")
+        node = TelegramTriggerNode.objects.create(
+            graph=graph, node_name="TG", telegram_bot_api_key_secret=secret
+        )
+        version = _save(graph=graph)
+        secret.delete()
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {"TG_TOKEN": secret.pk}
+        assert [
+            (warning["type"], warning["node_id"], warning["field"])
+            for warning in preview["warnings"]
+        ] == [("secret_in_recycle_bin", node.pk, "telegram_bot_api_key_secret")]
+
+    def test_only_the_binned_name_of_a_node_is_warned_about(
+        self, service, graph, default_org
+    ):
+        live = _secret(org=default_org, name="LIVE_KEY")
+        binned = _secret(org=default_org, name="BINNED_KEY")
+        _python_node(graph=graph, name="LIVE_KEY", declared=[live, binned])
+        version = _save(graph=graph)
+        binned.delete()
+
+        preview = service.preview_version(version)
+
+        assert preview["resolved_secrets"] == {"LIVE_KEY": live.pk, "BINNED_KEY": binned.pk}
+        assert [warning["reason"] for warning in preview["warnings"]] == [
+            'Secret "BINNED_KEY" is in the recycle bin. It was linked again; '
+            "restore it from the Recycle Bin for the code to read it."
+        ]
+
+    @pytest.mark.parametrize("declares_on", ["python_node", "telegram_node"])
+    def test_the_preview_reports_the_binned_secret_a_restore_then_reports(
+        self, service, graph, default_org, declares_on
+    ):
+        """Same warning, same words; only the node id differs, since a restore gives the
+        node a new one."""
+        if declares_on == "python_node":
+            secret = _secret(org=default_org, name="STRIPE_KEY")
+            snapshot_node = _python_node(graph=graph, name="STRIPE_KEY", declared=[secret])
+            node_model = PythonNode
+        else:
+            secret = _secret(org=default_org, name="TG_TOKEN")
+            snapshot_node = TelegramTriggerNode.objects.create(
+                graph=graph, node_name="TG", telegram_bot_api_key_secret=secret
+            )
+            node_model = TelegramTriggerNode
+        version = _save(graph=graph)
+        secret.delete()
+
+        [preview_warning] = service.preview_version(version)["warnings"]
+        [restore_warning] = _restore(version=version, graph=graph)["warnings"]
+
+        restored_node = node_model.objects.get(graph=graph)
+        assert preview_warning["type"] == "secret_in_recycle_bin"
+        assert preview_warning["node_id"] == snapshot_node.pk
+        assert restore_warning["node_id"] == restored_node.pk
+        assert {**preview_warning, "node_id": None} == {**restore_warning, "node_id": None}
 
 
 @pytest.mark.django_db
@@ -823,8 +903,37 @@ class TestRestoreWithASecretInTheRecycleBin:
         node = PythonNode.objects.filter(graph=graph).select_related("python_code").get()
         linked = node.python_code.secrets(manager="all_objects").values_list("id", flat=True)
         assert list(linked) == [secret.pk]
-        assert [w["type"] for w in result["warnings"]] == ["secret_in_recycle_bin"]
-        assert "recycle bin" in result["warnings"][0]["reason"]
+        assert result["warnings"] == [
+            {
+                "type": "secret_in_recycle_bin",
+                "node_name": "Python-Node #1",
+                "node_id": node.pk,
+                "field": "python_code",
+                "reason": (
+                    'Secret "STRIPE_KEY" is in the recycle bin. It was linked again; '
+                    "restore it from the Recycle Bin for the code to read it."
+                ),
+            }
+        ]
+
+    def test_a_binned_bot_key_is_linked_again_with_a_warning_on_the_restored_node(
+        self, graph, default_org
+    ):
+        secret = _secret(org=default_org, name="TG_TOKEN")
+        TelegramTriggerNode.objects.create(
+            graph=graph, node_name="TG", telegram_bot_api_key_secret=secret
+        )
+        version = _save(graph=graph)
+        secret.delete()
+
+        result = _restore(version=version, graph=graph)
+
+        restored = TelegramTriggerNode.objects.get(graph=graph)
+        assert restored.telegram_bot_api_key_secret_id == secret.pk
+        assert [
+            (warning["type"], warning["node_id"], warning["field"])
+            for warning in result["warnings"]
+        ] == [("secret_in_recycle_bin", restored.pk, "telegram_bot_api_key_secret")]
 
     def test_the_session_check_names_it_as_binned_not_undeclared(self, graph, default_org):
         secret = _secret(org=default_org, name="STRIPE_KEY")

@@ -53,7 +53,7 @@ _TELEGRAM_BOT_KEY_FIELD = "telegram_bot_api_key_secret"
 # same words.
 _SECRET_GONE_REASON = "it no longer exists in this organization."
 _TELEGRAM_SECRET_GONE_REASON = (
-    "it no longer exists in this organization, so the bot token was not restored."
+    "it no longer exists in this organization, so the bot token is left empty."
 )
 
 
@@ -267,7 +267,14 @@ class GraphVersioningManager:
                 continue
             node.telegram_bot_api_key_secret = resolved[0]
             node.save(update_fields=[_TELEGRAM_BOT_KEY_FIELD])
-            warnings.extend(self._binned(secrets=resolved, node_name=node.node_name))
+            warnings.extend(
+                self._binned(
+                    secrets=resolved,
+                    node_name=node.node_name,
+                    node_id=snapshot_node_id,
+                    field=_TELEGRAM_BOT_KEY_FIELD,
+                )
+            )
         return warnings
 
     def _link(
@@ -284,7 +291,9 @@ class GraphVersioningManager:
         resolved, missing = self._resolve_names(names=names, org_id=org_id)
         # Through all_objects: a binned link the version doesn't have must go too.
         python_code.secrets(manager="all_objects").set(resolved)
-        return self._binned(secrets=resolved, node_name=node_name) + self._dropped(
+        return self._binned(
+            secrets=resolved, node_name=node_name, node_id=node_id, field=field
+        ) + self._dropped(
             names=missing,
             node_name=node_name,
             node_id=node_id,
@@ -293,12 +302,19 @@ class GraphVersioningManager:
         )
 
     @staticmethod
-    def _binned(*, secrets: list[Secret], node_name: str) -> list[dict]:
-        """One warning per restored link to a secret in the recycle bin: linked, but unreadable."""
+    def _binned(*, secrets: list[Secret], node_name: str, node_id: int, field: str) -> list[dict]:
+        """One warning per link to a secret in the recycle bin: linked, but unreadable.
+
+        Shared by restore and preview. Anchored like ``_dropped``'s warnings: ``node_id``
+        is the snapshot node id and ``field`` the code field (or the Telegram bot key
+        field) that declared the secret.
+        """
         return [
             {
                 "type": "secret_in_recycle_bin",
                 "node_name": node_name,
+                "node_id": node_id,
+                "field": field,
                 "reason": (
                     f'Secret "{secret.name}" is in the recycle bin. It was linked again; '
                     "restore it from the Recycle Bin for the code to read it."
@@ -327,7 +343,7 @@ class GraphVersioningManager:
                 "missing_name": name,
                 "reason": (
                     f'Secret "{name}" was declared when this version was saved, '
-                    f"but {reason_suffix} The declaration was not restored."
+                    f"but {reason_suffix} The declaration is dropped."
                 ),
             }
             for name in names
@@ -346,8 +362,11 @@ class GraphVersioningManager:
 
         Returns:
             The declared names that resolve in ``org_id``, mapped to their secret ids, and
-            one ``secret_declaration_dropped`` warning (see ``_dropped``) per declared name
-            that does not.
+            the warnings a restore would give: one ``secret_declaration_dropped`` (see
+            ``_dropped``) per declared name that does not resolve, and one
+            ``secret_in_recycle_bin`` (see ``_binned``) per declared name that resolves to
+            a secret in the recycle bin. A binned name is still in the map: a restore
+            links it again.
         """
         if not declarations:
             return {}, []
@@ -362,20 +381,34 @@ class GraphVersioningManager:
             return {}, []
 
         resolved, _ = self._resolve_names(names=declared_names, org_id=org_id)
-        resolved_ids = {secret.name: secret.id for secret in resolved}
+        resolved_by_name = {secret.name: secret for secret in resolved}
 
         warnings: list[dict] = []
         for declaration in preview_declarations:
             node_id = declaration.node["id"]
+            node_name = declaration.node.get("node_name") or f"node #{node_id}"
+            warnings.extend(
+                self._binned(
+                    secrets=[
+                        resolved_by_name[name]
+                        for name in declaration.names
+                        if name in resolved_by_name
+                    ],
+                    node_name=node_name,
+                    node_id=node_id,
+                    field=declaration.field,
+                )
+            )
             warnings.extend(
                 self._dropped(
-                    names=[name for name in declaration.names if name not in resolved_ids],
-                    node_name=declaration.node.get("node_name") or f"node #{node_id}",
+                    names=[name for name in declaration.names if name not in resolved_by_name],
+                    node_name=node_name,
                     node_id=node_id,
                     field=declaration.field,
                     reason_suffix=declaration.reason_suffix,
                 )
             )
+        resolved_ids = {name: secret.id for name, secret in resolved_by_name.items()}
         return resolved_ids, warnings
 
     @staticmethod

@@ -148,7 +148,8 @@ class GraphVersioningService:
         Secret declarations are resolved by name in the version graph's organization, as a
         restore re-links them, without a permission check and without writing: a declared
         name that no longer resolves gets the ``secret_declaration_dropped`` warning a
-        restore would report. Declarations of nodes the filtering removed are not reported
+        restore would report, and one that resolves to a secret in the recycle bin gets the
+        restore's ``secret_in_recycle_bin`` warning. Declarations of nodes the filtering removed are not reported
         (the node's own filter warning covers them), while a restore also lists each name
         lost with such a node, so the two warning lists do not match one-to-one.
 
