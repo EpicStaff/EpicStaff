@@ -149,6 +149,17 @@ def _navigation_path(path: str) -> str:
     return path
 
 
+def _navigation_label(label: str) -> str:
+    # A label is drawn in EpicStaff's own sidebar, so nothing in it may be invisible: no space
+    # at either end, and no format character (bidi overrides and isolates, zero-width spaces
+    # and joiners, byte order marks, soft hyphens).
+    if label != label.strip():
+        raise _rule_error("label_whitespace", "must not start or end with whitespace")
+    if any(unicodedata.category(character) == "Cf" for character in label):
+        raise _rule_error("invisible_character", "must not contain invisible formatting characters")
+    return label
+
+
 def _navigation_icon(path: str) -> str:
     if not re.fullmatch(NAVIGATION_ICON_PATTERN, path):
         raise _rule_error("navigation_icon", NAVIGATION_ICON_PROBLEM)
@@ -209,6 +220,7 @@ class NavigationItem(_ManifestPart):
         str,
         StringConstraints(min_length=1, max_length=MAX_NAVIGATION_LABEL_LENGTH),
         AfterValidator(_plain_text),
+        AfterValidator(_navigation_label),
     ]
     path: Annotated[
         str,

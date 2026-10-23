@@ -123,7 +123,29 @@ def test_a_stored_file_that_is_gone_or_changed_is_a_conflict(superadmin_client, 
     assert logged["found"] == expected_found
 
 
-def test_approving_a_package_with_a_menu_checks_the_stored_file_again_and_keeps_its_icons(installation, superadmin):
+@pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")
+def test_approval_checks_the_menu_icons_of_the_stored_file_again(superadmin_client, monkeypatch):
+    review = superadmin_client.post(
+        PACKAGES_URL, {"file": upload_file(build_package(manifest=menu_manifest()))}, format="multipart"
+    ).json()
+    # The cap is read when a package is checked, so lowering it after the upload shows whether
+    # the approval checks the menu icons of the stored file again.
+    lowered_cap = len(MENU_ICON_SVG) - 1
+    monkeypatch.setattr("epicstaff_plugin.package_layout.MAX_NAVIGATION_ICON_BYTES", lowered_cap)
+
+    response = superadmin_client.post(
+        f"{PACKAGES_URL}{review['id']}/approve/", {"untrusted_acknowledged": True}, format="json"
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "invalid_plugin"
+    assert body["errors"] == [{"loc": "package.icons/forecast.svg", "message": f"is larger than {lowered_cap} bytes"}]
+    assert PluginPackage.objects.get().review_state == ReviewState.PENDING
+    assert not Plugin.objects.filter(state=PluginState.RUNNING).exists()
+
+
+def test_approving_a_package_with_a_menu_keeps_its_icons(installation, superadmin):
     package = _upload(installation, superadmin, build_package(manifest=menu_manifest()))
 
     plugin = installation.approve(package.pk, superadmin, untrusted_acknowledged=True)

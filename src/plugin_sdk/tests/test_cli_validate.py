@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import stat
@@ -7,7 +8,8 @@ import pytest
 
 from conftest import ICON_SVG
 from epicstaff_plugin.cli.main import main
-from epicstaff_plugin.package_layout import path_set_problems
+from epicstaff_plugin.contracts.manifest import parse_manifest
+from epicstaff_plugin.package_layout import PackageFile, layout_problems, path_set_problems
 from epicstaff_plugin.testing import service_account_key, write_runtime_file
 from package_helpers import (
     MENU_ICON_PNG,
@@ -197,6 +199,33 @@ def test_a_symbolic_link_is_not_followed_for_a_menu_icon(plugin_source, tmp_path
     assert "manifest.spa.navigation[0].icon: names icons/overview.svg, which is not in the package" in capsys.readouterr().out
 
 
+def test_a_linked_icons_folder_is_not_followed(plugin_source, tmp_path, capsys):
+    source, spa = plugin_source
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "overview.svg").write_bytes(MENU_ICON_SVG)
+    add_menu(source, {}, named=["icons/overview.svg"])
+    os.symlink(elsewhere, source / "icons")
+    output = tmp_path / "weather.esplugin"
+
+    assert main(["validate", str(source), "--spa-dir", str(spa)]) == 1
+    assert "manifest.spa.navigation[0].icon: names icons/overview.svg, which is not in the package" in capsys.readouterr().out
+    assert main(["pack", str(source), "--spa-dir", str(spa), "--out", str(output)]) == 1
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("folder", ["backend", "database"])
+def test_a_linked_backend_or_database_folder_is_refused(weather_source, tmp_path, capsys, folder):
+    elsewhere = tmp_path / f"elsewhere-{folder}"
+    (weather_source / folder).rename(elsewhere)
+    os.symlink(elsewhere, weather_source / folder)
+
+    assert main(["validate", str(weather_source)]) == 1
+    output = capsys.readouterr().out
+    assert f"package.{folder}: is a symbolic link" in output
+    assert f"package.{folder}/" not in output
+
+
 @pytest.mark.parametrize(
     ("icon", "expected"),
     [
@@ -288,6 +317,19 @@ def test_path_set_problems_reports_files_used_as_folders():
     assert [(problem.loc, problem.message) for problem in problems] == [
         ("package.spa/a/d.js", "is inside 'spa/a', which is a file"),
         ("package.spa/b", "is a file, but 'spa/b/c.js' needs it to be a folder"),
+    ]
+
+
+def test_a_menu_icon_in_the_files_without_its_contents_is_a_problem():
+    # Every caller passes the contents of each menu icon in the files; one that did not must
+    # not skip the icon's content checks.
+    files = menu_files({"icons/overview.svg": MENU_ICON_SVG})
+    described = {path: PackageFile(path=path, size=len(data), sha256=hashlib.sha256(data).hexdigest()) for path, data in files.items()}
+
+    problems = layout_problems(parse_manifest(files["manifest.json"]), described, ICON_SVG, navigation_icons={})
+
+    assert [(problem.loc, problem.message) for problem in problems] == [
+        ("package.icons/overview.svg", "was not read, so it could not be checked"),
     ]
 
 

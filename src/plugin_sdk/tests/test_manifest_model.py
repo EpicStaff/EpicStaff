@@ -406,6 +406,53 @@ def test_a_menu_label_differing_only_in_case_is_another_label(manifest_document)
     assert [item.label for item in validate_manifest(manifest_document).spa.navigation] == ["Overview", "overview"]
 
 
+LABEL_WHITESPACE_MESSAGE = "must not start or end with whitespace"
+INVISIBLE_CHARACTER_MESSAGE = "must not contain invisible formatting characters"
+
+
+# The plugin documentation quotes these messages; a change here is a change there.
+@pytest.mark.parametrize(
+    ("label", "error_type", "message"),
+    [
+        ("Over‮view", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("⁦Overview⁩", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("Over​view", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("​", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("﻿Overview", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("Over­view", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        (" Overview", "label_whitespace", LABEL_WHITESPACE_MESSAGE),
+        ("Overview ", "label_whitespace", LABEL_WHITESPACE_MESSAGE),
+        ("Overview ", "label_whitespace", LABEL_WHITESPACE_MESSAGE),
+    ],
+    ids=[
+        "right-to-left override",
+        "left-to-right isolate",
+        "zero-width space",
+        "only a zero-width space",
+        "byte order mark",
+        "soft hyphen",
+        "leading space",
+        "trailing space",
+        "trailing no-break space",
+    ],
+)
+def test_a_menu_label_refuses_edge_whitespace_and_invisible_formatting_characters(manifest_document, label, error_type, message):
+    manifest_document["spa"]["navigation"] = [{**MENU_ITEM, "label": label}]
+
+    with pytest.raises(ValidationError) as raised:
+        PluginManifest.model_validate(manifest_document)
+
+    (error,) = raised.value.errors()
+    assert (error["loc"], error["type"], error["msg"]) == (("spa", "navigation", 0, "label"), error_type, message)
+
+
+@pytest.mark.parametrize("label", ["Saved places", "Прогноз погоди", "天気 予報", "Météo à venir", "Ünits & más"])
+def test_a_menu_label_with_inner_spaces_and_letters_of_any_script_is_accepted(manifest_document, label):
+    manifest_document["spa"]["navigation"] = [{**MENU_ITEM, "label": label}]
+
+    assert validate_manifest(manifest_document).spa.navigation[0].label == label
+
+
 PATH_MESSAGE = (
     "must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', "
     "without a query, a '.' or '..' segment, or a trailing '/'"

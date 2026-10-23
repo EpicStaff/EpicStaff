@@ -117,7 +117,8 @@ A manifest with every section filled in:
   field is an error, not a silently ignored setting.
 - **Types are strict:** `1` is not `"1"`, and `true` is not `"true"` or `1`.
 - Text fields (`name`, `description`, `reason`, `label`) must not be blank and must not contain
-  control characters such as line breaks.
+  control characters such as line breaks. A menu entry's `label` must also not start or end with
+  whitespace or contain invisible formatting characters; see [App menu](#app-menu).
 
 ## Fields
 
@@ -206,15 +207,17 @@ Each entry is `{key, type, label, description, required, default, values}`:
 sidebar, under the app's name, so the page needs no menu of its own. A menu needs a single-page app, which is
 why it lives inside `spa`. Each entry is `{label, path, icon}`:
 
-- `label`: 1–32 characters, not blank, no control characters. EpicStaff shows it as it is, cut off with an
-  ellipsis when the sidebar is narrow.
+- `label`: 1–32 characters, not blank, no control characters, no whitespace at the start or the end, and no
+  invisible formatting characters (Unicode category Cf: bidirectional overrides and isolates, zero-width spaces and
+  joiners, byte order marks, soft hyphens). EpicStaff shows it as it is, cut off with an ellipsis when the sidebar is
+  narrow.
 - `path`: the page the entry opens. `/`, or `/`-separated segments of letters, digits, `-`, `.`, `_` and `~`, at
   most 256 characters. No query, no `%` escape, no `.` or `..` segment, no empty segment and no trailing `/`. It is a
   strict subset of the frame protocol's [path grammar](frame-protocol.md#path-grammar), so every menu path is one the
   page can be sent.
 - `icon`: `icons/<name>.svg` or `icons/<name>.png`, where `<name>` is 1 to 63 lower-case letters, digits, `-` and
   `_`, starting with a letter or a digit. Several entries may name the same file.
-- At most 12 entries. Paths are distinct, and labels are distinct (compared exactly: `Projects` and `projects ` are
+- At most 12 entries. Paths are distinct, and labels are distinct (compared exactly: `Projects` and `projects` are
   two labels).
 
 ```json
@@ -263,7 +266,7 @@ validate`, `pack`, `sign` and `verify` print the same problems as `loc: message`
 |---|---|
 | `manifest.spa.navigation` | `lists path '/x' more than once` (duplicate), `lists label 'X' more than once` (duplicate), `List should have at most 12 items after validation, not 13` (too_long) |
 | `manifest.navigation` | `Extra inputs are not permitted`: the menu goes under `spa`, not at the top level |
-| `manifest.spa.navigation[i].label` | `must not be blank`, `must not contain control characters`, `String should have at least 1 character`, `String should have at most 32 characters` |
+| `manifest.spa.navigation[i].label` | `must not be blank`, `must not contain control characters`, `must not start or end with whitespace` (label_whitespace), `must not contain invisible formatting characters` (invisible_character), `String should have at least 1 character`, `String should have at most 32 characters` |
 | `manifest.spa.navigation[i].path` | `must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', without a query, a '.' or '..' segment, or a trailing '/'` (navigation_path), `String should have at most 256 characters` |
 | `manifest.spa.navigation[i].icon` | `must be icons/<name>.svg or icons/<name>.png, where <name> is 1 to 63 lower-case letters, digits, '-' and '_', starting with a letter or a digit` (navigation_icon), `names icons/x.svg, which is not in the package` |
 | `package.icons/<name>` | `is not an icon spa.navigation names`, `is larger than 16384 bytes`, `is not a PNG image`, and the SVG messages of the [icon](#icon) |

@@ -372,10 +372,10 @@ def layout_problems(
     `files` maps each path to its file, without `CONTENTS.json` and its signature. `icon` and
     `requirements_lock` are the contents of the icon the manifest names and of
     `backend/requirements.lock`, when present; `navigation_icons` maps the path of each menu
-    icon at hand to its contents, and only those are checked for content. `check_spa=False`
-    skips the SPA checks, for a source directory validated without its built SPA;
-    `require_sdk_pin=False` accepts a lock without `epicstaff-plugin`, for a source directory
-    packed with `--local-wheel`.
+    icon to its contents, and a menu icon in `files` without its contents there is reported
+    rather than left unchecked. `check_spa=False` skips the SPA checks, for a source directory
+    validated without its built SPA; `require_sdk_pin=False` accepts a lock without
+    `epicstaff-plugin`, for a source directory packed with `--local-wheel`.
     """
     problems = [
         Problem(archive_file_loc(path), problem)
@@ -529,8 +529,14 @@ def _navigation_icon_problems(
         if item.icon not in files
     ]
     for path in manifest.navigation_icon_paths:
+        if path not in files:
+            continue
         data = icons.get(path)
-        if data is not None and (problem := icon_problem(path, data, MAX_NAVIGATION_ICON_BYTES)):
+        if data is None:
+            problems.append(
+                Problem(archive_file_loc(path), "was not read, so it could not be checked")
+            )
+        elif problem := icon_problem(path, data, MAX_NAVIGATION_ICON_BYTES):
             problems.append(Problem(archive_file_loc(path), problem))
     return problems
 

@@ -42,9 +42,10 @@ Two things they still share:
 
 The labels of a plugin's app menu (`spa.navigation`) appear in EpicStaff's own sidebar, not inside the plugin's frame,
 and its icons are drawn there too. A label such as "Change password" would look like part of EpicStaff, although it
-opens a page of the plugin. EpicStaff limits the room a plugin gets: at most 12 entries, 32 characters each, shown
-under the app's name and switcher, with icons drawn as one-colour shapes after the same safety checks as the plugin's
-icon. It does not judge what a label says. The labels are listed in the SuperAdmin's review of every install and
+opens a page of the plugin. EpicStaff limits the room a plugin gets: at most 12 entries, 32 characters each and none
+of them an invisible formatting character (so a label cannot reverse or hide part of its text), shown under the app's
+name and switcher, with icons drawn as one-colour shapes after the same safety checks as the plugin's icon. It does
+not judge what a label says. The labels are listed in the SuperAdmin's review of every install and
 upgrade, and an upgrade that changes them says so: read them before approving.
 
 ## Keeping organizations apart inside a plugin is the plugin's job

@@ -123,6 +123,8 @@ RULES = [
     ("navigation label not blank", _menu(_menu_item(label="   ")), "manifest.spa.navigation[0].label"),
     ("navigation label 1-32", _menu(_menu_item(label="l" * 33)), "manifest.spa.navigation[0].label"),
     ("navigation label without control characters", _menu(_menu_item(label="Fore\u0007cast")), "manifest.spa.navigation[0].label"),
+    ("navigation label without edge whitespace", _menu(_menu_item(label="Forecast ")), "manifest.spa.navigation[0].label"),
+    ("navigation label without invisible formatting characters", _menu(_menu_item(label="Fore‮cast")), "manifest.spa.navigation[0].label"),
     ("navigation path starts with /", _menu(_menu_item(path="projects")), "manifest.spa.navigation[0].path"),
     ("navigation path without a trailing /", _menu(_menu_item(path="/projects/")), "manifest.spa.navigation[0].path"),
     ("navigation path without an empty segment", _menu(_menu_item(path="/a//b")), "manifest.spa.navigation[0].path"),
@@ -231,6 +233,16 @@ def test_a_manifest_with_a_menu_round_trips(installation, superadmin):
                 ),
             },
             id="trailing slash",
+        ),
+        pytest.param(
+            _menu(_menu_item(label="⁦Forecast")),
+            {"loc": "manifest.spa.navigation[0].label", "message": "must not contain invisible formatting characters"},
+            id="invisible formatting character",
+        ),
+        pytest.param(
+            _menu(_menu_item(label=" Forecast")),
+            {"loc": "manifest.spa.navigation[0].label", "message": "must not start or end with whitespace"},
+            id="leading whitespace",
         ),
     ],
 )

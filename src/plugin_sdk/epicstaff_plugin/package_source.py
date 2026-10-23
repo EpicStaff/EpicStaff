@@ -104,9 +104,11 @@ def collect_source(source_directory: Path, spa_directory: Path | None) -> Packag
 
     Takes `manifest.json`, the icon it names and the menu icons `spa.navigation` names (other
     files under `icons/` stay behind) from `source_directory`, `backend/` and `database/` as
-    found there, and the built single-page app from `spa_directory` (placed under `spa/`). A
-    named icon that is missing or not a regular file is left out, and the layout check reports
-    it as missing.
+    found there, and the built single-page app from `spa_directory` (placed under `spa/`).
+    Nothing is taken from outside `source_directory` through a symbolic link: a `backend/` or
+    `database/` folder that leads outside is refused, and a named icon that is missing, not a
+    regular file, or reached through a link to outside is left out, which the layout check
+    reports as missing.
 
     Raises:
         PackageProblemsError: The manifest is missing or invalid, or a file cannot be packed
@@ -117,11 +119,16 @@ def collect_source(source_directory: Path, spa_directory: Path | None) -> Packag
         raise PackageProblemsError([Problem(MANIFEST_LOC, f"{manifest_path} does not exist")])
     manifest = parse_manifest(manifest_path.read_bytes())
 
+    source_root = source_directory.resolve()
     problems: list[Problem] = []
     files = [SourceFile(MANIFEST_FILE_NAME, manifest_path)]
     for icon in (manifest.icon, *manifest.navigation_icon_paths):
         icon_path = source_directory / icon
-        if icon_path.is_file() and not icon_path.is_symlink():
+        if (
+            icon_path.is_file()
+            and not icon_path.is_symlink()
+            and _is_inside(icon_path, source_root)
+        ):
             files.append(SourceFile(icon, icon_path))
     if spa_directory is not None:
         if manifest.spa is None:
@@ -134,8 +141,14 @@ def collect_source(source_directory: Path, spa_directory: Path | None) -> Packag
             files.extend(_walk(spa_directory, SPA_DIRECTORY, problems.append))
     for name in SOURCE_DIRECTORIES:
         directory = source_directory / name
-        if directory.is_dir():
+        if not directory.is_dir():
+            continue
+        # The walk follows no link below `directory`, so every file it takes is inside the
+        # source once `directory` itself is.
+        if _is_inside(directory, source_root):
             files.extend(_walk(directory, f"{name}/", problems.append))
+        else:
+            problems.append(Problem(archive_file_loc(name), "is a symbolic link"))
     if problems:
         raise PackageProblemsError(problems)
     return PackageSource(
@@ -172,6 +185,10 @@ def _walk(directory: Path, prefix: str, report: Callable[[Problem], None]) -> li
             elif package_path not in SOURCE_ONLY_PATHS:
                 files.append(SourceFile(package_path, source))
     return files
+
+
+def _is_inside(path: Path, source_root: Path) -> bool:
+    return path.resolve().is_relative_to(source_root)
 
 
 def _package_path(source: Path, directory: Path, prefix: str) -> str:
