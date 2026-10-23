@@ -87,9 +87,12 @@ EpicStaff draws the list in its own sidebar while the app is open. [App menu](..
 every rule.
 
 1. Add an icon file for each page under `icons/`, in your plugin's source next to `manifest.json`: SVG or PNG, at most
-   16 KiB, drawn as one shape on a transparent background. EpicStaff paints it in the colour of the row, so it
-   follows the light and dark themes, and the icon's own colours do not show.
-2. List the pages in the manifest, each with a label of at most 32 characters, a path of your routes and its icon:
+   16 KiB, drawn as one still shape on a transparent background. EpicStaff paints it in the colour of the row, so it
+   follows the light and dark themes, and the icon's own colours do not show. An SVG may not animate, and its `<use>`
+   elements may not copy each other ([Icon](../reference/manifest.md#icon)).
+2. List the pages in the manifest, each with a label of at most 32 characters, a path of your routes and its icon. A
+   label is plain text: letters of any script, digits, punctuation and single plain spaces, with nothing invisible in
+   it, and no two labels may differ only in case:
 
    ```json
    "spa": {

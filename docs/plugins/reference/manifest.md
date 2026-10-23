@@ -117,8 +117,8 @@ A manifest with every section filled in:
   field is an error, not a silently ignored setting.
 - **Types are strict:** `1` is not `"1"`, and `true` is not `"true"` or `1`.
 - Text fields (`name`, `description`, `reason`, `label`) must not be blank and must not contain
-  control characters such as line breaks. A menu entry's `label` must also not start or end with
-  whitespace or contain invisible formatting characters; see [App menu](#app-menu).
+  control characters such as line breaks. A menu entry's `label` has stricter rules, because
+  EpicStaff draws it in its own sidebar; see [App menu](#app-menu).
 
 ## Fields
 
@@ -207,18 +207,28 @@ Each entry is `{key, type, label, description, required, default, values}`:
 sidebar, under the app's name, so the page needs no menu of its own. A menu needs a single-page app, which is
 why it lives inside `spa`. Each entry is `{label, path, icon}`:
 
-- `label`: 1–32 characters, not blank, no control characters, no whitespace at the start or the end, and no
-  invisible formatting characters (Unicode category Cf: bidirectional overrides and isolates, zero-width spaces and
-  joiners, byte order marks, soft hyphens). EpicStaff shows it as it is, cut off with an ellipsis when the sidebar is
-  narrow.
+- `label`: 1–32 characters of plain text that shows everything it holds. EpicStaff shows it as it is, cut off with an
+  ellipsis when the sidebar is narrow. A label
+  - is not blank, and holds at least one visible character: one that is neither whitespace nor the blank braille
+    pattern (U+2800);
+  - holds no control character, such as a line break or a tab;
+  - holds no whitespace but the plain space (U+0020), and none at the start or the end: no no-break, ideographic or
+    other wide or narrow space, and no line or paragraph separator (U+2028, U+2029);
+  - holds no invisible character: no format character (Unicode category Cf: bidirectional overrides and isolates,
+    zero-width spaces and joiners, byte order marks, soft hyphens) and no default-ignorable code point (Unicode's
+    `Default_Ignorable_Code_Point`, such as the Hangul fillers U+115F, U+1160, U+3164 and U+FFA0, variation selectors
+    and the combining grapheme joiner U+034F). So an emoji written with a variation selector (U+FE0F) or joined by a
+    zero-width joiner (U+200D) is refused; write it without them, or leave it out.
 - `path`: the page the entry opens. `/`, or `/`-separated segments of letters, digits, `-`, `.`, `_` and `~`, at
   most 256 characters. No query, no `%` escape, no `.` or `..` segment, no empty segment and no trailing `/`. It is a
   strict subset of the frame protocol's [path grammar](frame-protocol.md#path-grammar), so every menu path is one the
   page can be sent.
 - `icon`: `icons/<name>.svg` or `icons/<name>.png`, where `<name>` is 1 to 63 lower-case letters, digits, `-` and
   `_`, starting with a letter or a digit. Several entries may name the same file.
-- At most 12 entries. Paths are distinct, and labels are distinct (compared exactly: `Projects` and `projects` are
-  two labels).
+- At most 12 entries. Paths are distinct, and so are labels, compared after Unicode NFKC normalization and case
+  folding, because labels that differ only there look alike in the sidebar: `Projects`, `projects`, `PROJECTS` and
+  `Projects` written in fullwidth letters are one label, and so are `files` and the same word written with the `fi`
+  ligature (U+FB01).
 
 ```json
 "spa": {
@@ -264,12 +274,12 @@ validate`, `pack`, `sign` and `verify` print the same problems as `loc: message`
 
 | `loc` | Message |
 |---|---|
-| `manifest.spa.navigation` | `lists path '/x' more than once` (duplicate), `lists label 'X' more than once` (duplicate), `List should have at most 12 items after validation, not 13` (too_long) |
+| `manifest.spa.navigation` | `lists path '/x' more than once` (duplicate), `lists label 'X' more than once` (duplicate; `X` is the later label as written, which may differ from the earlier one in case or compatibility form), `List should have at most 12 items after validation, not 13` (too_long) |
 | `manifest.navigation` | `Extra inputs are not permitted`: the menu goes under `spa`, not at the top level |
-| `manifest.spa.navigation[i].label` | `must not be blank`, `must not contain control characters`, `must not start or end with whitespace` (label_whitespace), `must not contain invisible formatting characters` (invisible_character), `String should have at least 1 character`, `String should have at most 32 characters` |
+| `manifest.spa.navigation[i].label` | `must not be blank` (blank_text), `must not contain control characters` (control_character), `must not start or end with whitespace` (label_whitespace), `must not contain invisible formatting characters` (invisible_character: a format or default-ignorable character), `must not contain whitespace other than plain spaces` (whitespace_character), `must contain at least one visible character` (visible_character_required), `String should have at least 1 character`, `String should have at most 32 characters` |
 | `manifest.spa.navigation[i].path` | `must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', without a query, a '.' or '..' segment, or a trailing '/'` (navigation_path), `String should have at most 256 characters` |
 | `manifest.spa.navigation[i].icon` | `must be icons/<name>.svg or icons/<name>.png, where <name> is 1 to 63 lower-case letters, digits, '-' and '_', starting with a letter or a digit` (navigation_icon), `names icons/x.svg, which is not in the package` |
-| `package.icons/<name>` | `is not an icon spa.navigation names`, `is larger than 16384 bytes`, `is not a PNG image`, and the SVG messages of the [icon](#icon) |
+| `package.icons/<name>` | `is not an icon spa.navigation names`, `is larger than 16384 bytes`, `is not a PNG image`, and the SVG messages of the [icon](#icon-errors) |
 | `package.icons` | `holds more than 12 files` |
 
 ### Platform maximums
@@ -364,12 +374,47 @@ refused when the node installs the backend, naming the wheel and the platform.
 
 ### Icon
 
-`icon.png` must be a PNG image. `icon.svg` must be UTF-8 XML with an `<svg>` root, and inert:
-no `<script>` or `<foreignObject>` element, no event-handler attribute (`onload`, `onclick`, …),
-no DOCTYPE or entity declaration, no stylesheet processing instruction, and no reference outside
-the file (an `href` or `src` that is not `#…`, a CSS `url(…)` that is not `url(#…)`, or
-`@import`). EpicStaff only ever shows the icon as an image. EpicStaff draws the icon at the root as an
-image, in its own colours; the [menu icons](#menu-icons) are drawn as one-colour shapes.
+`icon.png` must be a PNG image. `icon.svg` must be UTF-8 XML with an `<svg>` root, inert and still:
+
+- No `<script>` or `<foreignObject>` element, and no event-handler attribute (`onload`, `onclick`, …).
+- No DOCTYPE or entity declaration, and no stylesheet processing instruction.
+- No reference outside the file: an `href` or `src` that is not `#…`, a CSS `url(…)` that is not `url(#…)`, or
+  `@import`.
+- No animation: no SMIL animation element (`<animate>`, `<set>`, `<animateTransform>`, `<animateMotion>`,
+  `<animateColor>`, `<discard>`), and no CSS animation or transition in a `<style>` element or a `style` attribute:
+  no `@keyframes` rule and no `animation`, `animation-*`, `transition` or `transition-*` property, with or without a
+  vendor prefix such as `-webkit-`. An icon looks the same every time it is drawn, so what the SuperAdmin approved is
+  what people see.
+- At most 32 `<use>` elements, and none whose target is a `<use>` or holds one, so that `<use>` elements cannot copy
+  each other in a chain. A `<use>` refers only to an element of the same file (`#<id>`), like every reference.
+
+These checks read CSS the way a browser does: escapes are decoded first (`u\72l(` is `url(`), every piece of text in
+a `<style>` element counts, and a comment between a property and its colon does not hide it. They read text, not
+CSS rules, so these words are refused anywhere in an icon's CSS, in a comment or a string too: `@keyframes`, and
+`animation` or `transition` (or one of their `-*` properties) followed by a colon or a comment.
+
+EpicStaff draws the icon at the root as an image, in its own colours; the [menu icons](#menu-icons) are drawn as
+one-colour shapes.
+
+#### Icon errors
+
+Problems with the icon are located at `package.icon.svg` or `package.icon.png`, and with a menu icon at
+`package.icons/<name>`:
+
+| Message | Meaning |
+|---|---|
+| `is larger than 65536 bytes` | The icon is over 64 KiB (16384 bytes for a menu icon) |
+| `is not a PNG image` | A `.png` file without the PNG signature |
+| `is not UTF-8`, `declares an encoding other than UTF-8` | An SVG in another encoding |
+| `must not contain a DOCTYPE or entity declaration`, `must not reference a stylesheet` | A DOCTYPE, an entity declaration or an `<?xml-stylesheet?>` instruction |
+| `is not well-formed XML (<parser error>)`, `does not have an <svg> root element` | Not an SVG document |
+| `contains a <script> element`, `contains a <foreignObject> element` | Script or HTML in the SVG |
+| `has an event handler attribute (<name>)` | An `on…` attribute |
+| `references an outside resource (<attribute>)`, `has a style that references an outside resource` | A reference outside the file, in an attribute or in a `<style>` element |
+| `contains an animation element (<name>)` | A SMIL animation element |
+| `has a style with a CSS animation or transition`, `has a CSS animation or transition (style)` | A CSS animation or transition in a `<style>` element or in a `style` attribute |
+| `has more than 32 <use> elements` | Too many `<use>` elements |
+| `has a <use> element whose target is or contains a <use> element` | A chain of `<use>` elements |
 
 ### CONTENTS.json
 

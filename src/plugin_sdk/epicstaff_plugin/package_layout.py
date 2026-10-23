@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Annotated, BinaryIO, Literal, Protocol
+from urllib.parse import unquote
 from xml.etree import ElementTree
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
@@ -137,6 +138,24 @@ _XML_ENCODING_DECLARATION = re.compile(
     r"^\s*<\?xml[^>]*\bencoding\s*=\s*[\"']([^\"']+)", re.IGNORECASE
 )
 _CSS_URL = re.compile(r"url\(\s*[\"']?\s*([^\"')\s]*)", re.IGNORECASE)
+# A CSS escape: a backslash and one to six hex digits, with one whitespace after them taken as
+# part of it, or a backslash and any other character, which stands for itself.
+_CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})[ \t\r\n\f]?|(.))", re.DOTALL)
+_CSS_ESCAPE_REPLACEMENT = "\N{REPLACEMENT CHARACTER}"
+# An @keyframes rule, or an animation or transition property (also `-webkit-` prefixed and
+# `animation-name` and the like), in CSS read by `_decoded_css`. A comment may sit between a
+# property and its colon, so the name followed by one is refused too.
+_CSS_ANIMATION = re.compile(
+    r"@(?:-[a-z]+-)?keyframes"
+    r"|(?<![\w-])(?:-[a-z]+-)?(?:animation|transition)(?:-[a-z-]*)?\s*(?::|/\*)"
+)
+# SMIL animation elements, and SVG 1.1's <animateColor>; <mpath> exists only inside
+# <animateMotion>. An icon must look the same as when it was reviewed.
+_SVG_ANIMATION_ELEMENTS = frozenset(
+    {"animate", "animatecolor", "animatemotion", "animatetransform", "discard", "set"}
+)
+# A <use> draws a copy of its target, so a chain of them multiplies what one file draws.
+MAX_SVG_USE_ELEMENTS = 32
 # Errors zipfile raises for a damaged, encrypted or oddly compressed archive.
 _ZIP_READ_ERRORS = (
     zipfile.BadZipFile,
@@ -605,10 +624,13 @@ def _migration_set_problems(sizes: Mapping[str, int]) -> list[Problem]:
 
 
 def icon_problem(path: str, data: bytes, max_bytes: int) -> str | None:
-    """Return why an icon may not be used, or None. An SVG must be inert when rendered.
+    """Return why an icon may not be used, or None.
 
-    `path` is the plugin's icon or a menu icon; its extension (`.png` or `.svg`, which the
-    manifest guarantees) says which format `data` must be.
+    An SVG must be inert when rendered and still: no script, no outside reference, no SMIL or
+    CSS animation or transition, at most `MAX_SVG_USE_ELEMENTS` `<use>` elements and none
+    whose target is or holds a `<use>`. `path` is the plugin's icon or a menu icon; its
+    extension (`.png` or `.svg`, which the manifest guarantees) says which format `data` must
+    be.
     """
     if len(data) > max_bytes:
         return f"is larger than {max_bytes} bytes"
@@ -642,12 +664,23 @@ def _svg_problem(data: bytes) -> str | None:
         return f"is not well-formed XML ({error})"
     if root.tag not in ("svg", f"{{{_SVG_NAMESPACE}}}svg"):
         return "does not have an <svg> root element"
+    uses: list[ElementTree.Element] = []
+    elements_by_id: dict[str, list[ElementTree.Element]] = {}
     for element in root.iter():
         tag = _local_name(element.tag).lower()
         if tag in ("script", "foreignobject"):
             return f"contains a <{_local_name(element.tag)}> element"
-        if tag == "style" and _references_outside(element.text or ""):
-            return "has a style that references an outside resource"
+        if tag in _SVG_ANIMATION_ELEMENTS:
+            return f"contains an animation element (<{_local_name(element.tag)}>)"
+        if tag == "style":
+            # All of the element's text, also the text after a child element.
+            css = "".join(element.itertext())
+            if _references_outside(css):
+                return "has a style that references an outside resource"
+            if _animates(css):
+                return "has a style with a CSS animation or transition"
+        if tag == "use":
+            uses.append(element)
         for attribute, value in element.attrib.items():
             name = _local_name(attribute).lower()
             if name.startswith("on"):
@@ -656,6 +689,38 @@ def _svg_problem(data: bytes) -> str | None:
                 return f"references an outside resource ({_local_name(attribute)})"
             if _references_outside(value):
                 return f"references an outside resource ({_local_name(attribute)})"
+            if name == "style" and _animates(value):
+                return f"has a CSS animation or transition ({_local_name(attribute)})"
+            if name == "id":
+                elements_by_id.setdefault(value, []).append(element)
+    return _use_problem(root, uses, elements_by_id)
+
+
+def _use_problem(
+    root: ElementTree.Element,
+    uses: list[ElementTree.Element],
+    elements_by_id: Mapping[str, list[ElementTree.Element]],
+) -> str | None:
+    if len(uses) > MAX_SVG_USE_ELEMENTS:
+        return f"has more than {MAX_SVG_USE_ELEMENTS} <use> elements"
+    parents = {child: parent for parent in root.iter() for child in parent}
+    # Each <use> and every element around it; a walk stops at an element already marked.
+    holding_use: set[ElementTree.Element] = set()
+    for use in uses:
+        element = use
+        while element is not None and element not in holding_use:
+            holding_use.add(element)
+            element = parents.get(element)
+    for use in uses:
+        for attribute, value in use.attrib.items():
+            if _local_name(attribute).lower() != "href":
+                continue
+            # Only `#<id>` reaches here. A browser percent-decodes the fragment, so both forms
+            # are looked up; when ids repeat, every element with the id counts.
+            fragment = value.strip()[1:]
+            for identifier in {fragment, unquote(fragment)}:
+                if any(target in holding_use for target in elements_by_id.get(identifier, ())):
+                    return "has a <use> element whose target is or contains a <use> element"
     return None
 
 
@@ -663,10 +728,29 @@ def _local_name(name: str) -> str:
     return name.rpartition("}")[2]
 
 
+def _decoded_css(css: str) -> str:
+    # CSS as a browser reads its names: escapes decoded, in lower case. `u\72l(` is `url(`.
+    return _CSS_ESCAPE.sub(_decoded_css_escape, css).lower()
+
+
+def _decoded_css_escape(match: re.Match[str]) -> str:
+    if match.group(2) is not None:
+        return match.group(2)
+    code_point = int(match.group(1), 16)
+    if code_point == 0 or 0xD800 <= code_point <= 0xDFFF or code_point > 0x10FFFF:
+        return _CSS_ESCAPE_REPLACEMENT
+    return chr(code_point)
+
+
 def _references_outside(css: str) -> bool:
-    if "@import" in css.lower():
+    css = _decoded_css(css)
+    if "@import" in css:
         return True
     return any(not target.startswith("#") for target in _CSS_URL.findall(css))
+
+
+def _animates(css: str) -> bool:
+    return _CSS_ANIMATION.search(_decoded_css(css)) is not None
 
 
 def read_package_file(

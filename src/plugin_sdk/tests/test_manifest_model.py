@@ -400,29 +400,60 @@ def test_a_full_menu_may_share_icons_and_lists_each_icon_once(manifest_document)
     assert manifest.navigation_icon_paths == ("icons/a.png", "icons/b.svg")
 
 
-def test_a_menu_label_differing_only_in_case_is_another_label(manifest_document):
-    manifest_document["spa"]["navigation"] = [MENU_ITEM, {**MENU_ITEM, "label": "overview", "path": "/other"}]
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("Projects", "projects"),
+        ("Projects", "PROJECTS"),
+        ("Projects", "\uff30rojects"),
+        ("Projects", "\uff30\uff32\uff2f\uff2a\uff25\uff23\uff34\uff33"),
+        ("Straße", "STRASSE"),
+        ("Files", "\ufb01les"),
+        ("Page 2", "Page \u00b2"),
+    ],
+    ids=["lower case", "upper case", "a fullwidth letter", "all fullwidth", "sharp s", "fi ligature", "superscript digit"],
+)
+def test_menu_labels_differing_only_in_case_or_compatibility_form_are_one_label(manifest_document, first, second):
+    manifest_document["spa"]["navigation"] = [MENU_ITEM, {**MENU_ITEM, "label": first, "path": "/a"}, {**MENU_ITEM, "label": second, "path": "/b"}]
 
-    assert [item.label for item in validate_manifest(manifest_document).spa.navigation] == ["Overview", "overview"]
+    with pytest.raises(ValidationError) as raised:
+        PluginManifest.model_validate(manifest_document)
+
+    (error,) = raised.value.errors()
+    assert (error["loc"], error["type"], error["msg"]) == (("spa", "navigation"), "duplicate", f"lists label '{second}' more than once")
 
 
 LABEL_WHITESPACE_MESSAGE = "must not start or end with whitespace"
 INVISIBLE_CHARACTER_MESSAGE = "must not contain invisible formatting characters"
+PLAIN_SPACES_MESSAGE = "must not contain whitespace other than plain spaces"
+VISIBLE_CHARACTER_MESSAGE = "must contain at least one visible character"
 
 
 # The plugin documentation quotes these messages; a change here is a change there.
 @pytest.mark.parametrize(
     ("label", "error_type", "message"),
     [
-        ("Over‮view", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
-        ("⁦Overview⁩", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
-        ("Over​view", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
-        ("​", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
-        ("﻿Overview", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
-        ("Over­view", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("Over\u202eview", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("\u2066Overview\u2069", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("Over\u200bview", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("\u200b", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("\ufeffOverview", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("Over\u00adview", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("Over\ufff9view", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("\u3164", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("Projects\u034f", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("\ufe0fX", "invisible_character", INVISIBLE_CHARACTER_MESSAGE),
+        ("Proj\u2028ects", "whitespace_character", PLAIN_SPACES_MESSAGE),
+        ("Proj\u2029ects", "whitespace_character", PLAIN_SPACES_MESSAGE),
+        ("Proj\u00a0ects", "whitespace_character", PLAIN_SPACES_MESSAGE),
+        ("Proj\u3000ects", "whitespace_character", PLAIN_SPACES_MESSAGE),
+        ("Proj\u2003ects", "whitespace_character", PLAIN_SPACES_MESSAGE),
+        ("Proj\tects", "control_character", "must not contain control characters"),
+        ("\u2800", "visible_character_required", VISIBLE_CHARACTER_MESSAGE),
+        ("\u2800 \u2800", "visible_character_required", VISIBLE_CHARACTER_MESSAGE),
         (" Overview", "label_whitespace", LABEL_WHITESPACE_MESSAGE),
         ("Overview ", "label_whitespace", LABEL_WHITESPACE_MESSAGE),
-        ("Overview ", "label_whitespace", LABEL_WHITESPACE_MESSAGE),
+        ("Overview\u00a0", "label_whitespace", LABEL_WHITESPACE_MESSAGE),
     ],
     ids=[
         "right-to-left override",
@@ -431,12 +462,24 @@ INVISIBLE_CHARACTER_MESSAGE = "must not contain invisible formatting characters"
         "only a zero-width space",
         "byte order mark",
         "soft hyphen",
+        "interlinear annotation anchor",
+        "only a hangul filler",
+        "combining grapheme joiner",
+        "variation selector",
+        "line separator",
+        "paragraph separator",
+        "no-break space",
+        "ideographic space",
+        "em space",
+        "tab",
+        "only a braille blank",
+        "braille blanks and a space",
         "leading space",
         "trailing space",
         "trailing no-break space",
     ],
 )
-def test_a_menu_label_refuses_edge_whitespace_and_invisible_formatting_characters(manifest_document, label, error_type, message):
+def test_a_menu_label_refuses_what_would_hide_or_disguise_its_text(manifest_document, label, error_type, message):
     manifest_document["spa"]["navigation"] = [{**MENU_ITEM, "label": label}]
 
     with pytest.raises(ValidationError) as raised:
@@ -446,11 +489,42 @@ def test_a_menu_label_refuses_edge_whitespace_and_invisible_formatting_character
     assert (error["loc"], error["type"], error["msg"]) == (("spa", "navigation", 0, "label"), error_type, message)
 
 
-@pytest.mark.parametrize("label", ["Saved places", "Прогноз погоди", "天気 予報", "Météo à venir", "Ünits & más"])
+# The first and the last code point of every Default_Ignorable_Code_Point range of Unicode
+# 17.0.0 (DerivedCoreProperties.txt); a range of one code point is listed once.
+DEFAULT_IGNORABLE_BOUNDARIES = [
+    0x00AD, 0x034F, 0x061C, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x180B, 0x180F, 0x200B, 0x200F, 0x202A, 0x202E,
+    0x2060, 0x206F, 0x3164, 0xFE00, 0xFE0F, 0xFEFF, 0xFFA0, 0xFFF0, 0xFFF8, 0x1BCA0, 0x1BCA3, 0x1D173, 0x1D17A,
+    0xE0000, 0xE0FFF,
+]
+
+
+@pytest.mark.parametrize("code_point", DEFAULT_IGNORABLE_BOUNDARIES, ids=lambda code_point: f"U+{code_point:04X}")
+def test_every_default_ignorable_code_point_range_is_refused_in_a_menu_label(manifest_document, code_point):
+    manifest_document["spa"]["navigation"] = [{**MENU_ITEM, "label": f"Over{chr(code_point)}view"}]
+
+    with pytest.raises(ValidationError) as raised:
+        PluginManifest.model_validate(manifest_document)
+
+    (error,) = raised.value.errors()
+    assert (error["type"], error["msg"]) == ("invisible_character", INVISIBLE_CHARACTER_MESSAGE)
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Saved places", "Прогноз погоди", "天気 予報", "Météo à venir", "Ünits & más", "A B C", "Report 2026", "\u2800Braille"],
+    ids=["inner space", "cyrillic", "japanese", "accented latin", "symbols", "single spaces", "digits", "a braille blank and letters"],
+)
 def test_a_menu_label_with_inner_spaces_and_letters_of_any_script_is_accepted(manifest_document, label):
     manifest_document["spa"]["navigation"] = [{**MENU_ITEM, "label": label}]
 
     assert validate_manifest(manifest_document).spa.navigation[0].label == label
+
+
+def test_distinct_menu_labels_of_different_scripts_are_accepted(manifest_document):
+    labels = ["Overview", "Огляд", "概要", "Projects"]
+    manifest_document["spa"]["navigation"] = [{**MENU_ITEM, "label": label, "path": f"/page-{index}"} for index, label in enumerate(labels)]
+
+    assert [item.label for item in validate_manifest(manifest_document).spa.navigation] == labels
 
 
 PATH_MESSAGE = (

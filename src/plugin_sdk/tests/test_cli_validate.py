@@ -255,6 +255,95 @@ def test_a_menu_png_that_is_not_a_png_fails(tmp_path, capsys):
     assert "package.icons/projects.png: is not a PNG image" in capsys.readouterr().out
 
 
+SVG_START = b'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24">'
+SVG_PATH = b'<path id="p" d="M4 4h16v16H4z"/>'
+STYLE_ANIMATION = "has a style with a CSS animation or transition"
+STYLE_ATTRIBUTE_ANIMATION = "has a CSS animation or transition (style)"
+USE_CHAIN = "has a <use> element whose target is or contains a <use> element"
+
+
+def _svg(body: bytes) -> bytes:
+    return SVG_START + body + b"</svg>"
+
+
+def _uses_of_the_path(count: int) -> bytes:
+    return b"<defs>" + SVG_PATH + b"</defs>" + b'<use href="#p"/>' * count
+
+
+# The plugin documentation quotes these messages; a change here is a change there.
+UNSTABLE_OR_EXPANDING_SVGS = [
+    ("animate", _svg(b'<circle r="5"><animate attributeName="r" values="5;10;5" dur="1s" repeatCount="indefinite"/></circle>'), "contains an animation element (<animate>)"),
+    ("set", _svg(SVG_PATH + b'<set href="#p" attributeName="d" to="M0 0h24v24H0z" begin="2s"/>'), "contains an animation element (<set>)"),
+    ("animateTransform", _svg(SVG_PATH.replace(b"/>", b'><animateTransform attributeName="transform" type="rotate" to="90" dur="1s"/></path>')), "contains an animation element (<animateTransform>)"),
+    ("animateMotion", _svg(b'<circle r="2"><animateMotion path="M0 0h20" dur="1s"/></circle>'), "contains an animation element (<animateMotion>)"),
+    ("discard", _svg(SVG_PATH + b'<discard href="#p" begin="1s"/>'), "contains an animation element (<discard>)"),
+    ("animateColor", _svg(b'<circle r="5"><animateColor attributeName="fill" to="red" dur="1s"/></circle>'), "contains an animation element (<animateColor>)"),
+    ("keyframes", _svg(b"<style>@keyframes grow{to{opacity:0}}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("prefixed keyframes", _svg(b"<style>@-webkit-keyframes grow{to{opacity:0}}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("animation", _svg(b"<style>path{animation:grow 1s infinite}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("animation-name", _svg(b"<style>path{animation-name:grow}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("prefixed animation", _svg(b"<style>path{-webkit-animation:grow 1s}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("transition", _svg(b"<style>path{transition:d 1s}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("transition-duration in upper case", _svg(b"<style>PATH{TRANSITION-DURATION:1S}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("escaped property name", _svg(b"<style>path{anim\\61tion:grow 1s}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("comment before the colon", _svg(b"<style>path{animation/**/:grow 1s}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("CDATA style", _svg(b"<style><![CDATA[path{transition:d 1s}]]></style>" + SVG_PATH), STYLE_ANIMATION),
+    ("animation in a CSS comment", _svg(b"<style>/* animation: none */path{fill:red}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("style text after a child element", _svg(b"<style>path{fill:red}<b/>path{animation:grow 1s}</style>" + SVG_PATH), STYLE_ANIMATION),
+    ("animation in a style attribute", _svg(b'<path style="animation:grow 1s" d="M0 0h1"/>'), STYLE_ATTRIBUTE_ANIMATION),
+    ("transition in a style attribute", _svg(b'<path style="fill:red; transition: d 1s" d="M0 0h1"/>'), STYLE_ATTRIBUTE_ANIMATION),
+    ("33 use elements", _svg(_uses_of_the_path(33)), "has more than 32 <use> elements"),
+    ("use of a use", _svg(b"<defs>" + SVG_PATH + b'<use id="u" href="#p"/></defs><use href="#u"/>'), USE_CHAIN),
+    ("use of a group holding a use", _svg(b"<defs>" + SVG_PATH + b'<g id="g"><use href="#p"/></g></defs><use href="#g"/>'), USE_CHAIN),
+    ("xlink use of a symbol holding a use", _svg(b"<defs>" + SVG_PATH + b'<symbol id="s"><use xlink:href="#p"/></symbol></defs><use xlink:href="#s"/>'), USE_CHAIN),
+    ("use of itself", _svg(b'<use id="u" href="#u"/>'), USE_CHAIN),
+    ("use of the group around it", _svg(b'<g id="g"><use href="#g"/></g>'), USE_CHAIN),
+    ("percent-encoded target", _svg(b"<defs>" + SVG_PATH + b'<use id="u" href="#p"/></defs><use href="#%75"/>'), USE_CHAIN),
+]
+
+
+@pytest.mark.parametrize("icon_path", ["icon.svg", "icons/overview.svg"], ids=["plugin icon", "menu icon"])
+@pytest.mark.parametrize(("svg", "problem"), [pytest.param(svg, problem, id=name) for name, svg, problem in UNSTABLE_OR_EXPANDING_SVGS])
+def test_an_svg_icon_that_animates_or_chains_use_elements_fails(tmp_path, capsys, icon_path, svg, problem):
+    package = write_archive(tmp_path / "weather.esplugin", {**menu_files({"icons/overview.svg": MENU_ICON_SVG}), icon_path: svg})
+
+    assert main(["validate", str(package)]) == 1
+    assert capsys.readouterr().out.splitlines() == [f"package.{icon_path}: {problem}"]
+
+
+@pytest.mark.parametrize("icon_path", ["icon.svg", "icons/overview.svg"], ids=["plugin icon", "menu icon"])
+@pytest.mark.parametrize(
+    ("svg", "problem"),
+    [
+        (_svg(b'<rect style="fill: u\\72l(https://example.com/x)"/>'), "references an outside resource (style)"),
+        (_svg(b"<style>rect{}<b/>@import url(https://example.com/x.css);</style>"), "has a style that references an outside resource"),
+    ],
+    ids=["escaped url function", "import after a child element of a style"],
+)
+def test_an_outside_reference_hidden_from_a_plain_reading_of_the_css_fails(tmp_path, capsys, icon_path, svg, problem):
+    package = write_archive(tmp_path / "weather.esplugin", {**menu_files({"icons/overview.svg": MENU_ICON_SVG}), icon_path: svg})
+
+    assert main(["validate", str(package)]) == 1
+    assert capsys.readouterr().out.splitlines() == [f"package.{icon_path}: {problem}"]
+
+
+@pytest.mark.parametrize("icon_path", ["icon.svg", "icons/overview.svg"], ids=["plugin icon", "menu icon"])
+@pytest.mark.parametrize(
+    "svg",
+    [
+        _svg(_uses_of_the_path(32)),
+        _svg(b'<defs><g id="g">' + SVG_PATH + b'</g><symbol id="s"><circle r="5"/></symbol></defs><use href="#g"/><use xlink:href="#s"/>'),
+        _svg(b'<use href="#missing"/>'),
+        _svg(b'<style>.shape{fill:currentColor;stroke-width:2}</style><path class="shape" style="opacity:.5" d="M0 0h1"/>'),
+    ],
+    ids=["32 use elements", "uses of a group and a symbol without uses", "use of a missing element", "a still style"],
+)
+def test_a_still_svg_icon_with_unchained_use_elements_passes(tmp_path, icon_path, svg):
+    package = write_archive(tmp_path / "weather.esplugin", {**menu_files({"icons/overview.svg": MENU_ICON_SVG}), icon_path: svg})
+
+    assert main(["validate", str(package)]) == 0
+
+
 def test_the_plugin_icon_keeps_its_own_size_cap(plugin_source):
     source, spa = plugin_source
     (source / "icon.svg").write_bytes(OVERSIZED_MENU_ICON)

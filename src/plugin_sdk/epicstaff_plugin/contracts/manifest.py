@@ -12,6 +12,7 @@ model checks only their form.
 import json
 import re
 import unicodedata
+from collections.abc import Callable
 from typing import Annotated, Any, Literal, get_args
 from urllib.parse import urlsplit
 
@@ -80,6 +81,30 @@ NAVIGATION_PATH_PROBLEM = (
     "must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', "
     "without a query, a '.' or '..' segment, or a trailing '/'"
 )
+# Unicode's Default_Ignorable_Code_Point property, which `unicodedata` does not expose: code
+# points a renderer draws as nothing unless it knows them. The ranges (first, last; inclusive)
+# of DerivedCoreProperties.txt, Unicode 17.0.0, the same since Unicode 15.0.0.
+DEFAULT_IGNORABLE_CODE_POINTS = (
+    (0x00AD, 0x00AD),  # soft hyphen
+    (0x034F, 0x034F),  # combining grapheme joiner
+    (0x061C, 0x061C),  # Arabic letter mark
+    (0x115F, 0x1160),  # Hangul choseong and jungseong fillers
+    (0x17B4, 0x17B5),  # Khmer inherent vowels
+    (0x180B, 0x180F),  # Mongolian variation selectors and vowel separator
+    (0x200B, 0x200F),  # zero-width space, joiners and direction marks
+    (0x202A, 0x202E),  # bidirectional embeddings and overrides
+    (0x2060, 0x206F),  # word joiner, invisible operators, isolates, deprecated formats
+    (0x3164, 0x3164),  # Hangul filler
+    (0xFE00, 0xFE0F),  # variation selectors
+    (0xFEFF, 0xFEFF),  # zero-width no-break space (byte order mark)
+    (0xFFA0, 0xFFA0),  # halfwidth Hangul filler
+    (0xFFF0, 0xFFF8),  # unassigned, reserved as default-ignorable
+    (0x1BCA0, 0x1BCA3),  # shorthand format controls
+    (0x1D173, 0x1D17A),  # musical symbol formatting
+    (0xE0000, 0xE0FFF),  # tags, variation selectors supplement, unassigned
+)
+# Drawn as an empty cell, like a space, yet neither whitespace nor default-ignorable.
+BRAILLE_PATTERN_BLANK = chr(0x2800)
 NAVIGATION_ICON_PATTERN = r"^icons/[a-z0-9][a-z0-9_-]{0,62}\.(?:svg|png)$"
 NAVIGATION_ICON_PROBLEM = (
     "must be icons/<name>.svg or icons/<name>.png, where <name> is 1 to 63 lower-case "
@@ -150,14 +175,36 @@ def _navigation_path(path: str) -> str:
 
 
 def _navigation_label(label: str) -> str:
-    # A label is drawn in EpicStaff's own sidebar, so nothing in it may be invisible: no space
-    # at either end, and no format character (bidi overrides and isolates, zero-width spaces
-    # and joiners, byte order marks, soft hyphens).
+    # A label is drawn in EpicStaff's own sidebar, so it must show all it holds: no space at
+    # either end, nothing drawn as nothing (format characters such as bidi overrides and
+    # zero-width joiners, and default-ignorable ones such as fillers and variation selectors),
+    # no whitespace but the plain space, and at least one character that is not blank.
     if label != label.strip():
         raise _rule_error("label_whitespace", "must not start or end with whitespace")
-    if any(unicodedata.category(character) == "Cf" for character in label):
+    if any(_is_invisible(character) for character in label):
         raise _rule_error("invisible_character", "must not contain invisible formatting characters")
+    if any(character.isspace() and character != " " for character in label):
+        raise _rule_error(
+            "whitespace_character", "must not contain whitespace other than plain spaces"
+        )
+    if all(character.isspace() or character == BRAILLE_PATTERN_BLANK for character in label):
+        raise _rule_error(
+            "visible_character_required", "must contain at least one visible character"
+        )
     return label
+
+
+def _is_invisible(character: str) -> bool:
+    code_point = ord(character)
+    return unicodedata.category(character) == "Cf" or any(
+        first <= code_point <= last for first, last in DEFAULT_IGNORABLE_CODE_POINTS
+    )
+
+
+def _comparable_label(label: str) -> str:
+    # Labels that differ only in case or in compatibility form (fullwidth letters, ligatures,
+    # superscript digits) look alike in the sidebar, so they count as one label.
+    return unicodedata.normalize("NFKC", label).casefold()
 
 
 def _navigation_icon(path: str) -> str:
@@ -166,14 +213,16 @@ def _navigation_icon(path: str) -> str:
     return path
 
 
-def _unique(values: list[Any], what: str) -> None:
+def _unique(values: list[Any], what: str, key: Callable[[Any], Any] | None = None) -> None:
+    # `key` gives what two values are compared by; the message names the value as written.
     seen: set[Any] = set()
     for value in values:
-        if value in seen:
+        compared = value if key is None else key(value)
+        if compared in seen:
             raise _rule_error(
                 "duplicate", "lists {what} '{value}' more than once", what=what, value=value
             )
-        seen.add(value)
+        seen.add(compared)
 
 
 ShortText = Annotated[
@@ -253,7 +302,7 @@ class Spa(_ManifestPart):
     @classmethod
     def _distinct_paths_and_labels(cls, items: list[NavigationItem]) -> list[NavigationItem]:
         _unique([item.path for item in items], "path")
-        _unique([item.label for item in items], "label")
+        _unique([item.label for item in items], "label", key=_comparable_label)
         return items
 
 

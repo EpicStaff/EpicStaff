@@ -38,15 +38,36 @@ Two things they still share:
   count. The node checks once a second, so a plugin can press on the ports for up to a second
   before it is stopped ([Runtime](../reference/runtime.md#how-the-backend-is-started)).
 
-## A plugin chooses words in EpicStaff's own sidebar
+## A plugin chooses what EpicStaff's own sidebar shows
 
-The labels of a plugin's app menu (`spa.navigation`) appear in EpicStaff's own sidebar, not inside the plugin's frame,
-and its icons are drawn there too. A label such as "Change password" would look like part of EpicStaff, although it
-opens a page of the plugin. EpicStaff limits the room a plugin gets: at most 12 entries, 32 characters each and none
-of them an invisible formatting character (so a label cannot reverse or hide part of its text), shown under the app's
-name and switcher, with icons drawn as one-colour shapes after the same safety checks as the plugin's icon. It does
-not judge what a label says. The labels are listed in the SuperAdmin's review of every install and
-upgrade, and an upgrade that changes them says so: read them before approving.
+While an app is open, EpicStaff's own sidebar shows the app's name, its icon and its menu (`spa.navigation`): labels
+and icons the plugin chose, outside the plugin's frame. A label such as "Change password" looks like part of
+EpicStaff, although it opens a page of the plugin.
+
+Showing the menu under the app's name and switcher does not protect anyone by itself, because the plugin chooses its
+name and icon too. A plugin named "EpicStaff", with an icon like EpicStaff's logo and labels such as "Settings" and
+"Change password", can make the whole sidebar look like EpicStaff's own.
+
+What protects people is the SuperAdmin's review. The review of every install and upgrade shows the plugin's name, its
+icon and its menu (icon, label and path), and an upgrade that changes the menu says so. Read them before approving,
+and refuse a plugin that looks like EpicStaff or like another app. An upgrade's review shows the new icons, but does not
+point out an icon redrawn under the same file name: look at them.
+
+The rules make sure that what the review shows is what people see:
+
+- A label is at most 32 characters of text that shows all it holds: no invisible character (format or default-ignorable
+  characters, such as bidirectional overrides, zero-width spaces and fillers), no whitespace but the plain space,
+  none at either end, and at least one visible character. So a label cannot reverse, hide or blank out part of its
+  text. Two labels of a menu cannot differ only in case or in a look-alike form, such as fullwidth letters, and a
+  menu has at most 12 entries.
+- Icons pass the same safety checks as the plugin's icon, and menu icons are drawn as one-colour shapes. No icon can
+  animate: SMIL animation, CSS animations and transitions are refused, so an icon cannot change while people look at
+  it. An icon's file changes only with a new version, whose review shows it.
+
+EpicStaff does not judge what a name or a label says or what an icon shows. An SVG icon can also draw differently
+in different places, as its file allows: a CSS media query or a `<switch>` element picks what to draw by the size the
+icon is drawn at, the theme or the browser's language, so the review can show a different picture than a member's
+sidebar. When that matters, read the icon's SVG source before approving.
 
 ## Keeping organizations apart inside a plugin is the plugin's job
 
