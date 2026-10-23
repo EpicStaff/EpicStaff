@@ -20,6 +20,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from foundation.clients.sandbox import SandboxClient
 from infrastructure.messaging.python_code_executor_service import (
     PythonCodeExecutorService,
 )
@@ -32,7 +33,6 @@ from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
 )
 from infrastructure.providers.factory import RealtimeAgentClientFactory
-from infrastructure.sandbox.sandbox_client import SandboxExecutionClient
 from infrastructure.summarization.openai_summarization_client import (
     OpenaiSummarizationClient,
 )
@@ -55,8 +55,10 @@ app = FastAPI()
 redis_service = RedisService(
     host=config.REDIS_HOST, port=config.REDIS_PORT, password=config.REDIS_PASSWORD
 )
-sandbox_client = SandboxExecutionClient(
-    base_url=config.SANDBOX_BASE_URL, timeout=config.SANDBOX_TIMEOUT
+sandbox_client = SandboxClient(
+    queue_timeout=config.SANDBOX_QUEUE_TIMEOUT,
+    base_url=config.SANDBOX_BASE_URL,
+    timeout=config.SANDBOX_TIMEOUT,
 )
 python_code_executor_service = PythonCodeExecutorService(
     redis_service=redis_service, sandbox_client=sandbox_client
@@ -243,7 +245,7 @@ async def shutdown_event():
     redis_listener_task.cancel()
     await asyncio.gather(redis_listener_task, return_exceptions=True)
     await knowledge_client.stop()
-    await sandbox_client.close()
+    await sandbox_client.aclose()
 
 
 # Store active connections and their handlers

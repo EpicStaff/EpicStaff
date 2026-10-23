@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from django.utils import timezone
-from foundation.transport.http import ClientError
+from foundation.transport.http import ClientError, ClientUnavailableError
 from loguru import logger
 from pydantic import ValidationError
 from rbac.authorship import resolve_author
@@ -39,6 +39,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
     _CREDENTIAL_ISSUE_STDERR = "Could not grant file storage access for this run."
     _SUBMIT_FAILED_LOG = "Failed to submit code execution to the sandbox (execution_id={}, {})"
     _SUBMIT_FAILED_STDERR = "Could not reach the code sandbox for this run."
+    _SANDBOX_BUSY_STDERR = "The code sandbox is busy; try again in a moment."
 
     def run_code(
         self,
@@ -357,7 +358,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         A rejected or undelivered submission produces no result on the result
         channel, so the PENDING row would stay PENDING for good -- it is marked
-        ERROR here instead, and any minted credentials are revoked.
+        ERROR here instead, and any minted credentials are revoked. A full sandbox
+        (503) is not retried: the user is waiting on this request, so the row tells
+        them to try again instead.
 
         Returns:
             The execution id, whether the submit succeeded or failed.
@@ -365,6 +368,14 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         try:
             with SandboxExecutionClient() as client:
                 client.submit(code_task_data)
+        except ClientUnavailableError as error:
+            return self._fail_execution(
+                execution_id=execution_id,
+                use_storage=use_storage,
+                log_message=self._SUBMIT_FAILED_LOG,
+                stderr=self._SANDBOX_BUSY_STDERR,
+                log_args=(type(error).__name__,),
+            )
         except ClientError as error:
             # The class name, never the error: it holds the sandbox response and,
             # through it, the submitted body with resolved secret plaintext.

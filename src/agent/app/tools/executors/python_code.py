@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from foundation.transport.http import ClientError
 from loguru import logger
 from pydantic import ValidationError
 
@@ -73,12 +74,11 @@ class PythonCodeToolExecutor:
 
         try:
             result = await self._sandbox.submit(task)
-        except Exception as error:
-            return ToolResult(
-                tool_call_id="",
-                content=f"Sandbox transport error: {error}",
-                is_error=True,
-            )
+        except (ClientError, ConnectionError) as error:
+            # Both carry a message fit for the transcript: the foundation client never
+            # puts the request (and its secrets) into one, and a ConnectionError here is
+            # the client's own "stopped" or "listener failed" notice.
+            return ToolResult(tool_call_id="", content=str(error), is_error=True)
 
         if result.returncode != 0 or result.stderr:
             return ToolResult(

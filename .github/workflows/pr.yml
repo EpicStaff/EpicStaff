@@ -69,22 +69,24 @@ jobs:
           filter cla '^(CLA\.md$|\.github/scripts/check_cla_version\.py$|\.github/scripts/cla_version\.py$|\.github/scripts/test_check_cla_version\.py$|\.github/workflows/pr\.yml$)'
 
           # Backend suites are gated per service, so a pull request touching one
-          # service does not pay for the other three. Three inputs force every
+          # service does not pay for the other three. Four inputs force every
           # suite to run whichever service directory changed:
-          #   src/shared/  -- imported by all four (django_app 49, crew 48 and
-          #                   sandbox 4 `src.shared` imports, agent 91 `shared`
-          #                   imports, plus crew's shared/dotdict path dependency)
-          #   Makefile     -- defines the *-tests targets these jobs invoke
-          #   this file    -- same self-testing rule as the filters above
-          backend_wide='src/shared/|Makefile$|\.github/workflows/pr\.yml$'
+          #   src/shared/      -- imported by all four (django_app 49, crew 48 and
+          #                       sandbox 4 `src.shared` imports, agent 91 `shared`
+          #                       imports, plus crew's shared/dotdict path dependency)
+          #   src/foundation/  -- a path dependency of django_app, crew, agent and
+          #                       realtime (their sandbox client lives there)
+          #   Makefile         -- defines the *-tests targets these jobs invoke
+          #   this file        -- same self-testing rule as the filters above
+          backend_wide='src/shared/|src/foundation/|Makefile$|\.github/workflows/pr\.yml$'
 
-          # crew and agent need no database and nothing from the filesystem
-          # beyond an interpreter, so one matrix job covers them both and this
-          # picks its legs. `filter` leaves $result set, so the array is built
-          # from the same regex that writes each output rather than from a
+          # crew, agent and foundation need no database and nothing from the
+          # filesystem beyond an interpreter, so one matrix job covers them all
+          # and this picks its legs. `filter` leaves $result set, so the array is
+          # built from the same regex that writes each output rather than from a
           # second copy of it.
           nodb=''
-          for svc in crew agent; do
+          for svc in crew agent foundation; do
             filter "be_$svc" "^(src/$svc/|$backend_wide)"
             if [ "$result" = true ]; then
               nodb="$nodb${nodb:+,}\"$svc\""
@@ -308,11 +310,11 @@ jobs:
         if: needs.changes.outputs.fe_deps == 'true'
         run: npm audit --audit-level=high
 
-  # crew and agent: no database, no service containers, well under a minute for
-  # both. One matrix job whose legs are decided at runtime, so a pull request
-  # touching only src/agent/ runs one leg and a pull request touching neither
-  # service skips the job outright. sandbox was a third leg until it needed a
-  # container of its own; it has a separate job below.
+  # crew, agent and foundation: no database, no service containers, well under
+  # a minute each. One matrix job whose legs are decided at runtime, so a pull
+  # request touching only src/agent/ runs one leg and a pull request touching
+  # none of them skips the job outright. sandbox was a leg too until it needed
+  # a container of its own; it has a separate job below.
   #
   # An empty `py_services` array would make `fromJSON` produce a matrix with no
   # legs, which GitHub treats as a workflow error rather than a skip -- hence the

@@ -184,6 +184,8 @@ async def main() -> None:
         result_channel=settings.CODE_RESULT_CHANNEL,
         sandbox_base_url=f"http://{settings.SANDBOX_HOST}:{settings.SANDBOX_PORT}",
         sandbox_timeout=settings.AGENT_SANDBOX_TIMEOUT,
+        queue_timeout=settings.SANDBOX_QUEUE_TIMEOUT,
+        code_result_timeout=settings.AGENT_CODE_RESULT_TIMEOUT,
     )
     await sandbox_client.start()
 

@@ -68,6 +68,11 @@ CODE_RESULT_CHANNEL = env.str("CODE_RESULT_CHANNEL")
 SANDBOX_HOST = env.str("SANDBOX_HOST")
 SANDBOX_PORT = env.int("SANDBOX_PORT")
 AGENT_SANDBOX_TIMEOUT = env.time("AGENT_SANDBOX_TIMEOUT")
+# Total time a submit keeps retrying a sandbox that is full or unreachable.
+SANDBOX_QUEUE_TIMEOUT = env.time("SANDBOX_QUEUE_TIMEOUT")
+# Backstop for the wait on a python-code tool result; a lost execution is caught
+# sooner by the status checks. None means "wait while the sandbox has it".
+AGENT_CODE_RESULT_TIMEOUT = env.time("AGENT_CODE_RESULT_TIMEOUT")
 
 AGENT_DROP_UNSUPPORTED_LLM_PARAMS = env.bool("AGENT_DROP_UNSUPPORTED_LLM_PARAMS")
 AGENT_CONTEXT_WARNING_RATIO = env.float("AGENT_CONTEXT_WARNING_RATIO")

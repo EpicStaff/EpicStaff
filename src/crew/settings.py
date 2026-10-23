@@ -69,6 +69,8 @@ KEY_VALUE_TIMEOUT = env.time("CREW_KEY_VALUE_TIMEOUT")
 SANDBOX_HOST = env.str("SANDBOX_HOST")
 SANDBOX_PORT = env.int("SANDBOX_PORT")
 SANDBOX_TIMEOUT = env.time("CREW_SANDBOX_TIMEOUT")
-# Safety net for the wait on a sandbox code-execution result.
-# None means "wait indefinitely".
+# Total time a submit keeps retrying a sandbox that is full or unreachable.
+SANDBOX_QUEUE_TIMEOUT = env.time("SANDBOX_QUEUE_TIMEOUT")
+# Backstop for the wait on a sandbox code-execution result; a lost execution is
+# caught sooner by the status checks. None means "wait while the sandbox has it".
 CODE_RESULT_TIMEOUT = env.time("CREW_CODE_RESULT_TIMEOUT")

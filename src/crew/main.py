@@ -3,7 +3,7 @@ import gc
 
 import settings
 from clients.key_value import KeyValueClient
-from clients.sandbox import SandboxClient
+from foundation.clients.sandbox import SandboxClient
 from services.agent_task_service import AgentTaskService
 from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.knowledge_search_service import KnowledgeSearchService
@@ -26,6 +26,7 @@ async def main():
         password=settings.REDIS_PASSWORD,
     )
     sandbox_client = SandboxClient(
+        queue_timeout=settings.SANDBOX_QUEUE_TIMEOUT,
         base_url=f"http://{settings.SANDBOX_HOST}:{settings.SANDBOX_PORT}",
         timeout=settings.SANDBOX_TIMEOUT,
     )

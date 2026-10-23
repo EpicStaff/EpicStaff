@@ -5,9 +5,10 @@ import contextlib
 import uuid
 
 import redis.asyncio as aioredis
+from foundation.clients.sandbox import ExecutionRequest
+from foundation.clients.sandbox import SandboxClient as SandboxHttpClient
 from loguru import logger
 
-from app.sandbox.http_client import AsyncClient
 from shared.bench_log import BENCH_LEVEL
 from shared.models.tools import CodeResultData, CodeTaskData
 
@@ -15,10 +16,11 @@ from shared.models.tools import CodeResultData, CodeTaskData
 class SandboxClient:
     """Submits code executions to sandbox_new over HTTP; receives results on Redis.
 
-    Intake is `POST /executions` (sandbox_new's HTTP API). Results come back on the
-    shared Redis result channel and are matched to their pending request by
-    execution_id, exactly as before. The task's storage credentials are minted
-    upstream and only passed through here; sandbox_new rejects a task with
+    Intake is `POST /executions` (sandbox_new's HTTP API), through the shared
+    foundation client, which retries a full sandbox and watches over each pending
+    execution. Results come back on the shared Redis result channel and are matched
+    to their pending request by execution_id. The task's storage credentials are
+    minted upstream and only passed through here; sandbox_new rejects a task with
     `use_storage` set and no credentials.
     """
 
@@ -30,6 +32,8 @@ class SandboxClient:
         result_channel: str,
         sandbox_base_url: str,
         sandbox_timeout: float,
+        queue_timeout: float,
+        code_result_timeout: float | None,
     ) -> None:
         self._host = host
         self._port = port
@@ -37,9 +41,11 @@ class SandboxClient:
         self._result_channel = result_channel
         self._sandbox_base_url = sandbox_base_url
         self._sandbox_timeout = sandbox_timeout
+        self._queue_timeout = queue_timeout
+        self._code_result_timeout = code_result_timeout
         self._redis: aioredis.Redis | None = None
         self._pubsub: aioredis.client.PubSub | None = None
-        self._http: AsyncClient | None = None
+        self._http: SandboxHttpClient | None = None
         self._reader_task: asyncio.Task | None = None
         self._pending: dict[str, asyncio.Future[CodeResultData]] = {}
         self._started = False
@@ -57,7 +63,11 @@ class SandboxClient:
         pubsub = redis_conn.pubsub()
         self._pubsub = pubsub
         await pubsub.subscribe(self._result_channel)
-        self._http = AsyncClient(base_url=self._sandbox_base_url, timeout=self._sandbox_timeout)
+        self._http = SandboxHttpClient(
+            queue_timeout=self._queue_timeout,
+            base_url=self._sandbox_base_url,
+            timeout=self._sandbox_timeout,
+        )
         self._reader_task = asyncio.create_task(self._reader_loop())
         self._started = True
         logger.info("SandboxClient started, subscribed to {}", self._result_channel)
@@ -91,7 +101,18 @@ class SandboxClient:
         self._started = False
         logger.info("SandboxClient stopped")
 
-    async def submit(self, task: CodeTaskData, *, timeout: float | None = None) -> CodeResultData:
+    async def submit(self, task: CodeTaskData) -> CodeResultData:
+        """Run `task` in the sandbox and return its result.
+
+        The task gets a fresh execution id; its own is ignored.
+
+        Raises:
+            ClientError: The sandbox stayed full, refused or lost the execution, could
+                not be reached, or no result arrived within `code_result_timeout`.
+                The message is fit to show the user.
+            ConnectionError: The client stopped, or its result listener failed,
+                while the execution was pending.
+        """
         assert self._http is not None, "SandboxClient.start() must be called before submit()"
         execution_id = str(uuid.uuid4())
 
@@ -100,28 +121,26 @@ class SandboxClient:
         self._pending[execution_id] = future
 
         try:
-            await self._http.request(
-                "POST",
-                "/executions",
-                json={
-                    "execution_id": execution_id,
-                    "venv_id": task.venv_id,
-                    "session_id": task.session_id,
-                    "code": task.code,
-                    "entrypoint": task.entrypoint,
-                    "func_kwargs": task.func_kwargs or {},
-                    "global_kwargs": task.global_kwargs or {},
-                    "secrets": task.secrets,
-                    "use_storage": task.use_storage,
-                    "storage_allowed_paths": task.storage_allowed_paths or [],
-                    "storage_org_prefix": task.storage_org_prefix,
-                    "storage_credentials": (
+            await self._http.submit(
+                ExecutionRequest(
+                    execution_id=execution_id,
+                    session_id=task.session_id,
+                    code=task.code,
+                    entrypoint=task.entrypoint,
+                    global_kwargs=task.global_kwargs or {},
+                    func_kwargs=task.func_kwargs or {},
+                    secrets=task.secrets,
+                    venv_id=task.venv_id,
+                    use_storage=task.use_storage,
+                    storage_allowed_paths=task.storage_allowed_paths or [],
+                    storage_org_prefix=task.storage_org_prefix,
+                    storage_credentials=(
                         task.storage_credentials.model_dump()
                         if task.storage_credentials is not None
                         else None
                     ),
-                    "timeout": task.execution_timeout,
-                },
+                    timeout=task.execution_timeout,
+                )
             )
             logger.log(
                 BENCH_LEVEL,
@@ -130,11 +149,9 @@ class SandboxClient:
                 session_id=task.session_id,
                 execution_id=execution_id,
             )
-
-            if timeout is not None:
-                return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
-
-            return await future
+            return await self._http.wait_for_result(
+                execution_id, future, backstop=self._code_result_timeout
+            )
 
         finally:
             self._pending.pop(execution_id, None)
