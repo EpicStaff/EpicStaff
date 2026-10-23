@@ -57,6 +57,10 @@ python manage.py upload_models
 echo "Seeding system API key..."
 python manage.py seed_system_api_key
 
+# Register the plugin node from PLUGINS_NODE_*; a no-op while plugins are off.
+echo "Seeding plugin node..."
+python manage.py seed_plugin_node
+
 # Collect static files for production server
 echo "Collects static"
 python manage.py collectstatic --noinput

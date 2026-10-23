@@ -9,7 +9,7 @@ import { AppSvgIconComponent, Spinner2Component, StatusBadgeComponent } from '@s
 import { CollapseOnOverflowDirective, HasPermissionDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
-import { EditorInfo } from 'src/app/features/flows/services/graph-collaboration.ws.service';
+import { PresentEditor } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
@@ -47,7 +47,7 @@ export class FlowHeaderComponent {
     /** The status of the run in progress (regular or test); null hides the badge. */
     readonly runStatus = input<GraphSessionStatus | null>(null);
     @Input() hasUnsavedChanges = false;
-    @Input() editors: EditorInfo[] = [];
+    @Input() editors: PresentEditor[] = [];
     @Output() save = new EventEmitter<void>();
     @Output() back = new EventEmitter<void>();
     @Output() viewSessions = new EventEmitter<void>();

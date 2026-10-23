@@ -58,6 +58,7 @@
                 [initialNodeId]="initialNodeId"
                 [initialViewport]="savedViewport()"
                 [isSaving]="isSaving()"
+                [hasUnsavedChanges]="hasUnsavedChanges()"
                 (save)="onGraphSave($event)"
                 (openShortcuts)="openShortcutsModal($event)"
                 (requestReload)="refreshCurrentFlow()"

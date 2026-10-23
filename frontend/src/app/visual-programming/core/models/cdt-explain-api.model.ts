@@ -48,7 +48,6 @@ export interface CdtExplainComputationBlock extends CdtExplainBlockBase {
     readonly code: string;
     readonly input_map: Readonly<Record<string, string>>;
     readonly output_variable_path: string | null;
-    readonly libraries: readonly string[];
 }
 
 export interface CdtExplainConditionBlock extends CdtExplainBlockBase {

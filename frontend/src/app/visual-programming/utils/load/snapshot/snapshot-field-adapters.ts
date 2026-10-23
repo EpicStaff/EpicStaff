@@ -22,11 +22,6 @@ import { InlineSurface } from '../../../core/models/task-node.model';
  * difference, so a node adapter reads as a list of the fields that differ.
  */
 
-/** Space-separated library string (export) → list (live). */
-export function parseSnapshotLibraries(libraries: string | null | undefined): string[] {
-    return (libraries ?? '').split(' ').filter(Boolean);
-}
-
 /**
  * Declared secret names → live refs. A name the organisation no longer has is left out, the same
  * as a secret deleted after the node was saved; the restore warnings report it.
@@ -49,25 +44,38 @@ export function resolveSecretIdByName(
     return name ? (secretsByName.get(name) ?? null) : null;
 }
 
-/** Export python code (no id, library string) → live python code. */
+/**
+ * Export python code (no id) → live python code.
+ *
+ * KNOWN BROKEN: a restored version loses its environment. Libraries now live only
+ * on the venv, and the export carries neither the venv nor a reference to one, so
+ * `code.libraries` is dropped here and the node comes back on the default venv.
+ * Fixing it means deciding how a venv travels in an export; until then this is the
+ * honest mapping of what the snapshot actually holds.
+ */
 export function toLivePythonCode(code: SnapshotPythonCode, secrets: DeclaredSecretRef[]): GetPythonCodeRequest {
     return {
         id: 0,
         code: code.code,
         entrypoint: code.entrypoint,
-        libraries: parseSnapshotLibraries(code.libraries),
         secrets,
         execution_timeout: code.execution_timeout,
     };
 }
 
-/** Export CDT pre/post code (library string) → live CDT code block. */
+/** Export CDT pre/post code → live CDT code block. Drops `libraries`; see `toLivePythonCode`. */
 export function toLiveClassificationPythonCode(
     code: SnapshotClassificationPythonCode | null,
     secrets: DeclaredSecretRef[]
 ): CDTPythonCodeBlock | null {
     if (!code) return null;
-    return { ...code, libraries: parseSnapshotLibraries(code.libraries), secrets };
+    return {
+        code: code.code,
+        entrypoint: code.entrypoint,
+        global_kwargs: code.global_kwargs,
+        content_hash: code.content_hash,
+        secrets,
+    };
 }
 
 /**

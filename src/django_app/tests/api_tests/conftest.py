@@ -12,6 +12,13 @@ from tables.services.secrets import secret_service
 from tests.api_tests.role_grant_clients import FULL_CRUD, client_with_grants
 
 
+@pytest.fixture(params=[False, True], ids=["plain-http", "https"])
+def refresh_cookie_secure(request, settings):
+    """Run a test once per refresh cookie: `auth.refresh` (plain http) and `__Host-auth.refresh`."""
+    settings.REFRESH_COOKIE_SECURE = request.param
+    return request.param
+
+
 @pytest.fixture
 def retention_seven_days(settings):
     # A developer's local .env can set DJANGO_RECYCLE_BIN_RETENTION_DAYS.
@@ -48,7 +55,6 @@ def python_code_tool_pointing_at_secret_a(default_org, secret_a) -> PythonCodeTo
     python_code = PythonCode.objects.create(
         code="def main(**kwargs):\n    return 1\n",
         entrypoint="main",
-        libraries="",
         global_kwargs={},
     )
     python_code.secrets.set([secret_a])

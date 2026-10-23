@@ -24,6 +24,7 @@ from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.models import Graph, PythonCode, PythonCodeTool
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.python_code_slots import PYTHON_CODE_SLOT_IDS, PYTHON_CODE_SLOTS
 
 MIN_SECONDS = 3
@@ -50,7 +51,9 @@ def export_data(default_org, slot, export_service):
         graph,
         PythonCode.objects.create(code="def main(): return 1", execution_timeout=STORED_SECONDS),
     )
-    return export_service.export_entities(EntityType.GRAPH, [graph.id])
+    return export_service.export_entities(
+        EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
 
 
 def _exported_python_code(export_data: dict, slot) -> dict:
@@ -135,7 +138,9 @@ def test_python_tool_round_trip_keeps_the_execution_timeout(
         ),
         org=default_org,
     )
-    export_data = export_service.export_entities(EntityType.PYTHON_CODE_TOOL, [tool.id])
+    export_data = export_service.export_entities(
+        EntityType.PYTHON_CODE_TOOL, [tool.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
     [exported_tool] = export_data[EntityType.PYTHON_CODE_TOOL]
     assert exported_tool["python_code"]["execution_timeout"] == STORED_SECONDS
     other_org = Organization.objects.create(name="execution-timeout-tool-importer")
@@ -162,7 +167,9 @@ def test_python_tool_below_the_minimum_imports_as_the_minimum(
         ),
         org=default_org,
     )
-    export_data = export_service.export_entities(EntityType.PYTHON_CODE_TOOL, [tool.id])
+    export_data = export_service.export_entities(
+        EntityType.PYTHON_CODE_TOOL, [tool.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
     export_data[EntityType.PYTHON_CODE_TOOL][0]["python_code"]["execution_timeout"] = 2
     other_org = Organization.objects.create(name="execution-timeout-tool-below-minimum-importer")
 
@@ -187,7 +194,9 @@ def _python_tool_with_timeout(org, execution_timeout: int) -> PythonCodeTool:
 
 
 def _exported_tool(export_service, tool: PythonCodeTool) -> dict:
-    export_data = export_service.export_entities(EntityType.PYTHON_CODE_TOOL, [tool.id])
+    export_data = export_service.export_entities(
+        EntityType.PYTHON_CODE_TOOL, [tool.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
     return copy.deepcopy(export_data[EntityType.PYTHON_CODE_TOOL][0])
 
 

@@ -142,7 +142,6 @@ import {
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
     patchLiveFlowWithBackendIds,
-    toDirtyComparableFlowState,
 } from '../../../../visual-programming/utils/save';
 import { withGraphScheduleTriggerRuntimeState } from '../../../../visual-programming/utils/save/schedule-trigger-runtime-state';
 import { unpackSubflow } from '../../../../visual-programming/utils/unpack/unpack-subflow';
@@ -275,11 +274,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return buildFlowModelFromGraphDto(graph);
     });
     public readonly currentFlowState = computed<FlowModel>(() => this.flowService.getFlowState());
-    public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
-        const current = toDirtyComparableFlowState(this.currentFlowState());
-        const saved = toDirtyComparableFlowState(this.savedFlowStateService.savedFlow());
-        return JSON.stringify(current) !== JSON.stringify(saved);
-    });
+    public readonly hasUnsavedChangesSignal = this.savedFlowStateService.hasUnsavedChanges;
 
     /**
      * Every request that writes the graph with its `save_version` goes through this,

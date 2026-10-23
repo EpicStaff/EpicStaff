@@ -25,7 +25,7 @@ def _state() -> dict:
 
 
 def _code(code: str) -> PythonCodeData:
-    return PythonCodeData(venv_name="default", code=code, entrypoint="main", libraries=[])
+    return PythonCodeData(code=code, entrypoint="main")
 
 
 async def _run_python_node(code: str) -> dict:

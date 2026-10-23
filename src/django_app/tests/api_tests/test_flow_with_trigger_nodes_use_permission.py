@@ -31,7 +31,7 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tests.custom_role_fixtures import *  # noqa: F401,F403
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 DENIED_CODE = "flow_with_trigger_nodes_requires_use_permission"
@@ -138,8 +138,15 @@ def _copy(client, graph):
 
 
 def _export(graph):
-    return ExportService(entity_registry).export_entities(
-        EntityType.GRAPH, [graph.id], org_id=graph.org_id
+    return (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.GRAPH,
+            [graph.id],
+            org_id=graph.org_id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data
     )
 
 
@@ -153,7 +160,7 @@ def _import(client, export_data, **options):
 
 def _partial_export(source, *node_refs):
     result = GraphPartialExportService(entity_registry).export(
-        list(node_refs), org_id=source.org_id
+        list(node_refs), org_id=source.org_id, policy=UNRESTRICTED_EXPORT_POLICY
     )
     assert not result.has_errors, result.errors
     return result.data

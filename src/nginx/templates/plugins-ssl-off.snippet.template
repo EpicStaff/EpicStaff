@@ -1,0 +1,4 @@
+# NGINX_SSL_MODE=off for the plugin hosts: plain http, for *.localhost development or behind a
+# proxy that terminates TLS. Django refuses to start with plugins on and
+# DJANGO_REFRESH_COOKIE_SECURE=false unless PLUGINS_BASE_DOMAIN ends in .localhost.
+listen 80;

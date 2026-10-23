@@ -212,13 +212,19 @@ async def _model_config(llm: LLMData, tool_choice=None) -> dict:
 @pytest.mark.parametrize(
     ("provider", "model", "expected_model", "expected_store"),
     [
+        # An OpenAI row's bare name litellm does not know is OpenAI's; a known one stays bare.
         ("openai", "fake-model", "openai/fake-model", False),
-        # A model that already names its provider is not prefixed again.
+        ("openai", "gpt-4o", "gpt-4o", False),
+        # A vendor-prefixed name on an OpenAI row is left for litellm to route.
         ("openai", "openai/gpt-4o", "openai/gpt-4o", False),
         # OpenAI/Azure calls opt out of provider-side storage; the decision follows the
-        # provider litellm routes to (the model prefix), not the configured provider name.
+        # provider litellm routes to, which is the configured row's provider.
         ("azure", "my-deployment", "azure/my-deployment", False),
-        ("openrouter", "openai/gpt-5.6-luna", "openai/gpt-5.6-luna", False),
+        # Vendor-namespaced ids stay on the row's provider, never the vendor named in the id.
+        ("openrouter", "openai/gpt-5.6-luna", "openrouter/openai/gpt-5.6-luna", None),
+        ("groq", "openai/gpt-oss-120b", "groq/openai/gpt-oss-120b", None),
+        ("google_ai", "my-custom-model", "gemini/my-custom-model", None),
+        ("google_ai", "gemini/gemini-2.5-pro", "gemini/gemini-2.5-pro", None),
         ("anthropic", "claude-sonnet-4-5", "anthropic/claude-sonnet-4-5", None),
         ("openai", "anthropic/claude-sonnet-4-5", "anthropic/claude-sonnet-4-5", None),
     ],
@@ -294,9 +300,9 @@ async def test_llm_call_receives_no_unset_config_field():
     [
         # Anthropic rejects temperature != 1 and top_p while thinking is on.
         ("anthropic", "claude-sonnet-4-6", {}),
-        # The rules follow the provider litellm routes to (the model prefix).
+        # The rules follow the provider litellm routes to.
         ("openai", "anthropic/claude-sonnet-4-6", {}),
-        ("anthropic", "openai/gpt-4o", {"temperature": 0.5, "top_p": 0.9}),
+        ("anthropic", "openai/gpt-4o", {}),
         # A provider litellm does not know is taken from the model prefix.
         ("my_gateway", "claude-sonnet-4-6", {"temperature": 0.5, "top_p": 0.9}),
     ],

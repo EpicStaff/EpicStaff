@@ -1,0 +1,13 @@
+# PLUGINS_DEV_MODE=true, at http level (plugins-server-true.snippet): the Host header the
+# development page proxy (@plugin_development_page, plugins-development-server-true.snippet) sends
+# a frontend development server.
+#
+# localhost and the development server's port, as when the author opens it directly, never the
+# plugin's host: development servers refuse a Host they do not know (esbuild answers 403 to
+# anything but localhost or 127.0.0.1, and Vite and webpack-dev-server keep their own lists), so
+# an author configures none of them. The plugin's host goes in X-Forwarded-Host. The port is the
+# page decision's X-Plugin-Spa-Upstream, "<address>:<port>".
+map $plugin_spa_upstream $plugin_spa_host {
+    "~:(?<plugin_spa_port>[0-9]+)$" localhost:$plugin_spa_port;
+    default                          localhost;
+}

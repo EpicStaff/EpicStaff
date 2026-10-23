@@ -19,6 +19,7 @@ REST_FRAMEWORK = {
     # the actual permission logic under test.
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rbac.identity.authentication.JwtOrApiKeyAuthentication",
+        "plugins.identity.service_account_authentication.PluginServiceAccountAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [],
 }

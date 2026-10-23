@@ -72,7 +72,9 @@ for (const file of files) {
       const typesAlias = scope.startsWith('@')
         ? `@types/${scope.slice(1).replace('/', '__')}`
         : `@types/${scope}`;
-      if (declared.has(scope) || declared.has(typesAlias) || builtins.has(scope)) continue;
+      // `builtinModules` lists `fs`, not `node:fs` (only prefix-only modules such as `node:test` carry the prefix).
+      const builtin = builtins.has(scope) || (scope.startsWith('node:') && builtins.has(scope.slice('node:'.length)));
+      if (declared.has(scope) || declared.has(typesAlias) || builtin) continue;
 
       const line = source.slice(0, match.index).split('\n').length;
       if (!findings.has(scope)) findings.set(scope, []);

@@ -135,6 +135,7 @@ class FlowGraphStubComponent {
     readonly initialNodeId = input<string | null>(null);
     readonly initialViewport = input<FlowViewport | null>(null);
     readonly isSaving = input(false);
+    readonly hasUnsavedChanges = input(false);
     readonly save = output<FlowModel>();
     readonly openShortcuts = output<DOMRect>();
     readonly requestReload = output<void>();
@@ -877,7 +878,7 @@ describe('FlowVisualProgrammingComponent', () => {
             graph: 1,
             node_number: 1,
             node_name: 'Webhook Trigger #1',
-            python_code: { id: 5, libraries: [], code: 'def main(trigger_payload): pass', entrypoint: 'main' },
+            python_code: { id: 5, code: 'def main(trigger_payload): pass', entrypoint: 'main' },
             input_map: {},
             output_variable_path: null,
             webhook_trigger_path: '',
@@ -1067,7 +1068,7 @@ describe('FlowVisualProgrammingComponent', () => {
     });
 
     describe('stored graph for the editor', () => {
-        const STORED_PYTHON_CODE = { id: 55, code: 'def main(**kwargs): pass', entrypoint: 'main', libraries: [] };
+        const STORED_PYTHON_CODE = { id: 55, code: 'def main(**kwargs): pass', entrypoint: 'main' };
 
         function loadFlowWithWebhookNode(graphId: number): void {
             flowsApi['getGraphById'].mockReturnValue(
@@ -1178,6 +1179,21 @@ describe('FlowVisualProgrammingComponent', () => {
         function showsRemoteSave(): boolean {
             return flowService.getFlowState().nodes.some((node) => node.backendId === 77);
         }
+
+        it('names a plugin that saved the flow and never takes it for the signed-in person', () => {
+            // No profile is loaded here (the current user id is undefined), the case a loose `==` would take for "me".
+            TestBed.inject(GraphCollaborationWsService).graphSaved$.next({
+                type: 'graph_saved',
+                graph_id: 1,
+                new_save_version: 2,
+                saved_by: { user_id: null, display_name: 'Weather (plugin)', avatar_url: null },
+                saved_at: '',
+            });
+            fixture.detectChanges();
+
+            expect(toast['info']).toHaveBeenCalledWith('Graph was saved by Weather (plugin)', 4000, 'bottom-right');
+            expect(showsRemoteSave()).toBe(true);
+        });
 
         it('loads the save into a clean editor and drops the undo history from before it', () => {
             undoRedo.setUndoStack([flowService.getFlowState()]);

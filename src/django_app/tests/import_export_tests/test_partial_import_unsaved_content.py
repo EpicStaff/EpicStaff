@@ -35,7 +35,7 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tables.serializers.model_serializers.graph_serializers import GraphSerializer
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 PREVIOUS_EDIT_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
@@ -106,6 +106,7 @@ def export_data(acme, beta):
             ),
         ],
         org_id=acme.id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
         edge_ids=[edge.id],
     )
     assert not result.has_errors, result.errors
@@ -181,6 +182,7 @@ def test_partial_import_of_trigger_nodes_leaves_no_node_commit_callback(
             NodeRef(entity_type=EntityType.SCHEDULE_TRIGGER_NODE, node_id=schedule_node.id),
         ],
         org_id=acme.id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
     assert not bundle.has_errors, bundle.errors
 

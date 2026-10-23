@@ -10,6 +10,7 @@ from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.models import LLMConfig
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 PRICE_FIELDS = ("input_cost_per_token", "output_cost_per_token")
 
@@ -37,7 +38,9 @@ def _identity_mapper(export_data) -> IDMapper:
 
 
 def _export(export_service, config) -> tuple[dict, dict]:
-    export_data = export_service.export_entities(EntityType.LLM_CONFIG, [config.id])
+    export_data = export_service.export_entities(
+        EntityType.LLM_CONFIG, [config.id], policy=UNRESTRICTED_EXPORT_POLICY
+    ).data
     return export_data, deepcopy(export_data[EntityType.LLM_CONFIG][0])
 
 

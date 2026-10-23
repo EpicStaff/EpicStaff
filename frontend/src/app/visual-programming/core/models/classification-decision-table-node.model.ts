@@ -63,7 +63,6 @@ export interface CreateClassificationConditionGroupRequest {
 }
 
 export interface CDTPythonCodeBlock {
-    libraries: string[];
     code: string;
     entrypoint: string;
     global_kwargs: Record<string, unknown>;

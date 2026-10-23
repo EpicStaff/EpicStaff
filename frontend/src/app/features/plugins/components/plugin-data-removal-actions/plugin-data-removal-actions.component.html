@@ -1,0 +1,10 @@
+@for (button of buttons(); track button.action) {
+    <app-button
+        [type]="button.type"
+        mod="small"
+        [disabled]="isBusy()"
+        (click)="runAction(button.action)"
+    >
+        {{ button.label }}
+    </app-button>
+}

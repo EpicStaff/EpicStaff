@@ -15,7 +15,7 @@ from tables.import_export.services.partial_export_service import (
 from tables.import_export.services.partial_import_service import PartialImportService
 from tables.models import AgentNode, Crew, CrewNode, Graph, PythonCode, PythonNode, StartNode
 from tables.services.node_number_service import NodeNumberService
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
@@ -26,7 +26,7 @@ def _flow(org, name="Numbered Flow"):
 
 
 def _python_node(graph, node_name, node_number):
-    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main", libraries="")
+    code = PythonCode.objects.create(code="def main(): ...", entrypoint="main")
     return PythonNode.objects.create(
         graph=graph, node_name=node_name, python_code=code, node_number=node_number
     )
@@ -45,7 +45,11 @@ def _numbers_by_name(graph):
 
 
 def _export(graph):
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _import(client, org, export_data, **settings):
@@ -81,7 +85,9 @@ def _partial_export(nodes):
         )
         for node in nodes
     ]
-    result = GraphPartialExportService(entity_registry).export(refs, org_id=nodes[0].graph.org_id)
+    result = GraphPartialExportService(entity_registry).export(
+        refs, org_id=nodes[0].graph.org_id, policy=UNRESTRICTED_EXPORT_POLICY
+    )
     assert not result.has_errors, result.errors
     return result.data
 

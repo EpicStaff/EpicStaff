@@ -1,0 +1,1 @@
+export const EXPORT_WARNING_DURATION_MS = 10000;
