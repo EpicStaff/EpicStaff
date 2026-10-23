@@ -33,12 +33,7 @@ def build_pipeline() -> Pipeline:
     return (
         Pipeline()
         .register(ResolveVenvStep(venvs_dir=settings.VENVS_DIR))
-        .register(
-            PrepareWorkspaceStep(
-                executions_dir=settings.EXECUTIONS_DIR,
-                savefiles_root=settings.SAVEFILES_DIR,
-            )
-        )
+        .register(PrepareWorkspaceStep(executions_dir=settings.EXECUTIONS_DIR))
         .register(
             ConfigureStorageStep(
                 storage_endpoint=settings.STORAGE_ENDPOINT,

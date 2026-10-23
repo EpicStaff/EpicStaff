@@ -18,9 +18,8 @@ LOG_LEVEL = env.str("SANDBOX_LOG_LEVEL", "INFO")
 VENVS_DIR = env.path("SANDBOX_VENVS_DIR", BASE_DIR / "venvs")
 VENV_STAGING_DIR = VENVS_DIR / "builds"
 
-# Per-execution workspaces are created under here; savefiles is the shared volume.
+# Per-execution workspaces are created under here.
 EXECUTIONS_DIR = BASE_DIR / "executions"
-SAVEFILES_DIR = BASE_DIR / "savefiles"
 
 # Local shared packages the execution wrapper imports unconditionally (dotdict,
 # epicstaff_secrets) plus the shared tool helpers (epicstaff_common). They are NOT
@@ -75,6 +74,7 @@ if DEFAULT_EXECUTION_TIMEOUT < MIN_EXECUTION_TIMEOUT or (
         f"SANDBOX_DEFAULT_EXECUTION_TIMEOUT must be at least {MIN_EXECUTION_TIMEOUT}s "
         "and not above SANDBOX_MAX_EXECUTION_TIMEOUT."
     )
+
 
 # Defaults are the confining value: a missing setting must not unconfine the sandbox.
 MASK_SECRET = env.bool("SANDBOX_MASK_SECRET", True)
