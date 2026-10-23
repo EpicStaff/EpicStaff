@@ -82,6 +82,7 @@ services:
       DJANGO_DB_POOL_TIMEOUT: ${DJANGO_DB_POOL_TIMEOUT:?}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:?}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?}
+      AVATAR_URL_SIGNING_SECRET: ${AVATAR_URL_SIGNING_SECRET:?}
       DJANGO_DEBUG: ${DJANGO_DEBUG:?}
       DJANGO_RECYCLE_BIN_RETENTION_DAYS: ${DJANGO_RECYCLE_BIN_RETENTION_DAYS:?}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?}
@@ -455,12 +456,21 @@ services:
     depends_on:
       storage:
         condition: service_healthy
+    # The policy PUT replaces the bucket's whole policy: anonymous read of system/avatars/ only.
+    # storage publishes no port, so this only lets nginx read avatars without credentials
+    # inside the docker network; the gate for clients is nginx's avatar URL signature check.
     entrypoint: >
       /bin/sh -c "
       status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
       --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER:?}:${STORAGE_PASSWORD:?}'
       http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}) &&
-      case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac
+      case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac &&
+      status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
+      --aws-sigv4 'aws:amz:us-east-1:s3' --user '${STORAGE_USER:?}:${STORAGE_PASSWORD:?}'
+      -H 'Content-Type: application/json'
+      --data-binary '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::${STORAGE_BUCKET:?}/system/avatars/*\"]}]}'
+      'http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}?policy') &&
+      case $$status in 2??) echo 'Avatars are readable without credentials.' ;; *) echo \"Bucket policy failed: HTTP $$status\" && exit 1 ;; esac
       "
     restart: on-failure
 
@@ -539,6 +549,10 @@ services:
       AUDITOR_PORT: ${AUDITOR_PORT:?}
       CHAT_ENABLED: ${CHAT_ENABLED:?}
       CHAT_UPSTREAM_URL: ${CHAT_UPSTREAM_URL:?}
+      STORAGE_HOST: ${STORAGE_HOST:?}
+      STORAGE_PORT: ${STORAGE_PORT:?}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?}
+      AVATAR_URL_SIGNING_SECRET: ${AVATAR_URL_SIGNING_SECRET:?}
     volumes:
       - ./nginx/templates/:/etc/nginx/templates:ro
       # Entrypoint hooks use the long syntax so a missing file stops `up` with an

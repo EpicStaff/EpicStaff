@@ -11,6 +11,7 @@
                     class="avatar__img"
                     [src]="editor.resolvedAvatarUrl"
                     [alt]="getInitials(editor)"
+                    (error)="onAvatarError(editor.resolvedAvatarUrl)"
                 />
             } @else {
                 {{ getInitials(editor) }}
