@@ -18,8 +18,18 @@ from tables.models.user import User
 from tables.services.secrets import secret_service
 from utils.singleton_meta import SingletonMeta
 
+QUICKSTART_UNEXPECTED_ERROR_MESSAGE = "Quickstart failed. Please try again or contact support."
 
-class QuickstartCustomModelError(Exception):
+
+class QuickstartError(Exception):
+    """A quickstart refusal whose message is written for the user and is safe to return."""
+
+
+class QuickstartUnsupportedProviderError(QuickstartError):
+    """Raised when the provider exists but quickstart has no model defaults for it."""
+
+
+class QuickstartCustomModelError(QuickstartError):
     """Raised when quickstart would attach its secret to an org model with a custom `base_url`."""
 
 
@@ -61,11 +71,16 @@ class QuickstartService(metaclass=SingletonMeta):
         Exactly one of `api_key` (cold start — a Secret is created and named after
         the bundle) or `secret` (reuse — nothing is created) is expected; the
         serializer enforces that. A `user` that is not a real user leaves the rows unauthored.
+
+        A failure returns `{"success": False, "error": <message>, "unexpected": <bool>}`.
+        A `QuickstartError` carries its own user-facing message (`unexpected` is False);
+        any other exception is logged with its traceback and reported only as
+        `QUICKSTART_UNEXPECTED_ERROR_MESSAGE`, so internal details never reach the client.
         """
         try:
             if provider not in self.PROVIDER_CONFIGS:
                 supported = ", ".join(self.PROVIDER_CONFIGS.keys())
-                raise KeyError(
+                raise QuickstartUnsupportedProviderError(
                     f"Unsupported provider: {provider}. Supported providers: {supported}"
                 )
 
@@ -124,11 +139,19 @@ class QuickstartService(metaclass=SingletonMeta):
                 "llm_config": llm_config,
                 "embedding_config": embedding_config,
             }
-        except Exception as e:
-            logger.error(f"Quickstart error: {e}")
+        except QuickstartError as error:
+            logger.warning("Quickstart refused for provider {}: {}", provider, error)
             return {
                 "success": False,
-                "error": str(e),
+                "error": str(error),
+                "unexpected": False,
+            }
+        except Exception:
+            logger.exception("Quickstart failed for provider {} in org {}", provider, org_id)
+            return {
+                "success": False,
+                "error": QUICKSTART_UNEXPECTED_ERROR_MESSAGE,
+                "unexpected": True,
             }
 
     def get_supported_providers(self):

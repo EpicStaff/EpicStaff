@@ -131,12 +131,30 @@ QUICKSTART_POST = {
             examples=[
                 OpenApiExample(
                     "Quickstart error",
-                    value={"detail": "Error quickstart", "error": "Invalid API key"},
+                    value={
+                        "detail": "Error quickstart",
+                        "error": "Unsupported provider: anthropic. Supported providers: "
+                        "openai, gemini, cohere, mistral",
+                    },
                     response_only=True,
                 ),
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+        500: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Unexpected quickstart failure; nothing is created",
+            examples=[
+                OpenApiExample(
+                    "Quickstart failure",
+                    value={
+                        "detail": "Error quickstart",
+                        "error": "Quickstart failed. Please try again or contact support.",
+                    },
+                    response_only=True,
+                ),
+            ],
+        ),
     },
 }
 

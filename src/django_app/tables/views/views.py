@@ -886,9 +886,15 @@ class QuickstartView(APIView):
         )
 
         if not result.get("success", False):
+            # A curated refusal is the caller's to fix (400); anything else is a
+            # server failure, and its message is already the generic one.
             return Response(
                 data={"detail": "Error quickstart", "error": result.get("error")},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR
+                    if result.get("unexpected", False)
+                    else status.HTTP_400_BAD_REQUEST
+                ),
             )
 
         config_name = result["config_name"]

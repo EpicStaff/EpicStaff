@@ -19,6 +19,7 @@ from tables.models.provider import Provider
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from tables.services.quickstart_service import QuickstartService
 from tables.services.secrets import secret_encryption, secret_service
 
 
@@ -408,3 +409,47 @@ def test_quickstart_locks_reused_org_model(
         "FOR UPDATE" in query["sql"] and f'FROM "{table}"' in query["sql"]
         for query in captured.captured_queries
     )
+
+
+@pytest.mark.django_db
+def test_quickstart_unsupported_provider_returns_its_reason(
+    client_a, org, quickstart_url
+):
+    # The provider exists, so the serializer accepts it, but quickstart has no
+    # model defaults for it: a refusal the user can act on, returned as written.
+    Provider.objects.create(name="anthropic")
+
+    resp = client_a.post(
+        quickstart_url, {"provider": "anthropic", "api_key": "sk-cold-start"}, format="json"
+    )
+
+    assert resp.status_code == 400, resp.content
+    assert resp.data["error"].startswith("Unsupported provider: anthropic.")
+    assert not Secret.objects.filter(org=org).exists()
+
+
+@pytest.mark.django_db
+def test_quickstart_unexpected_error_does_not_leak_exception_text(
+    client_a, org, openai_seeded, quickstart_url, monkeypatch
+):
+    # Fails after the secret and every config are written, so the rollback is
+    # observable too.
+    def fail_with_internal_detail(*args, **kwargs):
+        raise RuntimeError("secret internal detail")
+
+    monkeypatch.setattr(QuickstartService, "_apply_quickstart_tag", fail_with_internal_detail)
+
+    resp = client_a.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-cold-start"}, format="json"
+    )
+
+    assert resp.status_code == 500, resp.content
+    assert resp.data == {
+        "detail": "Error quickstart",
+        "error": "Quickstart failed. Please try again or contact support.",
+    }
+    assert b"secret internal detail" not in resp.content
+    assert not Secret.objects.filter(org=org).exists()
+    assert not LLMConfig.objects.filter(org=org).exists()
+    assert not EmbeddingConfig.objects.filter(org=org).exists()
+    assert not OpenAIRealtimeConfig.objects.filter(org=org).exists()
