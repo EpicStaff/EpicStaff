@@ -239,6 +239,38 @@
       "title": "Limits",
       "type": "object"
     },
+    "NavigationItem": {
+      "additionalProperties": false,
+      "description": "An entry of the app's menu, which EpicStaff draws in its own sidebar while the app is open.",
+      "properties": {
+        "label": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "path": {
+          "description": "The page of the app the item opens; a '.' or '..' segment is refused too.",
+          "maxLength": 256,
+          "pattern": "^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$",
+          "title": "Path",
+          "type": "string"
+        },
+        "icon": {
+          "description": "An SVG or PNG file in the package's icons/ folder.",
+          "pattern": "^icons/[a-z0-9][a-z0-9_-]{0,62}\\.(?:svg|png)$",
+          "title": "Icon",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "path",
+        "icon"
+      ],
+      "title": "NavigationItem",
+      "type": "object"
+    },
     "OutboundHost": {
       "additionalProperties": false,
       "description": "A host the backend may call over HTTPS (port 443).",
@@ -467,6 +499,14 @@
           "default": "index.html",
           "title": "Entry",
           "type": "string"
+        },
+        "navigation": {
+          "items": {
+            "$ref": "#/$defs/NavigationItem"
+          },
+          "maxItems": 12,
+          "title": "Navigation",
+          "type": "array"
         }
       },
       "title": "Spa",

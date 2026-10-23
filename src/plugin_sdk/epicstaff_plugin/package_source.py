@@ -10,6 +10,7 @@ from epicstaff_plugin.contracts.manifest import MANIFEST_FILE_NAME, PluginManife
 from epicstaff_plugin.package_layout import (
     BACKEND_REQUIREMENTS,
     MAX_ICON_BYTES,
+    MAX_NAVIGATION_ICON_BYTES,
     SECRET_SCAN_BYTES,
     SPA_DIRECTORY,
     PackageFile,
@@ -66,6 +67,11 @@ class PackageSource:
                 self.manifest,
                 described,
                 self._read(self.manifest.icon, MAX_ICON_BYTES),
+                navigation_icons={
+                    path: data
+                    for path in self.manifest.navigation_icon_paths
+                    if (data := self._read(path, MAX_NAVIGATION_ICON_BYTES)) is not None
+                },
                 requirements_lock=self._read(BACKEND_REQUIREMENTS, MAX_REQUIREMENTS_LOCK_BYTES),
                 check_spa=self.includes_spa,
                 require_sdk_pin=require_sdk_pin,
@@ -96,9 +102,11 @@ class PackageSource:
 def collect_source(source_directory: Path, spa_directory: Path | None) -> PackageSource:
     """Gather a plugin's package files from its source directory.
 
-    Takes `manifest.json` and the icon it names from `source_directory`, `backend/` and
-    `database/` as found there, and the built single-page app from `spa_directory` (placed
-    under `spa/`).
+    Takes `manifest.json`, the icon it names and the menu icons `spa.navigation` names (other
+    files under `icons/` stay behind) from `source_directory`, `backend/` and `database/` as
+    found there, and the built single-page app from `spa_directory` (placed under `spa/`). A
+    named icon that is missing or not a regular file is left out, and the layout check reports
+    it as missing.
 
     Raises:
         PackageProblemsError: The manifest is missing or invalid, or a file cannot be packed
@@ -111,9 +119,10 @@ def collect_source(source_directory: Path, spa_directory: Path | None) -> Packag
 
     problems: list[Problem] = []
     files = [SourceFile(MANIFEST_FILE_NAME, manifest_path)]
-    icon_path = source_directory / manifest.icon
-    if icon_path.is_file() and not icon_path.is_symlink():
-        files.append(SourceFile(manifest.icon, icon_path))
+    for icon in (manifest.icon, *manifest.navigation_icon_paths):
+        icon_path = source_directory / icon
+        if icon_path.is_file() and not icon_path.is_symlink():
+            files.append(SourceFile(icon, icon_path))
     if spa_directory is not None:
         if manifest.spa is None:
             problems.append(

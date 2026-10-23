@@ -5,10 +5,20 @@ import zipfile
 
 import pytest
 
+from conftest import ICON_SVG
 from epicstaff_plugin.cli.main import main
 from epicstaff_plugin.package_layout import path_set_problems
 from epicstaff_plugin.testing import service_account_key, write_runtime_file
-from package_helpers import contents_for, sample_files, write_archive
+from package_helpers import (
+    MENU_ICON_PNG,
+    MENU_ICON_SVG,
+    add_menu,
+    contents_for,
+    manifest_with_menu,
+    menu_files,
+    sample_files,
+    write_archive,
+)
 
 
 def test_a_valid_source_directory_with_its_spa_passes(plugin_source, capsys):
@@ -145,6 +155,131 @@ def test_a_path_that_is_also_a_folder_of_another_fails(tmp_path, capsys, paths):
 
     assert main(["validate", str(package)]) == 1
     assert f"package.{paths[1]}: " in capsys.readouterr().out
+
+
+MENU_ICONS = {"icons/overview.svg": MENU_ICON_SVG, "icons/projects.png": MENU_ICON_PNG}
+# One byte over the 16 KiB cap on a menu icon, and still a valid SVG.
+OVERSIZED_MENU_ICON = MENU_ICON_SVG[:-6] + b" " * (16 * 1024 + 1 - len(MENU_ICON_SVG)) + b"</svg>"
+SCRIPTED_MENU_ICON = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+
+
+def test_a_source_with_a_menu_passes(plugin_source, capsys):
+    source, spa = plugin_source
+    add_menu(source, MENU_ICONS)
+
+    assert main(["validate", str(source), "--spa-dir", str(spa)]) == 0
+    assert "valid: weather 0.1.0 (source)" in capsys.readouterr().out
+
+
+def test_a_source_may_keep_icons_its_menu_does_not_name(plugin_source):
+    source, spa = plugin_source
+    add_menu(source, {**MENU_ICONS, "icons/draft.svg": SCRIPTED_MENU_ICON}, named=list(MENU_ICONS))
+
+    assert main(["validate", str(source), "--spa-dir", str(spa)]) == 0
+
+
+def test_a_menu_icon_missing_from_the_source_fails(plugin_source, capsys):
+    source, spa = plugin_source
+    add_menu(source, MENU_ICONS, named=[*MENU_ICONS, "icons/missing.svg"])
+
+    assert main(["validate", str(source), "--spa-dir", str(spa)]) == 1
+    assert "manifest.spa.navigation[2].icon: names icons/missing.svg, which is not in the package" in capsys.readouterr().out
+
+
+def test_a_symbolic_link_is_not_followed_for_a_menu_icon(plugin_source, tmp_path, capsys):
+    source, spa = plugin_source
+    (tmp_path / "elsewhere.svg").write_bytes(MENU_ICON_SVG)
+    add_menu(source, {}, named=["icons/overview.svg"])
+    (source / "icons").mkdir()
+    os.symlink(tmp_path / "elsewhere.svg", source / "icons" / "overview.svg")
+
+    assert main(["validate", str(source), "--spa-dir", str(spa)]) == 1
+    assert "manifest.spa.navigation[0].icon: names icons/overview.svg, which is not in the package" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("icon", "expected"),
+    [
+        (OVERSIZED_MENU_ICON, "package.icons/overview.svg: is larger than 16384 bytes"),
+        (SCRIPTED_MENU_ICON, "package.icons/overview.svg: contains a <script> element"),
+        (b'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>', "package.icons/overview.svg: has an event handler attribute (onload)"),
+        (b'<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.com/a.png"/></svg>', "package.icons/overview.svg: references an outside resource (href)"),
+        (MENU_ICON_PNG, "package.icons/overview.svg: is not UTF-8"),
+    ],
+    ids=["oversized", "script", "event handler", "outside reference", "PNG named .svg"],
+)
+def test_a_menu_icon_is_checked_like_the_plugin_icon_in_a_source_and_a_package(plugin_source, tmp_path, capsys, icon, expected):
+    source, spa = plugin_source
+    add_menu(source, {"icons/overview.svg": icon})
+    package = write_archive(tmp_path / "weather.esplugin", menu_files({"icons/overview.svg": icon}))
+
+    assert main(["validate", str(source), "--spa-dir", str(spa)]) == 1
+    assert expected in capsys.readouterr().out
+    assert main(["validate", str(package)]) == 1
+    assert expected in capsys.readouterr().out
+
+
+def test_a_menu_png_that_is_not_a_png_fails(tmp_path, capsys):
+    package = write_archive(tmp_path / "weather.esplugin", menu_files({"icons/projects.png": MENU_ICON_SVG}))
+
+    assert main(["validate", str(package)]) == 1
+    assert "package.icons/projects.png: is not a PNG image" in capsys.readouterr().out
+
+
+def test_the_plugin_icon_keeps_its_own_size_cap(plugin_source):
+    source, spa = plugin_source
+    (source / "icon.svg").write_bytes(OVERSIZED_MENU_ICON)
+
+    assert main(["validate", str(source), "--spa-dir", str(spa)]) == 0
+
+
+def test_a_valid_built_package_with_a_menu_passes(tmp_path, capsys):
+    package = write_archive(tmp_path / "weather.esplugin", menu_files(MENU_ICONS))
+
+    assert main(["validate", str(package)]) == 0
+    assert "valid: weather 0.1.0 (signature absent)" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("manifest", "unnamed"),
+    [
+        (None, ["icons/extra.svg", "icons/overview.svg"]),
+        (manifest_with_menu(["icons/overview.svg"]), ["icons/extra.svg"]),
+    ],
+    ids=["no menu", "a menu"],
+)
+def test_a_package_with_an_icons_file_no_menu_item_names_fails(tmp_path, capsys, manifest, unnamed):
+    files = {**sample_files(manifest), "icons/overview.svg": MENU_ICON_SVG, "icons/extra.svg": MENU_ICON_SVG}
+    package = write_archive(tmp_path / "weather.esplugin", files)
+
+    assert main(["validate", str(package)]) == 1
+    problems = [line for line in capsys.readouterr().out.splitlines() if "spa.navigation names" in line]
+    assert problems == [f"package.{path}: is not an icon spa.navigation names" for path in unnamed]
+
+
+def test_a_package_with_more_than_twelve_files_in_icons_fails(tmp_path, capsys):
+    named = {f"icons/page-{index}.svg": MENU_ICON_SVG for index in range(12)}
+    package = write_archive(tmp_path / "weather.esplugin", {**menu_files(named), "icons/page-12.svg": MENU_ICON_SVG})
+
+    assert main(["validate", str(package)]) == 1
+    output = capsys.readouterr().out
+    assert "package.icons: holds more than 12 files" in output
+    assert output.count("holds more than") == 1
+
+
+def test_twelve_menu_icons_pass(tmp_path):
+    named = {f"icons/page-{index}.svg": MENU_ICON_SVG for index in range(12)}
+    package = write_archive(tmp_path / "weather.esplugin", menu_files(named))
+
+    assert main(["validate", str(package)]) == 0
+
+
+def test_a_root_icon_in_icons_is_not_the_plugin_icon(tmp_path, capsys):
+    files = {**sample_files(), "icons/icon.svg": ICON_SVG}
+    package = write_archive(tmp_path / "weather.esplugin", files)
+
+    assert main(["validate", str(package)]) == 1
+    assert "package.icons/icon.svg: is not an icon spa.navigation names" in capsys.readouterr().out
 
 
 def test_path_set_problems_reports_files_used_as_folders():

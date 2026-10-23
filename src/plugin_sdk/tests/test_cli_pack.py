@@ -3,9 +3,10 @@ import json
 import zipfile
 
 from epicstaff_plugin.cli.main import main
-from epicstaff_plugin.package_layout import read_package_file
+from epicstaff_plugin.package_layout import icon_media_type_of, read_package_file
 from epicstaff_plugin.signing import SecretKey, SignatureFile
 from epicstaff_plugin.testing import service_account_key, write_runtime_file
+from package_helpers import MENU_ICON_PNG, MENU_ICON_SVG, add_menu
 
 
 def _pack(source, spa, output, *extra):
@@ -59,6 +60,64 @@ def test_contents_json_lists_every_file_in_canonical_form(plugin_source, tmp_pat
         "spa/assets/app.js",
         "spa/index.html",
     ]
+
+
+def test_only_the_icons_the_menu_names_are_packed(plugin_source, tmp_path):
+    source, spa = plugin_source
+    add_menu(
+        source,
+        {"icons/overview.svg": MENU_ICON_SVG, "icons/projects.png": MENU_ICON_PNG, "icons/draft.svg": MENU_ICON_SVG},
+        # Two items share one icon; icons/draft.svg is in the source but on no item.
+        named=["icons/overview.svg", "icons/projects.png", "icons/overview.svg"],
+    )
+    output = tmp_path / "weather.esplugin"
+
+    assert _pack(source, spa, output) == 0
+
+    with zipfile.ZipFile(output) as archive:
+        names = archive.namelist()
+        listed = [entry["path"] for entry in json.loads(archive.read("CONTENTS.json"))["files"]]
+    assert [name for name in names if name.startswith("icons/")] == ["icons/overview.svg", "icons/projects.png"]
+    assert {"icons/overview.svg", "icons/projects.png"} <= set(listed)
+    assert "icons/draft.svg" not in listed
+
+
+def test_a_packed_menu_reads_back_with_its_icons(plugin_source, tmp_path):
+    source, spa = plugin_source
+    add_menu(source, {"icons/projects.png": MENU_ICON_PNG, "icons/overview.svg": MENU_ICON_SVG})
+    output = tmp_path / "weather.esplugin"
+    _pack(source, spa, output)
+
+    package = read_package_file(output)
+
+    assert dict(package.navigation_icons) == {"icons/overview.svg": MENU_ICON_SVG, "icons/projects.png": MENU_ICON_PNG}
+    assert list(package.navigation_icons) == ["icons/overview.svg", "icons/projects.png"]
+    assert [icon_media_type_of(path) for path in package.navigation_icons] == ["image/svg+xml", "image/png"]
+    assert [(item.label, item.path, item.icon) for item in package.manifest.spa.navigation] == [
+        ("Page 0", "/", "icons/projects.png"),
+        ("Page 1", "/page-1", "icons/overview.svg"),
+    ]
+
+
+def test_a_package_without_a_menu_reads_back_without_menu_icons(plugin_source, tmp_path):
+    source, spa = plugin_source
+    output = tmp_path / "weather.esplugin"
+    _pack(source, spa, output)
+
+    package = read_package_file(output)
+
+    assert dict(package.navigation_icons) == {}
+    assert icon_media_type_of(package.manifest.icon) == package.icon_media_type == "image/svg+xml"
+
+
+def test_a_menu_icon_missing_from_the_source_writes_no_package(plugin_source, tmp_path, capsys):
+    source, spa = plugin_source
+    add_menu(source, {}, named=["icons/overview.svg"])
+    output = tmp_path / "weather.esplugin"
+
+    assert _pack(source, spa, output) == 1
+    assert "manifest.spa.navigation[0].icon: names icons/overview.svg, which is not in the package" in capsys.readouterr().out
+    assert not output.exists()
 
 
 def test_packing_with_a_key_signs_the_package(plugin_source, tmp_path):

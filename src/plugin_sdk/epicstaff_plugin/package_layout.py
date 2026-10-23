@@ -4,9 +4,10 @@ One implementation of every package rule. `epicstaff-plugin validate` and `pack`
 EpicStaff reads every upload through `read_package` (passing its own extraction guard).
 
 A package is a zip holding `manifest.json`, `CONTENTS.json`, an optional
-`CONTENTS.json.minisig`, the icon the manifest names, and -- per manifest section -- `spa/`,
-`backend/` and `database/migrations/`. `CONTENTS.json` lists every other file with its size
-and SHA-256, so signing that one file covers the whole package.
+`CONTENTS.json.minisig`, the icon the manifest names, the menu icons `spa.navigation` names
+(under `icons/`), and -- per manifest section -- `spa/`, `backend/` and `database/migrations/`.
+`CONTENTS.json` lists every other file with its size and SHA-256, so signing that one file
+covers the whole package.
 """
 
 import hashlib
@@ -17,13 +18,19 @@ import zipfile
 import zlib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Annotated, BinaryIO, Literal, Protocol
 from xml.etree import ElementTree
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
-from epicstaff_plugin.contracts.manifest import MANIFEST_FILE_NAME, PluginManifest, parse_manifest
+from epicstaff_plugin.contracts.manifest import (
+    MANIFEST_FILE_NAME,
+    MAX_NAVIGATION_ITEMS,
+    PluginManifest,
+    parse_manifest,
+)
 from epicstaff_plugin.contracts.runtime import (
     SERVICE_ACCOUNT_KEY_BODY_PATTERN,
     SERVICE_ACCOUNT_KEY_PREFIX,
@@ -52,7 +59,9 @@ CONTENTS_FILE_NAME = "CONTENTS.json"
 SIGNATURE_FILE_NAME = "CONTENTS.json.minisig"
 CONTENTS_FORMAT = 1
 ICON_MEDIA_TYPES = {"icon.svg": "image/svg+xml", "icon.png": "image/png"}
+_ICON_MEDIA_TYPES_BY_EXTENSION = {".svg": "image/svg+xml", ".png": "image/png"}
 
+NAVIGATION_ICONS_DIRECTORY = "icons/"
 SPA_DIRECTORY = "spa/"
 BACKEND_DIRECTORY = "backend/"
 BACKEND_SOURCE_DIRECTORY = "backend/src/"
@@ -85,6 +94,10 @@ MAX_SPA_BYTES = 50 * 1024 * 1024
 # The plugin node holds a package's migrations in memory while it runs them.
 MAX_MIGRATIONS_TOTAL_BYTES = 64 * 1024 * 1024
 MAX_ICON_BYTES = 64 * 1024
+MAX_NAVIGATION_ICON_BYTES = 16 * 1024
+# Every file under icons/ must be one a menu item names, so a valid package never holds more.
+# The reader keeps only this many in memory.
+MAX_NAVIGATION_ICON_FILES = MAX_NAVIGATION_ITEMS
 MAX_MANIFEST_BYTES = 256 * 1024
 MAX_CONTENTS_BYTES = 16 * 1024 * 1024
 MAX_SIGNATURE_BYTES = 4096
@@ -195,6 +208,8 @@ class PackageArchive:
     contents: bytes
     signature: str | None
     icon: bytes
+    navigation_icons: Mapping[str, bytes]
+    """The bytes of every icon `spa.navigation` names, by package path, sorted by path."""
     files: tuple[PackageFile, ...]
     summary: ContentsSummary
 
@@ -347,6 +362,7 @@ def layout_problems(
     files: Mapping[str, PackageFile],
     icon: bytes | None,
     *,
+    navigation_icons: Mapping[str, bytes],
     requirements_lock: bytes | None = None,
     check_spa: bool = True,
     require_sdk_pin: bool = True,
@@ -355,9 +371,11 @@ def layout_problems(
 
     `files` maps each path to its file, without `CONTENTS.json` and its signature. `icon` and
     `requirements_lock` are the contents of the icon the manifest names and of
-    `backend/requirements.lock`, when present. `check_spa=False` skips the SPA checks, for a
-    source directory validated without its built SPA; `require_sdk_pin=False` accepts a lock
-    without `epicstaff-plugin`, for a source directory packed with `--local-wheel`.
+    `backend/requirements.lock`, when present; `navigation_icons` maps the path of each menu
+    icon at hand to its contents, and only those are checked for content. `check_spa=False`
+    skips the SPA checks, for a source directory validated without its built SPA;
+    `require_sdk_pin=False` accepts a lock without `epicstaff-plugin`, for a source directory
+    packed with `--local-wheel`.
     """
     problems = [
         Problem(archive_file_loc(path), problem)
@@ -368,8 +386,9 @@ def layout_problems(
         problems.append(
             Problem(f"{MANIFEST_LOC}.icon", f"names {manifest.icon}, which is not in the package")
         )
-    elif icon is not None and (problem := icon_problem(manifest.icon, icon)):
+    elif icon is not None and (problem := icon_problem(manifest.icon, icon, MAX_ICON_BYTES)):
         problems.append(Problem(archive_file_loc(manifest.icon), problem))
+    problems.extend(_navigation_icon_problems(manifest, files, navigation_icons))
     if manifest.spa is not None and check_spa:
         problems.extend(_spa_problems(manifest, files))
     if manifest.backend is not None:
@@ -454,6 +473,12 @@ def _placement_problem(path: str, manifest: PluginManifest) -> str | None:
         if path == manifest.icon:
             return None
         return f"is not the icon the manifest names ({manifest.icon})"
+    if path.startswith(NAVIGATION_ICONS_DIRECTORY):
+        return (
+            None
+            if path in manifest.navigation_icon_paths
+            else "is not an icon spa.navigation names"
+        )
     if path.startswith(SPA_DIRECTORY):
         return (
             None
@@ -488,6 +513,26 @@ def _migration_path_problem(path: str) -> str | None:
 def _is_wheel(path: str) -> bool:
     name = path.removeprefix(BACKEND_WHEELS_DIRECTORY)
     return name != path and "/" not in name and name.endswith(".whl")
+
+
+def _navigation_icon_problems(
+    manifest: PluginManifest, files: Mapping[str, PackageFile], icons: Mapping[str, bytes]
+) -> list[Problem]:
+    if manifest.spa is None:
+        return []
+    problems = [
+        Problem(
+            f"{MANIFEST_LOC}.spa.navigation[{index}].icon",
+            f"names {item.icon}, which is not in the package",
+        )
+        for index, item in enumerate(manifest.spa.navigation)
+        if item.icon not in files
+    ]
+    for path in manifest.navigation_icon_paths:
+        data = icons.get(path)
+        if data is not None and (problem := icon_problem(path, data, MAX_NAVIGATION_ICON_BYTES)):
+            problems.append(Problem(archive_file_loc(path), problem))
+    return problems
 
 
 def _spa_problems(manifest: PluginManifest, files: Mapping[str, PackageFile]) -> list[Problem]:
@@ -553,13 +598,22 @@ def _migration_set_problems(sizes: Mapping[str, int]) -> list[Problem]:
     return problems
 
 
-def icon_problem(name: str, data: bytes) -> str | None:
-    """Return why an icon may not be used, or None. An SVG must be inert when rendered."""
-    if len(data) > MAX_ICON_BYTES:
-        return f"is larger than {MAX_ICON_BYTES} bytes"
-    if name == "icon.png":
+def icon_problem(path: str, data: bytes, max_bytes: int) -> str | None:
+    """Return why an icon may not be used, or None. An SVG must be inert when rendered.
+
+    `path` is the plugin's icon or a menu icon; its extension (`.png` or `.svg`, which the
+    manifest guarantees) says which format `data` must be.
+    """
+    if len(data) > max_bytes:
+        return f"is larger than {max_bytes} bytes"
+    if path.endswith(".png"):
         return None if data.startswith(_PNG_SIGNATURE) else "is not a PNG image"
     return _svg_problem(data)
+
+
+def icon_media_type_of(path: str) -> str:
+    """Return the media type of an icon, the plugin's or a menu icon, from its extension."""
+    return _ICON_MEDIA_TYPES_BY_EXTENSION[PurePosixPath(path).suffix]
 
 
 def _svg_problem(data: bytes) -> str | None:
@@ -636,8 +690,9 @@ def read_package(
 ) -> PackageArchive:
     """Check every package rule while streaming the archive once, and return what it holds.
 
-    Each file is hashed as it streams; only the manifest, `CONTENTS.json`, the signature and
-    the icon are kept in memory. `guard` bounds the read (default: the package caps).
+    Each file is hashed as it streams; only the manifest, `CONTENTS.json`, the signature, the
+    icon, `backend/requirements.lock` and up to `MAX_NAVIGATION_ICON_FILES` files under
+    `icons/` are kept in memory. `guard` bounds the read (default: the package caps).
     `ignore_signature=True` skips the signature file, for re-signing a package.
 
     Raises:
@@ -655,6 +710,7 @@ class _ArchiveReader:
         self._problems: list[Problem] = []
         self._files: dict[str, PackageFile] = {}
         self._kept: dict[str, bytes] = {}
+        self._navigation_icon_count = 0
 
     def read(self) -> PackageArchive:
         entries = self._archive.infolist()
@@ -674,6 +730,13 @@ class _ArchiveReader:
         listed_files = {
             path: file for path, file in self._files.items() if path not in _UNLISTED_FILES
         }
+        navigation_icons = MappingProxyType(
+            {
+                path: data
+                for path, data in sorted(self._kept.items())
+                if path.startswith(NAVIGATION_ICONS_DIRECTORY)
+            }
+        )
         if contents is not None:
             self._problems.extend(_listing_problems(contents, listed_files))
         if manifest is not None and contents is not None:
@@ -684,6 +747,7 @@ class _ArchiveReader:
                     manifest,
                     listed_files,
                     self._kept.get(manifest.icon),
+                    navigation_icons=navigation_icons,
                     requirements_lock=self._kept.get(BACKEND_REQUIREMENTS),
                 )
             )
@@ -694,6 +758,7 @@ class _ArchiveReader:
             contents=self._kept[CONTENTS_FILE_NAME],
             signature=signature,
             icon=self._kept[manifest.icon],
+            navigation_icons=navigation_icons,
             files=tuple(listed_files[entry.path] for entry in contents.files),
             summary=summarize(listed_files.values()),
         )
@@ -719,6 +784,19 @@ class _ArchiveReader:
             self._problems.append(Problem(loc, problem))
             return
         keep_limit = _KEPT_FILE_LIMITS.get(name)
+        if name.startswith(NAVIGATION_ICONS_DIRECTORY):
+            self._navigation_icon_count += 1
+            if self._navigation_icon_count == MAX_NAVIGATION_ICON_FILES + 1:
+                self._problems.append(
+                    Problem(
+                        f"{PACKAGE_LOC}.icons",
+                        f"holds more than {MAX_NAVIGATION_ICON_FILES} files",
+                    )
+                )
+            # Past the cap nothing more is kept, so the icons in memory stay bounded.
+            if self._navigation_icon_count > MAX_NAVIGATION_ICON_FILES:
+                return
+            keep_limit = MAX_NAVIGATION_ICON_BYTES
         if keep_limit is not None and entry.file_size > keep_limit:
             self._problems.append(Problem(loc, f"is larger than {keep_limit} bytes"))
             return

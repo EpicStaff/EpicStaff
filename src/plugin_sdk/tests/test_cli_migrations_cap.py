@@ -168,7 +168,7 @@ def test_the_layout_check_refuses_a_migration_name_of_256_characters(database_so
         for path in (f"{MIGRATIONS_DIRECTORY}001_weather.sql", f"{MIGRATIONS_DIRECTORY}{_migration_name(256)}")
     }
 
-    problems = [f"{problem.loc}: {problem.message}" for problem in layout_problems(manifest, files, None, check_spa=False)]
+    problems = [f"{problem.loc}: {problem.message}" for problem in layout_problems(manifest, files, None, navigation_icons={}, check_spa=False)]
 
     assert _name_problem(_migration_name(256)) in problems
     assert not any("001_weather.sql" in problem for problem in problems)

@@ -5,7 +5,12 @@ import pytest
 from pydantic import ValidationError
 
 from epicstaff_plugin.contracts.manifest import (
+    MAX_NAVIGATION_ITEMS,
+    MAX_NAVIGATION_LABEL_LENGTH,
+    MAX_NAVIGATION_PATH_LENGTH,
     MAX_OUTBOUND_HOSTS,
+    NAVIGATION_ICON_PATTERN,
+    NAVIGATION_PATH_PATTERN,
     PluginManifest,
     manifest_json_schema,
     parse_manifest,
@@ -65,6 +70,63 @@ def _setting(**changes):
 
 def _limits(**changes):
     return {**LIMITS, **changes}
+
+
+MENU_ITEM = {"label": "Overview", "path": "/", "icon": "icons/overview.svg"}
+MENU_ITEM_LOC = "manifest.spa.navigation[0]"
+
+
+def _menu(**changes):
+    """Set `spa.navigation` to one item: `MENU_ITEM` with `changes`."""
+    return _set(("spa", "navigation"), [{**MENU_ITEM, **changes}])
+
+
+def _menu_of(count):
+    return [{"label": f"Page {index}", "path": f"/page-{index}", "icon": "icons/page.svg"} for index in range(count)]
+
+
+MENU_CASES = [
+    ("navigation at the top level", _set(("navigation",), [MENU_ITEM]), "manifest.navigation"),
+    ("more menu items than the cap", _set(("spa", "navigation"), _menu_of(13)), "manifest.spa.navigation"),
+    ("menu path twice", _set(("spa", "navigation"), [MENU_ITEM, {**MENU_ITEM, "label": "Home"}]), "manifest.spa.navigation"),
+    ("menu label twice", _set(("spa", "navigation"), [MENU_ITEM, {**MENU_ITEM, "path": "/home"}]), "manifest.spa.navigation"),
+    ("menu item with an unknown field", _menu(badge="New"), f"{MENU_ITEM_LOC}.badge"),
+    ("menu item without an icon", _set(("spa", "navigation"), [{"label": "A", "path": "/"}]), f"{MENU_ITEM_LOC}.icon"),
+    ("menu label empty", _menu(label=""), f"{MENU_ITEM_LOC}.label"),
+    ("menu label blank", _menu(label="   "), f"{MENU_ITEM_LOC}.label"),
+    ("menu label with a newline", _menu(label="Over\nview"), f"{MENU_ITEM_LOC}.label"),
+    ("menu label with a tab", _menu(label="Over\tview"), f"{MENU_ITEM_LOC}.label"),
+    ("menu label longer than 32", _menu(label="l" * 33), f"{MENU_ITEM_LOC}.label"),
+    ("menu label as a number", _menu(label=1), f"{MENU_ITEM_LOC}.label"),
+    ("menu path without a leading slash", _menu(path="projects"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path empty", _menu(path=""), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a trailing slash", _menu(path="/a/"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with an empty segment", _menu(path="/a//b"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path of two slashes", _menu(path="//"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a query", _menu(path="/a?x=1"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a percent escape", _menu(path="/a%20b"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a fragment", _menu(path="/a#b"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a .. segment", _menu(path="/a/.."), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a . segment", _menu(path="/./a"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path of one dot", _menu(path="/."), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a space", _menu(path="/a b"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a non-ASCII letter", _menu(path="/café"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a trailing newline", _menu(path="/a\n"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path with a backslash", _menu(path="/a\\b"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path as an absolute URL", _menu(path="https://example.com/"), f"{MENU_ITEM_LOC}.path"),
+    ("menu path longer than 256", _menu(path="/" + "p" * 256), f"{MENU_ITEM_LOC}.path"),
+    ("menu icon with upper case", _menu(icon="icons/A.svg"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon as a GIF", _menu(icon="icons/a.gif"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon with an upper-case extension", _menu(icon="icons/a.SVG"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon in a subfolder", _menu(icon="icons/sub/a.svg"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon outside icons/", _menu(icon="icon.svg"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon in spa/", _menu(icon="spa/icons/a.svg"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon with an absolute path", _menu(icon="/icons/a.svg"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon without a name", _menu(icon="icons/.svg"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon starting with a dash", _menu(icon="icons/-a.svg"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon with a dot-dot name", _menu(icon="icons/../a.svg"), f"{MENU_ITEM_LOC}.icon"),
+    ("menu icon name longer than 63", _menu(icon="icons/" + "i" * 64 + ".svg"), f"{MENU_ITEM_LOC}.icon"),
+]
 
 
 INVALID_CASES = [
@@ -182,7 +244,7 @@ INVALID_CASES = [
 
 @pytest.mark.parametrize(
     ("mutate", "expected_loc"),
-    [pytest.param(mutate, loc, id=name) for name, mutate, loc in INVALID_CASES],
+    [pytest.param(mutate, loc, id=name) for name, mutate, loc in [*INVALID_CASES, *MENU_CASES]],
 )
 def test_every_manifest_rule_is_reported_at_its_location(manifest_document, mutate, expected_loc):
     with pytest.raises(PackageProblemsError) as raised:
@@ -296,6 +358,103 @@ def test_the_spa_entry_defaults_to_index_html(manifest_document):
     manifest_document["spa"] = {}
 
     assert validate_manifest(manifest_document).spa.entry == "index.html"
+
+
+def test_an_app_without_a_menu_has_an_empty_one(manifest_document):
+    manifest = validate_manifest(manifest_document)
+
+    assert manifest.spa.navigation == []
+    assert manifest.navigation_icon_paths == ()
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/", "/projects", "/a/b-c_d.e~f", "/Projects/2026/Q4", "/.../a..b/.c/d.", "/" + "p" * (MAX_NAVIGATION_PATH_LENGTH - 1)],
+    ids=["root", "one segment", "every punctuation allowed", "mixed case and digits", "dots that are not dot segments", "longest"],
+)
+def test_menu_paths_of_plain_segments_are_accepted(manifest_document, path):
+    manifest_document["spa"]["navigation"] = [{**MENU_ITEM, "path": path}]
+
+    assert validate_manifest(manifest_document).spa.navigation[0].path == path
+
+
+@pytest.mark.parametrize(
+    "icon",
+    ["icons/overview.svg", "icons/projects.png", "icons/0.svg", "icons/a_b-c.png", "icons/" + "i" * 63 + ".svg"],
+)
+def test_menu_icons_named_by_the_rule_are_accepted(manifest_document, icon):
+    manifest_document["spa"]["navigation"] = [{**MENU_ITEM, "icon": icon}]
+
+    assert validate_manifest(manifest_document).spa.navigation[0].icon == icon
+
+
+def test_a_full_menu_may_share_icons_and_lists_each_icon_once(manifest_document):
+    manifest_document["spa"]["navigation"] = [
+        {"label": "l" * MAX_NAVIGATION_LABEL_LENGTH, "path": "/", "icon": "icons/b.svg"},
+        *({"label": f"Page {index}", "path": f"/page-{index}", "icon": "icons/a.png"} for index in range(1, MAX_NAVIGATION_ITEMS)),
+    ]
+
+    manifest = validate_manifest(manifest_document)
+
+    assert len(manifest.spa.navigation) == MAX_NAVIGATION_ITEMS == 12
+    assert manifest.navigation_icon_paths == ("icons/a.png", "icons/b.svg")
+
+
+def test_a_menu_label_differing_only_in_case_is_another_label(manifest_document):
+    manifest_document["spa"]["navigation"] = [MENU_ITEM, {**MENU_ITEM, "label": "overview", "path": "/other"}]
+
+    assert [item.label for item in validate_manifest(manifest_document).spa.navigation] == ["Overview", "overview"]
+
+
+PATH_MESSAGE = (
+    "must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', "
+    "without a query, a '.' or '..' segment, or a trailing '/'"
+)
+ICON_MESSAGE = (
+    "must be icons/<name>.svg or icons/<name>.png, where <name> is 1 to 63 lower-case "
+    "letters, digits, '-' and '_', starting with a letter or a digit"
+)
+
+
+# The plugin documentation quotes these messages; a change here is a change there.
+@pytest.mark.parametrize(
+    ("navigation", "loc", "error_type", "message"),
+    [
+        ([{**MENU_ITEM, "path": "/a/"}], ("spa", "navigation", 0, "path"), "navigation_path", PATH_MESSAGE),
+        ([{**MENU_ITEM, "path": "/a/.."}], ("spa", "navigation", 0, "path"), "navigation_path", PATH_MESSAGE),
+        ([{**MENU_ITEM, "path": "/" + "p" * 256}], ("spa", "navigation", 0, "path"), "string_too_long", "String should have at most 256 characters"),
+        ([{**MENU_ITEM, "icon": "icons/sub/a.svg"}], ("spa", "navigation", 0, "icon"), "navigation_icon", ICON_MESSAGE),
+        ([{**MENU_ITEM, "label": "  "}], ("spa", "navigation", 0, "label"), "blank_text", "must not be blank"),
+        ([{**MENU_ITEM, "label": "A\x7fB"}], ("spa", "navigation", 0, "label"), "control_character", "must not contain control characters"),
+        ([{**MENU_ITEM, "label": "l" * 33}], ("spa", "navigation", 0, "label"), "string_too_long", "String should have at most 32 characters"),
+        ([MENU_ITEM, {**MENU_ITEM, "label": "Home"}], ("spa", "navigation"), "duplicate", "lists path '/' more than once"),
+        ([MENU_ITEM, {**MENU_ITEM, "path": "/home"}], ("spa", "navigation"), "duplicate", "lists label 'Overview' more than once"),
+        (_menu_of(13), ("spa", "navigation"), "too_long", "List should have at most 12 items after validation, not 13"),
+    ],
+    ids=["trailing slash", "dot-dot segment", "path too long", "icon in a subfolder", "blank label", "control character", "label too long", "path twice", "label twice", "too many items"],
+)
+def test_a_menu_rule_says_exactly_what_is_wrong(manifest_document, navigation, loc, error_type, message):
+    manifest_document["spa"]["navigation"] = navigation
+
+    with pytest.raises(ValidationError) as raised:
+        PluginManifest.model_validate(manifest_document)
+
+    (error,) = raised.value.errors()
+    assert (error["loc"], error["type"], error["msg"]) == (loc, error_type, message)
+
+
+def test_the_json_schema_describes_the_menu():
+    schema = manifest_json_schema()
+    item = schema["$defs"]["NavigationItem"]
+
+    assert "navigation" not in schema["properties"]
+    assert schema["$defs"]["Spa"]["properties"]["navigation"]["maxItems"] == MAX_NAVIGATION_ITEMS
+    assert item["required"] == ["label", "path", "icon"]
+    assert item["additionalProperties"] is False
+    assert (item["properties"]["label"]["minLength"], item["properties"]["label"]["maxLength"]) == (1, 32)
+    assert item["properties"]["path"]["pattern"] == NAVIGATION_PATH_PATTERN
+    assert item["properties"]["path"]["maxLength"] == 256
+    assert item["properties"]["icon"]["pattern"] == NAVIGATION_ICON_PATTERN
 
 
 def test_user_permission_defaults_lists_the_actions_a_built_in_role_gets(full_manifest_document):

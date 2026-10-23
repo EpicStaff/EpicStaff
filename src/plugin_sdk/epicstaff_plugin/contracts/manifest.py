@@ -10,6 +10,7 @@ model checks only their form.
 """
 
 import json
+import re
 import unicodedata
 from typing import Annotated, Any, Literal, get_args
 from urllib.parse import urlsplit
@@ -68,6 +69,23 @@ WILDCARD_HOST_PREFIX = "*."
 # Keeps the review of a package readable; the node contract caps the egress allow-list too.
 MAX_OUTBOUND_HOSTS = 100
 
+# The app menu EpicStaff draws in its own sidebar while the app is open.
+MAX_NAVIGATION_ITEMS = 12
+MAX_NAVIGATION_LABEL_LENGTH = 32
+MAX_NAVIGATION_PATH_LENGTH = 256
+# A strict, already canonical subset of the frame protocol's `nav_path_pattern`: no query, no
+# `%` escape, no empty segment, no trailing `/`. `.` and `..` segments are refused on top.
+NAVIGATION_PATH_PATTERN = r"^/(?:[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*)?$"
+NAVIGATION_PATH_PROBLEM = (
+    "must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', "
+    "without a query, a '.' or '..' segment, or a trailing '/'"
+)
+NAVIGATION_ICON_PATTERN = r"^icons/[a-z0-9][a-z0-9_-]{0,62}\.(?:svg|png)$"
+NAVIGATION_ICON_PROBLEM = (
+    "must be icons/<name>.svg or icons/<name>.png, where <name> is 1 to 63 lower-case "
+    "letters, digits, '-' and '_', starting with a letter or a digit"
+)
+
 MAX_HOOK_TIMEOUT_SECONDS = {"install": 900, "upgrade": 1800, "org_removed": 900}
 
 
@@ -122,6 +140,21 @@ def _no_dot_segments(path: str) -> str:
     return path
 
 
+def _navigation_path(path: str) -> str:
+    # `fullmatch`, not `match`: `$` alone also matches before a trailing newline.
+    if not re.fullmatch(NAVIGATION_PATH_PATTERN, path) or any(
+        segment in (".", "..") for segment in path.split("/")
+    ):
+        raise _rule_error("navigation_path", NAVIGATION_PATH_PROBLEM)
+    return path
+
+
+def _navigation_icon(path: str) -> str:
+    if not re.fullmatch(NAVIGATION_ICON_PATTERN, path):
+        raise _rule_error("navigation_icon", NAVIGATION_ICON_PROBLEM)
+    return path
+
+
 def _unique(values: list[Any], what: str) -> None:
     seen: set[Any] = set()
     for value in values:
@@ -169,10 +202,47 @@ class Platform(_ManifestPart):
     hook_api: Literal[1]
 
 
+class NavigationItem(_ManifestPart):
+    """An entry of the app's menu, which EpicStaff draws in its own sidebar while the app is open."""
+
+    label: Annotated[
+        str,
+        StringConstraints(min_length=1, max_length=MAX_NAVIGATION_LABEL_LENGTH),
+        AfterValidator(_plain_text),
+    ]
+    path: Annotated[
+        str,
+        StringConstraints(max_length=MAX_NAVIGATION_PATH_LENGTH),
+        AfterValidator(_navigation_path),
+        Field(
+            description="The page of the app the item opens; a '.' or '..' segment is refused too.",
+            json_schema_extra={"pattern": NAVIGATION_PATH_PATTERN},
+        ),
+    ]
+    icon: Annotated[
+        str,
+        AfterValidator(_navigation_icon),
+        Field(
+            description="An SVG or PNG file in the package's icons/ folder.",
+            json_schema_extra={"pattern": NAVIGATION_ICON_PATTERN},
+        ),
+    ]
+
+
 class Spa(_ManifestPart):
     """The plugin's single-page app. Its files are under `spa/` in the package."""
 
     entry: Annotated[str, AfterValidator(_package_relative_path)] = "index.html"
+    navigation: Annotated[list[NavigationItem], Field(max_length=MAX_NAVIGATION_ITEMS)] = Field(
+        default_factory=list
+    )
+
+    @field_validator("navigation")
+    @classmethod
+    def _distinct_paths_and_labels(cls, items: list[NavigationItem]) -> list[NavigationItem]:
+        _unique([item.path for item in items], "path")
+        _unique([item.label for item in items], "label")
+        return items
 
 
 class Backend(_ManifestPart):
@@ -444,6 +514,13 @@ class PluginManifest(_ManifestPart):
                     role=role,
                 )
         return permissions
+
+    @property
+    def navigation_icon_paths(self) -> tuple[str, ...]:
+        """The package paths of the icons the app menu names, each once, sorted."""
+        if self.spa is None:
+            return ()
+        return tuple(sorted({item.icon for item in self.spa.navigation}))
 
     def user_permission_defaults(self, role: str) -> list[str]:
         """Return the actions a built-in role (`org_admin`, `member`, `viewer`) gets by default."""

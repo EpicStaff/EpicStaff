@@ -6,11 +6,21 @@ from epicstaff_plugin.signing import generate_secret_key
 
 from es_plugins.packages.package_unpacker import unpack_backend
 from es_plugins.packages.package_verifier import PackageVerificationError, verify_package
-from tests.helpers import backend_wheels, make_wheel, manifest, package_files, placement, write_package
+from tests.helpers import ICON_SVG, backend_wheels, make_wheel, manifest, package_files, placement, write_package
 
 
 def verify(path, desired):
     return verify_package(path, desired.plugin_identifier, desired.package, desired.runtime)
+
+
+def with_menu(files, icon=ICON_SVG):
+    """`files` with an app menu of two items sharing `icons/forecast.svg`, which holds `icon`."""
+    plugin_manifest = manifest()
+    plugin_manifest["spa"]["navigation"] = [
+        {"label": "Forecast", "path": "/", "icon": "icons/forecast.svg"},
+        {"label": "Places", "path": "/places", "icon": "icons/forecast.svg"},
+    ]
+    return {**files, "manifest.json": json.dumps(plugin_manifest).encode(), "icons/forecast.svg": icon}
 
 
 @pytest.fixture
@@ -137,6 +147,30 @@ def test_unpacking_writes_only_the_backend_files(tmp_path, files):
     )
     assert written == sorted(path for path in files if path.startswith("backend/"))
     assert not (destination / "stale").exists()
+
+
+def test_a_package_with_a_backend_and_a_menu_verifies_and_its_icons_are_not_unpacked(tmp_path, files):
+    files = with_menu(files)
+    package = write_package(tmp_path / "weather.esplugin", files)
+
+    archive = verify(package, placement(package.read_bytes()))
+    destination = tmp_path / "unpacked"
+    unpack_backend(package, archive, destination)
+
+    assert dict(archive.navigation_icons) == {"icons/forecast.svg": ICON_SVG}
+    written = sorted(
+        str(path.relative_to(destination)) for path in destination.rglob("*") if path.is_file()
+    )
+    assert written == sorted(path for path in files if path.startswith("backend/"))
+    assert not (destination / "icons").exists()
+
+
+def test_a_package_whose_menu_icon_has_a_script_is_refused(tmp_path, files):
+    scripted = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    package = write_package(tmp_path / "weather.esplugin", with_menu(files, scripted))
+
+    with pytest.raises(PackageVerificationError, match=r"package.icons/forecast.svg: contains a <script> element"):
+        verify(package, placement(package.read_bytes()))
 
 
 def test_an_upgrade_target_is_checked_against_its_own_package_and_runtime(tmp_path):
