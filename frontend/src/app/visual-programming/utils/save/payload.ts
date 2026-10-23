@@ -205,7 +205,6 @@ function buildCdtNodePayload(
         pre_python_code: isPythonCodeBlockSaved(preCodeValue, preSecretIds)
             ? {
                   code: preCodeValue,
-                  libraries: preComp?.libraries ?? [],
                   entrypoint: 'main',
                   global_kwargs: {},
                   secret_ids: preSecretIds,
@@ -218,7 +217,6 @@ function buildCdtNodePayload(
         post_python_code: isPythonCodeBlockSaved(postCodeValue, postSecretIds)
             ? {
                   code: postCodeValue,
-                  libraries: postComp?.libraries ?? [],
                   entrypoint: 'main',
                   global_kwargs: {},
                   secret_ids: postSecretIds,

@@ -537,7 +537,7 @@ validation, a shape error (an undeclared `get_secret`) wins over a `USE` denial.
 **Deliberately ungated.**
 
 - **PythonCode content.** `USE` is needed only to *declare* secrets (`secret_ids`). Editing
-  the `code` or `libraries` of a PythonCode that already declares secrets is free: the
+  the `code` or `venv_id` of a PythonCode that already declares secrets is free: the
   declaration is what grants the access.
 - **Copy, graph-version restore, graph-import key re-link** reproduce an existing reference
   inside one org rather than choosing a new one (pinned by `TestUngatedPathsStayUngated`

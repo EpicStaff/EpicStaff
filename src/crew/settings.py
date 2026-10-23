@@ -66,6 +66,9 @@ DJANGO_PORT = env.int("DJANGO_PORT")
 DJANGO_API_KEY = env.str("DJANGO_API_KEY")
 KEY_VALUE_TIMEOUT = env.time("CREW_KEY_VALUE_TIMEOUT")
 
+SANDBOX_HOST = env.str("SANDBOX_HOST")
+SANDBOX_PORT = env.int("SANDBOX_PORT")
+SANDBOX_TIMEOUT = env.time("CREW_SANDBOX_TIMEOUT")
 # Safety net for the wait on a sandbox code-execution result.
 # None means "wait indefinitely".
 CODE_RESULT_TIMEOUT = env.time("CREW_CODE_RESULT_TIMEOUT")

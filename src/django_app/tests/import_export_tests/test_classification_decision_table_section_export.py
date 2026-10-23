@@ -11,6 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from tables.models.graph_models import ClassificationConditionGroup
 from rbac.models import Organization, OrganizationUser
 from tables.import_export.enums import EntityType
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 def _condition_groups_of(export_data, cdt_node):
@@ -57,8 +58,10 @@ class TestCDTSectionExportJsonSerializability:
         _, cdt_node, *_ = cdt_condition_group_factory(default_org)
 
         export_data = export_service.export_entities(
-            EntityType.CLASSIFICATION_DECISION_TABLE_NODE, [cdt_node.id]
-        )
+            EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
+            [cdt_node.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
 
         assert json.dumps(export_data) is not None
 
@@ -73,8 +76,10 @@ class TestCDTSectionFieldFormatValidation:
         _, cdt_node, section, _ = cdt_condition_group_factory(default_org)
 
         export_data = export_service.export_entities(
-            EntityType.CLASSIFICATION_DECISION_TABLE_NODE, [cdt_node.id]
-        )
+            EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
+            [cdt_node.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         parsed = json.loads(json.dumps(export_data))
         section_value = _condition_groups_of(parsed, cdt_node)[0]["section"]
 
@@ -86,8 +91,10 @@ class TestCDTSectionFieldFormatValidation:
         _, cdt_node, *_ = cdt_condition_group_factory(default_org, with_section=False)
 
         export_data = export_service.export_entities(
-            EntityType.CLASSIFICATION_DECISION_TABLE_NODE, [cdt_node.id]
-        )
+            EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
+            [cdt_node.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         parsed = json.loads(json.dumps(export_data))
 
         assert _condition_groups_of(parsed, cdt_node)[0]["section"] is None
@@ -104,8 +111,10 @@ class TestCDTSectionFieldFormatValidation:
         )
 
         export_data = export_service.export_entities(
-            EntityType.CLASSIFICATION_DECISION_TABLE_NODE, [cdt_node.id]
-        )
+            EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
+            [cdt_node.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         parsed = json.loads(json.dumps(export_data))
         exported_group = _condition_groups_of(parsed, cdt_node)[0]
 
@@ -123,7 +132,9 @@ class TestCDTSectionExportRoundTrip:
     ):
         graph, cdt_node, *_ = cdt_condition_group_factory(default_org)
 
-        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+        export_data = export_service.export_entities(
+            EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         parsed = json.loads(json.dumps(export_data))
 
         # The CDT node is nested inside the exported Flow entry's flat "nodes"
@@ -144,8 +155,10 @@ class TestCDTSectionExportRoundTrip:
         )
 
         export_data = export_service.export_entities(
-            EntityType.GRAPH, [original_graph.id]
-        )
+            EntityType.GRAPH,
+            [original_graph.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
         assert json.dumps(export_data) is not None
 
         id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)

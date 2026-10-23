@@ -69,7 +69,7 @@ def tool_label_a(org_a):
 @pytest.fixture
 def python_tool_a(org_a, tool_label_a):
     code = PythonCode.objects.create(
-        code="def main(): return 1", entrypoint="main", libraries=""
+        code="def main(): return 1", entrypoint="main"
     )
     tool = PythonCodeTool.objects.create(
         name="PyToolA",
@@ -112,7 +112,7 @@ def mcp_tool_with_auth_a(org_a, tool_label_a):
 @pytest.fixture
 def python_tool_a2(org_a, tool_label_a):
     code = PythonCode.objects.create(
-        code="def main(): return 2", entrypoint="main", libraries=""
+        code="def main(): return 2", entrypoint="main"
     )
     tool = PythonCodeTool.objects.create(
         name="PyToolA2",
@@ -136,7 +136,7 @@ def mcp_tool_a2(org_a):
 @pytest.fixture
 def builtin_python_tool(db):
     code = PythonCode.objects.create(
-        code="def main(): return 3", entrypoint="main", libraries=""
+        code="def main(): return 3", entrypoint="main"
     )
     return PythonCodeTool.objects.create(
         name="BuiltInPyTool",
@@ -175,7 +175,7 @@ def client_b(user_b, org_b):
 @pytest.fixture
 def shared_built_in_tool_with_both_orgs_labels(org_a, org_b):
     code = PythonCode.objects.create(
-        code="def main(): return 1", entrypoint="main", libraries=""
+        code="def main(): return 1", entrypoint="main"
     )
     tool = PythonCodeTool.objects.create(
         name="SharedBuiltIn",
@@ -220,7 +220,7 @@ class ToolKind:
 
 
 def _foreign_python_tool(org):
-    code = PythonCode.objects.create(code="x", entrypoint="main", libraries="")
+    code = PythonCode.objects.create(code="x", entrypoint="main")
     return PythonCodeTool.objects.create(name="theirs", description="", python_code=code, org=org)
 
 
@@ -465,3 +465,55 @@ def test_mcptool_import_rejects_non_http_transport(client_a, mcp_tool_a, org_a):
     assert resp.status_code == 400, resp.data
     assert "transport" in resp.data["message"]
     assert McpTool.objects.filter(org=org_a).count() == tool_count_before_import
+
+
+# ---- an imported python tool's description is cleaned like the API route cleans it ----
+
+
+def _import_python_tool_with_description(client, org, tool, description):
+    python_kind = TOOL_KINDS[0]
+    payload = python_kind.export(client, tool).json()
+    payload["PythonCodeTool"][0]["description"] = description
+
+    resp = python_kind.import_(client, json.dumps(payload).encode(), import_labels="false")
+
+    assert resp.status_code == 200, resp.data
+    return PythonCodeTool.objects.filter(org=org).exclude(id=tool.id).latest("id")
+
+
+@pytest.mark.django_db
+def test_import_stores_a_python_tool_description_without_control_characters_and_capped(
+    client_a, org_a, python_tool_a
+):
+    imported = _import_python_tool_with_description(
+        client_a, org_a, python_tool_a, "Line one\x1b[31m\x07\n" + "x" * 2000
+    )
+
+    assert imported.description == "Line one[31m" + "x" * 1012
+
+
+@pytest.mark.django_db
+def test_a_description_of_only_control_characters_is_rejected_on_import_and_by_the_api(
+    client_a, org_a, python_tool_a
+):
+    python_kind = TOOL_KINDS[0]
+    payload = python_kind.export(client_a, python_tool_a).json()
+    payload["PythonCodeTool"][0]["description"] = "\x1b\x07"
+    tool_count_before = PythonCodeTool.objects.filter(org=org_a).count()
+
+    imported = python_kind.import_(client_a, json.dumps(payload).encode(), import_labels="false")
+    created = client_a.post(
+        "/api/python-code-tool/",
+        {
+            "name": "via-api",
+            "description": "\x1b\x07",
+            "python_code": {"code": "x", "entrypoint": "main", "libraries": []},
+        },
+        format="json",
+    )
+
+    assert imported.status_code == 400, imported.data
+    assert created.status_code == 400, created.data
+    assert "Description must contain visible text." in str(imported.data)
+    assert "Description must contain visible text." in str(created.data)
+    assert PythonCodeTool.objects.filter(org=org_a).count() == tool_count_before

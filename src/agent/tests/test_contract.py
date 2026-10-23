@@ -59,10 +59,8 @@ EXAMPLE_BLOB = {
                     "required": [],
                 },
                 "python_code": {
-                    "venv_name": "venv_pyt_1",
                     "code": "def run(x): return x",
                     "entrypoint": "run",
-                    "libraries": [],
                     "global_kwargs": None,
                     "use_storage": False,
                     "storage_allowed_paths": None,

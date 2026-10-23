@@ -23,7 +23,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
-    ChipsInputComponent,
     ConfirmationDialogService,
     CustomInputComponent,
     ErrorBannerComponent,
@@ -32,6 +31,8 @@ import {
     HelpTooltipComponent,
     JsonEditorComponent,
     JsonError,
+    SelectComponent,
+    SelectItem,
     TextareaComponent,
     ToggleSwitchComponent,
     ValidationErrorsComponent,
@@ -54,6 +55,8 @@ import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
 import { CustomToolsService } from '../../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../features/tools/services/tools-events.service';
+import { Venv } from '../../../../features/virtual-environments/models/venv.model';
+import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { NodeSecretsFieldComponent } from '../../../../visual-programming/components/node-secrets-field/node-secrets-field.component';
@@ -125,7 +128,6 @@ const VARIABLES_SCHEMA_TOOLTIP =
         MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
-        ChipsInputComponent,
         CustomInputComponent,
         ErrorBannerComponent,
         ExecutionTimeoutFieldComponent,
@@ -134,6 +136,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
         JsonEditorComponent,
         TextareaComponent,
         ToggleSwitchComponent,
+        SelectComponent,
         ParametersTableViewComponent,
         EnterSubmitDirective,
         HasPermissionDirective,
@@ -154,6 +157,7 @@ export class CreateCustomToolDialogComponent {
     private readonly toolsEvents = inject(ToolsEventsService);
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
+    private readonly venvsApiService = inject(VenvsApiService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
@@ -198,7 +202,7 @@ export class CreateCustomToolDialogComponent {
             Validators.required,
         ]),
         variablesJson: this.fb.control(this.initialVariablesJson(), [Validators.required]),
-        libraries: this.fb.control<string[]>(this.selectedTool()?.python_code?.libraries ?? []),
+        venvId: this.fb.control<number | null>(this.selectedTool()?.python_code?.venv_id ?? null),
         useStorage: this.fb.control(this.selectedTool()?.use_storage ?? false),
     });
 
@@ -223,6 +227,13 @@ export class CreateCustomToolDialogComponent {
             ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
             : this.selectedSecretNames()
     );
+
+    public readonly venvs = signal<Venv[]>([]);
+    public readonly loadingVenvs = signal<boolean>(false);
+    public readonly venvItems = computed<SelectItem[]>(() => [
+        { name: 'No venv', value: null },
+        ...this.venvs().map((venv) => ({ name: venv.name, value: venv.id })),
+    ]);
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);
@@ -259,6 +270,18 @@ export class CreateCustomToolDialogComponent {
                 queueMicrotask(() => this.monacoJsonEditor?.layout());
             }
         });
+
+        this.loadingVenvs.set(true);
+        this.venvsApiService
+            .getVenvs()
+            .pipe(takeUntilDestroyed())
+            .subscribe({
+                next: (list) => {
+                    this.venvs.set(list);
+                    this.loadingVenvs.set(false);
+                },
+                error: () => this.loadingVenvs.set(false),
+            });
 
         const parsedDefault = parseToolVariablesJson(this.form.controls.variablesJson.value);
         this.tableVariables.set(parsedDefault.valid ? parsedDefault.variables : []);
@@ -666,12 +689,12 @@ export class CreateCustomToolDialogComponent {
     }
 
     private computeSnapshot(): string {
-        const { name, description, pythonCode, libraries, useStorage } = this.form.getRawValue();
+        const { name, description, pythonCode, venvId, useStorage } = this.form.getRawValue();
         return JSON.stringify({
             name,
             description,
             pythonCode,
-            libraries: [...libraries].sort(),
+            venvId,
             useStorage,
             variables: this.snapshotVariables(),
             secretIds: [...this.selectedSecretIds()].sort(),

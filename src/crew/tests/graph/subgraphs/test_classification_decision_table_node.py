@@ -373,7 +373,7 @@ async def test_prompt_llm_call_forwards_reasoning_effort(monkeypatch):
 
     assert call_kwargs["reasoning_effort"] == "high"
     assert call_kwargs["temperature"] == 0.2
-    assert call_kwargs["model"] == "openai/gpt-5-mini"
+    assert call_kwargs["model"] == "gpt-5-mini"
 
 
 @pytest.mark.asyncio
@@ -429,7 +429,7 @@ async def fake_run_code_raises(
 
 
 _FAILING_CODE = PythonCodeData(
-    venv_name="default", code="def main(): pass", entrypoint="main", libraries=[]
+    code="def main(): pass", entrypoint="main"
 )
 
 

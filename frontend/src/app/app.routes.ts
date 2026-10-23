@@ -262,6 +262,15 @@ export const routes: Routes = [
                         ],
                     },
                     {
+                        path: 'venvs',
+                        loadComponent: () =>
+                            import('./features/virtual-environments/pages/venvs-list-page/venvs-list-page.component').then(
+                                (m) => m.VenvsListPageComponent
+                            ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Venvs, ActionCode.Read] },
+                    },
+                    {
                         path: 'chats',
                         loadComponent: () =>
                             import('./pages/chats-page/chats-page.component').then((m) => m.ChatsPageComponent),

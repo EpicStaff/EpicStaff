@@ -261,7 +261,9 @@ class SessionViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         fmt = request.query_params.get("export_format", "json")
-        return self.import_export_service.export_entity(self.get_object(), fmt=fmt)
+        return self.import_export_service.export_entity(
+            self.get_object(), fmt=fmt, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(
         description="Export messages from multiple sessions as a single downloadable file. "
@@ -291,7 +293,9 @@ class SessionViewSet(
             )
 
         fmt = request.query_params.get("export_format", "json")
-        return self.import_export_service.bulk_export(entity_ids, fmt=fmt)
+        return self.import_export_service.bulk_export(
+            entity_ids, fmt=fmt, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(
         description="Export messages from top-level sessions matching the given filters as a single downloadable file. "
@@ -357,7 +361,9 @@ class SessionViewSet(
             )
 
         fmt = request.query_params.get("export_format", "json")
-        return self.import_export_service.bulk_export(session_ids, fmt=fmt)
+        return self.import_export_service.bulk_export(
+            session_ids, fmt=fmt, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**SESSION_STATUSES_GET)
     @action(detail=False, methods=["GET"])

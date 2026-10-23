@@ -186,7 +186,7 @@ def check_python_code_write(
     """Gate a change of the secrets declared by the PythonCode a parent nests at `attribute`.
 
     Reported under `attribute` + `secret_ids`. Only the declaration needs
-    secrets:USE. Editing the `code` or `libraries` of a PythonCode that already
+    secrets:USE. Editing the `code` or `venv_id` of a PythonCode that already
     declares secrets is free, even though the new code reads those secrets at run
     time: the declaration is what grants that access.
 

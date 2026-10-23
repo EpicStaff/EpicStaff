@@ -17,6 +17,7 @@ from src.crew.models.state import State
 from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.session_audit_provider import emit_session_audit_event
+from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
 from src.shared.models import LLMConfigData, LLMData, PythonCodeData, TokenUsage
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
@@ -28,15 +29,6 @@ from src.shared.models.storage_scope import StorageCredentials
 # litellm reports json_schema support for these providers, but their APIs reject it
 # ("This response_format type is unavailable now") and only accept json_object.
 JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
-
-# Provider rows whose name is not a litellm provider, mapped to the litellm provider their
-# stored model names are prefixed with (e.g. "google_ai" rows hold "gemini/gemini-flash-latest").
-PROVIDER_ALIASES = {
-    "google_ai": "gemini",
-    "novita_ai": "novita",
-    "aws_sagemaker": "sagemaker",
-    "featherless-ai": "featherless_ai",
-}
 
 
 def _custom_cost_per_token(llm_config: LLMConfigData) -> CostPerToken | None:
@@ -377,10 +369,8 @@ class ClassificationDecisionTableNodeSubgraph:
         """
         result = await RunPythonCodeService(redis_service=self.redis_service).run_code(
             python_code_data=PythonCodeData(
-                venv_name="default",
                 code=_EVALUATE_UNTIL_MATCH_CODE,
                 entrypoint="main",
-                libraries=[],
             ),
             inputs={
                 "expressions": expressions,
@@ -436,10 +426,8 @@ def main(**kwargs) -> dict:
     return _from_ns(variables)
 """
         python_code_data = PythonCodeData(
-            venv_name="default",
             code=code,
             entrypoint="main",
-            libraries=[],
         )
 
         variables_dict = state["variables"].model_dump()
@@ -502,18 +490,10 @@ def main(**kwargs) -> dict:
                     },
                 }
 
-        # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
-        # Only the row's own provider counts: "openai/gpt-oss-120b" on a Groq row is a Groq
-        # model id and must become "groq/openai/gpt-oss-120b".
-        litellm_provider = PROVIDER_ALIASES.get(llm.provider.lower().strip(), llm.provider)
-        model = (
-            llm_config.model
-            if llm_config.model.startswith(f"{litellm_provider}/")
-            else f"{litellm_provider}/{llm_config.model}"
-        )
+        model = litellm_call_model(llm.provider, llm_config.model, llm_config.deployment_id)
         params = {
             "model": model,
-            **llm_config.to_litellm_kwargs(provider=litellm_provider),
+            **llm_config.to_litellm_kwargs(provider=litellm_routed_provider(model)),
             "response_format": response_format,
             "base_url": llm_config.base_url,
             "api_version": llm_config.api_version,

@@ -1,0 +1,50 @@
+[project]
+name = "sandbox-new"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "BogdanTimchenkoHYS", email = "bogdan.timchenko@hys-enterprise.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "foundation",
+    "litestar==2.24.0",
+    "loguru==0.7.3",
+    "packaging==24.0",
+    "piccolo[postgres]==1.36.0",
+    "pydantic==2.13.4",
+    "redis==5.3.1",
+    "uvicorn==0.52.3",
+]
+
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+foundation = { path = "../foundation", editable = true }
+
+[dependency-groups]
+dev = [
+    "fakeredis>=2.38.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+transitive-pins = [
+    "anyio==4.14.2",
+    "idna==3.18",
+    "pyjwt==2.13.0",
+    "certifi==2026.7.22"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = "--disable-warnings"
+log_cli = true
+log_level = "WARNING"

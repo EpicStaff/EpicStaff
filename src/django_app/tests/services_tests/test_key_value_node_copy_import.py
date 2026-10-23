@@ -20,7 +20,7 @@ from tables.import_export.services.partial_import_service import PartialImportSe
 from tables.models import Graph, KeyValueNode, KeyValueTable
 from tables.services.copy_services.graph_copy_service import GraphCopyService
 from tables.services.key_value_table_service import KeyValueTableService
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 
 FLOWS_ALL = 255
 
@@ -254,6 +254,7 @@ def _paste(source_node: KeyValueNode, target_graph: Graph, user) -> KeyValueNode
     result = GraphPartialExportService(entity_registry).export(
         [NodeRef(entity_type=EntityType.KEY_VALUE_NODE, node_id=source_node.id)],
         org_id=source_node.graph.org_id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
     assert not result.has_errors, result.errors
     PartialImportService(entity_registry).import_data(
@@ -394,7 +395,11 @@ def test_import_replace_recreates_node_and_binds_table_only_with_mode_permission
 ):
     _set_mode(source_node, mode)
     graph = source_node.graph
-    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    export_data = (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
     # Unbound after the export, so only the replace can bring the table back.
     KeyValueNode.objects.filter(pk=source_node.pk).update(key_value_table=None)
     client = APIClient()

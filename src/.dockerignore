@@ -7,13 +7,14 @@
 # Secrets and local environment
 **/.env
 
-# Virtual environments
+# Virtual environments (runtime dirs only — not the Python package
+# manager/infrastructure/database/venvs)
 ENV
 */.venv
 */.env
 **/venv
 **/*venv
-**/*venvs
+sandbox_new/venvs
 
 # Python build and tool caches
 **/__pycache__

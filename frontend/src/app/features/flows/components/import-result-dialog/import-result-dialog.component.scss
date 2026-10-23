@@ -310,9 +310,7 @@
             &:hover {
                 background-color: var(--graphite-740);
             }
-            box-shadow:
-                0px 2px 3px 0px var(--black-alpha-30),
-                0px 6px 10px 4px var(--black-alpha-15);
+            box-shadow: var(--shadow-raised);
 
             .item-icon {
                 display: flex;

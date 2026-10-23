@@ -41,7 +41,7 @@ def _python_child(code: str, input_map: dict | None = None) -> GraphData:
             PythonNodeData(
                 node_name="produce",
                 python_code=PythonCodeData(
-                    venv_name="venv-default", code=code, entrypoint="main", libraries=[], global_kwargs={}
+                    code=code, entrypoint="main", global_kwargs={}
                 ),
                 input_map=input_map or {},
                 output_variable_path="variables",

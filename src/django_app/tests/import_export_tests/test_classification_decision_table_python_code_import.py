@@ -8,6 +8,7 @@ from tables.import_export.serializers.classification_decision_table_node import 
 )
 from tables.models import PythonCode
 from tables.models.graph_models import ClassificationDecisionTableNode, Graph
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 VICTIM_CODE = "def main():\n    return 'shared tool code'"
 IMPORTED_CODE = "def main():\n    return 'imported code'"
@@ -18,7 +19,7 @@ MISSING = object()
 @pytest.fixture
 def victim_python_code(db):
     """An existing PythonCode row the import file must never be able to bind to."""
-    return PythonCode.objects.create(code=VICTIM_CODE, entrypoint="main", libraries="")
+    return PythonCode.objects.create(code=VICTIM_CODE, entrypoint="main")
 
 
 @pytest.fixture
@@ -26,7 +27,11 @@ def exported_cdt_graph(default_org, export_service):
     graph = Graph.objects.create(name="cdt-python-code-src", org=default_org)
     ClassificationDecisionTableNode.objects.create(graph=graph, node_name="cdt")
     export_data = json.loads(
-        json.dumps(export_service.export_entities(EntityType.GRAPH, [graph.id]))
+        json.dumps(
+            export_service.export_entities(
+                EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
+        )
     )
     yield export_data
 
@@ -105,12 +110,11 @@ def test_round_trip_creates_fresh_pre_and_post_python_code(
     default_org, export_service, import_service
 ):
     source_pre_code = PythonCode.objects.create(
-        code="def main(x):\n    return x", entrypoint="main", libraries="requests"
+        code="def main(x):\n    return x", entrypoint="main"
     )
     source_post_code = PythonCode.objects.create(
         code="def run():\n    return 1",
         entrypoint="run",
-        libraries="",
         global_kwargs={"limit": 3},
     )
     graph = Graph.objects.create(name="cdt-python-code-round-trip", org=default_org)
@@ -121,7 +125,11 @@ def test_round_trip_creates_fresh_pre_and_post_python_code(
         post_python_code=source_post_code,
     )
     export_data = json.loads(
-        json.dumps(export_service.export_entities(EntityType.GRAPH, [graph.id]))
+        json.dumps(
+            export_service.export_entities(
+                EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
+        )
     )
 
     new_node = _imported_cdt_node(import_service, export_data)
@@ -134,7 +142,7 @@ def test_round_trip_creates_fresh_pre_and_post_python_code(
         assert new_code.id != source_code.id
         assert new_code.code == source_code.code
         assert new_code.entrypoint == source_code.entrypoint
-        assert new_code.libraries == source_code.libraries
+        assert new_code.venv_id == source_code.venv_id
         assert new_code.global_kwargs == source_code.global_kwargs
 
 

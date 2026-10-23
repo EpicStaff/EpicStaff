@@ -297,7 +297,7 @@ destination. Those refusals name the field too, with this message: *"Changing wh
 its secrets requires the "Use" permission on Secrets. The existing value was left unchanged.
 Ask an organization admin to grant it."*
 
-Deliberately **not** gated: editing the `code` or `libraries` of a Python code that already
+Deliberately **not** gated: editing the `code` or `venv_id` of a Python code that already
 declares secrets (only declaring them, `secret_ids`, needs `USE`); copying a resource, restoring
 a graph version and re-linking keys on graph import, which reproduce an existing reference; and
 the Telegram bot key, ElevenLabs and Gemini realtime keys and Twilio auth token, which have no
