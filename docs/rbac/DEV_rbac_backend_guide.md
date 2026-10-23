@@ -105,10 +105,18 @@ class Permission(IntFlag):
     UPDATE = 4
     DELETE = 8
     EXPORT = 16  # 32 retired (was DOWNLOAD, folded into EXPORT)
-    USE = 64  # catalog action of `secrets` only; enforced by SecretUseService
+    USE = 64  # catalog action of `secrets`, `flows` and `chats`; see the table below
     LIST = 128  # reserved — not in the catalog, checked nowhere
-    RUN = 256  # catalog action of `flows` only; start/stop runs and write trigger nodes
 ```
+
+`USE` means something different on each resource that lists it in `applicable_actions`
+(`rbac/access/catalog.py`), and it is granted on no other:
+
+| Resource | What `use` allows | Enforced by |
+|---|---|---|
+| `secrets` | Attach a secret to a resource or change where it is sent (§5.6) | `SecretUseService` |
+| `flows` | Start and stop runs; write trigger nodes (§5.3) | `get_runnable_graph`, `get_accessible_session`, `trigger_node_access` |
+| `chats` | Operator support work: claim, release, reply, test conversation | the chat service, through the effective-permissions endpoint |
 
 ### 2.2 Built-in roles (declared in `rbac/access/builtin_roles.json`)
 
@@ -121,7 +129,7 @@ after `migrate`) makes the database match it exactly.
 "Member": {
   "description": "Builds and edits workspace resources; no organization administration.",
   "permissions": {
-    "flows": ["create", "read", "update", "run"],
+    "flows": ["create", "read", "update", "use"],
     "knowledge_sources": ["read"]
   }
 }
@@ -131,7 +139,7 @@ after `migrate`) makes the database match it exactly.
   a resource missing from `permissions` is removed entirely. To take a permission away, delete
   it from the file.
 - **Only grantable actions are accepted.** Each action must be in that resource's
-  `applicable_actions` in `rbac/access/catalog.py`, so `use` on `flows`, `list` anywhere, or a
+  `applicable_actions` in `rbac/access/catalog.py`, so `use` on `agents`, `list` anywhere, or a
   platform action is refused. To grant a new kind of action, add it to the catalog and enforce
   it first. This keeps every stored bit one the code enforces and the matrix can show — the
   escalation ceiling compares these masks, so a dead bit can still refuse a legitimate
@@ -322,25 +330,25 @@ assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.CREAT
 
 The quickstart endpoint (`tables/views/views.py`) is the reference example.
 
-### 5.3 Session / SSE surfaces — `assert_session_org_access`
+### 5.3 Session / SSE surfaces — `get_accessible_session`
 
 Sessions have no org column; they are children of their graph. Non-ViewSet session
 surfaces (SSE stream, get-updates, stop) authorize via
-`assert_session_org_access(user, session, action)`
+`get_accessible_session(user, session_id, action)`
 (`tables/services/session_access.py`): 404 when the session has no graph, then
 membership + FLOWS bit check against `session.graph.org_id`. SSE resolves the user from
 the single-use ticket first, then calls this. Reading a session (SSE, get-updates) needs
-`READ`; stopping one needs `RUN`, as starting one does (`get_runnable_graph`).
+`READ`; stopping one needs `USE`, as starting one does (`get_runnable_graph`).
 
-`RUN` also gates writing a trigger node (webhook, Telegram, schedule), because one starts
+`USE` on `flows` also gates writing a trigger node (webhook, Telegram, schedule), because one starts
 runs by itself. Which node types are triggers is declared once, by `starts_runs=True` on
 their `NodeTypeConfig` in `tables/services/graph_bulk_save_service/registry.py`
 (`TRIGGER_NODE_LIST_KEYS`, `TRIGGER_NODE_MODELS`); `tables/services/trigger_nodes.py`
 derives everything else from them:
 
-- Writing one trigger node — the bulk save and `TriggerNodeRunPermissionMixin`
+- Writing one trigger node — the bulk save and `TriggerNodeUsePermissionMixin`
   (`tables/views/mixins.py`) — calls `trigger_node_access.assert_may_write`, which raises
-  `TriggerNodesRequireRunPermissionError` (403 `trigger_nodes_require_run_permission`).
+  `TriggerNodesRequireUsePermissionError` (403 `trigger_nodes_require_use_permission`).
   `trigger_node_access` is the shared `TriggerNodeAccess` instance.
   Updating a `WebhookTrigger` that a live trigger node is attached to
   (`TriggerNodeInspector.has_any_attached_to_webhook_trigger`) goes through the same
@@ -350,8 +358,8 @@ derives everything else from them:
   `TriggerNodeInspector.graphs_attached_to_webhook_trigger`; it lists their names only
   when the caller also holds READ on flows, and always returns the count.
 - Recreating trigger nodes by copy, import, partial import or version create-graph /
-  restore raises `FlowWithTriggerNodesRequiresRunPermissionError`
-  (403 `flow_with_trigger_nodes_requires_run_permission`) through
+  restore raises `FlowWithTriggerNodesRequiresUsePermissionError`
+  (403 `flow_with_trigger_nodes_requires_use_permission`) through
   `trigger_node_access.assert_user_may_recreate` (views) or `assert_may_recreate` (the
   import services, with the `effective_permissions` the caller passes in). One "holds a
   trigger node" decision per source shape, on `TriggerNodeInspector`:
@@ -360,12 +368,12 @@ derives everything else from them:
   `has_any_in_flow_entry` (version snapshot). The views check after the org-scoped
   fetch, so another org's id stays a 404; the import services check before their
   transaction opens.
-- `run-python-code` needs RUN for code a trigger node owns, named by target
+- `run-python-code` needs USE for code a trigger node owns, named by target
   (`CodeRunTarget.owner_is_trigger_node`) or by `python_code_id`
   (`trigger_node_owns_python_code`).
 
 A new trigger node type only needs the flag.
-See `roles_and_permissions.md` → "Running flows: the `run` action" for the endpoint list.
+See `roles_and_permissions.md` → "Running flows: `use` on `flows`" for the endpoint list.
 
 ### 5.4 Superadmin-only and global surfaces
 
@@ -738,7 +746,7 @@ service, and never trust ids in the payload without an org-scoped fetch.
 2. Your consumer/view consumes it (`sse_ticket_service.consume(ticket)`) → user or 401
    `invalid_sse_ticket`.
 3. Authorize against the org that owns the streamed object (for sessions:
-   `assert_session_org_access`). Never trust an org id supplied in the query string.
+   `get_accessible_session`). Never trust an org id supplied in the query string.
 
 ### 8.6 Global (non-org) resource
 
