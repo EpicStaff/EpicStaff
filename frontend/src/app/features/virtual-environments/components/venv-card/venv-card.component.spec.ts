@@ -56,21 +56,21 @@ describe('VenvCardComponent library chips', () => {
     }
 
     it('shows the installed version and never the specifier set', () => {
-        render([{ name: 'requests', version: '2.14.1', specification: '==2.14.1' }]);
+        render([{ name: 'requests', version: '2.14.1', specification: '==2.14.1', description: null }]);
 
         expect(text(chip(0))).toBe('requests 2.14.1');
         expect(parts(chip(0))).toEqual(['2.14.1']);
     });
 
     it('shows the name alone while no version is installed', () => {
-        render([{ name: 'requests', version: null, specification: '>=2.0' }]);
+        render([{ name: 'requests', version: null, specification: '>=2.0', description: null }]);
 
         expect(text(chip(0))).toBe('requests');
         expect(parts(chip(0))).toEqual([]);
     });
 
     it('shows the installed version for a library declared without a specifier set', () => {
-        render([{ name: 'requests', version: '2.14.1', specification: '' }]);
+        render([{ name: 'requests', version: '2.14.1', specification: '', description: null }]);
 
         expect(text(chip(0))).toBe('requests 2.14.1');
         expect(parts(chip(0))).toEqual(['2.14.1']);

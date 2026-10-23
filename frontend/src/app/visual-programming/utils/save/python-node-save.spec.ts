@@ -9,6 +9,7 @@ const dto: PythonNode = {
     id: 7,
     graph: 1,
     node_name: 'Python #1',
+    node_number: 1,
     python_code: {
         id: 3,
         code: 'def main():\n    return 1',
