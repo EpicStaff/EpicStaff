@@ -46,7 +46,7 @@ import {
 } from '../../../../../../visual-programming/core/keymap/key-chord.util';
 import {
     CustomShortcut,
-    isNodeKeyEditable,
+    isOverridableActionId,
 } from '../../../../../../visual-programming/core/keymap/shortcut-resolution';
 import { KeymapService } from '../../../../../../visual-programming/services/keymap.service';
 import { ShortcutEditorComponent } from './shortcut-editor/shortcut-editor.component';
@@ -81,7 +81,7 @@ interface CustomShortcutRow {
 type EditorTarget =
     | { readonly kind: 'add' }
     | { readonly kind: 'edit'; readonly customShortcutId: string }
-    | { readonly kind: 'node'; readonly actionId: EditorActionId };
+    | { readonly kind: 'key'; readonly actionId: EditorActionId };
 
 export const SHORTCUTS_MODAL_HEIGHT_PX = 666;
 
@@ -97,7 +97,14 @@ const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
 const MAX_SETTLE_STEPS = 3;
 
-const SECTION_ORDER: readonly EditorActionSection[] = ['Editing', 'Navigating', 'Selection', 'Zoom', 'Nodes'];
+const SECTION_ORDER: readonly EditorActionSection[] = [
+    'Editing',
+    'Navigating',
+    'Selection',
+    'Zoom',
+    'Flow actions',
+    'Nodes',
+];
 
 @Component({
     selector: 'app-shortcuts-modal',
@@ -128,7 +135,7 @@ export class ShortcutsModalComponent {
 
     private readonly addButton = viewChild<ButtonComponent>('addButton');
     private readonly customEditButtons = viewChildren<EditButtonComponent>('customEdit');
-    private readonly nodeEditButtons = viewChildren<EditButtonComponent>('nodeEdit');
+    private readonly keyEditButtons = viewChildren<EditButtonComponent>('keyEdit');
     private readonly content = viewChild<ElementRef<HTMLElement>>('content');
     private readonly flow = viewChild<ElementRef<HTMLElement>>('flow');
     private readonly openEditor = viewChild(ShortcutEditorComponent, { read: ElementRef });
@@ -148,7 +155,7 @@ export class ShortcutsModalComponent {
                     label: action.label,
                     chords: this.displayedChords(action, builtInBindings.get(action.id) ?? []),
                     isNotSet: unboundIds.has(action.id),
-                    isKeyEditable: isNodeKeyEditable(action.id),
+                    isKeyEditable: isOverridableActionId(action.id),
                     isOverridden: overriddenIds.has(action.id),
                 })
             ),
@@ -175,7 +182,7 @@ export class ShortcutsModalComponent {
 
     protected readonly canResetToDefaults = computed(() => this.keymap.canResetToDefaults());
 
-    private readonly editableNodeIds = computed(() =>
+    private readonly editableKeyIds = computed(() =>
         this.sections().flatMap((section) => section.rows.filter((row) => row.isKeyEditable).map((row) => row.id))
     );
 
@@ -246,9 +253,9 @@ export class ShortcutsModalComponent {
 
     protected readonly isAdding = computed(() => this.editorTarget()?.kind === 'add');
 
-    protected readonly editedNodeId = computed(() => {
+    protected readonly editedKeyActionId = computed(() => {
         const target = this.editorTarget();
-        return target?.kind === 'node' ? target.actionId : null;
+        return target?.kind === 'key' ? target.actionId : null;
     });
 
     protected readonly editedShortcutId = computed(() => {
@@ -348,15 +355,15 @@ export class ShortcutsModalComponent {
         this.editorTarget.set({ kind: 'edit', customShortcutId });
     }
 
-    protected startEditingNodeKey(actionId: EditorActionId): void {
-        this.editorTarget.set({ kind: 'node', actionId });
+    protected startEditingKey(actionId: EditorActionId): void {
+        this.editorTarget.set({ kind: 'key', actionId });
     }
 
-    protected resetNodeKey(actionId: EditorActionId): void {
-        const result = this.keymap.resetNodeKey(actionId);
+    protected resetKey(actionId: EditorActionId): void {
+        const result = this.keymap.resetKeyOverride(actionId);
         if (result.accepted || result.takenBy === null) {
             this.rowMessage.set(null);
-            this.focusTriggerAfterRender({ kind: 'node', actionId });
+            this.focusTriggerAfterRender({ kind: 'key', actionId });
             return;
         }
         const action = EDITOR_ACTIONS.find((candidate) => candidate.id === actionId);
@@ -383,10 +390,10 @@ export class ShortcutsModalComponent {
         const count = this.resetClearCount();
         const message =
             count === 0
-                ? 'Every node gets its own key back.'
+                ? 'Every node and flow action gets its own key back.'
                 : count === 1
-                  ? '1 additional shortcut will lose its key. Every node gets its own key back.'
-                  : `${count} additional shortcuts will lose their keys. Every node gets its own key back.`;
+                  ? '1 additional shortcut will lose its key. Every node and flow action gets its own key back.'
+                  : `${count} additional shortcuts will lose their keys. Every node and flow action gets its own key back.`;
         this.confirmationDialog
             .confirm({
                 title: 'Reset to defaults?',
@@ -525,9 +532,9 @@ export class ShortcutsModalComponent {
                 const index = this.customRows().findIndex((row) => row.shortcut.id === target.customShortcutId);
                 return index === -1 ? undefined : this.customEditButtons()[index];
             }
-            case 'node': {
-                const index = this.editableNodeIds().indexOf(target.actionId);
-                return index === -1 ? undefined : this.nodeEditButtons()[index];
+            case 'key': {
+                const index = this.editableKeyIds().indexOf(target.actionId);
+                return index === -1 ? undefined : this.keyEditButtons()[index];
             }
             default:
                 return undefined;

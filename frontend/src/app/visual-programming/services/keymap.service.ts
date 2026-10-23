@@ -46,6 +46,10 @@ const NODE_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
     EDITOR_ACTIONS.filter((action) => action.section === 'Nodes').map((action) => action.id)
 );
 
+const FLOW_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
+    EDITOR_ACTIONS.filter((action) => action.section === 'Flow actions').map((action) => action.id)
+);
+
 const PAN_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
     EDITOR_ACTIONS.filter((action: EditorAction) => action.pan !== undefined).map((action) => action.id)
 );
@@ -187,16 +191,16 @@ export class KeymapService {
         return toCheck(this.preview(change));
     }
 
-    checkNodeKey(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
-        return toCheck(this.preview({ kind: 'set-node-key', action: actionId, chord }));
+    checkKeyOverride(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
+        return toCheck(this.preview({ kind: 'set-key-override', action: actionId, chord }));
     }
 
-    setNodeKey(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
-        return toCheck(this.apply({ kind: 'set-node-key', action: actionId, chord }));
+    setKeyOverride(actionId: EditorActionId, chord: KeyChord | null): ShortcutCheck {
+        return toCheck(this.apply({ kind: 'set-key-override', action: actionId, chord }));
     }
 
-    resetNodeKey(actionId: EditorActionId): ShortcutCheck {
-        return toCheck(this.apply({ kind: 'reset-node-key', action: actionId }));
+    resetKeyOverride(actionId: EditorActionId): ShortcutCheck {
+        return toCheck(this.apply({ kind: 'reset-key-override', action: actionId }));
     }
 
     addCustom(actionId: EditorActionId, chord: KeyChord | null, params?: ShortcutParams): CustomShortcutCheck {
@@ -297,6 +301,9 @@ export class KeymapService {
         const fromSidePanel = event.target instanceof Element && isInsideSidePanel(event.target);
         if (NODE_ACTION_IDS.has(actionId)) {
             return event.repeat || fromSidePanel;
+        }
+        if (FLOW_ACTION_IDS.has(actionId)) {
+            return event.repeat;
         }
         if (PAN_ACTION_IDS.has(actionId)) {
             return fromSidePanel;

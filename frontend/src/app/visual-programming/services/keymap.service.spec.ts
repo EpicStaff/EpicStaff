@@ -380,15 +380,15 @@ describe('KeymapService', () => {
         beforeEach(() => setUp());
 
         it('addCustom shows the new key at once and PATCHes the whole list', () => {
-            loadUser(['editing.undo', 'Alt+KeyU']);
+            loadUser(['editing.undo', 'Alt+KeyH']);
 
-            const result = keymap().addCustom('editing.save', 'Alt+KeyS');
+            const result = keymap().addCustom('editing.save', 'Alt+KeyO');
 
             expect(result).toMatchObject({ accepted: true, displaces: null });
-            expect(keymap().bindings().get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyS']);
+            expect(keymap().bindings().get('editing.save')).toEqual(['Mod+KeyS', 'Alt+KeyO']);
             const patch = nextPatch();
             expect(patch.body).toEqual({
-                custom_shortcuts: shortcutSettings(['editing.undo', 'Alt+KeyU'], ['editing.save', 'Alt+KeyS']),
+                custom_shortcuts: shortcutSettings(['editing.undo', 'Alt+KeyH'], ['editing.save', 'Alt+KeyO']),
             });
             patch.succeed();
             expect(keymap().customShortcuts().at(-1)?.id).toBe(result.accepted ? result.customShortcutId : undefined);
@@ -595,7 +595,7 @@ describe('KeymapService', () => {
         beforeEach(() => setUp());
 
         it('clears the keys of rows on node base keys in one PATCH and keeps unique keys', () => {
-            loadUser(['node.task', 'Shift+KeyP'], ['editing.save', 'Alt+KeyS'], ['editing.undo', 'Shift+KeyA']);
+            loadUser(['node.task', 'Shift+KeyP'], ['editing.save', 'Alt+KeyO'], ['editing.undo', 'Shift+KeyA']);
             expect(keymap().defaultsResetClearCount()).toBe(2);
 
             keymap().resetToDefaults();
@@ -607,14 +607,14 @@ describe('KeymapService', () => {
             expect(nextPatch().body).toEqual({
                 custom_shortcuts: shortcutSettings(
                     ['node.task', null],
-                    ['editing.save', 'Alt+KeyS'],
+                    ['editing.save', 'Alt+KeyO'],
                     ['editing.undo', null]
                 ),
             });
         });
 
         it('does nothing when there is nothing to reset', () => {
-            loadUser(['editing.save', 'Alt+KeyS']);
+            loadUser(['editing.save', 'Alt+KeyO']);
 
             keymap().resetToDefaults();
 
@@ -768,7 +768,7 @@ describe('KeymapService', () => {
             const python = vi.fn();
             keymap().register('node.python', python);
 
-            expect(keymap().setNodeKey('node.python', 'Alt+KeyQ')).toEqual({ accepted: true, displaces: null });
+            expect(keymap().setKeyOverride('node.python', 'Alt+KeyQ')).toEqual({ accepted: true, displaces: null });
 
             expect(nextPatch().body).toEqual({
                 custom_shortcuts: {
@@ -785,7 +785,7 @@ describe('KeymapService', () => {
         it('resets one node key with a PATCH that drops only its override', () => {
             loadSettings({ custom: [], overrides: { 'node.python': 'Alt+KeyQ', 'node.task': null } });
 
-            expect(keymap().resetNodeKey('node.python')).toEqual({ accepted: true, displaces: null });
+            expect(keymap().resetKeyOverride('node.python')).toEqual({ accepted: true, displaces: null });
 
             expect(nextPatch().body).toEqual({ custom_shortcuts: { custom: [], overrides: { 'node.task': null } } });
             expect(keymap().builtInBindings().get('node.python')).toEqual(['Shift+KeyP']);
@@ -797,7 +797,7 @@ describe('KeymapService', () => {
                 overrides: { 'node.python': 'Alt+KeyQ' },
             });
 
-            expect(keymap().resetNodeKey('node.python')).toMatchObject({
+            expect(keymap().resetKeyOverride('node.python')).toMatchObject({
                 accepted: false,
                 rejection: 'taken',
                 takenBy: { action: 'node.agent', source: 'custom' },
@@ -818,9 +818,69 @@ describe('KeymapService', () => {
         it('does not save when a node key is set to the key it already has', () => {
             loadSettings({ custom: [], overrides: { 'node.python': 'Alt+KeyQ' } });
 
-            keymap().setNodeKey('node.python', 'Alt+KeyQ');
+            keymap().setKeyOverride('node.python', 'Alt+KeyQ');
 
             httpMock.expectNone({ method: 'PATCH' });
+        });
+    });
+
+    describe('flow toolbar keys', () => {
+        it.each([
+            ['Ctrl+Enter', false, { key: 'Enter', code: 'Enter', ctrlKey: true }, 'flow.run'],
+            ['Cmd+Enter on a mac', true, { key: 'Enter', code: 'Enter', metaKey: true }, 'flow.run'],
+            ['Alt+C on a Cyrillic layout', false, { key: 'с', code: 'KeyC', altKey: true }, 'flow.chat'],
+            ['Option+C on a mac', true, { key: 'ç', code: 'KeyC', altKey: true }, 'flow.chat'],
+            ['Alt+,', false, { key: ',', code: 'Comma', altKey: true }, 'flow.settings'],
+        ] as const)('fires the flow action on %s', (_case, isMac, init, action) => {
+            setUp(isMac);
+            const handler = vi.fn();
+            keymap().register(action, handler);
+
+            const event = press(init);
+
+            expect(handler).toHaveBeenCalledOnce();
+            expect(event.defaultPrevented).toBe(true);
+        });
+
+        it('fires once per press, not once per auto-repeat while the key is held', () => {
+            setUp();
+            const toggleChat = vi.fn();
+            keymap().register('flow.chat', toggleChat);
+
+            press({ key: 'c', code: 'KeyC', altKey: true });
+            press({ key: 'c', code: 'KeyC', altKey: true, repeat: true });
+
+            expect(toggleChat).toHaveBeenCalledOnce();
+        });
+
+        it('sends a flow key an Additional row uses to that row action', () => {
+            setUp();
+            loadUser(['editing.save', 'Alt+KeyC']);
+            const toggleChat = vi.fn();
+            const save = vi.fn();
+            keymap().register('flow.chat', toggleChat);
+            keymap().register('editing.save', save);
+
+            press({ key: 'c', code: 'KeyC', altKey: true });
+
+            expect(save).toHaveBeenCalledOnce();
+            expect(toggleChat).not.toHaveBeenCalled();
+            expect(keymap().unboundIds().has('flow.chat')).toBe(true);
+        });
+
+        it('gives a flow action a new key, saves the override and fires on it', () => {
+            setUp();
+            const toggleChat = vi.fn();
+            keymap().register('flow.chat', toggleChat);
+
+            expect(keymap().setKeyOverride('flow.chat', 'Alt+KeyJ')).toEqual({ accepted: true, displaces: null });
+
+            expect(nextPatch().body).toEqual({
+                custom_shortcuts: { custom: [], overrides: { 'flow.chat': 'Alt+KeyJ' } },
+            });
+            press({ key: 'j', code: 'KeyJ', altKey: true });
+            press({ key: 'c', code: 'KeyC', altKey: true });
+            expect(toggleChat).toHaveBeenCalledOnce();
         });
     });
 
