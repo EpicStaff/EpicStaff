@@ -16,7 +16,6 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
     }),
     [NodeType.PYTHON]: () => ({
         name: 'Python Code Node',
-        libraries: [],
         code: 'def main():\n    return\n',
         entrypoint: 'main',
     }),
@@ -70,7 +69,6 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         webhook_trigger: null,
         python_code: {
             name: 'Webhook trigger Node',
-            libraries: [],
             code:
                 '# Replace this comment with your implementation.\n' +
                 '#\n' +

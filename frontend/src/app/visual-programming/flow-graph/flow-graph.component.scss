@@ -93,8 +93,7 @@
             }
         }
 
-        &:hover:not(.f-selected),
-        &.node-hovered:not(.f-selected) {
+        &:hover:not(.f-selected) {
             .f-connection-path {
                 stroke: var(--db-primary-1) !important;
             }
@@ -105,6 +104,11 @@
                     fill: var(--db-primary-1) !important;
                 }
             }
+        }
+
+        &.is-dimmed {
+            opacity: 0.25;
+            transition: opacity 0.15s ease;
         }
 
         &.f-snap-connection {
@@ -253,6 +257,11 @@
                 pointer-events: none;
             }
         }
+    }
+
+    app-flow-base-node.is-dimmed {
+        opacity: 0.25;
+        transition: opacity 0.15s ease;
     }
 
     .f-selection-area {

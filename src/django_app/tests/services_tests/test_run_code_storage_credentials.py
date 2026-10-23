@@ -1,15 +1,16 @@
 """Temporary storage credentials for a bare test run (/run-python-code/).
 
 A test run whose code is a storage tool gets its own service account, scoped to
-`test-runs/<execution id>/` under the org's prefix, handed to the sandbox in the
-published task and revoked when the result comes back. The storage backend's
-admin API is the external boundary, replaced by FakeStorageGateway.
+`test-runs/<execution id>/` under the org's prefix, handed to the sandbox on the
+submission and revoked when the result comes back. The storage backend's admin
+API is the external boundary, replaced by FakeStorageGateway.
 """
 
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx
 import pytest
 from pydantic import BaseModel, ValidationError
 
@@ -19,7 +20,6 @@ from storage_credentials.models import TemporaryStorageAccount
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.services.redis_pubsub import RedisPubSub
 from tables.services.run_python_code_service import RunPythonCodeService
-from utils.singleton_meta import SingletonMeta
 
 GATEWAY_PATH = "storage_credentials.services.session_credential_service.StorageAdminGateway"
 ORG_CREDENTIALS_PATH = "storage_credentials.services.session_credential_service.org_credential_store.get"
@@ -74,23 +74,12 @@ def python_code(db):
     return PythonCode.objects.create(code="def main(**kw): return kw", entrypoint="main", global_kwargs={})
 
 
-def _run(python_code, org, user) -> tuple[str, list[dict]]:
-    """Start a test run; returns its execution id and the tasks published to the sandbox."""
-    published: list[dict] = []
-    redis_service = SimpleNamespace(
-        redis_client=SimpleNamespace(publish=lambda channel, message: published.append(json.loads(message)))
+def _run(python_code, org, user, sandbox_intake) -> tuple[str, list[dict]]:
+    """Start a test run; returns its execution id and the bodies it submitted."""
+    execution_id = RunPythonCodeService().run_code(
+        python_code_id=python_code.pk, varaibles={}, organization_id=org.id, user=user
     )
-    # A process-wide singleton: build one with this publisher, then put the original back.
-    original = SingletonMeta._instances.pop(RunPythonCodeService, None)
-    try:
-        execution_id = RunPythonCodeService(redis_service=redis_service).run_code(
-            python_code_id=python_code.pk, varaibles={}, organization_id=org.id, user=user
-        )
-    finally:
-        SingletonMeta._instances.pop(RunPythonCodeService, None)
-        if original is not None:
-            SingletonMeta._instances[RunPythonCodeService] = original
-    return execution_id, published
+    return execution_id, sandbox_intake.bodies
 
 
 def _temporary_accounts(execution_id):
@@ -98,12 +87,14 @@ def _temporary_accounts(execution_id):
 
 
 @pytest.mark.django_db
-def test_storage_tool_run_gets_credentials_scoped_to_its_own_folder(gateway, org, user, python_code):
+def test_storage_tool_run_gets_credentials_scoped_to_its_own_folder(
+    gateway, org, user, python_code, sandbox_intake
+):
     PythonCodeTool.objects.create(python_code=python_code, org_id=org.id, use_storage=True)
 
-    execution_id, published = _run(python_code, org, user)
+    execution_id, submitted = _run(python_code, org, user, sandbox_intake)
 
-    (task,) = published
+    (task,) = submitted
     assert task["storage_credentials"] == {"access_key": "temp-access-1", "secret_key": "temp-secret-1"}
     assert list(_temporary_accounts(execution_id).values_list("access_key", flat=True)) == ["temp-access-1"]
     (minted,) = gateway.created
@@ -112,15 +103,17 @@ def test_storage_tool_run_gets_credentials_scoped_to_its_own_folder(gateway, org
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("storage_tool_org", [None, "other"], ids=["no-storage-tool", "storage-tool-in-another-org"])
-def test_run_without_storage_in_its_org_mints_nothing(gateway, org, user, python_code, storage_tool_org):
+def test_run_without_storage_in_its_org_mints_nothing(
+    gateway, org, user, python_code, storage_tool_org, sandbox_intake
+):
     """use_storage is resolved per org: another org's storage tool for the same code doesn't count."""
     if storage_tool_org:
         other_org = Organization.objects.create(name="Org Other")
         PythonCodeTool.objects.create(python_code=python_code, org_id=other_org.id, use_storage=True)
 
-    execution_id, published = _run(python_code, org, user)
+    execution_id, submitted = _run(python_code, org, user, sandbox_intake)
 
-    (task,) = published
+    (task,) = submitted
     assert (task["use_storage"], task["storage_credentials"]) == (False, None)
     assert gateway.created == []
     assert not _temporary_accounts(execution_id).exists()
@@ -139,15 +132,52 @@ def _validation_error() -> ValidationError:
 
 
 @pytest.mark.django_db
-def test_task_that_cannot_be_built_revokes_the_credentials_it_minted(gateway, org, user, python_code):
-    """Nothing is published, so no result will ever come back to revoke them."""
+def test_task_that_cannot_be_built_revokes_the_credentials_it_minted(
+    gateway, org, user, python_code, sandbox_intake
+):
+    """Nothing is submitted, so no result will ever come back to revoke them."""
     PythonCodeTool.objects.create(python_code=python_code, org_id=org.id, use_storage=True)
 
     with patch("tables.services.run_python_code_service.CodeTaskData", side_effect=_validation_error()):
-        execution_id, published = _run(python_code, org, user)
+        execution_id, submitted = _run(python_code, org, user, sandbox_intake)
 
-    assert published == []
+    assert submitted == []
     assert PythonCodeResult.objects.get(execution_id=execution_id).status == PythonCodeResult.Status.ERROR
+    assert gateway.deleted == ["temp-access-1"]
+    assert not _temporary_accounts(execution_id).exists()
+
+
+@pytest.mark.django_db
+def test_a_refused_submission_revokes_the_credentials_it_minted(
+    gateway, org, user, python_code, sandbox_intake
+):
+    """The sandbox refused the run, so no result will come back to revoke them."""
+    PythonCodeTool.objects.create(python_code=python_code, org_id=org.id, use_storage=True)
+    sandbox_intake.status_code = 503
+
+    execution_id, _ = _run(python_code, org, user, sandbox_intake)
+
+    result = PythonCodeResult.objects.get(execution_id=execution_id)
+    assert result.status == PythonCodeResult.Status.ERROR
+    assert result.stderr == "Could not reach the code sandbox for this run."
+    assert gateway.deleted == ["temp-access-1"]
+    assert not _temporary_accounts(execution_id).exists()
+
+
+@pytest.mark.django_db
+def test_an_unreachable_sandbox_revokes_the_credentials_it_minted(
+    gateway, org, user, python_code, sandbox_intake
+):
+    """The transport reports an unreachable sandbox as a ClientError, so the run
+    fails here rather than escaping the view and stranding the row as PENDING."""
+    PythonCodeTool.objects.create(python_code=python_code, org_id=org.id, use_storage=True)
+    sandbox_intake.transport_error = httpx.ConnectError("connection refused")
+
+    execution_id, _ = _run(python_code, org, user, sandbox_intake)
+
+    result = PythonCodeResult.objects.get(execution_id=execution_id)
+    assert result.status == PythonCodeResult.Status.ERROR
+    assert result.stderr == "Could not reach the code sandbox for this run."
     assert gateway.deleted == ["temp-access-1"]
     assert not _temporary_accounts(execution_id).exists()
 

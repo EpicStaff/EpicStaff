@@ -1,10 +1,9 @@
 """RunPythonCodeService.run_target owns the whole test-run of a code slot: the
-org-scoped lookup, the slot's real-run payload, secrets and the publish. Only
-the Redis client is mocked (`redis_client_mock`)."""
-
-import json
+org-scoped lookup, the slot's real-run payload, secrets and the submit to the
+sandbox. Only the sandbox itself is replaced (`sandbox_intake`)."""
 
 import pytest
+from proxies.sandbox.models import SandboxVenvBinding
 
 from rbac.models import Organization
 from tables.exceptions import CodeRunTargetNotFoundError
@@ -13,7 +12,6 @@ from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.services import code_run_targets
 from tables.services.code_run_targets import CodeRunTarget
 from tables.services.converter_service import ConverterService
-from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 
 TEST_ONLY_SLOT = "test_only_pre_computation"
@@ -43,7 +41,7 @@ def user(django_user_model):
 
 @pytest.fixture
 def service():
-    return RunPythonCodeService(redis_service=RedisService())
+    return RunPythonCodeService()
 
 
 @pytest.fixture
@@ -63,22 +61,27 @@ def pre_computation_slot(monkeypatch):
     )
 
 
-def _published_tasks(redis_client_mock):
-    return [json.loads(call.args[1]) for call in redis_client_mock.publish.call_args_list]
+def _submitted_tasks(sandbox_intake):
+    return sandbox_intake.bodies
 
 
 @pytest.mark.django_db
-def test_python_node_with_libraries_uses_the_real_run_venv_name(
-    service, org, graph, user, redis_client_mock
-):
+def test_python_node_runs_in_the_same_venv_as_a_real_run(service, org, graph, user, sandbox_intake):
+    """And the sandbox is told the id it knows, not the binding's.
+
+    The binding pk and the upstream id are different numbers here on purpose: the
+    sandbox has no idea what a binding is, so sending the wrong one would silently
+    run the code in another environment, or in none.
+    """
+    venv = SandboxVenvBinding.objects.create(org_id=org.id, resource_id="4711")
     python_code = PythonCode.objects.create(
-        code="def main(): return 1", entrypoint="main", libraries="httpx"
+        code="def main(): return 1", entrypoint="main", venv=venv
     )
     node = PythonNode.objects.create(graph=graph, python_code=python_code)
-    real_run_venv_name = (
+    real_run_venv_id = (
         ConverterService()
         .convert_python_node_to_pydantic(node, graph_id=graph.pk, session_id=1)
-        .python_code.venv_name
+        .python_code.venv_id
     )
 
     service.run_target(
@@ -89,14 +92,14 @@ def test_python_node_with_libraries_uses_the_real_run_venv_name(
         user=user,
     )
 
-    [task] = _published_tasks(redis_client_mock)
-    assert task["venv_name"] == real_run_venv_name
-    assert task["libraries"] == ["httpx"]
+    [task] = _submitted_tasks(sandbox_intake)
+    assert task["venv_id"] == real_run_venv_id == 4711
+    assert task["venv_id"] != venv.pk
 
 
 @pytest.mark.django_db
 def test_target_in_another_org_raises_not_found(
-    service, other_org, graph, user, redis_client_mock
+    service, other_org, graph, user, sandbox_intake
 ):
     python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     node = PythonNode.objects.create(graph=graph, python_code=python_code)
@@ -111,13 +114,13 @@ def test_target_in_another_org_raises_not_found(
         )
 
     assert raised.value.target_id == node.pk
-    assert not redis_client_mock.publish.call_args_list
+    assert sandbox_intake.bodies == []
     assert not PythonCodeResult.objects.exists()
 
 
 @pytest.mark.django_db
 def test_empty_slot_raises_not_found(
-    service, org, graph, user, redis_client_mock, pre_computation_slot
+    service, org, graph, user, sandbox_intake, pre_computation_slot
 ):
     node = ClassificationDecisionTableNode.objects.create(
         graph=graph, node_name="cdt_without_pre", pre_python_code=None
@@ -132,13 +135,13 @@ def test_empty_slot_raises_not_found(
             user=user,
         )
 
-    assert not redis_client_mock.publish.call_args_list
+    assert sandbox_intake.bodies == []
     assert not PythonCodeResult.objects.exists()
 
 
 @pytest.mark.django_db
 def test_filled_slot_runs_and_records_that_slots_code(
-    service, org, graph, user, redis_client_mock, pre_computation_slot
+    service, org, graph, user, sandbox_intake, pre_computation_slot
 ):
     pre_code = PythonCode.objects.create(code="def main(): return 'pre'", entrypoint="main")
     node = ClassificationDecisionTableNode.objects.create(
@@ -153,6 +156,6 @@ def test_filled_slot_runs_and_records_that_slots_code(
         user=user,
     )
 
-    [task] = _published_tasks(redis_client_mock)
+    [task] = _submitted_tasks(sandbox_intake)
     assert task["code"] == pre_code.code
     assert PythonCodeResult.objects.get(execution_id=execution_id).python_code_id == pre_code.pk

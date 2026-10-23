@@ -101,6 +101,8 @@ from tables.graph_versioning.serializers import (
 )
 from tables.graph_versioning.services import GraphVersioningService
 from tables.import_export.enums import EntityType
+from tables.import_export.export_format_strategies import apply_excluded_header
+from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportSettings
 from tables.import_export.services.partial_export_service import (
@@ -665,7 +667,7 @@ class PythonCodeToolViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
@@ -689,7 +691,9 @@ class PythonCodeToolViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**PYTHON_CODE_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")
@@ -875,7 +879,7 @@ class GraphViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @action(detail=False, methods=["post"], url_path="bulk-export")
@@ -893,7 +897,9 @@ class GraphViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
     @action(detail=True, methods=["post"], url_path="partial-export")
@@ -912,6 +918,7 @@ class GraphViewSet(
             node_refs,
             org_id=graph.org_id,
             edge_ids=serializer.validated_data.get("edge_list", []),
+            policy=ExportAccessPolicy.for_user(request.user, self.get_active_org_id()),
         )
 
         if result.has_errors:
@@ -920,6 +927,7 @@ class GraphViewSet(
         filename = generate_file_name(f"nodes_{graph.name}", prefix="graph_nodes")
         response = HttpResponse(json.dumps(result.data, indent=4), content_type="application/json")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        apply_excluded_header(response, result.excluded)
         return response
 
     @extend_schema(
@@ -2177,13 +2185,17 @@ class ClassificationDecisionTableNodeModelViewSet(
     def export(self, request, pk=None):
         export_format = request.query_params.get("export_format", "json")
         result = self._node_service.export(
-            pk=pk, export_format=export_format, org_id=self.get_active_org_id()
+            pk=pk,
+            export_format=export_format,
+            org_id=self.get_active_org_id(),
+            user=request.user,
         )
         if result.errors is not None:
             return Response({"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST)
 
         response = HttpResponse(result.content, content_type=result.content_type)
         response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
+        apply_excluded_header(response, result.excluded)
         return response
 
     @extend_schema(
@@ -2373,7 +2385,7 @@ class McpToolViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
@@ -2392,7 +2404,9 @@ class McpToolViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**MCP_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")
@@ -2806,7 +2820,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def export(self, request, pk=None):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ALL)
@@ -2823,7 +2837,9 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**AUDIT_FILTER_PRESET_IMPORT)
     @action(detail=False, methods=["post"], url_path="import")

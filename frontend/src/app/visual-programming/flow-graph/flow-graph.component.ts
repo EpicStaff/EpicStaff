@@ -70,6 +70,7 @@ import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { buildInsertionConnections, findConnectionUnderNode } from '../core/helpers/drop-on-connection.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isConnectionValid } from '../core/helpers/helpers';
+import { computeHoverContext, HoverContext } from '../core/helpers/hover-context.util';
 import {
     CollisionBounds,
     findNearestFreePosition,
@@ -253,7 +254,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const hiddenIds = this.hiddenConnectionIds();
         const hoveredId = this.hoveredConnectionId();
         const selectedIds = this.selectionManager.selectedConnectionIds();
-        const nodeHoveredIds = this.hoveredNodeConnectionIds();
 
         const connections = [...this.flowService.visibleConnections()].filter(
             (connection) => !hiddenIds.has(connection.id)
@@ -265,9 +265,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const bHovered = b.id === hoveredId ? 1 : 0;
             if (aHovered !== bHovered) return aHovered - bHovered;
 
-            // Node-hovered and selected above normal
-            const aRaised = selectedIds.has(a.id) || nodeHoveredIds.has(a.id) ? 1 : 0;
-            const bRaised = selectedIds.has(b.id) || nodeHoveredIds.has(b.id) ? 1 : 0;
+            // Selected above normal
+            const aRaised = selectedIds.has(a.id) ? 1 : 0;
+            const bRaised = selectedIds.has(b.id) ? 1 : 0;
             if (aRaised !== bRaised) return aRaised - bRaised;
 
             const aBackward = backwardIds.has(a.id) ? 1 : 0;
@@ -276,15 +276,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     });
 
-    protected readonly hoveredNodeConnectionIds = computed(() => {
+    protected readonly hoverContext = computed<HoverContext | null>(() => {
         const nodeId = this.hoveredNodeId();
-        if (!nodeId) return new Set<string>();
-        return new Set(
-            this.flowService
-                .connections()
-                .filter((c) => c.sourceNodeId === nodeId || c.targetNodeId === nodeId)
-                .map((c) => c.id)
-        );
+        const nodes = this.flowService.nodes();
+        if (!nodeId || !nodes.some((n) => n.id === nodeId)) return null;
+        const connections = this.flowService.connections();
+        if (!connections.some((c) => c.sourceNodeId === nodeId || c.targetNodeId === nodeId)) return null;
+        return computeHoverContext(nodeId, nodes, connections);
     });
 
     /** The node may not be changed here, so it cannot be dragged either (a trigger node without Flows:Use). */
@@ -1241,15 +1239,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportSelectedAsJson(): void {
-        this.importExportHandler.onExportSelectedAsJson(this.currentFlowId);
+        this.importExportHandler.onExportSelectedAsJson(this.currentFlowId, this.hasUnsavedChanges);
     }
 
     public onExportSelectedAsCsv(): void {
-        this.importExportHandler.onExportSelectedAsCsv();
+        this.importExportHandler.onExportSelectedAsCsv(this.hasUnsavedChanges);
     }
 
     public onExportAllAsJson(): void {
-        this.importExportHandler.onExportAllAsJson(this.currentFlowId);
+        this.importExportHandler.onExportAllAsJson(this.currentFlowId, this.hasUnsavedChanges);
     }
 
     public onImportNodes(): void {

@@ -4,7 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { GraphDto } from '../../features/flows/models/graph.model';
 import { FlowService } from './flow.service';
 
-const PYTHON_CODE = { id: 5, code: 'def main(**kwargs): pass', entrypoint: 'main', libraries: [] };
+const PYTHON_CODE = { id: 5, code: 'def main(**kwargs): pass', entrypoint: 'main' };
 
 function graphWith(...webhookNodes: { id: number; python_code: typeof PYTHON_CODE }[]): GraphDto {
     return { webhook_trigger_node_list: webhookNodes } as unknown as GraphDto;

@@ -14,6 +14,7 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
     private resizeObserver: ResizeObserver | null = null;
     private mutationObserver: MutationObserver | null = null;
     private frameId: number | null = null;
+    private readonly onInput = (): void => this.schedule();
 
     ngAfterViewInit(): void {
         this.tooltip.disabled = true;
@@ -23,6 +24,8 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
             this.resizeObserver.observe(host);
             this.mutationObserver = new MutationObserver(() => this.schedule());
             this.mutationObserver.observe(host, { childList: true, subtree: true, characterData: true });
+            // Typing into an <input> changes its value, not the DOM, so neither observer above sees it.
+            host.addEventListener('input', this.onInput);
             this.schedule();
         });
     }
@@ -37,6 +40,7 @@ export class TooltipOnOverflowDirective implements AfterViewInit, OnDestroy {
     }
 
     ngOnDestroy(): void {
+        this.hostRef.nativeElement.removeEventListener('input', this.onInput);
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
         this.mutationObserver?.disconnect();

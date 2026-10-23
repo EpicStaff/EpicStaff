@@ -148,6 +148,7 @@ venv.bak/
 .crew_venv
 *venv
 venvs/
+!src/sandbox_new/manager/infrastructure/database/venvs/
 run_program/manager.env
 
 # Spyder project settings

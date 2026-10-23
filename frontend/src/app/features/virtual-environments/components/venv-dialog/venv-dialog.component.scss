@@ -1,0 +1,242 @@
+.venv-dialog {
+    display: flex;
+    flex-direction: column;
+    width: 95vw;
+    height: 95vh;
+    background-color: var(--color-modals-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px var(--black-alpha-60);
+    color: var(--color-text-primary);
+    overflow: hidden;
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+        height: 84px;
+        box-sizing: border-box;
+        padding: 24px 40px 20px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+    }
+
+    &__title {
+        margin: 0;
+    }
+
+    &__header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    &__body {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    &__section {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 24px 40px;
+
+        &--name {
+            border-bottom: 1px solid var(--color-divider-subtle);
+        }
+    }
+
+    &__name-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    &__name-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+        min-height: 36px;
+
+        label {
+            margin: 0;
+            color: var(--color-text-secondary);
+        }
+    }
+
+    &__name-field {
+        flex: 1;
+        min-width: 0;
+    }
+
+    &__required {
+        color: var(--color-required-asterisk);
+    }
+
+    &__libs {
+        gap: 8px;
+    }
+
+    &__libs-title {
+        margin: 0 0 4px;
+        color: var(--color-text-secondary);
+    }
+
+    &__libs-table {
+        border: 1px solid var(--color-table-border);
+        border-radius: 10px;
+        overflow: hidden;
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            // The wrapper draws the outer border; hidden keeps the cells' outer edges from doubling it.
+            border-style: hidden;
+            table-layout: fixed;
+        }
+
+        th,
+        td {
+            height: 32px;
+            padding: 0;
+            border: 1px solid var(--color-table-border);
+        }
+
+        th {
+            padding: 0 8px;
+            text-align: left;
+            font-weight: inherit;
+            color: var(--color-text-primary);
+            background-color: var(--color-ks-background);
+            border-bottom: 4px solid var(--color-table-border);
+        }
+
+        tbody tr:nth-child(odd) {
+            background-color: var(--color-ks-background);
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: var(--color-ks-transparent-black-28);
+        }
+    }
+
+    &__col-index {
+        width: 28px;
+    }
+
+    &__col-name {
+        width: 30%;
+    }
+
+    &__col-version {
+        width: 15%;
+    }
+
+    &__col-spec {
+        width: 200px;
+    }
+
+    &__col-action {
+        width: 40px;
+    }
+
+    &__libs-table &__cell--center {
+        text-align: center;
+    }
+
+    &__col-header {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    &__cell--muted {
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__cell-input {
+        width: 100%;
+        height: 32px;
+        padding: 0 8px;
+        background-color: transparent;
+        border: 1px solid transparent;
+        color: var(--color-text-primary);
+        font: inherit;
+        text-overflow: ellipsis;
+        transition:
+            background-color 0.15s ease,
+            border-color 0.15s ease;
+
+        &::placeholder {
+            color: var(--color-input-text-placeholder);
+        }
+
+        &:hover {
+            background-color: var(--color-input-background-hover);
+        }
+
+        &:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        &--invalid,
+        &--invalid:focus {
+            border-color: var(--color-ks-status-failed);
+        }
+    }
+
+    &__icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        cursor: pointer;
+        vertical-align: middle;
+
+        &:hover:not(:disabled) {
+            background-color: var(--color-ghost-btn-hover);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        &--accent {
+            color: var(--accent-color);
+        }
+
+        &--remove {
+            color: var(--color-ks-transparent-text-60);
+
+            &:hover:not(:disabled) {
+                color: var(--color-text-primary);
+            }
+        }
+    }
+
+    &__add-lib {
+        width: 100%;
+        height: 32px;
+        border: 1px dashed var(--color-input-border);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-ks-transparent-text-60);
+        text-align: center;
+        cursor: pointer;
+
+        &:hover {
+            color: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+    }
+}

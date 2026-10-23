@@ -1,6 +1,6 @@
 """
-Tests for v1→v2, v2→v3 and v3→v4 import/export version conversion, and the
-shared variable_conversion helper.
+Tests for v1→v2, v2→v3, v3→v4 and v4→v5 import/export version conversion,
+and the shared variable_conversion helper.
 
 These tests are pure dict-transform tests — no DB access required.
 """
@@ -14,11 +14,15 @@ from src.shared.models.variable_conversion import (
     json_schema_node_to_nested_variable,
     args_schema_to_variables,
 )
+from tables.import_export.constants import IMPORT_VERSION
+from tables.import_export.enums import EntityType
+from tables.import_export.serializers.venv import VenvImportSerializer
 from tables.import_export.version_conversions.base import VersionConverter
 from tables.import_export.version_conversions.convertions import (
     v1_to_v2,
     v2_to_v3,
     v3_to_v4,
+    v4_to_v5,
 )
 from tables.utils.legacy_node_number import split_legacy_node_name
 
@@ -816,11 +820,125 @@ class TestV3ToV4:
 
         assert v3_to_v4(copy.deepcopy(bundle)) == bundle
 
-    def test_version_converter_brings_a_v3_file_to_v4(self):
+    def test_version_converter_brings_a_v3_file_to_the_current_version(self):
         bundle = _v3_bundle({"id": 1, "node_type": "AgentNode", "node_name": "Agent #4"})
 
         converted = VersionConverter.convert(bundle)
 
-        assert converted["version"] == 4
+        assert converted["version"] == IMPORT_VERSION
         node = converted["Flow"][0]["nodes"][0]
         assert (node["node_name"], node["node_number"]) == ("Agent", 4)
+
+def _tool(name: str, libraries: str) -> dict:
+    return {"name": name, "python_code": {"code": f"# {name}", "libraries": libraries}}
+
+
+def _flow(*nodes: dict) -> dict:
+    return {"nodes": list(nodes)}
+
+
+class TestV4ToV5:
+    """Libraries move off the code and onto an environment of their own.
+
+    A v4 file declares them as a space-separated string per code slot; v5 carries a
+    `Venv` entry and the code only names which one it runs in.
+    """
+
+    def test_libraries_become_an_environment_the_code_names(self):
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("scraper", "httpx>=0.28")]})
+
+        [venv] = data[EntityType.VENV]
+        assert venv["libs"] == [{"name": "httpx", "specification": ">=0.28"}]
+        assert data[EntityType.PYTHON_CODE_TOOL][0]["python_code"]["venv"] == venv["id"]
+        assert "libraries" not in data[EntityType.PYTHON_CODE_TOOL][0]["python_code"]
+
+    def test_the_same_libraries_share_one_environment(self):
+        """In v3 they were one install; keeping them apart would build it twice."""
+        data = v4_to_v5(
+            {
+                EntityType.PYTHON_CODE_TOOL: [
+                    _tool("one", "httpx beautifulsoup4"),
+                    _tool("two", "beautifulsoup4 httpx"),
+                ]
+            }
+        )
+
+        assert len(data[EntityType.VENV]) == 1
+        tools = data[EntityType.PYTHON_CODE_TOOL]
+        assert tools[0]["python_code"]["venv"] == tools[1]["python_code"]["venv"]
+
+    def test_different_libraries_get_their_own(self):
+        data = v4_to_v5(
+            {EntityType.PYTHON_CODE_TOOL: [_tool("one", "httpx"), _tool("two", "pydantic")]}
+        )
+
+        assert len(data[EntityType.VENV]) == 2
+
+    def test_code_without_libraries_names_no_environment(self):
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("plain", "")]})
+
+        assert EntityType.VENV not in data
+        assert "venv" not in data[EntityType.PYTHON_CODE_TOOL][0]["python_code"]
+
+    def test_every_code_slot_of_a_flow_is_converted(self):
+        data = v4_to_v5(
+            {
+                EntityType.GRAPH: [
+                    _flow(
+                        {
+                            "node_type": "PythonNode",
+                            "node_name": "n1",
+                            "python_code": {"code": "a", "libraries": "httpx"},
+                        },
+                        {
+                            "node_type": "WebhookTriggerNode",
+                            "node_name": "n2",
+                            "python_code": {"code": "b", "libraries": "httpx"},
+                        },
+                        {
+                            "node_type": "ClassificationDecisionTableNode",
+                            "node_name": "n3",
+                            "pre_python_code": {"code": "c", "libraries": "httpx"},
+                            "post_python_code": {"code": "d", "libraries": "pydantic"},
+                        },
+                        {"node_type": "StartNode", "node_name": "n4"},
+                    )
+                ]
+            }
+        )
+
+        nodes = {node["node_name"]: node for node in data[EntityType.GRAPH][0]["nodes"]}
+        shared = nodes["n1"]["python_code"]["venv"]
+        assert nodes["n2"]["python_code"]["venv"] == shared
+        assert nodes["n3"]["pre_python_code"]["venv"] == shared
+        assert nodes["n3"]["post_python_code"]["venv"] != shared
+
+    def test_an_environment_is_named_after_what_first_asked_for_it(self):
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("scraper", "httpx")]})
+
+        assert data[EntityType.VENV][0]["name"] == "scraper-venv"
+
+    def test_an_entry_pip_cannot_read_is_dropped_and_the_rest_kept(self):
+        """A legacy file cannot be edited to fix it, and a flow that arrives without
+        one library is worth more than one that does not arrive."""
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("x", "httpx ../../etc/passwd")]})
+
+        assert data[EntityType.VENV][0]["libs"] == [{"name": "httpx", "specification": ""}]
+
+    def test_extras_are_dropped(self):
+        """A venv library is a name and a specifier; there is nowhere to put extras."""
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("x", "requests[socks]>=2")]})
+
+        assert data[EntityType.VENV][0]["libs"] == [{"name": "requests", "specification": ">=2"}]
+
+    @pytest.mark.parametrize(
+        "libraries",
+        ["httpx>=0.28", "requests[socks]>=2", "httpx ../../etc/passwd", "pydantic==2.0,<3"],
+    )
+    def test_what_it_produces_is_accepted_by_the_importer(self, libraries):
+        """The converter feeds the venv serializer, so its output has to pass it."""
+        data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool("x", libraries)]})
+
+        for venv in data.get(EntityType.VENV, []):
+            serializer = VenvImportSerializer(data=venv)
+            assert serializer.is_valid(), serializer.errors

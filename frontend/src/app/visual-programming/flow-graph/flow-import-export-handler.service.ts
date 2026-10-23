@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NodeType } from '@shared/models';
-import { downloadBlob } from '@shared/utils';
+import { downloadBlob, showExportExclusionWarning } from '@shared/utils';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { FlowCopyImportFacadeService } from '../../features/flows/services/flow-copy-import-facade.service';
@@ -42,33 +42,29 @@ export class FlowImportExportService {
 
     // ── Export: selected as JSON ────────────────────────────────────
 
-    onExportSelectedAsJson(currentFlowId: number | null): void {
+    onExportSelectedAsJson(currentFlowId: number | null, hasUnsavedChanges: boolean): void {
         if (!currentFlowId) return;
-        const selectedIds = this.selectionManager.selectedNodeIds();
-        const nodes = this.flowService.nodes();
-        const hasUnsaved = selectedIds.some((id) => nodes.find((n) => n.id === id)?.backendId === null);
-        if (hasUnsaved) {
+        if (hasUnsavedChanges) {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
-        this.triggerPartialExport(selectedIds, currentFlowId);
+        this.triggerPartialExport(this.selectionManager.selectedNodeIds(), currentFlowId);
     }
 
     // ── Export: selected as CSV ─────────────────────────────────────
 
-    onExportSelectedAsCsv(): void {
+    onExportSelectedAsCsv(hasUnsavedChanges: boolean): void {
+        if (hasUnsavedChanges) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
         const selectedIds = this.selectionManager.selectedNodeIds();
         const nodes = this.flowService.nodes();
 
         for (const id of selectedIds) {
             const node = nodes.find((n) => n.id === id);
 
-            if (!node) {
-                continue;
-            }
-
-            if (node.backendId === null) {
-                this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            if (!node || node.backendId === null) {
                 continue;
             }
 
@@ -97,14 +93,14 @@ export class FlowImportExportService {
 
     // ── Export: all as JSON ─────────────────────────────────────────
 
-    onExportAllAsJson(currentFlowId: number | null): void {
+    onExportAllAsJson(currentFlowId: number | null, hasUnsavedChanges: boolean): void {
         if (!currentFlowId) return;
         const exportable = this.flowService.nodes().filter((n) => n.type !== NodeType.START && n.type !== NodeType.END);
         if (exportable.length === 0) {
             this.toastService.warning('No nodes to export', 3000, 'bottom-right');
             return;
         }
-        if (this.flowService.nodes().some((n) => n.backendId === null)) {
+        if (hasUnsavedChanges) {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
@@ -159,7 +155,7 @@ export class FlowImportExportService {
             .partialExport(currentFlowId, body)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (blob) => {
+                next: ({ blob, excluded }) => {
                     downloadBlob(blob, filename);
                     const count = Object.entries(body)
                         .filter(([key]) => key !== 'edge_list')
@@ -174,6 +170,8 @@ export class FlowImportExportService {
                             );
                     const suffix = isExportAll || hasStartOrEnd ? ' (Start and End nodes excluded)' : '';
                     this.toastService.success(`${count} nodes exported as JSON${suffix}`, 3000, 'bottom-right');
+
+                    showExportExclusionWarning(this.toastService, excluded, 'bottom-right');
                 },
                 error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
             });

@@ -101,30 +101,32 @@ class TestCreateFilters:
 
 
 class TestPythonCodeKey:
-    def test_trailing_whitespace_and_padded_libraries_are_ignored(self):
-        assert python_code_key("print('hi')\n\n", " requests ", "run") == (
-            python_code_key("print('hi')", "requests", "run")
+    def test_trailing_whitespace_in_code_is_ignored(self):
+        assert python_code_key("print('hi')\n\n", 7, "run") == (
+            python_code_key("print('hi')", 7, "run")
         )
 
     def test_leading_whitespace_in_code_counts(self):
         # The sandbox indents every line, so an indented first line is different code.
-        assert python_code_key("  print('hi')", "", "main") != python_code_key(
-            "print('hi')", "", "main"
+        assert python_code_key("  print('hi')", None, "main") != python_code_key(
+            "print('hi')", None, "main"
         )
 
     def test_stored_blank_entrypoint_is_not_main(self):
-        assert python_code_key("x", "", "") != python_code_key("x", "", "main")
+        assert python_code_key("x", None, "") != python_code_key("x", None, "main")
 
     @pytest.mark.parametrize(
         "other",
         [
-            ("print('bye')", "requests", "main"),
-            ("print('hi')", "", "main"),
-            ("print('hi')", "requests", "run"),
+            ("print('bye')", 7, "main"),
+            ("print('hi')", 8, "main"),
+            ("print('hi')", None, "main"),
+            ("print('hi')", 7, "run"),
         ],
+        ids=["code", "another-venv", "default-venv", "entrypoint"],
     )
     def test_any_compared_value_differing_differs(self, other):
-        assert python_code_key("print('hi')", "requests", "main") != python_code_key(*other)
+        assert python_code_key("print('hi')", 7, "main") != python_code_key(*other)
 
 
 @pytest.mark.django_db

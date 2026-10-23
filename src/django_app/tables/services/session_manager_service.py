@@ -429,7 +429,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         python_node_list = (
             PythonNode.objects.filter(graph=graph.pk)
             .defer("test_input")
-            .select_related("python_code")
+            .select_related("python_code__venv")
             .prefetch_related(secret_names_prefetch("python_code__secrets"))
         )
         knowledge_node_list = KnowledgeNode.objects.filter(graph=graph.pk).select_related(
@@ -455,7 +455,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         webhook_trigger_node_list = (
             WebhookTriggerNode.objects.filter(graph=graph.pk)
             .defer("test_payload")
-            .select_related("python_code")
+            .select_related("python_code__venv")
             .prefetch_related(secret_names_prefetch("python_code__secrets"))
         )
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk).defer(
@@ -464,7 +464,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = (
             ClassificationDecisionTableNode.objects.filter(graph=graph.pk)
-            .select_related("pre_python_code", "post_python_code")
+            .select_related("pre_python_code__venv", "post_python_code__venv")
             .prefetch_related(
                 "condition_groups",
                 secret_names_prefetch("pre_python_code__secrets"),

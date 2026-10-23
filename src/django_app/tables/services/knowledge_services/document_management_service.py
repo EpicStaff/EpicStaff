@@ -10,11 +10,11 @@ from tables.exceptions import (
     CollectionNotFoundException,
     DocumentNotFoundException,
     DocumentsNotFoundException,
-    DocumentUploadException,
     FileSizeExceededException,
     InvalidCollectionIdException,
     InvalidFileTypeException,
     NoFilesProvidedException,
+    UploadRejectedException,
 )
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
 from tables.models.knowledge_models import GraphRagDocument, NaiveRag
@@ -50,21 +50,43 @@ class DocumentManagementService:
             FileSizeExceededException: If file size exceeds limit
             InvalidFileTypeException: If file type is not allowed
         """
-        file_name = uploaded_file.name
-        file_size = uploaded_file.size
+        return DocumentManagementService.validate_file_metadata(
+            uploaded_file.name, uploaded_file.size
+        )
 
+    @staticmethod
+    def validate_file_metadata(file_name: str, file_size: int) -> dict[str, Any]:
+        """Check a file's size and extension against the document upload rules.
+
+        Needs no file bytes, so callers holding only metadata (e.g. storage rows)
+        can pre-screen files before fetching their content.
+
+        Returns:
+            ``{"file_name", "file_size", "file_type"}``.
+
+        Raises:
+            FileSizeExceededException: The size is over ``MAX_UPLOAD_FILE_SIZE``.
+            InvalidFileTypeException: The extension is not in ``ALLOWED_FILE_TYPES``.
+        """
         # Validate file size
         max_file_bytes = default_upload_limits().max_file_bytes
         if file_size > max_file_bytes:
             raise FileSizeExceededException(file_name, max_file_bytes / (1024 * 1024))
 
-        # Extract and validate file extension
-        file_type = file_name.split(".")[-1].lower() if "." in file_name else ""
+        file_type = DocumentManagementService.validate_file_type(file_name)
+        return {"file_name": file_name, "file_size": file_size, "file_type": file_type}
 
+    @staticmethod
+    def validate_file_type(file_name: str) -> str:
+        """Return the file's document type, from its extension.
+
+        Raises:
+            InvalidFileTypeException: The extension is not in ``ALLOWED_FILE_TYPES``.
+        """
+        file_type = file_name.split(".")[-1].lower() if "." in file_name else ""
         if file_type not in ALLOWED_FILE_TYPES:
             raise InvalidFileTypeException(file_name, file_type)
-
-        return {"file_name": file_name, "file_size": file_size, "file_type": file_type}
+        return file_type
 
     @staticmethod
     def validate_files_batch(
@@ -81,9 +103,9 @@ class DocumentManagementService:
 
         Raises:
             NoFilesProvidedException: If no files provided
-            FileSizeExceededException: If any file exceeds size limit
-            InvalidFileTypeException: If any file has invalid type
-            DocumentUploadException: If the batch as a whole is rejected
+            UploadRejectedException: If any file is too large or of an invalid
+                type, or ``FileValidator`` rejects the batch; the message lists
+                every problem
         """
         if not uploaded_files:
             raise NoFilesProvidedException()
@@ -112,7 +134,7 @@ class DocumentManagementService:
                 f"[{e['index']}] {e['error']}" if e["index"] is not None else e["error"]
                 for e in errors
             ]
-            raise DocumentUploadException("\n".join(error_messages))
+            raise UploadRejectedException("\n".join(error_messages))
 
         return validated_files
 
@@ -244,8 +266,7 @@ class DocumentManagementService:
         Raises:
             CollectionNotFoundException: If collection not found
             NoFilesProvidedException: If no files provided
-            FileSizeExceededException: If any file exceeds size limit
-            InvalidFileTypeException: If any file has invalid type
+            UploadRejectedException: If any file fails validation
         """
         # Validate all files first
         validated_files = DocumentManagementService.validate_files_batch(uploaded_files)
@@ -289,6 +310,72 @@ class DocumentManagementService:
         record_collection_edits([collection_id], user)
 
         return created_documents
+
+    @staticmethod
+    @transaction.atomic
+    def upload_new_files_batch(
+        collection_id: int,
+        uploaded_files: list[UploadedFile],
+        *,
+        org_id: int,
+        user: object | None,
+    ) -> tuple[list[DocumentMetadata], list[UploadedFile]]:
+        """Upload the files the collection does not already hold, skipping the rest.
+
+        A file is a duplicate when the collection already has a document with the
+        same file name and size, or when an earlier file in the same batch has
+        them. The collection row is locked (``SELECT ... FOR NO KEY UPDATE``)
+        before the duplicate check, so two concurrent batches into one collection
+        cannot both insert the same file: the second waits and then sees the
+        first's rows.
+
+        Args:
+            org_id: The caller's organization. A collection of another
+                organization is treated as missing, so this method keeps the
+                write in the caller's organization without relying on the caller
+                to have checked it.
+            user: Acting user, recorded as the collection's last editor when any
+                file is uploaded. Has no default so a caller cannot omit it
+                unnoticed; None records no edit.
+
+        Returns:
+            ``(created documents, duplicate files)``. Nothing is written when every
+            file is a duplicate.
+
+        Raises:
+            CollectionNotFoundException: The collection does not exist, was
+                deleted, or belongs to another organization.
+            UploadRejectedException: The non-duplicate files failed validation.
+        """
+        try:
+            # no_key: serializes imports into this collection without blocking
+            # other transactions inserting rows that reference it by FK.
+            collection = SourceCollection.objects.select_for_update(no_key=True).get(
+                collection_id=collection_id, org_id=org_id
+            )
+        except SourceCollection.DoesNotExist as e:
+            raise CollectionNotFoundException(collection_id) from e
+
+        taken_name_sizes = set(collection.documents.values_list("file_name", "file_size"))
+        new_files: list[UploadedFile] = []
+        duplicate_files: list[UploadedFile] = []
+        for uploaded_file in uploaded_files:
+            name_size = (uploaded_file.name, uploaded_file.size)
+            if name_size in taken_name_sizes:
+                duplicate_files.append(uploaded_file)
+            else:
+                new_files.append(uploaded_file)
+                taken_name_sizes.add(name_size)
+
+        if not new_files:
+            return [], duplicate_files
+
+        # Runs as a savepoint inside this transaction, so the lock is held
+        # until every document is written.
+        created_documents = DocumentManagementService.upload_files_batch(
+            collection_id=collection_id, uploaded_files=new_files, user=user
+        )
+        return created_documents, duplicate_files
 
     @staticmethod
     @transaction.atomic

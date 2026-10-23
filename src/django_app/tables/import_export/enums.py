@@ -13,6 +13,7 @@ class EntityType(StrEnum):
     OPENAI_REALTIME_CONFIG = "OpenAIRealtimeConfig"
     ELEVENLABS_REALTIME_CONFIG = "ElevenLabsRealtimeConfig"
     GEMINI_REALTIME_CONFIG = "GeminiRealtimeConfig"
+    VENV = "Venv"
     PYTHON_CODE_TOOL = "PythonCodeTool"
     MCP_TOOL = "MCPTool"
     WEBHOOK_TRIGGER = "WebhookTrigger"

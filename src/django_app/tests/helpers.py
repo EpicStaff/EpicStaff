@@ -58,3 +58,13 @@ class InlineExecutor(Executor):
         except BaseException as error:
             future.set_exception(error)
         return future
+
+
+def _unrestricted_export_policy():
+    from rbac.access.effective import EffectivePermissions
+    from tables.import_export.permissions import ExportAccessPolicy
+
+    return ExportAccessPolicy(EffectivePermissions(is_superadmin=True, role=None, by_resource={}))
+
+
+UNRESTRICTED_EXPORT_POLICY = _unrestricted_export_policy()

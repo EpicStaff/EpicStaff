@@ -4,6 +4,7 @@ from rbac.access.resolver import PermissionResolver
 from rest_framework.exceptions import ValidationError
 from tables.import_export.constants import MAIN_ENTITY_KEY
 from tables.import_export.export_format_strategies import JsonExportFormatStrategy
+from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService, ImportSettings
@@ -20,25 +21,39 @@ class ViewSetImportExportService:
         self.import_service = ImportService(entity_registry)
         self.format_strategies = format_strategies or {"json": JsonExportFormatStrategy()}
 
-    def export_entity(self, instance, fmt: str = "json", org_id: int | None = None):
-        data = self.export_service.export_entities(self.entity_type, [instance.pk], org_id=org_id)
+    def export_entity(self, instance, fmt: str = "json", org_id: int | None = None, *, user):
+        result = self.export_service.export_entities(
+            self.entity_type,
+            [instance.pk],
+            org_id=org_id,
+            policy=ExportAccessPolicy.for_user(user, org_id),
+        )
         if fmt not in self.format_strategies:
             raise ValidationError(
                 f"Unsupported export format: '{fmt}'. Supported: {list(self.format_strategies)}"
             )
         strategy = self.format_strategies[fmt]
         base_name = str(getattr(instance, self.filename_attr, "object"))
-        return strategy.render(data, self.entity_type, self.export_prefix, base_name)
+        return strategy.render(
+            result.data, self.entity_type, self.export_prefix, base_name, excluded=result.excluded
+        )
 
-    def bulk_export(self, entity_ids, fmt: str = "json", org_id: int | None = None):
-        data = self.export_service.export_entities(self.entity_type, entity_ids, org_id=org_id)
+    def bulk_export(self, entity_ids, fmt: str = "json", org_id: int | None = None, *, user):
+        result = self.export_service.export_entities(
+            self.entity_type,
+            entity_ids,
+            org_id=org_id,
+            policy=ExportAccessPolicy.for_user(user, org_id),
+        )
         if fmt not in self.format_strategies:
             raise ValidationError(
                 f"Unsupported export format: '{fmt}'. Supported: {list(self.format_strategies)}"
             )
         strategy = self.format_strategies[fmt]
         base_name = f"bulk_{len(entity_ids)}"
-        return strategy.render(data, self.entity_type, self.export_prefix, base_name)
+        return strategy.render(
+            result.data, self.entity_type, self.export_prefix, base_name, excluded=result.excluded
+        )
 
     def _parse_and_validate(self, file) -> dict:
         try:

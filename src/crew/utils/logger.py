@@ -7,9 +7,20 @@ from loguru import logger
 from src.shared.bench_log import add_bench_sink, without_bench
 
 logger.remove()
+# `diagnose=False` matters: with loguru's default, a `logger.exception` traceback prints
+# the value of every identifier on each displayed source line. Crew's frames carry the
+# sandbox submit body, so a default sink would write `secrets` plaintext and
+# `storage_credentials.secret_key` to stdout on any failed submit.
 logger.add(
-    sys.stdout, format="{time} {level} {message}", level=settings.LOG_LEVEL, filter=without_bench()
+    sys.stdout,
+    format="{time} {level} {message}",
+    level=settings.LOG_LEVEL,
+    filter=without_bench(),
+    diagnose=False,
+    backtrace=False,
 )
+# The bench sink renders checkpoint records through `bench_json` and never an
+# exception, so it needs no such guard.
 add_bench_sink(sys.stdout, settings.LOG_LEVEL)
 
 

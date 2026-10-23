@@ -126,6 +126,7 @@
                     (mouseenter)="hoveredNodeId.set(node.id)"
                     (mouseleave)="hoveredNodeId.set(null)"
                     (portMouseenter)="hoveredNodeId.set(node.id)"
+                    [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.nodeIds.has(node.id)"
                     (fNodePositionChange)="onNodePositionChanged($event, node)"
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"
@@ -155,7 +156,7 @@
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="routingOrchestrator.backwardConnectionIds().has(connection.id)"
                     [class.is-reassign-follower]="reassignHandler.followerIds().has(connection.id)"
-                    [class.node-hovered]="hoveredNodeConnectionIds().has(connection.id)"
+                    [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.connectionIds.has(connection.id)"
                     [style.z-index]="routingOrchestrator.backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
                         flowSettings.arrowColorsEnabled()

@@ -1,8 +1,15 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
+from tables.exceptions import (
+    NothingToImportException,
+    StorageImportLimitExceededException,
+    UploadRejectedException,
+)
 from tables.serializers.knowledge_serializers import (
     DocumentDetailSerializer,
     DocumentListSerializer,
+    ImportFromStorageResponseSerializer,
+    ImportFromStorageSerializer,
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
@@ -405,6 +412,130 @@ DOCUMENTS_COPY_POST = {
                     value={"error": "An unexpected error occurred: <detail>"},
                     response_only=True,
                     status_codes=["500"],
+                )
+            ],
+        ),
+    },
+}
+
+DOCUMENTS_IMPORT_FROM_STORAGE_POST = {
+    "summary": "Import storage files into a collection",
+    "description": (
+        "Create documents in a collection from files already in the organization's "
+        "storage. Folder ids import every non-system file beneath them. Files with an "
+        "unsupported type, over the per-file size limit, or already in the collection "
+        "with the same name and size are skipped and listed under `skipped`. Requires "
+        "Knowledge Sources create and Files read. Does not start indexing."
+    ),
+    "request": ImportFromStorageSerializer,
+    "responses": {
+        201: OpenApiResponse(
+            response=ImportFromStorageResponseSerializer,
+            description="Documents created from storage files.",
+            examples=[
+                OpenApiExample(
+                    name="Imported",
+                    value={
+                        "message": "Successfully imported 1 file(s), skipped 1",
+                        "documents": [
+                            {
+                                "document_id": 10,
+                                "file_name": "report.pdf",
+                                "file_type": "pdf",
+                                "file_size": 204800,
+                                "source_collection": 3,
+                            },
+                        ],
+                        "skipped": [
+                            {
+                                "storage_file_id": 42,
+                                "path": "reports/data.xlsx",
+                                "reason": "unsupported_type",
+                            },
+                        ],
+                    },
+                    response_only=True,
+                    status_codes=["201"],
+                )
+            ],
+        ),
+        400: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "`{status_code, code, message}`; only `nothing_to_import` adds `skipped`. "
+                "Every 400 this endpoint returns, by `code`:\n"
+                "- `nothing_to_import`: every selected file was skipped, or a selected "
+                "folder holds no files; `skipped` lists the skipped files with the same "
+                "items as a 201.\n"
+                "- `storage_import_limit_exceeded`: too many files or bytes selected.\n"
+                "- `upload_rejected`: the downloaded files failed upload validation.\n"
+                "- `invalid`: the body failed validation: `storage_file_ids` missing, "
+                "empty, not a list of positive integers, or longer than the selection cap.\n"
+                "- `parse_error`: the body is not valid JSON.\n"
+                "- `error`: `collection_id` in the path is not an integer.\n"
+                "- `org_context_required`: the `X-Organization-Id` header is missing or "
+                "not an integer."
+            ),
+            examples=[
+                OpenApiExample(
+                    name="Nothing importable",
+                    value={
+                        "status_code": 400,
+                        "code": NothingToImportException.default_code,
+                        "message": NothingToImportException.default_detail,
+                        "skipped": [
+                            {
+                                "storage_file_id": 42,
+                                "path": "reports/data.xlsx",
+                                "reason": "unsupported_type",
+                            },
+                        ],
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+                OpenApiExample(
+                    name="Limit exceeded",
+                    value={
+                        "status_code": 400,
+                        "code": StorageImportLimitExceededException.default_code,
+                        "message": "Cannot import 2500 files at once; the limit is 2000",
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+                OpenApiExample(
+                    name="Files rejected by upload validation",
+                    value={
+                        "status_code": 400,
+                        "code": UploadRejectedException.default_code,
+                        "message": (
+                            "Upload rejected. Archive 'report.docx' expands to 60000000 "
+                            "bytes, over the limit of 52428800 bytes"
+                        ),
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Caller lacks Knowledge Sources create or Files read.",
+        ),
+        404: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "The collection or at least one storage id is not in the active "
+                "organization, or is a system file. The response never names the id."
+            ),
+            examples=[
+                OpenApiExample(
+                    name="Not found",
+                    value={"status_code": 404, "code": "not_found", "message": "Not found."},
+                    response_only=True,
+                    status_codes=["404"],
                 )
             ],
         ),
