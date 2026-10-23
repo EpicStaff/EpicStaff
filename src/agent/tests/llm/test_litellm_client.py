@@ -494,12 +494,133 @@ async def test_usage_cost_computed_from_mocked_price_map():
     assert len(usage_chunks) == 1
     assert usage_chunks[0].usage["total_cost_usd"] == pytest.approx(0.003)
 
-    cost_per_token.assert_called_once_with(
-        model="gpt-4o",
-        prompt_tokens=100,
-        completion_tokens=20,
-        cache_read_input_tokens=15,
+    assert cost_per_token.call_args.kwargs["model"] == "gpt-4o"
+
+
+def _price(model: str, field: str) -> float:
+    return litellm.model_cost[model][field]
+
+
+def _anthropic_usage(*, plain: int, cache_read: int, write_5m: int, write_1h: int) -> dict:
+    """Usage as litellm normalizes an Anthropic / Bedrock Claude response."""
+    cache_write = write_5m + write_1h
+    return {
+        "prompt_tokens": plain + cache_read + cache_write,
+        "completion_tokens": 50,
+        "cache_read_input_tokens": cache_read,
+        "cache_creation_input_tokens": cache_write,
+        "prompt_tokens_details": {
+            "cached_tokens": cache_read,
+            "cache_creation_tokens": cache_write,
+            "cache_creation_token_details": {
+                "ephemeral_5m_input_tokens": write_5m,
+                "ephemeral_1h_input_tokens": write_1h,
+            },
+        },
+    }
+
+
+def _claude_cost(model: str, *, plain: int, cache_read: int, write_5m: int, write_1h: int) -> float:
+    return (
+        plain * _price(model, "input_cost_per_token")
+        + cache_read * _price(model, "cache_read_input_token_cost")
+        + write_5m * _price(model, "cache_creation_input_token_cost")
+        + write_1h * _price(model, "cache_creation_input_token_cost_above_1hr")
+        + 50 * _price(model, "output_cost_per_token")
     )
+
+
+CLAUDE_MODELS = ["claude-sonnet-4-5", "anthropic.claude-sonnet-4-5-20250929-v1:0"]
+
+
+@pytest.mark.parametrize("model", CLAUDE_MODELS, ids=["anthropic", "bedrock"])
+@pytest.mark.parametrize(
+    ("write_5m", "write_1h"),
+    [(3000, 0), (0, 3000), (1000, 2000)],
+    ids=["5m-cache-write", "1h-cache-write", "mixed-cache-write"],
+)
+async def test_usage_cost_prices_claude_cache_writes_at_their_own_rate(model, write_5m, write_1h):
+    """Cache writes cost more than plain input, and 1h writes more than 5m ones;
+    the price map is the real bundled one so a dropped cache-write count shows."""
+    usage = _anthropic_usage(plain=100, cache_read=2000, write_5m=write_5m, write_1h=write_1h)
+    pool = make_pool_with_router(make_router([_chunk(finish_reason="stop", usage=usage)]))
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    result = await collect(client, MESSAGES, [], {"model": model, "api_key": "sk-test"})
+
+    (usage_chunk,) = [c for c in result if c.usage is not None]
+    expected = _claude_cost(model, plain=100, cache_read=2000, write_5m=write_5m, write_1h=write_1h)
+    assert usage_chunk.usage["total_cost_usd"] == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("model", ["gpt-4o", "gemini/gemini-2.5-pro"])
+async def test_usage_cost_prices_cached_reads_for_providers_without_cache_writes(model):
+    usage = {
+        "prompt_tokens": 2100,
+        "completion_tokens": 50,
+        "prompt_tokens_details": {"cached_tokens": 2000},
+    }
+    pool = make_pool_with_router(make_router([_chunk(finish_reason="stop", usage=usage)]))
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    result = await collect(client, MESSAGES, [], {"model": model, "api_key": "sk-test"})
+
+    (usage_chunk,) = [c for c in result if c.usage is not None]
+    expected = (
+        100 * _price(model, "input_cost_per_token")
+        + 2000 * _price(model, "cache_read_input_token_cost")
+        + 50 * _price(model, "output_cost_per_token")
+    )
+    assert usage_chunk.usage["total_cost_usd"] == pytest.approx(expected)
+
+
+async def test_usage_cost_prices_top_level_only_anthropic_cache_fields():
+    usage = {
+        "prompt_tokens": 5100,
+        "completion_tokens": 50,
+        "cache_read_input_tokens": 2000,
+        "cache_creation_input_tokens": 3000,
+    }
+    model = "claude-sonnet-4-5"
+    pool = make_pool_with_router(make_router([_chunk(finish_reason="stop", usage=usage)]))
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    result = await collect(client, MESSAGES, [], {"model": model, "api_key": "sk-test"})
+
+    (usage_chunk,) = [c for c in result if c.usage is not None]
+    expected = _claude_cost(model, plain=100, cache_read=2000, write_5m=3000, write_1h=0)
+    assert usage_chunk.usage["total_cost_usd"] == pytest.approx(expected)
+
+
+async def test_usage_cost_for_claude_cache_write_matches_the_published_rates():
+    """Hard-coded dollars: 100 input, 2000 cache-read, 3000 5m cache-write, 50 output."""
+    usage = _anthropic_usage(plain=100, cache_read=2000, write_5m=3000, write_1h=0)
+    pool = make_pool_with_router(make_router([_chunk(finish_reason="stop", usage=usage)]))
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    result = await collect(
+        client, MESSAGES, [], {"model": "claude-sonnet-4-5", "api_key": "sk-test"}
+    )
+
+    (usage_chunk,) = [c for c in result if c.usage is not None]
+    assert usage_chunk.usage["total_cost_usd"] == pytest.approx(0.01290)
+
+
+async def test_usage_cost_handles_nested_usage_details_given_as_objects():
+    usage = _anthropic_usage(plain=100, cache_read=2000, write_5m=0, write_1h=3000)
+    usage["prompt_tokens_details"]["cache_creation_token_details"] = SimpleNamespace(
+        **usage["prompt_tokens_details"]["cache_creation_token_details"]
+    )
+    usage["prompt_tokens_details"] = SimpleNamespace(**usage["prompt_tokens_details"])
+    model = "claude-sonnet-4-5"
+    pool = make_pool_with_router(make_router([_chunk(finish_reason="stop", usage=usage)]))
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+    result = await collect(client, MESSAGES, [], {"model": model, "api_key": "sk-test"})
+
+    (usage_chunk,) = [c for c in result if c.usage is not None]
+    expected = _claude_cost(model, plain=100, cache_read=2000, write_5m=0, write_1h=3000)
+    assert usage_chunk.usage["total_cost_usd"] == pytest.approx(expected)
 
 
 async def test_usage_cost_defaults_to_zero_when_price_lookup_raises():
