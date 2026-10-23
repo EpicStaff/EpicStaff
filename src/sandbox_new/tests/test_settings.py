@@ -72,3 +72,17 @@ def test_the_crew_result_channel_is_derived_from_the_services_own_channel(
     reloaded = reload_settings_with_env(CODE_RESULT_CHANNEL="somewhere:else")
 
     assert reloaded.CREW_JOB_RESULT_CHANNEL == "somewhere:else:crew"
+
+
+@pytest.mark.parametrize("max_result_size", ["0", "-1", "none"])
+def test_a_max_result_size_that_is_not_positive_refuses_startup(
+    reload_settings_with_env, max_result_size
+):
+    with pytest.raises(ValueError, match="SANDBOX_MAX_RESULT_SIZE"):
+        reload_settings_with_env(SANDBOX_MAX_RESULT_SIZE=max_result_size)
+
+
+def test_the_max_result_size_is_read_as_a_byte_size(reload_settings_with_env):
+    reloaded = reload_settings_with_env(SANDBOX_MAX_RESULT_SIZE="16mb")
+
+    assert reloaded.MAX_RESULT_SIZE == 16 * 1024 * 1024

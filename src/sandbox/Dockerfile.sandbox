@@ -43,8 +43,7 @@ COPY ./shared /app/src/shared
 # --- Stage 2: Runtime ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
 
-# git is required by the Enter/Exit Worktree Tools — the
-# image previously shipped without it.
+# git is required by the GitHub search tool, which clones repositories.
 # iptables installs the per-uid egress firewall at startup (egress_firewall.py).
 RUN apt-get update && apt-get install -y ffmpeg git iptables \
     && rm -rf /var/lib/apt/lists/*
