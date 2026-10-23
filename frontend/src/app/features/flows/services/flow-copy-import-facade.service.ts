@@ -3,7 +3,7 @@ import { Observable } from 'rxjs';
 
 import { ImportFlowRequestOptions, ImportResult } from '../../../core/models/import-result.model';
 import { ImportExportService } from '../../../core/services/import-export.service';
-import { GraphDto } from '../models/graph.model';
+import { GraphDto, PartialImportResponse } from '../models/graph.model';
 import { FlowUsePermissionRefusalService } from './flow-use-permission-refusal.service';
 import { FlowsStorageService } from './flows-storage.service';
 
@@ -28,7 +28,7 @@ export class FlowCopyImportFacadeService {
         return this.importExport.importFlow(file, settings).pipe(this.usePermissionRefusal.catchRefusal('import'));
     }
 
-    partialImport(graphId: number, file: File): Observable<unknown> {
+    partialImport(graphId: number, file: File): Observable<PartialImportResponse> {
         return this.importExport
             .partialImport(graphId, file)
             .pipe(this.usePermissionRefusal.catchRefusal('partialImport'));
