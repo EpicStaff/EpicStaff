@@ -272,6 +272,15 @@ from tables.services.copy_services import (
     McpToolCopyService,
     PythonCodeToolCopyService,
 )
+from tables.services.delete_services import (
+    ElevenLabsRealtimeConfigDeleteService,
+    EmbeddingConfigDeleteService,
+    GeminiRealtimeConfigDeleteService,
+    GraphDeleteService,
+    GraphVersionDeleteService,
+    LLMConfigDeleteService,
+    OpenAIRealtimeConfigDeleteService,
+)
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.services.graph_bulk_save_service.registry import TRIGGER_NODE_LIST_KEYS
 from tables.services.import_export_service import ViewSetImportExportService
@@ -294,6 +303,15 @@ from tables.swagger_schemas.audit_filter_preset_schemas import (
     AUDIT_FILTER_PRESET_EXPORT_ALL,
     AUDIT_FILTER_PRESET_EXPORT_ONE,
     AUDIT_FILTER_PRESET_IMPORT,
+)
+from tables.swagger_schemas.bulk_delete_schemas import (
+    ELEVENLABS_REALTIME_CONFIG_BULK_DELETE_POST,
+    EMBEDDING_CONFIG_BULK_DELETE_POST,
+    GEMINI_REALTIME_CONFIG_BULK_DELETE_POST,
+    GRAPH_BULK_DELETE_POST,
+    GRAPH_VERSION_BULK_DELETE_POST,
+    LLM_CONFIG_BULK_DELETE_POST,
+    OPENAI_REALTIME_CONFIG_BULK_DELETE_POST,
 )
 from tables.swagger_schemas.common_schemas import FLOW_WITH_TRIGGER_NODES_403_RESPONSE
 from tables.swagger_schemas.graph_copy_schemas import GRAPH_COPY_POST
@@ -350,6 +368,7 @@ from tables.swagger_schemas.webhook_schemas import (
 from tables.utils.helpers import generate_file_name, natural_sort_key
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.views.mixins import (
+    BulkDeleteActionMixin,
     CopyActionMixin,
     InspectActionMixin,
     ToolUsageActionsMixin,
@@ -418,10 +437,12 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
         instance.delete()
 
 
-class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
+@extend_schema_view(bulk_delete=extend_schema(**LLM_CONFIG_BULK_DELETE_POST))
+class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = LLMConfigDeleteService
 
     class LLMConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -497,10 +518,12 @@ class EmbeddingModelReadWriteViewSet(
     filterset_class = EmbeddingModelFilter
 
 
-class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
+@extend_schema_view(bulk_delete=extend_schema(**EMBEDDING_CONFIG_BULK_DELETE_POST))
+class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = EmbeddingConfigDeleteService
 
     class EmbeddingConfigFilter(filters.FilterSet):
         model_provider_id = filters.CharFilter(
@@ -738,9 +761,13 @@ class PythonCodeResultReadViewSet(
     serializer_class = PythonCodeResultSerializer
 
 
-@extend_schema_view(copy=extend_schema(**GRAPH_COPY_POST))
+@extend_schema_view(
+    bulk_delete=extend_schema(**GRAPH_BULK_DELETE_POST),
+    copy=extend_schema(**GRAPH_COPY_POST),
+)
 class GraphViewSet(
     OrgScopedViewSetMixin,
+    BulkDeleteActionMixin,
     CopyActionMixin,
     InspectActionMixin,
     RecycleBinActionsMixin,
@@ -760,11 +787,13 @@ class GraphViewSet(
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
         "delete_by_uuid": Permission.DELETE,
+        "bulk_delete": Permission.DELETE,
         "subflow_usage": Permission.READ,
     }
     recycle_bin_resource_key = RecycleBinSource.FLOW
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
+    delete_service_class = GraphDeleteService
 
     serializer_class = GraphSerializer
     filter_backends = [DjangoFilterBackend, LabelFilterBackend]
@@ -1219,8 +1248,9 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             )
         ],
     ),
+    bulk_delete=extend_schema(**GRAPH_VERSION_BULK_DELETE_POST),
 )
-class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -1228,8 +1258,10 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         "all": Permission.READ,
         "restore": Permission.UPDATE,
         "create_graph": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
         "preview": Permission.READ,
     }
+    delete_service_class = GraphVersionDeleteService
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph_id"]
 
@@ -1714,26 +1746,38 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         return Response({"detail": "Updated"})
 
 
-class OpenAIRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+@extend_schema_view(bulk_delete=extend_schema(**OPENAI_REALTIME_CONFIG_BULK_DELETE_POST))
+class OpenAIRealtimeConfigViewSet(
+    OrgScopedViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = OpenAIRealtimeConfigDeleteService
     queryset = OpenAIRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = OpenAIRealtimeConfigSerializer
 
 
-class ElevenLabsRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+@extend_schema_view(bulk_delete=extend_schema(**ELEVENLABS_REALTIME_CONFIG_BULK_DELETE_POST))
+class ElevenLabsRealtimeConfigViewSet(
+    OrgScopedViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = ElevenLabsRealtimeConfigDeleteService
     queryset = ElevenLabsRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = ElevenLabsRealtimeConfigSerializer
 
 
-class GeminiRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+@extend_schema_view(bulk_delete=extend_schema(**GEMINI_REALTIME_CONFIG_BULK_DELETE_POST))
+class GeminiRealtimeConfigViewSet(
+    OrgScopedViewSetMixin, BulkDeleteActionMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    delete_service_class = GeminiRealtimeConfigDeleteService
     queryset = GeminiRealtimeConfig.objects.prefetch_related(*authorship_prefetches())
     serializer_class = GeminiRealtimeConfigSerializer
 

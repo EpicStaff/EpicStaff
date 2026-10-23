@@ -13,27 +13,7 @@
                 </h1>
             </div>
             <div class="header-actions">
-                @if (selectMode()) {
-                    <app-button
-                        type="ghost"
-                        (click)="cancelExport()"
-                    >
-                        Cancel
-                    </app-button>
-                    <app-button
-                        type="ghost"
-                        (click)="selectAllFlows()"
-                    >
-                        {{ isAllSelected() ? 'Deselect all' : 'Select all' }}
-                    </app-button>
-                    <app-button
-                        type="primary"
-                        [disabled]="selectedFlowIds().length === 0"
-                        (click)="confirmExport()"
-                    >
-                        Export {{ selectedFlowIds().length }} flows
-                    </app-button>
-                } @else {
+                @if (!selectMode()) {
                     <app-button
                         type="ghost"
                         [leftIcon]="'union'"
@@ -41,6 +21,22 @@
                     >
                         All sessions
                     </app-button>
+                }
+
+                <!-- Outside the select-mode branches: entering select mode must not recreate it (and close its menu). -->
+                <app-bulk-select-dropdown
+                    *appHasPermission="[ResourceCode.Flows, [ActionCode.Delete, ActionCode.Export]]"
+                    appearance="outline"
+                    [selectMode]="selectMode()"
+                    [selectedCount]="selectedFlowIds().length"
+                    [allSelected]="isAllSelected()"
+                    [disabled]="isDeleting()"
+                    (selectModeEntered)="onSelectClick()"
+                    (selectAllToggled)="selectAllFlows()"
+                    (cleared)="cancelSelection()"
+                />
+
+                @if (!selectMode()) {
                     <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Create]">
                         <div
                             class="import-group"
@@ -79,7 +75,18 @@
                             (closed)="closeImportOptions()"
                         />
                     </ng-container>
+                }
 
+                @if (selectMode()) {
+                    <app-button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                        type="primary"
+                        [disabled]="selectedFlowIds().length === 0"
+                        (click)="confirmExport()"
+                    >
+                        Export {{ selectedFlowIds().length }} flows
+                    </app-button>
+                } @else {
                     <div
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                         class="export-group"
@@ -87,7 +94,7 @@
                         <button
                             type="button"
                             class="export-group__main"
-                            (click)="onExportClick()"
+                            (click)="onSelectClick()"
                         >
                             <app-svg-icon
                                 icon="upload"
@@ -96,6 +103,20 @@
                             <span>Export</span>
                         </button>
                     </div>
+                }
+
+                @if (selectMode()) {
+                    <app-button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                        type="danger"
+                        leftIcon="trash"
+                        iconSize="14px"
+                        [disabled]="selectedFlowIds().length === 0 || isDeleting()"
+                        (click)="deleteSelectedFlows()"
+                    >
+                        Delete
+                    </app-button>
+                } @else {
                     <app-button
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
                         type="primary"

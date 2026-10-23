@@ -32,4 +32,14 @@ describe('ButtonComponent', () => {
     it('renders the outline-danger type as its own class', () => {
         expect(render({ type: 'outline-danger' }).classList).toContain('btn-outline-danger');
     });
+
+    it('renders the filled danger type as its own class', () => {
+        const fixture = TestBed.createComponent(ButtonComponent);
+        fixture.componentInstance.type = 'danger';
+        fixture.detectChanges();
+
+        const button = (fixture.nativeElement as HTMLElement).querySelector('button');
+        expect(button?.classList).toContain('btn-danger');
+        expect(button?.classList).not.toContain('btn-outline-danger');
+    });
 });

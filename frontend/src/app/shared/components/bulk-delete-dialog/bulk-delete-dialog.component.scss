@@ -1,0 +1,239 @@
+// At most as tall as the Add Configuration dialog (90vh), but no taller than its content: a short dialog
+// stays compact. Header and actions keep their size; only the body scrolls.
+.dialog-container {
+    background: var(--color-modals-background);
+    border-radius: 8px;
+    padding: 24px;
+    width: 485px;
+    max-width: 100%;
+    max-height: 90vh;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.dialog-header {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1px solid var(--color-divider-regular);
+    padding-bottom: 16px;
+}
+
+.dialog-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+
+.dialog-icon {
+    display: flex;
+    align-items: center;
+    color: var(--color-error);
+}
+
+.dialog-title {
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
+    margin: 0;
+    color: var(--color-text-primary);
+    overflow-wrap: anywhere;
+}
+
+.close-button {
+    margin-top: -8px;
+    margin-right: -8px;
+}
+
+// Takes what the 90vh container leaves after header and actions, and scrolls past that. Each list also
+// scrolls on its own after 200px, so the body only scrolls when several sections are open at once.
+.dialog-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+}
+
+.summary-message {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    margin: 0;
+}
+
+// The body's gap spaces the banner; app-hint-message's own top margin is meant for sitting under a form field.
+.usage-banner {
+    margin-top: 0;
+}
+
+// Sections copy the look of the confirmation dialog's breakdown (org delete).
+.breakdown {
+    display: flex;
+    flex-direction: column;
+}
+
+.breakdown-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+}
+
+.breakdown-chevron {
+    transition: transform 0.2s ease;
+
+    &.collapsed {
+        transform: rotate(-90deg);
+    }
+}
+
+.breakdown-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.breakdown-total {
+    margin-left: auto;
+    color: var(--color-error);
+}
+
+// The space under the header sits inside the collapsing row, so a closed section leaves none behind.
+.breakdown-list {
+    margin: 8px 0 0;
+    padding: 4px 12px;
+    border-left: 3px solid var(--color-error);
+    border-radius: 10px;
+    list-style: none;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.breakdown--neutral {
+    .breakdown-list {
+        border-left-color: var(--color-divider-regular);
+    }
+
+    .breakdown-total {
+        color: var(--color-text-secondary);
+    }
+}
+
+// One line per item: the name, and on blocked and in-use rows a label where the breakdown shows its count.
+.item {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 0;
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-line-height);
+    color: var(--color-ks-transparent-text-80);
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    &--blocked .item-label {
+        color: var(--color-error);
+    }
+
+    &--in-use .item-label {
+        color: var(--color-warning);
+    }
+}
+
+.item-name {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+// Carries the row's tooltip, so it is the focusable part (blocked and in-use rows only). The ring fits in
+// the row's 4px and the list's 12px padding, so the list's scroll clipping cannot cut it off.
+.item-label {
+    flex-shrink: 0;
+    white-space: nowrap;
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-color);
+        outline-offset: 2px;
+        border-radius: 2px;
+    }
+}
+
+.section-note {
+    margin: 8px 0 0;
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+}
+
+.dialog-actions {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.button {
+    height: 40px;
+    padding: 0 24px;
+    border-radius: 8px;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+}
+
+.cancel-button,
+.close-text-button {
+    color: var(--color-text-primary);
+    border-color: var(--color-divider-regular);
+
+    &:hover {
+        background: var(--white-alpha-4);
+    }
+}
+
+/* Small animation for dialog opening */
+:host {
+    animation: dialog-fade-in 0.2s ease-out;
+}
+
+@keyframes dialog-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

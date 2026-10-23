@@ -1,10 +1,14 @@
 from django.db import IntegrityError, transaction
+from rbac.access.effective import EffectivePermissions
+from rbac.access.resolver import PermissionResolver
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from tables.serializers.serializers import (
+    BulkDeleteRequestSerializer,
+    BulkDeleteResultSerializer,
     InspectImportRequestSerializer,
     ToolUsageDetailSerializer,
     ToolUsageSerializer,
@@ -91,6 +95,90 @@ class TriggerNodeUsePermissionMixin:
         if self.action in self.use_gated_detail_actions:
             trigger_node_access.assert_may_write(self.request.user, self.get_active_org_id())
         return instance
+
+
+class BulkDeleteActionMixin:
+    """Adds a ``bulk-delete`` action and a usage-guarded ``perform_destroy``.
+
+    Requires `delete_service_class` (a BaseDeleteService subclass) and
+    `"bulk_delete": Permission.DELETE` in the ViewSet's `rbac_action_map`.
+    Place after the org-scoping mixin, which supplies `get_active_org_id`. The
+    OpenAPI schema is attached on each concrete ViewSet with
+    `@extend_schema_view`, not here.
+
+    Must come **before** `RecycleBinActionsMixin` in a viewset's bases:
+    `RecycleBinActionsMixin.perform_destroy` does not call `super()`, so the
+    other order silently drops the `in_use_restricted` guard on single DELETE.
+
+    Single `DELETE` runs the same usage rule as bulk, so a caller cannot bypass a
+    block by deleting one id at a time.
+    """
+
+    delete_service_class = None
+
+    def perform_destroy(self, instance) -> None:
+        self._check_delete_service_class()
+        # One transaction for check and delete, as on the bulk path:
+        # assert_deletable locks the row, so the usage it checked is still the
+        # usage when the delete runs.
+        with transaction.atomic():
+            self.delete_service_class().assert_deletable(
+                instance, self.get_active_org_id(), self.get_effective_permissions()
+            )
+            super().perform_destroy(instance)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        self._check_delete_service_class()
+        dry_run = self._read_dry_run(request.query_params)
+        body = BulkDeleteRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+
+        org_id = self.get_active_org_id()
+        result = self.delete_service_class().bulk_delete(
+            body.validated_data["ids"],
+            org_id,
+            self.get_effective_permissions(),
+            dry_run=dry_run,
+            deleted_by=request.user,
+        )
+        logger.info(
+            "Bulk delete {}: org={} user={} dry_run={} deleted={} skipped={} not_found={}",
+            self.delete_service_class.model.__name__,
+            org_id,
+            # A system API key's principal has no pk; its str() names it.
+            getattr(request.user, "pk", request.user),
+            result.dry_run,
+            result.deleted_count,
+            len(result.skipped),
+            len(result.not_found_ids),
+        )
+        return Response(
+            BulkDeleteResultSerializer(result).data,
+            status=(status.HTTP_207_MULTI_STATUS if result.is_partial else status.HTTP_200_OK),
+        )
+
+    def get_effective_permissions(self) -> EffectivePermissions:
+        """The caller's permissions in the active org, resolved fresh per call."""
+        return PermissionResolver().resolve(user=self.request.user, org_id=self.get_active_org_id())
+
+    def _check_delete_service_class(self) -> None:
+        if not self.delete_service_class:
+            raise NotImplementedError(f"{self.__class__.__name__} must set delete_service_class.")
+
+    @staticmethod
+    def _read_dry_run(query_params) -> bool:
+        """Read `?dry_run` strictly: anything but one true/false is a 400.
+
+        A lax read would turn a mistyped, blank or repeated preview flag into a
+        real delete of up to 500 rows.
+        """
+        values = query_params.getlist("dry_run")
+        if not values:
+            return False
+        if len(values) == 1 and values[0].lower() in ("true", "false"):
+            return values[0].lower() == "true"
+        raise ValidationError({"dry_run": ["Pass dry_run once, as true or false."]})
 
 
 class ToolUsageActionsMixin:

@@ -1,35 +1,54 @@
-<article class="llm-card">
+<article
+    class="llm-card"
+    [class.llm-card--select-mode]="selectMode()"
+    [class.llm-card--selected]="selectMode() && selected()"
+    (click)="onCardClick()"
+>
     <div class="llm-card__top">
         <span class="llm-card__model">{{ model().customName }}</span>
-        <div class="llm-card__actions">
-            <app-config-card-more-menu (viewDetailsClick)="onViewDetails($event)" />
-            <button
-                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
-                type="button"
-                class="llm-card__action"
-                matTooltip="Edit"
-                matTooltipPosition="above"
-                (click)="onEdit()"
+        @if (selectMode()) {
+            <div
+                class="llm-card__checkbox"
+                (click)="$event.stopPropagation()"
             >
-                <i
-                    class="ti ti-pencil"
-                    aria-hidden="true"
-                ></i>
-            </button>
-            <button
-                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
-                type="button"
-                class="llm-card__action llm-card__action--delete"
-                matTooltip="Delete"
-                matTooltipPosition="above"
-                (click)="onDelete()"
-            >
-                <i
-                    class="ti ti-x"
-                    aria-hidden="true"
-                ></i>
-            </button>
-        </div>
+                <app-checkbox
+                    color="secondary"
+                    [checked]="selected()"
+                    [disabled]="isDeleting()"
+                    (changed)="onCardClick()"
+                ></app-checkbox>
+            </div>
+        } @else {
+            <div class="llm-card__actions">
+                <app-config-card-more-menu (viewDetailsClick)="onViewDetails($event)" />
+                <button
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
+                    type="button"
+                    class="llm-card__action"
+                    matTooltip="Edit"
+                    matTooltipPosition="above"
+                    (click)="onEdit()"
+                >
+                    <i
+                        class="ti ti-pencil"
+                        aria-hidden="true"
+                    ></i>
+                </button>
+                <button
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                    type="button"
+                    class="llm-card__action llm-card__action--delete"
+                    matTooltip="Delete"
+                    matTooltipPosition="above"
+                    (click)="onDelete()"
+                >
+                    <i
+                        class="ti ti-x"
+                        aria-hidden="true"
+                    ></i>
+                </button>
+            </div>
+        }
     </div>
 
     <div class="llm-card__name">{{ model().modelName }}</div>

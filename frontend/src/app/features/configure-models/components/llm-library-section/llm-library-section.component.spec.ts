@@ -2,7 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { DebugElement, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { AuthorshipDetailsDialogService, ConfirmationDialogService } from '@shared/components';
+import { AuthorshipDetailsDialogService } from '@shared/components';
 import {
     ActionCode,
     ElevenLabsRealtimeConfig,
@@ -141,8 +141,18 @@ function providerGroup(configType: ModelTypes, models: LlmLibraryModel[]): LlmLi
     return { id: `openai-${configType}`, providerName: 'OpenAI', providerIconPath: 'openai', models, configType };
 }
 
+// The header buttons collapse on overflow and observe their size; jsdom has no ResizeObserver.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
+
 function realtimeStorageStub(configs: VoiceConfig[] = []): object {
-    return { configs: signal(configs), getAllConfigs: () => of(configs), deleteConfig: () => of(undefined) };
+    return { configs: signal(configs), getAllConfigs: () => of(configs) };
 }
 
 function render(
@@ -185,7 +195,6 @@ function render(
                 useValue: realtimeStorageStub(voiceConfigs.filter((config) => config === GEMINI_VOICE_CONFIG)),
             },
             { provide: AuthorshipDetailsDialogService, useValue: { open } },
-            { provide: ConfirmationDialogService, useValue: {} },
             { provide: DefaultModelsStorageService, useValue: {} },
             { provide: ToastService, useValue: {} },
             { provide: Dialog, useValue: {} },
@@ -238,6 +247,97 @@ describe('LlmLibrarySectionComponent "View Details"', () => {
         viewDetailsOn(fixture, staleModel);
 
         expect(open).not.toHaveBeenCalled();
+    });
+});
+
+describe('LlmLibrarySectionComponent select mode', () => {
+    function headerButtonLabels(fixture: ComponentFixture<LlmLibrarySectionComponent>): string[] {
+        return Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll('.header-right > app-button'),
+            (button) => button.textContent?.trim() ?? ''
+        );
+    }
+
+    function enterSelectMode(fixture: ComponentFixture<LlmLibrarySectionComponent>): void {
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('app-bulk-select-dropdown .bulk-select__main')!
+            .click();
+        fixture.detectChanges();
+    }
+
+    it('swaps "Add Configuration" for a red "Delete" with a trash icon next to the select dropdown', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+            grantedActions: [ActionCode.Create, ActionCode.Delete],
+        });
+        expect(headerButtonLabels(fixture)).toEqual(['Add Configuration']);
+
+        enterSelectMode(fixture);
+
+        expect(fixture.componentInstance.selectMode()).toBe(true);
+        expect(headerButtonLabels(fixture)).toEqual(['Delete']);
+        const deleteButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+            '.header-right > app-button button'
+        )!;
+        expect(deleteButton.classList).toContain('btn-danger');
+        expect(deleteButton.querySelector('app-svg-icon.btn-icon.left use')?.getAttribute('href')).toBe('#icon-trash');
+        expect(deleteButton.disabled).toBe(true);
+    });
+
+    it('gives LLM, embedding and voice cards a secondary (light box, dark tick) selection checkbox', () => {
+        const { fixture } = render(
+            [libraryModel(ModelTypes.LLM, SHARED_ID), libraryModel(ModelTypes.EMBEDDING, SHARED_ID)],
+            { voiceConfigs: [OPENAI_VOICE_CONFIG], grantedActions: [ActionCode.Delete] }
+        );
+        enterSelectMode(fixture);
+
+        const checkboxes = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll(
+                '.llm-card__checkbox app-checkbox input, .voice-card .checkbox app-checkbox input'
+            )
+        );
+        expect(checkboxes).toHaveLength(3);
+        checkboxes.forEach((checkbox) => expect(checkbox.classList).toContain('secondary'));
+    });
+
+    it('selects both an LLM and an embedding card sharing an id with "Select All"', () => {
+        const { fixture } = render(
+            [libraryModel(ModelTypes.LLM, SHARED_ID), libraryModel(ModelTypes.EMBEDDING, SHARED_ID)],
+            { grantedActions: [ActionCode.Delete] }
+        );
+        enterSelectMode(fixture);
+
+        document.querySelector<HTMLButtonElement>('.bulk-select-menu__item')!.click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectedKeys()).toEqual(
+            new Set([`llm:${SHARED_ID}`, `embedding:${SHARED_ID}`])
+        );
+        expect(fixture.componentInstance.allVisibleSelected()).toBe(true);
+    });
+
+    it('offers no select dropdown without the delete permission', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], { grantedActions: [ActionCode.Create] });
+
+        expect((fixture.nativeElement as HTMLElement).querySelector('app-bulk-select-dropdown')).toBeNull();
+    });
+
+    it('orders the header as search, Select, capabilities, then Add Configuration or Delete', () => {
+        const { fixture } = render([libraryModel(ModelTypes.LLM, SHARED_ID)], {
+            grantedActions: [ActionCode.Create, ActionCode.Delete],
+        });
+        /** Header items in DOM order: buttons by their label, the filter by its class, the rest by tag. */
+        const headerOrder = (): string[] =>
+            Array.from((fixture.nativeElement as HTMLElement).querySelector('.header-right')!.children, (child) => {
+                if (child.classList.contains('filter')) return 'filter';
+                if (child.tagName === 'APP-BUTTON') return child.textContent?.trim() ?? '';
+                return child.tagName.toLowerCase();
+            });
+
+        expect(headerOrder()).toEqual(['app-search', 'app-bulk-select-dropdown', 'filter', 'Add Configuration']);
+
+        enterSelectMode(fixture);
+
+        expect(headerOrder()).toEqual(['app-search', 'app-bulk-select-dropdown', 'filter', 'Delete']);
     });
 });
 

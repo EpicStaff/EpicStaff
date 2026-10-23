@@ -36,6 +36,13 @@
         align-items: center;
         gap: 12px;
         flex-shrink: 0;
+
+        // app-search claims the full row width and app-button may shrink to zero, clipping
+        // its label; without this the overflow is taken out of the buttons.
+        > app-button,
+        > app-bulk-select-dropdown {
+            flex-shrink: 0;
+        }
     }
 
     .add-btn {
@@ -112,11 +119,25 @@
         border-color: var(--white-alpha-16);
     }
 
+    &--select-mode {
+        cursor: pointer;
+    }
+
+    &--selected {
+        border-color: var(--accent-color);
+    }
+
     .top {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 0.25rem;
+    }
+
+    .checkbox {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
     }
 
     .model {

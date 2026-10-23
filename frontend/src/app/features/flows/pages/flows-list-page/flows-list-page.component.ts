@@ -25,6 +25,7 @@ import {
     AppIncludeExcludeDialogData,
     AppIncludeExcludeDialogResult,
     AppSvgIconComponent,
+    BulkSelectDropdownComponent,
     ButtonComponent,
     IncludeExcludeTab,
     LabelSidebarComponent,
@@ -35,6 +36,7 @@ import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@
 import { ActionCode, LabelTreeNode, ResourceCode } from '@shared/models';
 import {
     AppStorageService,
+    BulkDeleteService,
     EmbeddingConfigStorageService,
     EmbeddingModelsStorageService,
     LABELS_STORE,
@@ -56,7 +58,17 @@ import {
     showExportExclusionWarning,
 } from '@shared/utils';
 import { EMPTY, forkJoin, from, Observable, of, Subject } from 'rxjs';
-import { catchError, debounceTime, distinctUntilChanged, map, switchMap, take } from 'rxjs/operators';
+import {
+    catchError,
+    debounceTime,
+    distinctUntilChanged,
+    filter,
+    finalize,
+    map,
+    switchMap,
+    take,
+    tap,
+} from 'rxjs/operators';
 
 import { ImportFlowRequestOptions, ImportResult } from '../../../../core/models/import-result.model';
 import {
@@ -67,6 +79,7 @@ import {
 } from '../../../../core/models/review-item.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications';
+import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
 import {
     FlowsFilterMenuAction,
@@ -82,6 +95,7 @@ import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { parseFilterFromParams, serializeFilterToParams } from '../../utils/flow-filter-url.utils';
+import { flowsBulkDeleteGroup } from '../../utils/flows-bulk-delete.util';
 
 @Component({
     templateUrl: './flows-list-page.component.html',
@@ -91,6 +105,7 @@ import { parseFilterFromParams, serializeFilterToParams } from '../../utils/flow
         RouterLink,
         RouterLinkActive,
         ButtonComponent,
+        BulkSelectDropdownComponent,
         TabButtonComponent,
         FormsModule,
         AppSvgIconComponent,
@@ -127,6 +142,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private importFlowSettings = inject(ImportFlowSettingsService);
     private destroyRef = inject(DestroyRef);
     private appStorage = inject(AppStorageService);
+    private bulkDeleteService = inject(BulkDeleteService);
+    private recycleBinSettings = inject(RecycleBinSettingsService);
 
     private readonly storageInvalidationMap: Record<string, StorageService[]> = {
         LLMModel: [inject(LlmModelsStorageService), inject(LlmProvidersStorageService)],
@@ -143,6 +160,8 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     public selectMode = this.flowStorageService.selectMode;
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
+    public isDeleting = this.flowStorageService.isDeleting;
+
     public readonly filterState = this.flowStorageService.filter;
 
     public readonly hasActiveFilter = computed(() => {
@@ -580,11 +599,11 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         return result;
     }
 
-    public onExportClick(): void {
+    public onSelectClick(): void {
         this.flowStorageService.setSelectMode(true);
     }
 
-    public cancelExport(): void {
+    public cancelSelection(): void {
         this.flowStorageService.setSelectMode(false);
     }
 
@@ -611,6 +630,26 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                 console.error('Bulk export failed:', error);
             },
         });
+    }
+
+    public deleteSelectedFlows(): void {
+        const selectedIds = new Set(this.selectedFlowIds());
+        const flows = this.flowStorageService.flows().filter((flow) => selectedIds.has(flow.id));
+        if (flows.length === 0) {
+            return;
+        }
+
+        this.isDeleting.set(true);
+        this.bulkDeleteService
+            .run([flowsBulkDeleteGroup(this.flowStorageService, flows, this.recycleBinSettings.retentionDays())])
+            .pipe(
+                tap(() => this.flowStorageService.setSelectMode(false)),
+                filter((outcomes) => outcomes.some((outcome) => (outcome.response?.deleted_count ?? 0) > 0)),
+                switchMap(() => this.flowStorageService.getFlows(true, this.labelsStorage.activeLabelFilter())),
+                finalize(() => this.isDeleting.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
     }
 
     public selectAllFlows(): void {
