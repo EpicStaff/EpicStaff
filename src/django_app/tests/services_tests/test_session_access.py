@@ -14,7 +14,7 @@ from tables.services.session_access import (
     get_runnable_graph,
 )
 from tests.custom_role_fixtures import *  # noqa: F401,F403
-from tests.rbac_cross_org_fixtures import acme, beta, custom_role_user, role_viewer  # noqa: F401
+from tests.rbac_cross_org_fixtures import role_viewer  # noqa: F401
 
 
 @pytest.fixture
@@ -203,42 +203,40 @@ def test_session_access_for_use_needs_flows_use(request, caller, target_org, act
 
 
 @pytest.fixture
-def viewer_of_acme(db, django_user_model, acme, role_viewer):
+def viewer_a(db, django_user_model, org_a, role_viewer):
     user = django_user_model.objects.create_user(
-        email="h_viewer_acme@example.com", password="StrongPass123!"
+        email="h_viewer_a@example.com", password="StrongPass123!"
     )
-    OrganizationUser.objects.create(user=user, org=acme, role=role_viewer)
+    OrganizationUser.objects.create(user=user, org=org_a, role=role_viewer)
     return user
 
 
 @pytest.fixture
-def acme_member_without_flows(custom_role_user, acme):
-    return custom_role_user(
-        acme, "h_no_flows_acme@example.com", {ResourceType.AGENTS: Permission.READ}
-    )
+def member_a_without_flows(custom_role_member, org_a):
+    return custom_role_member(org_a, {ResourceType.AGENTS: Permission.READ}, "h-no-flows-a")
 
 
-def _acme_graph(acme, beta):
-    return Graph.objects.create(name="H collab flow", org=acme).pk
+def _graph_of_a(org_a, org_b):
+    return Graph.objects.create(name="H collab flow", org=org_a).pk
 
 
-def _beta_graph(acme, beta):
-    return Graph.objects.create(name="H collab flow", org=beta).pk
+def _graph_of_b(org_a, org_b):
+    return Graph.objects.create(name="H collab flow", org=org_b).pk
 
 
-def _missing_graph(acme, beta):
+def _missing_graph(org_a, org_b):
     return 987654321
 
 
-def _binned_acme_graph(acme, beta):
-    graph = Graph.objects.create(name="H binned flow", org=acme)
+def _binned_graph_of_a(org_a, org_b):
+    graph = Graph.objects.create(name="H binned flow", org=org_a)
     graph.delete()
     return graph.pk
 
 
-def _graph_of_deactivated_acme(acme, beta):
-    graph_id = _acme_graph(acme, beta)
-    Organization.objects.filter(pk=acme.pk).update(is_active=False)
+def _graph_of_deactivated_a(org_a, org_b):
+    graph_id = _graph_of_a(org_a, org_b)
+    Organization.objects.filter(pk=org_a.pk).update(is_active=False)
     return graph_id
 
 
@@ -246,14 +244,14 @@ def _graph_of_deactivated_acme(acme, beta):
 @pytest.mark.parametrize(
     ("caller", "make_graph", "outcome"),
     [
-        ("viewer_of_acme", _acme_graph, "granted"),
-        ("viewer_of_acme", _missing_graph, GraphNotFoundError),
-        ("viewer_of_acme", _binned_acme_graph, GraphNotFoundError),
+        ("viewer_a", _graph_of_a, "granted"),
+        ("viewer_a", _missing_graph, GraphNotFoundError),
+        ("viewer_a", _binned_graph_of_a, GraphNotFoundError),
         # Another org's graph looks exactly like a missing one.
-        ("viewer_of_acme", _beta_graph, GraphNotFoundError),
-        ("viewer_of_acme", _graph_of_deactivated_acme, GraphNotFoundError),
-        ("acme_member_without_flows", _acme_graph, PermissionDenied),
-        ("superadmin", _beta_graph, "granted"),
+        ("viewer_a", _graph_of_b, GraphNotFoundError),
+        ("viewer_a", _graph_of_deactivated_a, GraphNotFoundError),
+        ("member_a_without_flows", _graph_of_a, PermissionDenied),
+        ("superadmin", _graph_of_b, "granted"),
     ],
     ids=[
         "viewer-own-org",
@@ -265,9 +263,9 @@ def _graph_of_deactivated_acme(acme, beta):
         "superadmin-without-membership",
     ],
 )
-def test_assert_graph_readable(request, acme, beta, caller, make_graph, outcome):
+def test_assert_graph_readable(request, org_a, org_b, caller, make_graph, outcome):
     user = request.getfixturevalue(caller)
-    graph_id = make_graph(acme, beta)
+    graph_id = make_graph(org_a, org_b)
 
     if outcome == "granted":
         assert_graph_readable(user, graph_id)
