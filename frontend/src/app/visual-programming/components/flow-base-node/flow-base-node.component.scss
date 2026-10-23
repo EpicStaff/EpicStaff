@@ -497,7 +497,7 @@ $diff-marker-z-index: 12;
     background: transparent;
 
     > :not(.diff-badge, .missing-references-marker) {
-        opacity: 0.6;
+        opacity: var(--diff-deleted-opacity);
     }
 }
 

@@ -224,7 +224,7 @@
 .decision-table .decision-table__group--removed {
     .group-name {
         color: var(--color-diff-deleted);
-        opacity: 0.6;
+        opacity: var(--diff-deleted-opacity);
         text-decoration: line-through;
     }
 

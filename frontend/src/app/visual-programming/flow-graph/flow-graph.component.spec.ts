@@ -44,6 +44,7 @@ import {
     generatePortsForNode,
 } from '../core/helpers/helpers';
 import { subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
+import { ConnectionModel } from '../core/models/connection.model';
 import { ConditionGroup } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
 import {
@@ -61,7 +62,7 @@ import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { VersionPreviewNodeAuthorshipStore } from '../services/version-preview-node-authorship.store';
 import { createFlowConnection } from '../utils/connection.factory';
-import { FlowDiffCanvasState } from '../utils/diff';
+import { EdgeDiffStatus, FlowDiffCanvasState } from '../utils/diff';
 import { createStartNode } from '../utils/load';
 import { mapGraphDtoToFlowModel } from '../utils/load/map-graph-dto-to-flow-model';
 import { mapDecisionTableNodeToModel } from '../utils/load/nodes/decision-table-node.mapper';
@@ -1690,6 +1691,115 @@ describe('FlowGraphComponent', () => {
 
             expect(flowService.connections().map((connection) => connection.targetPortId)).toEqual(['py2_python-in']);
             expect(warning).not.toHaveBeenCalled();
+        });
+    });
+
+    // DOM order is the paint order of the connections (a later one is drawn on top): the Foblex
+    // connection host is not positioned, so a z-index on it would have no effect. These specs check the
+    // order `sortedConnections` gives, through a stand-in template; they do not render the Foblex canvas.
+    describe('connection paint order', () => {
+        // Same width and row: an edge left to right runs forward, one right to left runs backward.
+        const LEFT: GraphNoteModel = { ...noteNode(), id: 'left', position: { x: 0, y: 0 } };
+        const RIGHT: GraphNoteModel = { ...noteNode(), id: 'right', position: { x: 600, y: 0 } };
+        const OTHER: GraphNoteModel = { ...noteNode(), id: 'other', position: { x: 0, y: 600 } };
+        const forward = (port: string) => createFlowConnection(LEFT.id, RIGHT.id, `left_${port}`, `right_${port}`);
+        const backward = (port: string) => createFlowConnection(RIGHT.id, LEFT.id, `right_${port}`, `left_${port}`);
+
+        let fixture: ComponentFixture<FlowGraphComponent>;
+
+        function mountCanvas(connections: ConnectionModel[], edgeStatuses: Record<string, EdgeDiffStatus> | null) {
+            const diffState: FlowDiffCanvasState | null = edgeStatuses && {
+                nodes: new Map(
+                    [LEFT, RIGHT, OTHER].map((node) => [node.id, { status: 'unchanged', hasMissingReferences: false }])
+                ),
+                connections: new Map(Object.entries(edgeStatuses)),
+                versionOnlyPortIds: new Set(),
+            };
+            fixture = mount(
+                edgeStatuses !== null,
+                { nodes: [LEFT, RIGHT, OTHER], connections },
+                () =>
+                    // The node and connection loops of the real template with their hover bindings, without
+                    // the Foblex canvas jsdom cannot lay out.
+                    TestBed.overrideComponent(FlowGraphComponent, {
+                        set: {
+                            template: `<f-flow #flowHost><f-minimap></f-minimap></f-flow>
+                                @for (node of flowService.nodes(); track node.id) {
+                                    <app-flow-base-node
+                                        [attr.data-node-id]="node.id"
+                                        (mouseenter)="hoveredNodeId.set(node.id)"
+                                    ></app-flow-base-node>
+                                }
+                                @for (connection of sortedConnections(); track connection.id) {
+                                    <f-connection
+                                        [attr.data-connection-id]="connection.id"
+                                        (mouseenter)="hoveredConnectionId.set(connection.id)"
+                                    ></f-connection>
+                                }`,
+                        },
+                    }),
+                true,
+                true,
+                diffState
+            );
+        }
+
+        function hover(selector: string): void {
+            fixture.detectChanges();
+            (fixture.nativeElement as HTMLElement).querySelector(selector)!.dispatchEvent(new MouseEvent('mouseenter'));
+        }
+
+        function paintOrder(): string[] {
+            fixture.detectChanges();
+            return Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll('f-connection'),
+                (connection) => connection.getAttribute('data-connection-id')!
+            );
+        }
+
+        it('draws a backward edge over a forward one in the live editor', () => {
+            mountCanvas([backward('a'), forward('b')], null);
+
+            expect(paintOrder()).toEqual([forward('b').id, backward('a').id]);
+        });
+
+        it('draws an edge a restore removes under the added and unchanged ones, even a backward one', () => {
+            mountCanvas([forward('added'), forward('unchanged'), forward('removed'), backward('removed-back')], {
+                [forward('added').id]: 'added',
+                [forward('unchanged').id]: 'unchanged',
+                [forward('removed').id]: 'deleted',
+                [backward('removed-back').id]: 'deleted',
+            });
+
+            expect(paintOrder()).toEqual([
+                forward('removed').id,
+                backward('removed-back').id,
+                forward('added').id,
+                forward('unchanged').id,
+            ]);
+        });
+
+        it('lifts an edge a restore removes to the top while it is hovered', () => {
+            mountCanvas([forward('removed'), forward('added')], {
+                [forward('removed').id]: 'deleted',
+                [forward('added').id]: 'added',
+            });
+
+            hover(`f-connection[data-connection-id="${forward('removed').id}"]`);
+
+            expect(paintOrder()).toEqual([forward('added').id, forward('removed').id]);
+        });
+
+        it('lifts the edges of a hovered node, removed ones included, over the other edges', () => {
+            const unrelated = createFlowConnection(OTHER.id, RIGHT.id, 'other_c', 'right_c');
+            mountCanvas([forward('removed'), unrelated], {
+                [forward('removed').id]: 'deleted',
+                [unrelated.id]: 'added',
+            });
+
+            hover(`app-flow-base-node[data-node-id="${LEFT.id}"]`);
+
+            expect(paintOrder()).toEqual([unrelated.id, forward('removed').id]);
         });
     });
 });

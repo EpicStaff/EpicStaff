@@ -691,6 +691,8 @@
     // A hovered added / removed edge (or an edge of the hovered node): the diff colour, brighter.
     --color-diff-added-highlight: color-mix(in srgb, var(--color-diff-added) 65%, var(--white));
     --color-diff-deleted-highlight: color-mix(in srgb, var(--color-diff-deleted) 65%, var(--white));
+    // What a restore removes (node content, edges, decision table rows) is drawn faded. Same in both themes.
+    --diff-deleted-opacity: 0.4;
     // JSON value colours: app-json-viewer (styles/json-viewer.scss) + Key-Value message previews
     --color-json-key: #e83e8c;
     --color-json-value: #17a2b8;

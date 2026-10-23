@@ -39,7 +39,6 @@
     }
 
     .f-connection {
-        z-index: 2;
         .f-connection-drag-handle {
             fill: transparent;
         }
@@ -107,6 +106,13 @@
             }
         }
 
+        // The snap and drag previews have positioned hosts, so the z-index lifts them over the edges. A
+        // plain `f-connection` host is not positioned: its paint order is the DOM order (`sortedConnections`).
+        &.f-snap-connection,
+        &.f-connection-for-create {
+            z-index: 2;
+        }
+
         &.f-snap-connection {
             .f-connection-path {
                 stroke: var(--db-snap-connection);
@@ -161,18 +167,21 @@
             opacity: 0.3;
         }
 
-        // Version diff: an edge a restore adds is green, one it removes is red and dashed; an unchanged
-        // edge keeps the default look. The colour wins over the gradient stroke and the arrow colours.
+        // Version diff: an edge a restore adds is green, one it removes is red and faded; an unchanged
+        // edge keeps the default look. The colour wins over the gradient stroke and the arrow colours. The
+        // dash stays the normal one (a virtual or backward edge is dashed, the rest solid).
         &.diff-added {
             --diff-edge-color: var(--color-diff-added);
         }
 
         &.diff-deleted {
             --diff-edge-color: var(--color-diff-deleted);
+        }
 
-            .f-connection-path {
-                stroke-dasharray: 4 4;
-            }
+        // On the host, so the path and its arrow markers fade together. A highlighted edge is back at full
+        // strength; a reassign follower keeps its own fade.
+        &.diff-deleted:not(:hover, .node-hovered, .f-selected, .is-reassign-follower) {
+            opacity: var(--diff-deleted-opacity);
         }
 
         // Hovered, or an edge of the hovered node: the diff colour stays (it does not turn purple like an

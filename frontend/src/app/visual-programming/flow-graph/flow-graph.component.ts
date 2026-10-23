@@ -265,7 +265,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const connections = [...this.flowService.visibleConnections()].filter(
             (connection) => !hiddenIds.has(connection.id)
         );
+        // Built before the sort, so the computed always tracks the diff state.
+        const deletedIds = new Set(
+            connections
+                .filter((connection) => this.flowDiffState.connectionStatus(connection.id) === 'deleted')
+                .map((connection) => connection.id)
+        );
 
+        // DOM order is the paint order: a later connection is drawn on top. The `f-connection` host is not
+        // positioned, so a z-index on it has no effect.
         return connections.sort((a, b) => {
             // Hovered connection on top of everything
             const aHovered = a.id === hoveredId ? 1 : 0;
@@ -276,6 +284,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const aRaised = selectedIds.has(a.id) || nodeHoveredIds.has(a.id) ? 1 : 0;
             const bRaised = selectedIds.has(b.id) || nodeHoveredIds.has(b.id) ? 1 : 0;
             if (aRaised !== bRaised) return aRaised - bRaised;
+
+            // Version diff: an edge a restore removes goes under the rest, so an added edge into the same
+            // port stays visible. The live editor has none.
+            const aDeleted = deletedIds.has(a.id) ? 1 : 0;
+            const bDeleted = deletedIds.has(b.id) ? 1 : 0;
+            if (aDeleted !== bDeleted) return bDeleted - aDeleted;
 
             const aBackward = backwardIds.has(a.id) ? 1 : 0;
             const bBackward = backwardIds.has(b.id) ? 1 : 0;

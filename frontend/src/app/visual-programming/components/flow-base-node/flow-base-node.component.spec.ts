@@ -391,7 +391,7 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
 
         expect(badge()).toBeNull();
         expect(missingReferencesMarker()!.getAttribute('aria-label')).toBe(
-            'This version used items that no longer exist'
+            'This version uses items that no longer exist'
         );
     });
 
