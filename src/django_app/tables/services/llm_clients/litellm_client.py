@@ -12,6 +12,7 @@ from utils.logger import logger
 from .base import (
     BaseLLMClient,
     DoneEvent,
+    LLMProviderError,
     StreamEvent,
     TokenEvent,
     ToolCallEvent,
@@ -27,6 +28,40 @@ JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
 # answers "json mode cannot be combined with tool/function calling" for models with native
 # structured outputs, and litellm refuses its tool-call emulation for the others.
 NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq"}
+
+
+def _provider_error_from(exc: BaseException) -> tuple[str | None, str] | None:
+    """Find the provider's own error (code, message) in an exception and its causes.
+
+    litellm can fail while converting a provider error, e.g. Groq's `tool_use_failed`
+    chunk becomes a ValueError raised inside litellm's `except` block, so the original
+    error that carries the provider's `body` survives only in the exception chain.
+    """
+    pending: list[BaseException] = [exc]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop(0)
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        body = getattr(current, "body", None)
+        if isinstance(body, dict) and isinstance(body.get("error"), dict):
+            body = body["error"]
+        if isinstance(body, dict) and body.get("message"):
+            code = body.get("code")
+            # One line, so a provider message cannot forge extra log lines.
+            message = " ".join(str(body["message"]).split())
+            return (str(code) if code else None), message
+        pending.extend(
+            linked
+            for linked in (
+                getattr(current, "original_exception", None),
+                current.__cause__,
+                current.__context__,
+            )
+            if isinstance(linked, BaseException)
+        )
+    return None
 
 
 class LiteLLMClient(BaseLLMClient):
@@ -155,12 +190,33 @@ class LiteLLMClient(BaseLLMClient):
             {
                 "role": "system",
                 "content": (
-                    "Respond with a JSON object that matches this JSON schema: "
-                    f"{json.dumps(self._output_schema['schema'])}"
+                    "Write your final reply directly as the message content: a JSON object "
+                    f"that matches this JSON schema: {json.dumps(self._output_schema['schema'])}. "
+                    "Never send it as a tool or function call."
                 ),
             },
             *messages,
         ]
+
+    async def _provider_chunks(self, kwargs: dict) -> AsyncIterator:
+        """Yield litellm's stream chunks, turning a provider failure into LLMProviderError.
+
+        Only the call and the fetching of the next chunk sit inside the `try`, so the
+        caller's own chunk handling is never mistaken for a provider failure.
+        """
+        try:
+            response = await litellm.acompletion(**kwargs)
+            async for chunk in response:
+                yield chunk
+        except Exception as exc:
+            provider_error = _provider_error_from(exc)
+            if provider_error is None:
+                raise
+            raise LLMProviderError(
+                provider=self._routed_provider or self._provider_name,
+                code=provider_error[0],
+                message=provider_error[1],
+            ) from exc
 
     async def stream_completion(
         self,
@@ -182,9 +238,7 @@ class LiteLLMClient(BaseLLMClient):
         reasoning_observed = False
         last_finish_reason: str | None = None
 
-        response = await litellm.acompletion(**kwargs)
-
-        async for chunk in response:
+        async for chunk in self._provider_chunks(kwargs):
             finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
             if finish_reason:
                 last_finish_reason = finish_reason

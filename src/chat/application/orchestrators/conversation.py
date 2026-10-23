@@ -40,7 +40,7 @@ from sqlalchemy.exc import IntegrityError
 from application.orchestrators import budgets
 from application.orchestrators.events import Emitter, store_message
 from application.orchestrators.handoff import hand_off
-from application.orchestrators.lifecycle import close_conversation, stop_session
+from application.orchestrators.lifecycle import close_conversation, free_run_slot, stop_session
 from application.ports import (
     AbstractFanout,
     AbstractFlowRunner,
@@ -58,6 +58,7 @@ from application.tokens import (
 __all__ = [
     "ApplyOutcome",
     "ConversationOrchestrator",
+    "PublicLimits",
     "RunConfig",
     "SubmitResult",
     "parse_end_node_result",
@@ -74,6 +75,18 @@ class RunConfig:
     ip_conversation_rate: Rate
 
 
+@dataclass(frozen=True)
+class PublicLimits:
+    """What a visitor message may carry beyond its desk's own limits: the deployment's, for every desk.
+
+    The widget reads them from the conversation state; the public API enforces the byte limits
+    on `action` and `chat_extra_data`.
+    """
+
+    action_max_bytes: int
+    extra_data_max_bytes: int
+
+
 def parse_end_node_result(result: object) -> EndResult:
     """Read the flow contract's outputs; anything malformed becomes "no reply"."""
     if not isinstance(result, dict):
@@ -88,13 +101,18 @@ def parse_end_node_result(result: object) -> EndResult:
 
 
 def run_variables(conversation: Conversation, history: list[dict], message: Message) -> dict:
-    """The flow's start variables: all five on every run, declared by the flow or not."""
+    """The flow's start variables: the same six on every run, declared by the flow or not.
+
+    A past action goes into `chat_history` cut down (`MessageRepository.history`); `action` is
+    the current one, whole. The contract is documented in docs/chat/flow-contract.md.
+    """
     return {
         "chat_history": history,
         "user_message": message.content,
         "action": message.action,
         "chat_extra_data": conversation.chat_extra_data,
         "chat_user_id": conversation.chat_user_id,
+        "chat_conversation_id": str(conversation.id),
     }
 
 
@@ -441,6 +459,44 @@ class ConversationOrchestrator:
         await stop_session(self._flows, session_to_stop)
         return conversation, binding
 
+    async def stop(
+        self, conversation_id: UUID, visitor_token: str | None, origin: str | None
+    ) -> tuple[Conversation, Binding]:
+        """The visitor's Stop: end the run in flight; the conversation stays open, with the bot.
+
+        The slot is freed here, as a take over frees it, and Django is asked to stop the run
+        after commit. Waiting for the run's own `stop` result instead would make
+        `apply_run_result` post "The flow stopped with status stop." and hand off to a person,
+        which is right for a run that fails, not for the visitor's own stop: so nothing is
+        posted and nobody is asked for. The run's late callback finds the slot gone and only
+        counts its tokens. A run still starting is stopped by its `submit` once Django answers.
+
+        Checked like `end`: the visitor token, then the binding's gate. Idempotent: with no run
+        in flight, on a closed conversation or outside bot mode the state is answered as it is.
+
+        Returns:
+            The conversation and its binding, read in the same transaction.
+        """
+        async with self._uow() as uow:
+            conversation = await self._resolve(uow, conversation_id, visitor_token, for_update=True)
+            binding = await uow.bindings.get(conversation.binding_id)
+            gate(binding, origin, conversation.is_test)
+            emitter = Emitter(uow, self._fanout)
+            session_to_stop = None
+            if (
+                conversation.is_open
+                and conversation.mode == Mode.BOT
+                and conversation.run_state != RunState.IDLE
+            ):
+                _, session_to_stop = await free_run_slot(uow, conversation)
+                await emitter.conversation(conversation, "run.finished", {"status": "stop"})
+                await emitter.conversation_updated(conversation)
+                await uow.conversations.update(conversation)
+            await uow.commit()
+            await emitter.flush()
+        await stop_session(self._flows, session_to_stop)
+        return conversation, binding
+
     # ---- inbound message -----------------------------------------------------------------------
 
     async def submit(
@@ -460,7 +516,9 @@ class ConversationOrchestrator:
         once the message is stored; a refused request leaves it unchanged.
 
         Returns:
-            The stored message id and one of processing / forwarded_to_operator / budget_exhausted.
+            The stored message id and one of processing / forwarded_to_operator /
+            budget_exhausted / stopped (the visitor stopped the run before it started, or while
+            it was starting: the message is stored, no run answers it).
             A start Django did not answer (timeout, connection error) is processing too: its
             callback or the reconciler settles it.
 
@@ -490,18 +548,19 @@ class ConversationOrchestrator:
                 )
             if not await uow.conversations.claim_run_slot(conversation.id):
                 raise RunInProgressError()
+            last_message_at = conversation.last_message_at
             await uow.commit()
 
         # The slot is ours from here, unless something took it between the transactions: every
-        # exit below releases it, and so do a take over, a close and the reconciler.
+        # exit below releases it, and so do a take over, a stop, a close and the reconciler.
         async with self._uow() as uow:
             conversation = await uow.conversations.get(conversation_id, for_update=True)
             # Closed meanwhile: the close freed the slot.
             conversation.ensure_open()
-            # Taken over (a take over waiting on phase one's row lock always lands here first) or
-            # released by the reconciler: the slot is no longer as phase one left it. Starting
-            # the run anyway would leave its id on an idle row, and its result would be applied
-            # to a conversation an operator holds.
+            # Taken over or stopped (either, waiting on phase one's row lock, always lands here
+            # first) or released by the reconciler: the slot is no longer as phase one left it.
+            # Starting the run anyway would leave its id on an idle row, and its result would be
+            # applied to a conversation an operator holds.
             if (
                 conversation.run_state != RunState.STARTING
                 or conversation.active_run_id is not None
@@ -509,6 +568,16 @@ class ConversationOrchestrator:
                 if conversation.mode != Mode.BOT:
                     return await self._forward_to_operator(
                         uow, conversation, content, action, chat_extra_data
+                    )
+                # The visitor's stop freed the slot and posted nothing; the reconciler's release
+                # posts its notice, and names the run it may still hear from.
+                if (
+                    conversation.run_state == RunState.IDLE
+                    and conversation.late_reply_run_id is None
+                    and conversation.last_message_at == last_message_at
+                ):
+                    return await self._store_without_run(
+                        uow, conversation, content, action, chat_extra_data, SubmitState.STOPPED
                     )
                 raise FlowUnavailableError()
             # Handed off meanwhile with the slot left alone: the late reply of a run released
@@ -611,16 +680,19 @@ class ConversationOrchestrator:
                 # The callback beat this response and has already applied the run.
                 await uow.commit()
                 return SubmitResult(message.id, SubmitState.PROCESSING)
-            # An operator claimed or someone closed while the run was starting, or the reconciler
-            # already released the slot as unconfirmed: then the run is not ours to keep.
+            # An operator claimed, the visitor stopped or someone closed while the run was
+            # starting, or the reconciler already released the slot as unconfirmed: then the
+            # run is not ours to keep.
             aborted = conversation.active_run_id != run_id or conversation.mode != Mode.BOT
+            # Only the reconciler's release names the run as the one whose reply may come late.
+            released_unconfirmed = conversation.late_reply_run_id == run_id
             emitter = Emitter(uow, self._fanout)
             if not aborted:
                 conversation.run_state = RunState.RUNNING
                 await emitter.conversation(conversation, "run.started", {})
                 await emitter.conversation_updated(conversation)
                 await uow.conversations.update(conversation)
-            elif conversation.late_reply_run_id == run_id:
+            elif released_unconfirmed:
                 # The visitor gets a 503 for this run below; its reply must not appear later.
                 conversation.late_reply_run_id = None
                 await uow.conversations.update(conversation)
@@ -630,9 +702,13 @@ class ConversationOrchestrator:
             # The receipt stays live, so the stopped run's callback still counts its tokens.
             await stop_session(self._flows, session_id)
             conversation.ensure_open()
-            if conversation.mode == Mode.BOT:
+            if conversation.mode != Mode.BOT:
+                return SubmitResult(message.id, SubmitState.FORWARDED_TO_OPERATOR)
+            if released_unconfirmed:
                 raise FlowUnavailableError()
-            return SubmitResult(message.id, SubmitState.FORWARDED_TO_OPERATOR)
+            # Freed while starting with the bot still in charge: the visitor's stop (or a take
+            # over already handed back). The message stays; no reply will come for it.
+            return SubmitResult(message.id, SubmitState.STOPPED)
         return SubmitResult(message.id, SubmitState.PROCESSING)
 
     async def _forward_to_operator(
@@ -644,6 +720,20 @@ class ConversationOrchestrator:
         chat_extra_data: dict | None,
     ) -> SubmitResult:
         """Store the visitor's message for the person who has the conversation, and commit."""
+        return await self._store_without_run(
+            uow, conversation, content, action, chat_extra_data, SubmitState.FORWARDED_TO_OPERATOR
+        )
+
+    async def _store_without_run(
+        self,
+        uow: AbstractUnitOfWork,
+        conversation: Conversation,
+        content: str,
+        action: dict | None,
+        chat_extra_data: dict | None,
+        state: SubmitState,
+    ) -> SubmitResult:
+        """Store the visitor's message with no run started for it, and commit."""
         emitter = Emitter(uow, self._fanout)
         message = await self._store_user_message(
             uow, emitter, conversation, content, action, chat_extra_data
@@ -652,7 +742,7 @@ class ConversationOrchestrator:
         await uow.conversations.update(conversation)
         await uow.commit()
         await emitter.flush()
-        return SubmitResult(message.id, SubmitState.FORWARDED_TO_OPERATOR)
+        return SubmitResult(message.id, state)
 
     @staticmethod
     async def _store_user_message(

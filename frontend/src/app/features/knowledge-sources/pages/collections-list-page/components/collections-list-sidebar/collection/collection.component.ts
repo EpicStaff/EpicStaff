@@ -2,13 +2,14 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { RAG_STATUS_CONFIG, RAG_TYPE_CONFIG } from '../../../../../constants/constants';
+import { CollectionDropTargetDirective } from '../../../../../directives/collection-drop-target.directive';
 import { GetCollectionRequest } from '../../../../../models/collection.model';
 
 @Component({
     selector: 'app-collection',
     templateUrl: './collection.component.html',
     styleUrls: ['./collection.component.scss'],
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, CollectionDropTargetDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionComponent {

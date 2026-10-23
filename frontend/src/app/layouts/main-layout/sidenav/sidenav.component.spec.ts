@@ -64,7 +64,7 @@ const ATLAS = buildAvailablePlugin({
     ],
 });
 /** The fixed top items this setup shows, in order (Audit is off). */
-const STATIC_TOP_LABELS = ['Agents', 'Tools', 'Storage', 'Flows', 'Chats', 'Conversations'];
+const STATIC_TOP_LABELS = ['Agents', 'Tools', 'Virtual Environments', 'Storage', 'Flows', 'Chats', 'Conversations'];
 
 /** Everything counts as on screen: jsdom lays nothing out, so the focus trap would find nothing to focus. */
 class LaidOutInteractivityChecker extends InteractivityChecker {
@@ -750,6 +750,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
                     { path: 'workspace', children: [{ path: 'users', children: [] }] },
                     { path: 'agents', children: [] },
                     { path: 'tools', children: [] },
+                    { path: 'venvs', children: [] },
                     { path: 'storage', children: [] },
                     { path: 'flows', children: [] },
                     { path: 'flows/:id', children: [], canDeactivate: [() => leaveFlowAllowed] },
@@ -887,7 +888,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
             hide: () => hiddenResources.add(ResourceCode.Tools),
             start: '/agents',
             code: 'ArrowDown',
-            expected: '/storage',
+            expected: '/venvs',
         },
         {
             name: 'Workspace',

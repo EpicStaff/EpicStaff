@@ -10,7 +10,7 @@ from tables.models.python_models import PythonCodeTool
 
 
 def _tool(name: str, *, built_in: bool, org=None) -> PythonCodeTool:
-    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main", libraries="", global_kwargs={})
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main", global_kwargs={})
     return PythonCodeTool.objects.create(
         name=name, description="", variables=[], python_code=code, built_in=built_in, org=org
     )

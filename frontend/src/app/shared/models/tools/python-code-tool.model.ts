@@ -59,13 +59,14 @@ export interface PatchPythonCodeToolRequest {
 
 /**
  * Nested `python_code` body accepted by the V2 Python Code Tool create
- * endpoint. Mirrors the Django `PythonCodeSerializer` (libraries as string[],
- * entrypoint defaulting to "main", and free-form `global_kwargs`).
+ * endpoint. Mirrors the Django `PythonCodeSerializer` (entrypoint defaulting to
+ * "main", and free-form `global_kwargs`).
  */
 export interface CreatePythonCodeBody {
     code: string;
     entrypoint: string;
-    libraries: string[];
+    /** The venv the tool runs in; `null` means the sandbox's default one. */
+    venv_id: number | null;
     global_kwargs: Record<string, unknown>;
     secret_ids?: number[];
     /**

@@ -42,9 +42,7 @@ $compact-theme: mat.define-theme(
 }
 
 .mat-mdc-tooltip .mdc-tooltip__surface {
-    box-shadow:
-        0 6px 10px 4px rgba(0, 0, 0, 0.15),
-        0 2px 3px 0 rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-raised);
 }
 
 .allow-scroll-tooltip .mdc-tooltip__surface {
@@ -68,6 +66,18 @@ $compact-theme: mat.define-theme(
     text-align: left;
     white-space: pre-line;
     line-height: 1.45;
+}
+
+// Venv library specifier reference: one operator per line, so the breaks have to survive.
+.venv-specifier-tooltip {
+    --mat-tooltip-container-max-width: 480px;
+}
+
+.venv-specifier-tooltip .mdc-tooltip__surface {
+    max-width: 480px;
+    text-align: left;
+    white-space: pre-line;
+    line-height: 1.6;
 }
 
 .tree-name-tooltip {

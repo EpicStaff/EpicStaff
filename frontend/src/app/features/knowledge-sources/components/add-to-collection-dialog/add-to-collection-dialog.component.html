@@ -1,0 +1,69 @@
+<div class="dialog">
+    <div class="header">
+        <h2
+            [id]="titleId"
+            class="title"
+        >
+            Add to Collection
+        </h2>
+        <button
+            class="close"
+            type="button"
+            aria-label="Close"
+            [disabled]="isSubmitting()"
+            (click)="onClose()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1.25rem"
+            />
+        </button>
+    </div>
+
+    <div class="body">
+        <p class="description">
+            Import {{ itemsLabel() }} into a knowledge collection. Folders are imported with their contents.
+        </p>
+
+        <app-select
+            label="Collection"
+            variant="boxed"
+            placeholder="Select a collection"
+            searchPlaceholder="Search collections..."
+            [required]="true"
+            [showSearch]="true"
+            [loading]="isLoading()"
+            [items]="collectionItems()"
+            [disabled]="isSubmitting()"
+            (changed)="selectCollection($event)"
+        />
+
+        @if (loadFailed()) {
+            <p class="hint hint--error">Failed to load collections</p>
+        } @else if (!isLoading() && collectionItems().length === 0) {
+            <p class="hint">No collections yet. Create one on the Knowledge Sources tab.</p>
+        }
+        @if (likelySkippedCount() > 0) {
+            <p class="hint hint--warning">
+                {{ likelySkippedCount() }} file(s) may be skipped: unsupported type or too large.
+            </p>
+        }
+    </div>
+
+    <div class="footer">
+        <app-button
+            type="outline-primary"
+            [disabled]="isSubmitting()"
+            (click)="onClose()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="!canSubmit()"
+            (click)="onSubmit()"
+        >
+            {{ isSubmitting() ? 'Adding…' : 'Add' }}
+        </app-button>
+    </div>
+</div>

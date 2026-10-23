@@ -40,10 +40,9 @@ export function resolveStoredCodeState<TStored>(
  * neither is surrounding whitespace of the code: the backend's PythonCodeSerializer stores `code` through a
  * DRF CharField (trim_whitespace), so it keeps code.strip() while the canvas keeps the code as typed.
  */
-export function pythonCodeSignature(code: string, libraries: string[], secretIds: number[]): string {
+export function pythonCodeSignature(code: string, secretIds: number[]): string {
     return JSON.stringify({
         code: code.trim(),
-        libraries,
         secretIds: [...secretIds].sort((first, second) => first - second),
     });
 }

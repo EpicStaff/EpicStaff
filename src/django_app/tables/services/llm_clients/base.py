@@ -13,6 +13,31 @@ class UnsupportedLLMProviderError(Exception):
         super().__init__(f"Unsupported LLM provider: '{provider_name}'")
 
 
+# Provider error code for a reply the provider aborted because the model called a
+# tool that was not in the request; the same request usually succeeds on a second try.
+TOOL_USE_FAILED_CODE = "tool_use_failed"
+
+# Provider error codes whose message is safe to show any user of the config. Other
+# messages (bad key, unknown model or deployment) can echo key fragments or endpoints
+# to members who may not see the config itself.
+USER_VISIBLE_PROVIDER_ERROR_CODES = frozenset(
+    {TOOL_USE_FAILED_CODE, "rate_limit_exceeded", "context_length_exceeded"}
+)
+
+
+class LLMProviderError(Exception):
+    """Raised when the LLM provider rejects or aborts a request with an error of its own.
+
+    ``message`` is the provider's own text and ``code`` its error code, when it sent one.
+    """
+
+    def __init__(self, provider: str, code: str | None, message: str) -> None:
+        self.provider = provider
+        self.code = code
+        self.message = message
+        super().__init__(f"{provider} error ({code}): {message}")
+
+
 class InvalidLLMConfigError(Exception):
     """Raised when a stored LLM config holds a value no client can send.
 
