@@ -161,3 +161,21 @@ class TestExitWorktreeTool:
 
         assert result.startswith("Error:")
         assert "outside the allowed directory" in result
+
+    def test_exit_worktree_main_repo_outside_root_returns_permission_error(
+        self, sandbox_dir, git_repo, tmp_path_factory
+    ):
+        outside_repo = tmp_path_factory.mktemp("outside") / "repo"
+        outside_repo.mkdir()
+        _run_git(["init"], cwd=outside_repo)
+        enter_worktree_main(repo_path="repo", name="feature-x")
+        # The worktree's admin files live inside the tenant-writable root, so
+        # the tenant can redirect the common dir git reports to any repository.
+        commondir_file = git_repo / ".git" / "worktrees" / "feature-x" / "commondir"
+        commondir_file.write_text(f"{outside_repo / '.git'}\n")
+
+        result = exit_worktree_main(worktree_path=".worktrees/feature-x")
+
+        assert result.startswith("Error:")
+        assert "outside the allowed directory" in result
+        assert (sandbox_dir / ".worktrees" / "feature-x").exists()

@@ -107,6 +107,14 @@ def main(worktree_path: str, keep: bool = False) -> str:
                 f"{worktree_path}: {error}"
             )
 
+        # main_root comes from the worktree's .git pointer, a file inside the
+        # writable root that can name any repository, so it is checked too.
+        if not RouteTool.is_path_has_permission(main_root):
+            return (
+                f"Error: the main repository of worktree {worktree_path} "
+                "is outside the allowed directory."
+            )
+
         returncode, stdout, stderr = _run_git(
             ["worktree", "remove", str(worktree_savepath.resolve())], cwd=main_root
         )
