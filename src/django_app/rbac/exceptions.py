@@ -176,9 +176,10 @@ class LastSuperadminError(CustomAPIExeption):
 
 class InvalidRoleAssignmentError(CustomAPIExeption):
     """Raised by UserManagementGuards.assert_role_is_assignable when the
-    target role cannot be assigned via membership — either because it is
-    the global Superadmin role (use grant-superadmin instead) or because
-    it is a custom role belonging to a different organization."""
+    target role is the global Superadmin role, which is never a membership
+    role (use grant-superadmin instead). A custom role of another
+    organization raises RoleNotFoundError instead, so its existence is not
+    revealed."""
 
     status_code = 400
     default_detail = "This role cannot be assigned via membership."
@@ -186,8 +187,9 @@ class InvalidRoleAssignmentError(CustomAPIExeption):
 
 
 class RoleNotFoundError(CustomAPIExeption):
-    """Raised by UserManagementService when a role_id does not match any
-    existing Role row."""
+    """Raised when a role_id does not match any existing Role row, or
+    matches a custom role of an organization the request does not target —
+    the two cases are deliberately indistinguishable."""
 
     status_code = 404
     default_detail = "Role not found."
