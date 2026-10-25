@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -30,6 +31,10 @@ from es_plugins.agent.launcher_client import SpawnedProcess
 from es_plugins.process_table import ProcessEntry, ProcessTable
 
 NODE_KEY = "n" * 64
+# The interpreter a process running as a plugin UID can execute: the image's /usr/local one, or the
+# host's /usr/bin one. `sys.executable` is not: a CI runner's venv sits under a home directory and a
+# tool cache that other users cannot enter. The scripts run with it use only the standard library.
+SYSTEM_PYTHON = shutil.which("python3", path="/usr/local/bin:/usr/bin")
 API_URL = "http://epicstaff-api:8081/api/"
 ICON_SVG = (
     b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
