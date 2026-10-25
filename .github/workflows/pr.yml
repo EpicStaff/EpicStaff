@@ -378,8 +378,8 @@ jobs:
   # so a pull request touching only src/agent/ runs one leg and a pull request
   # touching none of them skips the job outright. sandbox was a leg until it
   # needed a container of its own; it has a separate job below. es_plugins'
-  # tests that need root (the launcher switching to plugin UIDs) skip here;
-  # src/es_plugins/lab/run.sh runs them in the node's own container.
+  # tests that need root (the launcher switching to plugin UIDs) skip in the
+  # first run; the es_plugins leg then runs the suite again as root.
   #
   # An empty `py_services` array would make `fromJSON` produce a matrix with no
   # legs, which GitHub treats as a workflow error rather than a skip -- hence the

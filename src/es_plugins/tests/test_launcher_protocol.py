@@ -32,7 +32,7 @@ from es_plugins.launcher.privileged_launcher import (
 from es_plugins.launcher.process_spawn import LISTEN_FD, SpawnError, SpawnSpec, spawn_process
 from es_plugins.process_table import ProcessTable
 from es_plugins.uid_range import UidRange
-from tests.helpers import OwnProcessTable
+from tests.helpers import SYSTEM_PYTHON, OwnProcessTable
 
 PLUGIN_UID = 20011
 
@@ -419,7 +419,7 @@ def test_killing_by_uid_reaches_children_that_left_the_session(layout):
         SpawnSpec(
             uid=PLUGIN_UID,
             gid=PLUGIN_UID,
-            argv=["/usr/local/bin/python3", "-c", script],
+            argv=[SYSTEM_PYTHON, "-c", script],
             environment={},
             working_directory=layout.plugin_home("weather"),
         )
@@ -513,7 +513,7 @@ def plugin_python(layout) -> str:
     """A plugin venv's `bin/python`, as the launcher accepts it, pointing at the system's."""
     venv_bin = layout.plugin_venv("weather", "0.2.0") / "bin"
     venv_bin.mkdir(parents=True, exist_ok=True)
-    (venv_bin / "python").symlink_to("/usr/local/bin/python3")
+    (venv_bin / "python").symlink_to(SYSTEM_PYTHON)
     return str(venv_bin / "python")
 
 
@@ -848,7 +848,7 @@ def test_a_plugin_process_cannot_create_a_posix_message_queue(layout):
         SpawnSpec(
             uid=PLUGIN_UID,
             gid=PLUGIN_UID,
-            argv=[sys.executable, "-I", "-c", MQ_OPEN_AS_PLUGIN],
+            argv=[SYSTEM_PYTHON, "-I", "-c", MQ_OPEN_AS_PLUGIN],
             environment={},
             working_directory=layout.plugin_home("weather"),
             nice=0,
