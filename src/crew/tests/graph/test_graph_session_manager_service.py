@@ -22,6 +22,7 @@ import pytest
 import redis
 from dotdict import DotDict
 from fakeredis import FakeAsyncRedis
+from pydantic import ValidationError
 
 from models.graph_models import FinishMessageData, GraphMessage
 from services.graph.events import StopEvent
@@ -119,15 +120,15 @@ def service():
     return svc
 
 
-def _session_data(session_id: int, token_budget: int | None = None) -> SessionData:
-    initial_state = {}
-    if token_budget is not None:
-        initial_state["__token_budget__"] = token_budget
+def _session_data(
+    session_id: int, token_budget: int | None = None, initial_state: dict | None = None
+) -> SessionData:
     return SessionData(
         id=session_id,
         org_id=1,
         graph=GraphData(name="g", entrypoint="__end__", end_node=None),
-        initial_state=initial_state,
+        initial_state=initial_state or {},
+        token_budget=token_budget,
     )
 
 
@@ -152,16 +153,23 @@ def _patch_builder(monkeypatch, compiled_graph, end_node_result=None):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("finish_tokens", "budget", "expected_statuses"),
+    ("finish_tokens", "budget", "default_budget", "expected_statuses"),
     [
-        pytest.param([100, 100], 150, ["run", "stop"], id="over-budget-stops"),
-        pytest.param([60], 100, ["run", "end"], id="under-budget-ends"),
-        pytest.param([10_000_000], None, ["run", "end"], id="no-budget-never-stops"),
+        pytest.param([100, 100], 150, None, ["run", "stop"], id="over-budget-stops"),
+        pytest.param([60], 100, None, ["run", "end"], id="under-budget-ends"),
+        pytest.param([10_000_000], None, None, ["run", "end"], id="no-budget-never-stops"),
         # A subgraph's finish messages are re-streamed through the parent and count too.
-        pytest.param([("nested", 90), 90], 150, ["run", "stop"], id="subgraph-tokens-count"),
+        pytest.param([("nested", 90), 90], 150, None, ["run", "stop"], id="subgraph-tokens-count"),
+        pytest.param([100, 100], None, 150, ["run", "stop"], id="default-budget-applies"),
+        pytest.param([100, 100], 1000, 150, ["run", "end"], id="typed-budget-wins-over-default"),
     ],
 )
-async def test_token_budget(service, monkeypatch, finish_tokens, budget, expected_statuses):
+async def test_token_budget(
+    service, monkeypatch, finish_tokens, budget, default_budget, expected_statuses
+):
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.DEFAULT_TOKEN_BUDGET", default_budget
+    )
     session_id = 1
     chunks = [
         make_finish_chunk(session_id, total_tokens=tokens[1], subgraph_execution_ids=["exec-1"])
@@ -182,6 +190,50 @@ async def test_token_budget(service, monkeypatch, finish_tokens, budget, expecte
         assert stop_event.reason == status_calls[-1].kwargs["reason"] == "token budget exceeded"
         # A stopped session has no final variables to hand over.
         service.redis_service.aset_session_final_variables.assert_not_called()
+
+
+@pytest.mark.parametrize("token_budget", [0, -5])
+def test_session_data_with_a_non_positive_token_budget_is_rejected(token_budget):
+    # A zero budget would stop every run at its first token.
+    payload = _session_data(1).model_dump() | {"token_budget": token_budget}
+
+    with pytest.raises(ValidationError):
+        SessionData.model_validate_json(json.dumps(payload))
+
+
+@pytest.mark.asyncio
+async def test_token_budget_in_flow_variables_is_an_ordinary_variable(service, monkeypatch):
+    # A flow variable named like the old reserved transport key is not a budget:
+    # it must neither stop the run nor be removed.
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.DEFAULT_TOKEN_BUDGET", None
+    )
+    session_id = 2
+    stream_inputs = []
+
+    class InputCapturingGraph(FakeCompiledGraph):
+        async def astream(self, input, config, stream_mode):
+            stream_inputs.append(input)
+            async for item in super().astream(input, config, stream_mode):
+                yield item
+
+    _patch_builder(
+        monkeypatch,
+        InputCapturingGraph([make_finish_chunk(session_id, total_tokens=10_000)]),
+    )
+    stop_event = StopEvent()
+
+    await service.run_session(
+        _session_data(session_id, initial_state={"__token_budget__": 0}), stop_event
+    )
+
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "end"]
+    assert not stop_event.is_set()
+    assert stream_inputs[0]["variables"] == {"__token_budget__": 0}
 
 
 @pytest.mark.asyncio

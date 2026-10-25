@@ -236,20 +236,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             session.graph, unique_subgraphs, session, start_node=start_node
         )
 
-        initial_state = dict(session.variables)
-        if token_budget is not None:
-            # See TOKEN_BUDGET_STATE_KEY in
-            # crew/services/graph/graph_session_manager_service.py -- popped
-            # back out before it becomes a live flow variable.
-            initial_state["__token_budget__"] = token_budget
-
         return SessionData(
             id=session.pk,
             org_id=session.graph.org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
-            initial_state=initial_state,
+            initial_state=dict(session.variables),
             run_type=run_type,
+            token_budget=token_budget,
         )
 
     def _stop_refused_session(self, session: Session, refusal: RunAdmissionRefusedError) -> None:
