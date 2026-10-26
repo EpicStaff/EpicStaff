@@ -59,7 +59,7 @@ STORAGE_INFO_SWAGGER = {
 STORAGE_DOWNLOAD_SWAGGER = {
     "summary": "Download a file",
     "description": (
-        "Downloads a single file by path. Returns the file content "
+        "Downloads a single file by path; needs FILES:EXPORT. Returns the file content "
         "with appropriate Content-Disposition header. A single "
         "`Range: bytes=first-[last]` header returns only that part (206)."
     ),
@@ -67,6 +67,22 @@ STORAGE_DOWNLOAD_SWAGGER = {
     "responses": {
         200: OpenApiResponse(description="File content as binary stream"),
         206: OpenApiResponse(description="The requested byte range, with Content-Range"),
+        416: OpenApiResponse(description="Range starts past the end of the file"),
+    },
+}
+
+STORAGE_PREVIEW_SWAGGER = {
+    "summary": "Preview a file",
+    "description": (
+        "Returns a single file's content inline by path, for in-app viewing; needs "
+        "FILES:READ, unlike download, which needs FILES:EXPORT. A single "
+        "`Range: bytes=first-[last]` header returns only that part (206)."
+    ),
+    "parameters": [_STORAGE_PATH_PARAM],
+    "responses": {
+        200: OpenApiResponse(description="File content as binary stream"),
+        206: OpenApiResponse(description="The requested byte range, with Content-Range"),
+        404: OpenApiResponse(description="File does not exist"),
         416: OpenApiResponse(description="Range starts past the end of the file"),
     },
 }

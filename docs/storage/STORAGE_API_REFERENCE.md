@@ -48,22 +48,23 @@ existence leak.
 3. [Search Files](#search-files)
 4. [File Info](#file-info)
 5. [Download File](#download-file)
-6. [Upload Limits](#upload-limits)
-7. [Upload Files](#upload-files)
-8. [Download ZIP](#download-zip)
-9. [Create Folder](#create-folder)
-10. [Bulk Delete](#bulk-delete)
-11. [Rename](#rename)
-12. [Move](#move)
-13. [Copy](#copy)
-14. [Add to Graph](#add-to-graph)
-15. [Remove from Graph](#remove-from-graph)
-16. [Graph Files](#graph-files)
-17. [Session Output Files](#session-output-files)
-18. [Blocked Extensions Reference](#blocked-extensions-reference)
-19. [Archive Format Reference](#archive-format-reference)
-20. [Path Normalization](#path-normalization)
-21. [HTTP Status Codes](#http-status-codes)
+6. [Preview File](#preview-file)
+7. [Upload Limits](#upload-limits)
+8. [Upload Files](#upload-files)
+9. [Download ZIP](#download-zip)
+10. [Create Folder](#create-folder)
+11. [Bulk Delete](#bulk-delete)
+12. [Rename](#rename)
+13. [Move](#move)
+14. [Copy](#copy)
+15. [Add to Graph](#add-to-graph)
+16. [Remove from Graph](#remove-from-graph)
+17. [Graph Files](#graph-files)
+18. [Session Output Files](#session-output-files)
+19. [Blocked Extensions Reference](#blocked-extensions-reference)
+20. [Archive Format Reference](#archive-format-reference)
+21. [Path Normalization](#path-normalization)
+22. [HTTP Status Codes](#http-status-codes)
 
 ---
 
@@ -275,7 +276,7 @@ Returns metadata for a file or folder, including linked graphs.
 
 **GET** `/api/storage/download/`
 
-Downloads a single file as a binary stream.
+Downloads a single file as a binary stream. Requires `files:export`; to view a file's content with `files:read` only, use [Preview File](#preview-file).
 
 **Query Parameters:**
 
@@ -289,6 +290,33 @@ Downloads a single file as a binary stream.
 - Body: Binary file stream
 
 **Error:** `400 Bad Request`
+```json
+{"path": "File does not exist: some/path"}
+```
+
+---
+
+## Preview File
+
+**GET** `/api/storage/preview/`
+
+Returns a single file's content for in-app viewing. Requires `files:read`. Same content as [Download File](#download-file), served inline.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | Path to the file |
+
+**Request Headers (optional):** `Range: bytes=<first>-[<last>]` returns only that part.
+
+**Response:** `200 OK` (whole file) or `206 Partial Content` (with `Range`)
+- Content-Type: `application/octet-stream`
+- Header: `Content-Disposition: inline; filename="<name>"`
+- Header: `Content-Range` (206 only)
+- Body: Binary file stream
+
+**Error:** `404 Not Found`
 ```json
 {"path": "File does not exist: some/path"}
 ```
