@@ -46,6 +46,7 @@ from storage_credentials.exceptions import (
 )
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
+from tables.exceptions import ConfigProviderMissingError
 from tables.models import PythonCode, PythonCodeTool, Secret
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
@@ -607,6 +608,9 @@ class ConverterService(metaclass=SingletonMeta):
         if not config or not config.model:
             return None
 
+        if config.model.llm_provider is None:
+            raise ConfigProviderMissingError("LLM", config.custom_name)
+
         return LLMData(
             provider=config.model.llm_provider.name,
             config=self.convert_llm_config_data(config),
@@ -646,12 +650,11 @@ class ConverterService(metaclass=SingletonMeta):
         if not embedding_config:
             return None
 
+        if embedding_config.model is None or embedding_config.model.embedding_provider is None:
+            raise ConfigProviderMissingError("Embedding", embedding_config.custom_name)
+
         return EmbedderData(
-            provider=(
-                embedding_config.model.embedding_provider.name
-                if embedding_config.model.embedding_provider
-                else None
-            ),
+            provider=embedding_config.model.embedding_provider.name,
             config=EmbedderConfigData(
                 model=embedding_config.model.name,
                 base_url=embedding_config.model.base_url,
