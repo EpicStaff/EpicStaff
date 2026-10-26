@@ -4,7 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FDragStartedEvent } from '@foblex/flow';
 import { NodeType, UserSummary } from '@shared/models';
-import { of, Subject } from 'rxjs';
+import { Subject } from 'rxjs';
 
 import { GetGraphLightRequest, GraphVersionDto, RestoreWarning } from '../../features/flows/models/graph.model';
 import {
@@ -17,15 +17,21 @@ import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
 import { FlowModel } from '../core/models/flow.model';
 import { FlowGraphComponent } from '../flow-graph/flow-graph.component';
+import { CdtExplanationStoreService } from '../services/cdt-explanation-store.service';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowDiffStateService } from '../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../services/flow-readonly.service';
+import { FlowTestRunService } from '../services/flow-test-run.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { NodeFactoryService } from '../services/node-factory.service';
+import { SavedFlowStateService } from '../services/saved-flow-state.service';
+import { ScheduleTriggerRuntimeService } from '../services/schedule-trigger-runtime.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { buildPreviewFlowModel } from '../utils/load';
+import { liveKeyValue } from '../utils/testing/live-graph.fixture';
+import { exported } from '../utils/testing/version-snapshot.fixture';
 import { FlowVersionPreviewComponent } from './flow-version-preview.component';
 
 const EDITOR_SERVICES: Type<unknown>[] = [
@@ -33,8 +39,12 @@ const EDITOR_SERVICES: Type<unknown>[] = [
     UndoRedoService,
     FlowReadOnlyService,
     SidePanelService,
+    SavedFlowStateService,
+    ScheduleTriggerRuntimeService,
     ClipboardService,
     NodeFactoryService,
+    CdtExplanationStoreService,
+    FlowTestRunService,
     FlowDiffStateService,
 ];
 
@@ -53,6 +63,7 @@ function version(id: number): GraphVersionDto {
 
 const START_UUID = '00000000-0000-4000-8000-000000000001';
 const PYTHON_UUID = '00000000-0000-4000-8000-000000000002';
+const KEY_VALUE_UUID = '00000000-0000-4000-8000-000000000003';
 
 /** A snapshot with a Start node and one Python node named after the version. */
 function snapshotFor(pythonNodeName: string): GraphVersionSnapshot {
@@ -74,6 +85,69 @@ function snapshotFor(pythonNodeName: string): GraphVersionSnapshot {
         ],
         edge_list: [],
     };
+}
+
+/** A snapshot with a Start node and one Python node per `[number, name]`; the number keys its id and uuid. */
+function snapshotWithPythons(pythons: ReadonlyArray<[number, string]>): GraphVersionSnapshot {
+    const [startNode, pythonTemplate] = snapshotFor('Template').nodes;
+    return {
+        nodes: [
+            startNode,
+            ...pythons.map(([number, name]) => ({
+                ...pythonTemplate,
+                id: 10 + number,
+                uuid: `00000000-0000-4000-8000-${String(100 + number).padStart(12, '0')}`,
+                node_number: number,
+                node_name: name,
+            })),
+        ],
+        edge_list: [],
+    };
+}
+
+/** A live canvas with the nodes of `snapshotWithPythons(pythons)` (same uuids, other canvas ids). */
+function liveCanvasOf(pythons: ReadonlyArray<[number, string]>): FlowModel {
+    return buildPreviewFlowModel(snapshotWithPythons(pythons), new Map(), []).flow;
+}
+
+/** The canvas with its Start node only. */
+function onlyStart(flow: FlowModel): FlowModel {
+    return { nodes: flow.nodes.filter((node) => node.type === NodeType.START), connections: [] };
+}
+
+/** The same snapshot saved before nodes had a uuid. */
+function oldSnapshotFor(pythonNodeName: string): GraphVersionSnapshot {
+    const snapshot = snapshotFor(pythonNodeName);
+    return { ...snapshot, nodes: snapshot.nodes.map((node) => ({ ...node, uuid: undefined })) };
+}
+
+/** `snapshotFor(pythonNodeName)` plus a Key-Value node (snapshot id 3) whose stored table the backend could not re-bind. */
+function snapshotWithUnboundTable(pythonNodeName: string): GraphVersionSnapshot {
+    const snapshot = snapshotFor(pythonNodeName);
+    const keyValueNode = exported('KeyValueNode', {
+        ...liveKeyValue,
+        id: 3,
+        uuid: KEY_VALUE_UUID,
+        node_name: 'Remember',
+        key_value_table: null,
+        key_value_table_name: 'Customers',
+    });
+    return { ...snapshot, nodes: [...snapshot.nodes, keyValueNode] };
+}
+
+const BINNED_SECRET_WARNING: RestoreWarning = {
+    type: 'secret_in_recycle_bin',
+    node_id: 2,
+    node_name: 'Python',
+    field: 'python_code',
+    reason: 'Secret "API_KEY" is in the recycle bin.',
+};
+
+// jsdom has no ResizeObserver; the dialog buttons' collapse-on-overflow directive only needs it to exist.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
 }
 
 /** Spies on every method of a root service instance. */
@@ -158,27 +232,140 @@ describe('FlowVersionPreviewComponent', () => {
         return fixture.debugElement.query(By.directive(FlowGraphComponent)).componentInstance as FlowGraphComponent;
     }
 
-    describe('diff with the live canvas', () => {
-        function previewNode(type: NodeType) {
-            return previewFlowService()
-                .nodes()
-                .find((node) => node.type === type)!;
-        }
+    function element(): HTMLElement {
+        return fixture.nativeElement as HTMLElement;
+    }
 
-        function statusOf(type: NodeType) {
-            return fixture.debugElement.injector.get(FlowDiffStateService).nodeStatus(previewNode(type).id);
-        }
+    type PreviewTab = 'Preview' | 'Changes';
 
-        it('shows the version marked with what a restore does to the live canvas', async () => {
+    function tabButton(tab: PreviewTab): HTMLButtonElement {
+        return Array.from(element().querySelectorAll<HTMLButtonElement>('.preview-bar__tabs button')).find(
+            (button) => button.textContent?.trim() === tab
+        )!;
+    }
+
+    function activeTab(): string | null {
+        return element().querySelector('.preview-bar__tabs button[aria-pressed="true"]')?.textContent?.trim() ?? null;
+    }
+
+    /** Whether Esc, pressed with nothing else open, exits the preview. */
+    function exitsOnEscape(): boolean {
+        const closed = vi.fn();
+        const subscription = fixture.componentInstance.closed.subscribe(closed);
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        subscription.unsubscribe();
+        return closed.mock.calls.length === 1;
+    }
+
+    /**
+     * The fit-to-screen spy of the shown graph. jsdom cannot lay out the Foblex canvas (the graph template is
+     * emptied above), so the graph gets a stand-in canvas that only records being asked to fit.
+     */
+    function canvasFit(): ReturnType<typeof vi.fn> | null {
+        const graph = fixture.debugElement.query(By.directive(FlowGraphComponent))?.componentInstance as
+            | FlowGraphComponent
+            | undefined;
+        if (!graph) return null;
+        graph['fCanvasComponent'] ??= { fitToScreen: vi.fn() } as unknown as FlowGraphComponent['fCanvasComponent'];
+        return graph['fCanvasComponent'].fitToScreen as unknown as ReturnType<typeof vi.fn>;
+    }
+
+    function openTab(tab: PreviewTab): void {
+        canvasFit();
+        tabButton(tab).click();
+        fixture.detectChanges();
+    }
+
+    function summaryText(): string | null {
+        return element().querySelector('.preview-changes__summary')?.textContent?.trim() ?? null;
+    }
+
+    function hintText(): string | null {
+        return element().querySelector('.preview-changes__hint')?.textContent?.trim() ?? null;
+    }
+
+    function previewNode(type: NodeType) {
+        return previewFlowService()
+            .nodes()
+            .find((node) => node.type === type)!;
+    }
+
+    function statusOf(type: NodeType) {
+        return fixture.debugElement.injector.get(FlowDiffStateService).nodeStatus(previewNode(type).id);
+    }
+
+    describe('Preview and Changes tabs', () => {
+        it('opens on the Preview tab, showing the version as saved', async () => {
             liveFlow = liveCanvasWith('Live python');
             fixture = TestBed.createComponent(FlowVersionPreviewComponent);
             await render(1);
             await respond(1, 'Version python');
 
+            expect(activeTab()).toBe('Preview');
+            expect(previewNode(NodeType.PYTHON).node_name).toBe('Version python');
+            expect(flowGraph().diffState()).toBeNull();
+            expect(statusOf(NodeType.PYTHON)).toBeNull();
+            expect(summaryText()).toBeNull();
+        });
+
+        it('shows what a restore does to the live canvas on Changes, and the version as saved again on Preview', async () => {
+            liveFlow = liveCanvasWith('Live python');
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Version python');
+            const plainNodeIds = previewFlowService()
+                .nodes()
+                .map((node) => node.id);
+
+            openTab('Changes');
+
+            expect(activeTab()).toBe('Changes');
             expect(previewNode(NodeType.PYTHON).node_name).toBe('Version python');
             expect(statusOf(NodeType.PYTHON)).toBe('changed');
             expect(statusOf(NodeType.START)).toBe('unchanged');
             expect(flowGraph().diffState()).not.toBeNull();
+            expect(summaryText()).toBe('Restoring this version will change 1 node.');
+
+            openTab('Preview');
+
+            expect(activeTab()).toBe('Preview');
+            expect(flowGraph().diffState()).toBeNull();
+            expect(summaryText()).toBeNull();
+            expect(
+                previewFlowService()
+                    .nodes()
+                    .map((node) => node.id)
+            ).toEqual(plainNodeIds);
+        });
+
+        it('fits the canvas to the screen after each switch', async () => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Python');
+            const fitToScreen = canvasFit()!;
+
+            openTab('Changes');
+            await new Promise((resolve) => setTimeout(resolve));
+            expect(fitToScreen).toHaveBeenCalledTimes(1);
+
+            openTab('Preview');
+            await new Promise((resolve) => setTimeout(resolve));
+            expect(fitToScreen).toHaveBeenCalledTimes(2);
+        });
+
+        it('keeps a multi-selection when the open tab is clicked again', async () => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Python');
+            openTab('Changes');
+            const selection = flowGraph().selectionManager;
+            selection.multiSelectActive.set(true);
+            selection.selectedNodeIds.set([previewNode(NodeType.PYTHON).id]);
+
+            openTab('Changes');
+
+            expect(selection.multiSelectActive()).toBe(true);
+            expect(selection.selectedNodeIds()).toEqual([previewNode(NodeType.PYTHON).id]);
         });
 
         it('shows a node only the live canvas has, which a restore removes', async () => {
@@ -186,6 +373,8 @@ describe('FlowVersionPreviewComponent', () => {
             fixture = TestBed.createComponent(FlowVersionPreviewComponent);
             await render(1);
             await respondWith(1, { ...snapshotFor('Python'), nodes: snapshotFor('Python').nodes.slice(0, 1) });
+
+            openTab('Changes');
 
             expect(previewNode(NodeType.PYTHON).node_name).toBe('Python');
             expect(statusOf(NodeType.PYTHON)).toBe('deleted');
@@ -196,6 +385,7 @@ describe('FlowVersionPreviewComponent', () => {
             fixture = TestBed.createComponent(FlowVersionPreviewComponent);
             await render(1);
             await respond(1, 'Python');
+            openTab('Changes');
             const idsBefore = previewFlowService()
                 .nodes()
                 .map((node) => node.id);
@@ -211,18 +401,354 @@ describe('FlowVersionPreviewComponent', () => {
             expect(statusOf(NodeType.PYTHON)).toBe('unchanged');
         });
 
-        it('compares again when another version is previewed', async () => {
+        it('stays on Changes when another version is previewed, and compares that version', async () => {
             liveFlow = liveCanvasWith('Python');
             fixture = TestBed.createComponent(FlowVersionPreviewComponent);
             await render(1);
             await respond(1, 'Python');
+            openTab('Changes');
             expect(statusOf(NodeType.PYTHON)).toBe('unchanged');
 
             await render(2);
             await respond(2, 'Renamed python');
 
+            expect(activeTab()).toBe('Changes');
             expect(previewNode(NodeType.PYTHON).node_name).toBe('Renamed python');
             expect(statusOf(NodeType.PYTHON)).toBe('changed');
+            expect(summaryText()).toBe('Restoring this version will change 1 node.');
+        });
+
+        it('compares with the live canvas as it is when Changes is first opened', async () => {
+            liveFlow = liveCanvasWith('Python');
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Python');
+
+            fixture.componentRef.setInput('liveFlow', liveCanvasWith('Renamed on the live canvas'));
+            fixture.detectChanges();
+            openTab('Changes');
+
+            expect(statusOf(NodeType.PYTHON)).toBe('changed');
+            expect(summaryText()).toBe('Restoring this version will change 1 node.');
+        });
+
+        it('shows the same comparison (and node ids) after going to Preview and back to Changes', async () => {
+            liveFlow = liveCanvasWith('Python');
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Python');
+            openTab('Changes');
+            const diffNodeIds = previewFlowService()
+                .nodes()
+                .map((node) => node.id);
+            openTab('Preview');
+
+            fixture.componentRef.setInput('liveFlow', liveCanvasWith('Renamed on the live canvas'));
+            fixture.detectChanges();
+            openTab('Changes');
+
+            expect(
+                previewFlowService()
+                    .nodes()
+                    .map((node) => node.id)
+            ).toEqual(diffNodeIds);
+            expect(statusOf(NodeType.PYTHON)).toBe('unchanged');
+        });
+
+        describe('with a node panel open', () => {
+            function openPanelNodeId(): string | null {
+                return fixture.debugElement.injector.get(SidePanelService).selectedNodeId();
+            }
+
+            it('keeps the panel on the same node across both switches', async () => {
+                liveFlow = liveCanvasWith('Live python');
+                fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+                await render(1);
+                await respond(1, 'Version python');
+                flowGraph().openNodePanel(previewNode(NodeType.PYTHON).id);
+                const plainPythonId = previewNode(NodeType.PYTHON).id;
+
+                openTab('Changes');
+
+                expect(openPanelNodeId()).toBe(previewNode(NodeType.PYTHON).id);
+                expect(openPanelNodeId()).not.toBe(plainPythonId);
+
+                openTab('Preview');
+
+                expect(openPanelNodeId()).toBe(plainPythonId);
+            });
+
+            it('closes the panel of a node only the live canvas has, and Esc exits afterwards', async () => {
+                liveFlow = liveCanvasWith('Python');
+                fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+                const closed = vi.fn();
+                fixture.componentInstance.closed.subscribe(closed);
+                await render(1);
+                await respondWith(1, { ...snapshotFor('Python'), nodes: snapshotFor('Python').nodes.slice(0, 1) });
+                openTab('Changes');
+                expect(statusOf(NodeType.PYTHON)).toBe('deleted');
+                flowGraph().openNodePanel(previewNode(NodeType.PYTHON).id);
+
+                openTab('Preview');
+
+                expect(openPanelNodeId()).toBeNull();
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                expect(closed).toHaveBeenCalledTimes(1);
+            });
+
+            it('clears a multi-selection made on the previous canvas', async () => {
+                fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+                await render(1);
+                await respond(1, 'Python');
+                const selection = flowGraph().selectionManager;
+                selection.multiSelectActive.set(true);
+                selection.selectedNodeIds.set([previewNode(NodeType.PYTHON).id]);
+
+                openTab('Changes');
+
+                expect(selection.multiSelectActive()).toBe(false);
+                expect(selection.selectedNodeIds()).toEqual([]);
+            });
+        });
+
+        it('opens on Preview again in a preview opened after the preview is closed', async () => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            // The host page destroys the preview when it emits closed.
+            fixture.componentInstance.closed.subscribe(() => fixture.destroy());
+            await render(1);
+            await respond(1, 'Python');
+            openTab('Changes');
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Python');
+
+            expect(activeTab()).toBe('Preview');
+            expect(flowGraph().diffState()).toBeNull();
+        });
+
+        describe('summary (nodes only)', () => {
+            const versionWithoutPython: GraphVersionSnapshot = {
+                ...snapshotFor('Python'),
+                nodes: snapshotFor('Python').nodes.slice(0, 1),
+            };
+            // The version has an edge Start → Python the live canvas lacks; the nodes are the same.
+            const versionWithEdge: GraphVersionSnapshot = {
+                ...snapshotFor('Python'),
+                edge_list: [{ id: 1, start_node_id: 1, end_node_id: 2, metadata: {} }],
+            } as GraphVersionSnapshot;
+
+            it.each<{ diff: string; live: () => FlowModel; snapshot: GraphVersionSnapshot; expected: string }>([
+                {
+                    diff: 'one renamed node',
+                    live: () => liveCanvasWith('Live python'),
+                    snapshot: snapshotFor('Version python'),
+                    expected: 'Restoring this version will change 1 node.',
+                },
+                {
+                    diff: 'one node only the live canvas has',
+                    live: () => liveCanvasWith('Python'),
+                    snapshot: versionWithoutPython,
+                    expected: 'Restoring this version will remove 1 node.',
+                },
+                {
+                    diff: 'two version-only nodes and a renamed one',
+                    live: () => liveCanvasOf([[1, 'First']]),
+                    snapshot: snapshotWithPythons([
+                        [1, 'First renamed'],
+                        [2, 'Second'],
+                        [3, 'Third'],
+                    ]),
+                    expected: 'Restoring this version will add 2 nodes and change 1 node.',
+                },
+                {
+                    diff: 'nodes of every kind',
+                    live: () =>
+                        liveCanvasOf([
+                            [1, 'One'],
+                            [2, 'Two'],
+                            [3, 'Three'],
+                            [6, 'Only live'],
+                        ]),
+                    snapshot: snapshotWithPythons([
+                        [1, 'One v2'],
+                        [2, 'Two v2'],
+                        [3, 'Three v2'],
+                        [4, 'Four'],
+                        [5, 'Five'],
+                    ]),
+                    expected: 'Restoring this version will add 2 nodes, remove 1 node and change 3 nodes.',
+                },
+                {
+                    diff: 'only an edge',
+                    live: () => liveCanvasWith('Python'),
+                    snapshot: versionWithEdge,
+                    expected: 'Restoring this version will only change connections, no nodes.',
+                },
+                {
+                    diff: 'nothing',
+                    live: () => liveCanvasWith('Python'),
+                    snapshot: snapshotFor('Python'),
+                    expected: 'Restoring this version will not change any nodes or connections.',
+                },
+            ])('reads "$expected" when $diff differs', async ({ live, snapshot, expected }) => {
+                liveFlow = live();
+                fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+                await render(1);
+                await respondWith(1, snapshot);
+                expect(summaryText()).toBeNull();
+
+                openTab('Changes');
+
+                expect(summaryText()).toBe(expected);
+                // An empty diff still shows the canvas.
+                expect(element().querySelector('app-flow-graph')).not.toBeNull();
+            });
+
+            it('does not count a missing reference as a change', async () => {
+                liveFlow = buildPreviewFlowModel(snapshotWithUnboundTable('Python'), new Map(), []).flow;
+                fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+                await render(1);
+                await respondWith(1, snapshotWithUnboundTable('Python'));
+
+                openTab('Changes');
+
+                expect(summaryText()).toBe('Restoring this version will not change any nodes or connections.');
+            });
+        });
+
+        describe('old-snapshot hint', () => {
+            const HINT =
+                'This version was saved before nodes could be matched, so every node shows as added or removed.';
+
+            it('explains why every node is added or removed when the version predates node matching', async () => {
+                liveFlow = liveCanvasWith('Python');
+                fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+                await render(1);
+                await respondWith(1, oldSnapshotFor('Python'));
+                expect(hintText()).toBeNull();
+
+                openTab('Changes');
+
+                // The Start nodes are still paired (by type); every other node is added or removed.
+                expect(summaryText()).toBe('Restoring this version will add 1 node and remove 1 node.');
+                expect(hintText()).toBe(HINT);
+
+                openTab('Preview');
+                expect(hintText()).toBeNull();
+            });
+
+            it.each<[string, () => FlowModel, GraphVersionSnapshot]>([
+                ['the nodes match', () => liveCanvasWith('Python'), snapshotFor('Python')],
+                [
+                    'the live canvas has only its Start node',
+                    () => onlyStart(liveCanvasWith('Python')),
+                    oldSnapshotFor('Python'),
+                ],
+                [
+                    'the version has only its Start node',
+                    () => liveCanvasWith('Python'),
+                    { ...oldSnapshotFor('Python'), nodes: oldSnapshotFor('Python').nodes.slice(0, 1) },
+                ],
+            ])('is not shown when %s', async (_case, live, snapshot) => {
+                liveFlow = live();
+                fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+                await render(1);
+                await respondWith(1, snapshot);
+
+                openTab('Changes');
+
+                expect(summaryText()).not.toBeNull();
+                expect(hintText()).toBeNull();
+            });
+        });
+
+        it('leaves the version as saved working when the comparison fails', async () => {
+            const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+            liveFlow = { nodes: [null], connections: [] } as unknown as FlowModel;
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Python');
+
+            expect(element().querySelector('.preview-state--error')).toBeNull();
+            expect(previewNode(NodeType.PYTHON).node_name).toBe('Python');
+
+            openTab('Changes');
+
+            expect(element().querySelector('.preview-state--error')?.textContent).toContain(
+                'The changes could not be shown. Switch to Preview to see the version.'
+            );
+            expect(consoleError).toHaveBeenCalled();
+
+            openTab('Preview');
+
+            expect(element().querySelector('.preview-state--error')).toBeNull();
+            expect(element().querySelector('app-flow-graph')).not.toBeNull();
+        });
+    });
+
+    describe('missing-reference markers', () => {
+        const DROPPED_SECRET_WARNING: RestoreWarning = {
+            type: 'secret_declaration_dropped',
+            node_id: 2,
+            node_name: 'Python',
+            field: 'python_code',
+            missing_name: 'GONE_KEY',
+            reason: 'Secret "GONE_KEY" no longer exists.',
+        };
+
+        function markedNodeTypes(): NodeType[] {
+            const diffState = fixture.debugElement.injector.get(FlowDiffStateService);
+            return previewFlowService()
+                .nodes()
+                .filter((node) => diffState.hasMissingReferences(node.id))
+                .map((node) => node.type);
+        }
+
+        // Read from the preview's own FlowDiffStateService, which the nodes read for their marker: the graph
+        // template is emptied in this spec (jsdom cannot lay out the Foblex canvas), so no node is in the DOM.
+        it.each<{ steps: string; tabs: PreviewTab[] }>([
+            { steps: 'Preview', tabs: [] },
+            { steps: 'Changes', tabs: ['Changes'] },
+            { steps: 'Changes, then back to Preview', tabs: ['Changes', 'Preview'] },
+        ])(
+            'on $steps, marks the node with a deleted secret and the one with an unbound Key-Value table',
+            async ({ tabs }) => {
+                liveFlow = buildPreviewFlowModel(snapshotWithUnboundTable('Python'), new Map(), []).flow;
+                fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+                await render(1);
+                await respondWith(1, snapshotWithUnboundTable('Python'), [DROPPED_SECRET_WARNING]);
+
+                tabs.forEach(openTab);
+
+                expect(markedNodeTypes()).toEqual([NodeType.PYTHON, NodeType.KEY_VALUE]);
+            }
+        );
+
+        it('shows only the markers on Preview: no statuses and no diff', async () => {
+            liveFlow = buildPreviewFlowModel(snapshotWithUnboundTable('Live python'), new Map(), []).flow;
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respondWith(1, snapshotWithUnboundTable('Version python'), [DROPPED_SECRET_WARNING]);
+
+            const diffState = fixture.debugElement.injector.get(FlowDiffStateService);
+            expect(markedNodeTypes()).toEqual([NodeType.PYTHON, NodeType.KEY_VALUE]);
+            expect(diffState.isActive()).toBe(false);
+            expect(
+                previewFlowService()
+                    .nodes()
+                    .map((node) => diffState.nodeStatus(node.id))
+            ).toEqual([null, null, null]);
+            expect(flowGraph().diffState()).toBeNull();
+        });
+
+        it('does not mark a node whose secret is only in the recycle bin', async () => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respond(1, 'Python', [BINNED_SECRET_WARNING]);
+
+            expect(markedNodeTypes()).toEqual([]);
         });
     });
 
@@ -288,10 +814,8 @@ describe('FlowVersionPreviewComponent', () => {
         expect(names).not.toContain('First');
     });
 
-    it('shows the warning count and emits closed on Exit', async () => {
+    it('shows the tabs and the warning count', async () => {
         fixture = TestBed.createComponent(FlowVersionPreviewComponent);
-        const closed = vi.fn();
-        fixture.componentInstance.closed.subscribe(closed);
         await render(1);
         await respond(1, 'Python', [
             { type: 'fk_nulled', node_id: 2, reason: 'LLM config is missing' },
@@ -300,25 +824,86 @@ describe('FlowVersionPreviewComponent', () => {
 
         const element = fixture.nativeElement as HTMLElement;
         expect(element.querySelector('.preview-bar__warnings')?.textContent).toContain('2 warnings');
-
-        (element.querySelector('.preview-bar__exit') as HTMLButtonElement).click();
-        expect(closed).toHaveBeenCalledTimes(1);
+        expect(
+            Array.from(element.querySelectorAll('.preview-bar__tabs button')).map((tab) => tab.textContent?.trim())
+        ).toEqual(['Preview', 'Changes']);
     });
 
-    it('jumps from a warning to the node in the preview, through the snapshot id', async () => {
-        const dialog = TestBed.inject(Dialog) as unknown as { open: ReturnType<typeof vi.fn> };
-        dialog.open.mockReturnValue({ closed: of(2) }); // the Python node's id in the snapshot
-        fixture = TestBed.createComponent(FlowVersionPreviewComponent);
-        await render(1);
-        await respond(1, 'Python', [{ type: 'fk_nulled', node_id: 2, reason: 'LLM config is missing' }]);
+    describe('warnings dialog', () => {
+        beforeEach(() => {
+            // The real dialog, so the warnings are read and clicked like a user does.
+            TestBed.overrideProvider(Dialog, { useFactory: () => new Dialog() });
+            vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        });
 
-        (fixture.nativeElement.querySelector('.preview-bar__warnings') as HTMLButtonElement).click();
+        afterEach(() => {
+            TestBed.inject(Dialog).closeAll();
+            vi.unstubAllGlobals();
+        });
 
-        const pythonNode = previewFlowService()
-            .nodes()
-            .find((node) => node.type === NodeType.PYTHON)!;
-        expect(fixture.debugElement.injector.get(SidePanelService).selectedNodeId()).toBe(pythonNode.id);
-        expect(TestBed.inject(SidePanelService).selectedNodeId()).toBeNull();
+        function openWarnings(): HTMLElement[] {
+            (element().querySelector('.preview-bar__warnings') as HTMLButtonElement).click();
+            TestBed.tick();
+            return Array.from(document.querySelectorAll<HTMLElement>('app-restore-warnings-dialog .warning-item'));
+        }
+
+        function warningText(item: HTMLElement): string {
+            return item.textContent!.replace(/\s+/g, ' ').trim();
+        }
+
+        it('lists the backend warnings and the Key-Value table only the frontend finds, as text', async () => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respondWith(1, snapshotWithUnboundTable('Python'), [BINNED_SECRET_WARNING]);
+
+            expect(element().querySelector('.preview-bar__warnings')?.textContent).toContain('2 warnings');
+            expect(openWarnings().map(warningText)).toEqual([
+                'In node Python, Secret "API_KEY" is in the recycle bin.',
+                'In node Remember, Key-Value table "Customers" no longer exists or cannot be used, so the node has no table.',
+            ]);
+        });
+
+        it('shows the warnings button for a Key-Value table alone', async () => {
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respondWith(1, snapshotWithUnboundTable('Python'));
+
+            expect(element().querySelector('.preview-bar__warnings')?.textContent).toContain('1 warning');
+        });
+
+        it('renders a table name as text, never as markup', async () => {
+            const snapshot = snapshotWithUnboundTable('Python');
+            const keyValueNode = { ...snapshot.nodes[2], key_value_table_name: '<img src=x onerror=alert(1)>' };
+            fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+            await render(1);
+            await respondWith(1, { ...snapshot, nodes: [...snapshot.nodes.slice(0, 2), keyValueNode] });
+
+            const [item] = openWarnings();
+            expect(item.querySelector('img')).toBeNull();
+            expect(warningText(item)).toContain('Key-Value table "<img src=x onerror=alert(1)>"');
+        });
+
+        it.each([
+            { mode: 'the version as saved', showChanges: false, entry: 0, type: NodeType.PYTHON },
+            { mode: 'the version as saved', showChanges: false, entry: 1, type: NodeType.KEY_VALUE },
+            { mode: 'the changes', showChanges: true, entry: 0, type: NodeType.PYTHON },
+            { mode: 'the changes', showChanges: true, entry: 1, type: NodeType.KEY_VALUE },
+        ])(
+            'on $mode, opens the $type node of a clicked warning on the shown canvas',
+            async ({ showChanges, entry, type }) => {
+                liveFlow = liveCanvasWith('Live python');
+                fixture = TestBed.createComponent(FlowVersionPreviewComponent);
+                await render(1);
+                await respondWith(1, snapshotWithUnboundTable('Python'), [BINNED_SECRET_WARNING]);
+                if (showChanges) openTab('Changes');
+
+                openWarnings()[entry].click();
+                fixture.detectChanges();
+
+                expect(fixture.debugElement.injector.get(SidePanelService).selectedNodeId()).toBe(previewNode(type).id);
+                expect(TestBed.inject(SidePanelService).selectedNodeId()).toBeNull();
+            }
+        );
     });
 
     it('hands nodes copied in the preview to the live clipboard and says so', async () => {
@@ -352,19 +937,16 @@ describe('FlowVersionPreviewComponent', () => {
         TestBed.tick();
 
         expect(responses.get(1)).toBe(firstResponse);
-        expect((fixture.nativeElement as HTMLElement).querySelector('.preview-bar__title')?.textContent).toContain(
-            'Renamed'
-        );
     });
 
     // F-01: slow network, then the user exits before the response arrives.
-    it('shows the loading state with Exit available, and cancels the request on exit', async () => {
+    it('shows the loading state with Esc available, and cancels the request on exit', async () => {
         fixture = TestBed.createComponent(FlowVersionPreviewComponent);
         await render(1);
         const element = fixture.nativeElement as HTMLElement;
 
         expect(element.querySelector('app-spinner')).not.toBeNull();
-        expect(element.querySelector('.preview-bar__exit')).not.toBeNull();
+        expect(exitsOnEscape()).toBe(true);
 
         fixture.destroy();
         expect(responses.get(1)!.observed).toBe(false);
@@ -404,7 +986,7 @@ describe('FlowVersionPreviewComponent', () => {
         expect(pythonNode.data).toEqual(expect.objectContaining({ secret_ids: [12], secret_names: ['API_KEY'] }));
     });
 
-    it('keeps Exit available when the version fails to load', async () => {
+    it('keeps Esc available when the version fails to load', async () => {
         fixture = TestBed.createComponent(FlowVersionPreviewComponent);
         await render(1);
         responses.get(1)!.error(new Error('boom'));
@@ -413,7 +995,7 @@ describe('FlowVersionPreviewComponent', () => {
 
         const element = fixture.nativeElement as HTMLElement;
         expect(element.querySelector('.preview-state--error')).not.toBeNull();
-        expect(element.querySelector('.preview-bar__exit')).not.toBeNull();
+        expect(exitsOnEscape()).toBe(true);
     });
 
     it('previews an old snapshot that lacks fields newer exports carry', async () => {
@@ -454,7 +1036,7 @@ describe('FlowVersionPreviewComponent', () => {
         const element = fixture.nativeElement as HTMLElement;
         expect(element.querySelector('.preview-state--error')).not.toBeNull();
         expect(element.querySelector('app-flow-graph')).toBeNull();
-        expect(element.querySelector('.preview-bar__exit')).not.toBeNull();
+        expect(exitsOnEscape()).toBe(true);
         expect(consoleError).toHaveBeenCalled();
     });
 
@@ -609,6 +1191,12 @@ describe('FlowVersionPreviewComponent', () => {
             pressEscape(button);
             popover.remove();
             expect(closed).not.toHaveBeenCalled();
+        });
+
+        it('exits when pressed on a tab after clicking it', () => {
+            openTab('Changes');
+            pressEscape(tabButton('Changes'));
+            expect(closed).toHaveBeenCalledTimes(1);
         });
 
         it('stops listening once the preview is gone', () => {

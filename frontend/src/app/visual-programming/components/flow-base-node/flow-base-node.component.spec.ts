@@ -323,7 +323,7 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
     const badge = (): HTMLElement | null => host().querySelector('.diff-badge');
     const missingReferencesMarker = (): HTMLElement | null => host().querySelector('.missing-references-marker');
 
-    function render(node: NodeModel, state: { status: NodeDiffStatus; hasMissingReferences?: boolean } | null): void {
+    function render(node: NodeModel, state: { status: NodeDiffStatus } | null, hasMissingReferences = false): void {
         TestBed.configureTestingModule({
             providers: [
                 { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(true) } },
@@ -332,9 +332,10 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
                 { provide: KeyValueTablesStorageService, useValue: { tables: signal([]), loadTables: () => of([]) } },
             ],
         });
+        TestBed.inject(FlowDiffStateService).setMissingReferenceNodeIds(new Set(hasMissingReferences ? [node.id] : []));
         TestBed.inject(FlowDiffStateService).setState(
             state && {
-                nodes: new Map([[node.id, { hasMissingReferences: false, ...state }]]),
+                nodes: new Map([[node.id, state]]),
                 connections: new Map(),
                 versionOnlyPortIds: new Set(),
             }
@@ -387,12 +388,20 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
     });
 
     it('flags missing references apart from the status, on an unchanged node too', () => {
-        render(NUMBERED_NODE, { status: 'unchanged', hasMissingReferences: true });
+        render(NUMBERED_NODE, { status: 'unchanged' }, true);
 
         expect(badge()).toBeNull();
         expect(missingReferencesMarker()!.getAttribute('aria-label')).toBe(
             'This version uses items that no longer exist'
         );
+    });
+
+    it('flags missing references on a plain version canvas, with no status mark', () => {
+        render(NUMBERED_NODE, null, true);
+
+        expect(missingReferencesMarker()).not.toBeNull();
+        expect(badge()).toBeNull();
+        expect(Array.from(host().classList).filter((name) => name.startsWith('diff-'))).toEqual([]);
     });
 
     it('shows no diff marks off a diff canvas, as in the live editor', () => {

@@ -3,9 +3,12 @@ import { computed, Injectable, signal } from '@angular/core';
 import { EdgeDiffStatus, FlowDiffCanvasState, NodeDiffStatus } from '../utils/diff';
 
 /**
- * The diff status of each node and connection on a version diff canvas, by canvas id. The canvas
- * (FlowGraphComponent) writes it together with the union flow it shows; nodes and connections read it
- * for their status style.
+ * The diff status of each node and connection on a version diff canvas, by canvas id, and the nodes whose
+ * version referenced something that no longer exists. The canvas (FlowGraphComponent) writes both together
+ * with the flow it shows; nodes and connections read them for their status style and marker.
+ *
+ * The two are separate: the missing-reference marker shows on the plain version preview too, which has no
+ * diff (no statuses, `isActive` false), so nothing else of the diff turns on there.
  *
  * Kept outside the node models on purpose: a status field on a node would leak into the save
  * comparables and the dirty check. `providedIn: 'root'` for the live editor, where it stays empty;
@@ -14,6 +17,7 @@ import { EdgeDiffStatus, FlowDiffCanvasState, NodeDiffStatus } from '../utils/di
 @Injectable({ providedIn: 'root' })
 export class FlowDiffStateService {
     private readonly state = signal<FlowDiffCanvasState | null>(null);
+    private readonly missingReferenceNodeIds = signal<ReadonlySet<string>>(new Set());
 
     /** Whether the canvas shows a diff. False in the live editor and in a plain preview. */
     public readonly isActive = computed(() => this.state() !== null);
@@ -28,8 +32,14 @@ export class FlowDiffStateService {
         return this.state()?.nodes.get(nodeId)?.status ?? null;
     }
 
+    /** Marks the nodes whose version referenced something that no longer exists (none in the live editor). */
+    public setMissingReferenceNodeIds(nodeIds: ReadonlySet<string>): void {
+        this.missingReferenceNodeIds.set(nodeIds);
+    }
+
+    /** Independent of the diff: also true on a plain version preview. */
     public hasMissingReferences(nodeId: string): boolean {
-        return this.state()?.nodes.get(nodeId)?.hasMissingReferences ?? false;
+        return this.missingReferenceNodeIds().has(nodeId);
     }
 
     /** `null` for a connection that is not on a diff canvas. */

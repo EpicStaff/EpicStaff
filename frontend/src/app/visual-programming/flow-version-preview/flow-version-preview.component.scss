@@ -17,34 +17,52 @@ app-flow-graph {
     min-height: 0;
 }
 
-.preview-bar {
+// The bar (tabs, warnings), with the summary of the Changes tab under it, centered between the canvas
+// controls: the left toolbar (Domain, search) ends ~10rem in.
+.preview-header {
     position: absolute;
     top: var(--space-lg);
     left: 50%;
     transform: translateX(-50%);
     z-index: 1;
-    display: inline-flex;
+    display: flex;
+    flex-direction: column;
     align-items: center;
     gap: var(--space-sm);
-    // Centered between the canvas controls: the left toolbar (Domain, search) ends ~10rem in,
-    // so a long version name truncates instead of sliding under them.
     max-width: min(40rem, calc(100% - 2 * 10rem));
-    padding: var(--space-2xs) var(--space-2xs) var(--space-2xs) var(--space-sm);
+    // The space around the boxes stays on the canvas: only the boxes take the pointer.
+    pointer-events: none;
+}
+
+.preview-bar,
+.preview-changes__box {
+    pointer-events: auto;
+    max-width: 100%;
     border-radius: var(--radius-sm);
     background: var(--color-modals-background);
-    color: var(--accent-color);
     font-size: var(--text-body-small-size);
     font-weight: var(--text-body-small-weight);
     line-height: var(--text-body-small-line-height);
+}
 
-    &__title {
-        min-width: 0;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
+.preview-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 0 var(--space-2xs);
+
+    // Same grouping as the flows list tabs.
+    &__tabs {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2xs);
     }
 
-    button {
+    &__tab-separator {
+        color: var(--color-text-secondary);
+    }
+
+    &__warnings {
         display: inline-flex;
         align-items: center;
         gap: var(--space-2xs);
@@ -52,26 +70,41 @@ app-flow-graph {
         padding: var(--space-2xs) var(--space-sm);
         border: none;
         border-radius: var(--radius-sm);
-        font: inherit;
-        cursor: pointer;
-    }
-
-    &__warnings {
         background: transparent;
         color: var(--color-warning);
+        font: inherit;
+        cursor: pointer;
 
         &:hover {
             background: var(--color-secondary-btn-background-hover);
         }
     }
+}
 
-    &__exit {
-        background: var(--accent-color);
+.preview-changes {
+    // Empty (no size) on the Preview tab.
+    display: flex;
+    justify-content: center;
+    max-width: 100%;
+
+    &__box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--space-2xs);
+        padding: var(--space-2xs) var(--space-sm);
+    }
+
+    &__summary {
+        text-align: center;
+        text-wrap: balance;
         color: var(--color-text-primary);
+    }
 
-        &:hover {
-            background: var(--accent-color-hover);
-        }
+    &__hint {
+        margin: 0;
+        text-align: center;
+        color: var(--color-text-secondary);
     }
 }
 

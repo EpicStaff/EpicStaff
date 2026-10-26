@@ -27,6 +27,8 @@ const SECRET_DECLARATION_PATHS: ReadonlyMap<string, FieldName> = new Map<string,
  * - `surface_dropped`: `surface_list` and the surface id
  * - `inline_tool_dropped`: the whole `inline_surface` (the warning names no field) and the tool id
  * - `secret_declaration_dropped`: the secret field of the code (or bot key) it names and `missing_name`
+ *
+ * `secret_in_recycle_bin` is deliberately not a missing reference: a restore links the binned secret.
  */
 export function buildVersionWarningReferences(
     warnings: readonly RestoreWarning[],

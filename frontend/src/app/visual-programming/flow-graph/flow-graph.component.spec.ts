@@ -1004,8 +1004,8 @@ describe('FlowGraphComponent', () => {
         const REMOVED_NOTE: GraphNoteModel = { ...noteNode(), id: 'note-removed', position: { x: 600, y: 0 } };
         const DIFF_STATE: FlowDiffCanvasState = {
             nodes: new Map([
-                [KEPT_NOTE.id, { status: 'unchanged', hasMissingReferences: false }],
-                [REMOVED_NOTE.id, { status: 'deleted', hasMissingReferences: false }],
+                [KEPT_NOTE.id, { status: 'unchanged' }],
+                [REMOVED_NOTE.id, { status: 'deleted' }],
             ]),
             connections: new Map(),
             versionOnlyPortIds: new Set(),
@@ -1053,9 +1053,9 @@ describe('FlowGraphComponent', () => {
                 { nodes: [KEPT_NOTE, otherNote, grownTable], connections: [keptEdge, removedEdge] },
                 {
                     nodes: new Map([
-                        [KEPT_NOTE.id, { status: 'unchanged', hasMissingReferences: false }],
-                        [otherNote.id, { status: 'unchanged', hasMissingReferences: false }],
-                        [grownTable.id, { status: 'changed', hasMissingReferences: false }],
+                        [KEPT_NOTE.id, { status: 'unchanged' }],
+                        [otherNote.id, { status: 'unchanged' }],
+                        [grownTable.id, { status: 'changed' }],
                     ]),
                     connections: new Map([
                         [keptEdge.id, 'unchanged'],
@@ -1709,9 +1709,7 @@ describe('FlowGraphComponent', () => {
 
         function mountCanvas(connections: ConnectionModel[], edgeStatuses: Record<string, EdgeDiffStatus> | null) {
             const diffState: FlowDiffCanvasState | null = edgeStatuses && {
-                nodes: new Map(
-                    [LEFT, RIGHT, OTHER].map((node) => [node.id, { status: 'unchanged', hasMissingReferences: false }])
-                ),
+                nodes: new Map([LEFT, RIGHT, OTHER].map((node) => [node.id, { status: 'unchanged' }])),
                 connections: new Map(Object.entries(edgeStatuses)),
                 versionOnlyPortIds: new Set(),
             };

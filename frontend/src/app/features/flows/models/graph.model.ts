@@ -143,10 +143,20 @@ export interface GraphVersionUpdateRequest {
  * - `decision_table_ref_cleared`: `field` (the route) and `missing_node_id`;
  * - `surface_dropped`, `inline_tool_dropped`: `missing_id`;
  * - `secret_declaration_dropped`: `field` (`python_code`, `pre_python_code`, `post_python_code` or
- *   `telegram_bot_api_key_secret`) and `missing_name`.
+ *   `telegram_bot_api_key_secret`) and `missing_name`;
+ * - `secret_in_recycle_bin`: `field` (as above); the secret is linked, but it is in the recycle bin.
+ *
+ * The version preview adds `key_value_table_unbound` entries itself (`field`, `missing_name`): a Key-Value
+ * table the version named that no usable table has now. The backend re-binds tables without a warning.
  */
 export interface RestoreWarning {
-    type: 'node_skipped' | 'edge_dropped' | 'secret_declaration_dropped' | string;
+    type:
+        | 'node_skipped'
+        | 'edge_dropped'
+        | 'secret_declaration_dropped'
+        | 'secret_in_recycle_bin'
+        | 'key_value_table_unbound'
+        | string;
     node_name?: string;
     node_type?: string;
     /**
@@ -156,14 +166,15 @@ export interface RestoreWarning {
     node_id?: number;
     /**
      * The node field the warning is about, e.g. `agent_definition` (`fk_nulled`), `default_next_node_id`
-     * (`decision_table_ref_cleared`) or `python_code` (`secret_declaration_dropped`).
+     * (`decision_table_ref_cleared`), or the code field / Telegram bot key field that declared the secret
+     * (`python_code`, `telegram_bot_api_key_secret`; `secret_declaration_dropped`, `secret_in_recycle_bin`).
      */
     field?: string;
     /** Id of the missing entity (agent, trigger, subflow, surface, tool). */
     missing_id?: number;
     /** Id of the missing node a decision-table route pointed at (`decision_table_ref_cleared`). */
     missing_node_id?: number;
-    /** Name of the missing secret (`secret_declaration_dropped`). */
+    /** Name of the missing secret (`secret_declaration_dropped`) or table (`key_value_table_unbound`). */
     missing_name?: string;
     reason: string;
 }

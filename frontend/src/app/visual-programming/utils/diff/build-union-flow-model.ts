@@ -18,10 +18,12 @@ import { createFlowConnection } from '../connection.factory';
 import { getInputPortRole, getOutputPortRole } from '../node-port-roles';
 import { EdgeDiffEntry, EdgeDiffStatus, FlowDiff, NodeDiffEntry, NodeDiffStatus } from './types';
 
+/**
+ * The diff state of one union node. Missing references are not here: they belong to the version side and are
+ * marked on the plain preview too (`buildVersionMissingReferences`, mapped through `unionIdByVersionId`).
+ */
 export interface UnionNodeDiffState {
     status: NodeDiffStatus;
-    /** The version referenced something that no longer exists. Independent of `status`. */
-    hasMissingReferences: boolean;
 }
 
 /** The diff status of every node and connection of a union canvas, by its canvas id. */
@@ -102,10 +104,7 @@ export function buildUnionFlowModel(diff: FlowDiff, createId: () => string = gen
     clearGrownTables(placedNodes, extraRowsByUnionId, boundsOf);
 
     const nodeStates = new Map<string, UnionNodeDiffState>(
-        diff.nodes.map((entry) => [
-            unionIdByKey.get(entry.key)!,
-            { status: entry.status, hasMissingReferences: entry.missingReferences.length > 0 },
-        ])
+        diff.nodes.map((entry) => [unionIdByKey.get(entry.key)!, { status: entry.status }])
     );
 
     const entryByKey = new Map(diff.nodes.map((entry) => [entry.key, entry]));

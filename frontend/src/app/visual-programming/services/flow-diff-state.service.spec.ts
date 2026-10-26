@@ -5,8 +5,8 @@ import { FlowDiffStateService } from './flow-diff-state.service';
 
 const DIFF_CANVAS: FlowDiffCanvasState = {
     nodes: new Map([
-        ['node-added', { status: 'added', hasMissingReferences: false }],
-        ['node-unchanged', { status: 'unchanged', hasMissingReferences: true }],
+        ['node-added', { status: 'added' }],
+        ['node-unchanged', { status: 'unchanged' }],
     ]),
     connections: new Map([['connection-deleted', 'deleted']]),
     versionOnlyPortIds: new Set(['table_decision-out-yes']),
@@ -33,8 +33,6 @@ describe('FlowDiffStateService', () => {
         expect(service.isActive()).toBe(true);
         expect(service.nodeStatus('node-added')).toBe('added');
         expect(service.nodeStatus('node-unchanged')).toBe('unchanged');
-        expect(service.hasMissingReferences('node-unchanged')).toBe(true);
-        expect(service.hasMissingReferences('node-added')).toBe(false);
         expect(service.connectionStatus('connection-deleted')).toBe('deleted');
         expect(service.isVersionOnlyPort('table_decision-out-yes')).toBe(true);
     });
@@ -45,6 +43,15 @@ describe('FlowDiffStateService', () => {
         expect(service.nodeStatus('other-node')).toBeNull();
         expect(service.connectionStatus('other-connection')).toBeNull();
         expect(service.isVersionOnlyPort('table_decision-out-no')).toBe(false);
+    });
+
+    it('marks missing references on a plain canvas too, without turning the diff on', () => {
+        service.setMissingReferenceNodeIds(new Set(['plain-node']));
+
+        expect(service.hasMissingReferences('plain-node')).toBe(true);
+        expect(service.hasMissingReferences('other-node')).toBe(false);
+        expect(service.isActive()).toBe(false);
+        expect(service.nodeStatus('plain-node')).toBeNull();
     });
 
     it('drops the statuses when a plain canvas is shown', () => {

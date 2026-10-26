@@ -387,18 +387,18 @@ describe('buildUnionFlowModel', () => {
             source: 'warning',
         };
 
-        it('marks each node with what a restore does to it, and flags missing references apart from that', () => {
+        it('marks each node with what a restore does to it; a missing reference leaves its status alone', () => {
             const model = unionOf(version, live, new Map([[versionPythonId, [missingAgent]]]));
 
             const states = Object.fromEntries(
                 model.flow.nodes.map((node) => [node.node_name, model.diffState.nodes.get(node.id)])
             );
             expect(states).toEqual({
-                __start__: { status: 'unchanged', hasMissingReferences: false },
-                Python: { status: 'unchanged', hasMissingReferences: true },
-                'Task v2': { status: 'changed', hasMissingReferences: false },
-                Agent: { status: 'added', hasMissingReferences: false },
-                __end_node__: { status: 'deleted', hasMissingReferences: false },
+                __start__: { status: 'unchanged' },
+                Python: { status: 'unchanged' },
+                'Task v2': { status: 'changed' },
+                Agent: { status: 'added' },
+                __end_node__: { status: 'deleted' },
             });
         });
 

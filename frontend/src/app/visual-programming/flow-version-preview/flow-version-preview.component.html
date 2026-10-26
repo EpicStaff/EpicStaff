@@ -9,46 +9,77 @@
             icon="alert-triangle"
             size="1.25rem"
         ></app-svg-icon>
-        <span>This version could not be loaded.</span>
+        @if (hasDiffFailed()) {
+            <span>The changes could not be shown. Switch to Preview to see the version.</span>
+        } @else {
+            <span>This version could not be loaded.</span>
+        }
     </div>
 } @else if (canvas(); as canvas) {
     <app-flow-graph
         [flowState]="canvas.flow"
         [diffState]="canvas.diffState"
+        [missingReferenceNodeIds]="canvas.missingReferenceNodeIds"
         (openShortcuts)="openShortcuts.emit($event)"
         (copied)="onCopied()"
     ></app-flow-graph>
 }
 
 <!-- After the canvas so it paints above it. -->
-<div class="preview-bar">
-    <app-svg-icon
-        icon="eye"
-        size="1rem"
-    ></app-svg-icon>
-    <span
-        class="preview-bar__title"
-        [attr.title]="version().name"
-        >Preview Mode – {{ version().name }}</span
-    >
-    @if (warnings().length > 0) {
-        <button
-            type="button"
-            class="preview-bar__warnings"
-            (click)="onShowWarnings()"
+<div class="preview-header">
+    <div class="preview-bar">
+        <div
+            class="preview-bar__tabs"
+            role="group"
+            aria-label="Version view"
         >
-            <app-svg-icon
-                icon="alert-triangle"
-                size="1rem"
-            ></app-svg-icon>
-            {{ warnings().length }} {{ warnings().length === 1 ? 'warning' : 'warnings' }}
-        </button>
-    }
-    <button
-        type="button"
-        class="preview-bar__exit"
-        (click)="onExit()"
+            <app-tab-button
+                mod="sm"
+                [active]="!showChanges()"
+                (action)="onShowChangesChange(false)"
+                >Preview</app-tab-button
+            >
+            <span
+                class="preview-bar__tab-separator"
+                aria-hidden="true"
+                >/</span
+            >
+            <app-tab-button
+                mod="sm"
+                [active]="showChanges()"
+                (action)="onShowChangesChange(true)"
+                >Changes</app-tab-button
+            >
+        </div>
+        @if (warnings().length > 0) {
+            <button
+                type="button"
+                class="preview-bar__warnings"
+                (click)="onShowWarnings()"
+            >
+                <app-svg-icon
+                    icon="alert-triangle"
+                    size="1rem"
+                ></app-svg-icon>
+                {{ warnings().length }} {{ warnings().length === 1 ? 'warning' : 'warnings' }}
+            </button>
+        }
+    </div>
+
+    <!-- Always in the DOM, so a screen reader announces the summary when the Changes tab fills it. -->
+    <div
+        class="preview-changes"
+        aria-live="polite"
     >
-        Exit preview
-    </button>
+        @if (changesSummary(); as summary) {
+            <div class="preview-changes__box">
+                <span class="preview-changes__summary">{{ summary }}</span>
+                @if (showsOldSnapshotHint()) {
+                    <p class="preview-changes__hint">
+                        This version was saved before nodes could be matched, so every node shows as added or removed.
+                    </p>
+                }
+            </div>
+        }
+    </div>
 </div>

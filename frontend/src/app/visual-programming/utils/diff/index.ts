@@ -3,6 +3,7 @@ export type { FlowDiffCanvasState, UnionFlowModel, UnionNodeDiffState } from './
 export { buildUnionFlowModel } from './build-union-flow-model';
 export type { FieldName } from './field-display';
 export { FIELD_DISPLAY, fieldKind } from './field-display';
+export { buildFrontendFoundReferences, buildVersionMissingReferences } from './missing-references';
 export type {
     EdgeDiffEntry,
     EdgeDiffStatus,

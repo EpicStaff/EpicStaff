@@ -4,7 +4,7 @@ import { NodeModel } from '../../core/models/node.model';
 import { collectSemanticEdges, diffEdges } from './diff-edges';
 import { diffProjections } from './diff-fields';
 import { matchNodes } from './match-nodes';
-import { collectMissingReferences } from './missing-references';
+import { buildFrontendFoundReferences, buildVersionMissingReferences } from './missing-references';
 import { ProjectionContext, projectNode } from './semantic-projections';
 import { FlowDiff, FlowDiffInput, FlowDiffSummary, MissingReference, NodeDiffEntry } from './types';
 
@@ -23,11 +23,13 @@ import { FlowDiff, FlowDiffInput, FlowDiffSummary, MissingReference, NodeDiffEnt
 export function buildFlowDiff(input: FlowDiffInput): FlowDiff {
     const { versionFlow, liveFlow } = input;
     const matching = matchNodes(versionFlow.nodes, liveFlow.nodes);
-    const missingReferencesOf = (versionNode: NodeModel): MissingReference[] =>
-        collectMissingReferences(versionNode, {
-            warningReferences: input.versionWarningReferences.get(versionNode.id),
-            keyValueTableName: input.versionKeyValueTableNames.get(versionNode.id),
-        });
+    const missingReferencesByVersionId = buildVersionMissingReferences(
+        versionFlow,
+        input.versionWarningReferences,
+        buildFrontendFoundReferences(versionFlow, input.versionKeyValueTableNames)
+    );
+    const missingReferencesOf = (versionNode: NodeModel): readonly MissingReference[] =>
+        missingReferencesByVersionId.get(versionNode.id) ?? [];
 
     const nodes: NodeDiffEntry[] = matching.matches.map((match) => {
         const { key, matchedBy, versionNode, currentNode } = match;

@@ -178,6 +178,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
      * `buildUnionFlowModel`); `null` for a plain canvas.
      */
     public readonly diffState = input<FlowDiffCanvasState | null>(null);
+    /** The nodes of a version preview (plain or diff) whose version referenced something that no longer exists. */
+    public readonly missingReferenceNodeIds = input<ReadonlySet<string>>(new Set());
 
     @Output() save = new EventEmitter<FlowModel>();
     @Output() requestReload = new EventEmitter<void>();
@@ -349,6 +351,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly keymap = inject(KeymapService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly ngZone = inject(NgZone);
+    /** Set by `fitAfterNextFlowChange`, used up when the next `flowState` is applied. */
+    private fitOnNextFlowChange = false;
 
     // Start from the current count so a canvas re-created after an earlier save request
     // (e.g. when leaving version preview) does not replay it. untracked: this initialiser runs
@@ -529,6 +533,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public ngOnInit(): void {
         this.flowDiffState.setState(this.diffState());
+        this.flowDiffState.setMissingReferenceNodeIds(this.missingReferenceNodeIds());
         this.applyIncomingFlowState(this.flowState);
         if (this.initialNodeId) {
             this.openNodePanel(this.initialNodeId);
@@ -540,11 +545,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (changes['diffState'] && !changes['diffState'].firstChange) {
             this.flowDiffState.setState(this.diffState());
         }
+        if (changes['missingReferenceNodeIds'] && !changes['missingReferenceNodeIds'].firstChange) {
+            this.flowDiffState.setMissingReferenceNodeIds(this.missingReferenceNodeIds());
+        }
         if (changes['flowState'] && !changes['flowState'].firstChange) {
             const stateToApply = this.importExportHandler.processImportedFlowState(this.flowState);
             this.applyIncomingFlowState(stateToApply);
-            if (this.importExportHandler.fitAfterNextFlowChange) {
+            if (this.importExportHandler.fitAfterNextFlowChange || this.fitOnNextFlowChange) {
                 this.importExportHandler.fitAfterNextFlowChange = false;
+                this.fitOnNextFlowChange = false;
                 setTimeout(() => {
                     this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
                 }, 0);
@@ -579,6 +588,18 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
             this.cd.detectChanges();
         }, 0);
+    }
+
+    /** Leaves multi-select and clears the node and connection selection, e.g. before the host binds another canvas. */
+    public clearCanvasSelection(): void {
+        this.selectionManager.multiSelectActive.set(false);
+        this.selectionManager.clearSelection();
+        this.fFlowComponent?.select([], []);
+    }
+
+    /** Fits the flow to the screen once the next `flowState` is applied, e.g. when the host binds another canvas. */
+    public fitAfterNextFlowChange(): void {
+        this.fitOnNextFlowChange = true;
     }
 
     /** The current pan and zoom, or null before the canvas exists. */
