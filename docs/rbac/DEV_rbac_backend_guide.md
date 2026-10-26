@@ -322,15 +322,24 @@ assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.CREAT
 
 The quickstart endpoint (`tables/views/views.py`) is the reference example.
 
-### 5.3 Session / SSE surfaces — `assert_session_org_access`
+### 5.3 Session / SSE surfaces — `get_accessible_session`
 
 Sessions have no org column; they are children of their graph. Non-ViewSet session
 surfaces (SSE stream, get-updates, stop) authorize via
-`assert_session_org_access(user, session, action)`
+`get_accessible_session(user, session_id, action)`
 (`tables/services/session_access.py`): 404 when the session has no graph, then
 membership + FLOWS bit check against `session.graph.org_id`. SSE resolves the user from
 the single-use ticket first, then calls this. Reading a session (SSE, get-updates) needs
 `READ`; stopping one needs `RUN`, as starting one does (`get_runnable_graph`).
+
+The graph co-editing WebSocket (`ws/graphs/<id>/edit/`, `tables/graph_collab/consumers.py`)
+follows the same pattern: the ticket carries only the user, so `connect()` calls
+`assert_graph_readable(user, graph_id)` from the same module, which takes the org from the
+graph row and needs FLOWS `READ` — the same bit that opens the graph over HTTP. A missing
+graph, a binned one and another org's graph all close with `4404`; a member without the bit
+closes with `4403`. The check runs before the socket joins the graph's group or presence,
+so a refused caller never sees the editors and is never announced to them. Access is
+checked at connect only: an open socket is not closed when the membership is revoked.
 
 `RUN` also gates writing a trigger node (webhook, Telegram, schedule), because one starts
 runs by itself. Which node types are triggers is declared once, by `starts_runs=True` on
@@ -661,7 +670,8 @@ service, and never trust ids in the payload without an org-scoped fetch.
 2. Your consumer/view consumes it (`sse_ticket_service.consume(ticket)`) → user or 401
    `invalid_sse_ticket`.
 3. Authorize against the org that owns the streamed object (for sessions:
-   `assert_session_org_access`). Never trust an org id supplied in the query string.
+   `get_accessible_session`; for a graph: `assert_graph_readable`). Never trust an org
+   id supplied in the query string. Authorize before joining any channel group.
 
 ### 8.6 Global (non-org) resource
 
@@ -725,7 +735,7 @@ path — the default org is only for bootstrap and data migrations.
 | API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
 | Permission gate (ViewSet) | `rbac/access/gates.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `rbac/access/asserts.py` |
-| Session/SSE authorization | `tables/services/session_access.py`, `tables/views/sse_views.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |
+| Session/SSE and graph co-editing WS authorization | `tables/services/session_access.py`, `tables/views/sse_views.py`, `tables/graph_collab/consumers.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |
 | Org resolution | `rbac/access/org_context.py` |
 | Effective permissions + resolver | `rbac/access/effective.py`, `rbac/access/resolver.py` |
 | Action maps & catalog | `rbac/access/action_map.py`, `rbac/access/catalog.py` |
