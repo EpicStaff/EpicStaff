@@ -11,15 +11,19 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import sys
 from collections.abc import AsyncIterator, Callable
+from contextlib import contextmanager
 
 import pytest
 from app.emitters.base import Emitter
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
+from app.logging_utils import redact_value
 from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.tools.registry import ToolRegistry, ToolSpec
+from loguru import logger
 from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
@@ -1238,3 +1242,123 @@ async def test_finalization_token_usage_accumulated():
     assert result.token_usage.completion_tokens == 4
     assert result.token_usage.total_tokens == 14
     assert result.token_usage.total_cost_usd == pytest.approx(0.0025)
+
+
+# ---------------------------------------------------------------------------
+# Tests: debug logging never carries raw payloads
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def capture_logs_at(level: str):
+    """Capture log messages with `level` as the only active sink's floor.
+
+    Every other sink is removed for the duration, so loguru's lazy formatting is
+    skipped for anything below `level` — which is what makes a "nothing is logged"
+    assertion meaningful.
+    """
+    messages: list[str] = []
+    logger.remove()
+    sink_id = logger.add(messages.append, level=level, format="{message}")
+    try:
+        yield messages
+    finally:
+        logger.remove(sink_id)
+        logger.add(sys.stderr)
+
+
+def _log_line_starting_with(messages: list[str], prefix: str) -> str:
+    matches = [message for message in messages if message.startswith(prefix)]
+    assert len(matches) == 1, f"expected exactly one {prefix!r} line, got {matches}"
+    return matches[0].rstrip("\n")
+
+
+# Sentinel carried through the whole turn: it is the tool-call argument, the tool
+# output, and — once both are appended to the conversation — part of the message list
+# the next iteration dumps. One marker therefore reaches all three debug log sites.
+_SENTINEL = "SENTINEL-LEAK-7f3a"
+_SENTINEL_ARGUMENTS = '{"query": "SENTINEL-LEAK-7f3a"}'
+_SENTINEL_OUTPUT = "SENTINEL-LEAK-7f3a in the result"
+
+
+async def test_no_debug_log_site_carries_the_payload_verbatim():
+    """A marker placed in tool arguments and tool output reaches no debug log site."""
+    user_prompt = f"look up {_SENTINEL} for me"
+
+    emitter = RecordingEmitter()
+    context = make_context(messages=[{"role": "user", "content": user_prompt}])
+    tools = StubToolRegistry({"lookup": lambda args: _SENTINEL_OUTPUT})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "lookup", _SENTINEL_ARGUMENTS),
+            text_chunks("done"),
+        ]
+    )
+
+    with capture_logs_at("DEBUG") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    assert result.final_text == "done"
+    assert _SENTINEL not in "\n".join(messages)
+
+    second_iteration = _log_line_starting_with(messages, "loop iter=1 ")
+    assert redact_value(_SENTINEL_ARGUMENTS) in second_iteration
+    assert "'content': '<redacted len=" in second_iteration
+    assert user_prompt not in second_iteration
+
+    tool_call_line = _log_line_starting_with(messages, "tool call ")
+    assert tool_call_line == (
+        f"tool call id=c1 name=lookup args={redact_value(_SENTINEL_ARGUMENTS)}"
+    )
+
+    tool_result_line = _log_line_starting_with(messages, "tool result ")
+    assert tool_result_line == (
+        f"tool result id=c1 is_error=False content={redact_value(_SENTINEL_OUTPUT)}"
+    )
+
+
+async def test_debug_logs_still_carry_the_identifiers_needed_to_correlate_a_call():
+    """Redacting payloads must not cost the ids, names and flags used for debugging."""
+    emitter = RecordingEmitter()
+    context = make_context()
+    tools = StubToolRegistry({"lookup": lambda args: "ok"})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient(
+        [
+            tool_chunks("call-42", "lookup", "{}"),
+            text_chunks("done"),
+        ]
+    )
+
+    with capture_logs_at("DEBUG") as messages:
+        await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    log_text = "\n".join(messages)
+    assert "tool call id=call-42 name=lookup" in log_text
+    assert "tool result id=call-42 is_error=False" in log_text
+    assert "correlation_id=test-corr" in log_text
+
+
+async def test_no_payload_log_lines_are_emitted_below_debug_level():
+    """At INFO the three payload-carrying lines are not logged at all."""
+    emitter = RecordingEmitter()
+    context = make_context(messages=[{"role": "user", "content": "hello"}])
+    tools = StubToolRegistry({"lookup": lambda args: "ok"})
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "lookup", '{"query": "x"}'),
+            text_chunks("done"),
+        ]
+    )
+
+    with capture_logs_at("INFO") as messages:
+        result = await DefaultAgentLoop(llm).run(context, tools, emitter, stop)
+
+    assert result.final_text == "done"
+    assert not [
+        message
+        for message in messages
+        if message.startswith(("loop iter=", "tool call ", "tool result "))
+    ]
