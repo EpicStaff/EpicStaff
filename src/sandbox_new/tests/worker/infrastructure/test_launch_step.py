@@ -154,6 +154,34 @@ async def test_a_child_that_cannot_be_killed_is_reported_as_possibly_still_runni
     assert process.kill_calls == 1
 
 
+@pytest.mark.parametrize(
+    ("source", "timeout", "returncode", "timed_out"),
+    [
+        ("print('ok')\n", None, 0, False),
+        ("import sys\nsys.exit(3)\n", None, 3, False),
+        ("import time\ntime.sleep(30)\n", 0.2, 124, True),
+    ],
+    ids=["success", "code-failed", "timed-out"],
+)
+async def test_the_child_logs_exec_launched_and_exec_exited(
+    tmp_path, checkpoints, source, timeout, returncode, timed_out
+):
+    context = launchable(tmp_path, source, execution_id="exec-9", session_id=4, timeout=timeout)
+
+    await LaunchStep(default_timeout=30, min_timeout=0, max_timeout=None)(context)
+
+    assert checkpoints == [
+        {"checkpoint": "exec_launched", "session_id": 4, "execution_id": "exec-9"},
+        {
+            "checkpoint": "exec_exited",
+            "session_id": 4,
+            "execution_id": "exec-9",
+            "returncode": returncode,
+            "timed_out": timed_out,
+        },
+    ]
+
+
 def test_argv_without_isolation_runs_the_child_directly():
     argv = LaunchStep._build_argv(
         isolation=make_isolation_plan(),

@@ -15,6 +15,9 @@ LOG_LEVEL = env.log_level("KNOWLEDGE_LOG_LEVEL")
 
 MAX_PROCESS_WORKERS = env.int("KNOWLEDGE_MAX_PROCESS_WORKERS")
 
+# Wall-clock bound per call offloaded to the process pool; None means unbounded.
+PROCESS_TIMEOUT = env.time("KNOWLEDGE_PROCESS_TIMEOUT")
+
 DATABASE_DNS = env.dns(
     "postgresql+psycopg",
     "DB_HOST",

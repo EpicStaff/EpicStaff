@@ -1,0 +1,62 @@
+<div class="needed">
+    @for (setting of settings(); track setting.key) {
+        <div
+            class="needed__field"
+            [attr.data-setting-key]="setting.key"
+        >
+            @switch (setting.type) {
+                @case ('boolean') {
+                    <app-toggle-switch
+                        [label]="setting.label"
+                        [required]="true"
+                        [ariaLabel]="setting.label"
+                        [formControl]="control(setting.key)"
+                    />
+                }
+                @case ('enum') {
+                    <app-select
+                        placeholder="Choose a value"
+                        [label]="setting.label"
+                        [required]="true"
+                        [formControl]="control(setting.key)"
+                        [items]="enumItems(setting)"
+                    />
+                }
+                @case ('text') {
+                    <app-textarea
+                        [label]="setting.label"
+                        [required]="true"
+                        [formControl]="control(setting.key)"
+                        [rows]="3"
+                    />
+                }
+                @case ('secret') {
+                    <app-custom-input
+                        type="password"
+                        autocomplete="new-password"
+                        [label]="setting.label"
+                        [required]="true"
+                        [id]="fieldId(setting)"
+                        [formControl]="control(setting.key)"
+                    />
+                }
+                @default {
+                    <app-custom-input
+                        [label]="setting.label"
+                        [required]="true"
+                        [id]="fieldId(setting)"
+                        [placeholder]="setting.type === 'url' ? 'https://' : ''"
+                        [errorMessage]="problem(setting)"
+                        [formControl]="control(setting.key)"
+                    />
+                }
+            }
+            <p class="needed__muted text-body-small">
+                <code>{{ setting.key }}</code> · {{ reasonText(setting) }}
+                @if (setting.description) {
+                    {{ setting.description }}
+                }
+            </p>
+        </div>
+    }
+</div>

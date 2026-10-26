@@ -10,7 +10,6 @@ from rbac.authorship import (
     resolve_author,
     user_summaries_by_id,
 )
-from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedResolverMixin
 from rest_framework import status
@@ -113,7 +112,9 @@ def _transfer_response(from_path: str, to_path: str, recycle_bin_purged: list[di
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
-    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    # Authenticates with the project defaults, so every credential the API accepts
+    # (plugin service accounts included) reaches storage under its own permissions.
+    # The upload stream app authenticates with this view's classes too.
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FILES
     rbac_action_map = {

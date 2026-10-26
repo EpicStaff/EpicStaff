@@ -1,0 +1,14 @@
+# For .github/scripts/plugin_platform_e2e.sh only, on top of src/docker-compose.yaml. That file
+# declares four volumes external: on a developer's machine they hold EpicStaff's own database,
+# media, sandbox environments and audit index. Here they become volumes of the run's own Compose
+# project, created empty and removed by its `down -v`, so a run never mounts or writes a
+# developer's data, and needs none of them to exist on a CI runner.
+volumes:
+  crew_pgdata:
+    external: false
+  media_data:
+    external: false
+  sandbox_venvs:
+    external: false
+  opensearch_data:
+    external: false

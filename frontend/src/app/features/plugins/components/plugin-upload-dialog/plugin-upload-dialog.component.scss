@@ -1,0 +1,39 @@
+@use '../plugin-dialog' as plugin-dialog;
+
+@include plugin-dialog.plugin-dialog(560px);
+
+.upload__file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.upload__file-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.upload__file-size {
+    color: var(--color-text-secondary);
+}
+
+.upload__progress {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--transparent-white-8);
+    overflow: hidden;
+}
+
+.upload__progress-bar {
+    height: 100%;
+    background: var(--accent-color);
+    transition: width 0.2s ease;
+
+    &--unknown {
+        opacity: 0.5;
+    }
+}

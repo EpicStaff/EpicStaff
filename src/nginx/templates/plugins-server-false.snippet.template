@@ -1,0 +1,2 @@
+# PLUGINS_ENABLED=false: no plugin host server. A request for a plugin host name reaches
+# EpicStaff's own server, the default one.

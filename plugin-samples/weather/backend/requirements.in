@@ -1,0 +1,18 @@
+# What the Weather backend installs. Compile the hash-pinned lock from it, from
+# plugin-samples/weather/:
+#
+#   uv pip compile backend/requirements.in --universal --python-version 3.13 --generate-hashes -o backend/requirements.lock
+#
+# The backend runs with `python -m epicstaff_plugin.serve`, which needs uvicorn.
+fastapi
+uvicorn
+# Weather's own database (DATABASE_URL), with a connection pool.
+psycopg[binary,pool]
+# epicstaff-plugin itself is not on an index yet: `epicstaff-plugin pack --local-wheel` adds
+# the SDK wheel to the packaged lock. Its own requirements are listed here so the lock pins
+# them; pack refuses a lock that misses one.
+cryptography>=50
+httpx>=0.28,<1
+packaging>=24
+pydantic>=2.13,<3
+pyjwt>=2.10,<3

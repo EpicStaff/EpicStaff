@@ -11,7 +11,10 @@ start with "_"). Checkpoint names and fields are a contract with whatever reads 
 change one only together with its reader:
 django_app request_received, session_created, published; crew received, slot_acquired, compiled,
 node_start, node_end, agent_dispatched, sandbox_dispatched, session_end; agent request_consumed,
-llm_start, llm_end, sandbox_dispatched, result_published; sandbox exec_start, exec_end.
+llm_start, llm_end, sandbox_dispatched, result_published; sandbox exec_start, exec_end;
+sandbox_new exec_received, exec_held (venv_id), exec_queued (queued), exec_start (running),
+exec_launched, exec_exited (returncode, timed_out), exec_end (returncode), exec_published
+(outcome: ok, failed, venv_failed or dispatch_failed).
 """
 
 import json

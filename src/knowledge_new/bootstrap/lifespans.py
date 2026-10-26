@@ -1,17 +1,18 @@
-import sys
 from collections import defaultdict
 from collections.abc import Callable
-from concurrent.futures import ProcessPoolExecutor
 from importlib import import_module
 from typing import Literal
 
-import settings
 from infrastructure.graphrag.availability import (
     detect_graphrag_availability,
     is_graphrag_available,
 )
 from infrastructure.naive.chunkers.strategies.token_chunker import load_gpt2_tokenizer
-from infrastructure.processing_run import set_process_pool
+from infrastructure.processing_run import (
+    create_process_pool,
+    get_process_pool,
+    set_process_pool,
+)
 from infrastructure.token_estimation import warm_up_token_counter
 from loguru import logger
 
@@ -45,16 +46,20 @@ def on_shutdown(fn: Callable):
 
 
 @on_startup
-def configure_logging():
-    # loguru's default handler prints every frame's variable values in tracebacks,
-    # which writes the caller's provider keys to the log whenever an embedder call fails.
-    logger.configure(handlers=[{"sink": sys.stderr, "diagnose": False}])
-
-
-@on_startup
 def init_process_pool():
-    process_pool = ProcessPoolExecutor(settings.MAX_PROCESS_WORKERS)
-    set_process_pool(process_pool)
+    set_process_pool(create_process_pool())
+
+
+@on_shutdown
+def close_process_pool():
+    # stop, not close: close would let a running extraction hold shutdown for up
+    # to KNOWLEDGE_PROCESS_TIMEOUT.
+    # Accepted: with no pool, an extraction reached during shutdown runs inline on the
+    # event loop, bounded only by the container stop grace period.
+    if (process_pool := get_process_pool()) is not None:
+        set_process_pool(None)
+        process_pool.stop()
+        process_pool.join()
 
 
 @on_startup

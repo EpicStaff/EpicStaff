@@ -53,12 +53,8 @@ AUDIT_TRAIL_ENABLED = env.bool("AUDIT_TRAIL_ENABLED")
 AUDITOR_URL = env.str("AUDITOR_URL")
 AUDITOR_INGEST_API_KEY = env.str("AUDITOR_INGEST_API_KEY")
 
-# optional run-level token budget hard stop.
-# Global fallback used when a session does not carry a per-run override
-# (see GraphSessionManagerService.run_session / SessionData.initial_state
-# reserved key "__token_budget__"). None (default) means "no limit" —
-# the feature is fully inert unless TOKEN_BUDGET is set or a run explicitly
-# opts in, so existing runs are byte-for-byte unchanged.
+# Run-level token hard stop for sessions whose SessionData.token_budget is None.
+# CREW_TOKEN_BUDGET=0 means no limit.
 DEFAULT_TOKEN_BUDGET = env.int("CREW_TOKEN_BUDGET") or None
 
 DJANGO_HOST = env.str("DJANGO_HOST")

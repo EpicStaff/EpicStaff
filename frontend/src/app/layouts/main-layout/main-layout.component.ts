@@ -22,6 +22,7 @@ import { filter } from 'rxjs/operators';
 
 import { AppNavigationDrawerService, HIDE_SIDENAV_ON_PHONE } from '../../core/services/app-navigation-drawer.service';
 import { PhoneLayoutService } from '../../core/services/phone-layout.service';
+import { AppReturnUrlService } from '../../features/plugins/services/app-return-url.service';
 import { QuickStartTourService } from '../../features/quick-start-tour/quick-start-tour.service';
 import { ProfileService } from '../../services/auth/profile.service';
 import { LastVisitedTabService } from '../../services/last-visited-tab.service';
@@ -145,6 +146,7 @@ const TABBED_ROUTES: Record<string, string[]> = {
         >
             <app-left-sidebar
                 [width]="sidenavWidth()"
+                [inDrawer]="isSidenavDrawer()"
                 (expandedToggle)="toggleSidenav()"
             ></app-left-sidebar>
             <div
@@ -229,12 +231,15 @@ export class MainLayoutComponent implements OnInit {
     private lastVisitedTabService = inject(LastVisitedTabService);
     private readonly profileService = inject(ProfileService);
     private readonly quickStartTourService = inject(QuickStartTourService);
+    private readonly appReturnUrl = inject(AppReturnUrlService);
     private readonly injector = inject(Injector);
     // The page shown, without its query: a navigation that changes only the query (a page's own state) stays on it.
     private shownPath = urlPath(this.router.url);
 
     ngOnInit(): void {
         this.destroyRef.onDestroy(() => this.quickStartTourService.stop());
+        // The page this layout opened with: its navigation ended before the subscription below.
+        this.recordReturnUrl(this.router.url);
 
         this.router.events
             .pipe(
@@ -247,6 +252,8 @@ export class MainLayoutComponent implements OnInit {
                 const url = e.urlAfterRedirects;
                 if (urlPath(url) !== this.shownPath) this.navigationDrawer.close();
                 this.shownPath = urlPath(url);
+                // Only pages in this layout get here (it is gone on the sign-in and organization chooser pages).
+                this.recordReturnUrl(url);
                 this.routeHidesSidenavOnPhone.set(routeTreeHidesSidenav(this.router.routerState.snapshot.root));
                 for (const [parent, tabs] of Object.entries(TABBED_ROUTES)) {
                     if (tabs.includes(url)) {
@@ -271,6 +278,17 @@ export class MainLayoutComponent implements OnInit {
     /** The sidenav's open/close control: the layout owns the width, so it applies and persists the change. */
     protected toggleSidenav(): void {
         this.sidebarWidthService.toggleCollapsed(MAIN_SIDENAV_WIDTH_KEY, MAIN_SIDENAV_WIDTH_OPTIONS);
+    }
+
+    /**
+     * Hands the page shown to the service that keeps EpicStaff's own, for "Back to EpicStaff" from an app, unless the
+     * navigation that showed it left the address as it was: the hidden visit to `/profile` that reloads the page on an
+     * organization switch or a refused request is no page the user went to. That navigation is the last successful one
+     * both at its `NavigationEnd` and when it opens this layout (whose `ngOnInit` runs after it ended).
+     */
+    private recordReturnUrl(url: string): void {
+        if (this.router.lastSuccessfulNavigation()?.extras.skipLocationChange) return;
+        this.appReturnUrl.record(url);
     }
 }
 

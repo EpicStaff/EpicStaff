@@ -19,6 +19,7 @@ import { finalize } from 'rxjs/operators';
 
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ToastService } from '../../../../services/notifications';
+import { POST_LOGIN_STEP } from './post-login-step';
 
 const REMEMBER_ME_STORAGE_KEY = 'auth.rememberMe';
 // Shown when a 429 carries no readable Retry-After and no server message, so a throttled login is never silent.
@@ -45,6 +46,7 @@ export class LoginPageComponent implements OnInit {
     private readonly route = inject(ActivatedRoute);
     private readonly destroyRef = inject(DestroyRef);
     private readonly toast = inject(ToastService);
+    private readonly postLoginStep = inject(POST_LOGIN_STEP, { optional: true });
 
     readonly serverErrorsRef = new ServerErrorsRef();
 
@@ -59,6 +61,8 @@ export class LoginPageComponent implements OnInit {
 
     readonly loading = signal(false);
     readonly throttleSecondsLeft = signal(0);
+    /** Off when a hosting page continues after the login: inside a plugin's frame they would navigate away. */
+    protected readonly showAccountLinks = this.postLoginStep === null;
 
     private throttleCountdown: Subscription | null = null;
 
@@ -93,6 +97,10 @@ export class LoginPageComponent implements OnInit {
             )
             .subscribe({
                 next: () => {
+                    if (this.postLoginStep) {
+                        this.postLoginStep.continueAfterLogin();
+                        return;
+                    }
                     const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') || '/';
                     void this.router.navigateByUrl(returnUrl);
                 },

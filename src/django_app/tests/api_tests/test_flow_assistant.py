@@ -29,6 +29,7 @@ from tables.models.flow_assistant_models import (
 from tables.services.flow_assistant import FlowAssistantService
 from tables.services.llm_clients.base import (
     DoneEvent,
+    LLMProviderError,
     TokenEvent,
     ToolCallEvent,
 )
@@ -3200,4 +3201,231 @@ async def test_stream_reply_truncated_by_length_still_emits_structured_event(
     assert len(structured_events) == 1
     assert structured_events[0].message == "Partial answer"
     assert structured_events[0].ef_tables == []
+    assert events[-1].type == "done"
+
+
+# ── Provider error handling ──────────────────────────────────────────────────
+
+GROQ_MESSAGE = "attempted to call tool 'json' which was not in request.tools"
+
+
+def _tool_use_failed():
+    return LLMProviderError(provider="groq", code="tool_use_failed", message=GROQ_MESSAGE)
+
+
+async def _collect_view_frames(graph, conversation, user_a, fake_stream, fake_redis=None):
+    import fakeredis
+    from asgiref.sync import ThreadSensitiveContext
+
+    from tables.views.flow_assistant_views import FlowAssistantStreamView
+
+    view = FlowAssistantStreamView()
+    view.user = user_a
+    view.kwargs = {"graph_id": graph.id, "conversation_id": conversation.pk}
+
+    fake_redis = fake_redis or fakeredis.FakeRedis(decode_responses=False)
+    with (
+        patch("tables.services.flow_assistant.service.get_llm_client") as mock_get_client,
+        patch("tables.services.flow_assistant.helpers.RedisService") as MockRedisService,
+    ):
+        mock_client = MagicMock()
+        mock_client.stream_completion = fake_stream
+        mock_get_client.return_value = mock_client
+        MockRedisService.return_value = MagicMock(redis_client=fake_redis)
+
+        async with ThreadSensitiveContext():
+            assert await view.authorize(request=None) is None
+            return [frame async for frame in view.get_live_updates(pubsub=None)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_provider_message_outside_the_allow_list_is_hidden(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, "hi"
+    )
+    key_echo = "Incorrect API key provided: gsk_abc***xyz"
+
+    async def fake_stream(messages, tools):
+        raise LLMProviderError(provider="groq", code="invalid_api_key", message=key_echo)
+        yield  # pragma: no cover
+
+    frames = await _collect_view_frames(graph, conversation, user_a, fake_stream)
+
+    assert [frame["event"] for frame in frames] == ["error"]
+    assert frames[0]["data"]["detail"] == (
+        "The model provider rejected the request (groq: invalid_api_key). "
+        "Check the LLM configuration or contact an admin."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_provider_error_without_code_is_hidden(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, "hi"
+    )
+
+    async def fake_stream(messages, tools):
+        raise LLMProviderError(provider="groq", code=None, message=GROQ_MESSAGE)
+        yield  # pragma: no cover
+
+    frames = await _collect_view_frames(graph, conversation, user_a, fake_stream)
+
+    assert frames[0]["data"]["detail"] == (
+        "The model provider rejected the request (groq). "
+        "Check the LLM configuration or contact an admin."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_tool_use_failed_before_any_output_is_retried_once(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    user_message = "show me the nodes"
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, user_message
+    )
+    calls = []
+
+    async def fake_stream(messages, tools):
+        calls.append(1)
+        if len(calls) == 1:
+            raise _tool_use_failed()
+        yield TokenEvent(content='{"message": "Second try works"}')
+        yield DoneEvent()
+
+    events = await _collect_stream_reply_events(conversation, user_message, fake_stream)
+
+    assert len(calls) == 2
+    assert [e.message for e in events if e.type == "structured"] == ["Second try works"]
+    assert [e.content for e in events if e.type == "token"] == ["Second try works"]
+    assert events[-1].type == "done"
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_tool_use_failed_twice_ends_in_an_error_frame(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, "hi"
+    )
+    calls = []
+
+    async def fake_stream(messages, tools):
+        calls.append(1)
+        raise _tool_use_failed()
+        yield  # pragma: no cover
+
+    frames = await _collect_view_frames(graph, conversation, user_a, fake_stream)
+
+    assert len(calls) == 2
+    assert [frame["event"] for frame in frames] == ["error"]
+    assert GROQ_MESSAGE in frames[0]["data"]["detail"]
+    assert frames[0]["data"]["detail"].endswith("Try again.")
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_tool_use_failed_after_output_was_sent_is_not_retried(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    user_message = "hi"
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, user_message
+    )
+    calls = []
+
+    async def fake_stream(messages, tools):
+        calls.append(1)
+        yield TokenEvent(content="partial")
+        raise _tool_use_failed()
+
+    with pytest.raises(LLMProviderError):
+        await _collect_stream_reply_events(conversation, user_message, fake_stream)
+
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_non_retryable_provider_error_is_not_retried(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, "hi"
+    )
+    calls = []
+
+    async def fake_stream(messages, tools):
+        calls.append(1)
+        raise LLMProviderError(provider="groq", code="rate_limit_exceeded", message="Slow down")
+        yield  # pragma: no cover
+
+    frames = await _collect_view_frames(graph, conversation, user_a, fake_stream)
+
+    assert len(calls) == 1
+    assert frames[0]["data"]["detail"] == (
+        "The model provider returned an error (groq: rate_limit_exceeded): Slow down"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_tool_use_failed_is_not_retried_once_the_user_cancelled(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    import fakeredis
+
+    from tables.services.flow_assistant.helpers import _CANCEL_KEY
+
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, "hi"
+    )
+    fake_redis = fakeredis.FakeRedis(decode_responses=False)
+    calls = []
+
+    async def fake_stream(messages, tools):
+        calls.append(1)
+        fake_redis.set(_CANCEL_KEY.format(conv_id=conversation.pk), b"1")
+        raise _tool_use_failed()
+        yield  # pragma: no cover
+
+    await _collect_view_frames(graph, conversation, user_a, fake_stream, fake_redis=fake_redis)
+
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_tool_use_failed_after_a_tool_call_is_retried(
+    graph, llm_config, user_a, org_a, default_role, db
+):
+    user_message = "Tell me about this flow"
+    conversation = await _create_conversation_for_stream(
+        graph, llm_config, user_a, org_a, default_role, user_message
+    )
+    calls = []
+
+    async def fake_stream(messages, tools):
+        calls.append(1)
+        if len(calls) == 1:
+            yield ToolCallEvent(id="call_1", name="get_flow_overview", args={})
+            yield DoneEvent()
+        elif len(calls) == 2:
+            raise _tool_use_failed()
+        else:
+            yield TokenEvent(content='{"message": "Here is the flow"}')
+            yield DoneEvent()
+
+    events = await _collect_stream_reply_events(conversation, user_message, fake_stream)
+
+    assert len(calls) == 3
+    assert [e.message for e in events if e.type == "structured"] == ["Here is the flow"]
     assert events[-1].type == "done"

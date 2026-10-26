@@ -12,7 +12,7 @@ from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.identity.passwords.token_repository import PasswordResetTokenRepository
-from rbac.identity.refresh_cookie import REFRESH_COOKIE_NAME
+from rbac.identity.refresh_cookie import refresh_cookie_name
 
 ORIGINAL_PASSWORD = "UserStrongPass123!"
 NEW_PASSWORD = "BrandNewPass456!"
@@ -36,7 +36,7 @@ def _logged_in_and_rotated(user) -> tuple[APIClient, str]:
 def _assert_session_dead(client: APIClient, access: str) -> None:
     refresh = client.post(reverse("refresh"))
     assert refresh.status_code == 401
-    assert refresh.cookies[REFRESH_COOKIE_NAME].value == ""
+    assert refresh.cookies[refresh_cookie_name()].value == ""
 
     bearer = APIClient()
     bearer.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
@@ -58,6 +58,7 @@ def _reset_by_admin(user, superadmin_user):
     )
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 @pytest.mark.parametrize(("reset", "status_code"), [(_reset_by_link, 200), (_reset_by_admin, 204)], ids=["reset-link", "admin-reset"])
 def test_a_password_reset_kills_a_rotated_session(regular_user, superadmin_user, reset, status_code):
@@ -67,6 +68,7 @@ def test_a_password_reset_kills_a_rotated_session(regular_user, superadmin_user,
     _assert_session_dead(session, access)
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_password_change_kills_other_sessions_and_keeps_the_fresh_pair(regular_user):
     other_session, other_access = _logged_in_and_rotated(regular_user)
@@ -94,6 +96,7 @@ def test_password_change_kills_other_sessions_and_keeps_the_fresh_pair(regular_u
     assert own_session.post(reverse("refresh")).status_code == 200
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_token_without_password_claim_is_rejected(regular_user):
     """Sessions minted before the binding was enabled must not survive it."""
@@ -105,19 +108,20 @@ def test_token_without_password_claim_is_rejected(regular_user):
     assert bearer.get(PROFILE_URL).status_code == 401
 
     cookie_client = APIClient()
-    cookie_client.cookies[REFRESH_COOKIE_NAME] = str(refresh)
+    cookie_client.cookies[refresh_cookie_name()] = str(refresh)
     response = cookie_client.post(reverse("refresh"))
     assert response.status_code == 401
-    assert response.cookies[REFRESH_COOKIE_NAME].value == ""
+    assert response.cookies[refresh_cookie_name()].value == ""
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_refresh_for_a_deleted_user_is_rejected(regular_user):
     refresh = str(RefreshToken.for_user(regular_user))
     regular_user.delete()
 
     client = APIClient()
-    client.cookies[REFRESH_COOKIE_NAME] = refresh
+    client.cookies[refresh_cookie_name()] = refresh
     assert client.post(reverse("refresh")).status_code == 401
 
 
@@ -169,6 +173,7 @@ def test_introspect_reports_unusable_tokens_inactive_and_nothing_else(regular_us
     assert _introspect(system_raw_key, spoil(regular_user, token)) == {"active": False}
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_refresh_for_a_deactivated_user_is_rejected_and_clears_the_cookie(regular_user):
     session, _access = _logged_in_and_rotated(regular_user)
@@ -179,4 +184,4 @@ def test_refresh_for_a_deactivated_user_is_rejected_and_clears_the_cookie(regula
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Token is invalid or expired."}
-    assert response.cookies[REFRESH_COOKIE_NAME].value == ""
+    assert response.cookies[refresh_cookie_name()].value == ""
