@@ -64,6 +64,7 @@ import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classificatio
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
+import { UnusedNodesBarComponent } from '../components/unused-nodes-bar/unused-nodes-bar.component';
 import { HideOverflowingChildrenDirective } from '../core/directives/hide-overflowing-children.directive';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
@@ -157,6 +158,7 @@ const IMPORT_GAP_PX = 200;
         MouseTrackerDirective,
         FlowGraphContextMenuComponent,
         FlowActionPanelComponent,
+        UnusedNodesBarComponent,
         NodesSearchComponent,
         NodePanelShellComponent,
         FlowShortcutsButtonComponent,
@@ -300,6 +302,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.flowSettings.highlightUnusedNodes()
             ? findUnusedNodeIds(this.flowService.nodes(), this.flowService.connections())
             : new Set()
+    );
+
+    /** Left to right, then top to bottom — the order the unused-nodes bar steps through them. */
+    protected readonly unusedNodesInCanvasOrder = computed(() =>
+        this.flowService
+            .nodes()
+            .filter((node) => this.unusedNodeIds().has(node.id))
+            .sort((first, second) => first.position.x - second.position.x || first.position.y - second.position.y)
     );
 
     protected getMinimapClasses(node: NodeModel): string[] {
