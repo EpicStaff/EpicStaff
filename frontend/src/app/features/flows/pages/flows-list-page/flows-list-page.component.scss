@@ -1,4 +1,5 @@
 @use '../../../../../styles/header-layout' as header;
+@use '../../../../../styles/a11y-mixins' as a11y;
 
 .flows-list-page {
     @include header.headerLayout();
@@ -338,4 +339,32 @@
             background: var(--color-ghost-btn-active);
         }
     }
+}
+
+// Import and Export shrink with the header like its app-buttons do, down to the icon alone: collapse-on-overflow
+// sets `.btn--icon-only` once the label no longer fits. The hidden label stays the button's accessible name.
+.import-group,
+.export-group {
+    &__main {
+        position: relative;
+        min-width: 0;
+
+        .btn-label {
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        &.btn--icon-only {
+            padding: 0 0.6rem;
+
+            .btn-label {
+                @include a11y.visually-hidden;
+            }
+        }
+    }
+}
+
+.import-group__cog {
+    flex-shrink: 0;
 }
