@@ -11,7 +11,7 @@ import asyncio
 import math
 import random
 from asyncio import sleep
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from time import monotonic
 from urllib.parse import quote
 
@@ -84,7 +84,12 @@ class SandboxClient(AsyncClient):
         super().__init__(**httpx_options)
         self.queue_timeout = queue_timeout
 
-    async def submit(self, request: ExecutionRequest) -> None:
+    async def submit(
+        self,
+        request: ExecutionRequest,
+        *,
+        on_rejected: Callable[[int, float], None] | None = None,
+    ) -> None:
         """Hand an execution to the sandbox, retrying while it is full or unreachable.
 
         Every retry re-posts the same `execution_id`, which the sandbox treats as the
@@ -93,6 +98,11 @@ class SandboxClient(AsyncClient):
         that moment may still finish, so the call can outlast the budget by one request
         timeout. When that last attempt went unanswered, the sandbox is asked once whether
         it has the execution after all before the submission counts as failed.
+
+        Args:
+            on_rejected: Called each time the sandbox answered 503 and a retry is
+                scheduled -- never when the budget is spent -- with the retry's number,
+                counting every retry from 1, and the seconds it waits first.
 
         Raises:
             SandboxOverloadedError: The sandbox was still full when the budget ran out.
@@ -129,8 +139,11 @@ class SandboxClient(AsyncClient):
                 ):
                     return
                 raise failure
-            await sleep(min(max(requested_wait, _backoff_seconds(attempt)), remaining))
+            delay = min(max(requested_wait, _backoff_seconds(attempt)), remaining)
             attempt += 1
+            if on_rejected is not None and isinstance(failure, SandboxOverloadedError):
+                on_rejected(attempt, delay)
+            await sleep(delay)
 
     async def status(self, execution_id: str) -> str:
         """Return the sandbox's status for an execution it still knows.

@@ -82,6 +82,8 @@ class ExecutionResultMessage(Schema):
     ran: bool = False
     # The next two only feed the publisher's BENCH checkpoint; neither is published.
     session_id: int | None = None
-    # Set only on a result for a job that never ran. Spelled out rather than imported from
-    # manager.domain.types: this module must not depend on either side of the seam.
-    not_run_reason: Literal["venv_failed", "dispatch_failed"] | None = None
+    # Set only on a result for a job that never ran: "venv_failed" and "dispatch_failed"
+    # from the manager, "overloaded" from the worker for a job that expired in its queue.
+    # Spelled out rather than imported: this module must not depend on either side of the
+    # seam.
+    not_run_reason: Literal["venv_failed", "dispatch_failed", "overloaded"] | None = None

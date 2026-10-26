@@ -18,7 +18,7 @@ import settings
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
 from services.run_python_code_service import STOP_CHECK_INTERVAL_S, RunPythonCodeService
-from tests.services.conftest import SANDBOX_BASE_URL
+from tests.services.conftest import REJECTED_RETRY_AFTER_S, SANDBOX_BASE_URL
 
 pytestmark = pytest.mark.asyncio
 
@@ -119,3 +119,68 @@ async def test_a_stop_while_the_sandbox_stays_full_cancels_the_retrying_submit(
 
     assert interrupted_after < STOP_CHECK_INTERVAL_S + 0.25
     assert len(sandbox.tasks) == attempts_at_stop
+
+
+def of_type(checkpoints: list[dict], name: str) -> list[dict]:
+    return [item for item in checkpoints if item["checkpoint"] == name]
+
+
+async def test_a_503_followed_by_a_retry_is_logged_as_sandbox_rejected(
+    pubsub, sandbox, make_python_code_data, checkpoints, monkeypatch
+):
+    # The jittered backoff stays under Retry-After, so the logged wait is exactly it.
+    monkeypatch.setattr(sandbox_client_module, "BACKOFF_CAP_SECONDS", 0.001)
+    sandbox.rejections_left = 1
+    sandbox.auto_reply = True
+    service = RunPythonCodeService(
+        redis_service=pubsub,
+        sandbox_client=SandboxClient(
+            queue_timeout=60,
+            base_url=SANDBOX_BASE_URL,
+            transport=httpx.MockTransport(sandbox.handle),
+        ),
+    )
+    await service.subscribe_to_results()
+
+    result = await asyncio.wait_for(
+        service.run_code(python_code_data=make_python_code_data(session_id=5), inputs={}),
+        timeout=5,
+    )
+
+    assert result["returncode"] == 0
+    assert of_type(checkpoints, "sandbox_rejected") == [
+        {
+            "checkpoint": "sandbox_rejected",
+            "session_id": 5,
+            "execution_id": sandbox.tasks[0]["execution_id"],
+            "attempt": 1,
+            "retry_after_s": REJECTED_RETRY_AFTER_S,
+        }
+    ]
+
+
+async def test_an_execution_the_sandbox_lost_is_logged_as_sandbox_lost(
+    run_python_code_service,
+    sandbox,
+    make_python_code_data,
+    fast_status_checks,
+    checkpoints,
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "CODE_RESULT_TIMEOUT", None)
+    sandbox.loses_executions = True
+
+    await asyncio.wait_for(
+        run_python_code_service.run_code(
+            python_code_data=make_python_code_data(session_id=5), inputs={}
+        ),
+        timeout=5,
+    )
+
+    assert of_type(checkpoints, "sandbox_lost") == [
+        {
+            "checkpoint": "sandbox_lost",
+            "session_id": 5,
+            "execution_id": sandbox.submitted["execution_id"],
+        }
+    ]

@@ -1,12 +1,14 @@
 import asyncio
 import uuid
 from collections.abc import Awaitable
+from functools import partial
 from typing import Any
 
 import settings
 from foundation.clients.sandbox import (
     ExecutionRequest,
     SandboxClient,
+    SandboxExecutionLostError,
     SandboxResultTimeoutError,
 )
 from foundation.transport.http import ClientError
@@ -118,7 +120,11 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         self._pending_results[execution_id] = result_future
         try:
             # A full sandbox is retried for up to its queue timeout; a stop must not wait that out.
-            await _until_stopped(self.sandbox_client.submit(execution_request), stop_event)
+            submitting = self.sandbox_client.submit(
+                execution_request,
+                on_rejected=partial(_log_rejected, python_code_data.session_id, execution_id),
+            )
+            await _until_stopped(submitting, stop_event)
             logger.log(
                 BENCH_LEVEL,
                 "bench {checkpoint}",
@@ -140,6 +146,14 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             )
             return _failed_result(execution_id, TIMEOUT_RETURNCODE, TIMEOUT_STDERR_MESSAGE)
         except ClientError as error:
+            if isinstance(error, SandboxExecutionLostError):
+                logger.log(
+                    BENCH_LEVEL,
+                    "bench {checkpoint}",
+                    checkpoint="sandbox_lost",
+                    session_id=python_code_data.session_id,
+                    execution_id=execution_id,
+                )
             # The class name only: the message is for the user, who gets it as stderr.
             logger.error("Code execution {} failed ({})", execution_id, type(error).__name__)
             return _failed_result(execution_id, 1, str(error))
@@ -174,6 +188,20 @@ async def _until_stopped[T](awaitable: Awaitable[T], stop_event: StopEvent | Non
         return task.result()
     finally:
         task.cancel()
+
+
+def _log_rejected(
+    session_id: int | None, execution_id: str, attempt: int, retry_after_s: float
+) -> None:
+    logger.log(
+        BENCH_LEVEL,
+        "bench {checkpoint}",
+        checkpoint="sandbox_rejected",
+        session_id=session_id,
+        execution_id=execution_id,
+        attempt=attempt,
+        retry_after_s=round(retry_after_s, 3),
+    )
 
 
 def _failed_result(execution_id: str, returncode: int, stderr: str) -> dict[str, Any]:

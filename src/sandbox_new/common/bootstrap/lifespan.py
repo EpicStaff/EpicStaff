@@ -3,9 +3,9 @@
 The manager and worker are one process today, bridged by two in-memory queues. This
 module is the single place that owns that bridge: it creates the queues, builds the
 transports over them, and starts the background runners (worker job consumer, result
-consumer, held-job releaser, admission gate). Splitting the two services later --
-replacing the queues with a network transport -- is a change confined to this file; no
-application or domain code moves. The one exception is the queue deadline, a
+consumer, held-job releaser, admission gate, gate sampler). Splitting the two services
+later -- replacing the queues with a network transport -- is a change confined to this
+file; no application or domain code moves. The one exception is the queue deadline, a
 monotonic-clock reading that only means something inside this one process.
 
 The job-intake singletons the request path needs are published on ``app.state`` so
@@ -39,6 +39,7 @@ from manager.presentation.held_job_releaser import HeldJobReleaser
 from redis.asyncio import Redis
 from worker.bootstrap.di import build_admission_gate, build_job_consumer
 
+from common.bootstrap.gate_sampler import GateSampler
 from common.contracts import ExecutionJobMessage, ExecutionResultMessage
 
 __all__ = ["JobIntake", "supervise"]
@@ -154,6 +155,7 @@ async def start_runtime(app: Litestar) -> None:
             ),
             interval=_RELEASE_INTERVAL_SECONDS,
         ),
+        "gate sampler": GateSampler(registry, intake_gate, admission_gate),
     }
     app.state.runtime_tasks = []
     for name, runner in runners.items():

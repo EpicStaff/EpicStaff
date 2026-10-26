@@ -149,18 +149,29 @@ async def test_the_crew_reply_flag_is_encoded_back_onto_the_wire_result():
     assert queue.get_nowait().reply_to_crew_channel is True
 
 
-async def test_a_wire_job_that_does_not_decode_raises_with_what_is_needed_to_fail_it():
+@pytest.mark.parametrize(
+    ("wire_fields", "session_id"),
+    [
+        ({"venv_hash": None, "session_id": 11}, 11),
+        # The session id itself is what does not decode, so it cannot be carried.
+        ({"venv_hash": "1abc", "session_id": "not-a-session"}, None),
+    ],
+    ids=["session-known", "session-undecodable"],
+)
+async def test_a_wire_job_that_does_not_decode_raises_with_what_is_needed_to_fail_it(
+    wire_fields, session_id
+):
     queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
-    # Built without validation: the manager never sends a job without a venv hash, so
-    # this is the drifted contract the source must still answer for.
+    # Built without validation: the manager never sends such a job, so this is the
+    # drifted contract the source must still answer for.
     queue.put_nowait(
         ExecutionJobMessage.model_construct(
             execution_id="exec-1",
-            venv_hash=None,
             code="",
             entrypoint="main",
             secrets={"TOKEN": "s3cret"},
             reply_to_crew_channel=True,
+            **wire_fields,
         )
     )
 
@@ -169,6 +180,7 @@ async def test_a_wire_job_that_does_not_decode_raises_with_what_is_needed_to_fai
 
     assert raised.value.execution_id == "exec-1"
     assert raised.value.reply_to_crew_channel is True
+    assert raised.value.session_id == session_id
     assert "s3cret" not in str(raised.value)
     assert raised.value.__cause__ is None
     assert raised.value.__suppress_context__ is True

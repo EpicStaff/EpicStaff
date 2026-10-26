@@ -173,4 +173,3 @@ def test_only_the_last_twenty_completions_are_kept(registry, clock):
     finish_one_every(registry, clock, 20, 1.0, prefix="fast")
 
     assert registry.drain_rate() == 20 / 19
-

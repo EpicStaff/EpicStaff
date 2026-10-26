@@ -191,3 +191,83 @@ def test_a_drain_that_stalled_refuses_what_it_once_admitted(registry, clock):
         build_gate(registry).admit(will_be_held=False)
 
     assert raised.value.retry_after == 14
+
+
+def test_a_re_post_of_an_id_still_being_admitted_is_refused(registry):
+    registry.reserve("exec-1")
+
+    with pytest.raises(SandboxOverloadedError) as raised:
+        build_gate(registry).check_not_in_progress("exec-1")
+
+    assert raised.value.retry_after == 1
+
+
+def test_a_post_of_an_id_not_being_admitted_passes(registry):
+    registry.reserve("exec-1")
+    registry.mark_queued("exec-1")
+
+    build_gate(registry).check_not_in_progress("exec-1")
+    build_gate(registry).check_not_in_progress("exec-2")
+
+
+def refuse_on_the_cap_before_the_body(gate: IntakeGate, registry, clock) -> None:
+    queue(registry, 1)
+    gate.check_capacity()
+
+
+def refuse_on_the_cap_after_the_body(gate: IntakeGate, registry, clock) -> None:
+    queue(registry, 1)
+    reserve_caller(registry)
+    gate.admit(will_be_held=False)
+
+
+def refuse_on_the_prediction(gate: IntakeGate, registry, clock) -> None:
+    drain_one_per_second(registry, clock)
+    queue(registry, 10)
+    reserve_caller(registry)
+    gate.admit(will_be_held=False)
+
+
+def refuse_on_the_held_cap(gate: IntakeGate, registry, clock) -> None:
+    hold(registry, 1)
+    gate.admit(will_be_held=True)
+
+
+def refuse_a_re_post_in_progress(gate: IntakeGate, registry, clock) -> None:
+    reserve_caller(registry)
+    gate.check_not_in_progress("caller")
+
+
+@pytest.mark.parametrize(
+    ("refuse", "limits", "reason"),
+    [
+        (refuse_on_the_cap_before_the_body, {"max_accepted": 1}, "cap"),
+        (refuse_on_the_cap_after_the_body, {"max_accepted": 1}, "cap"),
+        (refuse_on_the_prediction, {}, "prediction"),
+        (refuse_on_the_held_cap, {"max_held": 1}, "held_cap"),
+        (refuse_a_re_post_in_progress, {}, "in_progress"),
+    ],
+)
+def test_each_refusal_is_counted_by_its_reason_until_the_counts_are_taken(
+    registry, clock, refuse, limits, reason
+):
+    gate = build_gate(registry, **limits)
+    no_refusals = {"cap": 0, "prediction": 0, "held_cap": 0, "in_progress": 0}
+
+    for _ in range(2):
+        with pytest.raises(SandboxOverloadedError):
+            refuse(gate, registry, clock)
+        registry.forget("caller")
+
+    assert gate.take_refusals() == no_refusals | {reason: 2}
+    assert gate.take_refusals() == no_refusals
+
+
+def test_an_admitted_submission_is_not_counted_as_a_refusal(registry):
+    gate = build_gate(registry, free_slot=True)
+    reserve_caller(registry)
+
+    gate.check_capacity()
+    gate.admit(will_be_held=False)
+
+    assert sum(gate.take_refusals().values()) == 0

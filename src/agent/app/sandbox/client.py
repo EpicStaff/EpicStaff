@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
+from functools import partial
 
 import redis.asyncio as aioredis
-from foundation.clients.sandbox import ExecutionRequest
+from foundation.clients.sandbox import ExecutionRequest, SandboxExecutionLostError
 from foundation.clients.sandbox import SandboxClient as SandboxHttpClient
 from loguru import logger
 
@@ -140,7 +141,8 @@ class SandboxClient:
                         else None
                     ),
                     timeout=task.execution_timeout,
-                )
+                ),
+                on_rejected=partial(_log_rejected, task.session_id, execution_id),
             )
             logger.log(
                 BENCH_LEVEL,
@@ -152,7 +154,15 @@ class SandboxClient:
             return await self._http.wait_for_result(
                 execution_id, future, backstop=self._code_result_timeout
             )
-
+        except SandboxExecutionLostError:
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="sandbox_lost",
+                session_id=task.session_id,
+                execution_id=execution_id,
+            )
+            raise
         finally:
             self._pending.pop(execution_id, None)
 
@@ -191,3 +201,17 @@ class SandboxClient:
                     future.set_exception(connection_error)
 
             self._pending.clear()
+
+
+def _log_rejected(
+    session_id: int | None, execution_id: str, attempt: int, retry_after_s: float
+) -> None:
+    logger.log(
+        BENCH_LEVEL,
+        "bench {checkpoint}",
+        checkpoint="sandbox_rejected",
+        session_id=session_id,
+        execution_id=execution_id,
+        attempt=attempt,
+        retry_after_s=round(retry_after_s, 3),
+    )

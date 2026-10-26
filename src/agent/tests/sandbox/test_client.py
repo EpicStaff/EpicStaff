@@ -22,11 +22,14 @@ from foundation.clients.sandbox import (
     SandboxResultTimeoutError,
 )
 from foundation.clients.sandbox import client as foundation_sandbox_module
+from loguru import logger
+from shared.bench_log import BENCH_LEVEL
 from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import CodeResultData, CodeTaskData
 
 RESULTS = "code_results"
 SANDBOX_BASE_URL = "http://sandbox:8000"
+REJECTED_RETRY_AFTER_S = 0.05
 
 
 def _task(code: str = "def main(): return 'ok'", **overrides) -> CodeTaskData:
@@ -102,7 +105,8 @@ class FakeSandbox:
     `answer(body)` returns the messages the sandbox publishes for that body: a raw
     payload, or a result_data string wrapped in a result for the body's own id.
     `GET /executions/{id}` reports every execution as running, or as unknown (404)
-    once `loses_executions` is set.
+    once `loses_executions` is set. The first `rejections_left` submits are answered 503,
+    asking for a `REJECTED_RETRY_AFTER_S` wait, the way a full sandbox answers.
     """
 
     def __init__(self, redis: FakeRedis, answer=lambda body: [body["code"]]):
@@ -110,6 +114,7 @@ class FakeSandbox:
         self._answer = answer
         self.bodies: list[dict] = []
         self.loses_executions = False
+        self.rejections_left = 0
 
     async def handle(self, request: httpx.Request) -> httpx.Response:
         if request.method == "GET":
@@ -118,6 +123,9 @@ class FakeSandbox:
             return httpx.Response(200, json={"status": "running"})
         body = json.loads(request.content)
         self.bodies.append(body)
+        if self.rejections_left > 0:
+            self.rejections_left -= 1
+            return httpx.Response(503, headers={"Retry-After": str(REJECTED_RETRY_AFTER_S)})
 
         for reply in self._answer(body):
             if isinstance(reply, bytes):
@@ -173,7 +181,9 @@ def sandbox(sandbox_factory) -> FakeSandbox:
     return sandbox_factory()
 
 
-def _build_client(code_result_timeout: float | None = None) -> SandboxClient:
+def _build_client(
+    code_result_timeout: float | None = None, queue_timeout: float = 0
+) -> SandboxClient:
     return SandboxClient(
         host="unused",
         port=0,
@@ -181,10 +191,27 @@ def _build_client(code_result_timeout: float | None = None) -> SandboxClient:
         result_channel=RESULTS,
         sandbox_base_url=SANDBOX_BASE_URL,
         sandbox_timeout=5.0,
-        # No retry budget: a full sandbox fails the first submit.
-        queue_timeout=0,
+        # No retry budget by default: a full sandbox fails the first submit.
+        queue_timeout=queue_timeout,
         code_result_timeout=code_result_timeout,
     )
+
+
+@pytest.fixture
+def checkpoints():
+    """The BENCH checkpoints logged during the test, as their extra fields, in order."""
+    logged: list[dict] = []
+    sink_id = logger.add(
+        lambda message: logged.append(dict(message.record["extra"])),
+        level=BENCH_LEVEL,
+        filter=lambda record: record["level"].no == BENCH_LEVEL,
+    )
+    yield logged
+    logger.remove(sink_id)
+
+
+def _of_type(checkpoints: list[dict], name: str) -> list[dict]:
+    return [item for item in checkpoints if item["checkpoint"] == name]
 
 
 @pytest.fixture
@@ -275,6 +302,55 @@ async def test_submit_fails_when_the_sandbox_lost_the_execution(sandbox_factory,
             await asyncio.wait_for(sandbox_client.submit(_task()), timeout=2)
     finally:
         await sandbox_client.stop()
+
+
+async def test_a_503_followed_by_a_retry_is_logged_as_sandbox_rejected(
+    sandbox_factory, checkpoints, monkeypatch
+):
+    # The jittered backoff stays under Retry-After, so the logged wait is exactly it.
+    monkeypatch.setattr(foundation_sandbox_module, "BACKOFF_CAP_SECONDS", 0.001)
+    sandbox = sandbox_factory()
+    sandbox.rejections_left = 1
+    sandbox_client = _build_client(queue_timeout=60)
+    await sandbox_client.start()
+    try:
+        result = await asyncio.wait_for(sandbox_client.submit(_task(session_id=5)), timeout=2)
+    finally:
+        await sandbox_client.stop()
+
+    assert result.result_data == "def main(): return 'ok'"
+    assert _of_type(checkpoints, "sandbox_rejected") == [
+        {
+            "checkpoint": "sandbox_rejected",
+            "session_id": 5,
+            "execution_id": sandbox.bodies[0]["execution_id"],
+            "attempt": 1,
+            "retry_after_s": REJECTED_RETRY_AFTER_S,
+        }
+    ]
+
+
+async def test_an_execution_the_sandbox_lost_is_logged_as_sandbox_lost(
+    sandbox_factory, checkpoints, monkeypatch
+):
+    monkeypatch.setattr(foundation_sandbox_module, "STATUS_POLL_INTERVAL_SECONDS", 0.01)
+    sandbox = sandbox_factory(answer=lambda body: [])
+    sandbox.loses_executions = True
+    sandbox_client = _build_client()
+    await sandbox_client.start()
+    try:
+        with pytest.raises(SandboxExecutionLostError):
+            await asyncio.wait_for(sandbox_client.submit(_task(session_id=5)), timeout=2)
+    finally:
+        await sandbox_client.stop()
+
+    assert _of_type(checkpoints, "sandbox_lost") == [
+        {
+            "checkpoint": "sandbox_lost",
+            "session_id": 5,
+            "execution_id": sandbox.submitted["execution_id"],
+        }
+    ]
 
 
 async def test_stop_fails_submits_still_waiting(sandbox_factory):

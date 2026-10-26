@@ -156,7 +156,9 @@ async def test_failing_a_job_sends_a_failed_result_without_running_it(result_sin
 
     orchestrator = build(Pipeline().register(step), result_sink)
 
-    await orchestrator.fail("exec-1", "Sandbox failed to run the job.", reply_to_crew_channel=True)
+    await orchestrator.fail(
+        "exec-1", "Sandbox failed to run the job.", session_id=7, reply_to_crew_channel=True
+    )
 
     [(result, mutations)] = result_sink.sent
     assert ran == []
@@ -165,6 +167,8 @@ async def test_failing_a_job_sends_a_failed_result_without_running_it(result_sin
     assert result.returncode == 1
     assert result.ran is False
     assert result.reply_to_crew_channel is True
+    assert result.session_id == 7
+    assert result.not_run_reason is None
     assert mutations is None
 
 

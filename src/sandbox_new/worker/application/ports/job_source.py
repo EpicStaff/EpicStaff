@@ -21,10 +21,13 @@ class UndecodableJobError(Exception):
     decode error itself: its text would quote the job's fields, secrets included.
     """
 
-    def __init__(self, execution_id: str, *, reply_to_crew_channel: bool) -> None:
+    def __init__(
+        self, execution_id: str, *, reply_to_crew_channel: bool, session_id: int | None = None
+    ) -> None:
         super().__init__(f"Job {execution_id} could not be decoded.")
         self.execution_id = execution_id
         self.reply_to_crew_channel = reply_to_crew_channel
+        self.session_id = session_id
 
 
 class AbstractJobSource(abc.ABC):

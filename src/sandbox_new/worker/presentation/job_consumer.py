@@ -69,6 +69,7 @@ class JobConsumer:
             await self._orchestrator.fail(
                 error.execution_id,
                 _UNDECODABLE_MESSAGE,
+                session_id=error.session_id,
                 reply_to_crew_channel=error.reply_to_crew_channel,
             )
             return
@@ -114,6 +115,7 @@ class JobConsumer:
                 await self._orchestrator.fail(
                     job.execution_id,
                     _RUN_FAILED_MESSAGE,
+                    session_id=job.session_id,
                     reply_to_crew_channel=job.reply_to_crew_channel,
                 )
             except Exception as fail_error:
@@ -136,8 +138,18 @@ class JobConsumer:
         queued_at = job.queue_deadline - self._queue_timeout
         waited = int(self._clock() - queued_at)
         logger.warning("Job {} expired after {} s in the queue; not run", job.execution_id, waited)
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_expired",
+            session_id=job.session_id,
+            execution_id=job.execution_id,
+            waited_s=waited,
+        )
         await self._orchestrator.fail(
             job.execution_id,
             _EXPIRED_MESSAGE.format(waited=waited),
+            session_id=job.session_id,
             reply_to_crew_channel=job.reply_to_crew_channel,
+            not_run_reason="overloaded",
         )

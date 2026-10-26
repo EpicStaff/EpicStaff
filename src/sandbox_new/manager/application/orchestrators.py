@@ -21,7 +21,7 @@ from manager.application.ports import (
 )
 from manager.application.registry import ExecutionRegistry
 from manager.domain.enums import ExecutionStatus, VenvStatus
-from manager.domain.errors import SandboxOverloadedError, VenvNotFoundError
+from manager.domain.errors import VenvNotFoundError
 from manager.domain.models import Job, Library, StorageCredentials, Venv
 from manager.domain.types import NotRunReason
 
@@ -30,9 +30,6 @@ _DISPATCH_FAILED_MESSAGE = "The job could not be handed to the worker and was no
 _HOLD_TIMED_OUT_MESSAGE = (
     "The execution environment did not finish building in time; the job was not run."
 )
-# A re-POST that arrives while the first request for its id is still being admitted is
-# told to come back this soon: by then the first request has its outcome.
-_SUBMISSION_IN_PROGRESS_RETRY_AFTER_SECONDS = 1
 
 __all__ = ["JobOrchestrator", "VenvBuildOrchestrator", "VenvCRUDOrchestrator"]
 
@@ -250,9 +247,7 @@ class JobOrchestrator:
             SandboxOverloadedError: The sandbox cannot take the job now, or the first
                 submission of this id is still being admitted.
         """
-        if self.registry.is_reserved(execution_id):
-            logger.info("Execution {} is still being admitted; re-POST told to retry", execution_id)
-            raise SandboxOverloadedError(retry_after=_SUBMISSION_IN_PROGRESS_RETRY_AFTER_SECONDS)
+        self.intake_gate.check_not_in_progress(execution_id)
 
         known_status = self.registry.status(execution_id)
         if known_status is not None:

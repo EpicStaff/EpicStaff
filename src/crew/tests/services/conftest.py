@@ -15,17 +15,20 @@ from typing import Any
 import httpx
 import pytest
 import pytest_asyncio
+from loguru import logger
 
 import settings
 from foundation.clients.sandbox import SandboxClient
 from services.redis_service import AsyncPubsubSubscriber
 from services.run_python_code_service import RunPythonCodeService
+from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, PythonCodeData
 from utils.singleton_meta import SingletonMeta
 
 SHARED_RESULT_CHANNEL = "code_results"
 CREW_RESULT_CHANNEL = "code_results:crew"
 SANDBOX_BASE_URL = "http://sandbox:8000"
+REJECTED_RETRY_AFTER_S = 0.05
 
 
 class InMemoryPubSub:
@@ -51,9 +54,10 @@ class FakeSandbox:
 
     Setting `rejects_with` makes every submit answer 400 with that text, the way
     sandbox_new refuses an execution it will not run; `full` makes it answer 503,
-    the way a sandbox at capacity does; `unreachable` fails every request before it
-    gets an answer; `loses_executions` answers every status check with 404, the way
-    a sandbox that restarted does.
+    the way a sandbox at capacity does, and `rejections_left` does so for that many
+    submits only, each asking for a `REJECTED_RETRY_AFTER_S` wait; `unreachable` fails
+    every request before it gets an answer; `loses_executions` answers every status
+    check with 404, the way a sandbox that restarted does.
     """
 
     def __init__(self, pubsub: InMemoryPubSub):
@@ -62,6 +66,7 @@ class FakeSandbox:
         self.auto_reply = False
         self.rejects_with: str | None = None
         self.full = False
+        self.rejections_left = 0
         self.unreachable = False
         self.loses_executions = False
 
@@ -78,6 +83,13 @@ class FakeSandbox:
             return httpx.Response(400, text=self.rejects_with)
         if self.full:
             return httpx.Response(503, headers={"Retry-After": "0"}, json={"detail": "full"})
+        if self.rejections_left > 0:
+            self.rejections_left -= 1
+            return httpx.Response(
+                503,
+                headers={"Retry-After": str(REJECTED_RETRY_AFTER_S)},
+                json={"detail": "full"},
+            )
         if self.auto_reply:
             await self.reply(task["execution_id"], result_data="ok")
         return httpx.Response(202, json={"status": "accepted"})
@@ -106,6 +118,19 @@ class FakeSandbox:
                 return self.tasks
             await asyncio.sleep(0)
         raise AssertionError(f"crew submitted {len(self.tasks)} execution(s), expected {count}")
+
+
+@pytest.fixture
+def checkpoints():
+    """The BENCH checkpoints logged during the test, as their extra fields, in order."""
+    logged: list[dict] = []
+    sink_id = logger.add(
+        lambda message: logged.append(dict(message.record["extra"])),
+        level=BENCH_LEVEL,
+        filter=lambda record: record["level"].no == BENCH_LEVEL,
+    )
+    yield logged
+    logger.remove(sink_id)
 
 
 @pytest.fixture(autouse=True)

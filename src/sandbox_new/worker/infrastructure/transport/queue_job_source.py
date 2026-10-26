@@ -29,5 +29,8 @@ class QueueJobSource(AbstractJobSource):
             # `from None`: the validation error quotes the job's fields, secrets included,
             # and a chained cause would carry it into any traceback that gets logged.
             raise UndecodableJobError(
-                message.execution_id, reply_to_crew_channel=message.reply_to_crew_channel
+                message.execution_id,
+                reply_to_crew_channel=message.reply_to_crew_channel,
+                # The session id may be the very field that failed to decode.
+                session_id=message.session_id if isinstance(message.session_id, int) else None,
             ) from None

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 
 import httpx
@@ -250,6 +251,32 @@ async def test_submit_treats_overloaded_after_an_unanswered_attempt_as_accepted_
 
     assert len(sandbox.sent("POST")) == 2
     assert sandbox.sent("GET")[0].url.path == f"/executions/{EXECUTION_ID}"
+
+
+@pytest.mark.parametrize(
+    ("post", "queue_timeout", "rejections"),
+    [
+        ([respond(202)], 60, []),
+        ([overloaded("5"), overloaded("5"), respond(202)], 60, [(1, 5), (2, 5)]),
+        # Three retries are scheduled; the fourth 503 spends the budget and gives up.
+        ([overloaded("5")], 12, [(1, 5), (2, 5), (3, 2)]),
+        # A retry after an unanswered attempt is not a rejection, but it is counted.
+        ([httpx.ConnectError, overloaded("5"), respond(202)], 60, [(2, 5)]),
+    ],
+    ids=["accepted", "rejected-then-accepted", "gives-up", "unreachable-then-rejected"],
+)
+async def test_submit_reports_each_retry_it_schedules_after_a_503(
+    clock, connect, post, queue_timeout, rejections
+):
+    sandbox = ScriptedSandbox(post=post, get=[respond(404)])
+    reported: list[tuple[int, float]] = []
+
+    with contextlib.suppress(SandboxOverloadedError):
+        await connect(sandbox, queue_timeout=queue_timeout).submit(
+            make_request(), on_rejected=lambda attempt, delay: reported.append((attempt, delay))
+        )
+
+    assert reported == rejections
 
 
 async def test_submit_keeps_retrying_overloaded_after_an_unanswered_attempt_the_sandbox_does_not_know(

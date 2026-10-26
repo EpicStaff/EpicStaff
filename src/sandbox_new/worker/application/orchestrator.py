@@ -17,7 +17,7 @@ from worker.application.context import ExecutionContext
 from worker.application.pipeline import Pipeline
 from worker.application.ports.result_sink import AbstractResultSink
 from worker.application.secret_scrubber import scrub
-from worker.domain.models import ExecutionResult, Job
+from worker.domain.models import ExecutionResult, Job, NotRunReason
 
 __all__ = ["ExecutionOrchestrator"]
 
@@ -52,7 +52,15 @@ class ExecutionOrchestrator:
         )
         await self._result_sink.send(result, mutations=context.storage_mutations)
 
-    async def fail(self, execution_id: str, message: str, *, reply_to_crew_channel: bool) -> None:
+    async def fail(
+        self,
+        execution_id: str,
+        message: str,
+        *,
+        session_id: int | None,
+        reply_to_crew_channel: bool,
+        not_run_reason: NotRunReason | None = None,
+    ) -> None:
         """Send a failed result for a job without running it.
 
         Used when the job cannot or must not run -- it expired in the queue, or the
@@ -62,8 +70,12 @@ class ExecutionOrchestrator:
         Args:
             message: Shown to the user as the run's stderr. A fixed text, never one
                 built from an exception, which could quote the job's secrets.
+            session_id: The job's session, when known; names it in the manager's BENCH
+                checkpoint.
             reply_to_crew_channel: Echoed from the job, so the result goes to the
                 channel its producer listens on.
+            not_run_reason: Reported as the outcome of the manager's BENCH checkpoint;
+                None reports the result as an ordinary failed run.
         """
         await self._result_sink.send(
             ExecutionResult(
@@ -72,6 +84,8 @@ class ExecutionOrchestrator:
                 returncode=1,
                 reply_to_crew_channel=reply_to_crew_channel,
                 ran=False,
+                session_id=session_id,
+                not_run_reason=not_run_reason,
             )
         )
 

@@ -10,6 +10,7 @@ import json
 import sys
 from pathlib import Path
 
+import fakeredis.aioredis
 import pytest
 
 from common.contracts import ExecutionJobMessage, ExecutionResultMessage
@@ -21,6 +22,7 @@ from manager.domain.enums import VenvStatus
 from manager.domain.models import StorageCredentials
 from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
+from manager.infrastructure.transport.redis_result_publisher import RedisResultPublisher
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
 from worker.application.steps import BuildIsolationPlan, ConfigureStorageStep
@@ -33,9 +35,11 @@ from worker.infrastructure.execution.steps import (
     WrapCodeStep,
 )
 from worker.infrastructure.transport.queue_job_source import QueueJobSource
+from worker.infrastructure.admission import ResourceAdmissionGate
 from worker.infrastructure.transport.queue_result_sink import QueueResultSink
-from tests.builders import make_venv
-from tests.fakes import FakeIsolationProbe
+from worker.presentation.job_consumer import JobConsumer
+from tests.builders import make_venv, make_worker_job
+from tests.fakes import FakeClock, FakeHostMetrics, FakeIsolationProbe, FakeJobSource
 
 VENV_HASH = "1integration"
 EXECUTION_ID = "exec-integration"
@@ -297,3 +301,49 @@ async def test_a_crew_submission_whose_venv_failed_is_still_flagged(uow, runtime
     message: ExecutionResultMessage = runtime["result_queue"].get_nowait()
     assert message.returncode == 1
     assert message.reply_to_crew_channel is True
+
+
+async def test_a_job_that_expired_in_the_queue_is_published_as_overloaded(runtime, checkpoints):
+    """The worker's reason has to survive its result sink for the manager to report it."""
+    clock = FakeClock()
+    job = make_worker_job(execution_id=EXECUTION_ID, session_id=7, queue_deadline=clock.now - 1)
+    run_gate = ResourceAdmissionGate(
+        FakeHostMetrics(),
+        min_concurrent=1,
+        max_concurrent=1,
+        cpu_threshold=85,
+        memory_threshold=80,
+    )
+    consumer = JobConsumer(
+        FakeJobSource(job), build_worker(runtime), run_gate, queue_timeout=120, clock=clock
+    )
+    redis = fakeredis.aioredis.FakeRedis()
+    publisher = RedisResultPublisher(
+        redis,
+        result_channel="code:results",
+        crew_result_channel="code:results:crew",
+        mutation_channel="storage:mutations",
+    )
+
+    consuming = asyncio.create_task(consumer.run())
+    try:
+        message = await asyncio.wait_for(runtime["result_queue"].get(), timeout=1)
+    finally:
+        consuming.cancel()
+    await publisher.publish(message)
+    await redis.aclose()
+
+    assert checkpoints == [
+        {
+            "checkpoint": "exec_expired",
+            "session_id": 7,
+            "execution_id": EXECUTION_ID,
+            "waited_s": 121,
+        },
+        {
+            "checkpoint": "exec_published",
+            "session_id": 7,
+            "execution_id": EXECUTION_ID,
+            "outcome": "overloaded",
+        },
+    ]
