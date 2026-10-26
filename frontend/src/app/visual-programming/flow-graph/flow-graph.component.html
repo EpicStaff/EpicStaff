@@ -120,7 +120,7 @@
                 <app-flow-base-node
                     [node]="node"
                     [multiSelectActive]="selectionManager.multiSelectActive()"
-                    [fMinimapClass]="getMinimapClassForNode(node)"
+                    [fMinimapClass]="getMinimapClasses(node)"
                     fNode
                     fDragHandle
                     [fNodeId]="node.id"
@@ -132,6 +132,7 @@
                     (mouseleave)="hoveredNodeId.set(null)"
                     (portMouseenter)="hoveredNodeId.set(node.id)"
                     [class.is-dimmed]="hoverContext() !== null && !hoverContext()!.nodeIds.has(node.id)"
+                    [class.is-unused]="unusedNodeIds().has(node.id)"
                     (fNodePositionChange)="onNodePositionChanged($event, node)"
                     (fNodeSizeChange)="onNodeSizeChanged($event, node)"
                     (editClicked)="onOpenNodePanel($event)"

@@ -2,7 +2,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class EditorInfo(BaseModel):
-    user_id: int
+    # None for an editor that is not a user (a plugin service account).
+    user_id: int | None
     display_name: str | None
     avatar_url: str | None
 

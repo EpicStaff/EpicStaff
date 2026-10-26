@@ -121,6 +121,28 @@ describe('PythonCodeTestRun', () => {
         expect(codeRun.isRunning()).toBe(false);
     });
 
+    it("logs the server's message of a refused run instead of the HTTP status line", () => {
+        const message = 'This run uses resources of the plugin "Weather", which is suspended in this organization.';
+        codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
+        start$.error(
+            new HttpErrorResponse({
+                status: 409,
+                url: '/run-python-code/',
+                error: {
+                    status_code: 409,
+                    code: 'plugin_suspended',
+                    message,
+                    plugin: { identifier: 'weather', name: 'Weather' },
+                    organization: { id: 3 },
+                },
+            })
+        );
+
+        expect(messages().at(-1)).toBe(`error: Error: ${message}`);
+        expect(codeRun.error()).toBe(message);
+        expect(codeRun.status()).toBe('error');
+    });
+
     it('ignores a run while one is in flight', () => {
         codeRun.run(REQUEST, EXECUTION_TIMEOUT_SECONDS);
         codeRun.run({ target: { type: 'python_node', id: 6 }, variables: {} }, EXECUTION_TIMEOUT_SECONDS);

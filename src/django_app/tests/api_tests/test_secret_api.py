@@ -266,7 +266,7 @@ def test_member_and_viewer_get_403_on_every_action(
 @pytest.mark.django_db
 def test_api_key_auth_cannot_access_secrets(admin_a, org_a, issue_api_key):
     # admin_a has full org-admin bits and would succeed via JWT (see client_a) —
-    # this proves DenyApiKeyAuth blocks the API-key path specifically, regardless
+    # this proves DenyPersonalAndSystemApiKeys blocks the API-key path specifically, regardless
     # of the underlying user's permissions.
     raw, _ = issue_api_key(user=admin_a)
     client = APIClient()

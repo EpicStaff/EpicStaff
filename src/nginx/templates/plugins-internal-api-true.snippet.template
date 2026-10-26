@@ -1,0 +1,26 @@
+# PLUGINS_ENABLED=true: EpicStaff's API for the plugin node and plugin backends, on port 8081,
+# which they reach as http://epicstaff-api:8081/api/ on plugins-network (the port is not
+# published). django_app itself is not on that network, so this is their only way in. Its routes
+# and the headers it sends Django are in plugins-api-listener.snippet, shared with the
+# development API listener.
+server {
+    listen 8081;
+    server_name _;
+
+    # Only the plugins network reaches this listener: the plugin backends and the node agent.
+    # Refused before choosing a location ($plugin_network_caller, plugins-server-true.snippet), so
+    # also the paths answered by a `return`, which would otherwise run before an allow/deny.
+    if ($plugin_network_caller = 0) {
+        return 403;
+    }
+
+    # Not the development API listener: Django gets no X-Plugin-Development-Listener from here,
+    # so a development key never authenticates through the plugins network.
+    set $plugin_development_listener "";
+
+    include /etc/nginx/conf.d/plugins-api-listener.snippet;
+}
+
+# PLUGINS_DEV_MODE (16-normalize-plugins-enabled.envsh): the development API listener on 8082, or
+# nothing.
+include /etc/nginx/conf.d/plugins-development-api-${PLUGINS_DEV_MODE}.snippet;

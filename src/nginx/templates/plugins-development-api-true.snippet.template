@@ -1,0 +1,23 @@
+# PLUGINS_DEV_MODE=true: the development API listener, on port 8082. A development backend on the
+# developer's machine (epicstaff-plugin dev) calls EpicStaff's API here with the development keys
+# of its development runtime file. docker-compose.plugins-dev.yaml publishes this port on the
+# host's 127.0.0.1 only; src/docker-compose.yaml never publishes it.
+#
+# The internal listener's routes and headers (plugins-api-listener.snippet), plus
+# X-Plugin-Development-Listener: 1. Django accepts a development key only with that header, and
+# refuses a node key or a node-purpose key with it.
+server {
+    listen 8082;
+    server_name _;
+
+    # The mirror of the internal listener's rule: no plugin backend and not the node, so a key
+    # from the plugins network never gets the development header. Refused before choosing a
+    # location, as there.
+    if ($plugin_network_caller) {
+        return 403;
+    }
+
+    set $plugin_development_listener 1;
+
+    include /etc/nginx/conf.d/plugins-api-listener.snippet;
+}

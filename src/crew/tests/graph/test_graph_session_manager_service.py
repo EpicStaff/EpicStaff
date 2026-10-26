@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import re
 from datetime import datetime
 from functools import partial
 from types import SimpleNamespace
@@ -21,6 +22,7 @@ import pytest
 import redis
 from dotdict import DotDict
 from fakeredis import FakeAsyncRedis
+from pydantic import ValidationError
 
 from models.graph_models import FinishMessageData, GraphMessage
 from services.graph.events import StopEvent
@@ -28,7 +30,12 @@ from services.graph.graph_session_manager_service import GraphSessionManagerServ
 from services.redis_service import RedisService
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
+from src.shared.public_error import PublicErrorMessage
 from tests.graph.rebuild_counting_dict import RebuildCountingDict
+
+_PUBLIC_ERROR_PATTERN = re.compile(
+    rf"{re.escape(PublicErrorMessage.SESSION_EXECUTION_FAILED)} \(reference: [0-9a-f]{{12}}\)"
+)
 
 
 def make_finish_chunk(
@@ -113,15 +120,15 @@ def service():
     return svc
 
 
-def _session_data(session_id: int, token_budget: int | None = None) -> SessionData:
-    initial_state = {}
-    if token_budget is not None:
-        initial_state["__token_budget__"] = token_budget
+def _session_data(
+    session_id: int, token_budget: int | None = None, initial_state: dict | None = None
+) -> SessionData:
     return SessionData(
         id=session_id,
         org_id=1,
         graph=GraphData(name="g", entrypoint="__end__", end_node=None),
-        initial_state=initial_state,
+        initial_state=initial_state or {},
+        token_budget=token_budget,
     )
 
 
@@ -146,16 +153,23 @@ def _patch_builder(monkeypatch, compiled_graph, end_node_result=None):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("finish_tokens", "budget", "expected_statuses"),
+    ("finish_tokens", "budget", "default_budget", "expected_statuses"),
     [
-        pytest.param([100, 100], 150, ["run", "stop"], id="over-budget-stops"),
-        pytest.param([60], 100, ["run", "end"], id="under-budget-ends"),
-        pytest.param([10_000_000], None, ["run", "end"], id="no-budget-never-stops"),
+        pytest.param([100, 100], 150, None, ["run", "stop"], id="over-budget-stops"),
+        pytest.param([60], 100, None, ["run", "end"], id="under-budget-ends"),
+        pytest.param([10_000_000], None, None, ["run", "end"], id="no-budget-never-stops"),
         # A subgraph's finish messages are re-streamed through the parent and count too.
-        pytest.param([("nested", 90), 90], 150, ["run", "stop"], id="subgraph-tokens-count"),
+        pytest.param([("nested", 90), 90], 150, None, ["run", "stop"], id="subgraph-tokens-count"),
+        pytest.param([100, 100], None, 150, ["run", "stop"], id="default-budget-applies"),
+        pytest.param([100, 100], 1000, 150, ["run", "end"], id="typed-budget-wins-over-default"),
     ],
 )
-async def test_token_budget(service, monkeypatch, finish_tokens, budget, expected_statuses):
+async def test_token_budget(
+    service, monkeypatch, finish_tokens, budget, default_budget, expected_statuses
+):
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.DEFAULT_TOKEN_BUDGET", default_budget
+    )
     session_id = 1
     chunks = [
         make_finish_chunk(session_id, total_tokens=tokens[1], subgraph_execution_ids=["exec-1"])
@@ -176,6 +190,50 @@ async def test_token_budget(service, monkeypatch, finish_tokens, budget, expecte
         assert stop_event.reason == status_calls[-1].kwargs["reason"] == "token budget exceeded"
         # A stopped session has no final variables to hand over.
         service.redis_service.aset_session_final_variables.assert_not_called()
+
+
+@pytest.mark.parametrize("token_budget", [0, -5])
+def test_session_data_with_a_non_positive_token_budget_is_rejected(token_budget):
+    # A zero budget would stop every run at its first token.
+    payload = _session_data(1).model_dump() | {"token_budget": token_budget}
+
+    with pytest.raises(ValidationError):
+        SessionData.model_validate_json(json.dumps(payload))
+
+
+@pytest.mark.asyncio
+async def test_token_budget_in_flow_variables_is_an_ordinary_variable(service, monkeypatch):
+    # A flow variable named like the old reserved transport key is not a budget:
+    # it must neither stop the run nor be removed.
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.DEFAULT_TOKEN_BUDGET", None
+    )
+    session_id = 2
+    stream_inputs = []
+
+    class InputCapturingGraph(FakeCompiledGraph):
+        async def astream(self, input, config, stream_mode):
+            stream_inputs.append(input)
+            async for item in super().astream(input, config, stream_mode):
+                yield item
+
+    _patch_builder(
+        monkeypatch,
+        InputCapturingGraph([make_finish_chunk(session_id, total_tokens=10_000)]),
+    )
+    stop_event = StopEvent()
+
+    await service.run_session(
+        _session_data(session_id, initial_state={"__token_budget__": 0}), stop_event
+    )
+
+    statuses = [
+        call.kwargs["status"]
+        for call in service.redis_service.aupdate_session_status.call_args_list
+    ]
+    assert statuses == ["run", "end"]
+    assert not stop_event.is_set()
+    assert stream_inputs[0]["variables"] == {"__token_budget__": 0}
 
 
 @pytest.mark.asyncio
@@ -349,7 +407,10 @@ async def test_unserialisable_final_variables_end_the_session_as_error(
 
     status_calls = service.redis_service.aupdate_session_status.call_args_list
     assert [call.kwargs["status"] for call in status_calls] == ["run", "error"]
-    assert "not JSON serializable" in status_calls[-1].kwargs["error"]
+    # The TypeError's text names the unserialisable value; only the public
+    # message reaches Redis.
+    assert _PUBLIC_ERROR_PATTERN.fullmatch(status_calls[-1].kwargs["error"])
+    assert "not JSON serializable" not in status_calls[-1].kwargs["error"]
 
 
 @pytest.mark.asyncio
@@ -371,6 +432,54 @@ async def test_failed_session_does_not_write_final_variables(service, monkeypatc
         for call in service.redis_service.aupdate_session_status.call_args_list
     ]
     assert statuses == ["run", "error"]
+
+
+@pytest.mark.asyncio
+async def test_failed_session_reports_public_error_to_redis_and_audit(
+    service, monkeypatch
+):
+    """A crashing session must not put raw exception text into either sink.
+
+    The Redis session status is what the frontend polls, and the audit
+    session-end row is what the organization's trail keeps forever; both get
+    the generic message plus the correlation id that the log line carries.
+    """
+    audit_calls: list[tuple[str, dict]] = []
+
+    class RecordingAuditWriter:
+        async def add_session_start(self, **kwargs):
+            audit_calls.append(("start", kwargs))
+
+        async def add_session_end(self, **kwargs):
+            audit_calls.append(("end", kwargs))
+
+    secret = "postgresql://flow:s3cret@db-internal:5432"
+
+    class FailingGraph:
+        async def astream(self, input, config, stream_mode):
+            raise RuntimeError(f"could not connect to {secret}")
+            yield
+
+    monkeypatch.setattr(
+        "services.graph.graph_session_manager_service.get_session_audit_writer",
+        RecordingAuditWriter,
+    )
+    _patch_builder(monkeypatch, FailingGraph())
+
+    await service.run_session(_session_data(47), StopEvent())
+    async with asyncio.timeout(1):
+        while len(audit_calls) < 2:
+            await asyncio.sleep(0)
+
+    status_call = service.redis_service.aupdate_session_status.call_args_list[-1]
+    assert status_call.kwargs["status"] == "error"
+    public_error = status_call.kwargs["error"]
+    assert _PUBLIC_ERROR_PATTERN.fullmatch(public_error)
+    assert secret not in public_error
+
+    end_call = audit_calls[-1][1]
+    assert end_call["name"] == "Session Failed"
+    assert end_call["details"] == {"error": public_error}
 
 
 class _ReprCountingStr(str):

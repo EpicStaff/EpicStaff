@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from rbac.identity.refresh_cookie import REFRESH_COOKIE_NAME
+from rbac.identity.refresh_cookie import refresh_cookie_name
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rbac.signals import profile_updated
@@ -704,6 +704,7 @@ def test_password_change_request_is_throttled(member_acme):
         cache.clear()
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_password_change_sets_the_password_and_replaces_the_users_sessions_and_keys(
     member_acme, orphan_user, issue_api_key
@@ -719,7 +720,7 @@ def test_password_change_sets_the_password_and_replaces_the_users_sessions_and_k
     assert response.status_code == status.HTTP_200_OK
     # A fresh pair: access in the body, refresh only in the HttpOnly cookie.
     assert "refresh" not in response.json()
-    assert response.cookies[REFRESH_COOKIE_NAME]["httponly"]
+    assert response.cookies[refresh_cookie_name()]["httponly"]
     fresh = APIClient()
     fresh.credentials(HTTP_AUTHORIZATION=f"Bearer {response.json()['access']}")
     assert fresh.get(PROFILE_URL).status_code == status.HTTP_200_OK
