@@ -417,7 +417,6 @@ services:
   #     # per-execution credentials arrive inside the task payload, already
   #     # minted and scoped by django_app.
   #     <<: [*docker-env, *redis-env, *communication-env]
-  #     CONTAINER_SAVEFILES_PATH: ${CONTAINER_SAVEFILES_PATH:?}
   #     SANDBOX_BASE_VENV_PATH: ${SANDBOX_BASE_VENV_PATH:?}
   #     SANDBOX_OUTPUT_PATH: ${SANDBOX_OUTPUT_PATH:?}
   #     SANDBOX_MASK_SECRET: ${SANDBOX_MASK_SECRET:?}
@@ -434,7 +433,6 @@ services:
   #     STORAGE_BUCKET: ${STORAGE_BUCKET:?}
   #   volumes:
   #     - sandbox_venvs:${SANDBOX_BASE_VENV_PATH:?}
-  #     - ${CREW_SAVEFILES_PATH:?}:${CONTAINER_SAVEFILES_PATH:?}
   #   networks:
   #     - sandbox-network
   #   tty: true
@@ -1160,6 +1158,7 @@ services:
       SANDBOX_BLOCK_NETWORK: ${SANDBOX_BLOCK_NETWORK:?}
       SANDBOX_MAX_EXECUTION_TIMEOUT: ${SANDBOX_MAX_EXECUTION_TIMEOUT:?}
       SANDBOX_DEFAULT_EXECUTION_TIMEOUT: ${SANDBOX_DEFAULT_EXECUTION_TIMEOUT:?}
+      SANDBOX_MAX_RESULT_SIZE: ${SANDBOX_MAX_RESULT_SIZE:?}
     volumes:
       - sandbox_venvs:${SANDBOX_VENVS_DIR:?}
     mem_limit: "2g"

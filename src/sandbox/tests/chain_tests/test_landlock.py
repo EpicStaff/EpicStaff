@@ -467,7 +467,6 @@ class TestSignalIsolationSurvivesLauncherExecv:
         jail = build_jail(
             exec_dir=tmp_path,
             venv_path=Path(sys.prefix),
-            savefiles_root=tmp_path,
         )
         # The venv's interpreter may live outside it (a symlink into a
         # pyenv/uv install on a dev host), so its real install must be
