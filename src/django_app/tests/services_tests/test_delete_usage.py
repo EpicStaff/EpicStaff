@@ -40,7 +40,7 @@ def test_invisible_bucket_counts_hidden_refs_without_disclosing_them():
 def test_sample_is_capped_and_marked_truncated():
     collector = BucketCollector("flows", visible=True)
     collector.add_rows(
-        ((1, ref_id, f"flow {ref_id}") for ref_id in range(SAMPLE_LIMIT + 1))
+        ((1, ref_id, f"flow {ref_id}") for ref_id in range(SAMPLE_LIMIT + 1)),
     )
 
     bucket = collector.bucket_for(1)
@@ -66,9 +66,9 @@ def test_refs_come_back_sorted_whatever_order_the_queries_returned():
     """A preview and a refresh must show the same sample.
 
     The source queries have no ORDER BY, so rows can arrive in any order; the
-    collector sorts on id so the capped sample does not shift.
+    collector sorts on `id` so the capped sample does not shift.
     """
-    collector = BucketCollector("flows", visible=True)
+    collector = BucketCollector("mixed", visible=True)
     collector.add(1, 9, "b")
     collector.add(1, 7, "a")
     collector.add(1, 3, "c")

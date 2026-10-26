@@ -39,7 +39,7 @@ def test_response_carries_empty_skipped_and_usage_like_every_sibling(org_a):
     version = _version(org_a)
 
     result = GraphVersionDeleteService(
-        org_id=org_a.id, permissions=_no_permissions(), user=None
+        org_id=org_a.id, effective=_no_permissions(), user=None
     ).preview([version.id])
 
     assert result.skipped == []
@@ -64,7 +64,7 @@ def test_bulk_delete_soft_deletes_the_version_without_recording_a_deleter(
     )
 
     result = GraphVersionDeleteService(
-        org_id=org_a.id, permissions=_no_permissions(), user=user
+        org_id=org_a.id, effective=_no_permissions(), user=user
     ).delete([version.id])
 
     assert result.deleted_ids == [version.id]
@@ -82,7 +82,7 @@ def test_another_orgs_version_is_not_found(org_a, org_b):
     foreign = _version(org_b)
 
     result = GraphVersionDeleteService(
-        org_id=org_a.id, permissions=_no_permissions(), user=None
+        org_id=org_a.id, effective=_no_permissions(), user=None
     ).delete([foreign.id])
 
     assert result.not_found_ids == [foreign.id]

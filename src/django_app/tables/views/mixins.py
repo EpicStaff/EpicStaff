@@ -102,29 +102,27 @@ class TriggerNodeUsePermissionMixin:
 class BulkDeleteActionMixin:
     """Adds a ``bulk-delete`` action and a usage-guarded ``perform_destroy``.
 
-    Requires `delete_service_class` and `"bulk_delete": Permission.DELETE` in
-    `rbac_action_map`; place it after the org-scoping mixin. Must precede
-    `RecycleBinActionsMixin`, whose `perform_destroy` does not call `super()`.
+    Requires `delete_service_class` (a BaseDeleteService subclass) and
+    `"bulk_delete": Permission.DELETE` in the ViewSet's `rbac_action_map`.
+    Place after the org-scoping mixin, which supplies `get_active_org_id`. The
+    OpenAPI schema is attached on each concrete ViewSet with
+    `@extend_schema_view`, not here.
+
+    Must come **before** `RecycleBinActionsMixin` in a viewset's bases:
+    `RecycleBinActionsMixin.perform_destroy` does not call `super()`, so the
+    other order silently drops the `in_use_restricted` guard on single DELETE.
+
+    Single `DELETE` runs the same usage rule as bulk, so a caller cannot bypass a
+    block by deleting one id at a time.
     """
 
     delete_service_class = None
 
-    def get_delete_service(self) -> BaseDeleteService:
-        if not self.delete_service_class:
-            raise NotImplementedError(f"{self.__class__.__name__} must set delete_service_class.")
-        return self.delete_service_class(
-            org_id=self.get_active_org_id(),
-            permissions=self.get_effective_permissions(),
-            user=self.request.user,
-        )
-
-    def get_effective_permissions(self) -> EffectivePermissions:
-        """The caller's permissions in the active org, resolved fresh per call."""
-        return PermissionResolver().resolve(user=self.request.user, org_id=self.get_active_org_id())
-
     def perform_destroy(self, instance) -> None:
         service = self.get_delete_service()
-        # assert_deletable locks the row, so check and delete share one transaction.
+        # One transaction for check and delete, as on the bulk path:
+        # assert_deletable locks the row, so the usage it checked is still the
+        # usage when the delete runs.
         with transaction.atomic():
             service.assert_deletable(instance)
             super().perform_destroy(instance)
@@ -136,27 +134,45 @@ class BulkDeleteActionMixin:
         body = BulkDeleteRequestSerializer(data=request.data)
         body.is_valid(raise_exception=True)
 
-        service = self.get_delete_service()
         dry_run = query.validated_data["dry_run"]
         ids = body.validated_data["ids"]
+        service = self.get_delete_service()
         result = service.preview(ids) if dry_run else service.delete(ids)
-
         logger.info(
             "Bulk delete {}: org={} user={} dry_run={} deleted={} skipped={} not_found={}",
-            service.model.__name__,
+            self.delete_service_class.model.__name__,
             service.org_id,
             # A system API key's principal has no pk; its str() names it.
             getattr(request.user, "pk", request.user),
-            dry_run,
+            result.dry_run,
             result.deleted_count,
             len(result.skipped),
             len(result.not_found_ids),
         )
-        is_multi_status = not dry_run and result.is_partial
         return Response(
             BulkDeleteResultSerializer(result).data,
-            status=status.HTTP_207_MULTI_STATUS if is_multi_status else status.HTTP_200_OK,
+            status=(
+                status.HTTP_207_MULTI_STATUS
+                if not dry_run and result.is_partial
+                else status.HTTP_200_OK
+            ),
         )
+
+    def get_delete_service(self) -> BaseDeleteService:
+        self._check_delete_service_class()
+        return self.delete_service_class(
+            org_id=self.get_active_org_id(),
+            effective=self.get_effective_permissions(),
+            user=self.request.user,
+        )
+
+    def get_effective_permissions(self) -> EffectivePermissions:
+        """The caller's permissions in the active org, resolved fresh per call."""
+        return PermissionResolver().resolve(user=self.request.user, org_id=self.get_active_org_id())
+
+    def _check_delete_service_class(self) -> None:
+        if not self.delete_service_class:
+            raise NotImplementedError(f"{self.__class__.__name__} must set delete_service_class.")
 
 
 class ToolUsageActionsMixin:

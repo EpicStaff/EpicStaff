@@ -14,17 +14,23 @@ _RAG_MODELS = (GraphRag, NaiveRag)
 
 
 class EmbeddingConfigDeleteService(BaseDeleteService):
-    """Delete service for EmbeddingConfig: usage is the collections whose RAG uses it.
+    """Delete service for EmbeddingConfig entities.
 
-    The global `DefaultModels` / `DefaultCrewConfig` fields are not counted: they
-    have no resource type to check the caller's visibility against.
+    One bucket: the SourceCollections whose GraphRag or NaiveRag uses the
+    config (KNOWLEDGE_SOURCES). A collection with both a GraphRag and a
+    NaiveRag on the same embedder is one collection; BucketCollector folds the
+    two rows.
+
+    Deliberately not counted: the global `DefaultModels.memory_embedding_config`
+    and `DefaultCrewConfig.embedding_config` singleton fields -- they have no
+    ViewSet or resource type to check the caller's visibility against.
     """
 
     model = EmbeddingConfig
 
     def collect_usage(self, ids: list[int]) -> dict[int, UsageReport]:
         """Collections referencing each config."""
-        collections = BucketCollector.for_resource(ResourceType.KNOWLEDGE_SOURCES, self.permissions)
+        collections = BucketCollector.for_resource(ResourceType.KNOWLEDGE_SOURCES, self.effective)
 
         if ids:
             for rag_model in _RAG_MODELS:
@@ -38,7 +44,7 @@ class EmbeddingConfigDeleteService(BaseDeleteService):
                         "base_rag_type__source_collection__collection_id",
                         "base_rag_type__source_collection__collection_name",
                     )
-                    .distinct()
+                    .distinct(),
                 )
 
         return build_reports(ids, [collections])

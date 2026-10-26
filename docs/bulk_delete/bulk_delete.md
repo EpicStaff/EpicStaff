@@ -141,15 +141,12 @@ usage entries always have `by_resource_type: []`.
 { "resource_type": "agents", "id": 12, "name": "Support bot" }
 ```
 
-`resource_type` names the bucket; every id in a bucket points at the same kind
-of entity (a flow, an agent or a knowledge source collection).
-
 ### Status code
 
-A real delete responds `200` when every id was deleted and `207 Multi-Status`
-when any id was not found or skipped — including when *every* id was blocked. A
-dry run always responds `200`; its per-id outcome is in the body. The same rule
-applies to all seven resources.
+A real delete responds `200` when every id was handled as requested and
+`207 Multi-Status` when any id was not found or skipped — including when *every*
+id was blocked. A dry run always responds `200`; its per-id outcome is in the
+body. The same rule applies to all seven resources.
 
 ---
 
@@ -170,8 +167,8 @@ visible items exist beyond that) and sorted by `id`, so the same
 references come back in the same order on every call.
 
 The same parent reached through several paths counts **once** — an agent naming
-one LLM config as both its primary and tool-call model is one reference, and a
-flow reaching a config through both a decision-table node and an assistant is
+one LLM config as both its primary and tool-call model is one reference, and
+a flow reaching a config through both a decision-table node and an assistant is
 one flow.
 
 ### Deleting something whose usage you *can* see is allowed
@@ -237,9 +234,10 @@ which have no resource type to check the caller's visibility against.
 
 ### Embedding Config
 
-One bucket, `knowledge_sources` — `GraphRag.embedder` and `NaiveRag.embedder`,
-merged. A collection with both kinds of RAG on the same embedder is one
-collection.
+One bucket:
+
+- `knowledge_sources` — `GraphRag.embedder` and `NaiveRag.embedder`, merged. A
+  collection with both kinds of RAG on the same embedder is one collection.
 
 Not counted: the global default-model singletons
 (`DefaultModels.memory_embedding_config`, `DefaultCrewConfig.embedding_config`),
@@ -247,8 +245,9 @@ which have no resource type to check the caller's visibility against.
 
 ### Realtime voice configs (OpenAI, ElevenLabs, Gemini)
 
-One bucket, `agents` — `RealtimeAgentDefinition`, the realtime settings of an
-agent.
+One bucket, `agents`:
+
+- `RealtimeAgentDefinition` — the realtime settings of an agent.
 
 **Past voice sessions (`RealtimeAgentChat`) do not count.** A session records
 which config it used, but it is a snapshot: it keeps its own copy of the voice,

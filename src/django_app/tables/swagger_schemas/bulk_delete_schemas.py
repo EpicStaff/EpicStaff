@@ -44,7 +44,11 @@ def _empty_bucket(resource_type: ResourceType) -> dict:
 
 
 def _dry_run_example(bucket_types: tuple[ResourceType, ...]) -> OpenApiExample:
-    """A 200 preview with the buckets this entity really reports, in order."""
+    """A 200 dry run with the buckets this entity really reports, in order.
+
+    Every id gets one bucket per referencing resource type, so an entity with
+    no referencing sources reports `[]` and can never be blocked.
+    """
     buckets = [_empty_bucket(resource_type) for resource_type in bucket_types]
     value = {
         "dry_run": True,
@@ -105,9 +109,10 @@ def _bulk_delete_post_schema(
             "indistinguishable by design. An id is **skipped** with "
             "`in_use_restricted` when something the caller cannot see "
             "references it; usage the caller *can* see does not block. "
-            "A real delete responds 200 when every id was deleted and 207 when "
-            "any id was not found or skipped; a dry run always responds 200. "
-            "`usage` is populated only on a dry run; a real delete returns it empty."
+            "A real delete responds 200 when every id went as requested and 207 "
+            "when any id was not found or skipped; a dry run always responds 200. "
+            "`usage` is populated only on a dry run; "
+            "a real delete returns it empty."
         ),
         "parameters": [BulkDeleteQuerySerializer],
         "request": BulkDeleteRequestSerializer,

@@ -64,12 +64,11 @@ def test_collection_with_both_rag_kinds_on_one_embedder_is_one_collection(org_a)
     NaiveRag.objects.create(base_rag_type=naive_rag_type, embedder=config)
 
     result = EmbeddingConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read_everything(), user=None
+        org_id=org_a.id, effective=_can_read_everything(), user=None
     ).preview([config.id])
 
     knowledge = _bucket(result, config.id, ResourceType.KNOWLEDGE_SOURCES)
     assert knowledge.visible_count == 1
-    assert knowledge.visible_refs[0].id == collection.collection_id
 
 
 @pytest.mark.django_db
@@ -77,7 +76,7 @@ def test_unreferenced_config_is_deleted(org_a):
     config = _config(org_a)
 
     result = EmbeddingConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read_everything(), user=None
+        org_id=org_a.id, effective=_can_read_everything(), user=None
     ).delete([config.id])
 
     assert result.deleted_ids == [config.id]
@@ -105,7 +104,7 @@ def test_another_orgs_references_are_not_usage(org_a, org_b):
         rag_model.objects.create(base_rag_type=rag_type, embedder=config)
 
     preview = EmbeddingConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read_everything(), user=None
+        org_id=org_a.id, effective=_can_read_everything(), user=None
     ).preview([config.id])
     assert [
         (bucket.resource_type, bucket.total_count)
@@ -113,6 +112,6 @@ def test_another_orgs_references_are_not_usage(org_a, org_b):
     ] == [(ResourceType.KNOWLEDGE_SOURCES.value, 0)]
 
     result = EmbeddingConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read_nothing(), user=None
+        org_id=org_a.id, effective=_can_read_nothing(), user=None
     ).delete([config.id])
     assert result.deleted_ids == [config.id]

@@ -240,6 +240,14 @@ class BulkDeleteQuerySerializer(serializers.Serializer):
 
 
 class BulkDeleteRequestSerializer(serializers.Serializer):
+    """Request body for every bulk-delete action (BulkDeleteActionMixin).
+
+    The algorithm is shared through BaseDeleteService; each entity declares only
+    its deletable scope and its referencing sources. `dry_run` is not part of the
+    body — it selects the operation, so it travels as a query parameter, read by
+    BulkDeleteQuerySerializer.
+    """
+
     ids = BoundedListField(
         child=serializers.IntegerField(min_value=1),
         allow_empty=False,
@@ -274,10 +282,12 @@ class SkippedEntrySerializer(serializers.Serializer):
 
 
 class BulkDeleteResultSerializer(serializers.Serializer):
-    """Response of every bulk-delete action.
+    """The response of every bulk-delete action, for every entity.
 
-    `usage` is keyed by entity id (strings, as JSON keys) and is filled on a dry
-    run only; a real delete returns `{}`.
+    `usage` is keyed by entity id; JSON object keys are always strings, so those
+    keys arrive as strings while every other id field is an integer. `usage` is
+    populated on a dry run only — a real delete returns `{}`, keeping the key
+    present so the shape never varies.
     """
 
     dry_run = serializers.BooleanField()

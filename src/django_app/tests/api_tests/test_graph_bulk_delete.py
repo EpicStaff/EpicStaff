@@ -98,17 +98,6 @@ def test_bulk_delete_empty_ids_rejected(django_user_model, org_a):
 
 
 @pytest.mark.django_db
-def test_bulk_delete_oversized_list_is_rejected_before_its_items(django_user_model, org_a):
-    client = org_admin_client(django_user_model, org_a, "admin@example.com")
-
-    resp = client.post("/api/graphs/bulk-delete/", {"ids": ["junk"] * 501}, format="json")
-
-    assert resp.status_code == 400, resp.data
-    assert "500" in resp.data["message"]
-    assert "valid integer" not in resp.data["message"]
-
-
-@pytest.mark.django_db
 def test_bulk_delete_without_delete_permission_forbidden(django_user_model, org_a):
     # READ-only on FLOWS: can list/retrieve graphs but not delete them.
     client = custom_role_client(
@@ -192,7 +181,10 @@ def test_bulk_delete_dry_run_does_not_delete(django_user_model, org_a):
 def test_bulk_delete_dry_run_that_is_not_a_boolean_is_rejected(
     django_user_model, org_a, value
 ):
-    """A typo is a 400, never read as false and executed."""
+    """A value that is not a boolean is a 400, never a delete.
+
+    A typo must never be read as False and executed.
+    """
     client = org_admin_client(django_user_model, org_a, "admin@example.com")
     graph = _graph(org_a, "graph")
 
@@ -249,6 +241,22 @@ def test_bulk_delete_rejects_501_ids(django_user_model, org_a):
 
 
 @pytest.mark.django_db
+def test_bulk_delete_oversized_list_is_rejected_before_its_items(
+    django_user_model, org_a
+):
+    """The cap is checked first: an oversized list costs one error, not one per item."""
+    client = org_admin_client(django_user_model, org_a, "admin@example.com")
+
+    resp = client.post(
+        "/api/graphs/bulk-delete/", {"ids": ["junk"] * 501}, format="json"
+    )
+
+    assert resp.status_code == 400, resp.data
+    assert "500" in resp.data["message"]
+    assert "valid integer" not in resp.data["message"]
+
+
+@pytest.mark.django_db
 def test_bulk_delete_dry_run_shows_visible_usage(django_user_model, org_a):
     client = org_admin_client(django_user_model, org_a, "admin@example.com")
     parent = _graph(org_a, "parent")
@@ -291,7 +299,6 @@ def test_bulk_delete_dry_run_still_blocks_hidden_usage(django_user_model, org_a)
         "/api/graphs/bulk-delete/?dry_run=true", {"ids": [child.id]}, format="json"
     )
 
-    # A preview is always 200; the skip is reported in the body.
     assert resp.status_code == 200, resp.data
     assert resp.data["skipped"] == [{"id": child.id, "reason": "in_use_restricted"}]
     assert resp.data["deleted_ids"] == []

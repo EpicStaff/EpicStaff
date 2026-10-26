@@ -78,12 +78,12 @@ def test_agent_using_one_config_as_both_models_is_one_agent(org_a):
     )
 
     result = LLMConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+        org_id=org_a.id, effective=_can_read(*_ALL_BUCKETS), user=None
     ).preview([config.id])
 
     agents = _bucket(result, config.id, ResourceType.AGENTS)
-    assert [(ref.resource_type, ref.id, ref.name) for ref in agents.visible_refs] == [
-        (ResourceType.AGENTS, agent.id, "bot")
+    assert [(ref.id, ref.name) for ref in agents.visible_refs] == [
+        (agent.id, "bot")
     ]
 
 
@@ -98,7 +98,7 @@ def test_flow_reached_through_a_node_and_an_assistant_is_one_flow(org_a):
     FlowAssistant.objects.create(graph=graph, llm_config=config)
 
     result = LLMConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+        org_id=org_a.id, effective=_can_read(*_ALL_BUCKETS), user=None
     ).preview([config.id])
 
     flows = _bucket(result, config.id, ResourceType.FLOWS)
@@ -116,7 +116,7 @@ def test_graph_rag_reports_its_collection(org_a):
     GraphRag.objects.create(base_rag_type=rag_type, llm=config)
 
     result = LLMConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+        org_id=org_a.id, effective=_can_read(*_ALL_BUCKETS), user=None
     ).preview([config.id])
 
     knowledge = _bucket(result, config.id, ResourceType.KNOWLEDGE_SOURCES)
@@ -134,7 +134,7 @@ def test_an_agent_the_caller_cannot_see_blocks(org_a):
     )
 
     result = LLMConfigDeleteService(
-        org_id=org_a.id, permissions=everything_but_agents, user=None
+        org_id=org_a.id, effective=everything_but_agents, user=None
     ).delete([config.id])
 
     assert result.deleted_ids == []
@@ -150,7 +150,7 @@ def test_unreferenced_configs_are_removed_on_the_queryset_path(org_a):
     first, second = _config(org_a, "a"), _config(org_a, "b")
 
     result = LLMConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+        org_id=org_a.id, effective=_can_read(*_ALL_BUCKETS), user=None
     ).delete([first.id, second.id])
 
     assert sorted(result.deleted_ids) == sorted([first.id, second.id])
@@ -185,14 +185,12 @@ def test_another_orgs_references_are_not_usage(org_a, org_b):
     GraphRag.objects.create(base_rag_type=rag_type, llm=config)
 
     preview = LLMConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+        org_id=org_a.id, effective=_can_read(*_ALL_BUCKETS), user=None
     ).preview([config.id])
     assert {
         bucket.resource_type: bucket.total_count
         for bucket in preview.usage[config.id].buckets
     } == {resource_type.value: 0 for resource_type in _ALL_BUCKETS}
 
-    result = LLMConfigDeleteService(
-        org_id=org_a.id, permissions=_can_read(), user=None
-    ).delete([config.id])
+    result = LLMConfigDeleteService(org_id=org_a.id, effective=_can_read(), user=None).delete([config.id])
     assert result.deleted_ids == [config.id]

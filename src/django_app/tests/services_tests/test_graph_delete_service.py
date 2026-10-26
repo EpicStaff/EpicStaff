@@ -79,9 +79,7 @@ def test_bulk_delete_moves_graphs_to_the_recycle_bin(org_a):
     """
     graph = _graph(org_a)
 
-    result = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
-    ).delete([graph.id])
+    result = GraphDeleteService(org_id=org_a.id, effective=_can_see_flows(), user=None).delete([graph.id])
 
     assert result.deleted_ids == [graph.id]
     assert not Graph.objects.filter(id=graph.id).exists()
@@ -111,7 +109,7 @@ def test_bulk_delete_records_the_deleter_like_a_single_delete(org_a, deleter):
     bulk, single = _graph(org_a, "bulk"), _graph(org_a, "single")
 
     GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=deleter
+        org_id=org_a.id, effective=_can_see_flows(), user=deleter
     ).delete([bulk.id])
     move_to_recycle_bin(single, deleter)
 
@@ -132,7 +130,7 @@ def test_bulk_delete_replaces_an_earlier_editor_with_the_deleter(
     record_last_edit(graph, earlier_editor)
 
     GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=deleter
+        org_id=org_a.id, effective=_can_see_flows(), user=deleter
     ).delete([graph.id])
 
     assert _last_edit_of(graph).edited_by_id == deleter.pk
@@ -147,7 +145,7 @@ def test_bulk_delete_without_a_user_records_no_editor(org_a, django_user_model):
     graph = _graph(org_a)
     record_last_edit(graph, earlier_editor)
 
-    GraphDeleteService(org_id=org_a.id, permissions=_can_see_flows(), user=None).delete([graph.id])
+    GraphDeleteService(org_id=org_a.id, effective=_can_see_flows(), user=None).delete([graph.id])
 
     assert _last_edit_of(graph).edited_by_id is None
 
@@ -157,7 +155,7 @@ def test_dry_run_records_no_deleter_and_deletes_nothing(org_a, deleter):
     graph = _graph(org_a)
 
     result = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=deleter
+        org_id=org_a.id, effective=_can_see_flows(), user=deleter
     ).preview([graph.id])
 
     assert result.deletable_ids == [graph.id]
@@ -172,9 +170,7 @@ def test_visible_usage_does_not_block(org_a):
     parent = _graph(org_a, "parent")
     node = SubGraphNode.objects.create(graph=parent, subgraph=child)
 
-    result = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
-    ).delete([child.id])
+    result = GraphDeleteService(org_id=org_a.id, effective=_can_see_flows(), user=None).delete([child.id])
 
     assert result.deleted_ids == [child.id]
     assert result.skipped == []
@@ -188,9 +184,7 @@ def test_hidden_usage_blocks_without_disclosing_it(org_a):
     parent = _graph(org_a, "parent")
     SubGraphNode.objects.create(graph=parent, subgraph=child)
 
-    result = GraphDeleteService(
-        org_id=org_a.id, permissions=_cannot_see_flows(), user=None
-    ).delete([child.id])
+    result = GraphDeleteService(org_id=org_a.id, effective=_cannot_see_flows(), user=None).delete([child.id])
 
     assert result.deleted_ids == []
     assert result.skipped == [
@@ -201,7 +195,7 @@ def test_hidden_usage_blocks_without_disclosing_it(org_a):
     assert result.usage == {}
 
     preview = GraphDeleteService(
-        org_id=org_a.id, permissions=_cannot_see_flows(), user=None
+        org_id=org_a.id, effective=_cannot_see_flows(), user=None
     ).preview([child.id])
     bucket = preview.usage[child.id].buckets[0]
     assert preview.usage[child.id].blocked is True
@@ -218,7 +212,7 @@ def test_one_flow_embedding_the_same_subgraph_twice_counts_once(org_a):
     SubGraphNode.objects.create(graph=parent, subgraph=child)
 
     result = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
+        org_id=org_a.id, effective=_can_see_flows(), user=None
     ).preview([child.id])
 
     bucket = result.usage[child.id].buckets[0]
@@ -233,7 +227,7 @@ def test_dry_run_reports_what_would_go_and_deletes_nothing(org_a):
     graph = _graph(org_a)
 
     result = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
+        org_id=org_a.id, effective=_can_see_flows(), user=None
     ).preview([graph.id])
 
     assert result.dry_run is True
@@ -249,14 +243,14 @@ def test_duplicate_ids_are_collapsed_everywhere(org_a):
     graph = _graph(org_a)
 
     result = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
+        org_id=org_a.id, effective=_can_see_flows(), user=None
     ).delete([graph.id, graph.id])
 
     assert result.deleted_ids == [graph.id]
     assert result.deleted_count == 1
 
     missing = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
+        org_id=org_a.id, effective=_can_see_flows(), user=None
     ).delete([999_999, 999_999])
     assert missing.not_found_ids == [999_999]
 
@@ -267,7 +261,7 @@ def test_cross_org_and_unknown_ids_are_indistinguishable(org_a, org_b):
     other = _graph(org_b, "other-org")
 
     result = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
+        org_id=org_a.id, effective=_can_see_flows(), user=None
     ).delete([other.id, 999_999])
 
     assert sorted(result.not_found_ids) == sorted([other.id, 999_999])
@@ -284,7 +278,7 @@ def test_usage_covers_every_found_id(org_a):
     SubGraphNode.objects.create(graph=parent, subgraph=child)
 
     result = GraphDeleteService(
-        org_id=org_a.id, permissions=_cannot_see_flows(), user=None
+        org_id=org_a.id, effective=_cannot_see_flows(), user=None
     ).preview([plain.id, child.id, 999_999])
 
     assert set(result.usage) == {plain.id, child.id}
@@ -295,17 +289,13 @@ def test_usage_covers_every_found_id(org_a):
 
 @pytest.mark.django_db
 def test_is_partial_reports_anything_the_caller_did_not_get(org_a):
-    """is_partial reports any id that was not found or was skipped."""
+    """The 200/207 rule, defined once and asserted here rather than per ViewSet."""
     graph = _graph(org_a)
 
-    clean = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
-    ).delete([graph.id])
+    clean = GraphDeleteService(org_id=org_a.id, effective=_can_see_flows(), user=None).delete([graph.id])
     assert clean.is_partial is False
 
-    missing = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
-    ).delete([999_999])
+    missing = GraphDeleteService(org_id=org_a.id, effective=_can_see_flows(), user=None).delete([999_999])
     assert missing.is_partial is True
 
 
@@ -333,7 +323,7 @@ def test_a_row_refused_at_delete_time_costs_that_row_not_the_batch(org_a):
 
     with mock.patch.object(Graph, "delete", delete_then_refuse):
         result = GraphDeleteService(
-            org_id=org_a.id, permissions=_cannot_see_flows(), user=None
+            org_id=org_a.id, effective=_cannot_see_flows(), user=None
         ).delete([kept.id, refused.id, in_use.id])
 
     assert result.deleted_ids == [kept.id]
@@ -359,7 +349,7 @@ def test_another_orgs_flow_embedding_the_graph_is_not_usage(org_a, org_b):
     SubGraphNode.objects.create(graph=_graph(org_b, "foreign parent"), subgraph=child)
 
     preview = GraphDeleteService(
-        org_id=org_a.id, permissions=_can_see_flows(), user=None
+        org_id=org_a.id, effective=_can_see_flows(), user=None
     ).preview([child.id])
     assert preview.usage[child.id].buckets[0].total_count == 0
 
@@ -376,7 +366,7 @@ def test_a_delete_reaching_another_orgs_rows_fails_the_request(org_a, org_b):
 
     with pytest.raises(CrossOrgCascadeError):
         GraphDeleteService(
-            org_id=org_a.id, permissions=_cannot_see_flows(), user=None
+            org_id=org_a.id, effective=_cannot_see_flows(), user=None
         ).delete([fine.id, child.id])
 
     assert Graph.objects.filter(id__in=[fine.id, child.id]).count() == 2
@@ -391,7 +381,7 @@ def test_rows_are_locked_in_primary_key_order(org_a):
 
     with CaptureQueriesContext(connection) as queries:
         GraphDeleteService(
-            org_id=org_a.id, permissions=_can_see_flows(), user=None
+            org_id=org_a.id, effective=_can_see_flows(), user=None
         ).delete([second.id, first.id])
 
     # DeleteService also locks each row with .first(), which orders by itself, so

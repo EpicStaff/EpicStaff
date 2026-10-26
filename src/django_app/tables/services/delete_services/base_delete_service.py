@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 
 from django.db import models, transaction
 from django.db.models.deletion import ProtectedError, RestrictedError
@@ -17,160 +16,221 @@ from tables.services.delete_services.usage import (
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
 
 
-@dataclass(frozen=True)
-class _DeletePlan:
-    found_ids: list[int]
-    deletable: list[models.Model]
-    skipped: list[SkipEntry]
-    usage: dict[int, UsageReport]
-
-
 class BaseDeleteService(ABC):
-    """Deletes one entity's rows for an org, skipping rows used where the caller cannot see.
+    """Base class for entity bulk-delete services.
 
-    Subclasses set `model` and implement `collect_usage`.
+    Owns the whole algorithm -- scope, usage, skip, delete -- so each entity
+    declares only two things: which rows its org may delete, and what
+    references them.
+
+    Unlike BaseCopyService, which is a thin interface (one abstract method, no
+    state), this is a template method: the shared part is the valuable part, so
+    it needs `model` and overridable hooks. The style is still copied from
+    copy_services -- absolute imports, `...` abstract bodies, one-line summaries.
     """
 
-    def __init__(self, *, org_id: int, permissions: EffectivePermissions, user) -> None:
+    def __init__(self, *, org_id: int, effective: EffectivePermissions, user) -> None:
         """Bind the service to one caller.
 
         Args:
-            user: Recorded as who deleted each row that lands in the recycle bin.
+            user: The requesting user, recorded as who deleted each row that
+                lands in the recycle bin, as a single DELETE does. None records no
+                person. Required, so a caller cannot forget it. Rows that are deleted
+                for good ignore it.
         """
         self.org_id = org_id
-        self.permissions = permissions
+        self.effective = effective
         self.user = user
 
     @property
     @abstractmethod
     def model(self) -> type[models.Model]:
-        """The entity this service deletes; subclasses set it as a class attribute."""
+        """The entity this service deletes.
+
+        Concrete subclasses set it as a plain class attribute; one that forgets
+        cannot be instantiated.
+        """
 
     @abstractmethod
     def collect_usage(self, ids: list[int]) -> dict[int, UsageReport]:
-        """Return a usage report for every id passed in, empty when nothing references it."""
+        """Per-id report of which visible/hidden resources reference each row.
+
+        Must return an entry for every id passed in -- the response shape is
+        uniform across entities and across rows. An entity nothing can reference
+        returns empty reports rather than opting out of the contract.
+        """
 
     def get_deletable_queryset(self) -> models.QuerySet:
-        """Rows the active org owns; globally visible rows are never deletable here."""
+        """Rows this org is allowed to delete.
+
+        Deletability is not visibility: the default is ownership, and hybrid
+        models must narrow rather than widen it. Globally visible rows belong
+        to no org and must never be deletable through an org-scoped endpoint.
+        """
         return self.model.objects.filter(org_id=self.org_id)
 
     def assert_deletable(self, instance: models.Model) -> None:
-        """Apply the bulk rule to a single DELETE. Call inside the deleting transaction.
+        """Guard for the single-object destroy path. Call it inside a transaction.
 
-        Locks the row, so the usage checked still holds when the caller deletes it.
-
-        Raises:
-            NotFound: The row is outside the deletable scope.
-            InUseRestrictedError: Something the caller cannot see references the row.
+        Runs the same rule as bulk, so a caller cannot bypass the block by
+        deleting one id at a time. Like bulk, it re-reads the row through the
+        deletable scope under a row lock: a row outside the scope is a 404, and
+        the lock holds until the caller's delete commits in the same
+        transaction.
         """
         if not self._resolve([instance.pk], lock=True):
             raise NotFound()
-        if self.collect_usage([instance.pk])[instance.pk].blocked:
+        report = self.collect_usage([instance.pk])[instance.pk]
+        if report.blocked:
             raise InUseRestrictedError()
 
-    def preview(self, ids: list[int]) -> BulkDeleteResult:
-        """Report what `delete` would do with these ids, without locking or writing."""
-        ids = list(dict.fromkeys(ids))
-        plan = self._plan(ids, lock=False)
-        return BulkDeleteResult(
-            dry_run=True,
-            deletable_ids=[obj.pk for obj in plan.deletable],
-            deleted_ids=[],
-            not_found_ids=self._not_found_ids(ids, plan.found_ids),
-            skipped=plan.skipped,
-            usage=plan.usage,
-        )
-
     def delete(self, ids: list[int]) -> BulkDeleteResult:
-        """Delete every requested id the caller may delete, and report the rest.
-
-        Usage is checked and acted on in one transaction under row locks, so a new
-        reference waits for the delete instead of slipping in between (a soft-deleted
-        row survives, so a waiting reference to it still goes through).
+        """Delete every requested id this caller may delete, and report the rest.
 
         Raises:
-            CrossOrgCascadeError: A soft delete would reach another organization's
-                rows. The whole request rolls back (409).
+            CrossOrgCascadeError: A row's soft delete would reach another
+                organization's rows. Not reported per id: it means the data holds a
+                link no API path creates, so the whole request rolls back (409).
         """
         ids = list(dict.fromkeys(ids))
-        with transaction.atomic():
-            plan = self._plan(ids, lock=True)
-            # Read before deleting: Model.delete() clears pk on the instance.
-            deletable_ids = [obj.pk for obj in plan.deletable]
-            deleted_ids, refused = self._delete_rows(plan.deletable)
 
-        # Usage only explains a preview; `{}` keeps the response shape fixed.
+        # One transaction around read-decide-write: evaluating usage outside it
+        # would let a concurrent request attach the entity to something hidden
+        # between the check and the delete. The row lock also covers a *new*
+        # referencing row: on PostgreSQL inserting an FK takes FOR KEY SHARE on
+        # the target, which waits on this FOR UPDATE and then fails once the
+        # row is gone. The gap left is soft delete, where the row survives and
+        # the waiting insert goes through.
+        with transaction.atomic():
+            found = self._resolve(ids, lock=True)
+            # Every pk is read up front: Model.delete() clears it on the
+            # instance, so anything derived from `found` afterwards would see
+            # None. This is the one ordering constraint in the method.
+            found_ids = [obj.pk for obj in found]
+            usage = self.collect_usage(found_ids)
+            deletable, skipped = self._partition(found, usage)
+            deletable_ids = [obj.pk for obj in deletable]
+            deleted_ids, blocked_at_delete = self._delete_rows(deletable, self.user)
+
+        # Usage was needed above to decide what to skip, but it is the preview
+        # payload: on a real delete it adds nothing actionable -- visible
+        # entities are gone, blocked ones report visible_count=0. `{}` rather
+        # than dropping the key, so the response shape never varies.
         return BulkDeleteResult(
             dry_run=False,
             deletable_ids=deletable_ids,
             deleted_ids=deleted_ids,
-            not_found_ids=self._not_found_ids(ids, plan.found_ids),
-            skipped=plan.skipped + refused,
+            not_found_ids=self._not_found_ids(ids, found_ids),
+            skipped=skipped + blocked_at_delete,
             usage={},
         )
 
-    def _plan(self, ids: list[int], *, lock: bool) -> _DeletePlan:
-        found = self._resolve(ids, lock=lock)
+    def preview(self, ids: list[int]) -> BulkDeleteResult:
+        """What a real call would do. Opens no transaction -- it writes nothing."""
+        ids = list(dict.fromkeys(ids))
+        found = self._resolve(ids, lock=False)
         found_ids = [obj.pk for obj in found]
         usage = self.collect_usage(found_ids)
-        deletable: list[models.Model] = []
-        skipped: list[SkipEntry] = []
-        for obj in found:
-            if usage[obj.pk].blocked:
-                skipped.append(SkipEntry(id=obj.pk, reason=SkipReason.IN_USE_RESTRICTED))
-            else:
-                deletable.append(obj)
-        return _DeletePlan(found_ids=found_ids, deletable=deletable, skipped=skipped, usage=usage)
+        deletable, skipped = self._partition(found, usage)
+
+        return BulkDeleteResult(
+            dry_run=True,
+            deletable_ids=[obj.pk for obj in deletable],
+            deleted_ids=[],
+            not_found_ids=self._not_found_ids(ids, found_ids),
+            skipped=skipped,
+            usage=usage,
+        )
 
     def _resolve(self, ids: list[int], *, lock: bool) -> list[models.Model]:
         """The requested rows this org may delete, in request order."""
         queryset = self.get_deletable_queryset().filter(pk__in=ids)
         if lock:
-            # of=("self",) locks only the target rows when the scope joins to reach
-            # its org; pk order makes overlapping bulk deletes wait, not deadlock.
+            # of=("self",) so a queryset that joins to reach its org (e.g.
+            # GraphVersion via graph__org_id) locks only the target rows.
+            # Locking in pk order means two overlapping bulk deletes wait on
+            # each other instead of deadlocking.
             queryset = queryset.order_by("pk").select_for_update(of=("self",))
         by_id = {obj.pk: obj for obj in queryset}
         return [by_id[entity_id] for entity_id in ids if entity_id in by_id]
 
     @staticmethod
     def _not_found_ids(ids: list[int], found_ids: list[int]) -> list[int]:
-        """Ids that are missing, in another org, or not deletable.
+        """Ids that do not exist, belong to another org, or are not deletable.
 
-        Collapsed on purpose: telling them apart would leak rows the caller cannot act on.
+        All three collapse into one bucket on purpose: telling them apart would
+        leak the existence of rows the caller cannot act on. Takes ids rather
+        than instances because the instances may already have been deleted.
         """
         resolved = set(found_ids)
         return [entity_id for entity_id in ids if entity_id not in resolved]
 
-    def _delete_rows(self, instances: list[models.Model]) -> tuple[list[int], list[SkipEntry]]:
-        """Delete rows that passed every check; return deleted ids and refused rows.
+    def _partition(
+        self, found: list[models.Model], usage: dict[int, UsageReport]
+    ) -> tuple[list[models.Model], list[SkipEntry]]:
+        """Split found rows into those to delete and those to report as skipped."""
+        deletable: list[models.Model] = []
+        skipped: list[SkipEntry] = []
 
-        Soft-delete roots go row by row: QuerySet.delete() bypasses
-        SoftDeleteMixin.delete and would hard-delete them.
+        for obj in found:
+            if usage[obj.pk].blocked:
+                skipped.append(SkipEntry(id=obj.pk, reason=SkipReason.IN_USE_RESTRICTED))
+            else:
+                deletable.append(obj)
+
+        return deletable, skipped
+
+    def _delete_rows(
+        self, instances: list[models.Model], deleted_by: object | None
+    ) -> tuple[list[int], list[SkipEntry]]:
+        """Remove rows that passed every check.
+
+        Soft-delete roots MUST go row by row: SoftDeleteMixin overrides
+        delete() on the *instance*, and QuerySet.delete() bypasses that
+        override entirely -- a bulk delete would silently hard-delete them.
+        Everything else takes the queryset path, where the cascade is collected
+        once for the whole set instead of once per row.
         """
         if not instances:
             return [], []
 
         if issubclass(self.model, SoftDeleteMixin):
-            return self._delete_one_by_one(instances)
+            return self._delete_one_by_one(instances, deleted_by)
 
-        # No reverse FK on these entities uses PROTECT or RESTRICT, so the batch
-        # cannot be refused; add per-row handling if one ever does.
         self.model.objects.filter(pk__in=[obj.pk for obj in instances]).delete()
         return [obj.pk for obj in instances], []
 
+    @staticmethod
     def _delete_one_by_one(
-        self, instances: list[models.Model]
+        instances: list[models.Model], deleted_by: object | None
     ) -> tuple[list[int], list[SkipEntry]]:
+        """Delete each row in its own savepoint, reporting the ones refused.
+
+        Only the row-by-row path gets partial success. The queryset path above
+        cannot: a failure there rolls back the batch. That asymmetry is safe
+        today because no reverse FK on the queryset-path entities uses PROTECT
+        or RESTRICT, so there is nothing for those deletes to be refused by.
+        Revisit this the moment a PROTECT lands on any of them.
+
+        A recycle-bin root (last-edit tracked) goes through move_to_recycle_bin,
+        the same call a single DELETE makes, so the deleter is recorded. A
+        soft-delete root outside the bin (GraphVersion) is soft-deleted with
+        nothing to record.
+
+        ImproperlyConfigured is deliberately NOT caught: it means a broken FK
+        declaration, which is a bug to surface, not a row to skip.
+        """
         deleted_ids: list[int] = []
         refused: list[SkipEntry] = []
 
         for obj in instances:
-            entity_id = obj.pk
+            entity_id = obj.pk  # capture before delete() clears it
             try:
-                # A savepoint per row: one refused row does not roll back the batch.
+                # Nested inside the caller's atomic block, so this is a
+                # savepoint: one refused row does not lose the whole batch.
                 with transaction.atomic():
                     if isinstance(obj, LastEditTrackedModel):
-                        move_to_recycle_bin(obj, self.user)
+                        move_to_recycle_bin(obj, deleted_by)
                     else:
                         obj.delete()
             except (ProtectedError, RestrictedError):

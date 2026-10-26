@@ -80,9 +80,7 @@ def test_a_past_session_alone_does_not_block(org_a, config_model, service_class,
     config = config_model.objects.create(org=org_a, custom_name="cfg")
     RealtimeAgentChat.objects.create(connection_key="past-session", **{fk: config})
 
-    result = service_class(
-        org_id=org_a.id, permissions=_permissions(), user=None
-    ).delete([config.id])
+    result = service_class(org_id=org_a.id, effective=_permissions(), user=None).delete([config.id])
 
     assert result.deleted_ids == [config.id]
     assert result.skipped == []
@@ -97,12 +95,12 @@ def test_an_agent_definition_is_reported(org_a, config_model, service_class, fk)
     RealtimeAgentDefinition.objects.create(agent_definition=agent, **{fk: config})
 
     result = service_class(
-        org_id=org_a.id, permissions=_permissions(ResourceType.AGENTS), user=None
+        org_id=org_a.id, effective=_permissions(ResourceType.AGENTS), user=None
     ).preview([config.id])
 
     agents = _agents_bucket(result, config.id)
-    assert [(ref.resource_type, ref.id, ref.name) for ref in agents.visible_refs] == [
-        (ResourceType.AGENTS, agent.id, "voice bot")
+    assert [(ref.id, ref.name) for ref in agents.visible_refs] == [
+        (agent.id, "voice bot")
     ]
 
 
@@ -115,9 +113,7 @@ def test_an_agent_definition_the_caller_cannot_see_blocks(
     current = AgentDefinition.objects.create(org=org_a, name="current")
     RealtimeAgentDefinition.objects.create(agent_definition=current, **{fk: config})
 
-    result = service_class(
-        org_id=org_a.id, permissions=_permissions(), user=None
-    ).delete([config.id])
+    result = service_class(org_id=org_a.id, effective=_permissions(), user=None).delete([config.id])
 
     assert result.skipped == [
         SkipEntry(id=config.id, reason=SkipReason.IN_USE_RESTRICTED)
@@ -133,7 +129,7 @@ def test_another_orgs_config_is_not_found(
     other = config_model.objects.create(org=org_b, custom_name="other")
 
     result = service_class(
-        org_id=org_a.id, permissions=_permissions(ResourceType.AGENTS), user=None
+        org_id=org_a.id, effective=_permissions(ResourceType.AGENTS), user=None
     ).delete([other.id])
 
     assert result.not_found_ids == [other.id]
@@ -156,17 +152,15 @@ def test_another_orgs_agents_are_not_usage(
     RealtimeAgentDefinition.objects.create(agent_definition=foreign, **{fk: config})
 
     preview = service_class(
-        org_id=org_a.id, permissions=_permissions(ResourceType.AGENTS), user=None
+        org_id=org_a.id, effective=_permissions(ResourceType.AGENTS), user=None
     ).preview([config.id])
     assert _agents_bucket(preview, config.id).total_count == 0
 
-    result = service_class(
-        org_id=org_a.id, permissions=_permissions(), user=None
-    ).delete([config.id])
+    result = service_class(org_id=org_a.id, effective=_permissions(), user=None).delete([config.id])
     assert result.deleted_ids == [config.id]
 
 
 def test_the_shared_base_cannot_be_instantiated():
     """It sets no `model`, so using it directly fails at once, not mid-delete."""
-    with pytest.raises(TypeError, match="abstract"):
-        _ProviderRealtimeConfigDeleteService(org_id=1, permissions=_permissions(), user=None)
+    with pytest.raises(TypeError):
+        _ProviderRealtimeConfigDeleteService()

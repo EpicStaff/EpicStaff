@@ -11,20 +11,35 @@ from tables.services.delete_services.usage import (
 
 
 class GraphDeleteService(BaseDeleteService):
-    """Delete service for Graph: usage is the flows embedding it as a subgraph."""
+    """Delete service for Graph (Flow) entities.
+
+    A graph is referenced from exactly one place in the schema --
+    `SubGraphNode.subgraph`, i.e. another flow embedding it as a subgraph -- so
+    it reports a single FLOWS bucket. The bucket list still exists because the
+    shape is shared with entities that genuinely have several.
+
+    Graph is a soft-delete root, so `BaseDeleteService._delete_rows` removes its
+    rows one at a time; a queryset delete would bypass `SoftDeleteMixin.delete`
+    and destroy them outright.
+    """
 
     model = Graph
 
     def collect_usage(self, ids: list[int]) -> dict[int, UsageReport]:
         """Which flows embed each graph, limited to flows the caller may see."""
-        flows = BucketCollector.for_resource(ResourceType.FLOWS, self.permissions)
-        flows.add_rows(self._embedding_flow_rows(ids))
+        flows = BucketCollector.for_resource(ResourceType.FLOWS, self.effective)
+        flows.add_rows(self._embedding_flow_rows(ids, self.org_id))
         return build_reports(ids, [flows])
 
-    def _embedding_flow_rows(self, ids: list[int]) -> Iterable[tuple[int, int, str | None]]:
-        """`(graph_id, parent_flow_id, parent_flow_name)` per embedding node."""
+    @staticmethod
+    def _embedding_flow_rows(ids: list[int], org_id: int) -> Iterable[tuple[int, int, str | None]]:
+        """`(graph_id, parent_flow_id, parent_flow_name)` per embedding node.
+
+        One parent flow embedding the same subgraph through two SubGraphNodes
+        yields two rows; the collector folds them into one reference.
+        """
         if not ids:
             return []
-        return SubGraphNode.objects.filter(
-            subgraph_id__in=ids, graph__org_id=self.org_id
-        ).values_list("subgraph_id", "graph_id", "graph__name")
+        return SubGraphNode.objects.filter(subgraph_id__in=ids, graph__org_id=org_id).values_list(
+            "subgraph_id", "graph_id", "graph__name"
+        )
