@@ -12,8 +12,8 @@ would also re-create every tool running in it.
 
 from django.db.models import Q
 from packaging.utils import canonicalize_name
-from proxies.sandbox.clients import SandboxVenvClient
 from proxies.sandbox.models import SandboxVenvBinding
+from proxies.sandbox.services import VenvService
 from rbac.authorship import resolve_author
 
 from tables.import_export.enums import EntityType
@@ -34,16 +34,14 @@ class VenvStrategy(EntityImportExportStrategy):
 
     def get_preview_data(self, instance: SandboxVenvBinding) -> dict:
         """Name the environment rather than its binding id, which means nothing to a reader."""
-        with SandboxVenvClient() as client:
-            venv = client.retrieve(instance.resource_id)
+        venv = VenvService().retrieve(instance)
         return {"id": instance.pk, "name": venv.get("name")}
 
     def extract_dependencies_from_instance(self, instance: SandboxVenvBinding) -> dict:
         return {}
 
     def export_entity(self, instance: SandboxVenvBinding) -> dict:
-        with SandboxVenvClient() as client:
-            venv = client.retrieve(instance.resource_id)
+        venv = VenvService().retrieve(instance)
         return {
             "id": instance.pk,
             "name": venv.get("name"),
@@ -68,24 +66,18 @@ class VenvStrategy(EntityImportExportStrategy):
         if org_id is None:
             return None
 
-        bindings = {
-            binding.resource_id: binding
-            for binding in SandboxVenvBinding.objects.filter(self.get_org_scope_q(org_id))
-        }
-        if not bindings:
-            return None
-
         name = data.get("name")
         libraries = self._library_key(data.get("libs") or [])
-        with SandboxVenvClient() as client:
-            page = client.list(ids=list(bindings))
+        _page, pairs = VenvService().list_page(
+            SandboxVenvBinding.objects.filter(self.get_org_scope_q(org_id))
+        )
 
-        for venv in page.get("result") or []:
+        for venv, binding in pairs:
             if venv.get("status") == FAILED_STATUS or venv.get("name") != name:
                 continue
             if self._library_key(venv.get("libs") or []) != libraries:
                 continue
-            return bindings.get(str(venv.get("id")))
+            return binding
         return None
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> SandboxVenvBinding:
@@ -98,20 +90,13 @@ class VenvStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         declared = serializer.validated_data
 
-        with SandboxVenvClient() as client:
-            venv = client.create(
-                {"name": declared["name"], "libs": [dict(lib) for lib in declared["libs"]]}
-            )
-
-        created_venv_ids = kwargs.get("created_venv_ids")
-        if created_venv_ids is not None:
-            created_venv_ids.append(venv["id"])
-
-        return SandboxVenvBinding.objects.create(
+        binding, _venv = VenvService().create(
+            {"name": declared["name"], "libs": [dict(lib) for lib in declared["libs"]]},
             org_id=kwargs.get("org_id"),
             created_by=resolve_author(kwargs.get("user")),
-            resource_id=str(venv["id"]),
+            created_venv_ids=kwargs.get("created_venv_ids"),
         )
+        return binding
 
     @staticmethod
     def _export_lib(lib: dict) -> dict:

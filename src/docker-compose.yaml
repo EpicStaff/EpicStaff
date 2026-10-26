@@ -201,6 +201,8 @@ services:
         condition: service_healthy
       storage:
         condition: service_healthy
+      sandbox_new:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${DJANGO_PORT:?}/ht/')\""]
       interval: 30s
@@ -1115,15 +1117,29 @@ services:
     init: true
     networks:
       - backend-network
+    # Not django_app: it is the other way round now. A django_app data migration
+    # moves the libraries Python code used to carry into venvs through this API,
+    # so this service and its own migrations have to be up before django_app runs.
+    # crewdb only has to be running, not healthy, for the same reason: it reports
+    # healthy at the end of a setup phase that itself waits for django_app's
+    # migrations, so waiting for it here would deadlock all three. The role and the
+    # schema this service needs are created in crewdb's first phase, and the
+    # entrypoint waits for them.
     depends_on:
       crewdb:
-        condition: service_healthy
-      django_app:
-        condition: service_healthy
+        condition: service_started
       storage:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # The port opens only after `piccolo migrations forwards all` in the
+    # entrypoint, so healthy means the schema is current and the API answers.
+    healthcheck:
+      test: ["CMD", "python3", "-I", "-c", "import socket; socket.create_connection(('127.0.0.1', ${SANDBOX_PORT:?}), 5).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     environment:
       <<: [*docker-env, *database-env, *redis-env, *communication-env]
       STORAGE_HOST: ${STORAGE_HOST:?}
@@ -1163,14 +1179,10 @@ services:
       - KILL  # signal the dropped-privilege child's process group on timeout.
 
 volumes:
-  sandbox_venvs:
-    external: true
-  crew_pgdata:
-    external: true
-  media_data:
-    external: true
-  opensearch_data:
-    external: true
+  sandbox_venvs: {}
+  crew_pgdata: {}
+  media_data: {}
+  opensearch_data: {}
   redis_data: {}
   code_instances: {}
   rustfs_data: {}
