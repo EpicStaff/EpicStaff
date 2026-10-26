@@ -95,6 +95,8 @@ loopback_marker=PLUGINS_DEV_LOOPBACK_ONLY=true
 
 # A value of the shape `openssl rand -hex 32` gives; the rendered check location must carry it.
 gateway_secret=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+# Same shape; the avatar location's secure_link_md5 hashes it into every avatar URL signature.
+avatar_signing_secret=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
 
 # The policy of the two login callback pages, next to the plugin hosts' frame-ancestors.
 platform_page_policy="default-src 'none'; script-src 'self'; base-uri 'none'; form-action 'none'"
@@ -119,6 +121,8 @@ stack_environment=(
   PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test
   PLUGINS_MAX_PACKAGE_MB=300 PLUGINS_MAX_REQUEST_BODY_MB=20 PLUGINS_GATEWAY_SECRET="$gateway_secret"
   DJANGO_FRONTEND_BASE_URL=https://epicstaff.test PLUGINS_NETWORK_SUBNET=10.235.0.0/24
+  STORAGE_HOST=storage STORAGE_PORT=9000 STORAGE_BUCKET=epicstaff
+  AVATAR_URL_SIGNING_SECRET="$avatar_signing_secret"
 )
 
 # Fills docker_arguments with the stack's nginx environment, overridden by the NAME=value
@@ -1318,6 +1322,7 @@ non_django_locations=$(LC_ALL=C sort << 'LOCATIONS'
 /realtime/ -> http://realtime_server
 /chat/ -> $chat_upstream
 /auditor/ -> $auditor_upstream
+/media/avatars/ -> http://storage_server/epicstaff/system/avatars/
 LOCATIONS
 )
 # $1 = a file of `nginx -T` output; prints the main server's violations, sorted.

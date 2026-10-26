@@ -270,6 +270,7 @@ server {
         set $args "";
         proxy_pass http://storage_server/${STORAGE_BUCKET}/system/avatars/;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
         proxy_set_header Authorization "";
     }
 
