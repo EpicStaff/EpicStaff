@@ -61,6 +61,7 @@ export class ConversationRowComponent {
     /** The current user may take conversations over (chats use). */
     readonly canTakeOver = input(false);
     readonly isActionPending = input(false);
+    readonly isCompact = input(false);
     readonly selectRequested = output<void>();
     readonly takeOverRequested = output<void>();
     readonly moveRequested = output<ConversationRowMove>();
@@ -122,7 +123,11 @@ export class ConversationRowComponent {
     );
     /** Not for a conversation the current user holds; one another operator holds asks before it is taken from them. */
     protected readonly offersTakeOver = computed(
-        () => this.isWaiting() && this.canTakeOver() && this.conversation().assigned_operator_id !== this.myUserId()
+        () =>
+            !this.isCompact() &&
+            this.isWaiting() &&
+            this.canTakeOver() &&
+            this.conversation().assigned_operator_id !== this.myUserId()
     );
     /**
      * Visitor, desk (All desks only), last activity in words (the close, on a row timed by it), and what the
