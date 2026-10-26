@@ -29,3 +29,36 @@ describe('UserAvatarComponent initials', () => {
         expect(initialsFor(name)).toBe(initials);
     });
 });
+
+describe('UserAvatarComponent image', () => {
+    function renderAvatar(avatarUrl: string) {
+        const fixture = TestBed.createComponent(UserAvatarComponent);
+        fixture.componentRef.setInput('name', 'John Smith');
+        fixture.componentRef.setInput('avatarUrl', avatarUrl);
+        fixture.detectChanges();
+        return fixture;
+    }
+
+    it('shows the initials when the image fails to load', () => {
+        const fixture = renderAvatar('/media/avatars/expired.png');
+        const element: HTMLElement = fixture.nativeElement;
+
+        element.querySelector('img')!.dispatchEvent(new Event('error'));
+        fixture.detectChanges();
+
+        expect(element.querySelector('img')).toBeNull();
+        expect(element.querySelector('.initials')?.textContent).toBe('JS');
+    });
+
+    it('tries the image again when a new URL arrives after a failure', () => {
+        const fixture = renderAvatar('/media/avatars/expired.png');
+        const element: HTMLElement = fixture.nativeElement;
+        element.querySelector('img')!.dispatchEvent(new Event('error'));
+        fixture.detectChanges();
+
+        fixture.componentRef.setInput('avatarUrl', '/media/avatars/fresh.png');
+        fixture.detectChanges();
+
+        expect(element.querySelector('img')?.getAttribute('src')).toBe('/media/avatars/fresh.png');
+    });
+});

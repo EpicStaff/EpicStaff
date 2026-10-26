@@ -50,13 +50,16 @@
                             <button
                                 type="button"
                                 class="import-group__main"
+                                [appCollapseOnOverflow]="true"
+                                collapseOnOverflowTarget=".btn-label"
+                                collapseOnOverflowClass="btn--icon-only"
                                 (click)="onImportClick()"
                             >
                                 <app-svg-icon
                                     icon="download"
                                     size="1.1rem"
                                 />
-                                <span>Import</span>
+                                <span class="btn-label">Import</span>
                             </button>
                             <button
                                 type="button"
@@ -87,13 +90,16 @@
                         <button
                             type="button"
                             class="export-group__main"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".btn-label"
+                            collapseOnOverflowClass="btn--icon-only"
                             (click)="onExportClick()"
                         >
                             <app-svg-icon
                                 icon="upload"
                                 size="1.1rem"
                             />
-                            <span>Export</span>
+                            <span class="btn-label">Export</span>
                         </button>
                     </div>
                     <app-button

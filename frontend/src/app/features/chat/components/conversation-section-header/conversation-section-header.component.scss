@@ -1,3 +1,5 @@
+@use '../../../../../styles/count-badge';
+
 // The shared section header's look (agents explorer, the FE-1 column), with semantic tokens.
 :host {
     display: block;
@@ -27,10 +29,28 @@
         outline-offset: -1px;
     }
 
+    &--compact {
+        justify-content: center;
+        padding: 0;
+    }
+
     &__chevron,
     &__icon {
         flex-shrink: 0;
         color: var(--color-text-secondary);
+    }
+
+    &__icon {
+        position: relative;
+        display: inline-flex;
+    }
+
+    &__badge {
+        @include count-badge.pill;
+        position: absolute;
+        top: -6px;
+        right: -10px;
+        box-shadow: 0 0 0 2px var(--color-background-body);
     }
 
     &__chevron {

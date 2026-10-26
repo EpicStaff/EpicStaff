@@ -20,6 +20,9 @@ const ORDER_LABELS: Record<ChatInboxOrder, string> = { newest: 'Newest first', o
     imports: [AppSvgIconComponent, MatTooltipModule, SearchComponent],
     templateUrl: './conversation-list-toolbar.component.html',
     styleUrl: './conversation-list-toolbar.component.scss',
+    host: {
+        '[class.conversation-list-toolbar--compact]': 'isCompact()',
+    },
 })
 export class ConversationListToolbarComponent {
     readonly order = input.required<ChatInboxOrder>();
@@ -28,12 +31,22 @@ export class ConversationListToolbarComponent {
     readonly canFilterMine = input(false);
     /** Why the server refused the search; shown under the field. */
     readonly searchError = input<string | null>(null);
+    readonly canCollapse = input(false);
+    readonly isCompact = input(false);
+    readonly columnId = input<string | null>(null);
     /** The trimmed search, once typing settles; at once when cleared. */
     readonly searchChange = output<string>();
     readonly orderChange = output<ChatInboxOrder>();
     readonly mineOnlyChange = output<boolean>();
+    readonly compactToggle = output<void>();
 
     protected readonly searchText = signal('');
+    protected readonly isFilteredWhileCompact = computed(
+        () => this.isCompact() && (this.isMineOnly() || !!this.searchText().trim())
+    );
+    protected readonly compactToggleLabel = computed(() =>
+        this.isFilteredWhileCompact() ? 'Conversations, filtered' : 'Conversations'
+    );
     protected readonly orderLabel = computed(() => ORDER_LABELS[this.order()]);
     // Says what the button is, and still starts with what it shows (the label is in the name).
     protected readonly sortName = computed(() => `Sort: ${this.orderLabel().toLowerCase()}`);

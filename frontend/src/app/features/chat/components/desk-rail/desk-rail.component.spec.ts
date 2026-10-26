@@ -1,17 +1,17 @@
-import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { Component, computed, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { BehaviorSubject, map, Observable, of } from 'rxjs';
+import { Observable, of } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CHAT_BINDING_DEFAULTS, ChatBinding } from '../../models/chat.model';
 import { ChatBindingActionsService } from '../../services/chat-binding-actions.service';
 import { ChatDesksStorageService } from '../../services/chat-desks-storage.service';
 import { DeskRailComponent, DeskRailPresentation } from './desk-rail.component';
-
-const STORAGE_KEY = 'chat:deskRailMode';
 
 const desk = (overrides: Partial<ChatBinding>): ChatBinding => ({
     ...CHAT_BINDING_DEFAULTS,
@@ -67,7 +67,6 @@ function createDesksStorage() {
 
 describe('DeskRailComponent', () => {
     let fixture: ComponentFixture<DeskRailComponent>;
-    let isNarrowScreen: BehaviorSubject<boolean>;
     let navigate: ReturnType<typeof vi.spyOn>;
     let canCreate: boolean;
     let desksStorage: ReturnType<typeof createDesksStorage>;
@@ -75,13 +74,20 @@ describe('DeskRailComponent', () => {
 
     function render(
         waitingByDesk: Record<string, number> = {},
-        presentation: DeskRailPresentation = 'rail'
+        presentation: DeskRailPresentation = 'rail',
+        compact = false
     ): HTMLElement {
         fixture = TestBed.createComponent(DeskRailComponent);
         fixture.componentRef.setInput('waitingByDesk', waitingByDesk);
         fixture.componentRef.setInput('presentation', presentation);
+        fixture.componentRef.setInput('isCompact', compact);
         fixture.detectChanges();
         return fixture.nativeElement as HTMLElement;
+    }
+
+    function setCompact(compact: boolean): void {
+        fixture.componentRef.setInput('isCompact', compact);
+        fixture.detectChanges();
     }
 
     const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
@@ -102,10 +108,8 @@ describe('DeskRailComponent', () => {
 
     beforeEach(() => {
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
-        localStorage.clear();
         vi.clearAllMocks();
         canCreate = true;
-        isNarrowScreen = new BehaviorSubject(false);
         desksStorage = createDesksStorage();
         TestBed.configureTestingModule({
             imports: [DeskRailComponent],
@@ -120,13 +124,6 @@ describe('DeskRailComponent', () => {
                             resource === ResourceCode.Chats && (action !== ActionCode.Create || canCreate),
                     },
                 },
-                {
-                    provide: BreakpointObserver,
-                    useValue: {
-                        observe: (): Observable<BreakpointState> =>
-                            isNarrowScreen.pipe(map((matches) => ({ matches, breakpoints: {} }))),
-                    },
-                },
             ],
         });
         navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
@@ -135,7 +132,6 @@ describe('DeskRailComponent', () => {
     afterEach(() => {
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
-        localStorage.clear();
     });
 
     it('lists All desks first, then every desk by name, each linking to its page', () => {
@@ -278,11 +274,10 @@ describe('DeskRailComponent', () => {
     });
 
     it('keeps Retry in the compact rail as a named icon button, and says the list failed', async () => {
-        localStorage.setItem(STORAGE_KEY, 'compact');
         desksStorage.desks.set([]);
         desksStorage.landedRequest.set(0);
         desksStorage.loadFailed.set(true);
-        render();
+        render({}, 'rail', true);
         await settle();
         // Listed, the shared error state is an alert of its own; compact has only the button, so the region says it.
         expect(statusRegion()?.textContent?.trim()).toBe("Couldn't load desks.");
@@ -310,30 +305,35 @@ describe('DeskRailComponent', () => {
         expect(navigate).not.toHaveBeenCalled();
     });
 
-    it('starts as a list, switches to compact with the toggle and remembers it', () => {
+    it('is listed with names, and names its toggle after hiding them', () => {
         render();
         expect(isCompact()).toBe(false);
+        expect(host().querySelector('.desk-rail__title')?.textContent?.trim()).toBe('Desks');
+        expect(host().querySelectorAll('.desk-rail__name')).toHaveLength(5);
         expect(toggle()?.getAttribute('aria-label')).toBe('Hide desk names');
+    });
 
-        toggle()!.click();
-        fixture.detectChanges();
+    it('is compact with avatars only, and a toggle that shows the names', () => {
+        render();
+        setCompact(true);
         expect(isCompact()).toBe(true);
-        expect(localStorage.getItem(STORAGE_KEY)).toBe('compact');
-        expect(toggle()?.getAttribute('aria-label')).toBe('Show desk names');
-        // Compact: avatars only, each with its own badge; names move to tooltips.
         expect(host().querySelector('.desk-rail__name')).toBeNull();
         expect(host().querySelector('.desk-rail__title')).toBeNull();
+        expect(toggle()?.getAttribute('aria-label')).toBe('Show desk names');
+    });
 
+    it('asks for the other mode with the toggle, in either mode', () => {
+        render();
+        const toggles: number[] = [];
+        fixture.componentInstance.compactToggle.subscribe(() => toggles.push(1));
         toggle()!.click();
-        fixture.detectChanges();
-        expect(isCompact()).toBe(false);
-        expect(localStorage.getItem(STORAGE_KEY)).toBe('list');
+        setCompact(true);
+        toggle()!.click();
+        expect(toggles).toEqual([1, 1]);
     });
 
     it('draws the badges on the avatars when compact', () => {
-        localStorage.setItem(STORAGE_KEY, 'compact');
-        render({ 'b-1': 2 });
-        expect(isCompact()).toBe(true);
+        render({ 'b-1': 2 }, 'rail', true);
         expect(Array.from(host().querySelectorAll('.desk-avatar__badge')).map((badge) => badge.textContent)).toEqual([
             '2',
             '2',
@@ -341,58 +341,23 @@ describe('DeskRailComponent', () => {
         expect(host().querySelector('.desk-rail__badge')).toBeNull();
     });
 
-    it('reads the stored mode and falls back to a list on an unknown value', () => {
-        localStorage.setItem(STORAGE_KEY, 'compact');
+    it("shows a listed desk's full name in a tooltip above it, for when the name is cut off", () => {
         render();
-        expect(isCompact()).toBe(true);
-
-        TestBed.resetTestingModule();
-        localStorage.setItem(STORAGE_KEY, 'sideways');
-        TestBed.configureTestingModule({
-            imports: [DeskRailComponent],
-            providers: [
-                provideRouter([]),
-                { provide: ChatDesksStorageService, useValue: createDesksStorage() },
-                { provide: ChatBindingActionsService, useValue: bindingActions },
-                { provide: PermissionsService, useValue: { can: () => true } },
-            ],
-        });
-        render();
-        expect(isCompact()).toBe(false);
+        const names = fixture.debugElement.queryAll(By.directive(TooltipOnOverflowDirective));
+        expect(names.map((name) => name.nativeElement.textContent.trim())).toEqual([
+            'All desks',
+            'Billing',
+            'Sales',
+            'Support',
+        ]);
+        for (const name of names) {
+            const tooltip = name.injector.get(MatTooltip);
+            expect(tooltip.message).toBe(name.nativeElement.textContent.trim());
+            expect(tooltip.position).toBe('above');
+        }
     });
 
-    it('works without storage: starts as a list and keeps a switch in memory', () => {
-        vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-            throw new Error('denied');
-        });
-        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-            throw new Error('denied');
-        });
-        render();
-        expect(isCompact()).toBe(false);
-
-        toggle()!.click();
-        fixture.detectChanges();
-        expect(isCompact()).toBe(true);
-    });
-
-    it('is compact on a narrow screen whatever was picked, and hides the toggle meanwhile', () => {
-        localStorage.setItem(STORAGE_KEY, 'list');
-        isNarrowScreen.next(true);
-        render();
-        expect(isCompact()).toBe(true);
-        expect(toggle()).toBeNull();
-
-        isNarrowScreen.next(false);
-        fixture.detectChanges();
-        expect(isCompact()).toBe(false);
-        expect(toggle()).not.toBeNull();
-        expect(localStorage.getItem(STORAGE_KEY)).toBe('list');
-    });
-
-    it('always lists names in the phone drawer, whatever was picked or the screen, without the toggle', () => {
-        localStorage.setItem(STORAGE_KEY, 'compact');
-        isNarrowScreen.next(true);
+    it('lists names in the phone drawer, without the toggle', () => {
         render({ 'b-1': 2 }, 'drawer');
 
         expect(host().classList).toContain('desk-rail--drawer');
@@ -404,8 +369,6 @@ describe('DeskRailComponent', () => {
         );
         // Listed, the counts sit beside the names, not on the avatars.
         expect(host().querySelector('.desk-avatar__badge')).toBeNull();
-        // The column's choice is left as it was.
-        expect(localStorage.getItem(STORAGE_KEY)).toBe('compact');
     });
 
     it('says an entry was picked on a plain click, not on one that opens it elsewhere (a new tab)', () => {

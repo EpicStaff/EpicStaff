@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NodeType } from '@shared/models';
 
+import { ConnectionModel } from '../core/models/connection.model';
 import { AgentNodeModel, NodeModel } from '../core/models/node.model';
 import { ClipboardService } from './clipboard.service';
 import { FlowService } from './flow.service';
@@ -142,5 +143,73 @@ describe('ClipboardService paste', () => {
         expect([draft.tempId, review.tempId, publish.tempId]).not.toContain('source-draft');
         expect(review.contextRefs).toEqual([{ tempId: draft.tempId }]);
         expect(publish.contextRefs).toEqual([{ tempId: review.tempId }]);
+    });
+
+    describe('decision table next-node refs', () => {
+        function tableNode(id: string, type: NodeType.TABLE | NodeType.CLASSIFICATION_TABLE): NodeModel {
+            return canvasNode(id, type, {
+                data: {
+                    table: {
+                        default_next_node: 'original-default',
+                        next_error_node: 'original-error',
+                        condition_groups: [
+                            { group_name: 'Billing', route_code: 'billing', next_node: 'original-billing' },
+                            { group_name: 'Support', route_code: 'support', next_node: 'original-support' },
+                        ],
+                    },
+                },
+            } as Partial<NodeModel>);
+        }
+
+        function tableOf(node: NodeModel): {
+            default_next_node: string | null;
+            next_error_node: string | null;
+            condition_groups: { next_node: string | null }[];
+        } {
+            return (node.data as { table: ReturnType<typeof tableOf> }).table;
+        }
+
+        it.each([NodeType.TABLE, NodeType.CLASSIFICATION_TABLE] as const)(
+            'drops the original targets from a %s pasted without them',
+            (type) => {
+                const [copy] = copyAndPaste(tableNode('table-1', type));
+
+                const table = tableOf(copy);
+                expect(table.default_next_node).toBeNull();
+                expect(table.next_error_node).toBeNull();
+                expect(table.condition_groups.map((group) => group.next_node)).toEqual([null, null]);
+            }
+        );
+
+        it('points a pasted classification table at the pasted copy of its route target', () => {
+            const cdt = tableNode('cdt-1', NodeType.CLASSIFICATION_TABLE);
+            const target = canvasNode('python-1', NodeType.PYTHON, { node_name: 'Billing handler' });
+            const connection: ConnectionModel = {
+                id: 'cdt-1_decision-route-billing+python-1_python-in',
+                category: 'default',
+                behavior: 'fixed',
+                type: 'bezier',
+                data: null,
+                sourceNodeId: 'cdt-1',
+                targetNodeId: 'python-1',
+                sourcePortId: 'cdt-1_decision-route-billing',
+                targetPortId: 'python-1_python-in',
+            };
+            flowService.setFlow({ nodes: [cdt, target], connections: [connection] });
+            clipboard.copy({ fNodeIds: ['cdt-1', 'python-1'], fConnectionIds: [], fGroupIds: [] });
+
+            const { newNodes, newConnections } = clipboard.paste({ x: 400, y: 400 });
+
+            const [cdtCopy, targetCopy] = newNodes;
+            expect(targetCopy.id).not.toBe('python-1');
+            expect(tableOf(cdtCopy).condition_groups.map((group) => group.next_node)).toEqual([targetCopy.id, null]);
+            expect(tableOf(cdtCopy).default_next_node).toBeNull();
+            expect(newConnections).toEqual([
+                expect.objectContaining({
+                    sourcePortId: `${cdtCopy.id}_decision-route-billing`,
+                    targetPortId: `${targetCopy.id}_python-in`,
+                }),
+            ]);
+        });
     });
 });
