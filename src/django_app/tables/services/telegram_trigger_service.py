@@ -408,10 +408,20 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             webhook_tunnel_url = self.webhook_trigger_service.wait_for_tunnel_url_for_trigger(
                 webhook_trigger
             )
-        except Exception as e:
+        except Exception as error:
+            # The detail reaches API clients, so it never carries the cause's
+            # text (a Redis or database error), and the cause is not chained.
+            # It is logged by type only: a traceback with loguru's `diagnose`
+            # would print the resolved bot token held in a local variable.
+            logger.error(
+                "[TelegramTrigger] Failed to fetch the tunnel URL for webhook trigger "
+                "{trigger_id}: {error_type}",
+                trigger_id=webhook_trigger.pk,
+                error_type=type(error).__name__,
+            )
             raise RegisterTelegramTriggerError(
-                f"Failed to fetch tunnel URL: {e!s}", status_code=503
-            ) from e
+                "Failed to fetch tunnel URL.", status_code=503
+            ) from None
 
         if not webhook_tunnel_url:
             raise RegisterTelegramTriggerError(
