@@ -27,6 +27,7 @@ dependencies = [
     "django-filter==24.3",
     "django-health-check==3.18.3",
     "django-redis==5.4.0",
+    "django-storages[s3]==1.14.6",
     "django==5.1.14",
     "djangorestframework-simplejwt==5.4.0",
     "djangorestframework==3.17.2",
