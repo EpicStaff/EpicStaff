@@ -6,7 +6,7 @@ from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.node_surface_service import NodeSurfaceService
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import NOT_PROVIDED, Count, Exists, F, OuterRef, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Count, Exists, F, OuterRef, Prefetch, Q, Value
 from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.utils import timezone
@@ -27,7 +27,8 @@ from drf_spectacular.utils import (
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
-    DenyApiKeyAuth,
+    DenyPersonalAndSystemApiKeys,
+    DenyPluginCredential,
     HasOrgPermission,
     IsSystemApiKeyAuthenticated,
 )
@@ -101,6 +102,8 @@ from tables.graph_versioning.serializers import (
 )
 from tables.graph_versioning.services import GraphVersioningService
 from tables.import_export.enums import EntityType
+from tables.import_export.export_format_strategies import apply_excluded_header
+from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportSettings
 from tables.import_export.services.partial_export_service import (
@@ -276,6 +279,7 @@ from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.tools_usage_service import (
@@ -592,21 +596,26 @@ class PythonCodeToolViewSet(
         )
 
     def get_queryset(self):
-        queryset = (
-            super()
-            .get_queryset()
-            .annotate(
-                is_favorite=Exists(
-                    PythonCodeToolFavorite.objects.filter(
-                        user=self.request.user, tool=OuterRef("pk")
-                    )
-                )
-            )
+        # Only a user has favorites; any other caller (a plugin service account,
+        # the system API key) sees none rather than a filter on a non-user.
+        author = resolve_author(self.request.user)
+        is_favorite = (
+            Exists(PythonCodeToolFavorite.objects.filter(user=author, tool=OuterRef("pk")))
+            if author is not None
+            else Value(False)
         )
+        queryset = super().get_queryset().annotate(is_favorite=is_favorite)
         ordering = ["-id"]
         if self.request.query_params.get("ordering") == "favorite":
             ordering = ["-is_favorite", "-id"]
         return queryset.order_by(*ordering)
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        # A favorite belongs to a person.
+        if self.action == "favorite":
+            return [*permissions, DenyPluginCredential()]
+        return permissions
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -665,7 +674,7 @@ class PythonCodeToolViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
@@ -689,7 +698,9 @@ class PythonCodeToolViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**PYTHON_CODE_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")
@@ -875,7 +886,7 @@ class GraphViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @action(detail=False, methods=["post"], url_path="bulk-export")
@@ -893,7 +904,9 @@ class GraphViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
     @action(detail=True, methods=["post"], url_path="partial-export")
@@ -912,6 +925,7 @@ class GraphViewSet(
             node_refs,
             org_id=graph.org_id,
             edge_ids=serializer.validated_data.get("edge_list", []),
+            policy=ExportAccessPolicy.for_user(request.user, self.get_active_org_id()),
         )
 
         if result.has_errors:
@@ -920,6 +934,7 @@ class GraphViewSet(
         filename = generate_file_name(f"nodes_{graph.name}", prefix="graph_nodes")
         response = HttpResponse(json.dumps(result.data, indent=4), content_type="application/json")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        apply_excluded_header(response, result.excluded)
         return response
 
     @extend_schema(
@@ -970,15 +985,21 @@ class GraphViewSet(
         org_id = self.get_active_org_id()
         effective_permissions = PermissionResolver().resolve(user=request.user, org_id=org_id)
         partial_import_service = PartialImportService(entity_registry)
-        id_mapper = partial_import_service.import_data(
+        result = partial_import_service.import_data(
             export_data=data,
             graph=graph,
             org_id=org_id,
             user=request.user,
             effective_permissions=effective_permissions,
+            serializer_context=self.get_serializer_context(),
         )
-        summary = id_mapper.get_detailed_summary(entity_registry)
-        return Response(summary, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "content": result.content,
+                "summary": result.id_mapper.get_detailed_summary(entity_registry),
+            },
+            status=status.HTTP_200_OK,
+        )
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
@@ -1309,37 +1330,9 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         )
 
 
-class IdempotentNodeCreateMixin:
-    # TODO: change fields from (graph, node_name) to id (all nodes id's are consistent)
-    # """
-    # COMMIT_COMMENTS: Makes node POST idempotent — if a node with the same
-    # (graph, node_name) already exists, update it instead of failing with a
-    # unique constraint violation. This prevents orphan accumulation when
-    # forkJoin-based saves partially fail and retry.
-    # """
-
-    def create(self, request, *args, **kwargs):
-        graph_id = request.data.get("graph")
-        node_name = request.data.get("node_name")
-        if graph_id and node_name:
-            # Org-scoped queryset: an idempotent match only updates a node whose
-            # graph is in the active org; a node in another org is never touched.
-            queryset = self.get_queryset()
-            try:
-                existing = queryset.get(graph_id=graph_id, node_name=node_name)
-                serializer = self.get_serializer(existing, data=request.data)
-                serializer.is_valid(raise_exception=True)
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            except queryset.model.DoesNotExist:
-                pass
-        return super().create(request, *args, **kwargs)
-
-
 class PythonNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1353,7 +1346,6 @@ class PythonNodeViewSet(
 class FileExtractorNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1367,7 +1359,6 @@ class FileExtractorNodeViewSet(
 class KnowledgeNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1400,7 +1391,6 @@ class KnowledgeNodeViewSet(
 class AudioTranscriptionNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1414,7 +1404,6 @@ class AudioTranscriptionNodeViewSet(
 class TaskNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1456,7 +1445,6 @@ class TaskNodeViewSet(
 class AgentNodeViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -1801,6 +1789,10 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         itself (an unguessable UUID) is the lookup/authorization key, so the
         normal `HasOrgPermission` + `OrgScopedViewSetMixin.get_queryset` org
         filter is deliberately bypassed here.
+
+        A found channel still passes run admission in its own organization: a
+        refused call answers 409, which the realtime service treats as no
+        channel and drops.
         """
         raw_token = request.query_params.get("token")
         if not raw_token:
@@ -1820,6 +1812,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         )
         if channel is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
+        assert_run_admitted(RunSubject(RunKind.VOICE_CHANNEL, channel.pk, channel.org_id))
         return Response(RealtimeChannelInternalSerializer(channel).data)
 
 
@@ -2053,19 +2046,7 @@ class DecisionTableNodeModelViewSet(
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """
-        Create a DecisionTableNode along with nested ConditionGroups and Conditions.
-        If a node with the same (graph, node_name) already exists, update it instead.
-        """
-        graph_id = request.data.get("graph")
-        node_name = request.data.get("node_name")
-        if graph_id and node_name:
-            try:
-                existing = DecisionTableNode.objects.get(graph_id=graph_id, node_name=node_name)
-                node, _ = self._create_or_update_node(data=request.data, instance=existing)
-                return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
-            except DecisionTableNode.DoesNotExist:
-                pass
+        """Create a DecisionTableNode along with nested ConditionGroups and Conditions."""
         node, _ = self._create_or_update_node(data=request.data)
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
@@ -2222,13 +2203,17 @@ class ClassificationDecisionTableNodeModelViewSet(
     def export(self, request, pk=None):
         export_format = request.query_params.get("export_format", "json")
         result = self._node_service.export(
-            pk=pk, export_format=export_format, org_id=self.get_active_org_id()
+            pk=pk,
+            export_format=export_format,
+            org_id=self.get_active_org_id(),
+            user=request.user,
         )
         if result.errors is not None:
             return Response({"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST)
 
         response = HttpResponse(result.content, content_type=result.content_type)
         response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
+        apply_excluded_header(response, result.excluded)
         return response
 
     @extend_schema(
@@ -2334,19 +2319,26 @@ class McpToolViewSet(
         )
 
     def get_queryset(self):
-        queryset = (
-            super()
-            .get_queryset()
-            .annotate(
-                is_favorite=Exists(
-                    McpToolFavorite.objects.filter(user=self.request.user, tool=OuterRef("pk"))
-                )
-            )
+        # Only a user has favorites; any other caller (a plugin service account,
+        # the system API key) sees none rather than a filter on a non-user.
+        author = resolve_author(self.request.user)
+        is_favorite = (
+            Exists(McpToolFavorite.objects.filter(user=author, tool=OuterRef("pk")))
+            if author is not None
+            else Value(False)
         )
+        queryset = super().get_queryset().annotate(is_favorite=is_favorite)
         ordering = ["-id"]
         if self.request.query_params.get("ordering") == "favorite":
             ordering = ["-is_favorite", "-id"]
         return queryset.order_by(*ordering)
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        # A favorite belongs to a person.
+        if self.action == "favorite":
+            return [*permissions, DenyPluginCredential()]
+        return permissions
 
     @extend_schema(methods=["POST"], **MCP_TOOL_FAVORITE_POST)
     @extend_schema(methods=["DELETE"], **MCP_TOOL_FAVORITE_DELETE)
@@ -2418,7 +2410,7 @@ class McpToolViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
@@ -2437,7 +2429,9 @@ class McpToolViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**MCP_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")
@@ -2480,7 +2474,6 @@ class WebhookTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
@@ -2512,7 +2505,11 @@ class WebhookTriggerNodeViewSet(
 class WebhookTriggerViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.WEBHOOKS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "flows_using_trigger": Permission.READ, **RECYCLE_BIN_ACTION_MAP}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "flows_using_trigger": Permission.READ,
+        **RECYCLE_BIN_ACTION_MAP,
+    }
     recycle_bin_resource_key = RecycleBinSource.WEBHOOK_TRIGGER
     queryset = WebhookTrigger.objects.select_related(
         "ngrok", "localhost", "auth", "auth__secret"
@@ -2590,7 +2587,6 @@ class TelegramTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2639,7 +2635,6 @@ class ScheduleTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     TriggerNodeUsePermissionMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2655,7 +2650,6 @@ class ScheduleTriggerNodeViewSet(
 class GraphNoteViewSet(
     OrgScopedChildViewSetMixin,
     LastEditDestroyViewSetMixin,
-    IdempotentNodeCreateMixin,
     ContentHashPreconditionMixin,
     ModelViewSet,
 ):
@@ -2757,9 +2751,13 @@ class SecretViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Create / read / delete only — a Secret's name and value are immutable."""
+    """Create / read / delete only — a Secret's name and value are immutable.
 
-    permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
+    Closed to USER and SYSTEM API keys; a plugin service account passes when its
+    declared access grants the action. No caller ever reads a value back.
+    """
+
+    permission_classes = [IsAuthenticated, DenyPersonalAndSystemApiKeys, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
     rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "usage": Permission.READ}
     recycle_bin_resource_key = RecycleBinSource.SECRET
@@ -2798,7 +2796,8 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     rbac/access/builtin_roles.json: Org Admin only has READ+EXPORT).
     """
 
-    permission_classes = [IsAuthenticated, HasOrgPermission]
+    # Presets belong to a person, so a plugin service account never reaches them.
+    permission_classes = [IsAuthenticated, DenyPluginCredential, HasOrgPermission]
     rbac_resource_type = ResourceType.AUDIT
     rbac_action_map = {
         "list": Permission.READ,
@@ -2855,7 +2854,7 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def export(self, request, pk=None):
         return self.import_export_service.export_entity(
-            self.get_object(), org_id=self.get_active_org_id()
+            self.get_object(), org_id=self.get_active_org_id(), user=request.user
         )
 
     @extend_schema(**AUDIT_FILTER_PRESET_EXPORT_ALL)
@@ -2872,7 +2871,9 @@ class AuditFilterPresetViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(ids, org_id=self.get_active_org_id())
+        return self.import_export_service.bulk_export(
+            ids, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**AUDIT_FILTER_PRESET_IMPORT)
     @action(detail=False, methods=["post"], url_path="import")

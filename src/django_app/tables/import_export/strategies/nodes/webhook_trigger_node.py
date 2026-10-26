@@ -7,6 +7,7 @@ from tables.import_export.serializers.webhook_trigger_node import (
     WebhookTriggerNodeImportSerializer,
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.utils import remap_python_code_venv
 from tables.models import WebhookTrigger, WebhookTriggerNode
 
 
@@ -36,7 +37,9 @@ class WebhookTriggerNodeStrategy(EntityImportExportStrategy):
         new_trigger_id = id_mapper.get_or_none(EntityType.WEBHOOK_TRIGGER, old_trigger_id)
         webhook_trigger = WebhookTrigger.objects.filter(id=new_trigger_id).first()
 
-        python_code_serializer = PythonCodeImportSerializer(data=python_code_data)
+        python_code_serializer = PythonCodeImportSerializer(
+            data=remap_python_code_venv(python_code_data, id_mapper)
+        )
         python_code_serializer.is_valid(raise_exception=True)
         python_code = python_code_serializer.save()
 
@@ -49,4 +52,7 @@ class WebhookTriggerNodeStrategy(EntityImportExportStrategy):
             }
         )
         serializer.is_valid(raise_exception=True)
-        return serializer.save(created_by=resolve_author(kwargs.get("user")))
+        return serializer.save(
+            created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
+        )

@@ -4,9 +4,12 @@ from pydantic import ValidationError
 from tables.services.converter_service import ConverterService
 
 from .base import (
+    TOOL_USE_FAILED_CODE,
+    USER_VISIBLE_PROVIDER_ERROR_CODES,
     BaseLLMClient,
     DoneEvent,
     InvalidLLMConfigError,
+    LLMProviderError,
     StreamEvent,
     StructuredEvent,
     TokenEvent,
@@ -18,9 +21,12 @@ from .base import (
 from .litellm_client import LiteLLMClient
 
 __all__ = [
+    "TOOL_USE_FAILED_CODE",
+    "USER_VISIBLE_PROVIDER_ERROR_CODES",
     "BaseLLMClient",
     "DoneEvent",
     "InvalidLLMConfigError",
+    "LLMProviderError",
     "LiteLLMClient",
     "StreamEvent",
     "StructuredEvent",

@@ -31,7 +31,6 @@ const STORED_TOOL: GetPythonCodeToolRequest = {
         id: 70,
         code: 'def main():\n    return 1\n',
         entrypoint: 'main',
-        libraries: [],
         secrets: [],
         execution_timeout: 300,
     },
@@ -180,7 +179,7 @@ describe('CreateCustomToolDialogComponent execution timeout', () => {
     it('refuses to save a timeout below the minimum, and says why', () => {
         open(STORED_TOOL);
 
-        typeTimeout('3');
+        typeTimeout('00:00:03');
         fixture.componentInstance.submit();
 
         expect(customTools.updatePythonCodeToolV2).not.toHaveBeenCalled();

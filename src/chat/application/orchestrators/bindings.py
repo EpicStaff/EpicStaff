@@ -41,7 +41,8 @@ _ENUM_FIELDS = {
     "on_response_timeout": OnResponseTimeout,
 }
 
-SNIPPET = '<script src="{base}/chat/widget.js" data-public-key="{public_key}" data-chat-url="{base}/chat/" async></script>'
+# The widget (EpicChat) is served from its CDN, not by EpicStaff: `widget_url` is CHAT_WIDGET_URL.
+SNIPPET = '<script src="{widget_url}" data-public-key="{public_key}" data-chat-url="{base}/chat/" async></script>'
 
 
 CONTRACT_START_VARIABLES = ("chat_history", "user_message")
@@ -112,12 +113,14 @@ class BindingOrchestrator:
         *,
         flows: AbstractFlowRunner,
         public_base_url: str,
+        widget_url: str,
         limits: BindingLimits,
     ):
         self._uow = uow_factory
         self._flows = flows
         self._limits = limits
         self._base_url = public_base_url.rstrip("/")
+        self._widget_url = widget_url
 
     def limits(self) -> BindingLimits:
         """The deployment's budget and duration defaults and caps; the same for every organization."""
@@ -406,5 +409,7 @@ class BindingOrchestrator:
         return {
             "public_key": binding.public_key,
             "chat_base_url": f"{self._base_url}/chat/",
-            "snippet": SNIPPET.format(base=self._base_url, public_key=binding.public_key),
+            "snippet": SNIPPET.format(
+                widget_url=self._widget_url, base=self._base_url, public_key=binding.public_key
+            ),
         }

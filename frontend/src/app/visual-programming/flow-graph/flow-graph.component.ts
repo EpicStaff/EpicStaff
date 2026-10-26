@@ -49,7 +49,7 @@ import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode, ShortcutParams } from '@shared/models';
 import { fromEvent, Subject } from 'rxjs';
 
-import { GetGraphLightRequest } from '../../features/flows/models/graph.model';
+import { GetGraphLightRequest, GraphContentDto } from '../../features/flows/models/graph.model';
 import { ToastService } from '../../services/notifications';
 import { DomainDialogComponent, DomainDialogData } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
@@ -64,12 +64,16 @@ import { CDT_ROUTE_CONTINUE_COPY } from '../components/node-panels/classificatio
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent, NoteEditDialogData } from '../components/note-edit-dialog/note-edit-dialog.component';
+import { UnusedNodesBarComponent } from '../components/unused-nodes-bar/unused-nodes-bar.component';
+import { HideOverflowingChildrenDirective } from '../core/directives/hide-overflowing-children.directive';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
+import { PANEL_COMPONENT_MAP } from '../core/enums/node-panel.map';
 import { computeRowSnapY } from '../core/helpers/cdt-row-snap.util';
 import { buildInsertionConnections, findConnectionUnderNode } from '../core/helpers/drop-on-connection.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isConnectionValid } from '../core/helpers/helpers';
+import { computeHoverContext, HoverContext } from '../core/helpers/hover-context.util';
 import {
     CollisionBounds,
     findNearestFreePosition,
@@ -82,6 +86,7 @@ import {
 } from '../core/helpers/node-placement.utils';
 import { normalizeTableNodeSize } from '../core/helpers/node-size.util';
 import { subgraphFlowOptions, subgraphNodeRequest } from '../core/helpers/subgraph-flows.util';
+import { findUnusedNodeIds } from '../core/helpers/unused-nodes.util';
 import { CanvasPan, EDITOR_ACTIONS } from '../core/keymap/editor-actions';
 import { flowIdOf } from '../core/keymap/shortcut-params';
 import { FlowModel } from '../core/models/flow.model';
@@ -92,7 +97,7 @@ import { CustomPortId } from '../core/models/port.model';
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { CurvedPathBuilder } from '../core/routing/curved.path-builder';
 import { OrthogonalPathBuilder } from '../core/routing/orthogonal.path-builder';
-import { ClipboardService } from '../services/clipboard.service';
+import { ClipboardData, ClipboardService, PasteResult } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
 import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
 import { FlowSettingsService } from '../services/flow-settings.service';
@@ -103,7 +108,7 @@ import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
-import { normalizeFlowPorts } from '../utils/load';
+import { buildImportedFlowModel, normalizeFlowPorts } from '../utils/load';
 import { FlowArrangeAnimatorService } from './flow-arrange-animator.service';
 import { FlowImportExportService } from './flow-import-export-handler.service';
 import { FlowReassignHandlerService, ReassignHandlerCallbacks } from './flow-reassign-handler.service';
@@ -116,6 +121,9 @@ const CONNECTION_REFUSED_TOAST_MS = 5000;
 const CANVAS_PAN_STEP_PX = 40;
 
 const CANVAS_PAN_FAST_STEP_PX = 200;
+
+/** Horizontal gap between the flow's right edge and the nodes a partial import adds. */
+const IMPORT_GAP_PX = 200;
 
 @Component({
     selector: 'app-flow-graph',
@@ -150,11 +158,13 @@ const CANVAS_PAN_FAST_STEP_PX = 200;
         MouseTrackerDirective,
         FlowGraphContextMenuComponent,
         FlowActionPanelComponent,
+        UnusedNodesBarComponent,
         NodesSearchComponent,
         NodePanelShellComponent,
         FlowShortcutsButtonComponent,
         AppSvgIconComponent,
         WaypointTooltipDirective,
+        HideOverflowingChildrenDirective,
         FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
         MatTooltipModule,
@@ -167,7 +177,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public readonly availableFlows = input<GetGraphLightRequest[]>([]);
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
-    @Input() initialNodeExpand: boolean = true;
     @Input() isSaving: boolean = false;
     @Input() hasUnsavedChanges: boolean = false;
     /** Applied once the canvas loads, instead of fitting the flow to the screen. */
@@ -178,7 +187,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     readonly openShortcuts = output<DOMRect>();
     /** Nodes were copied into this editor's clipboard. */
     readonly copied = output<void>();
-    readonly importComplete = output<void>();
     readonly extractToSubflow = output<Set<string>>();
     readonly unpackSubflow = output<string>();
 
@@ -210,7 +218,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
     private readonly MIN_HORIZONTAL_NODE_GAP = GRID_CELL_SIZE;
-    protected readonly getMinimapClassForNode = getMinimapClassForNode;
     protected readonly eMarkerType = EFMarkerType;
     protected readonly CONNECTION_DELETE_BUTTON_POSITION = 0.56;
     protected readonly eResizeHandleType = EFResizeHandleType;
@@ -241,6 +248,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             !this.hasUnarrangedChanges()
     );
 
+    /** Selecting a node whose type has no side panel opens nothing, so the toolbar keeps its full width. */
+    protected readonly isNodePanelShown = computed(() => {
+        const node = this.sidePanelService.selectedNode();
+        return !!node && !!PANEL_COMPONENT_MAP[node.type];
+    });
+
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
         for (const node of this.flowService.nodes()) {
@@ -254,7 +267,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const hiddenIds = this.hiddenConnectionIds();
         const hoveredId = this.hoveredConnectionId();
         const selectedIds = this.selectionManager.selectedConnectionIds();
-        const nodeHoveredIds = this.hoveredNodeConnectionIds();
 
         const connections = [...this.flowService.visibleConnections()].filter(
             (connection) => !hiddenIds.has(connection.id)
@@ -266,9 +278,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const bHovered = b.id === hoveredId ? 1 : 0;
             if (aHovered !== bHovered) return aHovered - bHovered;
 
-            // Node-hovered and selected above normal
-            const aRaised = selectedIds.has(a.id) || nodeHoveredIds.has(a.id) ? 1 : 0;
-            const bRaised = selectedIds.has(b.id) || nodeHoveredIds.has(b.id) ? 1 : 0;
+            // Selected above normal
+            const aRaised = selectedIds.has(a.id) ? 1 : 0;
+            const bRaised = selectedIds.has(b.id) ? 1 : 0;
             if (aRaised !== bRaised) return aRaised - bRaised;
 
             const aBackward = backwardIds.has(a.id) ? 1 : 0;
@@ -277,16 +289,33 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     });
 
-    protected readonly hoveredNodeConnectionIds = computed(() => {
+    protected readonly hoverContext = computed<HoverContext | null>(() => {
         const nodeId = this.hoveredNodeId();
-        if (!nodeId) return new Set<string>();
-        return new Set(
-            this.flowService
-                .connections()
-                .filter((c) => c.sourceNodeId === nodeId || c.targetNodeId === nodeId)
-                .map((c) => c.id)
-        );
+        const nodes = this.flowService.nodes();
+        if (!nodeId || !nodes.some((n) => n.id === nodeId)) return null;
+        const connections = this.flowService.connections();
+        if (!connections.some((c) => c.sourceNodeId === nodeId || c.targetNodeId === nodeId)) return null;
+        return computeHoverContext(nodeId, nodes, connections);
     });
+
+    protected readonly unusedNodeIds = computed<ReadonlySet<string>>(() =>
+        this.flowSettings.highlightUnusedNodes()
+            ? findUnusedNodeIds(this.flowService.nodes(), this.flowService.connections())
+            : new Set()
+    );
+
+    /** Left to right, then top to bottom — the order the unused-nodes bar steps through them. */
+    protected readonly unusedNodesInCanvasOrder = computed(() =>
+        this.flowService
+            .nodes()
+            .filter((node) => this.unusedNodeIds().has(node.id))
+            .sort((first, second) => first.position.x - second.position.x || first.position.y - second.position.y)
+    );
+
+    protected getMinimapClasses(node: NodeModel): string[] {
+        const classes = getMinimapClassForNode(node);
+        return this.unusedNodeIds().has(node.id) ? [...classes, 'is-unused'] : classes;
+    }
 
     /** The node may not be changed here, so it cannot be dragged either (a trigger node without Flows:Use). */
     public isNodeReadOnly(node: NodeModel): boolean {
@@ -506,23 +535,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public ngOnInit(): void {
         this.applyIncomingFlowState(this.flowState);
         if (this.initialNodeId) {
-            this.openNodePanel(this.initialNodeId, this.initialNodeExpand);
+            this.openNodePanel(this.initialNodeId);
         }
     }
 
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['flowState'] && !changes['flowState'].firstChange) {
-            const stateToApply = this.importExportHandler.processImportedFlowState(this.flowState);
-            this.applyIncomingFlowState(stateToApply);
-            if (this.importExportHandler.fitAfterNextFlowChange) {
-                this.importExportHandler.fitAfterNextFlowChange = false;
-                setTimeout(() => {
-                    this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
-                }, 0);
-            }
+            this.applyIncomingFlowState(this.flowState);
         }
         if (changes['initialNodeId'] && changes['initialNodeId'].currentValue) {
-            this.openNodePanel(changes['initialNodeId'].currentValue, this.initialNodeExpand);
+            this.openNodePanel(changes['initialNodeId'].currentValue);
         }
         if (changes['isSaving'] && changes['isSaving'].currentValue === true) {
             this.onCloseContextMenu();
@@ -660,16 +682,17 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
+        const clipboardData = this.clipboardService.getClipboardData();
+        if (!clipboardData) {
+            return;
+        }
+
         const pastePosition = this.mouseCursorPosition
             ? snapPointToGrid(this.toFlowPosition(this.mouseCursorPosition))
             : { x: 0, y: 0 };
 
         const canPaste = (node: NodeModel): boolean => !this.flowReadOnly.isNodeTypeReadOnly(node.type);
-        // Recorded before the paste changes the flow, and only when it will change it.
-        if (this.clipboardService.getClipboardData()?.nodes.some(canPaste)) {
-            this.undoRedoService.stateChanged();
-        }
-        const { newNodes, newConnections, skippedNodeCount } = this.clipboardService.paste(pastePosition, canPaste);
+        const { skippedNodeCount } = this.insertNodes(clipboardData, pastePosition, canPaste);
         if (skippedNodeCount > 0) {
             this.toastService.warning(
                 `${skippedNodeCount} trigger node${skippedNodeCount > 1 ? 's were' : ' was'} not pasted. ${TRIGGER_NODES_NEED_USE_MESSAGE}`,
@@ -677,29 +700,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 'bottom-right'
             );
         }
-        const placedNodes: NodeModel[] = [];
-        const existingBeforePaste = this.flowService.nodes().filter((n) => !newNodes.some((p) => p.id === n.id));
-
-        for (const node of newNodes) {
-            const safePosition = findNearestFreePosition(snapPointToGrid(node.position), getCollisionBounds(node), [
-                ...existingBeforePaste,
-                ...placedNodes,
-            ]);
-
-            const updatedNode = { ...node, position: safePosition };
-            this.flowService.updateNode(updatedNode);
-            placedNodes.push(updatedNode);
-        }
-
-        const newNodeIds = newNodes.map((node) => node.id);
-        const newConnectionIds = newConnections.map((conn) => conn.id);
-
-        setTimeout(() => {
-            this.routingOrchestrator.rerouteSegmentConnections();
-            this.fFlowComponent.select(newNodeIds, newConnectionIds);
-            this.cd.detectChanges();
-            this.fFlowComponent?.redraw();
-        }, 0);
     }
 
     public onUndo(): void {
@@ -1242,28 +1242,114 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportSelectedAsJson(): void {
-        this.importExportHandler.onExportSelectedAsJson(this.currentFlowId);
+        this.importExportHandler.onExportSelectedAsJson(this.currentFlowId, this.hasUnsavedChanges);
     }
 
     public onExportSelectedAsCsv(): void {
-        this.importExportHandler.onExportSelectedAsCsv();
+        this.importExportHandler.onExportSelectedAsCsv(this.hasUnsavedChanges);
     }
 
     public onExportAllAsJson(): void {
-        this.importExportHandler.onExportAllAsJson(this.currentFlowId);
+        this.importExportHandler.onExportAllAsJson(this.currentFlowId, this.hasUnsavedChanges);
     }
 
     public onImportNodes(): void {
-        this.importExportHandler.onImportNodes(
-            this.currentFlowId,
-            this.hasUnsavedChanges,
-            this.flowReadOnly.isReadOnly(),
-            () => this.importComplete.emit()
-        );
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        const flowId = this.currentFlowId;
+        if (flowId === null || this.isEditingLocked()) return;
+        this.importExportHandler.onImportNodes(flowId, (content) => this.insertImportedNodes(content, flowId));
     }
 
     public onOpenShortcuts(anchorEl: HTMLElement): void {
         this.openShortcuts.emit(anchorEl.getBoundingClientRect());
+    }
+
+    /**
+     * Adds `data` as new, unsaved nodes at `position` (see `ClipboardService.pasteData`), moves each one
+     * off any node it would overlap, and selects them. Shared by paste and partial import.
+     */
+    private insertNodes(data: ClipboardData, position: IPoint, canInsert: (node: NodeModel) => boolean): PasteResult {
+        // Recorded before the insert changes the flow, and only when it will change it.
+        if (data.nodes.some(canInsert)) {
+            this.undoRedoService.stateChanged();
+        }
+        const result = this.clipboardService.pasteData(data, position, canInsert);
+        const { newNodes, newConnections } = result;
+        const placedNodes: NodeModel[] = [];
+        const existingBeforePaste = this.flowService.nodes().filter((n) => !newNodes.some((p) => p.id === n.id));
+
+        for (const node of newNodes) {
+            const safePosition = findNearestFreePosition(snapPointToGrid(node.position), getCollisionBounds(node), [
+                ...existingBeforePaste,
+                ...placedNodes,
+            ]);
+
+            const updatedNode = { ...node, position: safePosition };
+            this.flowService.updateNode(updatedNode);
+            placedNodes.push(updatedNode);
+        }
+
+        const newNodeIds = newNodes.map((node) => node.id);
+        const newConnectionIds = newConnections.map((conn) => conn.id);
+
+        setTimeout(() => {
+            this.routingOrchestrator.rerouteSegmentConnections();
+            this.fFlowComponent.select(newNodeIds, newConnectionIds);
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
+        }, 0);
+
+        return result;
+    }
+
+    /**
+     * Adds a partial import's nodes as unsaved ones, like a paste, to the right of the existing nodes.
+     * Returns false, adding nothing, when the editor can no longer take them.
+     */
+    private insertImportedNodes(content: GraphContentDto, flowId: number): boolean {
+        // The response can arrive after the editor was locked (read-only, a save started, a dialog opened).
+        if (this.isEditingLocked() || flowId !== this.currentFlowId) return false;
+
+        const imported = buildImportedFlowModel(content, flowId);
+        if (imported.nodes.length === 0) return true;
+
+        const existingNodes = this.flowService.nodes();
+        const position =
+            existingNodes.length > 0
+                ? snapPointToGrid({
+                      x: Math.max(...existingNodes.map((node) => node.position.x + node.size.width)) + IMPORT_GAP_PX,
+                      y: Math.min(...existingNodes.map((node) => node.position.y)),
+                  })
+                : { x: 0, y: 0 };
+
+        this.arrangeAnimator.markUnarranged();
+        this.insertNodes(
+            {
+                nodes: imported.nodes,
+                connections: imported.connections,
+                boundingBox: {
+                    minX: Math.min(...imported.nodes.map((node) => node.position.x)),
+                    minY: Math.min(...imported.nodes.map((node) => node.position.y)),
+                },
+            },
+            position,
+            () => true
+        );
+        setTimeout(() => this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false), 0);
+
+        // An import never carries a subgraph's target flow, so its subgraph nodes come in blocked.
+        const blockedCount = imported.nodes.filter((node) => node.type === NodeType.SUBGRAPH && node.isBlocked).length;
+        if (blockedCount > 0) {
+            this.toastService.warning(
+                `${blockedCount} subgraph node(s) reference missing flows and were blocked.`,
+                6000,
+                'bottom-right'
+            );
+        }
+        return true;
     }
 
     private applyIncomingFlowState(flowState: FlowModel): void {
@@ -1349,9 +1435,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return this.nodeAuthorshipStore.authorshipOf(startNode ?? { type: NodeType.START, backendId: null });
     }
 
-    public openNodePanel(nodeId: string, expand: boolean = true): void {
+    public openNodePanel(nodeId: string): void {
         this.sidePanelService.setSelectedNodeId(nodeId);
-        if (!expand) return;
         afterNextRender(() => this.nodePanelShell?.expandPanel(), { injector: this.injector });
     }
 

@@ -524,7 +524,6 @@ def _resend_python_code_payload(*, python_code: PythonCode, secret_ids: list[int
     return {
         "code": python_code.code,
         "entrypoint": python_code.entrypoint,
-        "libraries": python_code.get_libraries_list(),
         "global_kwargs": python_code.global_kwargs,
         "secret_ids": secret_ids,
     }

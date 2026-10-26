@@ -13,7 +13,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from infrastructure.providers.factory import RealtimeAgentClientFactory
 from loguru import logger
 from src.shared.models import RealtimeAgentChatData
-from utils.public_error import (
+from src.shared.public_error import (
     PublicErrorMessage,
     build_public_error_message,
     new_error_correlation_id,

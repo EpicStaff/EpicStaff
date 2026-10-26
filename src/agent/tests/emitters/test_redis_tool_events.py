@@ -17,7 +17,7 @@ from app.llm.client import LLMChunk
 from shared.knowledge.target import KnowledgeSearchTarget
 from shared.models.agent_service import LoopResult, TokenUsage, ToolResult
 from shared.models.knowledge import NaiveRagSearchConfig
-from shared.models.knowledge_new import FoundChunk
+from shared.models.knowledge_new import FoundChunk, SearchUsage
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -788,3 +788,31 @@ async def test_live_and_final_envelopes_all_go_to_per_run_stream_with_ttl():
     ]
     assert {call["stream"] for call in publish_calls} == {"agent.results:run-a"}
     assert {call["ttl_s"] for call in publish_calls} == {3600}
+
+
+async def test_on_knowledge_search_reports_embedding_usage_as_token_usage():
+    emitter, published = _make_emitter()
+
+    await emitter.on_knowledge_search(
+        _make_knowledge_target(),
+        "q",
+        [],
+        usage=SearchUsage(embedding_tokens=12, embedding_cost_usd=0.0001),
+    )
+
+    assert _decode_payload(published[0])["token_usage"] == {
+        "prompt_tokens": 12,
+        "completion_tokens": 0,
+        "total_tokens": 12,
+        "total_cost_usd": 0.0001,
+    }
+
+
+async def test_on_knowledge_search_unpriced_embedding_usage_costs_zero():
+    emitter, published = _make_emitter()
+
+    await emitter.on_knowledge_search(
+        _make_knowledge_target(), "q", [], usage=SearchUsage(embedding_tokens=12)
+    )
+
+    assert _decode_payload(published[0])["token_usage"]["total_cost_usd"] == 0.0

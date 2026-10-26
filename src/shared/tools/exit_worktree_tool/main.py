@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 GIT_TIMEOUT_SECONDS = 60
+GITDIR_PREFIX = "gitdir:"
 
 
 class RouteTool:
@@ -40,19 +41,31 @@ def _run_git(args: list[str], cwd: Path):
         return 1, "", str(e)
 
 
-def _find_main_repo_root(worktree_path: Path):
-    """The main repository root — 'git worktree remove' must be run from
-    there (or from another linked worktree), not from the worktree being
-    removed itself."""
-    returncode, stdout, stderr = _run_git(
-        ["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=worktree_path
-    )
-    if returncode != 0:
-        return None, stderr.strip() or stdout.strip()
+def _resolve_from(base: Path, path_text: str) -> Path:
+    path = Path(path_text.strip())
+    return path if path.is_absolute() else base / path
 
-    common_dir = Path(stdout.strip())
-    main_root = common_dir.parent if common_dir.name == ".git" else common_dir
-    return main_root, None
+
+def _read_worktree_git_dir(worktree_path: Path) -> Path | None:
+    """The git dir a linked worktree's .git file points to, or None when the
+    path is not a linked worktree."""
+    dot_git = worktree_path / ".git"
+    if not dot_git.is_file():
+        return None
+
+    content = dot_git.read_text(errors="replace").strip()
+    if not content.startswith(GITDIR_PREFIX):
+        return None
+    return _resolve_from(worktree_path, content[len(GITDIR_PREFIX) :])
+
+
+def _read_common_dir(git_dir: Path) -> Path:
+    """The main repository's git dir, named by the worktree git dir's
+    commondir file, as git itself resolves it."""
+    commondir_file = git_dir / "commondir"
+    if not commondir_file.is_file():
+        return git_dir
+    return _resolve_from(git_dir, commondir_file.read_text(errors="replace"))
 
 
 def main(worktree_path: str, keep: bool = False) -> str:
@@ -81,8 +94,31 @@ def main(worktree_path: str, keep: bool = False) -> str:
         if not worktree_savepath.exists():
             return f"Error: worktree path {worktree_path} does not exist."
 
+        # The worktree's .git file and its git dir's commondir file both sit in
+        # the writable root and can name any repository. Both are read here
+        # and checked, and every git call names its git dir explicitly:
+        # letting git discover the repository from cwd would follow pointers
+        # nobody checked. Paths are resolved once, so git gets exactly the paths
+        # that were checked and a relative root is not re-applied to git's cwd.
+        worktree_dir = worktree_savepath.resolve()
+        git_dir = _read_worktree_git_dir(worktree_dir)
+        if git_dir is None:
+            return f"Error: {worktree_path} is not a git worktree."
+        git_dir = git_dir.resolve()
+
+        common_dir = _read_common_dir(git_dir).resolve()
+        if not (
+            RouteTool.is_path_has_permission(git_dir)
+            and RouteTool.is_path_has_permission(common_dir)
+        ):
+            return (
+                f"Error: the repository of worktree {worktree_path} "
+                "is outside the allowed directory."
+            )
+
+        worktree_git_args = ["--git-dir", str(git_dir), "--work-tree", str(worktree_dir)]
         returncode, stdout, stderr = _run_git(
-            ["rev-parse", "--is-inside-work-tree"], cwd=worktree_savepath
+            [*worktree_git_args, "rev-parse", "--is-inside-work-tree"], cwd=worktree_dir
         )
         if returncode != 0 or stdout.strip() != "true":
             return f"Error: {worktree_path} is not a git worktree."
@@ -91,7 +127,7 @@ def main(worktree_path: str, keep: bool = False) -> str:
 
         if keep:
             returncode, stdout, stderr = _run_git(
-                ["status", "--porcelain"], cwd=worktree_savepath
+                [*worktree_git_args, "status", "--porcelain"], cwd=worktree_dir
             )
             if returncode == 0 and stdout.strip():
                 return (
@@ -100,15 +136,11 @@ def main(worktree_path: str, keep: bool = False) -> str:
                 )
             return f"Worktree kept at {worktree_path} (not removed)."
 
-        main_root, error = _find_main_repo_root(worktree_savepath)
-        if error or main_root is None:
-            return (
-                f"Error: could not locate the main repository for worktree "
-                f"{worktree_path}: {error}"
-            )
-
+        # Run from the main repository, not from the worktree being removed.
+        main_git_args = ["--git-dir", str(common_dir)]
         returncode, stdout, stderr = _run_git(
-            ["worktree", "remove", str(worktree_savepath.resolve())], cwd=main_root
+            [*main_git_args, "worktree", "remove", str(worktree_dir)],
+            cwd=common_dir,
         )
         if returncode == 0:
             return f"Removed worktree at {worktree_path} (clean, no uncommitted changes)."
@@ -117,8 +149,8 @@ def main(worktree_path: str, keep: bool = False) -> str:
         # changes. keep=False means the caller explicitly wants the worktree
         # discarded, so force the removal.
         returncode, stdout, stderr = _run_git(
-            ["worktree", "remove", "--force", str(worktree_savepath.resolve())],
-            cwd=main_root,
+            [*main_git_args, "worktree", "remove", "--force", str(worktree_dir)],
+            cwd=common_dir,
         )
         if returncode != 0:
             return (

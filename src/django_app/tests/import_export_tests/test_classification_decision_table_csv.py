@@ -21,6 +21,18 @@ def test_formula_cells_are_neutralized(default_org, cdt_condition_group_factory)
 
 
 @pytest.mark.django_db
+def test_node_name_row_carries_the_node_number(default_org, cdt_condition_group_factory):
+    _, cdt_node, _, _ = cdt_condition_group_factory(default_org)
+    cdt_node.node_name = "Router"
+    cdt_node.node_number = 4
+    cdt_node.save()
+
+    rows = list(csv.reader(export_condition_groups_csv(cdt_node).getvalue().splitlines()))
+
+    assert ["Node Name", "Router #4"] in rows
+
+
+@pytest.mark.django_db
 def test_routing_to_a_foreign_node_does_not_export_its_name(
     default_org, beta, cdt_condition_group_factory  # noqa: F811
 ):
@@ -36,6 +48,7 @@ def test_routing_to_a_foreign_node_does_not_export_its_name(
     local = PythonNode.objects.create(
         graph=graph,
         node_name="local-step",
+        node_number=3,
         python_code=PythonCode.objects.create(code="def main(): return 1"),
     )
     cdt_node.default_next_node_id = local.id
@@ -46,7 +59,7 @@ def test_routing_to_a_foreign_node_does_not_export_its_name(
     rows = list(csv.reader(output.splitlines()))
 
     assert "foreign-org-private-name" not in output
-    assert ["Default Next Step", "local-step"] in rows
+    assert ["Default Next Step", "local-step #3"] in rows
     assert ["On Error Go To", f"node #{foreign.id}"] in rows
     [rule] = [row for row in rows if row and row[0] == "1"]
     assert rule[-1] == f"node #{foreign.id}"

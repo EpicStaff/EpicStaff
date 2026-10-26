@@ -3,18 +3,30 @@ import { ICurrentSelection } from '@foblex/flow';
 import { NodeType } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
-import { generateMultipleNodeDisplayNames } from '../core/helpers/generate-node-display-name.util';
 import { generatePortsForNode, parsePortId } from '../core/helpers/helpers';
+import { isNumberedNodeType } from '../core/helpers/node-number.util';
+import { AgentNodeTaskUi } from '../core/models/agent-node.model';
 import { CdtSection } from '../core/models/cdt-section.model';
 import { ConnectionModel } from '../core/models/connection.model';
-import { ClassificationDecisionTableNodeModel, DecisionTableNodeModel, NodeModel } from '../core/models/node.model';
+import {
+    AgentNodeModel,
+    ClassificationDecisionTableNodeModel,
+    DecisionTableNodeModel,
+    NodeModel,
+} from '../core/models/node.model';
 import { CustomPortId, ViewPort } from '../core/models/port.model';
 import { FlowService } from './flow.service';
 
-interface ClipboardData {
+export interface ClipboardData {
     nodes: NodeModel[];
     connections: ConnectionModel[];
     boundingBox: { minX: number; minY: number };
+}
+
+export interface PasteResult {
+    newNodes: NodeModel[];
+    newConnections: ConnectionModel[];
+    skippedNodeCount: number;
 }
 
 @Injectable({
@@ -85,25 +97,32 @@ export class ClipboardService {
     public paste(
         mousePosition: { x: number; y: number },
         canPaste: (node: NodeModel) => boolean = () => true
-    ): {
-        newNodes: NodeModel[];
-        newConnections: ConnectionModel[];
-        skippedNodeCount: number;
-    } {
+    ): PasteResult {
         if (!this.clipboard) {
             return { newNodes: [], newConnections: [], skippedNodeCount: 0 };
         }
+        return this.pasteData(this.clipboard, mousePosition, canPaste);
+    }
 
-        const { connections: clipboardConnections, boundingBox } = this.clipboard;
-        const clipboardNodes = this.clipboard.nodes.filter(canPaste);
-        const skippedNodeCount = this.clipboard.nodes.length - clipboardNodes.length;
+    /**
+     * Adds `data` to the flow as new, unsaved nodes at `position`, keeping their layout: fresh ids,
+     * `backendId: null`, new numbers. Shared by paste and partial import.
+     */
+    public pasteData(
+        data: ClipboardData,
+        position: { x: number; y: number },
+        canPaste: (node: NodeModel) => boolean = () => true
+    ): PasteResult {
+        const { connections: clipboardConnections, boundingBox } = data;
+        const clipboardNodes = data.nodes.filter(canPaste);
+        const skippedNodeCount = data.nodes.length - clipboardNodes.length;
 
         if (clipboardNodes.length === 0) {
             return { newNodes: [], newConnections: [], skippedNodeCount };
         }
 
-        const offsetX = mousePosition.x - boundingBox.minX;
-        const offsetY = mousePosition.y - boundingBox.minY;
+        const offsetX = position.x - boundingBox.minX;
+        const offsetY = position.y - boundingBox.minY;
 
         const oldToNewIdMap = new Map<string, string>();
         const newNodeIds: string[] = clipboardNodes.map((oldNode) => {
@@ -112,13 +131,7 @@ export class ClipboardService {
             return newNodeId;
         });
 
-        // Assign sequential badge numbers and generate names in one pass
-        const nodesToCreate = clipboardNodes.map((oldNode) => ({
-            type: oldNode.type,
-            data: oldNode.data,
-        }));
-        const nodeNumbers = nodesToCreate.map(() => this.flowService.getNextNodeNumber());
-        const displayNames = generateMultipleNodeDisplayNames(nodesToCreate, nodeNumbers);
+        const newNumberByOldId = this.assignNewNodeNumbers(clipboardNodes);
 
         // Create new nodes with backendId: null for diff-save support
         const newNodes: NodeModel[] = clipboardNodes.map((oldNode, index) => {
@@ -126,25 +139,28 @@ export class ClipboardService {
 
             // Deep-clone data so per-paste mutations don't leak into the clipboard
             const newData = oldNode.data ? JSON.parse(JSON.stringify(oldNode.data)) : oldNode.data;
-            // DT next-node refs are repopulated below via FlowService.addConnection's hook
+            // DT and CDT next-node refs are repopulated below via FlowService.addConnection's hook
             this.clearDecisionTableNextNodeRefs(oldNode.type, newData);
             // CDT sections must get fresh ids on paste so they don't collide with the
             // copied node's sections within the same graph.
             this.regenerateCdtSectionIds(oldNode.type, newData);
+            // Task ids belong to the source node's rows: sent with the copy, a task's context would link
+            // to the source's tasks, and the save would never give the copy's tasks their own ids.
+            this.resetAgentTaskIds(oldNode.type, newData);
 
             const newPorts: ViewPort[] = generatePortsForNode(newNodeId, oldNode.type, newData);
 
+            // The copy keeps its name (names may repeat); the number, which tells the two apart, is new.
             return {
                 ...oldNode,
                 id: newNodeId,
                 backendId: null,
-                nodeNumber: nodeNumbers[index],
+                nodeNumber: newNumberByOldId.get(oldNode.id),
                 position: {
                     x: oldNode.position.x + offsetX,
                     y: oldNode.position.y + offsetY,
                 },
                 ports: newPorts,
-                node_name: displayNames[index],
                 data: newData,
             };
         });
@@ -201,10 +217,27 @@ export class ClipboardService {
         return { newNodes: returnedNodes, newConnections, skippedNodeCount };
     }
 
-    private clearDecisionTableNextNodeRefs(type: NodeType, data: NodeModel['data'] | null): void {
-        if (type !== NodeType.TABLE || !data) return;
+    /**
+     * Issues new numbers to the numbered nodes in ascending order of their source number, so the copies
+     * keep the originals' relative order whatever order the selection came in. Nodes without a source
+     * number go last; ties keep clipboard order.
+     */
+    private assignNewNodeNumbers(clipboardNodes: NodeModel[]): Map<string, number> {
+        const sourceNumber = (node: NodeModel): number => node.nodeNumber ?? Number.MAX_SAFE_INTEGER;
+        const newNumberByOldId = new Map<string, number>();
 
-        const table = (data as DecisionTableNodeModel['data']).table;
+        clipboardNodes
+            .filter((node) => isNumberedNodeType(node.type))
+            .sort((first, second) => sourceNumber(first) - sourceNumber(second))
+            .forEach((node) => newNumberByOldId.set(node.id, this.flowService.getNextNodeNumber()));
+
+        return newNumberByOldId;
+    }
+
+    private clearDecisionTableNextNodeRefs(type: NodeType, data: NodeModel['data'] | null): void {
+        if ((type !== NodeType.TABLE && type !== NodeType.CLASSIFICATION_TABLE) || !data) return;
+
+        const table = (data as DecisionTableNodeModel['data'] | ClassificationDecisionTableNodeModel['data']).table;
         if (!table) return;
 
         table.default_next_node = null;
@@ -214,6 +247,31 @@ export class ClipboardService {
                 group.next_node = null;
             }
         }
+    }
+
+    private resetAgentTaskIds(type: NodeType, data: NodeModel['data'] | null): void {
+        if (type !== NodeType.AGENT || !data) return;
+
+        const agentData = data as AgentNodeModel['data'];
+        if (!Array.isArray(agentData.tasks)) return;
+
+        const newTempIdByOldId = new Map<number, string>();
+        const newTempIdByOldTempId = new Map<string, string>();
+        const tasks: AgentNodeTaskUi[] = agentData.tasks.map((task) => {
+            const tempId = generateUuid();
+            if (task.id != null) newTempIdByOldId.set(task.id, tempId);
+            newTempIdByOldTempId.set(task.tempId, tempId);
+            return { ...task, id: undefined, tempId };
+        });
+
+        agentData.tasks = tasks.map((task) => ({
+            ...task,
+            contextRefs: (task.contextRefs ?? [])
+                .map((ref) => ({
+                    tempId: ref.id != null ? newTempIdByOldId.get(ref.id) : newTempIdByOldTempId.get(ref.tempId ?? ''),
+                }))
+                .filter((ref) => ref.tempId != null),
+        }));
     }
 
     private regenerateCdtSectionIds(type: NodeType, data: NodeModel['data'] | null): void {

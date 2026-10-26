@@ -43,7 +43,7 @@ from tables.services.copy_services.mcp_tool_copy_service import McpToolCopyServi
 from tables.services.copy_services.python_code_tool_copy_service import (
     PythonCodeToolCopyService,
 )
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.import_export_tests.test_node_authorship_import_export import (
     _create_every_node_type,
 )
@@ -83,7 +83,11 @@ def _assert_last_edited_by(resources, user, *, since) -> None:
 
 
 def _export(graph: Graph) -> dict:
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _client_in(client_as, user, org):
@@ -189,11 +193,22 @@ def test_import_records_importer_on_created_dependencies_only(
     reused_tool = _mcp_tool(acme, "already-here")
     record_last_edit(reused_tool, member_only, edited_at=PREVIOUS_EDIT_AT)
     foreign_tool = _mcp_tool(beta, "brought-in")
-    tool_bundle = ExportService(entity_registry).export_entities(
-        EntityType.MCP_TOOL, [reused_tool.id]
-    )[EntityType.MCP_TOOL] + ExportService(entity_registry).export_entities(
-        EntityType.MCP_TOOL, [foreign_tool.id]
-    )[EntityType.MCP_TOOL]
+    tool_bundle = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.MCP_TOOL,
+            [reused_tool.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data[EntityType.MCP_TOOL]
+        + ExportService(entity_registry)
+        .export_entities(
+            EntityType.MCP_TOOL,
+            [foreign_tool.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data[EntityType.MCP_TOOL]
+    )
     bundle = {**_export(source), EntityType.MCP_TOOL: tool_bundle}
     import_started_at = timezone.now()
 
@@ -211,8 +226,14 @@ def test_import_records_importer_on_created_dependencies_only(
 
 @pytest.mark.django_db
 def test_import_of_main_entity_records_importer(beta, acme, admin_acme):
-    exported_tool = ExportService(entity_registry).export_entities(
-        EntityType.MCP_TOOL, [_mcp_tool(beta, "exported-tool").id]
+    exported_tool = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.MCP_TOOL,
+            [_mcp_tool(beta, "exported-tool").id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data
     )
 
     ImportService(entity_registry).import_data(
@@ -237,7 +258,11 @@ def test_import_of_realtime_provider_config_records_importer_with_a_fresh_creati
 ):
     source = model.objects.create(custom_name="exported-voice", org=beta)
     model._base_manager.filter(pk=source.pk).update(created_at=PREVIOUS_EDIT_AT)
-    exported = ExportService(entity_registry).export_entities(entity_type, [source.id])
+    exported = (
+        ExportService(entity_registry)
+        .export_entities(entity_type, [source.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
     import_started_at = timezone.now()
 
     ImportService(entity_registry).import_data(
@@ -253,8 +278,14 @@ def test_import_of_realtime_provider_config_records_importer_with_a_fresh_creati
 
 @pytest.mark.django_db
 def test_import_denied_by_permissions_records_nothing(beta, acme, member_only):
-    exported_tool = ExportService(entity_registry).export_entities(
-        EntityType.MCP_TOOL, [_mcp_tool(beta, "exported-tool").id]
+    exported_tool = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.MCP_TOOL,
+            [_mcp_tool(beta, "exported-tool").id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data
     )
     denied_permissions = type("Denied", (), {"can": lambda self, resource, permission: False})()
 
@@ -320,7 +351,7 @@ def test_import_records_last_edits_in_a_fixed_number_of_statements(acme, admin_a
 
 
 @pytest.mark.django_db
-def test_partial_import_records_importer_on_new_nodes_and_target_graph(
+def test_partial_import_returns_nodes_unsaved_and_records_no_edit_on_the_target(
     client_as, admin_acme, member_only, acme, source_flow
 ):
     node_refs = [
@@ -331,11 +362,10 @@ def test_partial_import_records_importer_on_new_nodes_and_target_graph(
     ]
     export_data = (
         GraphPartialExportService(entity_registry)
-        .export(node_refs, org_id=source_flow.org_id)
+        .export(node_refs, org_id=source_flow.org_id, policy=UNRESTRICTED_EXPORT_POLICY)
         .data
     )
     existing_nodes = set(_graph_nodes(source_flow))
-    import_started_at = timezone.now()
 
     response = _client_in(client_as, admin_acme, acme).post(
         reverse("graphs-partial-import", args=[source_flow.id]),
@@ -344,9 +374,17 @@ def test_partial_import_records_importer_on_new_nodes_and_target_graph(
     )
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    new_nodes = [node for node in _graph_nodes(source_flow) if node not in existing_nodes]
-    assert len(new_nodes) == len(node_refs)
-    _assert_last_edited_by([source_flow, *new_nodes], admin_acme, since=import_started_at)
+    returned_nodes = [
+        node
+        for list_key, rows in response.data["content"].items()
+        if list_key != "edge_list"
+        for node in rows
+    ]
+    assert len(returned_nodes) == len(node_refs)
+    assert set(_graph_nodes(source_flow)) == existing_nodes
+    last_edit = _last_edit_of(source_flow)
+    assert last_edit.edited_by_id == member_only.id
+    assert last_edit.edited_at == PREVIOUS_EDIT_AT
     for node in existing_nodes:
         assert _last_edit_of(node).edited_by_id == member_only.id
 
@@ -359,7 +397,11 @@ def test_cross_org_partial_import_returns_404_and_records_nothing(
     note = GraphNote.objects.create(graph=source, content="imported note")
     export_data = (
         GraphPartialExportService(entity_registry)
-        .export([NodeRef(entity_type=EntityType.NOTE_NODE, node_id=note.id)], org_id=acme.id)
+        .export(
+            [NodeRef(entity_type=EntityType.NOTE_NODE, node_id=note.id)],
+            org_id=acme.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
         .data
     )
     target = Graph.objects.create(name="beta-target", org=beta)
@@ -525,9 +567,15 @@ def test_partial_import_creating_only_dependencies_records_them_but_not_the_grap
 ):
     target = Graph.objects.create(name="dependency-only-target", org=acme)
     record_last_edit(target, member_only, edited_at=PREVIOUS_EDIT_AT)
-    exported_tool = ExportService(entity_registry).export_entities(
-        EntityType.MCP_TOOL, [_mcp_tool(beta, "dependency-only-tool").id]
-    )[EntityType.MCP_TOOL]
+    exported_tool = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.MCP_TOOL,
+            [_mcp_tool(beta, "dependency-only-tool").id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data[EntityType.MCP_TOOL]
+    )
     export_data = {
         EntityType.MCP_TOOL: exported_tool,
         EntityType.CREW_NODE: [{"id": 5, "node_name": "retired crew node"}],

@@ -4,12 +4,30 @@ import { Observable } from 'rxjs';
 import { ImportResult } from './import-result.model';
 
 export interface RawFlowNode {
+    /** The node's id in the import file; `null` when the file has none. */
+    id: number | null;
     name: string;
     node_type: string;
 }
 
 export type FlowNodesByFile = Record<string, RawFlowNode[]>;
 
+/**
+ * A node's id in an import file, as both the file reader and the inspect response must read it: only an
+ * integer counts (the backend sends `node_id: null` for anything else), so both sides fall back to the name.
+ */
+export function toFileNodeId(value: unknown): number | null {
+    return typeof value === 'number' && Number.isInteger(value) ? value : null;
+}
+
+/**
+ * Python code as an import file carries it.
+ *
+ * KNOWN BROKEN: `libraries` is what older export files hold. Libraries live only
+ * on the venv now and no export carries one, so the import review still shows a
+ * library list that importing will not restore. Fixing it means deciding how a
+ * venv travels in an exported flow.
+ */
 export interface ReviewPythonCode {
     code: string;
     entrypoint: string;
@@ -35,6 +53,8 @@ export interface McpToolReviewItem {
 export interface FlowNodeReviewItem {
     kind: 'flow_node';
     flow_name: string;
+    /** The node's id in the import file (backend inspect `_project_flow_nodes`); `null` when the file has none. */
+    node_id: number | null;
     node_name: string | null;
     node_type: string;
     python_code?: ReviewPythonCode;

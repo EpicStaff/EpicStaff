@@ -88,10 +88,8 @@ def test_register_tools_with_storage_credentials(tool_manager, sample_chat_data)
                 name="Storage Tool",
                 description="",
                 python_code=PythonCodeData(
-                    venv_name="venv_1",
                     code="def main(**kw): return kw",
                     entrypoint="main",
-                    libraries=[],
                     use_storage=True,
                     storage_allowed_paths=["realtime/sessions/"],
                 ),

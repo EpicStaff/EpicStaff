@@ -1,5 +1,7 @@
 import { AuthorshipFields, DeclaredSecretRef } from '@shared/models';
 
+import { NumberedNodeDto } from './numbered-node-dto.model';
+
 export interface PromptConfigBackend {
     id: number;
     prompt_key: string;
@@ -61,7 +63,6 @@ export interface CreateClassificationConditionGroupRequest {
 }
 
 export interface CDTPythonCodeBlock {
-    libraries: string[];
     code: string;
     entrypoint: string;
     global_kwargs: Record<string, unknown>;
@@ -72,7 +73,7 @@ export interface CDTPythonCodeBlock {
     execution_timeout?: number;
 }
 
-export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields {
+export interface GetClassificationDecisionTableNodeRequest extends AuthorshipFields, NumberedNodeDto {
     id: number;
     created_at: string;
     graph: number;

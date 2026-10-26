@@ -41,6 +41,7 @@ class NaiveRagSerializer(serializers.ModelSerializer):
             "embedder_name",
             "rag_status",
             "outdated_reasons",
+            "indexing_usage",
             "collection_id",
             "error_message",
             "created_at",
@@ -267,6 +268,28 @@ class DocumentConfigBulkUpdateSerializer(serializers.Serializer):
     def validate(self, attrs):
         if not any(f in attrs for f in self.fields if f != "id"):
             self.fail("empty_data_to_update", id=attrs["id"])
+        return attrs
+
+
+class DocumentConfigEstimateOverrideSerializer(DocumentConfigBulkUpdateSerializer):
+    """Unsaved chunking settings for one document, as the bulk update would receive them.
+
+    Reuses the bulk update field validation; only the key naming the config differs.
+    """
+
+    id = None
+    document_config_id = serializers.IntegerField(
+        min_value=1,
+        help_text="Primary Key of the Document Config the settings apply to.",
+    )
+
+    default_error_messages = {
+        "empty_data_to_update": ("At least one field must be provided to estimate config id={id}"),
+    }
+
+    def validate(self, attrs):
+        if not any(f in attrs for f in self.fields if f != "document_config_id"):
+            self.fail("empty_data_to_update", id=attrs["document_config_id"])
         return attrs
 
 

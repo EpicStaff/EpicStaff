@@ -1,6 +1,6 @@
 from tables.import_export.enums import EntityType
 
-IMPORT_VERSION = 3
+IMPORT_VERSION = 5
 
 MAIN_ENTITY_KEY = "main_entity"
 NODE_MAPPING_KEY = "node"
@@ -17,6 +17,8 @@ OWNED_SURFACE_ENTRIES_KEY = "owned_surface_entries"
 
 # Entities will be imported from top to bottom based on this list
 DEPENDENCY_ORDER = (
+    # First: the code entities below carry a venv id that must already be mapped.
+    EntityType.VENV,
     EntityType.LABEL,
     EntityType.AGENT_TAG,
     EntityType.CREW_TAG,

@@ -50,10 +50,11 @@ class McpToolData(BaseModel):
 
 
 class PythonCodeData(StorageScopedData):
-    venv_name: str
     code: str
     entrypoint: str
-    libraries: list[str]
+    # The venv this code runs in; None means the sandbox's default venv. The venv
+    # is the only place libraries come from, so there is nothing else to declare.
+    venv_id: int | None = None
     global_kwargs: dict[str, Any] | None = None
     execution_timeout: int | None = None
     """Seconds a single run of this code may take. None makes the sandbox apply
@@ -157,8 +158,8 @@ class CodeResultData(BaseModel):
 
 
 class CodeTaskData(StorageScopedData):
-    venv_name: str
-    libraries: list[str]
+    # The venv this code runs in; None means the sandbox's default venv.
+    venv_id: int | None = None
     code: str
     execution_id: str
     entrypoint: str
@@ -218,8 +219,8 @@ class CodeTaskData(StorageScopedData):
         """
         creds_summary = "present" if self.storage_credentials else "none"
         return (
-            f"execution_id={self.execution_id} venv={self.venv_name} "
-            f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
+            f"execution_id={self.execution_id} venv_id={self.venv_id} "
+            f"entrypoint={self.entrypoint} "
             f"execution_timeout={self.execution_timeout} "
             f"secrets={len(self.secrets)} storage_credentials={creds_summary}"
         )

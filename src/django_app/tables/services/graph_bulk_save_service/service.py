@@ -2,9 +2,10 @@ from functools import lru_cache
 
 from django.apps import apps
 from django.db import transaction
+from django.db.models import Prefetch
 from rbac.authorship import LAST_EDIT_TRACKER_CONTEXT_KEY, LastEditTracker
 from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
-from tables.models import Graph
+from tables.models import Graph, Secret
 from tables.models.base_models import BaseGlobalNode
 from tables.models.graph_models import Edge
 from tables.serializers.graph_bulk_save_serializers import EdgeBulkSerializer
@@ -24,6 +25,25 @@ from tables.services.graph_bulk_save_service.saveables import (
     _EdgeSaveable,
     _NodeSaveable,
 )
+from tables.services.node_number_service import NodeNumberService
+from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
+
+
+def _stored_secret_prefetches(model) -> list[Prefetch]:
+    """Prefetch, once for all of `model`'s rows, the secrets each of its PythonCodes links to.
+
+    The secret reference guard reads a node's stored links when the payload leaves
+    `secret_ids` out (always for a plugin's service account); without this it costs a
+    query per node. Through `all_objects`, because the guard counts a link to a binned
+    secret as linked. These instances are used only to validate and save: the response
+    is serialized from a fresh read of the graph, so nothing reads this cache expecting
+    live secrets only.
+    """
+    return [
+        Prefetch(f"{site.code_field}__secrets", queryset=Secret.all_objects.all())
+        for site in GRAPH_PYTHON_CODE_SITES
+        if site.model is model
+    ]
 
 
 class GraphBulkSaveService:
@@ -93,7 +113,12 @@ class GraphBulkSaveService:
             incoming = validated_input.get(config.list_key, [])
             if not incoming:
                 continue
-            db_map = {obj.id: obj for obj in config.model_class.objects.filter(graph=graph)}
+            db_map = {
+                obj.id: obj
+                for obj in config.model_class.objects.filter(graph=graph).prefetch_related(
+                    *_stored_secret_prefetches(config.model_class)
+                )
+            }
             result = self._validate_node_list(graph, incoming, config, db_map, payload_temp_ids)
             if result.errors:
                 all_errors[config.list_key] = result.errors
@@ -210,7 +235,13 @@ class GraphBulkSaveService:
                 result.errors.append(build.error)
             else:
                 result.node_saveables.append(
-                    _NodeSaveable(build.inner_saveable, temp_id or None, config.list_key, index)
+                    _NodeSaveable(
+                        build.inner_saveable,
+                        temp_id or None,
+                        config.list_key,
+                        index,
+                        config.model_class,
+                    )
                 )
                 if build.deferred_saveable is not None:
                     result.deferred_saveables.append(build.deferred_saveable)
@@ -453,6 +484,7 @@ class GraphBulkSaveService:
 
         # check if graph was changed meanwhile editing
         Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
+        self._assign_node_numbers(graph, node_saveables)
 
         temp_id_map: dict[str, int] = {}
 
@@ -467,6 +499,27 @@ class GraphBulkSaveService:
             es.resolve_and_save(temp_id_map)
 
         self._record_last_edits(graph, deleted_count)
+
+    @staticmethod
+    def _assign_node_numbers(graph: Graph, node_saveables: list[_NodeSaveable]) -> None:
+        """Give created numbered nodes one contiguous block above the counter.
+
+        The client's optimistic badge (node_number_hint) is only an ordering key: the
+        nodes are sorted by it (unhinted last, ties in registry then payload order) and
+        take the block's numbers in that order. A hint never sets a number, so numbers
+        stay contiguous from the counter and badges keep their relative order even when
+        the registry saves node types in a fixed order or the editor deleted unsaved nodes.
+        """
+        created = [
+            saveable for saveable in node_saveables if saveable.is_create and saveable.is_numbered
+        ]
+        created.sort(
+            key=lambda saveable: (saveable.node_number_hint is None, saveable.node_number_hint or 0)
+        )
+        for saveable, number in zip(
+            created, NodeNumberService().reserve(graph.id, len(created)), strict=True
+        ):
+            saveable.assigned_node_number = number
 
     def _execute_deletions(self, graph: Graph, deleted_data: dict) -> int:
         """Delete all requested entities in edges-before-nodes order; return the rows deleted."""

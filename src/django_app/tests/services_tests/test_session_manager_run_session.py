@@ -1,11 +1,14 @@
 import pytest
 
 from tables.models.graph_models import (
+    Edge,
     Graph,
     GraphOrganization,
     GraphOrganizationUser,
+    PythonNode,
     StartNode,
 )
+from tables.models.python_models import PythonCode
 from tables.models.session_models import Session
 from tables.serializers.serializers import RunSessionSerializer
 from rbac.models import OrganizationUser
@@ -29,6 +32,39 @@ def test_create_session_uses_passed_graph_user(default_org, regular_user):
         trigger=TriggerSpec.manual(gu),
     )
     assert session.graph_user_id == gu.id
+
+
+# The run's token budget reaches crew only as the typed SessionData.token_budget; a flow
+# variable named like the old reserved transport key is an ordinary variable.
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("variables", "token_budget", "expected_budget"),
+    [
+        pytest.param({"topic": "x"}, 50, 50, id="typed-budget"),
+        pytest.param({"__token_budget__": 0}, None, None, id="variable-is-not-a-budget"),
+    ],
+)
+def test_create_session_data_carries_token_budget_only_from_the_typed_argument(
+    default_org, variables, token_budget, expected_budget
+):
+    graph = Graph.objects.create(name="budget", org=default_org)
+    start_node = StartNode.objects.create(graph=graph, variables={"variables": {}})
+    python_node = PythonNode.objects.create(
+        graph=graph,
+        node_name="python",
+        python_code=PythonCode.objects.create(code="def main(): return 1"),
+    )
+    Edge.objects.create(graph=graph, start_node_id=start_node.pk, end_node_id=python_node.pk)
+    session = Session.objects.create(
+        graph=graph, status=Session.SessionStatus.PENDING, variables=variables
+    )
+
+    session_data = SessionManagerService().create_session_data(
+        session, start_node=start_node, token_budget=token_budget
+    )
+
+    assert session_data.token_budget == expected_budget
+    assert session_data.initial_state == variables
 
 
 def test_run_session_no_longer_has_choose_variables():

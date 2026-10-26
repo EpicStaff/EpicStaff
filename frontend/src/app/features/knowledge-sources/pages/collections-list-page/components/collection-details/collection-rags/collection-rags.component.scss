@@ -23,12 +23,15 @@
 
     .item {
         padding: 0.5rem;
-        display: flex;
-        align-items: center;
-        column-gap: 0.5rem;
         border-radius: 0.5rem;
         border: 1px solid var(--color-divider-subtle);
         cursor: pointer;
+    }
+
+    .header {
+        display: flex;
+        align-items: center;
+        column-gap: 0.5rem;
     }
 
     .name {
@@ -52,6 +55,10 @@
         margin-left: auto;
         font-size: 0.75rem;
         color: var(--fog-alpha-80);
+    }
+
+    .usage {
+        color: var(--color-ks-transparent-text-60);
     }
 
     .nav {

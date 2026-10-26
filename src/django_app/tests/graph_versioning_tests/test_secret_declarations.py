@@ -407,7 +407,7 @@ class TestBackwardCompatibility:
     def test_an_explicit_none_block_is_tolerated(self, manager, graph):
         assert (
             manager.restore_secret_declarations(
-                graph=graph, declarations=None, node_mapper=IDMapper()
+                graph=graph, declarations=None, node_mapper=IDMapper(), user=None
             )
             == []
         )
@@ -424,6 +424,7 @@ class TestBackwardCompatibility:
             graph=graph,
             declarations={"nodes": {"999": {"python_code": ["STRIPE_KEY"]}}},
             node_mapper=IDMapper(),
+            user=None,
         )
 
         assert [w["type"] for w in warnings] == ["secret_declaration_dropped"]

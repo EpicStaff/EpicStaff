@@ -28,128 +28,318 @@
                 ></video>
             </span>
             @if (isExpanded()) {
-                <span class="app-logo-name text-h4">{{ productName }}</span>
+                <span class="app-logo-name">{{ productName }}</span>
             }
         </a>
         <!-- Expanded it always shows; collapsed it is always rendered but only faded in over the logo on hover or
              keyboard focus, so it stays in the tab order. -->
         <app-sidebar-toggle-button
             class="logo-sidebar-toggle"
-            [active]="isExpanded()"
             [label]="sidebarToggleLabel()"
             (toggled)="expandedToggle.emit()"
         />
     </div>
 
-    <ul class="sidenav-nav main-nav">
-        @if (user(); as user) {
-            @if (activeMembership(); as activeMembership) {
-                <div
-                    class="org-menu-container"
-                    appClickOutside
-                    (appClickOutside)="closeOrgMenu()"
-                    (mouseenter)="showOrgTooltip = true"
-                    (mouseleave)="showOrgTooltip = false"
-                >
-                    <div class="tooltip-wrapper org-menu-wrapper">
-                        <div
-                            class="org-menu-btn"
-                            [class.opened]="isOrgMenuOpen()"
-                            [class.active]="isWorkspaceRoute()"
-                            (click)="toggleOrgMenu($event)"
-                        >
-                            <span class="sidenav-row-leading">
-                                @if (isWorkspaceRoute()) {
-                                    <app-svg-icon
-                                        size="16px"
-                                        icon="workspace"
-                                        class="workspace-icon"
-                                    />
-                                } @else {
-                                    <app-org-avatar [name]="activeMembership.organization.name" />
-                                }
-                            </span>
-                            @if (isExpanded()) {
-                                <span
-                                    class="sidenav-row-label text-body-medium"
-                                    [attr.title]="orgSwitcherLabel()"
-                                    >{{ orgSwitcherLabel() }}</span
-                                >
-                            }
-                        </div>
-                        <app-tooltip
-                            text="Organizations"
-                            [visible]="showOrgTooltip && !isOrgMenuOpen() && !isExpanded()"
-                        ></app-tooltip>
-                        @if (isOrgMenuOpen()) {
-                            <app-organizations-menu
-                                [user]="user"
-                                [(isMenuOpen)]="isOrgMenuOpen"
+    <!-- EpicStaff's pages, or the open app's navigation: the context follows the address. Scrolls on its own. -->
+    <ul
+        class="sidenav-nav main-nav"
+        cdkScrollable
+    >
+        @if (appContext(); as app) {
+            <li
+                class="sidenav-nav-item"
+                (mouseenter)="hoveredRow.set('back')"
+                (mouseleave)="hoveredRow.set(null)"
+            >
+                <div class="tooltip-wrapper">
+                    <a
+                        class="sidenav-nav-link"
+                        [routerLink]="returnUrl()"
+                        [attr.aria-label]="isExpanded() ? null : backToEpicStaffLabel"
+                    >
+                        <div class="sidenav-link-icon">
+                            <app-svg-icon
+                                icon="arrow-left"
+                                size="1.25rem"
                             />
+                        </div>
+                        @if (isExpanded()) {
+                            <span class="sidenav-row-label text-body-medium">{{ backToEpicStaffLabel }}</span>
                         }
-                    </div>
+                    </a>
+                    <app-tooltip
+                        [text]="backToEpicStaffLabel"
+                        [visible]="hoveredRow() === 'back' && !isExpanded()"
+                    ></app-tooltip>
                 </div>
+            </li>
+            <li
+                class="sidenav-nav-item"
+                cdkOverlayOrigin
+                #switcherOrigin="cdkOverlayOrigin"
+                (mouseenter)="hoveredRow.set('switcher')"
+                (mouseleave)="hoveredRow.set(null)"
+            >
+                <div class="tooltip-wrapper">
+                    <button
+                        #switcherRow
+                        type="button"
+                        class="sidenav-nav-link sidenav-nav-button sidenav-switcher"
+                        [class.active]="openList() === 'switcher'"
+                        [attr.aria-expanded]="openList() === 'switcher'"
+                        [attr.aria-haspopup]="listsInline() ? null : 'dialog'"
+                        [attr.aria-controls]="
+                            listsInline() && openList() === 'switcher' ? 'sidenav-switcher-list' : null
+                        "
+                        [attr.aria-label]="isExpanded() ? null : switcherLabel()"
+                        (click)="toggleList('switcher')"
+                    >
+                        <div class="sidenav-link-icon">
+                            <app-plugin-icon
+                                [src]="currentApp()?.icon_url ?? null"
+                                size="1.5rem"
+                            />
+                        </div>
+                        @if (isExpanded()) {
+                            <span class="sidenav-row-label text-body-bold">{{ currentAppName() }}</span>
+                            <span class="visually-hidden">, switch app</span>
+                            <i
+                                class="sidenav-row-trail ti ti-selector"
+                                aria-hidden="true"
+                            ></i>
+                        }
+                    </button>
+                    <app-tooltip
+                        [text]="switcherLabel()"
+                        [visible]="hoveredRow() === 'switcher' && !isExpanded() && openList() !== 'switcher'"
+                    ></app-tooltip>
+                </div>
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="switcherOrigin"
+                    [cdkConnectedOverlayOpen]="openList() === 'switcher' && !listsInline()"
+                    [cdkConnectedOverlayPositions]="popoverPositions"
+                    [cdkConnectedOverlayPush]="true"
+                    (attach)="focusOpenedPopover()"
+                    (detach)="closeLists()"
+                    (overlayOutsideClick)="closeLists()"
+                    (overlayKeydown)="onPopoverKeydown($event, switcherRow)"
+                >
+                    <div
+                        class="apps-popover"
+                        role="dialog"
+                        aria-label="Switch app"
+                        cdkTrapFocus
+                    >
+                        <ng-container
+                            [ngTemplateOutlet]="switcherList"
+                            [ngTemplateOutletContext]="{ $implicit: 'popover', identifier: app.identifier }"
+                        />
+                    </div>
+                </ng-template>
+            </li>
+            @if (listsInline() && openList() === 'switcher') {
+                <li
+                    id="sidenav-switcher-list"
+                    class="sidenav-inline-list"
+                >
+                    <ng-container
+                        [ngTemplateOutlet]="switcherList"
+                        [ngTemplateOutletContext]="{ $implicit: 'inline', identifier: app.identifier }"
+                    />
+                </li>
             }
-        }
+            @if (menu().length > 0) {
+                <li
+                    class="sidenav-divider full-width-when-expanded"
+                    role="separator"
+                ></li>
+                @for (item of menu(); track item.path) {
+                    @let isActive = item === activeMenuItem();
+                    <li
+                        class="sidenav-nav-item"
+                        (mouseenter)="hoveredRow.set('menu:' + item.path)"
+                        (mouseleave)="hoveredRow.set(null)"
+                    >
+                        <div class="tooltip-wrapper">
+                            <a
+                                class="sidenav-nav-link"
+                                [routerLink]="item.link"
+                                [class.active]="isActive"
+                                [attr.aria-current]="isActive ? activeMenuItemAriaCurrent() : null"
+                                [attr.aria-label]="isExpanded() ? null : item.label"
+                            >
+                                <div class="sidenav-link-icon">
+                                    <app-plugin-menu-icon
+                                        [src]="item.iconUrl"
+                                        size="1.25rem"
+                                    />
+                                </div>
+                                @if (isExpanded()) {
+                                    <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
+                                }
+                            </a>
+                            <app-tooltip
+                                [text]="item.label"
+                                [visible]="hoveredRow() === 'menu:' + item.path && !isExpanded()"
+                            ></app-tooltip>
+                        </div>
+                    </li>
+                }
+            }
+        } @else {
+            @for (item of topNavItems; track item.id) {
+                @if (item.isPermitted()) {
+                    @if (item.separatedAbove) {
+                        <li
+                            class="sidenav-divider full-width-when-expanded"
+                            role="separator"
+                        ></li>
+                    }
+                    <li
+                        class="sidenav-nav-item"
+                        (mouseenter)="item.showTooltip = true"
+                        (mouseleave)="item.showTooltip = false"
+                    >
+                        <div class="tooltip-wrapper">
+                            <a
+                                class="sidenav-nav-link"
+                                [routerLink]="resolveRouteLink(item)"
+                                [class.active]="isItemActive(item)"
+                                (click)="item.action ? handleItemClick(item, $event) : null"
+                                [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
+                                [attr.aria-label]="isExpanded() ? null : item.label"
+                            >
+                                <div class="sidenav-link-icon">
+                                    @if (item.icon) {
+                                        <app-svg-icon
+                                            [icon]="item.icon"
+                                            size="1.25rem"
+                                        />
+                                    }
+                                    @if (!item.badgeLink && badgeCount(item); as count) {
+                                        <span class="sidenav-badge">{{ count > 99 ? '99+' : count }}</span>
+                                    }
+                                </div>
+                                @if (isExpanded()) {
+                                    <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
+                                }
+                            </a>
+                            @if (item.badgeLink && badgeCount(item); as count) {
+                                <a
+                                    class="sidenav-badge-link"
+                                    [routerLink]="item.badgeLink"
+                                    [attr.aria-label]="item.badgeLabel?.(count) ?? null"
+                                >
+                                    <span class="sidenav-badge">{{ count > 99 ? '99+' : count }}</span>
+                                </a>
+                            }
+                            <app-tooltip
+                                [text]="item.label"
+                                [visible]="item.showTooltip && !isExpanded()"
+                            ></app-tooltip>
+                        </div>
+                    </li>
+                }
+            }
 
-        @for (item of topNavItems; track item.id) {
-            @if (item.isPermitted()) {
+            @if (apps().length > 0) {
+                <li
+                    class="sidenav-divider full-width-when-expanded"
+                    role="separator"
+                ></li>
                 <li
                     class="sidenav-nav-item"
-                    (mouseenter)="item.showTooltip = true"
-                    (mouseleave)="item.showTooltip = false"
+                    cdkOverlayOrigin
+                    #appsOrigin="cdkOverlayOrigin"
+                    (mouseenter)="hoveredRow.set('apps')"
+                    (mouseleave)="hoveredRow.set(null)"
                 >
                     <div class="tooltip-wrapper">
-                        <a
-                            class="sidenav-nav-link"
-                            [routerLink]="resolveRouteLink(item)"
-                            [class.active]="isItemActive(item)"
-                            (click)="item.action ? handleItemClick(item, $event) : null"
-                            [attr.href]="resolveRouteLink(item) || (item.action ? '#' : null)"
-                            [attr.aria-label]="isExpanded() ? null : item.label"
+                        <button
+                            #appsRow
+                            type="button"
+                            class="sidenav-nav-link sidenav-nav-button"
+                            [class.active]="openList() === 'apps'"
+                            [attr.aria-expanded]="openList() === 'apps'"
+                            [attr.aria-haspopup]="listsInline() ? null : 'dialog'"
+                            [attr.aria-controls]="listsInline() && openList() === 'apps' ? 'sidenav-apps-list' : null"
+                            [attr.aria-label]="isExpanded() ? null : appsRowLabel()"
+                            (click)="toggleList('apps')"
                         >
                             <div class="sidenav-link-icon">
-                                @if (item.icon) {
-                                    <app-svg-icon
-                                        [icon]="item.icon"
-                                        size="1.4rem"
-                                    />
-                                }
-                                @if (!item.badgeLink && badgeCount(item); as count) {
-                                    <span class="sidenav-badge">{{ count > 99 ? '99+' : count }}</span>
+                                <i
+                                    class="sidenav-font-icon ti ti-layout-grid"
+                                    aria-hidden="true"
+                                ></i>
+                                @if (hasNewApps()) {
+                                    <span class="sidenav-new-dot"></span>
                                 }
                             </div>
                             @if (isExpanded()) {
-                                <span class="sidenav-row-label text-body-medium">{{ item.label }}</span>
+                                <span class="sidenav-row-label text-body-medium">Apps</span>
+                                @if (hasNewApps()) {
+                                    <span class="visually-hidden">, new apps available</span>
+                                }
+                                <app-svg-icon
+                                    class="sidenav-row-trail"
+                                    [icon]="listsInline() && openList() === 'apps' ? 'chevron-down' : 'chevron-right'"
+                                    size="1rem"
+                                />
                             }
-                        </a>
-                        @if (item.badgeLink && badgeCount(item); as count) {
-                            <a
-                                class="sidenav-badge-link"
-                                [routerLink]="item.badgeLink"
-                                [attr.aria-label]="item.badgeLabel?.(count) ?? null"
-                            >
-                                <span class="sidenav-badge">{{ count > 99 ? '99+' : count }}</span>
-                            </a>
-                        }
+                        </button>
                         <app-tooltip
-                            [text]="item.label"
-                            [visible]="item.showTooltip && !isExpanded()"
+                            [text]="appsRowLabel()"
+                            [visible]="hoveredRow() === 'apps' && !isExpanded() && openList() !== 'apps'"
                         ></app-tooltip>
                     </div>
+                    <ng-template
+                        cdkConnectedOverlay
+                        [cdkConnectedOverlayOrigin]="appsOrigin"
+                        [cdkConnectedOverlayOpen]="openList() === 'apps' && !listsInline()"
+                        [cdkConnectedOverlayPositions]="popoverPositions"
+                        [cdkConnectedOverlayPush]="true"
+                        (attach)="focusOpenedPopover()"
+                        (detach)="closeLists()"
+                        (overlayOutsideClick)="closeLists()"
+                        (overlayKeydown)="onPopoverKeydown($event, appsRow)"
+                    >
+                        <div
+                            class="apps-popover"
+                            role="dialog"
+                            aria-label="Apps"
+                            cdkTrapFocus
+                        >
+                            <ng-container
+                                [ngTemplateOutlet]="appsList"
+                                [ngTemplateOutletContext]="{ $implicit: 'popover' }"
+                            />
+                        </div>
+                    </ng-template>
                 </li>
+                @if (listsInline() && openList() === 'apps') {
+                    <li
+                        id="sidenav-apps-list"
+                        class="sidenav-inline-list"
+                    >
+                        <ng-container
+                            [ngTemplateOutlet]="appsList"
+                            [ngTemplateOutletContext]="{ $implicit: 'inline' }"
+                        />
+                    </li>
+                }
             }
         }
     </ul>
 
     <ul class="sidenav-nav bottom-nav">
-        @if (recycleBinNavItem.isPermitted()) {
+        @if (!appContext() && recycleBinNavItem.isPermitted()) {
             <li
                 class="sidenav-nav-item"
                 (mouseenter)="recycleBinNavItem.showTooltip = true"
                 (mouseleave)="recycleBinNavItem.showTooltip = false"
             >
-                <div class="tooltip-wrapper recycle-bin-block">
+                <div class="tooltip-wrapper">
                     <a
                         class="sidenav-nav-link"
                         [routerLink]="resolveRouteLink(recycleBinNavItem)"
@@ -176,7 +366,7 @@
         }
 
         @for (item of bottomNavItems; track item.id) {
-            @if (item.isPermitted()) {
+            @if (!appContext() && item.isPermitted()) {
                 <li
                     class="sidenav-nav-item"
                     [attr.data-tour]="item.id === 'settings' ? tourAnchors.sidenavSettings : null"
@@ -196,7 +386,7 @@
                                 @if (item.icon) {
                                     <app-svg-icon
                                         [icon]="item.icon"
-                                        size="1.4rem"
+                                        size="1.25rem"
                                     />
                                 }
                             </div>
@@ -216,6 +406,10 @@
 
         @if (user(); as user) {
             <li
+                class="sidenav-divider"
+                role="separator"
+            ></li>
+            <li
                 class="sidenav-nav-item user-menu-item"
                 appClickOutside
                 (appClickOutside)="closeUserMenu()"
@@ -226,18 +420,38 @@
                     <div
                         class="user-avatar-btn"
                         [class.opened]="isUserMenuOpen()"
+                        [class.active]="isAccountRoute()"
                         (click)="toggleUserMenu($event)"
                     >
-                        <app-user-avatar
-                            [name]="user.display_name || user.email"
-                            [avatarUrl]="user.avatar_url"
-                        />
-                        @if (isExpanded()) {
-                            <span
-                                class="sidenav-row-label text-body-medium"
-                                [attr.title]="accountLabel()"
-                                >{{ accountLabel() }}</span
-                            >
+                        <!-- The active organization; a user without one is shown instead. -->
+                        @if (activeMembership(); as membership) {
+                            <app-org-avatar [name]="membership.organization.name" />
+                            @if (isExpanded()) {
+                                <span class="account-text">
+                                    <span
+                                        class="sidenav-row-label text-body-small-large"
+                                        [attr.title]="membership.organization.name"
+                                        >{{ membership.organization.name }}</span
+                                    >
+                                    <span
+                                        class="account-role text-body-small"
+                                        [attr.title]="membership.role.name"
+                                        >{{ membership.role.name }}</span
+                                    >
+                                </span>
+                            }
+                        } @else {
+                            <app-user-avatar
+                                [name]="accountLabel()"
+                                [avatarUrl]="user.avatar_url"
+                            />
+                            @if (isExpanded()) {
+                                <span
+                                    class="sidenav-row-label text-body-medium"
+                                    [attr.title]="accountLabel()"
+                                    >{{ accountLabel() }}</span
+                                >
+                            }
                         }
                     </div>
                     <app-tooltip
@@ -259,3 +473,64 @@
         }
     </ul>
 </nav>
+
+<!-- The apps from the Apps row: "New" tags while open, and the way to manage them for a SuperAdmin. -->
+<ng-template
+    #appsList
+    let-variant
+>
+    <app-apps-list
+        heading="Apps"
+        [variant]="variant"
+        [apps]="apps()"
+        [organizationName]="organizationName()"
+        [newIdentifiers]="newAppTags()"
+        (appChosen)="closeLists()"
+    >
+        @if (canManageApps()) {
+            <a
+                class="apps-list-footer-link"
+                [routerLink]="manageAppsUrl"
+                (click)="onListFooterLinkClick($event)"
+            >
+                <app-svg-icon
+                    icon="settings"
+                    size="1rem"
+                />
+                Manage apps
+            </a>
+        }
+    </app-apps-list>
+</ng-template>
+
+<!-- The apps from the app switcher: the current one checked, and the page shown, to open in another tab. -->
+<ng-template
+    #switcherList
+    let-variant
+    let-identifier="identifier"
+>
+    <app-apps-list
+        heading="Switch app"
+        [variant]="variant"
+        [apps]="apps()"
+        [organizationName]="organizationName()"
+        [currentIdentifier]="identifier"
+        [newIdentifiers]="newAppTags()"
+        (appChosen)="closeLists()"
+    >
+        <a
+            class="apps-list-footer-link"
+            [href]="currentHref()"
+            target="_blank"
+            rel="noopener"
+            (click)="closeLists()"
+        >
+            <app-svg-icon
+                icon="external-link"
+                size="0.75rem"
+                class="apps-list-footer-icon"
+            />
+            Open in a new tab
+        </a>
+    </app-apps-list>
+</ng-template>

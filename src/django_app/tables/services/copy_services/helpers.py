@@ -150,7 +150,7 @@ def copy_python_code(python_code: PythonCode) -> PythonCode:
     duplicate = PythonCode.objects.create(
         code=python_code.code,
         entrypoint=python_code.entrypoint,
-        libraries=python_code.libraries,
+        venv_id=python_code.venv_id,
         global_kwargs=python_code.global_kwargs,
         execution_timeout=python_code.execution_timeout,
     )

@@ -7,6 +7,7 @@
                 <app-button
                     leftIcon="copy"
                     type="outline-primary"
+                    [disabled]="extensionRows.isLoading()"
                     (click)="onDuplicate()"
                 >
                     Duplicate Role
@@ -35,10 +36,19 @@
 
     <!-- PERMISSIONS (read-only) -->
     <div class="content">
+        @if (extensionNotice(); as notice) {
+            <p
+                class="permission-notice permission-notice--error"
+                role="alert"
+            >
+                {{ notice }}
+            </p>
+        }
         @if (catalog(); as cat) {
             <app-permissions-table
                 [catalog]="cat"
-                [selectedPermissions]="selectedPermissions()"
+                [extensionGroups]="extensionRows.groups()"
+                [selectedPermissions]="matrixSelection()"
                 [readonly]="true"
             />
         }

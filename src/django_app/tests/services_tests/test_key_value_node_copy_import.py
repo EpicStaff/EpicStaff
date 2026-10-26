@@ -20,7 +20,7 @@ from tables.import_export.services.partial_import_service import PartialImportSe
 from tables.models import Graph, KeyValueNode, KeyValueTable
 from tables.services.copy_services.graph_copy_service import GraphCopyService
 from tables.services.key_value_table_service import KeyValueTableService
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 
 FLOWS_ALL = 255
 
@@ -250,16 +250,24 @@ def _set_mode(node: KeyValueNode, mode: str) -> KeyValueNode:
     return node
 
 
-def _paste(source_node: KeyValueNode, target_graph: Graph, user) -> KeyValueNode:
+def _paste(source_node: KeyValueNode, target_graph: Graph, user) -> dict:
+    """Return the pasted node as the partial import renders it; nothing is saved."""
     result = GraphPartialExportService(entity_registry).export(
         [NodeRef(entity_type=EntityType.KEY_VALUE_NODE, node_id=source_node.id)],
         org_id=source_node.graph.org_id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
     assert not result.has_errors, result.errors
-    PartialImportService(entity_registry).import_data(
-        export_data=result.data, graph=target_graph, org_id=target_graph.org_id, user=user
+    content = (
+        PartialImportService(entity_registry)
+        .import_data(
+            export_data=result.data, graph=target_graph, org_id=target_graph.org_id, user=user
+        )
+        .content
     )
-    return KeyValueNode.objects.get(graph=target_graph)
+    assert not KeyValueNode.objects.filter(graph=target_graph).exists()
+    [pasted] = content["key_value_node_list"]
+    return pasted
 
 
 @pytest.mark.django_db
@@ -285,9 +293,9 @@ def test_paste_binds_table_only_with_mode_permissions(
 
     pasted = _paste(source_node, target_graph, acting_user(bits))
 
-    assert pasted.mode == mode
+    assert pasted["mode"] == mode
     expected = source_node.key_value_table_id if bound else None
-    assert pasted.key_value_table_id == expected
+    assert pasted["key_value_table"] == expected
 
 
 @pytest.mark.django_db
@@ -301,7 +309,7 @@ def test_cross_org_paste_binds_target_org_table_only_with_mode_permissions(
 
     pasted = _paste(source_node, target_graph, acting_user(bits))
 
-    assert pasted.key_value_table_id == (target_table.id if bound else None)
+    assert pasted["key_value_table"] == (target_table.id if bound else None)
 
 
 @pytest.mark.django_db
@@ -394,7 +402,11 @@ def test_import_replace_recreates_node_and_binds_table_only_with_mode_permission
 ):
     _set_mode(source_node, mode)
     graph = source_node.graph
-    export_data = ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    export_data = (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
     # Unbound after the export, so only the replace can bring the table back.
     KeyValueNode.objects.filter(pk=source_node.pk).update(key_value_table=None)
     client = APIClient()

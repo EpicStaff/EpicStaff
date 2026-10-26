@@ -1,4 +1,5 @@
 from tables.exceptions import CustomAPIExeption
+from tables.services.run_admission import RunAdmissionRefusedError
 
 
 class SecretDecryptionError(CustomAPIExeption):
@@ -41,3 +42,20 @@ class UndeclaredSecretError(CustomAPIExeption):
     status_code = 400
     default_detail = "Code reads a secret that was not declared for it."
     default_code = "undeclared_secret"
+
+
+class SecretMarkerNotReferenceableError(RunAdmissionRefusedError):
+    """Work a pinned-org principal (a plugin's service account) starts would resolve an
+    `epicstaff_secret(<name>)` header marker to a secret the principal may not reference.
+
+    A marker binds by name when the work starts, so the name may mean another secret than when
+    the row was written. Names no secret: the caller may not know which one the name means now.
+    """
+
+    status_code = 409
+    default_code = "secret_marker_not_referenceable"
+    default_detail = (
+        "This credential can reference only secrets it created, but a model configuration "
+        "used here names another secret in a header, so this cannot start."
+    )
+    log_key = "secret_marker_not_referenceable"

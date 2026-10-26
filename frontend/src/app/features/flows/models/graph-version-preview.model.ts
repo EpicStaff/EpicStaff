@@ -65,11 +65,18 @@ interface SnapshotNodeBase<TNodeType extends SnapshotNodeType> {
     node_type: TNodeType;
     node_name: string;
     metadata: Record<string, unknown>;
+    /** The node's number in the source graph; the numbers may have gaps. */
+    node_number: number | null;
 }
 
 export interface SnapshotPythonCode {
     code: string;
-    /** Space-separated library list, e.g. `"requests pandas"`. */
+    /**
+     * Space-separated library list, e.g. `"requests pandas"`, as older snapshots
+     * stored it. KNOWN BROKEN: libraries now live only on the venv and the export
+     * carries no venv, so nothing reads this any more and new snapshots have
+     * nothing to put in it. See `toLivePythonCode`.
+     */
     libraries: string;
     entrypoint: string;
     global_kwargs?: Record<string, unknown>;

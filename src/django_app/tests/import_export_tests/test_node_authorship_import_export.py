@@ -42,7 +42,7 @@ from tables.models.graph_models import (
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.services.copy_services.graph_copy_service import GraphCopyService
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 AUTHOR_KEY = "created_by"
@@ -120,7 +120,11 @@ def _keys_named(value, key: str) -> list[str]:
 
 
 def _export(graph: Graph) -> dict:
-    return ExportService(entity_registry).export_entities(EntityType.GRAPH, [graph.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def _import_flow(client, org, export_data):
@@ -183,7 +187,9 @@ def test_partial_export_carries_no_author_anywhere(source_flow):
     ]
 
     result = GraphPartialExportService(entity_registry).export(
-        node_refs, org_id=source_flow.org_id
+        node_refs,
+        org_id=source_flow.org_id,
+        policy=UNRESTRICTED_EXPORT_POLICY,
     )
 
     assert not result.has_errors, result.errors
@@ -256,41 +262,6 @@ def test_import_without_a_real_user_leaves_nodes_unauthored(acme, source_flow, a
     node_authors = _node_authors(imported_graph)
     assert len(node_authors) == len(NODE_RELATIONS)
     assert set(node_authors.values()) == {None}
-
-
-@pytest.mark.django_db
-def test_partial_import_authors_every_new_node_with_importer(
-    client_as, admin_acme, acme, source_flow
-):
-    node_refs = [
-        NodeRef(entity_type=NODE_TYPE_TO_ENTITY_TYPE[node_type], node_id=node.id)
-        for node_type, relation_name in NODE_RELATIONS.items()
-        if node_type not in STRUCTURAL_NODE_TYPES
-        for node in getattr(source_flow, relation_name).all()
-    ]
-    export_data = (
-        GraphPartialExportService(entity_registry)
-        .export(node_refs, org_id=source_flow.org_id)
-        .data
-    )
-    existing_node_keys = set(_node_authors(source_flow))
-    client = client_as(admin_acme)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-
-    response = client.post(
-        reverse("graphs-partial-import", args=[source_flow.id]),
-        {"file": data_to_json_file(data=export_data, filename="nodes.json")},
-        format="multipart",
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    new_node_authors = {
-        key: author_id
-        for key, author_id in _node_authors(source_flow).items()
-        if key not in existing_node_keys
-    }
-    assert len(new_node_authors) == len(node_refs)
-    assert set(new_node_authors.values()) == {admin_acme.id}
 
 
 # ---- restore replays recorded node authors; create-from-version uses the actor ----

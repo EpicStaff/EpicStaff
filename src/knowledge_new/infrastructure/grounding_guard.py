@@ -136,6 +136,7 @@ async def apply_grounding_guard(
     context,
     config: GraphRagConfig,
     method: GraphSearchMethodEnum,
+    rag_id: int,
 ) -> str:
     """Return `response` if backed by `context`, else '' (empty/no-data/ungrounded)."""
     if not response or is_no_data_answer(response):
@@ -144,6 +145,8 @@ async def apply_grounding_guard(
         return response
 
     if not await _answer_is_grounded(query, str(response), context, config):
-        logger.warning("Grounding guard rejected %s answer for query: [%s]", method, query)
+        # The query is user content and must not reach the logs; the rag_id identifies
+        # the knowledge base without disclosing what was asked.
+        logger.warning("Grounding guard rejected %s answer for rag_id: [%s]", method, rag_id)
         return ""
     return response

@@ -107,6 +107,7 @@ from tables.views.views import (
     GetUpdates,
     InitRealtimeAPIView,
     NotifyEmailView,
+    ProcessRagIndexingEstimateView,
     ProcessRagIndexingView,
     PythonNodeLastTestInputView,
     QuickstartApplyView,
@@ -288,6 +289,11 @@ urlpatterns = [
         name="process-rag-indexing",
     ),
     path(
+        "process-rag-indexing/estimate/",
+        ProcessRagIndexingEstimateView.as_view(),
+        name="process-rag-indexing-estimate",
+    ),
+    path(
         "process-rag-indexing/<str:rag_type>/<int:rag_id>/cancel/",
         CancelRagIndexingView.as_view(),
         name="cancel-rag-indexing",
@@ -296,6 +302,11 @@ urlpatterns = [
         "documents/source-collection/<str:collection_id>/upload/",
         DocumentManagementViewSet.as_view({"post": "upload_documents"}),
         name="document-upload",
+    ),
+    path(
+        "documents/source-collection/<str:collection_id>/from-storage/",
+        DocumentManagementViewSet.as_view({"post": "import_from_storage"}),
+        name="document-import-from-storage",
     ),
     path(
         "source-collections/<str:collection_id>/documents/",

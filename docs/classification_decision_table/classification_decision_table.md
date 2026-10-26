@@ -158,7 +158,7 @@ GET /api/classification-decision-table-node/{id}/export?export_format=csv
 
 ### JSON (`export_format=json`, default)
 
-Reuses the partial-export pipeline (`GraphPartialExportService`), so the file is structurally identical to a [partial node export](../import_export/PARTIAL_NODE_IMPORT_EXPORT.md) of a single CDT node — the node plus its transitive dependencies (LLM configs, prompts' configs, referenced Python code). Because of this, a JSON export **is re-importable** into any existing graph via the graph `partial-import` endpoint.
+Reuses the partial-export pipeline (`GraphPartialExportService`), so the file is structurally identical to a [partial node export](../import_export/PARTIAL_NODE_IMPORT_EXPORT.md) of a single CDT node — the node plus its transitive dependencies (LLM configs, prompts' configs, referenced Python code). Because of this, a JSON export **is re-importable** into any existing graph via the graph `partial-import` endpoint, which returns the node unsaved for the flow editor to place on the canvas; it is persisted when the user saves the flow.
 
 The filename is prefixed `CDT_` (e.g. `CDT_my_node_20260611.json`).
 
@@ -194,7 +194,8 @@ The filename is `CDT_<node_name>.csv`.
 ```
 ClassificationDecisionTableNode
 ├── graph (FK → Graph)
-├── node_name (unique per graph)
+├── node_name (free-form label; may repeat within the graph)
+├── node_number (#N badge, assigned by the server)
 ├── pre_python_code, post_python_code (FK → PythonCode)
 ├── pre_input_map, pre_output_variable_path
 ├── post_input_map, post_output_variable_path

@@ -102,7 +102,7 @@ SAVE_FLOW_SWAGGER = {
                         "output_variable_path": "result",
                         "python_code": {
                             "code": "def main(input): return input.upper()",
-                            "libraries": [],
+                            "venv_id": None,
                         },
                         "metadata": {"position": {"x": 700, "y": 200}},
                     }

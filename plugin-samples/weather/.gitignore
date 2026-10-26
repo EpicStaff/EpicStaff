@@ -1,0 +1,4 @@
+# The backend's virtual environment for `epicstaff-plugin dev`, at the plugin's root.
+.venv/
+# A development runtime file holds keys and secret settings: keep it outside the source.
+*-development-runtime.json

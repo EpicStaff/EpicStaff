@@ -6,7 +6,7 @@ import { Observable } from 'rxjs';
 
 import { ImportFlowRequestOptions, ImportResult } from '../../../core/models/import-result.model';
 import { ConfigService } from '../../../services/config';
-import { GraphDto } from '../models/graph.model';
+import { GraphDto, PartialImportResponse } from '../models/graph.model';
 import { FlowCopyImportFacadeService } from './flow-copy-import-facade.service';
 import { FlowsStorageService } from './flows-storage.service';
 
@@ -14,6 +14,10 @@ const COPY = { id: 12, name: 'Orders #2' } as GraphDto;
 const IMPORT_RESULT: ImportResult = {
     Flow: { total: 1, created: { count: 1, items: [] }, reused: { count: 0, items: [] } },
 };
+const PARTIAL_IMPORT_RESPONSE = {
+    content: { python_node_list: [], edge_list: [] },
+    summary: {},
+} as unknown as PartialImportResponse;
 const SETTINGS: ImportFlowRequestOptions = { preserveUuids: false, replaceExisting: true, importLabels: true };
 const FILE = new File(['{}'], 'flow.json', { type: 'application/json' });
 const REFUSAL_BODY = {
@@ -94,9 +98,9 @@ describe('FlowCopyImportFacadeService', () => {
         const request = httpMock.expectOne('/api/graphs/5/partial-import/');
         expect(request.request.method).toBe('POST');
         expect((request.request.body as FormData).get('file')).toBe(FILE);
-        request.flush({ created: 2 });
+        request.flush(PARTIAL_IMPORT_RESPONSE);
 
-        expect(outcome.values).toEqual([{ created: 2 }]);
+        expect(outcome.values).toEqual([PARTIAL_IMPORT_RESPONSE]);
         expect(confirm).not.toHaveBeenCalled();
     });
 

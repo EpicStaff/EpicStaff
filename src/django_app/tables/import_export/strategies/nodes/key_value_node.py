@@ -39,4 +39,8 @@ class KeyValueNodeStrategy(EntityImportExportStrategy):
             mode=serializer.validated_data.get("mode", KeyValueNode.Mode.READ),
             user=kwargs.get("user"),
         )
-        return serializer.save(key_value_table=table, created_by=resolve_author(kwargs.get("user")))
+        return serializer.save(
+            key_value_table=table,
+            created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
+        )

@@ -6,7 +6,12 @@ import { authGuard } from './core/guards/auth.guard';
 import { bootstrapGuard } from './core/guards/bootstrap.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
-import { secretsPermissionGuard, settingsGuard, settingsIndexGuard } from './core/guards/settings.guard';
+import {
+    pluginActivityPermissionGuard,
+    secretsPermissionGuard,
+    settingsGuard,
+    settingsIndexGuard,
+} from './core/guards/settings.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import {
     permissionGuard,
@@ -18,6 +23,10 @@ import {
 import { HIDE_SIDENAV_ON_PHONE } from './core/services/app-navigation-drawer.service';
 import { auditTrailEnabledGuard } from './features/audit/guards/audit-trail-enabled.guard';
 import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
+import { FILES_TAB } from './features/files/constants/files-tabs';
+import { availablePluginGuard } from './features/plugins/guards/available-plugin.guard';
+import { pluginsEnabledGuard } from './features/plugins/guards/plugins-enabled.guard';
+import { pluginPageMatcher } from './features/plugins/pages/plugin-host-page/plugin-page.matcher';
 import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
 import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
 import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
@@ -57,6 +66,15 @@ export const routes: Routes = [
         canActivate: [guestGuard],
     },
     {
+        // A plugin page's sign-in, often inside the plugin's frame. No guestGuard: a person who is already signed in
+        // continues the sign-in at once instead of being sent into EpicStaff.
+        path: 'plugin-login',
+        loadComponent: () =>
+            import('./features/plugins/pages/plugin-login-continue-page/plugin-login-continue-page.component').then(
+                (m) => m.PluginLoginContinuePageComponent
+            ),
+    },
+    {
         path: '',
         component: RoutedAuthShellComponent,
         canActivate: [authGuard, bootstrapGuard],
@@ -76,6 +94,16 @@ export const routes: Routes = [
                         (m) => m.UnassignedUserPageComponent
                     ),
                 canActivate: [unassignedGuard],
+            },
+            {
+                // Which organization a plugin page signs in to; signed in, without EpicStaff's layout, often inside
+                // the plugin's frame.
+                path: 'plugin-choose-org',
+                loadComponent: () =>
+                    import('./features/plugins/pages/plugin-org-chooser-page/plugin-org-chooser-page.component').then(
+                        (m) => m.PluginOrgChooserPageComponent
+                    ),
+                canActivate: [pluginsEnabledGuard],
             },
             {
                 path: '',
@@ -232,34 +260,37 @@ export const routes: Routes = [
                                 ],
                                 children: [],
                             },
+                            // Component-less on purpose: FilesListPageComponent renders the tab pages
+                            // itself (lazily, via @defer) so the Storage page can outlive a tab switch
+                            // during a storage → knowledge drag. These routes own the URL and the guards.
                             {
-                                path: 'knowledge-sources',
-                                loadComponent: () =>
-                                    import('./features/knowledge-sources/pages/collections-list-page/collections-list-page.component').then(
-                                        (m) => m.CollectionsListPageComponent
-                                    ),
+                                path: FILES_TAB.KnowledgeSources,
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.KnowledgeSources, ActionCode.Read] },
+                                children: [],
                             },
                             {
-                                path: 'files',
-                                loadComponent: () =>
-                                    import('./features/files/pages/files-list-page/components/storage-page/storage-page.component').then(
-                                        (m) => m.StoragePageComponent
-                                    ),
+                                path: FILES_TAB.Storage,
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.Files, ActionCode.Read] },
+                                children: [],
                             },
                             {
-                                path: 'key-value-tables',
-                                loadComponent: () =>
-                                    import('./features/key-value-tables/pages/key-value-tables-page/key-value-tables-page.component').then(
-                                        (m) => m.KeyValueTablesPageComponent
-                                    ),
+                                path: FILES_TAB.KeyValueTables,
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.KeyValueTables, ActionCode.Read] },
+                                children: [],
                             },
                         ],
+                    },
+                    {
+                        path: 'venvs',
+                        loadComponent: () =>
+                            import('./features/virtual-environments/pages/venvs-list-page/venvs-list-page.component').then(
+                                (m) => m.VenvsListPageComponent
+                            ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Venvs, ActionCode.Read] },
                     },
                     {
                         path: 'chats',
@@ -389,7 +420,26 @@ export const routes: Routes = [
                                     ),
                                 canActivate: [secretsPermissionGuard],
                             },
+                            {
+                                // What plugins do in the active organization, for whoever may read its audit trail.
+                                path: 'plugin-activity',
+                                loadComponent: () =>
+                                    import('./features/plugins/pages/plugin-activity-settings-page/plugin-activity-settings-page.component').then(
+                                        (m) => m.PluginActivitySettingsPageComponent
+                                    ),
+                                canActivate: [pluginActivityPermissionGuard],
+                            },
                         ],
+                    },
+                    {
+                        // A plugin's own page, framed from the plugin's origin; everything below the identifier is
+                        // the page's path. Only a plugin the caller may open in the active organization.
+                        matcher: pluginPageMatcher,
+                        canActivate: [availablePluginGuard],
+                        loadComponent: () =>
+                            import('./features/plugins/pages/plugin-host-page/plugin-host-page.component').then(
+                                (m) => m.PluginHostPageComponent
+                            ),
                     },
                     {
                         path: 'workspace',
@@ -448,6 +498,26 @@ export const routes: Routes = [
                                     ),
                                 canActivate: [workspacePermissionGuard],
                                 data: { permission: [ResourceCode.ApiKeys, ActionCode.Read] },
+                            },
+                            {
+                                path: 'plugins',
+                                canActivate: [pluginsEnabledGuard, superAdminGuard],
+                                children: [
+                                    {
+                                        path: '',
+                                        loadComponent: () =>
+                                            import('./features/plugins/pages/plugins-admin-page/plugins-admin-page.component').then(
+                                                (m) => m.PluginsAdminPageComponent
+                                            ),
+                                    },
+                                    {
+                                        path: ':identifier',
+                                        loadComponent: () =>
+                                            import('./features/plugins/pages/plugin-admin-detail-page/plugin-admin-detail-page.component').then(
+                                                (m) => m.PluginAdminDetailPageComponent
+                                            ),
+                                    },
+                                ],
                             },
                         ],
                     },

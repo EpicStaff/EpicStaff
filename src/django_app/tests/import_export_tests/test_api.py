@@ -9,7 +9,7 @@ from tables.import_export.services.export_service import ExportService
 from tables.import_export.registry import entity_registry
 from tables.import_export.enums import EntityType
 
-from tests.helpers import data_to_json_file
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 
 
 # ──────────────────────────────────────────
@@ -81,7 +81,9 @@ class TestExportEndpoints:
 class TestImportEndpoints:
     def _export_to_file(self, entity_type, entity_ids, filename="test_export.json"):
         service = ExportService(entity_registry)
-        export_data = service.export_entities(entity_type, entity_ids)
+        export_data = service.export_entities(
+            entity_type, entity_ids, policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
         return data_to_json_file(data=export_data, filename=filename)
 
     def test_graph_import(self, auth_client, rich_seeded_db):
@@ -136,8 +138,14 @@ class TestImportErrors:
         LLMConfig.objects.filter(pk=source_config.pk).update(
             model=reasoning_model, reasoning_effort="low"
         )
-        export_data = ExportService(entity_registry).export_entities(
-            EntityType.GRAPH, [exportable_graph_with_agent_node.id]
+        export_data = (
+            ExportService(entity_registry)
+            .export_entities(
+                EntityType.GRAPH,
+                [exportable_graph_with_agent_node.id],
+                policy=UNRESTRICTED_EXPORT_POLICY,
+            )
+            .data
         )
         [config_entry] = export_data[EntityType.LLM_CONFIG]
         config_entry["reasoning_effort"] = "max"

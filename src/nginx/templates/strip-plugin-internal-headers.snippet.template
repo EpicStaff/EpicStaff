@@ -1,0 +1,42 @@
+# The headers only the internal and development API listeners (plugins-api-listener.snippet) may
+# send Django: X-Plugin-Network-Secret, without which Django accepts no plugin service-account key
+# and no node key, X-EpicStaff-On-Behalf-Of, and X-Plugin-Development-Listener, which tells a
+# development key's listener from the internal one. No caller can set any of them through this
+# server, so even a plugin key and a network secret that both leaked are of no use from outside.
+# Every spelling: with underscores_in_headers on, nginx passes X_Plugin_Network_Secret as a
+# header of its own, and Django folds every spelling into one META key (see
+# strip-underscore-forwarding-headers.snippet). An empty value makes nginx drop the header.
+# Included in every location that passes a caller's headers on to Django, whether plugins are
+# on or off; tests/check_templates.sh fails for one that does not.
+proxy_set_header X-Plugin-Network-Secret "";
+proxy_set_header X-Plugin-Network_Secret "";
+proxy_set_header X-Plugin_Network-Secret "";
+proxy_set_header X-Plugin_Network_Secret "";
+proxy_set_header X_Plugin-Network-Secret "";
+proxy_set_header X_Plugin-Network_Secret "";
+proxy_set_header X_Plugin_Network-Secret "";
+proxy_set_header X_Plugin_Network_Secret "";
+proxy_set_header X-EpicStaff-On-Behalf-Of "";
+proxy_set_header X-EpicStaff-On-Behalf_Of "";
+proxy_set_header X-EpicStaff-On_Behalf-Of "";
+proxy_set_header X-EpicStaff-On_Behalf_Of "";
+proxy_set_header X-EpicStaff_On-Behalf-Of "";
+proxy_set_header X-EpicStaff_On-Behalf_Of "";
+proxy_set_header X-EpicStaff_On_Behalf-Of "";
+proxy_set_header X-EpicStaff_On_Behalf_Of "";
+proxy_set_header X_EpicStaff-On-Behalf-Of "";
+proxy_set_header X_EpicStaff-On-Behalf_Of "";
+proxy_set_header X_EpicStaff-On_Behalf-Of "";
+proxy_set_header X_EpicStaff-On_Behalf_Of "";
+proxy_set_header X_EpicStaff_On-Behalf-Of "";
+proxy_set_header X_EpicStaff_On-Behalf_Of "";
+proxy_set_header X_EpicStaff_On_Behalf-Of "";
+proxy_set_header X_EpicStaff_On_Behalf_Of "";
+proxy_set_header X-Plugin-Development-Listener "";
+proxy_set_header X-Plugin-Development_Listener "";
+proxy_set_header X-Plugin_Development-Listener "";
+proxy_set_header X-Plugin_Development_Listener "";
+proxy_set_header X_Plugin-Development-Listener "";
+proxy_set_header X_Plugin-Development_Listener "";
+proxy_set_header X_Plugin_Development-Listener "";
+proxy_set_header X_Plugin_Development_Listener "";

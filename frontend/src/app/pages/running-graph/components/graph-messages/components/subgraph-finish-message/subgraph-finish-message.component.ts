@@ -7,10 +7,11 @@ import {
     MessageType,
     StateHistoryItem,
 } from '../../../../models/graph-session-message.model';
+import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe';
 
 @Component({
     selector: 'app-subgraph-finish-message',
-    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent, RuntimeNodeLabelPipe],
     encapsulation: ViewEncapsulation.Emulated,
     template: `
         <div class="subgraph-finish-container">
@@ -33,7 +34,7 @@ import {
                     />
                 </div>
                 <h3>
-                    <span class="node-name">{{ message.name }}</span> subgraph finished
+                    <span class="node-name">{{ message.name | runtimeNodeLabel }}</span> subgraph finished
                 </h3>
             </div>
 

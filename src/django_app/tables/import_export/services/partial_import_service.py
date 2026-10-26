@@ -1,8 +1,12 @@
+from copy import deepcopy
+from dataclasses import dataclass
+
 from django.db import transaction
 from loguru import logger
 from rbac.authorship import record_last_edits
 from rbac.models import LastEditTrackedModel
 from rbac.models.enums import Permission
+from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from tables.import_export.constants import DEPENDENCY_ORDER, NODE_MAPPING_KEY
@@ -13,7 +17,9 @@ from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.strategies.graph import GraphStrategy
 from tables.models import Graph
+from tables.serializers.model_serializers.graph_serializers import GraphSerializer
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
+from tables.utils.legacy_node_number import move_legacy_badge_into_node_number
 
 # Node entity types that belong to a graph — handled via recreate_graph_children.
 # Start/end nodes are intentionally excluded: they are structural and every
@@ -37,15 +43,31 @@ _NODE_ENTITY_TYPES = {
 }
 
 
+@dataclass(frozen=True)
+class PartialImportResult:
+    """Outcome of a partial import.
+
+    `id_mapper` maps the file's dependency ids to the rows used in the active org.
+    `content` holds the file's nodes and the edges between them in the shape of
+    `GET /graphs/{id}/` (every `GraphSerializer` node list plus `edge_list`). None of
+    it exists in the database: the client adds it to the canvas, and the flow save
+    persists it.
+    """
+
+    id_mapper: IDMapper
+    content: dict
+
+
 class PartialImportService:
     """
-    Import the output of GraphPartialExportService (partial-export) into an
+    Import the output of GraphPartialExportService (partial-export) against an
     existing graph identified by graph_id.
 
     The export file contains standalone nodes (with their transitive
-    dependencies) and optionally edges.  The graph itself is NOT re-created;
-    nodes are appended to the existing graph and all IDs are remapped via
-    IDMapper.
+    dependencies) and optionally edges. Dependencies are created (or reused) in
+    the active org and committed. Nodes and edges are NOT written to the graph:
+    they are returned as unsaved content, with ids remapped via IDMapper, for the
+    client to place on the canvas and persist through the flow save.
     """
 
     def __init__(self, registry: EntityRegistry):
@@ -58,11 +80,22 @@ class PartialImportService:
         org_id: int | None = None,
         user=None,
         effective_permissions=None,
-    ) -> IDMapper:
-        """Append the file's nodes and edges to `graph`.
+        serializer_context: dict | None = None,
+    ) -> PartialImportResult:
+        """Create the file's dependencies and return its nodes and edges unsaved.
 
-        `effective_permissions=None` means a trusted internal caller: both permission
-        checks (CREATE on new dependencies, and USE for trigger nodes) are skipped.
+        The target graph is left untouched: no nodes, edges, node numbers, version or
+        last edit. Dependencies created here stay even if the client discards the
+        returned content.
+
+        Args:
+            graph: Graph the nodes are prepared for. Nodes are validated against it
+                and numbered from its counter, but not added to it.
+            effective_permissions: `None` means a trusted internal caller: both
+                permission checks (CREATE on new dependencies, and USE for trigger
+                nodes) are skipped.
+            serializer_context: Context for the read serializers rendering
+                `content`, normally the view's serializer context.
         """
         nodes_data = self._collect_nodes(export_data)
         if not nodes_data:
@@ -70,7 +103,7 @@ class PartialImportService:
 
         id_mapper = IDMapper()
         export_data = prepare_import_data(export_data)
-        # A trigger node among the imported nodes is live once created, so the import
+        # A trigger node among the imported nodes is live once saved, so the import
         # needs flows:USE; refused here, before the transaction opens, so nothing is
         # written. Only the collected node entries are imported, so only they count.
         if effective_permissions is not None and TriggerNodeInspector.has_any_in_node_entries(
@@ -88,31 +121,54 @@ class PartialImportService:
                 user=user,
                 effective_permissions=effective_permissions,
             )
+            record_last_edits(created_dependencies, user)
 
-            # Step 2: build a graph-children payload from the export data
-            # and create nodes + edges inside the existing graph. Nodes are
-            # graph children (no own org column); they inherit the target
-            # graph's org and reference the dependencies created above.
+            # Step 2: create the nodes and edges in the target graph, render them, then
+            # roll them back. Creating them runs every node strategy's validation,
+            # reference remapping and normalization, and lets the response reuse the
+            # exact GET-graph serializers; rolling back persists none of it (nodes,
+            # edges, node-number counter, node last edits). The user persists the
+            # content by saving the flow, and "exit without saving" discards it.
+            # Do not replace this with in-memory conversion: it would duplicate each
+            # node strategy and drift from it.
             graph_strategy: GraphStrategy = self.registry.get_strategy(EntityType.GRAPH)
+            with transaction.atomic():
+                node_mapper = graph_strategy.recreate_graph_children(
+                    graph,
+                    {
+                        "nodes": nodes_data,
+                        "edge_list": export_data.get("edge_list", []),
+                    },
+                    id_mapper,
+                    is_partial=True,
+                    user=user,
+                )
+                content = self._serialize_content(
+                    graph,
+                    set(node_mapper.get_new_ids(NODE_MAPPING_KEY)),
+                    serializer_context or {},
+                )
+                transaction.set_rollback(True)
 
-            edges_data = export_data.get("edge_list", [])
+        return PartialImportResult(id_mapper=id_mapper, content=content)
 
-            node_mapper = graph_strategy.recreate_graph_children(
-                graph,
-                {
-                    "nodes": nodes_data,
-                    "edge_list": edges_data,
-                },
-                id_mapper,
-                is_partial=True,
-                user=user,
-            )
-            # Only an added node edits the graph; every node can be skipped (unsupported
-            # type), and new dependencies are rows of their own, not graph content.
-            edited_graph = [graph] if node_mapper.get_new_ids(NODE_MAPPING_KEY) else []
-            record_last_edits([*created_dependencies, *edited_graph], user)
-
-        return id_mapper
+    @staticmethod
+    def _serialize_content(graph: Graph, new_node_ids: set[int], context: dict) -> dict:
+        """Render the new nodes, and the edges between them, as `GET /graphs/{id}/` does."""
+        graph_fields = GraphSerializer(context=context).fields
+        content = {}
+        for list_key, field in graph_fields.items():
+            if not isinstance(field, serializers.ListSerializer):
+                continue
+            related_rows = getattr(graph, field.source).all()
+            if list_key == "edge_list":
+                rows = related_rows.filter(
+                    start_node_id__in=new_node_ids, end_node_id__in=new_node_ids
+                )
+            else:
+                rows = related_rows.filter(id__in=new_node_ids)
+            content[list_key] = field.to_representation(rows)
+        return content
 
     def _import_dependencies(
         self,
@@ -180,11 +236,15 @@ class PartialImportService:
         """
         Gather node dicts from all node entity types and tag each with
         node_type so GraphStrategy._create_nodes can dispatch correctly.
+
+        Partial files carry no version, so VersionConverter never sees them; a
+        file written before node_number existed gets its "#N" badges moved here.
         """
         nodes = []
         for entity_type in _NODE_ENTITY_TYPES:
             for node_data in export_data.get(entity_type, []):
-                node_copy = dict(node_data)
+                node_copy = deepcopy(node_data)
                 node_copy["node_type"] = entity_type
+                move_legacy_badge_into_node_number(node_copy)
                 nodes.append(node_copy)
         return nodes

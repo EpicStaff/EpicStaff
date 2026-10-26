@@ -5,13 +5,14 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 
 import litellm
+from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
 from src.shared.models import LLMConfigData
-from tables.utils.litellm_model_info import litellm_lookup_name
 from utils.logger import logger
 
 from .base import (
     BaseLLMClient,
     DoneEvent,
+    LLMProviderError,
     StreamEvent,
     TokenEvent,
     ToolCallEvent,
@@ -25,22 +26,43 @@ JSON_OBJECT_ONLY_PROVIDERS = {"deepseek"}
 
 # These providers reject any response_format in a request that also carries tools: Groq
 # answers "json mode cannot be combined with tool/function calling" for models with native
-# structured outputs, and litellm refuses its tool-call emulation for the others.
-NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq"}
+# structured outputs, and litellm refuses its tool-call emulation for the others. Gemini
+# answers "Function calling with a response mime type: 'application/json' is unsupported".
+NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS = {"groq", "gemini"}
 
 
-def _routed_provider(model: str) -> str:
-    """Return the provider litellm sends ``model`` to.
+def _provider_error_from(exc: BaseException) -> tuple[str | None, str] | None:
+    """Find the provider's own error (code, message) in an exception and its causes.
 
-    A bare name can belong to any provider: an OpenAI row keeps ``claude-sonnet-4-6``
-    bare (see LiteLLMClient._model_string) and litellm still routes it to Anthropic.
-    get_llm_provider is a local table lookup (no network I/O).
+    litellm can fail while converting a provider error, e.g. Groq's `tool_use_failed`
+    chunk becomes a ValueError raised inside litellm's `except` block, so the original
+    error that carries the provider's `body` survives only in the exception chain.
     """
-    try:
-        return litellm.get_llm_provider(model=model)[1]
-    except litellm.exceptions.BadRequestError:
-        # litellm does not know the model: keep its prefix, and a bare name is OpenAI's.
-        return model.split("/", 1)[0] if "/" in model else "openai"
+    pending: list[BaseException] = [exc]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop(0)
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        body = getattr(current, "body", None)
+        if isinstance(body, dict) and isinstance(body.get("error"), dict):
+            body = body["error"]
+        if isinstance(body, dict) and body.get("message"):
+            code = body.get("code")
+            # One line, so a provider message cannot forge extra log lines.
+            message = " ".join(str(body["message"]).split())
+            return (str(code) if code else None), message
+        pending.extend(
+            linked
+            for linked in (
+                getattr(current, "original_exception", None),
+                current.__cause__,
+                current.__context__,
+            )
+            if isinstance(linked, BaseException)
+        )
+    return None
 
 
 class LiteLLMClient(BaseLLMClient):
@@ -82,7 +104,7 @@ class LiteLLMClient(BaseLLMClient):
         # UnsupportedLLMProviderError at construction time (fail-fast), not
         # lazily during the first stream_completion call.
         self._model = self._model_string()
-        self._routed_provider = _routed_provider(self._model)
+        self._routed_provider = litellm_routed_provider(self._model)
 
     def _model_string(self) -> str:
         """Build the LiteLLM model string from the config's model and provider.
@@ -94,21 +116,7 @@ class LiteLLMClient(BaseLLMClient):
         if not model_name:
             raise UnsupportedLLMProviderError("(empty model name)")
 
-        if not self._provider_name or self._provider_name == "openai":
-            # Plain model name for OpenAI; litellm defaults to OpenAI for bare names.
-            return model_name
-
-        if self._provider_name in ("azure", "azure_openai"):
-            # Azure uses the deployment name, falling back to model name if not set.
-            deployment = (self._config.deployment_id or model_name).strip()
-            return f"azure/{deployment}"
-
-        # All other providers: "<provider>/<model>" — litellm understands this format
-        # for Anthropic, Gemini, Mistral, Cohere, Bedrock, Together, etc.
-        # Many stored model names already carry their provider prefix (e.g. "ollama/mistral").
-        # Only the row's own provider counts: "openai/gpt-oss-120b" on a Groq row is a Groq
-        # model id and must become "groq/openai/gpt-oss-120b".
-        return litellm_lookup_name(self._provider_name, model_name)
+        return litellm_call_model(self._provider_name, model_name, self._config.deployment_id)
 
     def _build_tools(self, tools: list[ToolSpec]) -> list[dict] | None:
         if not tools:
@@ -151,14 +159,15 @@ class LiteLLMClient(BaseLLMClient):
         # set on the config for agents could cut that reply short.
         kwargs.update(config.to_litellm_kwargs(provider=self._routed_provider, exclude={"stop"}))
         # Structured-output requests pass an output_schema, which becomes the
-        # response_format sent to the model.
+        # response_format sent to the model. The provider litellm routes to decides
+        # the format: a google_ai row is called as gemini.
         if self._output_schema:
-            if self._provider_name in JSON_OBJECT_ONLY_PROVIDERS:
+            if self._routed_provider in JSON_OBJECT_ONLY_PROVIDERS:
                 kwargs["response_format"] = {"type": "json_object"}
                 # json_object mode carries no schema, so the model only learns the
                 # expected shape from the prompt.
                 kwargs["messages"] = self._with_schema_instruction(messages)
-            elif self._provider_name in NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS and tools:
+            elif self._routed_provider in NO_RESPONSE_FORMAT_WITH_TOOLS_PROVIDERS and tools:
                 # No response_format: the schema reaches the model only through the prompt,
                 # and the reply is parsed leniently by the caller.
                 kwargs["messages"] = self._with_schema_instruction(messages)
@@ -183,12 +192,33 @@ class LiteLLMClient(BaseLLMClient):
             {
                 "role": "system",
                 "content": (
-                    "Respond with a JSON object that matches this JSON schema: "
-                    f"{json.dumps(self._output_schema['schema'])}"
+                    "Write your final reply directly as the message content: a JSON object "
+                    f"that matches this JSON schema: {json.dumps(self._output_schema['schema'])}. "
+                    "Never send it as a tool or function call."
                 ),
             },
             *messages,
         ]
+
+    async def _provider_chunks(self, kwargs: dict) -> AsyncIterator:
+        """Yield litellm's stream chunks, turning a provider failure into LLMProviderError.
+
+        Only the call and the fetching of the next chunk sit inside the `try`, so the
+        caller's own chunk handling is never mistaken for a provider failure.
+        """
+        try:
+            response = await litellm.acompletion(**kwargs)
+            async for chunk in response:
+                yield chunk
+        except Exception as exc:
+            provider_error = _provider_error_from(exc)
+            if provider_error is None:
+                raise
+            raise LLMProviderError(
+                provider=self._routed_provider or self._provider_name,
+                code=provider_error[0],
+                message=provider_error[1],
+            ) from exc
 
     async def stream_completion(
         self,
@@ -210,9 +240,7 @@ class LiteLLMClient(BaseLLMClient):
         reasoning_observed = False
         last_finish_reason: str | None = None
 
-        response = await litellm.acompletion(**kwargs)
-
-        async for chunk in response:
+        async for chunk in self._provider_chunks(kwargs):
             finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
             if finish_reason:
                 last_finish_reason = finish_reason

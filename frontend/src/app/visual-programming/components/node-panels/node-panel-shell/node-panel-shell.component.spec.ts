@@ -504,7 +504,7 @@ describe('NodePanelShellComponent', () => {
             type: NodeType.PYTHON,
             node_name: 'Python-Node (#1)',
             python_code_id: 12,
-            data: { code: 'def main(): pass', entrypoint: 'main', libraries: [], secret_ids: [], secret_names: [] },
+            data: { code: 'def main(): pass', entrypoint: 'main', secret_ids: [], secret_names: [] },
             test_input: {},
             position: { x: 0, y: 0 },
             ports: null,
@@ -632,6 +632,30 @@ describe('NodePanelShellComponent', () => {
             detailsButton(fixture)!.click();
 
             expect(open).toHaveBeenCalledWith('Node Details', recorded, detailsButton(fixture));
+        });
+
+        const headerText = (fixture: { nativeElement: HTMLElement }, selector: string): string | undefined =>
+            fixture.nativeElement.querySelector(`.dialog-header ${selector}`)?.textContent?.trim();
+
+        it('heads the panel with the node name and its number beside it, so same-named nodes are told apart', async () => {
+            const { fixture } = await mountDetails({ ...savedPythonNode, node_name: 'Fetch', nodeNumber: 4 });
+
+            expect(headerText(fixture, '.title')).toBe('Fetch');
+            expect(headerText(fixture, '.node-number')).toBe('#4');
+        });
+
+        it('shows no lone number in the header while the node has no name', async () => {
+            const { fixture } = await mountDetails({ ...savedPythonNode, node_name: '', nodeNumber: 4 });
+
+            expect(headerText(fixture, '.title')).toBe('');
+            expect(headerText(fixture, '.node-number')).toBeUndefined();
+        });
+
+        it('heads an End node panel with its fixed name and no number', async () => {
+            const { fixture } = await mountDetails({ ...endNode, backendId: liveEnd.id });
+
+            expect(headerText(fixture, '.title')).toBe('End');
+            expect(headerText(fixture, '.node-number')).toBeUndefined();
         });
 
         it('shows no author for a node that is not saved yet', async () => {

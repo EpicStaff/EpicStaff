@@ -313,7 +313,7 @@ async def test_submit_starts_a_run(orchestrator, uow_factory, django):
     assert result.state == SubmitState.PROCESSING
     run_request = next(r for r in django.requests if r.url.path == "/api/run-session/")
     body = json.loads(run_request.content)
-    assert body["variables"] == {"chat_history": [], "user_message": "hello", "action": None, "chat_extra_data": None, "chat_user_id": None}
+    assert body["variables"] == {"chat_history": [], "user_message": "hello", "action": None, "chat_extra_data": None, "chat_user_id": None, "chat_conversation_id": str(conversation.id)}
     stored = await _conversation(uow_factory, conversation.id)
     assert stored.run_state == RunState.RUNNING and stored.active_run_id is not None
     assert body["token_budget"] == 1000 and body["callback_url"] == f"{CALLBACK_URL}/{stored.active_run_id}"
@@ -912,7 +912,7 @@ async def test_an_action_only_reply_starts_a_run_with_an_empty_user_message(orch
     result = await orchestrator.submit(conversation.id, token, "", ORIGIN, "1.1.1.1", action=action)
     assert result.state == SubmitState.PROCESSING
     (variables,) = _run_variables(django)
-    assert variables == {"chat_history": [], "user_message": "", "action": action, "chat_extra_data": None, "chat_user_id": None}
+    assert variables == {"chat_history": [], "user_message": "", "action": action, "chat_extra_data": None, "chat_user_id": None, "chat_conversation_id": str(conversation.id)}
     (message,) = await _messages(uow_factory, conversation.id)
     assert (message.content, message.action) == ("", action)
     assert (await _conversation(uow_factory, conversation.id)).last_message_preview == '{"type":"button","id":"yes"}'
@@ -938,7 +938,7 @@ async def test_a_text_message_sends_a_null_action(orchestrator, uow_factory, dja
     conversation, token, _ = await orchestrator.create(binding.public_key, None, ORIGIN, "1.1.1.1")
     await orchestrator.submit(conversation.id, token, "hello", ORIGIN, "1.1.1.1")
     (variables,) = _run_variables(django)
-    assert set(variables) == {"chat_history", "user_message", "action", "chat_extra_data", "chat_user_id"}
+    assert set(variables) == {"chat_history", "user_message", "action", "chat_extra_data", "chat_user_id", "chat_conversation_id"}
     assert variables["action"] is None
 
 
@@ -948,8 +948,10 @@ async def test_history_carries_the_action_only_on_the_reply_that_had_one(orchest
     await orchestrator.submit(conversation.id, token, "Yes", ORIGIN, "1.1.1.1", action={"type": "button", "id": "yes"})
     await _finish(orchestrator, uow_factory, conversation.id, 100)
     await orchestrator.submit(conversation.id, token, "next", ORIGIN, "1.1.1.1")
+    # Its own run gets the whole action; later runs see in the history only which one and what it said.
+    assert _run_variables(django)[0]["action"] == {"type": "button", "id": "yes"}
     assert _run_variables(django)[1]["chat_history"] == [
-        {"role": "user", "content": "Yes", "action": {"type": "button", "id": "yes"}},
+        {"role": "user", "content": "Yes", "action": {"type": "button"}},
         {"role": "assistant", "content": "r100"},
     ]
 
@@ -1296,3 +1298,52 @@ async def test_a_second_device_racing_an_end_gets_a_new_conversation_not_the_clo
     joined, joined_token, _ = await asyncio.wait_for(joining, timeout=5)
     assert joined.id != first.id and (joined.visitor_number, joined.is_open) == (2, True)
     assert (await orchestrator.resolve(joined.id, joined_token))[0].is_open
+
+
+async def test_a_stop_while_the_run_starts_answers_stopped_keeps_the_message_and_stops_the_run(uow_factory, settings, django, redis_client):
+    django.graphs[5] = CHAT_FLOW
+    flows = GatedFlows(settings, transport=django.transport)
+    orchestrator = ConversationOrchestrator(
+        uow_factory, flows=flows, fanout=RedisFanout(redis_client), limiter=RedisRateLimiter(redis_client),
+        config=RunConfig(callback_url=CALLBACK_URL, ip_message_rate=Rate(30, 60), ip_conversation_rate=Rate(20, 3600)),
+        visitor_token_idle_seconds=30 * 86400,
+    )
+    binding = await _binding(uow_factory)
+    conversation, token, _ = await orchestrator.create(binding.public_key, None, ORIGIN, "1.1.1.1")
+    submit = asyncio.create_task(orchestrator.submit(conversation.id, token, "hi", ORIGIN, "1.1.1.1"))
+    await asyncio.wait_for(flows.blocked.wait(), 5)
+    run_id = await _active_run(uow_factory, conversation.id)
+    await orchestrator.stop(conversation.id, token, ORIGIN)  # the visitor presses Stop
+    assert django.stopped == []  # Django has not named the session yet: the starting submit stops it
+    flows.release.set()
+    result = await submit
+    await flows.aclose()
+
+    assert result.state == SubmitState.STOPPED
+    assert django.stopped == [100]
+    stored = await _conversation(uow_factory, conversation.id)
+    assert (stored.mode, stored.run_state, stored.active_run_id, stored.handoff_reason) == (Mode.BOT, RunState.IDLE, None, "")
+    assert [(m.role, m.content) for m in await _messages(uow_factory, conversation.id)] == [(Role.USER, "hi")]
+    events = await _events(uow_factory, conversation.id)
+    assert events.count("run.finished") == 1 and "run.started" not in events
+    # The stopped run's result counts its tokens and posts nothing.
+    assert await orchestrator.apply_run_result(run_id, 100, "stop", None, {"total_tokens": 2}) == ApplyOutcome.IGNORED
+    stored = await _conversation(uow_factory, conversation.id)
+    assert (stored.tokens_used, stored.mode) == (2, Mode.BOT)
+    assert [m.content for m in await _messages(uow_factory, conversation.id)] == ["hi"]
+
+
+async def test_a_stop_queued_on_the_first_phases_lock_keeps_the_message_and_answers_stopped(orchestrator, uow_factory, django, monkeypatch):
+    """The visitor presses Stop as the message goes out: the stop waits on phase one's row lock,
+    frees the slot it claimed, and the message is kept with no run for it."""
+    binding = await _binding(uow_factory)
+    conversation, token, _ = await orchestrator.create(binding.public_key, None, ORIGIN, "1.1.1.1")
+    _between_the_submit_phases(monkeypatch, lambda: orchestrator.stop(conversation.id, token, ORIGIN))
+    result = await orchestrator.submit(conversation.id, token, "hi", ORIGIN, "1.1.1.1")
+    assert result.state == SubmitState.STOPPED
+    stored = await _conversation(uow_factory, conversation.id)
+    assert (stored.mode, stored.run_state, stored.active_run_id) == (Mode.BOT, RunState.IDLE, None)
+    assert [(m.id, m.role, m.content) for m in await _messages(uow_factory, conversation.id)] == [(result.message_id, Role.USER, "hi")]
+    # The stop's own run.finished closes what the widget showed; no run was asked for.
+    assert await _events(uow_factory, conversation.id) == ["run.finished", "message.created"]
+    assert not [r for r in django.requests if r.url.path == "/api/run-session/"] and django.stopped == []

@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-import check_env_conventions as check  # noqa: E402
+import check_env_conventions as check
 
 TRUE_VALUES = frozenset({"1", "on", "t", "true", "y", "yes"})
 FALSE_VALUES = frozenset({"0", "f", "false", "n", "no", "off"})
@@ -54,6 +54,22 @@ class ComposeTest(unittest.TestCase):
         ]
         violations = check.check_compose({"docker-compose.yaml": lines})
         self.assertEqual(len(violations), len(lines))
+
+    def test_every_stack_compose_file_is_checked_and_lab_files_are_not(self):
+        checked = [
+            "src/docker-compose.yaml",
+            "src/docker-compose.plugins-dev.yaml",
+            "docker-compose.override.yml",
+        ]
+        not_checked = [
+            "src/nginx/tests/development/compose.yaml",
+            "src/es_plugins/lab/compose.yaml",
+            "src/docker-compose.yaml.orig",
+        ]
+        for path in checked:
+            self.assertRegex(path, check.COMPOSE_FILE_RE)
+        for path in not_checked:
+            self.assertNotRegex(path, check.COMPOSE_FILE_RE)
 
 
 class PythonTest(unittest.TestCase):

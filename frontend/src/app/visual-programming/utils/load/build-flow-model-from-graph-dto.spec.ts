@@ -9,6 +9,7 @@ function subgraphNode(id: number, subgraph: number | null): SubGraphNode {
     return {
         id,
         created_at: '2026-01-01T00:00:00Z',
+        node_number: id,
         node_name: `Subflow #${id}`,
         graph: 1,
         subgraph,

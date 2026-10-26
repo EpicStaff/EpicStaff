@@ -1,0 +1,97 @@
+name: Plugin platform stack
+
+# The plugin platform end to end on a whole stack: .github/scripts/plugin_platform_e2e.sh builds
+# and starts it, installs the Weather sample through EpicStaff's API, runs the browser suite in
+# Chromium, Firefox and WebKit and the stack smokes, then the development leg and the smokes that
+# change the stack for good. It runs the same way on a developer's machine.
+#
+# Not a required check and not part of pr.yml: like the django suite (see the note in pr.yml), it
+# takes longer than the repo accepts for the required gate. A workflow-level paths filter is safe
+# here for the same reason: nothing waits for this workflow's checks.
+on:
+  pull_request:
+    branches: [main, developer]
+    paths:
+      - "src/django_app/plugins/**"
+      - "src/django_app/rbac/**"
+      - "src/django_app/django_app/settings/plugins.py"
+      - "src/plugin_sdk/**"
+      - "src/es_plugins/**"
+      - "src/plugins_db/**"
+      - "src/plugins_egress/**"
+      - "src/nginx/**"
+      - "src/shared/models/plugin_nodes.py"
+      - "plugin-sdk/**"
+      - "plugin-samples/**"
+      - "frontend/src/app/features/plugins/**"
+      - "frontend/src/app/features/auth/**"
+      - "src/docker-compose*.yaml"
+      - "src/env.yaml"
+      - "scripts/envtool.py"
+      - ".github/workflows/plugin-platform-stack.yml"
+      - ".github/scripts/plugin_platform_e2e.sh"
+      - ".github/scripts/plugin_platform_e2e.compose.yaml"
+      - ".github/scripts/describe_docker_host.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-platform-stack-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stack:
+    name: Plugin platform stack, browsers and smokes
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      # Matches the service Dockerfiles: without this uv may fetch its own interpreter instead
+      # of the one set up below.
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            plugin-sdk/package-lock.json
+            plugin-sdk/test-browser/package-lock.json
+            plugin-samples/weather/spa/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.10'
+
+      - name: Install uv and PyYAML
+        run: python -m pip install --no-cache-dir uv==0.11.21 pyyaml
+
+      - name: Describe the Docker host
+        run: bash .github/scripts/describe_docker_host.sh
+
+      # WebKit and other clients resolve host names through the system: the stack's names point
+      # at this machine.
+      - name: Point the stack's host names at this machine
+        run: echo "127.0.0.1 epicstaff.localhost weather.plugins.epicstaff.localhost" | sudo tee -a /etc/hosts
+
+      - name: Run the stack
+        run: bash .github/scripts/plugin_platform_e2e.sh
+        env:
+          E2E_ARTIFACTS_DIR: ${{ runner.temp }}/plugin-platform-e2e
+
+      # The containers' logs come with the run's secrets replaced; the traces hold the throwaway
+      # passwords of people who no longer exist once the stack is removed.
+      - name: Upload the browser report, traces and container logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plugin-platform-e2e
+          path: ${{ runner.temp }}/plugin-platform-e2e
+          retention-days: 7
+          if-no-files-found: ignore

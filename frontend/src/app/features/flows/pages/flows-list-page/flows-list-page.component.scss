@@ -1,4 +1,5 @@
 @use '../../../../../styles/header-layout' as header;
+@use '../../../../../styles/a11y-mixins' as a11y;
 
 .flows-list-page {
     @include header.headerLayout();
@@ -23,8 +24,8 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 1.75rem 3.75rem 1rem 2.5rem;
-            height: 80px;
+            padding: header.$page-header-padding;
+            height: header.$page-header-height;
             border-bottom: 1px solid var(--color-divider-subtle);
 
             .header-titles {
@@ -63,7 +64,7 @@
         justify-content: space-between;
         margin-bottom: 0;
         background: transparent;
-        padding: 0 3.75rem 0 2.75rem;
+        padding: 0 1.5rem 0 header.$page-inset-left;
 
         .tabs-left {
             display: flex;
@@ -338,4 +339,32 @@
             background: var(--color-ghost-btn-active);
         }
     }
+}
+
+// Import and Export shrink with the header like its app-buttons do, down to the icon alone: collapse-on-overflow
+// sets `.btn--icon-only` once the label no longer fits. The hidden label stays the button's accessible name.
+.import-group,
+.export-group {
+    &__main {
+        position: relative;
+        min-width: 0;
+
+        .btn-label {
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        &.btn--icon-only {
+            padding: 0 0.6rem;
+
+            .btn-label {
+                @include a11y.visually-hidden;
+            }
+        }
+    }
+}
+
+.import-group__cog {
+    flex-shrink: 0;
 }

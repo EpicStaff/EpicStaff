@@ -40,7 +40,6 @@ const pythonNode = {
     data: {
         code: 'def main(): pass',
         entrypoint: 'main',
-        libraries: [],
         secret_ids: [7],
         secret_names: ['STRIPE_KEY'],
     },
@@ -87,9 +86,10 @@ describe('PythonNodePanelComponent secrets', () => {
 /** The Python node as the backend stores it. */
 const STORED_NODE: PythonNode = {
     id: 31,
+    node_number: 1,
     node_name: 'Python #1',
     graph: 1,
-    python_code: { id: 5, libraries: ['requests'], code: 'def main(count): return count', entrypoint: 'main' },
+    python_code: { id: 5, code: 'def main(count): return count', entrypoint: 'main' },
     input_map: {},
     test_input: { count: '3' },
     output_variable_path: null,
@@ -213,18 +213,15 @@ describe('PythonNodePanelComponent test run', () => {
         });
     });
 
-    it('blocks the run after a code, libraries or secrets edit', () => {
+    it('blocks the run after a code or secrets edit', () => {
         open();
 
         panel.onPythonCodeChange('def main(count): return count + 1');
         expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
 
         panel.onPythonCodeChange(STORED_NODE.python_code.code);
-        panel.form.patchValue({ libraries: 'requests, pandas' });
-        expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
-
-        panel.form.patchValue({ libraries: 'requests' });
         expect(blocker()).toBeNull();
+
         panel.onSecretsChange([7]);
         expect(blocker()).toBe(SAVE_TO_RUN_LATEST_CODE_MESSAGE);
     });
@@ -368,6 +365,46 @@ describe('PythonNodePanelComponent test run', () => {
                 TEST_EXECUTION_TIMEOUT_LIMITS.maxSeconds
             );
         });
+    });
+});
+
+describe('PythonNodePanelComponent node name', () => {
+    function openPanelBesideNodeNamed(otherNodeName: string): PythonNodePanelComponent {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => true } },
+                provideLoadedExecutionTimeoutLimits(),
+            ],
+        });
+        TestBed.overrideComponent(PythonNodePanelComponent, { set: { template: '', imports: [] } });
+        const otherNode = { ...pythonNode, id: 'python-2', node_name: otherNodeName };
+        TestBed.inject(FlowService).setFlow({ nodes: [pythonNode, otherNode], connections: [] });
+        const fixture = TestBed.createComponent(PythonNodePanelComponent);
+        fixture.componentRef.setInput('node', pythonNode);
+        fixture.detectChanges();
+        return fixture.componentInstance;
+    }
+
+    it('accepts a name another node in the flow already has: the #N under the name tells them apart', () => {
+        const panel = openPanelBesideNodeNamed('Fetch orders');
+
+        panel.form.controls['node_name'].setValue('Fetch orders');
+
+        expect(panel.form.controls['node_name'].valid).toBe(true);
+    });
+
+    it.each([
+        { name: '', valid: false },
+        { name: '   ', valid: false },
+        { name: 'x'.repeat(255), valid: true },
+        { name: 'x'.repeat(256), valid: false },
+    ])('validates a name of $name.length characters as valid=$valid', ({ name, valid }) => {
+        const panel = openPanelBesideNodeNamed('Other');
+
+        panel.form.controls['node_name'].setValue(name);
+
+        expect(panel.form.controls['node_name'].valid).toBe(valid);
     });
 });
 
