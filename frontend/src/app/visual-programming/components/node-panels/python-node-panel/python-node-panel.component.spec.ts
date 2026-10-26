@@ -26,6 +26,12 @@ import { PollEvent, PythonCodeRunService } from '../../../services/python-code-r
 import { SidePanelService } from '../../../services/side-panel.service';
 import { FieldChange, FieldName, NodeDiffStatus } from '../../../utils/diff';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
+import {
+    codeMarkDescriptions,
+    renderCodeDiffViewWithStubEditor,
+    shownCodeDiffs,
+} from '../../code-diff-view/code-diff-view.testing';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { provideChangesTabDiff } from '../../missing-reference-note/missing-reference-note.testing';
@@ -691,8 +697,15 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
         return { path: field, field, status: 'changed', current, version };
     }
 
-    /** Opens the node with its own template and the fields it marks real (the code editor is not rendered). */
-    function open(status: NodeDiffStatus, fields: FieldChange[]): HTMLElement {
+    /**
+     * Opens the node with its own template and the fields it marks real (the code editor is not rendered), narrow
+     * unless `expanded`; with no diff off the Changes tab (the Preview tab, the live editor).
+     */
+    function open(
+        status: NodeDiffStatus,
+        fields: FieldChange[],
+        { expanded = false, onChangesTab = true } = {}
+    ): HTMLElement {
         TestBed.configureTestingModule({
             providers: [
                 provideHttpClient(),
@@ -703,9 +716,10 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
                 { provide: PythonCodeRunService, useValue: {} },
                 { provide: GraphSessionService, useValue: {} },
                 { provide: RunSessionSSEService, useValue: { status: signal(null) } },
-                provideChangesTabDiff({ status, fields }),
+                ...(onChangesTab ? [provideChangesTabDiff({ status, fields })] : []),
             ],
         });
+        renderCodeDiffViewWithStubEditor();
         TestBed.overrideComponent(PythonNodePanelComponent, {
             set: {
                 imports: [
@@ -716,6 +730,7 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
                     ExecutionTimeoutFieldComponent,
                     NodeStorageSectionComponent,
                     DiffFieldMarkComponent,
+                    CodeDiffViewComponent,
                 ],
                 schemas: [NO_ERRORS_SCHEMA],
             },
@@ -731,6 +746,7 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
             ...pythonNode,
             input_map: { user: 'variables.account', kept: 'variables.kept' },
         } as PythonNodeModel);
+        fixture.componentRef.setInput('isExpanded', expanded);
         fixture.detectChanges();
         return fixture.nativeElement;
     }
@@ -881,8 +897,62 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
         }
     );
 
-    it('marks no field for a change of the code alone (the code diff comes separately)', () => {
-        expect(markedFields(open('changed', [change('python_code.code', 'a = 1', 'a = 2')]))).toEqual([]);
+    describe('a changed code', () => {
+        const CODE_CHANGE = change('python_code.code', 'a = 1\n', 'a = 2\n');
+        const codeEditors = (root: HTMLElement): number => root.querySelectorAll('app-code-editor').length;
+
+        it('marks the code editor of the narrow panel, and only it, with the expand hint', () => {
+            const root = open('changed', [CODE_CHANGE]);
+
+            expect(markedFields(root)).toEqual(['app-code-editor']);
+            expect(codeMarkDescriptions(root)).toEqual(['Expand the panel to see the changes.']);
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+        });
+
+        it('is shown as a diff of the current canvas code and the version code in the widened panel', () => {
+            const root = open('changed', [CODE_CHANGE], { expanded: true });
+
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([{ current: 'a = 1\n', version: 'a = 2\n' }]);
+            expect(codeEditors(root)).toBe(0);
+            expect(markedFields(root)).toEqual([]);
+        });
+
+        it('switches between the mark and the diff as the panel is widened and narrowed', () => {
+            const root = open('changed', [CODE_CHANGE]);
+
+            fixture.componentRef.setInput('isExpanded', true);
+            fixture.detectChanges();
+            expect(shownCodeDiffs(fixture.debugElement)).toHaveLength(1);
+
+            fixture.componentRef.setInput('isExpanded', false);
+            fixture.detectChanges();
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+            expect(codeMarkDescriptions(root)).toEqual(['Expand the panel to see the changes.']);
+        });
+
+        const KEEPS_EDITOR = [
+            { case: 'the code is unchanged', status: 'changed' as const, fields: [change('node_name', 'a', 'b')] },
+            { case: 'the node is added', status: 'added' as const, fields: [CODE_CHANGE] },
+            { case: 'the node is removed', status: 'deleted' as const, fields: [CODE_CHANGE] },
+        ].flatMap((keeps) => [false, true].map((expanded) => ({ ...keeps, expanded })));
+
+        it.each(KEEPS_EDITOR)(
+            'keeps the normal editor when $case (widened: $expanded)',
+            ({ status, fields, expanded }) => {
+                const root = open(status, fields, { expanded });
+
+                expect(codeEditors(root)).toBe(1);
+                expect(codeMarkDescriptions(root)).toEqual([]);
+                expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+            }
+        );
+
+        it('keeps the normal editor off the Changes tab (Preview tab, live editor)', () => {
+            const root = open('changed', [CODE_CHANGE], { expanded: true, onChangesTab: false });
+
+            expect(codeEditors(root)).toBe(1);
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+        });
     });
 
     it('marks the Input List per row, not as a whole field', () => {

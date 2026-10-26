@@ -12,23 +12,29 @@
 
 <ng-template #codeEditorCard>
     <div class="code-card-group">
-        <app-code-editor
-            class="code-editor-card"
-            [class.code-editor-card--with-terminal]="showCodeTerminal()"
-            [pythonCode]="pythonCode"
-            [secretNames]="secretNames()"
-            [readOnly]="isReadOnly()"
-            [editorHeight]="smallEditorHeight"
-            [allowExpand]="true"
-            [compactHeader]="true"
-            [actionIcon]="runPythonCodeIcon()"
-            [actionLabel]="runPythonCodeLabel"
-            [actionDisabledReason]="runCodeBlocker()"
-            (pythonCodeChange)="onPythonCodeChange($event)"
-            (errorChange)="onCodeErrorChange($event)"
-            (expand)="expandPane('code')"
-            (action)="runPythonCode()"
-        ></app-code-editor>
+        <app-diff-field-mark
+            [diffField]="'python_code.code'"
+            [diffHint]="codeDiffHint"
+            [diffDrawsBadge]="true"
+        >
+            <app-code-editor
+                class="code-editor-card"
+                [class.code-editor-card--with-terminal]="showCodeTerminal()"
+                [pythonCode]="pythonCode"
+                [secretNames]="secretNames()"
+                [readOnly]="isReadOnly()"
+                [editorHeight]="smallEditorHeight"
+                [allowExpand]="true"
+                [compactHeader]="true"
+                [actionIcon]="runPythonCodeIcon()"
+                [actionLabel]="runPythonCodeLabel"
+                [actionDisabledReason]="runCodeBlocker()"
+                (pythonCodeChange)="onPythonCodeChange($event)"
+                (errorChange)="onCodeErrorChange($event)"
+                (expand)="expandPane('code')"
+                (action)="runPythonCode()"
+            ></app-code-editor>
+        </app-diff-field-mark>
         @if (showCodeTerminal()) {
             <ng-container [ngTemplateOutlet]="codeTerminal" />
         }
@@ -188,23 +194,32 @@
                         <ng-container [ngTemplateOutlet]="testPayloadCard" />
                     } @else if (expandedPane() === 'code') {
                         <div class="code-editor-column">
-                            <app-code-editor
-                                class="code-editor-section"
-                                [class.code-editor-section--with-terminal]="showCodeTerminal()"
-                                [pythonCode]="pythonCode"
-                                [secretNames]="secretNames()"
-                                [readOnly]="isReadOnly()"
-                                [allowExpand]="true"
-                                [compactHeader]="true"
-                                expandLabel="Swap with test payload"
-                                [actionIcon]="runPythonCodeIcon()"
-                                [actionLabel]="runPythonCodeLabel"
-                                [actionDisabledReason]="runCodeBlocker()"
-                                (pythonCodeChange)="onPythonCodeChange($event)"
-                                (errorChange)="onCodeErrorChange($event)"
-                                (expand)="expandPane('payload')"
-                                (action)="runPythonCode()"
-                            ></app-code-editor>
+                            <!-- The diff has no header: the test payload card's expand icon still swaps the panes. -->
+                            @if (codeDiff(); as code) {
+                                <app-code-diff-view
+                                    class="code-editor-section"
+                                    [current]="code.current"
+                                    [version]="code.version"
+                                />
+                            } @else {
+                                <app-code-editor
+                                    class="code-editor-section"
+                                    [class.code-editor-section--with-terminal]="showCodeTerminal()"
+                                    [pythonCode]="pythonCode"
+                                    [secretNames]="secretNames()"
+                                    [readOnly]="isReadOnly()"
+                                    [allowExpand]="true"
+                                    [compactHeader]="true"
+                                    expandLabel="Swap with test payload"
+                                    [actionIcon]="runPythonCodeIcon()"
+                                    [actionLabel]="runPythonCodeLabel"
+                                    [actionDisabledReason]="runCodeBlocker()"
+                                    (pythonCodeChange)="onPythonCodeChange($event)"
+                                    (errorChange)="onCodeErrorChange($event)"
+                                    (expand)="expandPane('payload')"
+                                    (action)="runPythonCode()"
+                                ></app-code-editor>
+                            }
                             @if (showCodeTerminal()) {
                                 <ng-container [ngTemplateOutlet]="codeTerminal" />
                             }

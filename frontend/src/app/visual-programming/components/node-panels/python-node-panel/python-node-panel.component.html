@@ -126,15 +126,30 @@
                     class="code-editor-wrapper"
                 >
                     <div class="code-editor-column">
-                        <app-code-editor
-                            class="code-editor-section"
-                            [pythonCode]="pythonCode"
-                            [secretNames]="secretNames()"
-                            [inputMapKeys]="inputMapKeys()"
-                            [readOnly]="isReadOnly()"
-                            (pythonCodeChange)="onPythonCodeChange($event)"
-                            (errorChange)="onCodeErrorChange($event)"
-                        ></app-code-editor>
+                        @if (codeDiff(); as code) {
+                            <app-code-diff-view
+                                class="code-editor-section"
+                                [current]="code.current"
+                                [version]="code.version"
+                            />
+                        } @else {
+                            <!-- The mark shows only in the narrow panel: the widened one shows the diff above instead. -->
+                            <app-diff-field-mark
+                                [diffField]="'python_code.code'"
+                                [diffHint]="codeDiffHint"
+                                [diffDrawsBadge]="true"
+                            >
+                                <app-code-editor
+                                    class="code-editor-section"
+                                    [pythonCode]="pythonCode"
+                                    [secretNames]="secretNames()"
+                                    [inputMapKeys]="inputMapKeys()"
+                                    [readOnly]="isReadOnly()"
+                                    (pythonCodeChange)="onPythonCodeChange($event)"
+                                    (errorChange)="onCodeErrorChange($event)"
+                                ></app-code-editor>
+                            </app-diff-field-mark>
+                        }
 
                         @if (isOpenTestMode() && !isReadOnly()) {
                             <app-python-terminal

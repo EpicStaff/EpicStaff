@@ -23,6 +23,15 @@ export interface MapKeyChange {
     version: unknown;
 }
 
+/** A code field: shown in a code editor, so its change is shown as a code diff, not in a tooltip. */
+export type CodeFieldName = Extract<FieldName, 'python_code.code' | 'pre_computation.code' | 'post_computation.code'>;
+
+/** Both sides of a changed code field as the code diff shows them. */
+export interface CodeChange {
+    current: string;
+    version: string;
+}
+
 const EMPTY_TEXT = 'empty';
 const LIST_SEPARATOR = ', ';
 /** How much unchanged text (in graphemes) a tooltip keeps on each side of the part a restore replaces. */
@@ -49,6 +58,27 @@ export function mapFieldRowChanges(diff: UnionNodeDiffState | null, field: Field
     if (!showsFieldMarks(diff)) return null;
     const change = fieldChangeFor(diff, field);
     return change ? mapKeyChanges(change.current, change.version) : null;
+}
+
+/**
+ * The change of a code field for the code diff; `null` when the node shows no field marks or the code is unchanged.
+ * A side with no code shows as empty text.
+ */
+export function codeChangeFor(diff: UnionNodeDiffState | null, field: CodeFieldName): CodeChange | null {
+    if (!showsFieldMarks(diff)) return null;
+    const change = fieldChangeFor(diff, field);
+    return change ? { current: codeText(change.current), version: codeText(change.version) } : null;
+}
+
+/**
+ * Whether a restore changes any of `fields` or anything inside them (`pre_computation` covers
+ * `pre_computation.code`), e.g. to flag a panel tab that shows them; `false` when the node shows no field marks.
+ */
+export function changesAnyFieldIn(diff: UnionNodeDiffState | null, fields: readonly FieldName[]): boolean {
+    if (diff === null || !showsFieldMarks(diff)) return false;
+    return diff.fields.some((change) =>
+        fields.some((field) => change.field === field || change.field.startsWith(`${field}.`))
+    );
 }
 
 /** The change of `field`, or of one of its items when `path` is given; `null` when it has none. */
@@ -199,6 +229,10 @@ function listSegments(current: readonly unknown[], version: readonly unknown[]):
 function itemText(item: unknown): string {
     if (typeof item === 'string') return item;
     return item !== null && typeof item === 'object' ? stableStringify(item) : scalarText(item);
+}
+
+function codeText(value: unknown): string {
+    return typeof value === 'string' ? value : '';
 }
 
 function scalarText(value: unknown): string {

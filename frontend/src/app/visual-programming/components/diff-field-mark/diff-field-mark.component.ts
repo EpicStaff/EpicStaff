@@ -44,6 +44,10 @@ const TOOLTIP_POSITIONS: ConnectedPosition[] = [
  *
  * The description ("Current canvas: …") lives outside the field (CDK AriaDescriber, as matTooltip does), so
  * it adds nothing to a row; the visual tooltip repeats it and is hidden from screen readers.
+ *
+ * A value too long for a tooltip (code) gets a fixed hint instead (`diffHint`), e.g. where to see the changes. A
+ * value box that clips what sticks out (a code editor card, `marked-frame()` in `styles/_diff-value-mark.scss`)
+ * draws only the border; the mark wrapping it then draws the badge and the focus ring on itself (`diffDrawsBadge`).
  */
 @Component({
     selector: 'app-diff-field-mark, [appDiffFieldMark]',
@@ -82,12 +86,16 @@ const TOOLTIP_POSITIONS: ConnectedPosition[] = [
                 class="diff-field-mark__tooltip"
                 aria-hidden="true"
             >
-                <span class="diff-field-mark__tooltip-label">{{ currentValueLabel }}</span>
-                <span class="diff-field-mark__tooltip-value">
-                    @for (segment of segments(); track $index) {
-                        <span [class.diff-field-mark__struck]="segment.struck">{{ segment.text }}</span>
-                    }
-                </span>
+                @if (diffHint(); as hint) {
+                    <span class="diff-field-mark__tooltip-hint">{{ hint }}</span>
+                } @else {
+                    <span class="diff-field-mark__tooltip-label">{{ currentValueLabel }}</span>
+                    <span class="diff-field-mark__tooltip-value">
+                        @for (segment of segments(); track $index) {
+                            <span [class.diff-field-mark__struck]="segment.struck">{{ segment.text }}</span>
+                        }
+                    </span>
+                }
             </div>
         </ng-template>
     `,
@@ -96,6 +104,7 @@ const TOOLTIP_POSITIONS: ConnectedPosition[] = [
         '[class.diff-field-mark--shown]': 'change() !== null',
         // The hook the wrapped form component styles its value box by (see the class docs).
         '[class.diff-value-marked]': 'change() !== null && !isRow',
+        '[class.diff-field-mark--draws-badge]': 'change() !== null && !isRow && diffDrawsBadge()',
         '[attr.tabindex]': 'change() !== null ? 0 : null',
         '[attr.role]': 'change() !== null && !isRow ? "group" : null',
         '[attr.aria-labelledby]': 'change() !== null && !isRow ? labelId : null',
@@ -118,6 +127,16 @@ export class DiffFieldMarkComponent {
      * timeout, so the tooltip shows that instead of "empty". An empty text or list is not replaced. Not set: "empty".
      */
     readonly diffDefaultValue = input<unknown>(undefined);
+    /**
+     * Shown on hover and focus, and read as the description, instead of the current value: for a value too long
+     * for a tooltip, e.g. code ("Expand editor to see the changes."). Not set: the current value.
+     */
+    readonly diffHint = input<string | null>(null);
+    /**
+     * The wrapped value box clips what sticks out (a code editor card) and draws only its border: the mark draws the
+     * badge on its own top-right corner, which is the box's, and the focus ring. Element form only.
+     */
+    readonly diffDrawsBadge = input(false);
 
     /** The change shown; `null` when there is none, or off the Changes tab, or on an added or removed node. */
     protected readonly change = computed<DiffFieldMarkChange | null>(() => {
@@ -138,6 +157,8 @@ export class DiffFieldMarkComponent {
     // Built from the shown segments, so it is cut like the tooltip: a screen reader is not read a whole long value.
     private readonly description = computed(() => {
         if (this.change() === null) return null;
+        const hint = this.diffHint();
+        if (hint !== null) return this.isRow ? `${BADGE_LABEL}. ${hint}` : hint;
         const currentValue = `${CURRENT_VALUE_LABEL}: ${this.segments()
             .map((segment) => segment.text)
             .join('')}`;

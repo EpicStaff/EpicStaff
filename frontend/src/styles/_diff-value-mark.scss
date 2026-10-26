@@ -6,11 +6,13 @@
 // editor and every other user of the component see no change.
 //
 // The mark keeps the rest (status rule, tooltip, description, focus): the component only draws the yellow border,
-// the pen badge on the box's top-right corner, half outside, and the focus ring of the focused field.
+// the pen badge on the box's top-right corner, half outside, and the focus ring of the focused field. A value box
+// that clips what sticks out (a code editor card) calls `marked-frame(...)` instead and draws only the border; the
+// mark then draws the badge and the focus ring on itself.
 //
-// Rule: a mark wraps exactly one form component, and that component includes `marked()`. `:host-context` matches
-// any ancestor, so a marked component nested inside another wrapped one would be marked too. The mark turns off
-// its own outline, so a wrapped component without `marked()` would also get no focus ring.
+// Rule: a mark wraps exactly one form component, and that component includes `marked()` or `marked-frame()`.
+// `:host-context` matches any ancestor, so a marked component nested inside another wrapped one would be marked
+// too. The mark turns off its own outline, so a wrapped component without either would also get no focus ring.
 
 $context: '.diff-value-marked';
 
@@ -60,19 +62,51 @@ $badge-size: 16px;
 
     :host-context(#{$context}) #{$badge-anchor} {
         position: relative;
+        @include corner-badge;
+    }
+}
+
+/// The pen badge as the `::after` of the element this is included in, on its top-right corner, half outside. The
+/// element must be positioned. Also used by the mark itself around a value box that clips (`marked-frame`).
+@mixin corner-badge {
+    &::after {
+        // The pen of tabler's `.ti-pencil`, with empty alternative text: the mark names the field for screen
+        // readers (role="group", aria-labelledby).
+        @include badge-look;
+        content: '\eb04' / '';
+        position: absolute;
+        top: calc($badge-size / -2);
+        right: calc($badge-size / -2);
+        // The icon font by name, as a pseudo-element cannot take the `ti` class; no `text-*` token fits a glyph.
+        font-family: 'tabler-icons';
+        font-style: normal;
+        pointer-events: none;
+    }
+}
+
+/// For a component whose host is the whole value box and clips what sticks out, e.g. a code editor card whose
+/// border and rounded corners the page around it sets. The yellow border is drawn as a frame just inside the host's
+/// edge, above its content; the badge and the focus ring would be clipped, so the mark draws both on itself (its
+/// `diffDrawsBadge` input). The mark then wraps the element that clips, which may be the host or an element of the
+/// page around it.
+/// @param $content the element that holds the component's content, kept below the frame. It must be positioned.
+@mixin marked-frame($content) {
+    :host-context(#{$context}) {
+        position: relative;
 
         &::after {
-            // The pen of tabler's `.ti-pencil`, with empty alternative text: the mark names the field for screen
-            // readers (role="group", aria-labelledby).
-            @include badge-look;
-            content: '\eb04' / '';
+            content: '';
             position: absolute;
-            top: calc($badge-size / -2);
-            right: calc($badge-size / -2);
-            // The icon font by name, as a pseudo-element cannot take the `ti` class; no `text-*` token fits a glyph.
-            font-family: 'tabler-icons';
-            font-style: normal;
+            inset: 0;
+            z-index: 1;
+            border: 1px solid var(--color-diff-changed);
+            border-radius: inherit;
             pointer-events: none;
         }
+    }
+
+    // Its own stacking context, so nothing inside it (an editor's own layers) is drawn above the frame.
+    :host-context(#{$context}) #{$content} {
+        z-index: 0;
     }
 }

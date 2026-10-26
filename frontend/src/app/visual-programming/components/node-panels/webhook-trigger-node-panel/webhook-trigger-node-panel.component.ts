@@ -27,12 +27,17 @@ import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@sh
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { CODE_DIFF_HINT_EXPAND_EDITOR } from '../../../core/constants/code-diff-hints';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigger';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { codeChangeFor } from '../../../utils/diff';
 import { describeTestRunBlocker, formatTestPayload } from '../../../utils/test-run';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
@@ -76,6 +81,8 @@ export const RUN_PYTHON_CODE_LABEL = 'Run python code';
         NgTemplateOutlet,
         ExecutionTimeoutFieldComponent,
         MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
+        CodeDiffViewComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -88,6 +95,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     private readonly sidePanelService = inject(SidePanelService);
     private readonly flowService = inject(FlowService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
@@ -99,6 +107,14 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     /** Whether the code gets the flow's file storage (`epicstaff_storage`). */
     public readonly useStorage = signal<boolean>(false);
     protected readonly expandedPane = signal<WebhookExpandedPane>('code');
+    /**
+     * Changes tab of a version preview, widened panel: the changed code, shown as a diff while the big pane holds
+     * the code. A small code card gets the field mark instead.
+     */
+    protected readonly codeDiff = computed(() =>
+        this.isExpanded() ? codeChangeFor(this.panelDiff(), 'python_code.code') : null
+    );
+    protected readonly codeDiffHint = CODE_DIFF_HINT_EXPAND_EDITOR;
     /** Set by the first run: the terminal then stays under the code (it has its own hide toggle). */
     private readonly isCodeTerminalShown = signal(false);
     /** Height in px of an editor shown as a card (small panel, or the left column of the expanded one). */

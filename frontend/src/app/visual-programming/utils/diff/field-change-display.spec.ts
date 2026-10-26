@@ -1,4 +1,6 @@
 import {
+    changesAnyFieldIn,
+    codeChangeFor,
     DisplaySegment,
     fieldChangeFor,
     fieldValueSegments,
@@ -6,7 +8,8 @@ import {
     MapKeyChange,
     showsFieldMarks,
 } from './field-change-display';
-import { FieldChange } from './types';
+import { FieldName } from './field-display';
+import { FieldChange, NodeDiffStatus } from './types';
 
 /** The tooltip segments of a change that has no field (no formatter, no default), e.g. one key of a map. */
 const segmentsOf = (current: unknown, version: unknown): DisplaySegment[] => fieldValueSegments(null, current, version);
@@ -189,6 +192,78 @@ describe('showsFieldMarks and mapFieldRowChanges', () => {
         ]);
         expect(mapFieldRowChanges(diff, 'output_map')).toBeNull();
         expect(mapFieldRowChanges(null, 'input_map')).toBeNull();
+    });
+});
+
+describe('codeChangeFor', () => {
+    const codeChange = (field: FieldName, current: unknown, version: unknown): FieldChange => ({
+        path: field,
+        field,
+        status: 'changed',
+        current,
+        version,
+    });
+    const diffOf = (status: NodeDiffStatus, fields: FieldChange[]) => ({ status, fields, missingReferences: [] });
+
+    it.each([
+        { case: 'both sides', current: 'a = 1', version: 'a = 2', expected: { current: 'a = 1', version: 'a = 2' } },
+        { case: 'no code on the canvas', current: null, version: 'a = 2', expected: { current: '', version: 'a = 2' } },
+        {
+            case: 'no code in the version',
+            current: 'a = 1',
+            version: null,
+            expected: { current: 'a = 1', version: '' },
+        },
+    ])('gives both sides of a changed code as text: $case', ({ current, version, expected }) => {
+        const diff = diffOf('changed', [codeChange('pre_computation.code', current, version)]);
+
+        expect(codeChangeFor(diff, 'pre_computation.code')).toEqual(expected);
+    });
+
+    it('gives nothing for unchanged code, another code field, or no diff', () => {
+        const diff = diffOf('changed', [codeChange('pre_computation.code', 'a = 1', 'a = 2')]);
+
+        expect(codeChangeFor(diff, 'post_computation.code')).toBeNull();
+        expect(codeChangeFor(diffOf('changed', []), 'python_code.code')).toBeNull();
+        expect(codeChangeFor(null, 'python_code.code')).toBeNull();
+    });
+
+    it.each(['added', 'deleted', 'unchanged'] as const)('gives nothing on a node whose status is %s', (status) => {
+        const diff = diffOf(status, [codeChange('python_code.code', 'a = 1', 'a = 2')]);
+
+        expect(codeChangeFor(diff, 'python_code.code')).toBeNull();
+    });
+});
+
+describe('changesAnyFieldIn', () => {
+    const PRE_COMPUTATION_TAB: FieldName[] = ['pre_computation', 'pre_use_storage'];
+    const changeOf = (field: FieldName, path: string = field): FieldChange => ({
+        path,
+        field,
+        status: 'changed',
+        current: 1,
+        version: 2,
+    });
+
+    it.each([
+        { changed: changeOf('pre_computation.code'), expected: true },
+        { changed: changeOf('pre_computation.execution_timeout'), expected: true },
+        { changed: changeOf('pre_use_storage'), expected: true },
+        { changed: changeOf('pre_computation'), expected: true },
+        { changed: changeOf('post_computation.code'), expected: false },
+        { changed: changeOf('post_use_storage'), expected: false },
+        { changed: changeOf('node_name'), expected: false },
+    ])('is $expected when a restore changes $changed.field', ({ changed, expected }) => {
+        const diff = { status: 'changed' as const, fields: [changed], missingReferences: [] };
+
+        expect(changesAnyFieldIn(diff, PRE_COMPUTATION_TAB)).toBe(expected);
+    });
+
+    it.each(['added', 'deleted'] as const)('is false on a node whose status is %s, and with no diff', (status) => {
+        const diff = { status, fields: [changeOf('pre_computation.code')], missingReferences: [] };
+
+        expect(changesAnyFieldIn(diff, PRE_COMPUTATION_TAB)).toBe(false);
+        expect(changesAnyFieldIn(null, PRE_COMPUTATION_TAB)).toBe(false);
     });
 });
 

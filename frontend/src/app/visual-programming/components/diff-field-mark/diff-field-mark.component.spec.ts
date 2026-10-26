@@ -22,6 +22,14 @@ import { DiffFieldMarkChange, DiffFieldMarkComponent } from './diff-field-mark.c
         >
             <label>Libraries</label>
         </app-diff-field-mark>
+        <app-diff-field-mark
+            id="code"
+            [diffField]="'python_code.code'"
+            [diffHint]="'Expand editor to see the changes.'"
+            [diffDrawsBadge]="true"
+        >
+            <div class="code-editor"></div>
+        </app-diff-field-mark>
         <div
             id="row"
             appDiffFieldMark
@@ -194,6 +202,50 @@ describe('DiffFieldMarkComponent', () => {
         dispatch('libraries', 'mouseenter');
 
         expect(tooltip()).toBeNull();
+    });
+
+    describe('on a code', () => {
+        const CODE_CHANGE: FieldChange = {
+            path: 'python_code.code',
+            field: 'python_code.code',
+            status: 'changed',
+            current: 'def main():\n    return 1\n',
+            version: 'def main():\n    return 2\n',
+        };
+
+        it('gives the hint instead of the code, on hover and to screen readers, and still names the change', () => {
+            render([onDiff('changed', [CODE_CHANGE])]);
+            dispatch('code', 'mouseenter');
+
+            expect(tooltip()?.textContent?.trim()).toBe('Expand editor to see the changes.');
+            expect(tooltip()?.querySelector('.diff-field-mark__tooltip-label')).toBeNull();
+            expect(descriptionOf('code')).toBe('Expand editor to see the changes.');
+            const name = document.getElementById(element('code').getAttribute('aria-labelledby')!);
+            expect(name?.textContent).toBe('Restore changes this field');
+        });
+
+        // The code editor card clips what sticks out, so the mark carries the badge (and the focus ring) itself.
+        it('asks the code editor to frame its value and draws the badge itself, only while the code is marked', () => {
+            render([onDiff('changed', [CODE_CHANGE, OUTPUT_PATH_CHANGE])]);
+
+            expect(element('code').classList).toContain('diff-value-marked');
+            expect(element('code').classList).toContain('diff-field-mark--draws-badge');
+            // A field that draws its own badge.
+            expect(element('output-path').classList).not.toContain('diff-field-mark--draws-badge');
+        });
+
+        it.each([
+            { case: 'the code is unchanged', providers: () => [onDiff('changed')] },
+            { case: 'the node is added', providers: () => [onDiff('added', [CODE_CHANGE])] },
+            { case: 'the node is removed', providers: () => [onDiff('deleted', [CODE_CHANGE])] },
+            { case: 'off the Changes tab (Preview tab, live editor)', providers: () => [] },
+        ])('marks nothing when $case', ({ providers }) => {
+            render(providers());
+
+            expect(isMarked('code')).toBe(false);
+            expect(element('code').classList).not.toContain('diff-value-marked');
+            expect(element('code').classList).not.toContain('diff-field-mark--draws-badge');
+        });
     });
 
     it('marks an element with the change it is given, e.g. one row of a map', () => {

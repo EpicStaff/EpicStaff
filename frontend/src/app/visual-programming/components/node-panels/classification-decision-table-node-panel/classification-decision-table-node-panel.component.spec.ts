@@ -28,8 +28,15 @@ import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
 import { createFlowConnection } from '../../../utils/connection.factory';
+import { FieldChange, FieldName, NodeDiffStatus } from '../../../utils/diff';
 import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from '../../../utils/save/diff';
 import { buildBulkSavePayload } from '../../../utils/save/payload';
+import {
+    codeMarkDescriptions,
+    renderCodeDiffViewWithStubEditor,
+    shownCodeDiffs,
+} from '../../code-diff-view/code-diff-view.testing';
+import { provideChangesTabDiff } from '../../missing-reference-note/missing-reference-note.testing';
 import { CDT_ROUTE_CONTINUE_COPY } from './cdt.constants';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-block/cdt-decision-tree-block.component';
 import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
@@ -730,5 +737,126 @@ describe('ClassificationDecisionTableNodePanelComponent — execution timeouts o
 
         expect(fields().preExecutionTimeout.control.disabled).toBe(true);
         expect(fields().postExecutionTimeout.control.disabled).toBe(true);
+    });
+});
+
+describe('ClassificationDecisionTableNodePanelComponent — the pre- and post-computation on the Changes tab of a version preview', () => {
+    type ComputationTab = 'precomputation' | 'postcomputation';
+
+    let fixture: ComponentFixture<ClassificationDecisionTableNodePanelComponent>;
+
+    const changeOf = (field: FieldName, current: unknown, version: unknown): FieldChange => ({
+        path: field,
+        field,
+        status: 'changed',
+        current,
+        version,
+    });
+    const CODE_CHANGES: Record<ComputationTab, FieldChange> = {
+        precomputation: changeOf('pre_computation.code', 'pre = 1\n', 'pre = 2\n'),
+        postcomputation: changeOf('post_computation.code', 'post = 1\n', 'post = 2\n'),
+    };
+
+    /** The panel on `tab`, widened unless `expanded` is false; with no diff off the Changes tab. */
+    function open(
+        tab: ComputationTab | 'table',
+        diff: { status: NodeDiffStatus; fields: FieldChange[] } | null,
+        expanded = true
+    ): HTMLElement {
+        configurePanelTestBed({ isPreview: true, providers: diff ? [provideChangesTabDiff(diff)] : [] });
+        renderCodeDiffViewWithStubEditor();
+        const flowService = TestBed.inject(FlowService);
+        flowService.setFlow({ nodes: [tableNode()], connections: [] });
+        fixture = TestBed.createComponent(ClassificationDecisionTableNodePanelComponent);
+        fixture.componentRef.setInput('node', flowService.nodes()[0]);
+        fixture.componentRef.setInput('isExpanded', expanded);
+        fixture.detectChanges();
+        // The panel opens on the Decision Table tab.
+        if (tab !== 'table') {
+            const label = tab === 'precomputation' ? 'Pre-computation' : 'Post-computation';
+            Array.from(fixture.nativeElement.querySelectorAll('.tab-link') as NodeListOf<HTMLElement>)
+                .find((link) => link.textContent!.trim().startsWith(label))!
+                .click();
+            fixture.detectChanges();
+        }
+        return fixture.nativeElement;
+    }
+
+    const codeEditors = (root: HTMLElement): number => root.querySelectorAll('app-code-editor').length;
+
+    it.each(['precomputation', 'postcomputation'] as const)(
+        'shows the changed code of the %s tab as a diff of the current canvas code and the version code, widened',
+        (tab) => {
+            const root = open(tab, { status: 'changed', fields: Object.values(CODE_CHANGES) });
+
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([
+                { current: CODE_CHANGES[tab].current, version: CODE_CHANGES[tab].version },
+            ]);
+            expect(codeEditors(root)).toBe(0);
+            expect(codeMarkDescriptions(root)).toEqual([]);
+        }
+    );
+
+    it.each(['precomputation', 'postcomputation'] as const)(
+        'marks the code column of the %s tab in the minimized panel, with the expand hint',
+        (tab) => {
+            const root = open(tab, { status: 'changed', fields: Object.values(CODE_CHANGES) }, false);
+
+            expect(codeMarkDescriptions(root)).toEqual(['Expand the panel to see the changes.']);
+            expect(codeEditors(root)).toBe(1);
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+        }
+    );
+
+    const KEEPS_EDITOR = [
+        {
+            case: 'only the other code changed',
+            diff: { status: 'changed' as const, fields: [CODE_CHANGES.postcomputation] },
+        },
+        { case: 'the node is added', diff: { status: 'added' as const, fields: [CODE_CHANGES.precomputation] } },
+        { case: 'the node is removed', diff: { status: 'deleted' as const, fields: [CODE_CHANGES.precomputation] } },
+        { case: 'off the Changes tab (Preview tab, live editor)', diff: null },
+    ].flatMap((keeps) => [true, false].map((expanded) => ({ ...keeps, expanded })));
+
+    it.each(KEEPS_EDITOR)(
+        'keeps the normal pre-computation editor when $case (widened: $expanded)',
+        ({ diff, expanded }) => {
+            const root = open('precomputation', diff, expanded);
+
+            expect(codeEditors(root)).toBe(1);
+            expect(codeMarkDescriptions(root)).toEqual([]);
+            expect(shownCodeDiffs(fixture.debugElement)).toEqual([]);
+        }
+    );
+
+    /** The tab links with a "changed" dot, each by its accessible name. */
+    const flaggedTabs = (root: HTMLElement): string[] =>
+        Array.from(root.querySelectorAll<HTMLElement>('.tab-link'))
+            .filter((link) => link.querySelector('.tab-link__changed-dot') !== null)
+            .map((link) => link.textContent!.replace(/\s+/g, ' ').trim());
+
+    it.each([
+        {
+            changed: changeOf('pre_computation.code', 'a', 'b'),
+            flagged: ['Pre-computation (restore changes this tab)'],
+        },
+        {
+            changed: changeOf('pre_computation.libraries', ['requests'], []),
+            flagged: ['Pre-computation (restore changes this tab)'],
+        },
+        {
+            changed: changeOf('post_use_storage', false, true),
+            flagged: ['Post-computation (restore changes this tab)'],
+        },
+        { changed: changeOf('node_name', 'Triage', 'Sort'), flagged: [] },
+    ])('flags the tab of a changed $changed.field, on any tab', ({ changed, flagged }) => {
+        expect(flaggedTabs(open('table', { status: 'changed', fields: [changed] }))).toEqual(flagged);
+    });
+
+    it.each([
+        { case: 'on an added node', diff: { status: 'added' as const, fields: [CODE_CHANGES.precomputation] } },
+        { case: 'off the Changes tab', diff: null },
+    ])('flags no tab $case', ({ diff }) => {
+        expect(flaggedTabs(open('table', diff))).toEqual([]);
     });
 });

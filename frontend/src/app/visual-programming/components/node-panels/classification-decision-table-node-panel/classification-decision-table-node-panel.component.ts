@@ -46,6 +46,7 @@ import { ImportExportService } from '../../../../core/services/import-export.ser
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { CODE_DIFF_HINT_EXPAND_PANEL } from '../../../core/constants/code-diff-hints';
 import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { IfFlowEditableDirective } from '../../../core/directives/if-flow-editable.directive';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
@@ -58,15 +59,19 @@ import {
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { CdtExplanationStoreService } from '../../../services/cdt-explanation-store.service';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
+import { changesAnyFieldIn, codeChangeFor, FieldName } from '../../../utils/diff';
 import {
     isValidOutputSchema,
     OUTPUT_SCHEMA_JSON_ERROR,
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import {
     MissingReferenceNoteComponent,
@@ -117,6 +122,8 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         ExecutionTimeoutFieldComponent,
         MatTooltipModule,
         MissingReferenceNoteComponent,
+        DiffFieldMarkComponent,
+        CodeDiffViewComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -128,7 +135,32 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
 
     protected readonly routeDiffFields = ROUTE_DIFF_FIELDS;
+    /**
+     * Changes tab of a version preview, widened panel: a changed pre / post-computation code, shown as a diff in the
+     * code column of its tab. The narrow panel's editor gets the field mark instead.
+     */
+    protected readonly preCodeDiff = computed(() =>
+        this.isExpanded() ? codeChangeFor(this.panelDiff(), 'pre_computation.code') : null
+    );
+    protected readonly postCodeDiff = computed(() =>
+        this.isExpanded() ? codeChangeFor(this.panelDiff(), 'post_computation.code') : null
+    );
+    /** The field the mark around a code column looks up; none while the column shows the diff instead. */
+    protected readonly preCodeMarkField = computed<FieldName | null>(() =>
+        this.preCodeDiff() ? null : 'pre_computation.code'
+    );
+    protected readonly postCodeMarkField = computed<FieldName | null>(() =>
+        this.postCodeDiff() ? null : 'post_computation.code'
+    );
+    /** Changes tab of a version preview: a restore changes something shown on the tab, which flags its link. */
+    protected readonly preComputationChanged = computed(() =>
+        changesAnyFieldIn(this.panelDiff(), ['pre_computation', 'pre_use_storage'])
+    );
+    protected readonly postComputationChanged = computed(() =>
+        changesAnyFieldIn(this.panelDiff(), ['post_computation', 'post_use_storage'])
+    );
 
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);
 
@@ -192,6 +224,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public pendingPromptName = signal<string>('');
     public newPromptId = '';
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
+    protected readonly codeDiffHint = CODE_DIFF_HINT_EXPAND_PANEL;
     private readonly schemaDrafts = signal<Record<string, string>>({});
     private readonly schemaErrors = signal<Record<string, string>>({});
 

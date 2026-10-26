@@ -16,13 +16,15 @@ import { debounceTime } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { CODE_DIFF_HINT_EXPAND_PANEL } from '../../../core/constants/code-diff-hints';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { PythonNode } from '../../../core/models/python-node.model';
 import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
-import { mapFieldRowChanges } from '../../../utils/diff';
+import { codeChangeFor, mapFieldRowChanges } from '../../../utils/diff';
+import { CodeDiffViewComponent } from '../../code-diff-view/code-diff-view.component';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
@@ -69,6 +71,7 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         ValidationErrorsComponent,
         ExecutionTimeoutFieldComponent,
         DiffFieldMarkComponent,
+        CodeDiffViewComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -85,6 +88,13 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
      * one value, so its keys are compared here. `null` anywhere else, so the list shows no row marks.
      */
     protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
+    /**
+     * Changes tab of a version preview, widened panel: the changed code, shown as a diff in the editor column. The
+     * narrow panel's small editor gets the field mark instead.
+     */
+    protected readonly codeDiff = computed(() =>
+        this.isExpanded() ? codeChangeFor(this.panelDiff(), 'python_code.code') : null
+    );
 
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
     public readonly canEditSecrets = computed(
@@ -114,6 +124,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     isOpenTestMode = signal(false);
     /** The Test mode run of the stored code and its terminal. */
     protected readonly codeTestRun = new PythonCodeTestRun();
+    protected readonly codeDiffHint = CODE_DIFF_HINT_EXPAND_PANEL;
 
     pythonCode: string = '';
     initialPythonCode: string = '';

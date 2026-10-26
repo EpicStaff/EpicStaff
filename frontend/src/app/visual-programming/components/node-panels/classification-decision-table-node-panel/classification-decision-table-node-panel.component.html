@@ -88,6 +88,13 @@
                                 type="button"
                             >
                                 Pre-computation
+                                @if (preComputationChanged()) {
+                                    <span
+                                        class="tab-link__changed-dot"
+                                        aria-hidden="true"
+                                    ></span>
+                                    <span class="visually-hidden">(restore changes this tab)</span>
+                                }
                             </button>
                             <span class="tab-separator">/</span>
                             <button
@@ -97,6 +104,13 @@
                                 type="button"
                             >
                                 Post-computation
+                                @if (postComputationChanged()) {
+                                    <span
+                                        class="tab-link__changed-dot"
+                                        aria-hidden="true"
+                                    ></span>
+                                    <span class="visually-hidden">(restore changes this tab)</span>
+                                }
                             </button>
                             <span class="tab-separator">/</span>
                             <button
@@ -214,18 +228,33 @@
                             [minWidth]="350"
                             [(collapsed)]="isSidebarCollapsed"
                         />
-                        <div
-                            #preCodeColumn
-                            class="code-editor-section"
+                        <!-- Around the column, which clips: marked only in the narrow panel, the widened one shows the diff. -->
+                        <app-diff-field-mark
+                            class="code-editor-mark"
+                            [diffField]="preCodeMarkField()"
+                            [diffHint]="codeDiffHint"
+                            [diffDrawsBadge]="true"
                         >
-                            <app-code-editor
-                                [pythonCode]="preCode"
-                                [secretNames]="preSecretNames()"
-                                [inputMapKeys]="preInputMapKeys()"
-                                [readOnly]="isReadOnly()"
-                                (pythonCodeChange)="onPreCodeChange($event)"
-                            ></app-code-editor>
-                        </div>
+                            <div
+                                #preCodeColumn
+                                class="code-editor-section"
+                            >
+                                @if (preCodeDiff(); as code) {
+                                    <app-code-diff-view
+                                        [current]="code.current"
+                                        [version]="code.version"
+                                    />
+                                } @else {
+                                    <app-code-editor
+                                        [pythonCode]="preCode"
+                                        [secretNames]="preSecretNames()"
+                                        [inputMapKeys]="preInputMapKeys()"
+                                        [readOnly]="isReadOnly()"
+                                        (pythonCodeChange)="onPreCodeChange($event)"
+                                    ></app-code-editor>
+                                }
+                            </div>
+                        </app-diff-field-mark>
                     </div>
                 }
 
@@ -296,18 +325,33 @@
                             [minWidth]="350"
                             [(collapsed)]="isSidebarCollapsed"
                         />
-                        <div
-                            #postCodeColumn
-                            class="code-editor-section"
+                        <!-- Around the column, which clips: marked only in the narrow panel, the widened one shows the diff. -->
+                        <app-diff-field-mark
+                            class="code-editor-mark"
+                            [diffField]="postCodeMarkField()"
+                            [diffHint]="codeDiffHint"
+                            [diffDrawsBadge]="true"
                         >
-                            <app-code-editor
-                                [pythonCode]="postCode"
-                                [secretNames]="postSecretNames()"
-                                [inputMapKeys]="postInputMapKeys()"
-                                [readOnly]="isReadOnly()"
-                                (pythonCodeChange)="onPostCodeChange($event)"
-                            ></app-code-editor>
-                        </div>
+                            <div
+                                #postCodeColumn
+                                class="code-editor-section"
+                            >
+                                @if (postCodeDiff(); as code) {
+                                    <app-code-diff-view
+                                        [current]="code.current"
+                                        [version]="code.version"
+                                    />
+                                } @else {
+                                    <app-code-editor
+                                        [pythonCode]="postCode"
+                                        [secretNames]="postSecretNames()"
+                                        [inputMapKeys]="postInputMapKeys()"
+                                        [readOnly]="isReadOnly()"
+                                        (pythonCodeChange)="onPostCodeChange($event)"
+                                    ></app-code-editor>
+                                }
+                            </div>
+                        </app-diff-field-mark>
                     </div>
                 }
 

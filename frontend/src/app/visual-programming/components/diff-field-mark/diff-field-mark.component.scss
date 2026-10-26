@@ -11,6 +11,18 @@
     outline: none;
 }
 
+// Around a value box that clips what sticks out (a code editor card): the box draws only its border, so the badge
+// and the focus ring go on the mark, whose corners are the box's.
+:host(app-diff-field-mark.diff-field-mark--draws-badge) {
+    position: relative;
+    @include diff-value-mark.corner-badge;
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
 // On an element that lays out its own value (a table row): the mark draws them itself, a border inside it so
 // nothing moves.
 :host([appDiffFieldMark].diff-field-mark--shown) {
