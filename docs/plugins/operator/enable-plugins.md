@@ -1080,6 +1080,14 @@ put the wildcard certificate on that proxy. Then set `NGINX_SSL_MODE=off` and
 `NGINX_HSTS_ENABLED`, as EpicStaff's own server does: set it as
 [SSL](../../setup/ssl.md#behind-a-load-balancer) describes, and let the proxy pass the header on.
 
+List the proxy in `NGINX_TRUSTED_PROXIES`, as [SSL](../../setup/ssl.md#behind-a-load-balancer)
+describes, and have it set `X-Forwarded-Proto` on every request. nginx believes that header only
+from the addresses listed there; without them, Django and the plugin backends are told every
+request came over plain HTTP. Trust only your proxy's own addresses. The plugins network gains
+nothing from this setting, whatever you list: EpicStaff's own site and the plugin hosts refuse it
+before any request is proxied, and the internal API listener always tells Django nginx's own
+scheme.
+
 nginx then sees the proxy's address as every client's. The rate limit of a public path is counted
 per client address, so all clients share one count, and one busy client can use up a public
 path's rate for everyone. To count each client, have the proxy send the client's address in
@@ -1094,7 +1102,9 @@ real_ip_header X-Forwarded-For;
 Trust only your proxy's own address. Never list a range that contains `PLUGINS_NETWORK_SUBNET`
 (such as `10.0.0.0/8` or `0.0.0.0/0`): a plugin backend could then send any address in
 `X-Forwarded-For`, pass nginx's refusal of the plugins network, and spread its requests over
-made-up addresses.
+made-up addresses. Keep the proxy in `NGINX_TRUSTED_PROXIES` too: nginx decides whom it believes
+about the scheme by the address a connection comes from, not by the client address the real-IP
+module puts in its place.
 
 The `epicstaff-nginx` service sets the `net.ipv4.tcp_tw_reuse` sysctl for its own container (no
 extra privileges). It lets nginx reuse closed connections' local ports, so a busy proxied route

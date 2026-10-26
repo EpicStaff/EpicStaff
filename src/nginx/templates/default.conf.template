@@ -3,6 +3,30 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# The scheme every upstream is told in X-Forwarded-Proto, and Django builds its absolute URLs from
+# (avatars, the flow assistant's stream). nginx's own, unless the connection comes from a proxy in
+# NGINX_TRUSTED_PROXIES (18-check-trusted-proxies.envsh renders the entries), such as a load
+# balancer that ends TLS in front of nginx, and that proxy says http or https (in any case; two
+# values, or anything else, count as not said). A client that reaches nginx directly cannot change
+# it. A client that comes through a trusted proxy can, unless the proxy sets X-Forwarded-Proto on
+# every request: $http_x_forwarded_proto also matches the underscore spellings (X_Forwarded_Proto,
+# underscores_in_headers is on), so a proxy that only deletes the dash spelling lets a client's
+# X_Forwarded_Proto through as the value (docs/setup/ssl.md). Keyed on $realip_remote_addr, the
+# address the connection comes from: an operator's set_real_ip_from
+# (docs/plugins/operator/enable-plugins.md) turns $remote_addr into the client's, which would stop
+# the load balancer being recognised. Every location sends $forwarded_proto, never $scheme, except
+# the plugin listeners' (plugins-api-listener.snippet), which no proxy is ever in front of
+# (tests/check_templates.sh checks it).
+geo $realip_remote_addr $trusted_proxy {
+    default 0;
+${NGINX_TRUSTED_PROXY_GEO_ENTRIES}}
+
+map "$trusted_proxy:$http_x_forwarded_proto" $forwarded_proto {
+    "1:http"  http;
+    "1:https" https;
+    default   $scheme;
+}
+
 upstream backend_server {
     zone backend_server 64k;
     server ${DJANGO_HOST}:${DJANGO_PORT} resolve;
@@ -84,7 +108,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
     location ^~ /api/run-session/subscribe/ {
         proxy_pass http://backend_server;
@@ -104,7 +128,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location ~ ^/ws/ {
@@ -117,7 +141,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_read_timeout 86400;
     }
 
@@ -141,7 +165,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location ~ ^/(api|admin|ht|swagger)(/|$) {
@@ -153,7 +177,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location ^~ /webhooks/ {
@@ -164,7 +188,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-Host $host;
     }
 
@@ -178,7 +202,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-Host $host;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
@@ -194,7 +218,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-Host $host;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
@@ -210,7 +234,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     include /etc/nginx/conf.d/chat-${CHAT_ENABLED}.snippet;
@@ -237,7 +261,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location /static/ {
@@ -245,7 +269,7 @@ server {
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location /media/ {
@@ -253,7 +277,7 @@ server {
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
         include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 }
 

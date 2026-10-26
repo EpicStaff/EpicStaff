@@ -7,7 +7,12 @@
 #     src/docker-compose.yaml and the labs in tests/gateway and tests/development must mount too,
 #     and every variable src/docker-compose.yaml passes to epicstaff-nginx, which this script and
 #     each lab's nginx must set; and that the hooks refuse what they must: TLS on without a
-#     certificate, and an NGINX_HSTS_ENABLED that is not a boolean;
+#     certificate, an NGINX_HSTS_ENABLED that is not a boolean, and an NGINX_TRUSTED_PROXIES that
+#     is not none or a list of IPv4 addresses and CIDRs, or that holds a /0 range or a CIDR with
+#     host bits set;
+#   - that every X-Forwarded-Proto a template sets is $forwarded_proto, never the client's header,
+#     and never $scheme but on the plugin listeners, which no proxy is in front of; and that
+#     NGINX_TRUSTED_PROXIES renders the trusted entries, or none;
 #   - every combination of CHAT_ENABLED, PLUGINS_ENABLED and NGINX_SSL_MODE, with throwaway
 #     self-signed certificates, and every pair of NGINX_SSL_MODE and NGINX_HSTS_ENABLED among
 #     them; with the plugins flag off nothing plugin-related may be rendered;
@@ -43,7 +48,9 @@
 #     on the plugins subnet (127.0.0.0/8 stands in for it) and which refuses it, the headers
 #     the internal API listener sends Django, and, with plugins off and on, the health server on
 #     127.0.0.1:8081 that the stack's healthcheck asks, next to the internal API listener on the
-#     container's other addresses.
+#     container's other addresses; and the X-Forwarded-Proto every upstream is told: a trusted
+#     proxy's http or https (also with the real-IP module on), and otherwise nginx's own scheme,
+#     whatever the client claims.
 #
 # Needs Docker and openssl. The containers have no network and publish no ports; nothing is left
 # behind. Usage, from anywhere: bash src/nginx/tests/check_templates.sh
@@ -112,7 +119,7 @@ fail() {
 # The stack's nginx environment: every variable src/docker-compose.yaml passes to epicstaff-nginx
 # (a check below fails when one is missing here), with this script's values.
 stack_environment=(
-  NGINX_SERVER_NAME=epicstaff.test NGINX_SSL_MODE=off NGINX_HSTS_ENABLED=true
+  NGINX_SERVER_NAME=epicstaff.test NGINX_SSL_MODE=off NGINX_HSTS_ENABLED=true NGINX_TRUSTED_PROXIES=none
   DJANGO_HOST=django DJANGO_PORT=8000 FRONTEND_HOST=frontend FRONTEND_PORT=80
   REALTIME_HOST=realtime REALTIME_PORT=8050 WEBHOOK_HOST=webhook WEBHOOK_PORT=8009
   AUDITOR_HOST=auditor AUDITOR_PORT=8010 CHAT_ENABLED=false CHAT_UPSTREAM_URL=http://chat:8200
@@ -906,6 +913,133 @@ expect_refused "NGINX_HSTS_ENABLED=maybe is refused" "NGINX_HSTS_ENABLED='maybe'
   NGINX_HSTS_ENABLED=maybe
 expect_refused "an unset NGINX_HSTS_ENABLED is refused" "environment variable NGINX_HSTS_ENABLED is not set" \
   unset:NGINX_HSTS_ENABLED
+
+# Every X-Forwarded-Proto nginx sets is $forwarded_proto (default.conf.template): $scheme tells
+# Django http behind a load balancer that ends TLS, and the client's own header would let anyone
+# claim https. The one exception is plugins-api-listener.snippet, which sends $scheme: only the
+# plugins network (8081) and this machine (8082) reach those listeners, so no load balancer is in
+# front of them, and the trust a load balancer gets must never extend to a plugin backend. The
+# underscore spellings are only ever blanked (strip-underscore-forwarding-headers.snippet). Read
+# from the templates, so a snippet that no combination renders counts too.
+# $1 = a templates directory; prints "./<file>:<line>: <directive>" for each other value, then
+# "checked <n>": how many set $forwarded_proto.
+forwarded_proto_problems() {
+  (cd "$1" && grep -rniE '^[[:space:]]*proxy_set_header[[:space:]]+X[-_]Forwarded[-_]Proto([[:space:]]|$)' .) \
+    | awk '
+      {
+        text = $0
+        sub(/^[^:]*:[0-9]+:[[:space:]]*/, "", text)
+        place = substr($0, 1, index($0, ":"))
+        rest = substr($0, length(place) + 1)
+        place = place substr(rest, 1, index(rest, ":"))
+      }
+      text == "proxy_set_header X-Forwarded-Proto $forwarded_proto;" && place !~ /^\.\/plugins-api-listener\.snippet\.template:/ { sends++; next }
+      text == "proxy_set_header X-Forwarded-Proto $scheme;" && place ~ /^\.\/plugins-api-listener\.snippet\.template:/ { next }
+      text ~ /^proxy_set_header X(_Forwarded[-_]|-Forwarded_)Proto ""; *$/ { next }
+      { print place " " text }
+      END { print "checked " sends + 0 }'
+}
+# $1 = description, $2 = templates directory. Passes when no template sets another value, and at
+# least one sets $forwarded_proto.
+expect_forwarded_proto_rule() {
+  local result problems sends
+  result=$(forwarded_proto_problems "$2")
+  problems=$(printf '%s\n' "$result" | { grep -v '^checked ' || true; })
+  sends=$(printf '%s\n' "$result" | sed -n 's/^checked //p')
+  if [ -n "$problems" ]; then
+    fail "$1: $(printf '%s\n' "$problems" | paste -sd ';' -)"
+  elif [ "$sends" -eq 0 ]; then
+    fail "$1: no template sets X-Forwarded-Proto \$forwarded_proto"
+  else
+    pass "$1 ($sends set \$forwarded_proto)"
+  fi
+}
+expect_forwarded_proto_rule "every X-Forwarded-Proto the templates set is \$forwarded_proto" "$nginx_dir/templates"
+# The rule itself, on templates broken on purpose: one location back on $scheme, one passing the
+# client's header on, one setting the dash spelling to nothing, and the plugin listeners trusting a
+# proxy.
+cp -R "$nginx_dir/templates" "$work_dir/broken-templates"
+sed -i '0,/X-Forwarded-Proto \$forwarded_proto;/s//X-Forwarded-Proto $scheme;/' \
+  "$work_dir/broken-templates/chat-true.snippet.template"
+sed -i '0,/X-Forwarded-Proto \$scheme;/s//X-Forwarded-Proto $forwarded_proto;/' \
+  "$work_dir/broken-templates/plugins-api-listener.snippet.template"
+sed -i '0,/X-Forwarded-Proto \$forwarded_proto;/s//X-Forwarded-Proto $http_x_forwarded_proto;/' \
+  "$work_dir/broken-templates/plugins-server-true.snippet.template"
+sed -i '0,/X-Forwarded-Proto \$forwarded_proto;/s//X-Forwarded-Proto "";/' \
+  "$work_dir/broken-templates/plugins-main-true.snippet.template"
+broken_forwarded_proto=$(forwarded_proto_problems "$work_dir/broken-templates" | { grep -v '^checked ' || true; } \
+  | sed 's/^\.\/\([^:]*\):[0-9]*: /\1 /' | LC_ALL=C sort)
+expected_broken_forwarded_proto=$(printf '%s\n' \
+  'chat-true.snippet.template proxy_set_header X-Forwarded-Proto $scheme;' \
+  'plugins-api-listener.snippet.template proxy_set_header X-Forwarded-Proto $forwarded_proto;' \
+  'plugins-main-true.snippet.template proxy_set_header X-Forwarded-Proto "";' \
+  'plugins-server-true.snippet.template proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;' | LC_ALL=C sort)
+if [ "$broken_forwarded_proto" = "$expected_broken_forwarded_proto" ]; then
+  pass "the X-Forwarded-Proto rule names \$scheme, the client's header, a blank value and the plugin listeners' \$forwarded_proto"
+else
+  fail "the X-Forwarded-Proto rule on broken templates named [$(printf '%s\n' "$broken_forwarded_proto" | paste -sd ';' -)]"
+fi
+rm -rf "$work_dir/broken-templates"
+
+# NGINX_TRUSTED_PROXIES (18-check-trusted-proxies.envsh): each entry of a list, spaces around the
+# commas allowed, becomes a trusted entry of the geo block; none, in any case, leaves only the
+# default, so nothing is trusted.
+# Prints the entries of the last rendered geo block that keys trust, one per line.
+trusted_proxy_geo_entries() {
+  directives | awk '/^geo \$realip_remote_addr \$trusted_proxy \{$/ { inside = 1; next }
+    inside && /^\}/ { exit }
+    inside && NF { sub(/^[[:space:]]+/, ""); print }'
+}
+if expect_valid "NGINX_TRUSTED_PROXIES with a list is accepted" PLUGINS_ENABLED=true \
+  "NGINX_TRUSTED_PROXIES= 192.0.2.10 ,198.51.100.0/24, 10.235.1.0/24"; then
+  geo_entries=$(trusted_proxy_geo_entries | paste -sd '|' -)
+  if [ "$geo_entries" = "default 0;|192.0.2.10 1;|198.51.100.0/24 1;|10.235.1.0/24 1;" ]; then
+    pass "NGINX_TRUSTED_PROXIES with a list trusts exactly its entries"
+  else
+    fail "NGINX_TRUSTED_PROXIES with a list renders the geo block [$geo_entries]"
+  fi
+fi
+if expect_valid "NGINX_TRUSTED_PROXIES=None is accepted" "NGINX_TRUSTED_PROXIES= None "; then
+  geo_entries=$(trusted_proxy_geo_entries | paste -sd '|' -)
+  if [ "$geo_entries" = "default 0;" ]; then
+    pass "NGINX_TRUSTED_PROXIES=None trusts nobody"
+  else
+    fail "NGINX_TRUSTED_PROXIES=None renders the geo block [$geo_entries]"
+  fi
+fi
+# Values that would break, inject into or widen the rendered geo block, or that are not IPv4.
+for trusted_proxies in "" " " "none, 192.0.2.10" "192.0.2.10," ",192.0.2.10" "192.0.2.10,,192.0.2.11" \
+  "192.0.2.10 192.0.2.11" "192.0.2.10;" "192.0.2.10 1; 0.0.0.0/0" "192.0.2.10"$'\n'"0.0.0.0/0" \
+  "192.0.2.256" "192.0.2.010" "192.0.2" "192.0.2.0/33" "192.0.2.0/08" "192.0.2.0/" "/24" \
+  "2001:db8::1" "lb.example.com" all '$remote_addr' "192.0.2.10 # x"; do
+  expect_refused "NGINX_TRUSTED_PROXIES=$(printf '%q' "$trusted_proxies") is refused" \
+    "ERROR: NGINX_TRUSTED_PROXIES=" "NGINX_TRUSTED_PROXIES=$trusted_proxies"
+done
+expect_refused "an unset NGINX_TRUSTED_PROXIES is refused" \
+  "environment variable NGINX_TRUSTED_PROXIES is not set" unset:NGINX_TRUSTED_PROXIES
+# A /0 range trusts every client; a CIDR with host bits set trusts its whole range, which is
+# rarely what was meant. Both are refused, each naming the entry; the host-bits refusal names the
+# range it would have trusted. A /32 and ranges written from their first address are accepted.
+for trusted_proxies in 0.0.0.0/0 10.0.0.0/0 "192.0.2.10, 0.0.0.0/0"; do
+  expect_refused "NGINX_TRUSTED_PROXIES=$(printf '%q' "$trusted_proxies") is refused: a /0 range is every client" \
+    "holds '${trusted_proxies##* }', which is every address" "NGINX_TRUSTED_PROXIES=$trusted_proxies"
+done
+for case in "192.0.2.5/24|192.0.2.0/24" "10.0.0.1/8|10.0.0.0/8" "192.0.2.1/31|192.0.2.0/31" \
+  "198.51.100.0/24, 192.0.2.130/25|192.0.2.128/25"; do
+  trusted_proxies=${case%|*}
+  expect_refused "NGINX_TRUSTED_PROXIES=$(printf '%q' "$trusted_proxies") is refused: host bits set, naming ${case#*|}" \
+    "holds '${trusted_proxies##* }', whose address has host bits set: it would trust all of ${case#*|}" \
+    "NGINX_TRUSTED_PROXIES=$trusted_proxies"
+done
+if expect_valid "NGINX_TRUSTED_PROXIES with /32, /31, /30, /24 and /1 ranges from their first address is accepted" \
+  "NGINX_TRUSTED_PROXIES=192.0.2.5/32, 192.0.2.6/31, 192.0.2.4/30, 198.51.100.0/24, 128.0.0.0/1"; then
+  geo_entries=$(trusted_proxy_geo_entries | paste -sd '|' -)
+  if [ "$geo_entries" = "default 0;|192.0.2.5/32 1;|192.0.2.6/31 1;|192.0.2.4/30 1;|198.51.100.0/24 1;|128.0.0.0/1 1;" ]; then
+    pass "those ranges are trusted as written"
+  else
+    fail "those ranges render the geo block [$geo_entries]"
+  fi
+fi
 
 # The NGINX_HSTS_ENABLED of a run of the loops below, $1 = CHAT_ENABLED, $2 = NGINX_SSL_MODE: over
 # a loop's four runs each TLS mode gets both values. True with TLS in nginx, or ended by a load
@@ -2035,6 +2169,131 @@ for plugins_enabled in false true; do
   docker rm -f "$live_container" > /dev/null
   live_container=""
 done
+
+# X-Forwarded-Proto, live, with chat and plugins on: every upstream is a stub on 127.0.0.1 that
+# answers with the X-Forwarded-Proto and X-Real-IP it received, asked from inside the container,
+# so from 127.0.0.1:
+#   - NGINX_TRUSTED_PROXIES=127.0.0.0/8, as for a load balancer in front of nginx, with the real-IP
+#     module on for it as docs/plugins/operator/enable-plugins.md describes: every upstream is told
+#     the proxy's http or https, and nginx's own scheme when it says nothing or anything else. The
+#     real-IP module makes $remote_addr the client's (203.0.113.9); trust follows the connection.
+#   - NGINX_TRUSTED_PROXIES=192.0.2.10, a load balancer at another address: a client that reaches
+#     nginx directly is told http, whatever it claims.
+#   - NGINX_TRUSTED_PROXIES=none with TLS on in nginx, as on a direct install: https, whatever the
+#     client claims.
+cat > "$work_dir/stub-forwarded.conf" << 'STUB'
+server {
+    listen 127.0.0.1:8000;
+    listen 127.0.0.1:8001;
+    listen 127.0.0.1:8009;
+    listen 127.0.0.1:8010;
+    listen 127.0.0.1:8050;
+    listen 127.0.0.1:8200;
+    default_type text/plain;
+    return 200 "proto=[$http_x_forwarded_proto] real-ip=[$http_x_real_ip]";
+}
+STUB
+cat > "$work_dir/real-ip.conf" << 'CONF'
+set_real_ip_from 127.0.0.0/8;
+real_ip_header X-Forwarded-For;
+CONF
+# "<host> <path>": a location of each upstream on EpicStaff's server, and the plugin hosts' platform
+# config (proxied to Django). The plugin hosts' /api/ and the internal listener are in the gateway lab.
+forwarded_proto_targets=("epicstaff.test /" "epicstaff.test /chat" "epicstaff.test /chat/api/x"
+  "epicstaff.test /webhooks/x" "epicstaff.test /voice/x" "epicstaff.test /voice/stream"
+  "epicstaff.test /realtime/x" "epicstaff.test /auditor/api/x" "epicstaff.test /api/x/"
+  "epicstaff.test /admin/" "epicstaff.test /ws/x" "epicstaff.test /api/storage/upload/stream"
+  "epicstaff.test /api/run-session/subscribe/1/" "epicstaff.test /static/x" "epicstaff.test /media/x"
+  "alpha.plugins.epicstaff.test /.well-known/epicstaff/config.json")
+# $1 = description, $2 = the scheme to ask nginx in, $3 = the X-Forwarded-Proto the client sends
+# (- for none; "NAME: value" sends another header instead, several are joined with |), $4 = what
+# every upstream must be told. Uses the running container.
+expect_forwarded_proto() {
+  local target host path answer wrong="" header=() sent=()
+  if [ "$3" != - ]; then
+    IFS='|' read -r -a sent <<< "$3"
+    for target in "${sent[@]}"; do
+      case "$target" in
+        *:*) header+=(-H "$target") ;;
+        *) header+=(-H "X-Forwarded-Proto: $target") ;;
+      esac
+    done
+  fi
+  for target in "${forwarded_proto_targets[@]}"; do
+    read -r host path <<< "$target"
+    # To 127.0.0.1, with the host name as Host and, over TLS, as the server name.
+    answer=$(live curl -sk --connect-to ::127.0.0.1: -H "X-Forwarded-For: 203.0.113.9" "${header[@]}" \
+      "$2://$host$path" || true)
+    case "$answer" in
+      "proto=[$4] "*) ;;
+      *) wrong="$wrong [$host$path: $answer]" ;;
+    esac
+  done
+  if [ -z "$wrong" ]; then
+    pass "$1 (${#forwarded_proto_targets[@]} locations)"
+  else
+    fail "$1:$wrong"
+  fi
+}
+# $1 = how the container differs; the rest = set_docker_arguments overrides, then -- and extra
+# docker run arguments. Starts it as live_container and waits for its stub.
+start_forwarded_proto_container() {
+  local overrides=() extra=()
+  while [ $# -gt 0 ] && [ "$1" != -- ]; do overrides+=("$1"); shift; done
+  [ $# -gt 0 ] && shift
+  extra=("$@")
+  set_docker_arguments PLUGINS_ENABLED=true CHAT_ENABLED=true \
+    CHAT_UPSTREAM_URL=http://127.0.0.1:8200 DJANGO_HOST=127.0.0.1 DJANGO_PORT=8000 \
+    FRONTEND_HOST=127.0.0.1 FRONTEND_PORT=8001 WEBHOOK_HOST=127.0.0.1 WEBHOOK_PORT=8009 \
+    AUDITOR_HOST=127.0.0.1 AUDITOR_PORT=8010 REALTIME_HOST=127.0.0.1 REALTIME_PORT=8050 "${overrides[@]}"
+  live_container=$(docker run -d "${docker_arguments[@]}" \
+    -v "$work_dir/stub-forwarded.conf:/etc/nginx/conf.d/zz-stub-forwarded.conf:ro" "${extra[@]}" "$image")
+  for _ in $(seq 50); do
+    if live curl -s -o /dev/null http://127.0.0.1:8001/ 2> /dev/null; then break; fi
+    sleep 0.1
+  done
+}
+stop_forwarded_proto_container() {
+  docker rm -f "$live_container" > /dev/null
+  live_container=""
+}
+
+start_forwarded_proto_container NGINX_TRUSTED_PROXIES=127.0.0.0/8 -- \
+  -v "$work_dir/real-ip.conf:/etc/nginx/conf.d/zz-real-ip.conf:ro"
+real_ip=$(live curl -s -H "Host: epicstaff.test" -H "X-Forwarded-For: 203.0.113.9" http://127.0.0.1/api/x/ || true)
+if [ "$real_ip" = "proto=[http] real-ip=[203.0.113.9]" ]; then
+  pass "live, with the real-IP module on for the trusted proxy: \$remote_addr is the client's"
+else
+  fail "live, the real-IP module is not in effect, so the next checks prove nothing: $real_ip"
+fi
+expect_forwarded_proto "live, from a trusted proxy that says https: every upstream is told https" http https https
+expect_forwarded_proto "live, from a trusted proxy that says http: every upstream is told http" http http http
+expect_forwarded_proto "live, from a trusted proxy that says nothing: every upstream is told nginx's scheme" http - http
+expect_forwarded_proto "live, from a trusted proxy that says HTTPS: every upstream is told https" http HTTPS https
+expect_forwarded_proto "live, from a trusted proxy that says ftp: every upstream is told nginx's scheme" http ftp http
+# nginx's $http_x_forwarded_proto also matches the underscore spelling (underscores_in_headers is
+# on). A proxy that sets the header on every request is safe: a client's underscore one then makes
+# two values. One that only deletes the dash spelling lets a client's X_Forwarded_Proto through as
+# the value. docs/setup/ssl.md requires the proxy to set it; these two pin why.
+expect_forwarded_proto "live, from a trusted proxy that says https and passes on a client's X_Forwarded_Proto: http: two values, nginx's scheme" \
+  http "https|X_Forwarded_Proto: http" http
+expect_forwarded_proto "live, from a trusted proxy that sets nothing and passes on a client's X_Forwarded_Proto: https: the client's https, why the proxy must set the header" \
+  http "X_Forwarded_Proto: https" https
+expect_forwarded_proto "live, from a trusted proxy that says two values: every upstream is told nginx's scheme" \
+  http "https, http" http
+stop_forwarded_proto_container
+
+start_forwarded_proto_container NGINX_TRUSTED_PROXIES=192.0.2.10
+expect_forwarded_proto "live, a client that is not the trusted proxy and claims https: every upstream is told http" \
+  http https http
+stop_forwarded_proto_container
+
+start_forwarded_proto_container NGINX_TRUSTED_PROXIES=none NGINX_SSL_MODE=on
+expect_forwarded_proto "live, TLS in nginx and nobody trusted, a client that claims http: every upstream is told https" \
+  https http https
+expect_forwarded_proto "live, TLS in nginx and nobody trusted, a client that says nothing: every upstream is told https" \
+  https - https
+stop_forwarded_proto_container
 
 if [ "$failures" -ne 0 ]; then
   echo "FAILED: $failures check(s)"
