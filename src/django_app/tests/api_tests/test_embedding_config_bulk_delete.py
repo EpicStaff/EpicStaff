@@ -128,7 +128,6 @@ def test_bulk_delete_knowledge_sources_bucket_merges_graphrag_and_naiverag(
     ks_usage = by_type(_preview_usage(client, config.id), "knowledge_sources")
     sample_ids = {item["id"] for item in ks_usage["visible_sample"]}
     assert sample_ids == {collection1.collection_id, collection2.collection_id}
-    assert {item["kind"] for item in ks_usage["visible_sample"]} == {"collection"}
 
     resp = client.post(
         "/api/embedding-configs/bulk-delete/", {"ids": [config.id]}, format="json"

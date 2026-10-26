@@ -122,7 +122,7 @@ def test_dry_run_does_not_disclose_an_agent_the_caller_cannot_see(
         f"/api/{route}/bulk-delete/?dry_run=true", {"ids": [config.id]}, format="json"
     )
 
-    assert resp.status_code == 207, resp.data
+    assert resp.status_code == 200, resp.data
     assert resp.data["skipped"] == [{"id": config.id, "reason": "in_use_restricted"}]
     assert resp.data["usage"][str(config.id)] == {
         "blocked": True,

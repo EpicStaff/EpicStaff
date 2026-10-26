@@ -128,7 +128,7 @@ describe('buildBulkDeletePreview', () => {
                     bucket({
                         resource_type: 'agents',
                         visible_count: 1,
-                        visible_sample: [{ resource_type: 'agents', kind: 'agent', id: 11, name: 'A1' }],
+                        visible_sample: [{ resource_type: 'agents', id: 11, name: 'A1' }],
                     }),
                 ]),
             },
@@ -148,7 +148,7 @@ describe('buildBulkDeletePreview', () => {
                     bucket({
                         resource_type: 'flows',
                         visible_count: 1,
-                        visible_sample: [{ resource_type: 'flows', kind: 'flow', id: 42, name: null }],
+                        visible_sample: [{ resource_type: 'flows', id: 42, name: null }],
                     }),
                 ]),
             },
@@ -168,7 +168,7 @@ describe('buildBulkDeletePreview', () => {
                     bucket({
                         resource_type: 'flows',
                         visible_count: 1,
-                        visible_sample: [{ resource_type: 'flows', kind: 'flow', id: 1, name: 'F1' }],
+                        visible_sample: [{ resource_type: 'flows', id: 1, name: 'F1' }],
                         truncated: true,
                     }),
                 ]),
@@ -189,7 +189,7 @@ describe('buildBulkDeletePreview', () => {
                     bucket({
                         resource_type: 'flows',
                         visible_count: 3,
-                        visible_sample: [{ resource_type: 'flows', kind: 'flow', id: 1, name: 'F1' }],
+                        visible_sample: [{ resource_type: 'flows', id: 1, name: 'F1' }],
                         truncated: false,
                     }),
                 ]),

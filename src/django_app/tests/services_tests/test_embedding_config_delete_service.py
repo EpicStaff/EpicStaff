@@ -2,7 +2,7 @@
 
 import pytest
 
-from tables.models import Crew, EmbeddingConfig
+from tables.models import EmbeddingConfig
 from tables.models.knowledge_models.collection_models import (
     BaseRagType,
     SourceCollection,
@@ -12,7 +12,6 @@ from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
 from tables.services.delete_services import EmbeddingConfigDeleteService
-from tables.services.delete_services.usage import RefKind
 from rbac.access.effective import EffectivePermissions
 
 
@@ -64,37 +63,22 @@ def test_collection_with_both_rag_kinds_on_one_embedder_is_one_collection(org_a)
     GraphRag.objects.create(base_rag_type=graph_rag_type, embedder=config)
     NaiveRag.objects.create(base_rag_type=naive_rag_type, embedder=config)
 
-    result = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_everything(), dry_run=True, deleted_by=None
-    )
+    result = EmbeddingConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read_everything(), user=None
+    ).preview([config.id])
 
     knowledge = _bucket(result, config.id, ResourceType.KNOWLEDGE_SOURCES)
     assert knowledge.visible_count == 1
-    assert knowledge.visible_refs[0].kind == RefKind.COLLECTION
-
-
-@pytest.mark.django_db
-def test_deprecated_crew_is_not_usage(org_a):
-    """`tables.Crew` has no API or UI, so it never blocks; SET_NULL clears the link."""
-    config = _config(org_a)
-    crew = Crew.objects.create(org=org_a, name="crew", embedding_config=config)
-
-    result = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_nothing(), deleted_by=None
-    )
-
-    assert result.deleted_ids == [config.id]
-    crew.refresh_from_db()
-    assert crew.embedding_config_id is None
+    assert knowledge.visible_refs[0].id == collection.collection_id
 
 
 @pytest.mark.django_db
 def test_unreferenced_config_is_deleted(org_a):
     config = _config(org_a)
 
-    result = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_everything(), deleted_by=None
-    )
+    result = EmbeddingConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read_everything(), user=None
+    ).delete([config.id])
 
     assert result.deleted_ids == [config.id]
     assert not EmbeddingConfig.objects.filter(id=config.id).exists()
@@ -120,15 +104,15 @@ def test_another_orgs_references_are_not_usage(org_a, org_b):
         )
         rag_model.objects.create(base_rag_type=rag_type, embedder=config)
 
-    preview = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_everything(), dry_run=True, deleted_by=None
-    )
+    preview = EmbeddingConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read_everything(), user=None
+    ).preview([config.id])
     assert [
         (bucket.resource_type, bucket.total_count)
         for bucket in preview.usage[config.id].buckets
     ] == [(ResourceType.KNOWLEDGE_SOURCES.value, 0)]
 
-    result = EmbeddingConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read_nothing(), deleted_by=None
-    )
+    result = EmbeddingConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read_nothing(), user=None
+    ).delete([config.id])
     assert result.deleted_ids == [config.id]

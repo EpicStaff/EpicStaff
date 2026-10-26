@@ -58,12 +58,9 @@ POST /api/graphs/bulk-delete/?dry_run=true
 
 Runs every check and reports what would happen, without deleting anything. It
 does **not** relax the in-use guard: an id that would be blocked is still
-reported as blocked. A value that is not a clear boolean is rejected with `400`
-rather than silently read as `false`:
-
-- unparseable — `?dry_run=maybe`;
-- blank — `?dry_run` or `?dry_run=`;
-- repeated — `?dry_run=true&dry_run=false`.
+reported as blocked. A dry run always responds `200`. The value is parsed as a
+standard DRF boolean; a value that is not a boolean (`?dry_run=maybe`) is
+rejected with `400`.
 
 > ⚠️ **`dry_run` must be in the query string.** A `dry_run` field sent in the
 > request *body* is ignored, and the call runs as a **real delete**. There is
@@ -141,26 +138,18 @@ usage entries always have `by_resource_type: []`.
 ### A usage sample entry
 
 ```json
-{ "resource_type": "agents", "kind": "agent_definition", "id": 12, "name": "Support bot" }
+{ "resource_type": "agents", "id": 12, "name": "Support bot" }
 ```
 
-`kind` names the referencing entity's own type, which `resource_type` alone
-cannot: the `agents` bucket merges two different tables whose ids overlap, so
-`kind` is what tells `Agent #5` from `AgentDefinition #5`. Values:
-
-| `kind` | Entity |
-|---|---|
-| `flow` | a Flow (`Graph`) |
-| `agent` | a legacy agent (`tables.Agent`) |
-| `agent_definition` | an agent (`agents.AgentDefinition`) |
-| `crew` | a legacy crew (`tables.Crew`) |
-| `collection` | a knowledge source collection |
+`resource_type` names the bucket; every id in a bucket points at the same kind
+of entity (a flow, an agent or a knowledge source collection).
 
 ### Status code
 
-`200` when every id was handled as requested; `207 Multi-Status` when any id was
-not found or skipped — including when *every* id was blocked. The same rule
-applies to all seven resources and to dry runs.
+A real delete responds `200` when every id was deleted and `207 Multi-Status`
+when any id was not found or skipped — including when *every* id was blocked. A
+dry run always responds `200`; its per-id outcome is in the body. The same rule
+applies to all seven resources.
 
 ---
 
@@ -177,12 +166,12 @@ Blocked ids are reported without disclosing what is blocking them:
 can already see. A caller who cannot see any of them gets `visible_count: 0,
 visible_sample: []` and no way to tell how many hidden references exist or what
 they are. `visible_sample` is capped at 5 items (`truncated: true` when more
-visible items exist beyond that) and sorted by `kind`, then `id`, so the same
+visible items exist beyond that) and sorted by `id`, so the same
 references come back in the same order on every call.
 
-The same parent reached through several paths counts **once** — a crew naming
-one LLM config as its manager, memory and planning model is one reference, and
-a flow reaching a config through both a decision-table node and an assistant is
+The same parent reached through several paths counts **once** — an agent naming
+one LLM config as both its primary and tool-call model is one reference, and a
+flow reaching a config through both a decision-table node and an assistant is
 one flow.
 
 ### Deleting something whose usage you *can* see is allowed
@@ -234,12 +223,9 @@ check and nothing can block it.
 
 ### LLM Config
 
-Four buckets, each merged from several sources:
+Three buckets, each merged from several sources:
 
-- `agents` — `Agent.llm_config` / `fcm_llm_config` (`kind: agent`) and
-  `AgentDefinition.llm_config` / `fcm_llm_config` (`kind: agent_definition`).
-- `projects` — `Crew.manager_llm_config`, `memory_llm_config`,
-  `planning_llm_config` (`kind: crew`).
+- `agents` — `AgentDefinition.llm_config` / `fcm_llm_config`.
 - `flows` — `ClassificationDecisionTableNode.default_llm_config`,
   `ClassificationDecisionTablePrompt.llm_config` and `FlowAssistant.llm_config`.
   The sample names the containing flow, not the node, prompt or assistant row.
@@ -251,11 +237,9 @@ which have no resource type to check the caller's visibility against.
 
 ### Embedding Config
 
-Two buckets:
-
-- `projects` — `Crew.embedding_config` (`kind: crew`).
-- `knowledge_sources` — `GraphRag.embedder` and `NaiveRag.embedder`, merged. A
-  collection with both kinds of RAG on the same embedder is one collection.
+One bucket, `knowledge_sources` — `GraphRag.embedder` and `NaiveRag.embedder`,
+merged. A collection with both kinds of RAG on the same embedder is one
+collection.
 
 Not counted: the global default-model singletons
 (`DefaultModels.memory_embedding_config`, `DefaultCrewConfig.embedding_config`),
@@ -263,24 +247,14 @@ which have no resource type to check the caller's visibility against.
 
 ### Realtime voice configs (OpenAI, ElevenLabs, Gemini)
 
-One bucket, `agents`:
-
-- `RealtimeAgent` — the realtime settings of a legacy agent (`kind: agent`);
-- `RealtimeAgentDefinition` — the realtime settings of an agent
-  (`kind: agent_definition`).
+One bucket, `agents` — `RealtimeAgentDefinition`, the realtime settings of an
+agent.
 
 **Past voice sessions (`RealtimeAgentChat`) do not count.** A session records
 which config it used, but it is a snapshot: it keeps its own copy of the voice,
 language, wake word and the rest precisely so it survives the config being
 deleted. Once the config is gone, a past session no longer shows which model it
 used — the model name lives on the config — but it keeps its link to the agent.
-
-### Legacy agents and crews still count
-
-`tables.Agent` and `tables.Crew` are deprecated and have no API of their own,
-but they still count as usage wherever they reference a config: existing flows
-that contain a crew node keep executing, so deleting a config they rely on would
-break those flows at run time.
 
 ---
 
@@ -317,8 +291,8 @@ message}`.
 
 ### `400` — validation
 
-Empty, oversized (over 500 items) or malformed `ids`, or a `dry_run` that is
-unparseable, blank or repeated. Standard DRF field validation errors.
+Empty, oversized (over 500 items) or malformed `ids`, or a `dry_run` that is not
+a boolean. Standard DRF field validation errors.
 
 ### `403 permission_denied` — missing the permission to delete
 
@@ -375,7 +349,7 @@ the row nor the other organization.
 |---|---|
 | Before a destructive bulk action | Call with `?dry_run=true` first to see `deletable_ids`, `skipped` and `usage`, then show the user what will happen. The server will not ask for confirmation on its own. |
 | `dry_run` placement | Query string only. In the body it is ignored and the call deletes for real. |
-| `skipped` / `not_found_ids` | Partial success, not a request error — the response is `207`, not `4xx`/`5xx`. Surface per-id outcomes rather than treating the whole call as failed. |
+| `skipped` / `not_found_ids` | Partial success, not a request error — a real delete responds `207`, not `4xx`/`5xx`; a dry run responds `200`. Surface per-id outcomes rather than treating the whole call as failed. |
 | `usage` on a real delete | Always `{}`. Read usage from the dry run. |
 | `usage.visible_sample` | Advisory and intentionally incomplete — it only lists references the caller can see, capped at 5. Don't render it as an exhaustive list of what's blocking a delete. |
 | Cross-org and nonexistent ids | Both come back in `not_found_ids` with no way to tell them apart — this is deliberate, not a bug. |

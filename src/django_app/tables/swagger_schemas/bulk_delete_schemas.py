@@ -1,28 +1,13 @@
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 from rbac.models.enums import ResourceType
 
 from tables.serializers.serializers import (
+    BulkDeleteQuerySerializer,
     BulkDeleteRequestSerializer,
     BulkDeleteResultSerializer,
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
-
-DRY_RUN_PARAMETER = OpenApiParameter(
-    name="dry_run",
-    type=OpenApiTypes.BOOL,
-    location=OpenApiParameter.QUERY,
-    required=False,
-    default=False,
-    description=(
-        "Preview only: report what would be deleted and the usage that blocks "
-        "the rest, without deleting anything. This is a **query parameter** — "
-        "a `dry_run` field in the request body is ignored and the call runs as "
-        "a real delete. Takes `true` or `false` in any case; any other, blank "
-        "(`?dry_run`, `?dry_run=`) or repeated value is rejected with 400."
-    ),
-)
-
 
 CROSS_ORG_CASCADE_409_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.STR,
@@ -58,12 +43,8 @@ def _empty_bucket(resource_type: ResourceType) -> dict:
     }
 
 
-def _partial_example(bucket_types: tuple[ResourceType, ...]) -> OpenApiExample:
-    """A 207 dry run with the buckets this entity really reports, in order.
-
-    Every id gets one bucket per referencing resource type, so an entity with
-    no referencing sources reports `[]` and can never be blocked.
-    """
+def _dry_run_example(bucket_types: tuple[ResourceType, ...]) -> OpenApiExample:
+    """A 200 preview with the buckets this entity really reports, in order."""
     buckets = [_empty_bucket(resource_type) for resource_type in bucket_types]
     value = {
         "dry_run": True,
@@ -80,6 +61,27 @@ def _partial_example(bucket_types: tuple[ResourceType, ...]) -> OpenApiExample:
         value["usage"]["2"] = {"blocked": True, "by_resource_type": buckets}
     return OpenApiExample(
         "Dry run with a blocked id" if bucket_types else "Dry run with an unknown id",
+        value=value,
+        response_only=True,
+        status_codes=["200"],
+    )
+
+
+def _partial_example(bucket_types: tuple[ResourceType, ...]) -> OpenApiExample:
+    """A 207 real delete: one id deleted, the others not found or skipped."""
+    value = {
+        "dry_run": False,
+        "deleted_count": 1,
+        "deleted_ids": [1],
+        "deletable_ids": [1],
+        "not_found_ids": [99],
+        "skipped": [],
+        "usage": {},
+    }
+    if bucket_types:
+        value["skipped"] = [{"id": 2, "reason": "in_use_restricted"}]
+    return OpenApiExample(
+        "Deleted with a blocked id" if bucket_types else "Deleted with an unknown id",
         value=value,
         response_only=True,
         status_codes=["207"],
@@ -103,16 +105,19 @@ def _bulk_delete_post_schema(
             "indistinguishable by design. An id is **skipped** with "
             "`in_use_restricted` when something the caller cannot see "
             "references it; usage the caller *can* see does not block. "
-            "Responds 200 when every id went as requested and 207 when any id "
-            "was not found or skipped. `usage` is populated only on a dry run; "
-            "a real delete returns it empty."
+            "A real delete responds 200 when every id was deleted and 207 when "
+            "any id was not found or skipped; a dry run always responds 200. "
+            "`usage` is populated only on a dry run; a real delete returns it empty."
         ),
-        "parameters": [DRY_RUN_PARAMETER],
+        "parameters": [BulkDeleteQuerySerializer],
         "request": BulkDeleteRequestSerializer,
         "responses": {
             200: OpenApiResponse(
                 response=BulkDeleteResultSerializer,
-                description="Every requested id was deleted (or, on a dry run, would be).",
+                description=(
+                    "A real delete removed every requested id, or a dry run "
+                    "reported what would happen to each id."
+                ),
                 examples=[
                     OpenApiExample(
                         "Deleted",
@@ -128,13 +133,14 @@ def _bulk_delete_post_schema(
                         response_only=True,
                         status_codes=["200"],
                     ),
+                    _dry_run_example(bucket_types),
                 ],
             ),
             207: OpenApiResponse(
                 response=BulkDeleteResultSerializer,
                 description=(
-                    "Partial: at least one id was not found or was skipped. "
-                    "The body reports the outcome for every id."
+                    "Partial real delete: at least one id was not found or was "
+                    "skipped. The body reports the outcome for every id."
                 ),
                 examples=[_partial_example(bucket_types)],
             ),
@@ -142,8 +148,7 @@ def _bulk_delete_post_schema(
                 response=OpenApiTypes.STR,
                 description=(
                     "`ids` is missing, empty, over 500 long, or not a list of "
-                    "positive integers — or `?dry_run` is not `true`/`false`, "
-                    "is blank, or is repeated."
+                    "positive integers — or `?dry_run` is not a boolean."
                 ),
             ),
             401: UNAUTHORIZED_401_RESPONSE,

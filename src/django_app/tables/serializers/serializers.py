@@ -11,8 +11,9 @@ from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.session_models import Session
 from tables.serializers.naive_rag_serializers import DocumentConfigEstimateOverrideSerializer
+from tables.serializers.utils.list_fields import BoundedListField
 from tables.services.code_run_targets import CODE_RUN_TARGETS
-from tables.services.delete_services.usage import RefKind, SkipReason
+from tables.services.delete_services.usage import SkipReason
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
 from tables.validators.trigger_payload_validator import validate_trigger_payload
 
@@ -226,39 +227,29 @@ class BulkExportSerializer(serializers.Serializer):
         return list(dict.fromkeys(ids))
 
 
+class BulkDeleteQuerySerializer(serializers.Serializer):
+    dry_run = serializers.BooleanField(
+        default=False,
+        help_text=(
+            "Preview only: report what would be deleted and the usage that blocks "
+            "the rest, without deleting anything. A preview always responds 200. "
+            "This is a query parameter: a `dry_run` field in the request body is "
+            "ignored and the call runs as a real delete."
+        ),
+    )
+
+
 class BulkDeleteRequestSerializer(serializers.Serializer):
-    """Request body for every bulk-delete action (BulkDeleteActionMixin).
-
-    The algorithm is shared through BaseDeleteService; each entity declares only
-    its deletable scope and its referencing sources. `dry_run` is not part of the
-    body — it selects the operation, so it travels as a query parameter, read by
-    BulkDeleteActionMixin.
-    """
-
-    ids = serializers.ListField(
+    ids = BoundedListField(
         child=serializers.IntegerField(min_value=1),
         allow_empty=False,
         max_length=500,
         help_text="List of entity IDs to delete",
     )
 
-    def to_internal_value(self, data):
-        """Reject an oversized `ids` list before validating any of its items.
-
-        ListField validates every item first and applies `max_length` after, so
-        an oversized list of junk would come back as one error per item.
-        """
-        ids = data.get("ids") if isinstance(data, dict) else None
-        ids_field = self.fields["ids"]
-        if isinstance(ids, list) and len(ids) > ids_field.max_length:
-            message = ids_field.error_messages["max_length"].format(max_length=ids_field.max_length)
-            raise serializers.ValidationError({"ids": [message]})
-        return super().to_internal_value(data)
-
 
 class UsageRefSerializer(serializers.Serializer):
     resource_type = serializers.ChoiceField(choices=ResourceType.choices)
-    kind = serializers.ChoiceField(choices=RefKind.choices)
     id = serializers.IntegerField()
     name = serializers.CharField(allow_null=True)
 
@@ -283,12 +274,10 @@ class SkippedEntrySerializer(serializers.Serializer):
 
 
 class BulkDeleteResultSerializer(serializers.Serializer):
-    """The response of every bulk-delete action, for every entity.
+    """Response of every bulk-delete action.
 
-    `usage` is keyed by entity id; JSON object keys are always strings, so those
-    keys arrive as strings while every other id field is an integer. `usage` is
-    populated on a dry run only — a real delete returns `{}`, keeping the key
-    present so the shape never varies.
+    `usage` is keyed by entity id (strings, as JSON keys) and is filled on a dry
+    run only; a real delete returns `{}`.
     """
 
     dry_run = serializers.BooleanField()

@@ -38,9 +38,9 @@ def test_response_carries_empty_skipped_and_usage_like_every_sibling(org_a):
     """Present and empty, never absent -- a client needs no special case."""
     version = _version(org_a)
 
-    result = GraphVersionDeleteService().bulk_delete(
-        [version.id], org_a.id, _no_permissions(), dry_run=True, deleted_by=None
-    )
+    result = GraphVersionDeleteService(
+        org_id=org_a.id, permissions=_no_permissions(), user=None
+    ).preview([version.id])
 
     assert result.skipped == []
     assert set(result.usage) == {version.id}
@@ -63,9 +63,9 @@ def test_bulk_delete_soft_deletes_the_version_without_recording_a_deleter(
         email="version-deleter@example.com", password="StrongPass123!"
     )
 
-    result = GraphVersionDeleteService().bulk_delete(
-        [version.id], org_a.id, _no_permissions(), deleted_by=user
-    )
+    result = GraphVersionDeleteService(
+        org_id=org_a.id, permissions=_no_permissions(), user=user
+    ).delete([version.id])
 
     assert result.deleted_ids == [version.id]
     assert GraphVersion.all_objects.get(id=version.id).active is False
@@ -81,9 +81,9 @@ def test_another_orgs_version_is_not_found(org_a, org_b):
     """The org is reached through the parent graph; GraphVersion has no org column."""
     foreign = _version(org_b)
 
-    result = GraphVersionDeleteService().bulk_delete(
-        [foreign.id], org_a.id, _no_permissions(), deleted_by=None
-    )
+    result = GraphVersionDeleteService(
+        org_id=org_a.id, permissions=_no_permissions(), user=None
+    ).delete([foreign.id])
 
     assert result.not_found_ids == [foreign.id]
     assert GraphVersion.objects.filter(id=foreign.id).exists()

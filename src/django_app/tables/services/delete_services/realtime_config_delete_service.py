@@ -1,4 +1,3 @@
-from rbac.access.effective import EffectivePermissions
 from rbac.models.enums import ResourceType
 from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
@@ -9,55 +8,30 @@ from tables.models.realtime_models import (
 from tables.services.delete_services.base_delete_service import BaseDeleteService
 from tables.services.delete_services.usage import (
     BucketCollector,
-    RefKind,
     UsageReport,
     build_reports,
 )
 
 
 class _ProviderRealtimeConfigDeleteService(BaseDeleteService):
-    """Shared by the three live realtime provider configs.
+    """Realtime provider config delete: usage is the agents configured to use it.
 
-    It sets no `model`, so it stays abstract; only the three subclasses below
-    can be instantiated.
-
-    They differ only in model and in the name of the FK pointing at them, and
-    that FK has the same name on every referencing model -- so one
-    `collect_usage`, parametrised by `config_field`, serves all three.
-
-    Usage is one AGENTS bucket fed by `RealtimeAgentDefinition`. It is
-    primary-keyed on the `agents.AgentDefinition` it extends, so the reference
-    id *is* the agent id.
-
-    The deprecated `RealtimeAgent` (extending `tables.Agent`) is not counted:
-    it has no API or UI, and its FK to the config is SET_NULL.
-
-    `RealtimeAgentChat` is deliberately **not** counted, though it also holds an
-    FK to the config. It is a session snapshot: it copies wake word, voice,
-    language and the rest precisely so it survives the config going away. A
-    record *of* past use is not a dependency. Counting it would not preserve
-    history either -- the FK is SET_NULL, so a caller who can see the chats
-    could still delete and null every link after a warning; it would only make
-    configs undeletable for callers who cannot. Accepted loss: `model_name`
-    lives on the config and is not snapshotted, so a past session stops showing
-    which model it used once its config is deleted. The agent link survives.
+    Subclasses set `model` and the FK name `config_field`. `RealtimeAgentChat` is
+    not counted: a session snapshot is a record of past use, not a dependency.
     """
 
     config_field: str
 
-    def collect_usage(
-        self, ids: list[int], org_id: int, effective: EffectivePermissions
-    ) -> dict[int, UsageReport]:
+    def collect_usage(self, ids: list[int]) -> dict[int, UsageReport]:
         """The agents configured to use each config."""
-        agents = BucketCollector.for_resource(ResourceType.AGENTS, effective)
+        agents = BucketCollector.for_resource(ResourceType.AGENTS, self.permissions)
 
         if ids:
             column = f"{self.config_field}_id"
             agents.add_rows(
                 RealtimeAgentDefinition.objects.filter(
-                    agent_definition__org_id=org_id, **{f"{column}__in": ids}
-                ).values_list(column, "agent_definition_id", "agent_definition__name"),
-                kind=RefKind.AGENT,
+                    agent_definition__org_id=self.org_id, **{f"{column}__in": ids}
+                ).values_list(column, "agent_definition_id", "agent_definition__name")
             )
 
         return build_reports(ids, [agents])

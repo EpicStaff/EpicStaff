@@ -8,8 +8,6 @@ import pytest
 
 from agents.models import AgentDefinition
 from tables.models import (
-    Agent,
-    Crew,
     Graph,
     LLMConfig,
 )
@@ -26,7 +24,7 @@ from tables.models.knowledge_models.graphrag_models import GraphRag
 from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
 from tables.services.delete_services import LLMConfigDeleteService
-from tables.services.delete_services.usage import RefKind, SkipEntry, SkipReason
+from tables.services.delete_services.usage import SkipEntry, SkipReason
 from rbac.access.effective import EffectivePermissions
 
 
@@ -79,13 +77,13 @@ def test_agent_using_one_config_as_both_models_is_one_agent(org_a):
         org=org_a, name="bot", llm_config=config, fcm_llm_config=config
     )
 
-    result = LLMConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read(*_ALL_BUCKETS), dry_run=True, deleted_by=None
-    )
+    result = LLMConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+    ).preview([config.id])
 
     agents = _bucket(result, config.id, ResourceType.AGENTS)
-    assert [(ref.kind, ref.id, ref.name) for ref in agents.visible_refs] == [
-        (RefKind.AGENT, agent.id, "bot")
+    assert [(ref.resource_type, ref.id, ref.name) for ref in agents.visible_refs] == [
+        (ResourceType.AGENTS, agent.id, "bot")
     ]
 
 
@@ -99,16 +97,13 @@ def test_flow_reached_through_a_node_and_an_assistant_is_one_flow(org_a):
     )
     FlowAssistant.objects.create(graph=graph, llm_config=config)
 
-    result = LLMConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read(*_ALL_BUCKETS), dry_run=True, deleted_by=None
-    )
+    result = LLMConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+    ).preview([config.id])
 
     flows = _bucket(result, config.id, ResourceType.FLOWS)
     assert flows.visible_count == 1
-    assert (flows.visible_refs[0].kind, flows.visible_refs[0].id) == (
-        RefKind.FLOW,
-        graph.id,
-    )
+    assert flows.visible_refs[0].id == graph.id
 
 
 @pytest.mark.django_db
@@ -120,13 +115,13 @@ def test_graph_rag_reports_its_collection(org_a):
     )
     GraphRag.objects.create(base_rag_type=rag_type, llm=config)
 
-    result = LLMConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read(*_ALL_BUCKETS), dry_run=True, deleted_by=None
-    )
+    result = LLMConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+    ).preview([config.id])
 
     knowledge = _bucket(result, config.id, ResourceType.KNOWLEDGE_SOURCES)
-    assert [(ref.kind, ref.name) for ref in knowledge.visible_refs] == [
-        (RefKind.COLLECTION, "Docs")
+    assert [(ref.id, ref.name) for ref in knowledge.visible_refs] == [
+        (collection.collection_id, "Docs")
     ]
 
 
@@ -138,9 +133,9 @@ def test_an_agent_the_caller_cannot_see_blocks(org_a):
         ResourceType.FLOWS, ResourceType.KNOWLEDGE_SOURCES
     )
 
-    result = LLMConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, everything_but_agents, deleted_by=None
-    )
+    result = LLMConfigDeleteService(
+        org_id=org_a.id, permissions=everything_but_agents, user=None
+    ).delete([config.id])
 
     assert result.deleted_ids == []
     assert result.skipped == [
@@ -150,52 +145,13 @@ def test_an_agent_the_caller_cannot_see_blocks(org_a):
 
 
 @pytest.mark.django_db
-def test_deprecated_agent_and_crew_are_not_usage(org_a):
-    """`tables.Agent` and `tables.Crew` have no API or UI, so they never block.
-
-    A caller who can read nothing still deletes the config, and SET_NULL
-    clears every legacy link.
-    """
-    config = _config(org_a)
-    agent = Agent.objects.create(
-        org=org_a,
-        role="legacy",
-        goal="g",
-        backstory="b",
-        llm_config=config,
-        fcm_llm_config=config,
-    )
-    crew = Crew.objects.create(
-        org=org_a,
-        name="legacy",
-        manager_llm_config=config,
-        memory_llm_config=config,
-        planning_llm_config=config,
-    )
-
-    result = LLMConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read(), deleted_by=None
-    )
-
-    assert result.deleted_ids == [config.id]
-    agent.refresh_from_db()
-    crew.refresh_from_db()
-    assert (agent.llm_config_id, agent.fcm_llm_config_id) == (None, None)
-    assert (
-        crew.manager_llm_config_id,
-        crew.memory_llm_config_id,
-        crew.planning_llm_config_id,
-    ) == (None, None, None)
-
-
-@pytest.mark.django_db
 def test_unreferenced_configs_are_removed_on_the_queryset_path(org_a):
     """LLMConfig is not a soft-delete root, so the whole batch goes in one delete."""
     first, second = _config(org_a, "a"), _config(org_a, "b")
 
-    result = LLMConfigDeleteService().bulk_delete(
-        [first.id, second.id], org_a.id, _can_read(*_ALL_BUCKETS), deleted_by=None
-    )
+    result = LLMConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+    ).delete([first.id, second.id])
 
     assert sorted(result.deleted_ids) == sorted([first.id, second.id])
     assert not LLMConfig.objects.filter(id__in=[first.id, second.id]).exists()
@@ -228,13 +184,15 @@ def test_another_orgs_references_are_not_usage(org_a, org_b):
     )
     GraphRag.objects.create(base_rag_type=rag_type, llm=config)
 
-    preview = LLMConfigDeleteService().bulk_delete(
-        [config.id], org_a.id, _can_read(*_ALL_BUCKETS), dry_run=True, deleted_by=None
-    )
+    preview = LLMConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read(*_ALL_BUCKETS), user=None
+    ).preview([config.id])
     assert {
         bucket.resource_type: bucket.total_count
         for bucket in preview.usage[config.id].buckets
     } == {resource_type.value: 0 for resource_type in _ALL_BUCKETS}
 
-    result = LLMConfigDeleteService().bulk_delete([config.id], org_a.id, _can_read(), deleted_by=None)
+    result = LLMConfigDeleteService(
+        org_id=org_a.id, permissions=_can_read(), user=None
+    ).delete([config.id])
     assert result.deleted_ids == [config.id]

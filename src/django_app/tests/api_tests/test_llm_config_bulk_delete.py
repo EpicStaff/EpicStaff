@@ -55,8 +55,8 @@ def by_type(usage, resource_type):
     )
 
 
-def _ref(resource_type, kind, entity_id, name):
-    return {"resource_type": resource_type, "kind": kind, "id": entity_id, "name": name}
+def _ref(resource_type, entity_id, name):
+    return {"resource_type": resource_type, "id": entity_id, "name": name}
 
 
 def _preview_usage(client, config_id):
@@ -144,7 +144,7 @@ def test_bulk_delete_agents_bucket_visible_proceeds(django_user_model, org_a):
     agents_usage = by_type(_preview_usage(client, config.id), "agents")
     assert agents_usage["visible_count"] == 1
     assert agents_usage["visible_sample"] == [
-        _ref("agents", "agent", agent_def.id, "ad1")
+        _ref("agents", agent_def.id, "ad1")
     ]
 
     resp = client.post(
@@ -197,7 +197,7 @@ def test_bulk_delete_flows_bucket_visible_proceeds(django_user_model, org_a):
 
     flows_usage = by_type(_preview_usage(client, config.id), "flows")
     assert flows_usage["visible_sample"] == [
-        _ref("flows", "flow", graph.id, graph.name)
+        _ref("flows", graph.id, graph.name)
     ]
 
     resp = client.post(
@@ -223,7 +223,7 @@ def test_bulk_delete_knowledge_sources_bucket_visible_and_hidden(
 
     ks_usage = by_type(_preview_usage(admin, config.id), "knowledge_sources")
     assert ks_usage["visible_sample"] == [
-        _ref("knowledge_sources", "collection", collection.collection_id, "Docs")
+        _ref("knowledge_sources", collection.collection_id, "Docs")
     ]
     resp = admin.post(
         "/api/llm-configs/bulk-delete/", {"ids": [config.id]}, format="json"
@@ -280,7 +280,7 @@ def test_bulk_delete_mixed_buckets_one_hidden_still_blocked(django_user_model, o
     assert usage["blocked"] is True
     agents_usage = by_type(usage, "agents")
     assert agents_usage["visible_count"] == 1
-    assert agents_usage["visible_sample"] == [_ref("agents", "agent", agent.id, "r")]
+    assert agents_usage["visible_sample"] == [_ref("agents", agent.id, "r")]
     assert by_type(usage, "knowledge_sources")["visible_count"] == 0
 
 
