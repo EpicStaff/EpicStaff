@@ -228,7 +228,7 @@ function openOnChangesTab({ component, type, references, inputs, reveal }: Panel
             { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => false } },
             // The flow graph provides it to the panels.
             KeyValueEntryDraftsService,
-            provideChangesTabDiff(references),
+            provideChangesTabDiff({ missingReferences: references }),
         ],
     });
     renderOnlyMissingReferenceNotes(component, [NodeSecretsFieldComponent, InputMapStandInComponent]);

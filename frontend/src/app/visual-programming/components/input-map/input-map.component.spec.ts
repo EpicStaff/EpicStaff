@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChangeDetectorRef, Component, CUSTOM_ELEMENTS_SCHEMA, NO_ERRORS_SCHEMA, signal } from '@angular/core';
@@ -11,6 +12,9 @@ import { ConfigService } from '../../../services/config';
 import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
+import { MapKeyChange } from '../../utils/diff';
+import { DiffFieldMarkComponent } from '../diff-field-mark/diff-field-mark.component';
+import { provideChangesTabDiff } from '../missing-reference-note/missing-reference-note.testing';
 import { InputMapComponent } from './input-map.component';
 
 // The start node state a developer reported the picker order with.
@@ -320,5 +324,124 @@ describe('InputMapComponent last successful session lookup', () => {
         fixture.detectChanges();
 
         expect(searchedNodeNames()).toEqual(['Py #2 #42']);
+    });
+});
+
+// A read-only Input List showing a version (the version preview), with what a restore does to each row.
+@Component({
+    imports: [ReactiveFormsModule, InputMapComponent],
+    template: `<form [formGroup]="form">
+        <app-input-map
+            [readonly]="true"
+            [rowChanges]="rowChanges()"
+        />
+    </form>`,
+})
+class VersionInputListHostComponent {
+    readonly rowChanges = signal<MapKeyChange[] | null>(null);
+    readonly form: FormGroup = new FormBuilder().group({
+        input_map: inputListOf([
+            ['user', 'variables.account'],
+            ['fresh', 'variables.fresh'],
+            ['kept', 'variables.kept'],
+        ]),
+        test_input: new FormArray([]),
+    });
+}
+
+function inputListOf(rows: [key: string, value: string][]): FormArray {
+    return new FormArray(rows.map(([key, value]) => new FormBuilder().group({ key: [key], value: [value] })));
+}
+
+describe('InputMapComponent rows on the Changes tab of a version preview', () => {
+    let fixture: ComponentFixture<VersionInputListHostComponent>;
+
+    const RESTORE: MapKeyChange[] = [
+        { key: 'fresh', status: 'added', current: null, version: 'variables.fresh' },
+        { key: 'user', status: 'changed', current: 'variables.user', version: 'variables.account' },
+        { key: 'gone', status: 'deleted', current: 'variables.gone', version: null },
+    ];
+
+    const ROW_MARKS: [className: string, mark: string][] = [
+        ['diff-field-mark--shown', ' (changed)'],
+        ['readonly-row--added', ' (added)'],
+        ['readonly-row--removed', ' (removed)'],
+    ];
+
+    /** Each row as the user reads it, with its diff mark: `changed` / `added` / `removed`, or none. */
+    const rows = (): string[] =>
+        Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.readonly-row'), (row) => {
+            const cells = Array.from(row.querySelectorAll('.readonly-cell'), (cell) =>
+                cell.textContent?.replace(/\s+/g, ' ').trim()
+            );
+            const mark = ROW_MARKS.find(([className]) => row.classList.contains(className))?.[1] ?? '';
+            return `${cells.join(' = ')}${mark}`;
+        });
+
+    /** `versionRows`: the rows the version has, in place of the default three. */
+    function render(rowChanges: MapKeyChange[] | null, versionRows?: [key: string, value: string][]): void {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowService, useValue: { startNodeInitialState: signal(null) } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: SidePanelService, useValue: {} },
+                provideChangesTabDiff(),
+            ],
+        });
+        TestBed.overrideComponent(InputMapComponent, {
+            set: {
+                imports: [ReactiveFormsModule, NgTemplateOutlet, DiffFieldMarkComponent],
+                schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            },
+        });
+        fixture = TestBed.createComponent(VersionInputListHostComponent);
+        if (versionRows) fixture.componentInstance.form.setControl('input_map', inputListOf(versionRows));
+        fixture.componentInstance.rowChanges.set(rowChanges);
+        fixture.detectChanges();
+    }
+
+    afterEach(() => fixture.destroy());
+
+    it('marks each row with what a restore does to it, and lists the rows a restore removes last', () => {
+        render(RESTORE);
+
+        expect(rows()).toEqual([
+            'user = variables.account (changed)',
+            'Restore adds this input: fresh = variables.fresh (added)',
+            'kept = variables.kept',
+            'Restore removes this input: gone = variables.gone (removed)',
+        ]);
+    });
+
+    it('shows only the rows a restore removes when the version has none (no blank row above them)', () => {
+        // A panel's form holds one blank pair when the node has no input list.
+        render([{ key: 'gone', status: 'deleted', current: 'variables.gone', version: null }], [['', '']]);
+
+        expect(rows()).toEqual(['Restore removes this input: gone = variables.gone (removed)']);
+    });
+
+    it('shows the current value of a changed row on hover; the other rows have no tooltip', () => {
+        render(RESTORE);
+        const [changed, added, , removed] = Array.from(
+            (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.readonly-row')
+        );
+
+        for (const row of [added, removed]) row.dispatchEvent(new Event('mouseenter'));
+        fixture.detectChanges();
+        expect(document.querySelector('.diff-field-mark__tooltip')).toBeNull();
+
+        changed.dispatchEvent(new Event('mouseenter'));
+        fixture.detectChanges();
+        expect(document.querySelector('.diff-field-mark__tooltip-value')?.textContent?.replace(/\s/g, '')).toBe(
+            'variables.user'
+        );
+    });
+
+    it('shows the rows as they are without row changes, as everywhere but the Changes tab', () => {
+        render(null);
+
+        expect(rows()).toEqual(['user = variables.account', 'fresh = variables.fresh', 'kept = variables.kept']);
     });
 });

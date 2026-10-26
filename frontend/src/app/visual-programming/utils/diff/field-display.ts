@@ -1,3 +1,5 @@
+import { formatClockDuration } from '@shared/utils';
+
 import { FieldKind } from './types';
 
 /**
@@ -5,10 +7,18 @@ import { FieldKind } from './types';
  * Display only: the diff engine never reads labels or kinds; the field panel calls `fieldKind`.
  * `kind` is set where the value alone cannot tell it (ids of linked entities and nodes, text that
  * may be short); otherwise `fieldKind` derives it.
+ * `format` turns a stored value into the text the panel field shows for it (e.g. seconds as a clock), so the
+ * hover tooltip reads like the field; such a value is shown and struck as a whole.
  */
 interface FieldDisplay {
     label: string;
     kind?: FieldKind;
+    format?: (value: unknown) => string;
+}
+
+/** Seconds as the execution timeout field shows them: `90` → `00:01:30`. */
+function clockDuration(value: unknown): string {
+    return typeof value === 'number' ? formatClockDuration(value) : String(value);
 }
 
 export const FIELD_DISPLAY = {
@@ -23,7 +33,7 @@ export const FIELD_DISPLAY = {
     'python_code.entrypoint': { label: 'Entrypoint' },
     'python_code.libraries': { label: 'Libraries' },
     'python_code.secret_names': { label: 'Secrets' },
-    'python_code.execution_timeout': { label: 'Execution timeout' },
+    'python_code.execution_timeout': { label: 'Execution timeout', format: clockDuration },
     use_storage: { label: 'Use storage' },
     webhook_trigger: { label: 'Webhook trigger', kind: 'entityRef' },
     telegram_bot_api_key_secret_id: { label: 'Bot API key secret', kind: 'entityRef' },
@@ -86,7 +96,7 @@ export const FIELD_DISPLAY = {
     'pre_computation.output_variable_path': { label: 'Pre-computation output variable path' },
     'pre_computation.libraries': { label: 'Pre-computation libraries' },
     'pre_computation.secret_names': { label: 'Pre-computation secrets' },
-    'pre_computation.execution_timeout': { label: 'Pre-computation execution timeout' },
+    'pre_computation.execution_timeout': { label: 'Pre-computation execution timeout', format: clockDuration },
     pre_use_storage: { label: 'Pre-computation uses storage' },
     post_computation: { label: 'Post-computation' },
     'post_computation.code': { label: 'Post-computation code', kind: 'text' },
@@ -94,7 +104,7 @@ export const FIELD_DISPLAY = {
     'post_computation.output_variable_path': { label: 'Post-computation output variable path' },
     'post_computation.libraries': { label: 'Post-computation libraries' },
     'post_computation.secret_names': { label: 'Post-computation secrets' },
-    'post_computation.execution_timeout': { label: 'Post-computation execution timeout' },
+    'post_computation.execution_timeout': { label: 'Post-computation execution timeout', format: clockDuration },
     post_use_storage: { label: 'Post-computation uses storage' },
     default_llm_config: { label: 'Default LLM', kind: 'entityRef' },
     prompts: { label: 'Prompts' },
@@ -129,4 +139,11 @@ export function fieldKind(field: string, current: unknown, version: unknown): Fi
         return 'text';
     }
     return 'scalar';
+}
+
+/** The field's display formatter, or `undefined` when its values are shown as they are. */
+export function fieldFormat(field: string): ((value: unknown) => string) | undefined {
+    return Object.hasOwn(FIELD_DISPLAY, field)
+        ? (FIELD_DISPLAY as Readonly<Record<string, FieldDisplay>>)[field].format
+        : undefined;
 }

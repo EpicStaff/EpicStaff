@@ -23,7 +23,9 @@ function render(fields: readonly FieldName[], providers: Provider[]): HTMLElemen
 }
 
 function textsShown(fields: readonly FieldName[], references: readonly MissingReference[]): string[] {
-    return shownMissingReferenceNotes(render(fields, [provideChangesTabDiff(references)])).map(({ text }) => text);
+    return shownMissingReferenceNotes(render(fields, [provideChangesTabDiff({ missingReferences: references })])).map(
+        ({ text }) => text
+    );
 }
 
 describe('MissingReferenceNoteComponent', () => {
@@ -137,7 +139,11 @@ describe('MissingReferenceNoteComponent', () => {
     it('renders a stored name as text, never as markup', () => {
         const root = render(
             ['key_value_table'],
-            [provideChangesTabDiff([missingReference('key_value_table', '<img src=x onerror=alert(1)>')])]
+            [
+                provideChangesTabDiff({
+                    missingReferences: [missingReference('key_value_table', '<img src=x onerror=alert(1)>')],
+                }),
+            ]
         );
 
         expect(shownMissingReferenceNotes(root).map(({ text }) => text)).toEqual([

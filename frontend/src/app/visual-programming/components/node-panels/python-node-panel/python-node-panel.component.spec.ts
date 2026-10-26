@@ -1,8 +1,11 @@
+import { NgTemplateOutlet } from '@angular/common';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormArray, ReactiveFormsModule } from '@angular/forms';
 import { By } from '@angular/platform-browser';
-import { ExecutionTimeoutFormField } from '@shared/components';
+import { CustomInputComponent, ExecutionTimeoutFieldComponent, ExecutionTimeoutFormField } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { Subject } from 'rxjs';
 
@@ -21,8 +24,13 @@ import { FLOW_EDITOR_PREVIEW } from '../../../core/providers/flow-editor-preview
 import { FlowService } from '../../../services/flow.service';
 import { PollEvent, PythonCodeRunService } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { FieldChange, FieldName, NodeDiffStatus } from '../../../utils/diff';
 import { mapPythonNodeToModel } from '../../../utils/load/nodes/python-node.mapper';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { provideChangesTabDiff } from '../../missing-reference-note/missing-reference-note.testing';
+import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
     NODE_SAVING_MESSAGE,
     SAVE_GRAPH_BEFORE_CODE_RUN_MESSAGE,
@@ -664,5 +672,249 @@ describe('PythonNodePanelComponent Input List and main() signature', () => {
 
             expect(panel.pythonCode).toBe('def main(count: int, extra, *args):\n    return count\n');
         });
+    });
+});
+
+type DrawnBoxStyle = 'display' | 'paddingTop';
+/** What jsdom resolves of a value box the mark draws: while marked, and without the mark. */
+interface DrawnBox {
+    marked: Partial<Record<DrawnBoxStyle, string>>;
+    plain: Partial<Record<DrawnBoxStyle, string>>;
+}
+
+describe('PythonNodePanelComponent on the Changes tab of a version preview', () => {
+    let fixture: ComponentFixture<PythonNodePanelComponent>;
+
+    afterEach(() => fixture.destroy());
+
+    function change(field: FieldName, current: unknown, version: unknown): FieldChange {
+        return { path: field, field, status: 'changed', current, version };
+    }
+
+    /** Opens the node with its own template and the fields it marks real (the code editor is not rendered). */
+    function open(status: NodeDiffStatus, fields: FieldChange[]): HTMLElement {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                provideLoadedExecutionTimeoutLimits(),
+                { provide: FLOW_EDITOR_PREVIEW, useValue: true },
+                { provide: PermissionsService, useValue: { can: () => true, canEditSecrets: () => false } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                provideChangesTabDiff({ status, fields }),
+            ],
+        });
+        TestBed.overrideComponent(PythonNodePanelComponent, {
+            set: {
+                imports: [
+                    ReactiveFormsModule,
+                    CustomInputComponent,
+                    InputMapComponent,
+                    NodeSecretsFieldComponent,
+                    ExecutionTimeoutFieldComponent,
+                    NodeStorageSectionComponent,
+                    DiffFieldMarkComponent,
+                ],
+                schemas: [NO_ERRORS_SCHEMA],
+            },
+        });
+        TestBed.overrideComponent(InputMapComponent, {
+            set: {
+                imports: [ReactiveFormsModule, NgTemplateOutlet, DiffFieldMarkComponent],
+                schemas: [NO_ERRORS_SCHEMA],
+            },
+        });
+        fixture = TestBed.createComponent(PythonNodePanelComponent);
+        fixture.componentRef.setInput('node', {
+            ...pythonNode,
+            input_map: { user: 'variables.account', kept: 'variables.kept' },
+        } as PythonNodeModel);
+        fixture.detectChanges();
+        return fixture.nativeElement;
+    }
+
+    /** Each marked field, named by its form control or, for a field without one, by its element. */
+    const markedFields = (root: HTMLElement): string[] =>
+        Array.from(root.querySelectorAll('app-diff-field-mark.diff-field-mark--shown'), (mark) => {
+            const field = mark.firstElementChild!;
+            return field.getAttribute('formcontrolname') ?? field.tagName.toLowerCase();
+        });
+
+    /**
+     * Where each field draws its mark: the value box gets the border and the badge (`badgeOn`, the box or an element
+     * around it that does not clip the badge); the label stays outside. jsdom does not resolve the border colour
+     * (a CSS variable), so the badge's anchor (`position: relative` only while marked) shows which element is marked.
+     * A field whose value has no box of its own gets one drawn (`drawnBox`: what jsdom resolves of it, marked and
+     * plain). The timeout control and the secrets picker only change their border colour, which jsdom cannot
+     * resolve, so only their badge anchor is checked.
+     */
+    const READ_ONLY_VALUE_BOX: DrawnBox = {
+        marked: { display: 'block', paddingTop: '8px' },
+        plain: { display: 'inline', paddingTop: '0' },
+    };
+    const FIELDS: {
+        change: FieldChange;
+        marked: string;
+        badgeOn: string;
+        label: string | null;
+        drawnBox: DrawnBox | null;
+    }[] = [
+        {
+            change: change('node_name', 'Fetch', 'Fetch v2'),
+            marked: 'node_name',
+            badgeOn: '.readonly-value',
+            label: 'label',
+            drawnBox: READ_ONLY_VALUE_BOX,
+        },
+        {
+            change: change('output_variable_path', null, 'variables.result'),
+            marked: 'output_variable_path',
+            badgeOn: '.readonly-value',
+            label: 'label',
+            drawnBox: READ_ONLY_VALUE_BOX,
+        },
+        {
+            change: change('python_code.libraries', ['requests'], ['requests', 'numpy']),
+            marked: 'libraries',
+            badgeOn: '.readonly-value',
+            label: 'label',
+            drawnBox: READ_ONLY_VALUE_BOX,
+        },
+        {
+            change: change('python_code.secret_names', ['DB_PASS'], ['STRIPE_KEY']),
+            marked: 'app-node-secrets-field',
+            badgeOn: '.secrets-trigger',
+            label: '.label-container label',
+            drawnBox: null,
+        },
+        {
+            change: change('python_code.execution_timeout', 30, 60),
+            marked: 'app-execution-timeout-field',
+            // The border goes on the control inside the group; not checked (see above).
+            badgeOn: '.execution-timeout__group',
+            label: 'app-tooltip',
+            drawnBox: null,
+        },
+        // A toggle has no value box: its row, label included, is boxed.
+        {
+            change: change('use_storage', false, true),
+            marked: 'app-node-storage-section',
+            badgeOn: '.storage-header',
+            label: null,
+            // The row stays a flex row; only the box is drawn around it.
+            drawnBox: { marked: { paddingTop: '8px' }, plain: { paddingTop: '0' } },
+        },
+    ];
+
+    const positionOf = (element: Element): string => getComputedStyle(element).position;
+    /** The styles of `element` named in `expected`, to compare with it. */
+    const stylesOf = (element: Element, expected: Partial<Record<DrawnBoxStyle, string>>) =>
+        Object.fromEntries(
+            Object.keys(expected).map((name) => [name, getComputedStyle(element)[name as DrawnBoxStyle]])
+        );
+
+    it.each(FIELDS)(
+        'marks $change.field, and only it, when a restore changes it',
+        ({ change: fieldChange, marked }) => {
+            expect(markedFields(open('changed', [fieldChange]))).toEqual([marked]);
+        }
+    );
+
+    it.each(FIELDS)(
+        'draws the mark of $change.field on its value, not on its label',
+        ({ change: fieldChange, badgeOn, label, drawnBox }) => {
+            const mark = open('changed', [fieldChange]).querySelector('app-diff-field-mark.diff-field-mark--shown')!;
+            const valueBox = mark.querySelector(badgeOn)!;
+
+            expect(positionOf(valueBox)).toBe('relative');
+            if (drawnBox) expect(stylesOf(valueBox, drawnBox.marked)).toEqual(drawnBox.marked);
+            if (label === null) return;
+            const labelElement = mark.querySelector(label)!;
+            expect(valueBox.contains(labelElement)).toBe(false);
+            expect(positionOf(labelElement)).toBe('static');
+        }
+    );
+
+    it('leaves every field as it is without a field change, as in the live editor', () => {
+        const root = open('changed', []);
+
+        expect(root.querySelector('.diff-value-marked')).toBeNull();
+        for (const { badgeOn, drawnBox } of FIELDS) {
+            const valueBoxes = Array.from(root.querySelectorAll(badgeOn));
+            expect(valueBoxes.length).toBeGreaterThan(0);
+            expect(valueBoxes.map(positionOf)).toEqual(valueBoxes.map(() => 'static'));
+            if (!drawnBox) continue;
+            for (const valueBox of valueBoxes) expect(stylesOf(valueBox, drawnBox.plain)).toEqual(drawnBox.plain);
+        }
+    });
+
+    /** Hovers the marked field; its tooltip's current value, struck parts in brackets. */
+    function hoverTooltip(root: HTMLElement): string {
+        root.querySelector('app-diff-field-mark.diff-field-mark--shown')!.dispatchEvent(new Event('mouseenter'));
+        fixture.detectChanges();
+        return Array.from(document.querySelectorAll<HTMLElement>('.diff-field-mark__tooltip-value > span'))
+            .map((part) =>
+                part.classList.contains('diff-field-mark__struck') ? `[${part.textContent}]` : part.textContent
+            )
+            .join('');
+    }
+
+    it.each([
+        { kind: 'a timeout of its own', current: 90, version: 600, shown: '[00:01:30]' },
+        // The field shows the default timeout then (120 seconds in these limits), and so does the tooltip.
+        { kind: 'no timeout of its own', current: null, version: 600, shown: '[00:02:00]' },
+        // A restore pins the default: the same clock, so nothing is struck.
+        {
+            kind: 'no timeout of its own, the version pinning the default',
+            current: null,
+            version: 120,
+            shown: '00:02:00',
+        },
+    ])(
+        'shows the current execution timeout of a node with $kind as the clock the field shows',
+        ({ current, version, shown }) => {
+            const root = open('changed', [change('python_code.execution_timeout', current, version)]);
+
+            expect(hoverTooltip(root)).toBe(shown);
+        }
+    );
+
+    it('marks no field for a change of the code alone (the code diff comes separately)', () => {
+        expect(markedFields(open('changed', [change('python_code.code', 'a = 1', 'a = 2')]))).toEqual([]);
+    });
+
+    it('marks the Input List per row, not as a whole field', () => {
+        const root = open('changed', [
+            change(
+                'input_map',
+                { user: 'variables.user', kept: 'variables.kept', gone: 'variables.gone' },
+                { user: 'variables.account', kept: 'variables.kept' }
+            ),
+        ]);
+
+        expect(markedFields(root)).toEqual([]);
+        const rowMarks = Array.from(root.querySelectorAll<HTMLElement>('.readonly-row'), (row) => [
+            Array.from(row.querySelectorAll('.readonly-cell'), (cell) =>
+                cell.textContent?.replace(/\s+/g, ' ').trim()
+            ).join(' '),
+            row.classList.contains('diff-field-mark--shown') || row.classList.contains('readonly-row--removed'),
+        ]);
+        expect(rowMarks).toEqual([
+            ['user variables.account', true],
+            ['kept variables.kept', false],
+            ['Restore removes this input: gone variables.gone', true],
+        ]);
+    });
+
+    it.each(['added', 'deleted'] as const)('marks nothing on a node whose status is %s', (status) => {
+        const root = open(status, [
+            change('node_name', 'Fetch', 'Fetch v2'),
+            change('input_map', { user: 'variables.user' }, { user: 'variables.account' }),
+        ]);
+
+        expect(markedFields(root)).toEqual([]);
+        expect(root.querySelector('.readonly-row.diff-field-mark--shown, .readonly-row--removed')).toBeNull();
     });
 });

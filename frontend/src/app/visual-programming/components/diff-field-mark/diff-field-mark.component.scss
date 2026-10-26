@@ -1,0 +1,62 @@
+@use '../../../../styles/diff-value-mark' as diff-value-mark;
+
+// Off the Changes tab the element form leaves the layout as if it were not there.
+:host(app-diff-field-mark) {
+    display: contents;
+}
+
+// Around a whole field: the wrapped form component draws the border, badge and focus ring on its value box.
+:host(app-diff-field-mark.diff-field-mark--shown) {
+    display: block;
+    outline: none;
+}
+
+// On an element that lays out its own value (a table row): the mark draws them itself, a border inside it so
+// nothing moves.
+:host([appDiffFieldMark].diff-field-mark--shown) {
+    position: relative;
+    box-shadow: inset 0 0 0 1px var(--color-diff-changed);
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+// Inside the row's corner: the table clips what sticks out. The glyph is the `ti ti-pencil` icon inside.
+.diff-field-mark__badge {
+    @include diff-value-mark.badge-look;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+}
+
+// The colours of the app's other tooltips (matTooltip), in both themes.
+.diff-field-mark__tooltip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    max-width: 320px;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    background-color: var(--mat-tooltip-container-color);
+    color: var(--mat-tooltip-supporting-text-color);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    pointer-events: none;
+}
+
+// Muted from the tooltip's own text colour: the tooltip is dark in both themes.
+.diff-field-mark__tooltip-label {
+    color: color-mix(in srgb, var(--mat-tooltip-supporting-text-color) 60%, transparent);
+    font-size: var(--text-caption-size);
+    font-weight: var(--text-caption-weight);
+    line-height: var(--text-caption-line-height);
+}
+
+.diff-field-mark__struck {
+    text-decoration: line-through;
+}

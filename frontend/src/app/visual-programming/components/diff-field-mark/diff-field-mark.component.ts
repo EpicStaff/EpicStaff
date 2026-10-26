@@ -1,0 +1,193 @@
+import { _IdGenerator, AriaDescriber } from '@angular/cdk/a11y';
+import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
+import { Component, computed, effect, ElementRef, inject, input, signal } from '@angular/core';
+
+import { NODE_PANEL_DIFF } from '../../core/providers/node-panel-diff.token';
+import {
+    DisplaySegment,
+    FieldChange,
+    fieldChangeFor,
+    FieldName,
+    fieldValueSegments,
+    showsFieldMarks,
+} from '../../utils/diff';
+
+/** The two sides of a changed value. */
+export type DiffFieldMarkChange = Pick<FieldChange, 'current' | 'version'>;
+
+const BADGE_LABEL = 'Restore changes this field';
+// Trial: the label above the value in the tooltip. Drop it here, in the template and in the styles to remove it.
+const CURRENT_VALUE_LABEL = 'Current canvas';
+
+/** Above the field, centred; below it when there is no room above. */
+const TOOLTIP_POSITIONS: ConnectedPosition[] = [
+    { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -8 },
+    { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 8 },
+];
+
+/**
+ * Marks a field of a node panel that a restore of the previewed version changes: a yellow border with a pen
+ * badge, and a tooltip with the current canvas value, the part a restore replaces struck through. The field
+ * itself shows the version value. Only on the Changes tab, on a node a restore changes; anywhere else it is
+ * invisible and leaves the layout alone.
+ *
+ * As an element it wraps a whole field (label and value): `<app-diff-field-mark [diffField]="'node_name'">`.
+ * It is then a focusable group named "Restore changes this field". The wrapped form component draws the border
+ * and the badge on its own value box (`styles/_diff-value-mark.scss`), under the `diff-value-marked` class this
+ * mark sets; the label stays outside the border. Rule: wrap exactly one form component, and one that includes
+ * `marked()`: the class reaches every component inside, and the mark turns off its own outline, so a component
+ * without `marked()` would show no border and no focus ring.
+ * As an attribute it marks an element that already lays out a value, e.g. a table row, and is then given
+ * the change itself: `<div appDiffFieldMark [diffChange]="change">`. The mark then draws the border and the
+ * badge on that element itself. A row may hold only cells, so the badge is hidden from screen readers and its
+ * words go into the description instead.
+ *
+ * The description ("Current canvas: …") lives outside the field (CDK AriaDescriber, as matTooltip does), so
+ * it adds nothing to a row; the visual tooltip repeats it and is hidden from screen readers.
+ */
+@Component({
+    selector: 'app-diff-field-mark, [appDiffFieldMark]',
+    imports: [OverlayModule],
+    template: `
+        <ng-content />
+        @if (change() !== null) {
+            @if (isRow) {
+                <span
+                    class="diff-field-mark__badge"
+                    aria-hidden="true"
+                    [attr.title]="badgeLabel"
+                >
+                    <i
+                        class="ti ti-pencil"
+                        aria-hidden="true"
+                    ></i>
+                </span>
+            } @else {
+                <span
+                    class="visually-hidden"
+                    [id]="labelId"
+                    >{{ badgeLabel }}</span
+                >
+            }
+        }
+        <ng-template
+            cdkConnectedOverlay
+            [cdkConnectedOverlayOrigin]="host"
+            [cdkConnectedOverlayOpen]="isOpen() && change() !== null"
+            [cdkConnectedOverlayPositions]="tooltipPositions"
+            (overlayKeydown)="onOverlayKeydown($event)"
+            (detach)="close()"
+        >
+            <div
+                class="diff-field-mark__tooltip"
+                aria-hidden="true"
+            >
+                <span class="diff-field-mark__tooltip-label">{{ currentValueLabel }}</span>
+                <span class="diff-field-mark__tooltip-value">
+                    @for (segment of segments(); track $index) {
+                        <span [class.diff-field-mark__struck]="segment.struck">{{ segment.text }}</span>
+                    }
+                </span>
+            </div>
+        </ng-template>
+    `,
+    styleUrls: ['./diff-field-mark.component.scss'],
+    host: {
+        '[class.diff-field-mark--shown]': 'change() !== null',
+        // The hook the wrapped form component styles its value box by (see the class docs).
+        '[class.diff-value-marked]': 'change() !== null && !isRow',
+        '[attr.tabindex]': 'change() !== null ? 0 : null',
+        '[attr.role]': 'change() !== null && !isRow ? "group" : null',
+        '[attr.aria-labelledby]': 'change() !== null && !isRow ? labelId : null',
+        '(mouseenter)': 'open()',
+        '(mouseleave)': 'close()',
+        '(focus)': 'open()',
+        '(blur)': 'close()',
+        '(keydown.escape)': 'onEscape($event)',
+    },
+})
+export class DiffFieldMarkComponent {
+    /** The field to look up in the open node's diff. */
+    readonly diffField = input<FieldName | null>(null);
+    /** One item of the field (e.g. `condition_groups[name=yes].expression`); the field itself when not set. */
+    readonly diffPath = input<string | null>(null);
+    /** A change worked out by the caller, e.g. one key of a map field; used instead of `diffField`. */
+    readonly diffChange = input<DiffFieldMarkChange | null>(null);
+    /**
+     * What the field shows for a side that is `null` or `undefined` (no value of its own), e.g. the default execution
+     * timeout, so the tooltip shows that instead of "empty". An empty text or list is not replaced. Not set: "empty".
+     */
+    readonly diffDefaultValue = input<unknown>(undefined);
+
+    /** The change shown; `null` when there is none, or off the Changes tab, or on an added or removed node. */
+    protected readonly change = computed<DiffFieldMarkChange | null>(() => {
+        const diff = this.panelDiff();
+        if (!showsFieldMarks(diff)) return null;
+        const given = this.diffChange();
+        if (given !== null) return given;
+        const field = this.diffField();
+        return field ? fieldChangeFor(diff, field, this.diffPath() ?? field) : null;
+    });
+    protected readonly segments = computed<DisplaySegment[]>(() => {
+        const change = this.change();
+        if (change === null) return [];
+        // A given change is not a stored field value, so the field's display formatter does not apply to it.
+        const field = this.diffChange() === null ? this.diffField() : null;
+        return fieldValueSegments(field, change.current, change.version, this.diffDefaultValue());
+    });
+    // Built from the shown segments, so it is cut like the tooltip: a screen reader is not read a whole long value.
+    private readonly description = computed(() => {
+        if (this.change() === null) return null;
+        const currentValue = `${CURRENT_VALUE_LABEL}: ${this.segments()
+            .map((segment) => segment.text)
+            .join('')}`;
+        return this.isRow ? `${BADGE_LABEL}. ${currentValue}` : currentValue;
+    });
+    protected readonly isOpen = signal(false);
+
+    protected readonly badgeLabel = BADGE_LABEL;
+    protected readonly currentValueLabel = CURRENT_VALUE_LABEL;
+    protected readonly tooltipPositions = TOOLTIP_POSITIONS;
+    protected readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+    protected readonly labelId = inject(_IdGenerator).getId('diff-field-mark-label-');
+    /** The attribute form, e.g. on a table row (the element form is `<app-diff-field-mark>`). */
+    protected readonly isRow = this.host.nativeElement.tagName.toLowerCase() !== 'app-diff-field-mark';
+
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
+    private readonly ariaDescriber = inject(AriaDescriber);
+
+    constructor() {
+        effect((onCleanup) => {
+            const description = this.description();
+            if (description === null) return;
+            const element = this.host.nativeElement;
+            this.ariaDescriber.describe(element, description);
+            onCleanup(() => this.ariaDescriber.removeDescription(element, description));
+        });
+    }
+
+    protected open(): void {
+        if (this.change() !== null) this.isOpen.set(true);
+    }
+
+    protected close(): void {
+        this.isOpen.set(false);
+    }
+
+    /** Esc on the focused field closes an open tooltip only; it does not also close the panel. */
+    protected onEscape(event: Event): void {
+        if (!this.isOpen()) return;
+        event.stopPropagation();
+        this.close();
+    }
+
+    /**
+     * Esc anywhere while the tooltip is open (e.g. opened by hover, focus elsewhere). The overlay closes itself
+     * but only prevents the default, so the panel's Esc shortcut would still see the key.
+     */
+    protected onOverlayKeydown(event: KeyboardEvent): void {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        this.close();
+    }
+}

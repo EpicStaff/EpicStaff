@@ -19,8 +19,11 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { PythonNode } from '../../../core/models/python-node.model';
+import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { mapFieldRowChanges } from '../../../utils/diff';
+import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
@@ -65,6 +68,7 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         ColumnResizeDividerComponent,
         ValidationErrorsComponent,
         ExecutionTimeoutFieldComponent,
+        DiffFieldMarkComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -76,6 +80,11 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly isFormCollapsed = signal<boolean>(false);
     public readonly useStorage = signal<boolean>(false);
     protected readonly leftColumnWidth = createColumnWidthState('python-node', 406);
+    /**
+     * Changes tab of a version preview: what a restore does to each Input List row. The input map is diffed as
+     * one value, so its keys are compared here. `null` anywhere else, so the list shows no row marks.
+     */
+    protected readonly inputMapRowChanges = computed(() => mapFieldRowChanges(this.panelDiff(), 'input_map'));
 
     /** Changing the selection needs Secrets:Use and an editable flow (not a Viewer, not a version preview). */
     public readonly canEditSecrets = computed(
@@ -181,6 +190,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     private readonly sidePanelService = inject(SidePanelService);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly panelDiff = inject(NODE_PANEL_DIFF);
     private readonly permissionsService = inject(PermissionsService);
     private readonly flowService = inject(FlowService);
     private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);

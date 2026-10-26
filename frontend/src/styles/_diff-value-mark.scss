@@ -1,0 +1,78 @@
+// The version diff's mark on a changed field value (node panel, Changes tab of a version preview).
+//
+// Contract: the field mark (`app-diff-field-mark`, flow editor) puts `.diff-value-marked` on an element around a
+// form component while a restore changes that field, and nowhere else. A form component that can be marked calls
+// `marked(...)` with the selector of its own value box; the styles only apply under that class, so the live
+// editor and every other user of the component see no change.
+//
+// The mark keeps the rest (status rule, tooltip, description, focus): the component only draws the yellow border,
+// the pen badge on the box's top-right corner, half outside, and the focus ring of the focused field.
+//
+// Rule: a mark wraps exactly one form component, and that component includes `marked()`. `:host-context` matches
+// any ancestor, so a marked component nested inside another wrapped one would be marked too. The mark turns off
+// its own outline, so a wrapped component without `marked()` would also get no focus ring.
+
+$context: '.diff-value-marked';
+
+$badge-size: 16px;
+
+/// The round yellow pen badge, without its position or glyph (each call site sets those). Also used by the mark
+/// itself for a marked table row.
+@mixin badge-look {
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: $badge-size;
+    height: $badge-size;
+    border-radius: 50%;
+    background-color: var(--color-diff-changed);
+    color: var(--color-text-on-bright);
+    font-size: 0.625rem;
+    line-height: 1;
+}
+
+/// @param $box the value box: gets the yellow border and the focus ring.
+/// @param $badge-anchor the element the badge sits on: the box itself unless the box clips what sticks out.
+/// @param $draws-box whether the box has no border of its own (plain text, a row) and needs the input-box look
+///   (padding, border, background, full width) to read as a value.
+/// @param $display the box's display, for an inline element that has to become a box.
+@mixin marked($box, $badge-anchor: $box, $draws-box: false, $display: null) {
+    :host-context(#{$context}) #{$box} {
+        display: $display;
+
+        @if $draws-box {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--color-diff-changed);
+            border-radius: 4px;
+            background-color: var(--color-input-background);
+        } @else {
+            border-color: var(--color-diff-changed);
+        }
+    }
+
+    :host-context(#{$context}:focus-visible) #{$box} {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+
+    :host-context(#{$context}) #{$badge-anchor} {
+        position: relative;
+
+        &::after {
+            // The pen of tabler's `.ti-pencil`, with empty alternative text: the mark names the field for screen
+            // readers (role="group", aria-labelledby).
+            @include badge-look;
+            content: '\eb04' / '';
+            position: absolute;
+            top: calc($badge-size / -2);
+            right: calc($badge-size / -2);
+            // The icon font by name, as a pseudo-element cannot take the `ti` class; no `text-*` token fits a glyph.
+            font-family: 'tabler-icons';
+            font-style: normal;
+            pointer-events: none;
+        }
+    }
+}

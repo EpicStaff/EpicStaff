@@ -14,10 +14,13 @@ export function missingReference(
     return { path, field, missing, source: field === 'key_value_table' ? 'keyValueTable' : 'warning' };
 }
 
-/** The open node's diff on the Changes tab, as the panel shell gives it to the panel it renders. */
-export function provideChangesTabDiff(missingReferences: readonly MissingReference[]): Provider {
-    const diff: NodePanelDiff = { status: 'changed', fields: [], missingReferences };
-    return { provide: NODE_PANEL_DIFF, useValue: signal(diff).asReadonly() };
+/**
+ * The open node's diff on the Changes tab, as the panel shell gives it to the panel it renders: by default a
+ * changed node with no field changes and no missing references.
+ */
+export function provideChangesTabDiff(diff: Partial<NodePanelDiff> = {}): Provider {
+    const shown: NodePanelDiff = { status: 'changed', fields: [], missingReferences: [], ...diff };
+    return { provide: NODE_PANEL_DIFF, useValue: signal(shown).asReadonly() };
 }
 
 /**

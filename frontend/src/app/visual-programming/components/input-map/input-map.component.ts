@@ -1,4 +1,5 @@
 import { OverlayModule } from '@angular/cdk/overlay';
+import { NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -36,6 +37,8 @@ import { RunSessionSSEService } from '../../../pages/running-graph/services/grap
 import { FlowService } from '../../services/flow.service';
 import { PythonCodeRunService } from '../../services/python-code-run.service';
 import { SidePanelService } from '../../services/side-panel.service';
+import { MapKeyChange } from '../../utils/diff';
+import { DiffFieldMarkComponent } from '../diff-field-mark/diff-field-mark.component';
 import { PickerItem } from './var-picker-flat.component';
 import { buildVariablePickerItems, isPlainEnter, VariablePathPicker, withoutUsedPaths } from './variable-path-picker';
 
@@ -55,6 +58,8 @@ export interface InputMapKeyChanges {
         AppSvgIconComponent,
         MatTooltipModule,
         OverlayModule,
+        NgTemplateOutlet,
+        DiffFieldMarkComponent,
     ],
     viewProviders: [
         {
@@ -82,31 +87,99 @@ export interface InputMapKeyChanges {
             </div>
 
             @if (readonly()) {
-                @if (hasNoMeaningfulPairs()) {
+                @if (hasNoMeaningfulPairs() && removedRows().length === 0) {
                     <span class="readonly-empty">—</span>
                 } @else {
+                    <ng-template
+                        #readonlyCells
+                        let-key="key"
+                        let-value="value"
+                        let-statusText="statusText"
+                    >
+                        <div
+                            class="readonly-cell"
+                            role="cell"
+                        >
+                            <!-- Inside the cell: a row may hold only cells. -->
+                            @if (statusText) {
+                                <span class="visually-hidden">{{ statusText }}</span>
+                            }
+                            {{ key || '—' }}
+                        </div>
+                        <div
+                            class="readonly-cell"
+                            role="cell"
+                        >
+                            {{ value || '—' }}
+                        </div>
+                    </ng-template>
                     <div
                         class="readonly-table"
                         role="table"
                         aria-label="Input list"
                     >
-                        @for (pair of pairs.controls; track pair) {
+                        <!-- The version may have no rows: then the form holds one blank pair, which is not shown. -->
+                        @for (pair of hasNoMeaningfulPairs() ? [] : pairs.controls; track pair) {
+                            @let rowChange = rowChangeFor(pair.value.key);
+                            <!-- Version diff (Changes tab): what a restore does to each row. -->
+                            @switch (rowChange?.status) {
+                                @case ('changed') {
+                                    <div
+                                        class="readonly-row readonly-row--diff"
+                                        role="row"
+                                        appDiffFieldMark
+                                        [diffChange]="rowChange"
+                                    >
+                                        <ng-container
+                                            [ngTemplateOutlet]="readonlyCells"
+                                            [ngTemplateOutletContext]="pair.value"
+                                        />
+                                    </div>
+                                }
+                                @case ('added') {
+                                    <div
+                                        class="readonly-row readonly-row--diff readonly-row--added"
+                                        role="row"
+                                        title="Restore adds this input"
+                                    >
+                                        <ng-container
+                                            [ngTemplateOutlet]="readonlyCells"
+                                            [ngTemplateOutletContext]="{
+                                                key: pair.value.key,
+                                                value: pair.value.value,
+                                                statusText: 'Restore adds this input: ',
+                                            }"
+                                        />
+                                    </div>
+                                }
+                                @default {
+                                    <div
+                                        class="readonly-row"
+                                        role="row"
+                                    >
+                                        <ng-container
+                                            [ngTemplateOutlet]="readonlyCells"
+                                            [ngTemplateOutletContext]="pair.value"
+                                        />
+                                    </div>
+                                }
+                            }
+                        }
+                        <!-- Rows only on the current canvas: the version does not have them, a restore removes them. -->
+                        @for (row of removedRows(); track row.key) {
                             <div
-                                class="readonly-row"
+                                class="readonly-row readonly-row--diff readonly-row--removed"
                                 role="row"
+                                title="Restore removes this input"
                             >
-                                <div
-                                    class="readonly-cell"
-                                    role="cell"
-                                >
-                                    {{ pair.value.key || '—' }}
-                                </div>
-                                <div
-                                    class="readonly-cell"
-                                    role="cell"
-                                >
-                                    {{ pair.value.value || '—' }}
-                                </div>
+                                <ng-container
+                                    [ngTemplateOutlet]="readonlyCells"
+                                    [ngTemplateOutletContext]="{
+                                        key: row.key,
+                                        value: row.current,
+                                        statusText: 'Restore removes this input: ',
+                                    }"
+                                />
                             </div>
                         }
                     </div>
@@ -483,8 +556,31 @@ export interface InputMapKeyChanges {
                 border-bottom: none;
             }
 
-            .readonly-row .readonly-cell:last-child {
+            // Of type: a marked row also holds its badge after the cells.
+            .readonly-row .readonly-cell:last-of-type {
                 border-right: none;
+            }
+
+            // A row with a diff status is a box of its own, so it can carry a border and a tooltip.
+            .readonly-row--diff {
+                display: grid;
+                grid-column: 1 / -1;
+                grid-template-columns: subgrid;
+            }
+
+            // Room for the badge in the corner of a marked row.
+            .readonly-row.diff-field-mark--shown .readonly-cell:last-of-type {
+                padding-right: 1.5rem;
+            }
+
+            .readonly-row--added {
+                box-shadow: inset 0 0 0 1px var(--color-diff-added);
+            }
+
+            .readonly-row--removed .readonly-cell {
+                color: var(--color-diff-deleted);
+                text-decoration: line-through;
+                opacity: var(--diff-deleted-opacity);
             }
 
             .test-input-dirty-warning {
@@ -544,6 +640,12 @@ export class InputMapComponent implements OnInit, OnChanges {
     readonly nodeNumber = input<number | undefined>();
     /** Why the owning panel cannot run the test now (e.g. its stored code is not the panel's), or null. */
     readonly runTestBlocker = input<string | null>(null);
+    /**
+     * Version preview, Changes tab only: what a restore does to each row of the read-only list (the rows show the
+     * version). Changed rows get the field mark, rows only in the version a green border, and rows only on the
+     * canvas are listed after the others, struck through. `null` (the default) everywhere else.
+     */
+    readonly rowChanges = input<readonly MapKeyChange[] | null>(null);
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
 
@@ -551,6 +653,13 @@ export class InputMapComponent implements OnInit, OnChanges {
     fillNoDataWarning = signal(false);
     hasSuccessfulSession = signal(false);
     private normalModeSnapshot: { key: string; value: string }[] = [];
+
+    private readonly rowChangeByKey = computed(
+        () => new Map((this.rowChanges() ?? []).map((change) => [change.key, change]))
+    );
+    protected readonly removedRows = computed(() =>
+        (this.rowChanges() ?? []).filter((change) => change.status === 'deleted')
+    );
 
     private readonly destroyRef = inject(DestroyRef);
     private readonly keySubs = new WeakMap<AbstractControl, Subscription>();
@@ -645,6 +754,10 @@ export class InputMapComponent implements OnInit, OnChanges {
         }
         changes.removed.forEach((key) => this.removeVisibleKey(key));
         changes.added.forEach((key) => this.addVisibleKey(key));
+    }
+
+    protected rowChangeFor(key: string): MapKeyChange | null {
+        return this.rowChangeByKey().get(key) ?? null;
     }
 
     hasNoMeaningfulPairs(): boolean {
