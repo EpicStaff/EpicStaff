@@ -263,16 +263,20 @@
     }
 
     // Declared before .is-dimmed so the hover dimming still wins on an unused node.
-    app-flow-base-node.is-unused {
+    // Hover and selection bring back the normal look.
+    app-flow-base-node.is-unused:not(:hover, .f-selected) {
         opacity: var(--vp-unused-node-opacity);
-        filter: var(--vp-unused-node-filter);
-        transition:
-            opacity 0.15s ease,
-            filter 0.15s ease;
+        transition: opacity 0.15s ease;
 
-        &:hover {
-            opacity: 1;
-            filter: none;
+        .interactive-node-body {
+            border-style: dashed;
+        }
+
+        // Tables draw their outline as an inset box-shadow, which cannot be dashed.
+        .decision-table {
+            box-shadow: none;
+            outline: 2px dashed var(--color-divider-subtle);
+            outline-offset: -2px;
         }
     }
 
@@ -294,6 +298,8 @@
 
         .f-minimap-node {
             fill: var(--vp-minimap-node-color);
+            // In canvas units: the minimap scales it down with the flow (about 2px on screen at its usual scale).
+            rx: var(--vp-minimap-node-radius);
 
             &.f-selected {
                 fill: var(--vp-minimap-selected-node-color);
@@ -361,7 +367,12 @@
             }
             // Last, so it overrides the node-type colour above.
             &.is-unused:not(.f-selected) {
-                fill: var(--vp-unused-minimap-node-color);
+                fill: transparent;
+                stroke: var(--vp-unused-minimap-node-outline-color);
+                stroke-width: 1px;
+                stroke-dasharray: 3 2;
+                // The minimap scales the whole flow down; this keeps the outline 1px on screen.
+                vector-effect: non-scaling-stroke;
             }
         }
     }
@@ -431,6 +442,19 @@
 // The side panel docks 1rem from the right edge; the toolbar ends 1rem before the panel.
 .editor-wrapper.panel-open .canvas-toolbar-row {
     right: calc(var(--node-panel-width) + 2rem);
+}
+
+.unused-nodes-bar-slot {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+}
+
+// Centred on the part of the canvas the node side panel leaves visible.
+.editor-wrapper.panel-open .unused-nodes-bar-slot {
+    left: calc((100% - var(--node-panel-width)) / 2);
 }
 
 .top-left-actions {

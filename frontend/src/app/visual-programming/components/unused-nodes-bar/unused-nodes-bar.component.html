@@ -1,0 +1,53 @@
+@if (isVisible()) {
+    <div class="unused-nodes-bar">
+        @if (nodes().length > 0) {
+            <app-svg-icon
+                class="unused-nodes-bar__icon unused-nodes-bar__icon--unused"
+                icon="unlink"
+                size="12px"
+            />
+            <span class="text-body-medium">Unused nodes</span>
+            <button
+                class="unused-nodes-bar__step"
+                type="button"
+                aria-label="Previous unused node"
+                (click)="showPrevious()"
+            >
+                <app-svg-icon
+                    icon="chevron-left"
+                    size="18px"
+                />
+            </button>
+            <span class="unused-nodes-bar__counter text-body-small">{{ counter() }}</span>
+            <button
+                class="unused-nodes-bar__step"
+                type="button"
+                aria-label="Next unused node"
+                (click)="showNext()"
+            >
+                <app-svg-icon
+                    icon="chevron-right"
+                    size="18px"
+                />
+            </button>
+        } @else {
+            <app-svg-icon
+                class="unused-nodes-bar__icon"
+                icon="circle-check"
+                size="16px"
+            />
+            <span class="text-body-medium">All nodes are in use</span>
+        }
+        <button
+            class="unused-nodes-bar__close"
+            type="button"
+            aria-label="Close"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="20px"
+            />
+        </button>
+    </div>
+}

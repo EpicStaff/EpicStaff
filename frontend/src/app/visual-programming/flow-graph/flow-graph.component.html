@@ -376,6 +376,14 @@
         <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed()"></app-flow-action-panel>
     }
 
+    @if (flowSettings.highlightUnusedNodes()) {
+        <app-unused-nodes-bar
+            class="unused-nodes-bar-slot"
+            [nodes]="unusedNodesInCanvasOrder()"
+            (nodeFocus)="onZoomInNode($event)"
+        />
+    }
+
     @if (showContextMenu()) {
         <app-flow-graph-context-menu
             [position]="contextMenuPosition()"

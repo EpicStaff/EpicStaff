@@ -1,8 +1,9 @@
 import asyncio
+import base64
 from typing import NamedTuple
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from fastapi import WebSocket, WebSocketDisconnect
 from src.shared.models import RealtimeAgentChatData
 from domain.models.chat_mode import ChatMode
@@ -11,7 +12,15 @@ from domain.ports.i_transcription_client_factory import ITranscriptionClientFact
 from application.conversation_service import ConversationService
 from application.tool_manager_service import ToolManagerService
 from infrastructure.providers.factory import RealtimeAgentClientFactory
+from infrastructure.providers.gemini.gemini_realtime_agent_client import GeminiRealtimeAgentClient
 from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
+from tests.infrastructure.providers.gemini_live_fakes import (
+    SESSION_RECORD_PATCH,
+    patch_gemini_clock,
+    patched_gemini_live,
+    resumption_update,
+    server_close,
+)
 
 
 def _make_chat_data(
@@ -270,6 +279,66 @@ async def test_transcript_without_wake_word_stays_in_listen(make_service):
     # in LISTEN the message must go to transcription only.
     clients.transcription_client.process_message.assert_awaited()
     clients.rt_agent_client.process_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "session_ending",
+    [server_close(1000, "go away elapsed"), RuntimeError("protocol error")],
+    ids=["server-close-reopened-by-the-message-loop", "receive-error-reopened-by-execute"],
+)
+async def test_a_lost_gemini_session_is_resumed_exactly_once_with_only_the_audio_it_missed(
+    make_service, monkeypatch, session_ending
+):
+    """A server close is reopened inside the Gemini message loop, which keeps running;
+    any other end of the loop is reopened by execute(). Never both."""
+    service = make_service(wake_word=None, rt_provider="gemini")
+    clock = patch_gemini_clock(monkeypatch)
+    heard_before_the_handle, said_during_the_outage = b"\x01\x00" * 48, b"\x02\x00" * 48
+    with patched_gemini_live() as live, patch(SESSION_RECORD_PATCH, new_callable=AsyncMock):
+        live.scripts = [[resumption_update("h1", True), session_ending]]
+        service.factory.create.return_value = GeminiRealtimeAgentClient(
+            api_key="api_key",
+            connection_key="test_key",
+            on_server_event=service.client_websocket.send_json,
+            tool_manager_service=AsyncMock(),
+            instructions="Be helpful.",
+        )
+        service.transcription_client_factory.create.return_value = None
+        service.client_websocket.scope = {"subprotocols": []}
+
+        async def caller_messages():
+            yield {"type": "input_audio_buffer.append", "audio": base64.b64encode(heard_before_the_handle).decode()}
+            clock.now += 1  # the handle is stored after this audio
+            async with asyncio.timeout(2):
+                while not live.sessions[0].closed:
+                    await asyncio.sleep(0)
+            clock.now += 1
+            yield {"type": "input_audio_buffer.append", "audio": base64.b64encode(said_during_the_outage).decode()}
+            async with asyncio.timeout(2):
+                while len(live.sessions) < 2:
+                    await asyncio.sleep(0)
+            yield {"type": "session.update"}
+            raise WebSocketDisconnect()
+
+        messages = caller_messages()
+
+        async def receive_json():
+            return await anext(messages)
+
+        service.client_websocket.receive_json = receive_json
+
+        await service.execute()
+
+    _, resumed = live.sessions
+    assert resumed.config.session_resumption.handle == "h1"
+    assert resumed.config.system_instruction.parts[0].text == "Be helpful."
+    assert resumed.turns == []
+    # 48 samples at 24 kHz become 32 at 16 kHz. The resumed session gets the outage
+    # audio once (replayed, or live when the loop had already reopened it), never
+    # the audio Gemini heard before the handle.
+    assert [blob.data for blob in resumed.audio] == [b"\x02\x00" * 32]
+    assert resumed.closed
 
 
 @pytest.mark.asyncio

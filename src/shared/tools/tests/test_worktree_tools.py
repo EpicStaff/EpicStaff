@@ -9,6 +9,8 @@ enter_worktree_main = load_tool_main("enter_worktree_tool").main
 exit_worktree_main = load_tool_main("exit_worktree_tool").main
 
 GIT_MISSING = shutil.which("git") is None
+# Distinct from every test name, which also appears in the sandbox root's path.
+OUTSIDE_REPO_MARKER = "elsewhere"
 
 
 def _run_git(args, cwd):
@@ -30,6 +32,29 @@ def git_repo(sandbox_dir):
     _run_git(["commit", "-m", "initial commit"], cwd=repo_dir)
 
     return repo_dir
+
+
+@pytest.fixture
+def outside_repo(tmp_path_factory):
+    """A git repo with one commit outside the sandbox root."""
+    repo_dir = tmp_path_factory.mktemp(OUTSIDE_REPO_MARKER) / "repo"
+    repo_dir.mkdir()
+    _run_git(["init"], cwd=repo_dir)
+    _run_git(
+        ["-c", "user.email=test@example.com", "-c", "user.name=Test User",
+         "commit", "--allow-empty", "-m", "initial commit"],
+        cwd=repo_dir,
+    )
+    return repo_dir
+
+
+def _overwrite(path, content):
+    # Opened in place: git marks the files it writes hidden on Windows, and
+    # write_text cannot recreate a hidden file there.
+    with open(path, "r+") as file:
+        file.seek(0)
+        file.truncate()
+        file.write(content)
 
 
 @pytest.mark.skipif(GIT_MISSING, reason="git is not available in this environment")
@@ -87,6 +112,25 @@ class TestEnterWorktreeTool:
 
 @pytest.mark.skipif(GIT_MISSING, reason="git is not available in this environment")
 class TestExitWorktreeTool:
+    @pytest.mark.parametrize("relative_root", [False, True])
+    @pytest.mark.parametrize("relative_git_paths", [False, True])
+    def test_exit_worktree_round_trip_with_relative_paths(
+        self, sandbox_dir, git_repo, monkeypatch, relative_root, relative_git_paths
+    ):
+        if relative_git_paths:
+            _run_git(["config", "worktree.useRelativePaths", "true"], cwd=git_repo)
+        if relative_root:
+            monkeypatch.chdir(sandbox_dir)
+            monkeypatch.setenv("CONTAINER_SAVEFILES_PATH", ".")
+        enter_worktree_main(repo_path="repo", name="feature-x")
+
+        kept_result = exit_worktree_main(worktree_path=".worktrees/feature-x", keep=True)
+        removed_result = exit_worktree_main(worktree_path=".worktrees/feature-x")
+
+        assert kept_result.startswith("Worktree kept")
+        assert removed_result.startswith("Removed worktree")
+        assert not (sandbox_dir / ".worktrees" / "feature-x").exists()
+
     def test_exit_worktree_round_trip_clean(self, sandbox_dir, git_repo):
         enter_result = enter_worktree_main(repo_path="repo", name="clean-wt")
         assert enter_result.startswith("Created worktree")
@@ -161,3 +205,56 @@ class TestExitWorktreeTool:
 
         assert result.startswith("Error:")
         assert "outside the allowed directory" in result
+
+    def test_exit_worktree_main_repo_outside_root_returns_permission_error(
+        self, sandbox_dir, git_repo, outside_repo
+    ):
+        enter_worktree_main(repo_path="repo", name="feature-x")
+        # The worktree's admin files live inside the tenant-writable root, so
+        # the tenant can redirect the common dir git reports to any repository.
+        commondir_file = git_repo / ".git" / "worktrees" / "feature-x" / "commondir"
+        commondir_file.write_text(f"{outside_repo / '.git'}\n")
+
+        result = exit_worktree_main(worktree_path=".worktrees/feature-x")
+
+        assert result.startswith("Error:")
+        assert "outside the allowed directory" in result
+        assert (sandbox_dir / ".worktrees" / "feature-x").exists()
+
+    def test_exit_worktree_git_dir_outside_root_returns_permission_error_when_kept(
+        self, sandbox_dir, git_repo, outside_repo
+    ):
+        enter_worktree_main(repo_path="repo", name="feature-x")
+        _overwrite(
+            sandbox_dir / ".worktrees" / "feature-x" / ".git",
+            f"gitdir: {outside_repo / '.git'}\n",
+        )
+
+        result = exit_worktree_main(worktree_path=".worktrees/feature-x", keep=True)
+
+        assert result.startswith("Error:")
+        assert "outside the allowed directory" in result
+
+    def test_exit_worktree_common_dir_with_git_pointer_does_not_reach_outside_repo(
+        self, sandbox_dir, git_repo, outside_repo
+    ):
+        enter_worktree_main(repo_path="repo", name="feature-x")
+        admin_dir = git_repo / ".git" / "worktrees" / "feature-x"
+        # Gives the outside repository an entry for this worktree, so a removal
+        # run there fails validation with an error naming that repository.
+        shutil.copytree(admin_dir, outside_repo / ".git" / "worktrees" / "feature-x")
+        # A common dir inside the root passes a path check, yet git run from it
+        # by cwd discovery follows its .git pointer to the outside repository.
+        fake_common_dir = sandbox_dir / "fake-common"
+        shutil.copytree(git_repo / ".git", fake_common_dir)
+        (fake_common_dir / ".git").write_text(f"gitdir: {outside_repo / '.git'}\n")
+        _overwrite(admin_dir / "commondir", f"{fake_common_dir}\n")
+
+        result = exit_worktree_main(worktree_path=".worktrees/feature-x")
+
+        # The worktree points back to the real repository, not the fake common
+        # dir, so git refuses either way; its refusal names the repository it
+        # actually ran against, which is the outcome under test.
+        assert result.startswith("Error: failed to remove worktree")
+        assert "fake-common" in result
+        assert OUTSIDE_REPO_MARKER not in result
