@@ -605,6 +605,15 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_llm_config_to_pydantic(self, config: LLMConfig) -> LLMData | None:
+        """Convert an LLM config into the payload sent to crew.
+
+        Returns:
+            None when the config is missing or has no model; nothing is configured.
+
+        Raises:
+            ConfigProviderMissingError: The config's model has no provider, because
+                the provider was deleted.
+        """
         if not config or not config.model:
             return None
 
@@ -647,6 +656,15 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_embedding_config_to_pydantic(
         self, embedding_config: EmbeddingConfig
     ) -> EmbedderData | None:
+        """Convert an embedding config into the payload sent to crew.
+
+        Returns:
+            None when the config is missing; nothing is configured.
+
+        Raises:
+            ConfigProviderMissingError: The config has no model, or its model has no
+                provider, because the model or provider was deleted.
+        """
         if not embedding_config:
             return None
 

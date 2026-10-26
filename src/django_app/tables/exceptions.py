@@ -704,14 +704,14 @@ class ConfigProviderMissingError(CustomAPIExeption):
     """
 
     status_code = 400
-    default_detail = "The config has no provider."
+    default_detail = "The config has no model or provider."
     default_code = "config_provider_missing"
 
     def __init__(self, config_kind: str, config_name: str):
         self.config_kind = config_kind
         self.config_name = config_name
         super().__init__(
-            f"{config_kind} config '{config_name}' has no provider (it may have been deleted). "
+            f"{config_kind} config '{config_name}' has no model or provider (it may have been deleted). "
             "Choose a model with a provider and try again.",
             code=self.default_code,
         )
