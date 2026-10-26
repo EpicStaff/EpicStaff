@@ -13,20 +13,6 @@ import {
  * it shows the step centred.
  */
 const TARGET_WAIT_MS = 1500;
-/**
- * The confetti canvas is mounted in the tour's top-layer host (see tour-top-layer.ts), next to the driver.js overlay
- * (z-index 10000) and popover (1e9): above the overlay so it is not dimmed, below the popover so it does not cover it.
- */
-const CONFETTI_Z_INDEX = 10001;
-const CONFETTI_DURATION_MS = 900;
-/** Design tokens used for the confetti colours; canvas-confetti needs resolved hex values, not var() references. */
-const CONFETTI_COLOR_TOKENS = [
-    '--accent-color',
-    '--color-ks-status-blue',
-    '--color-ks-status-new',
-    '--color-ks-status-failed',
-    '--color-ks-status-warning',
-];
 const PROGRESS_CLASS = 'quickstart-tour--has-progress';
 
 export const QUICK_START_TOUR_POPOVER_CLASS = 'quickstart-tour';
@@ -61,8 +47,6 @@ export interface QuickStartTourStepsDependencies {
     stopWatchingSettings: () => void;
     /** Records the tour as completed and ends it. Used by every explicit exit (Skip, Finish). */
     finishTour: () => void;
-    /** Mounts a tour-owned element in the tour's top layer, so it paints above CDK overlays; removed with the tour. */
-    mountInTourLayer: (element: HTMLElement) => void;
 }
 
 const moveNext: DriverHook = (_element, _step, { driver }) => driver.moveNext();
@@ -204,9 +188,6 @@ export function createQuickStartTourSteps(dependencies: QuickStartTourStepsDepen
         {
             element: tourAnchor(QUICK_START_TOUR_ANCHORS.quickstartResult),
             onHighlighted: (element) => {
-                if (resultStatus(element) === 'activated') {
-                    void fireConfetti(dependencies.document, dependencies.mountInTourLayer);
-                }
                 stopFinishingOnResultClick?.();
                 stopFinishingOnResultClick = element ? finishOnAnyClick(element, dependencies.finishTour) : null;
             },
@@ -312,51 +293,4 @@ function withProgressBar(steps: DriveStep[]): DriveStep[] {
             },
         };
     });
-}
-
-/**
- * canvas-confetti's default canvas goes to <body>, which is under the top layer (and so under the dimmed overlay).
- * We give it our own canvas mounted in the tour layer instead; the canvas goes away with the layer.
- */
-async function fireConfetti(document: Document, mountInTourLayer: (element: HTMLElement) => void): Promise<void> {
-    if (document.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-        return;
-    }
-    const { default: confetti } = await import('canvas-confetti');
-    const canvas = document.createElement('canvas');
-    Object.assign(canvas.style, {
-        position: 'fixed',
-        inset: '0',
-        width: '100%',
-        height: '100%',
-        zIndex: String(CONFETTI_Z_INDEX),
-        pointerEvents: 'none',
-    });
-    mountInTourLayer(canvas);
-    const shootConfetti = confetti.create(canvas, { resize: true, disableForReducedMotion: true });
-    const colors = resolveConfettiColors(document);
-    const endTime = performance.now() + CONFETTI_DURATION_MS;
-    const shared = {
-        particleCount: 4,
-        spread: 55,
-        ...(colors.length ? { colors } : {}),
-    };
-
-    const shoot = (): void => {
-        void shootConfetti({ ...shared, angle: 60, origin: { x: 0, y: 0.8 } });
-        void shootConfetti({ ...shared, angle: 120, origin: { x: 1, y: 0.8 } });
-        if (performance.now() < endTime) {
-            requestAnimationFrame(shoot);
-        }
-    };
-    shoot();
-}
-
-function resolveConfettiColors(document: Document): string[] {
-    const view = document.defaultView;
-    if (!view) {
-        return [];
-    }
-    const computedStyle = view.getComputedStyle(document.documentElement);
-    return CONFETTI_COLOR_TOKENS.map((token) => computedStyle.getPropertyValue(token).trim()).filter(Boolean);
 }

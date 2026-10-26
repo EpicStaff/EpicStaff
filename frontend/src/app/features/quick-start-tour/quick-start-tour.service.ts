@@ -138,7 +138,6 @@ export class QuickStartTourService {
                 openSettings: (onOpened) => this.openSettings(tour, topLayer, onOpened),
                 stopWatchingSettings: () => this.stopWatchingSettings(),
                 finishTour: () => this.finish(tour, topLayer),
-                mountInTourLayer: (element) => topLayer.append(element),
             });
             const tour: Driver = await this.createTour({
                 ...TOUR_CONFIG,

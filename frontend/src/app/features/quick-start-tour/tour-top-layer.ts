@@ -71,15 +71,7 @@ export class TourTopLayer {
         }
     }
 
-    /** Mounts a tour-owned element (e.g. the confetti canvas) in the host, so it paints above CDK overlays too. */
-    append(element: HTMLElement): void {
-        if (this.disposed) {
-            return;
-        }
-        this.ensureHost().appendChild(element);
-    }
-
-    /** Idempotent. driver.js removes its own elements on destroy; this removes the host and what was appended. */
+    /** Idempotent. driver.js removes its own elements on destroy; this removes the host. */
     dispose(): void {
         this.disposed = true;
         this.document.removeEventListener('keydown', this.keepTabInOverlay);

@@ -88,24 +88,12 @@ describe('TourTopLayer', () => {
         expect(ownPopoverRender).toHaveBeenCalled();
     });
 
-    it('mounts appended elements in the host and removes them with it', () => {
-        const layer = createLayer();
-        const canvas = document.createElement('canvas');
-
-        layer.append(canvas);
-        expect(canvas.parentElement?.classList.contains('quickstart-tour-layer')).toBe(true);
-
-        layer.dispose();
-        expect(canvas.isConnected).toBe(false);
-    });
-
-    it('stays gone after dispose: late raise() or append() does not re-create the host', () => {
+    it('stays gone after dispose: a late raise() does not re-create the host', () => {
         const layer = createLayer();
         layer.raise();
         layer.dispose();
 
         layer.raise();
-        layer.append(document.createElement('canvas'));
 
         expect(document.querySelector('.quickstart-tour-layer')).toBeNull();
     });

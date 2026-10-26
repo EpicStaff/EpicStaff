@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 21 Oct 2026 10:07:49 GMT -->
-<!-- commit: ad37f908cf4a9a881d8d70c1d3f06e484237c4d3 -->
-<!-- package-lock.json sha256: 40d7041f9bcef6ee -->
+<!-- generated: Wed, 21 Oct 2026 11:34:33 GMT -->
+<!-- commit: 194dcf41e306422f4b430ee854aa1012151e34ff -->
+<!-- package-lock.json sha256: 73fa392e524e9942 -->
 
 ## Frontend license summary
 
@@ -23,15 +23,15 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | License | Packages |
 |---|---|
 | MIT | 48 |
-| ISC | 3 |
 | Apache-2.0 | 2 |
+| ISC | 2 |
 | OFL-1.1 | 1 |
 | (MPL-2.0 OR Apache-2.0) | 1 |
 | BSD-2-Clause | 1 |
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **59** |
+| **Total** | **58** |
 
 ## Package index
 
@@ -59,7 +59,6 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `ag-grid-angular` | 36.1.0 | MIT |
 | `ag-grid-community` | 36.1.0 | MIT |
 | `ag-stack` | 36.1.0 | MIT |
-| `canvas-confetti` | 1.9.4 | ISC |
 | `core-util-is` | 1.0.3 | MIT |
 | `docx-preview` | 0.3.7 | Apache-2.0 |
 | `dompurify` | 3.4.17 | (MPL-2.0 OR Apache-2.0) |
@@ -1309,34 +1308,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-
-</details>
-
-### canvas-confetti@1.9.4
-
-- **License:** ISC
-- **Publisher:** Kiril Vatev <vatev.1@gmail.com>
-- **Repository:** https://github.com/catdad/canvas-confetti
-
-<details><summary>License text</summary>
-
-```
-ISC License
-
-Copyright (c) 2020, Kiril Vatev
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
 </details>
