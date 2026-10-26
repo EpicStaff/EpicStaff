@@ -1,0 +1,116 @@
+# The egress proxy lab: plugins_egress exactly as src/docker-compose.yaml defines it (extends: the
+# production image, capabilities, read-only root, sysctls, policy volume), with the plugin node's
+# real policy writer, two plugin clients on an internal network, and a lab DNS server and a
+# private "victim" on the way out. Run with run.sh, which gives every run a project, container
+# and image names of its own (EGRESS_LAB_NAME), so runs never collide, sets the variables below
+# and removes everything afterwards. No host ports.
+name: plugins-egress-lab
+
+x-tools: &tools
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: ${EGRESS_LAB_NAME:?}-tools:local
+  init: true
+  volumes:
+    - ./tools:/lab/tools:ro
+    - ../smoke/egress_probe.py:/lab/egress_probe.py:ro
+
+x-proxy: &proxy
+  extends:
+    file: ../../docker-compose.yaml
+    service: plugins_egress
+  image: ${EGRESS_LAB_NAME:?}-proxy:local
+
+# Lab-only configurations (run.sh writes them) of the production image: each replaces
+# /etc/squid/squid.conf, and most include the production file whole.
+x-lab-configuration: &lab-configuration
+  <<: *proxy
+  profiles: [lab]
+
+services:
+  # The proxy as it ships, resolving through Docker's resolver, which forwards to labdns.
+  egress:
+    <<: *proxy
+    container_name: ${EGRESS_LAB_NAME:?}
+    dns: ["${EGRESS_LAB_DNS_ADDRESS:?}"]
+
+  # The proxy as it ships, with Docker's resolver forwarding to the host's, as in the stack.
+  egress-plain:
+    <<: *proxy
+    container_name: ${EGRESS_LAB_NAME:?}-plain
+    profiles: [lab]
+
+  # The rebinding race: a 1 s DNS cache and a 3 s pause after the access rules.
+  egress-race:
+    <<: *lab-configuration
+    container_name: ${EGRESS_LAB_NAME:?}-race
+    volumes:
+      - ${EGRESS_LAB_WORK:?}/race.conf:/etc/squid/squid.conf:ro
+      - ../squid.conf:/etc/squid/production.conf:ro
+      - ./tools/delay_acl.py:/lab/delay_acl:ro
+
+  # A full host-helper queue: the production rules with one slow host helper and a queue of one.
+  egress-queue:
+    <<: *lab-configuration
+    container_name: ${EGRESS_LAB_NAME:?}-queue
+    volumes:
+      - ${EGRESS_LAB_WORK:?}/queue.conf:/etc/squid/squid.conf:ro
+      - ./tools/delay_acl.py:/lab/delay_acl:ro
+
+  # A password-check queue overloaded for good (run.sh --overload): one slow checker, a queue of
+  # one, with the production action (ERR) and, as the control, Squid's default (die).
+  egress-overload:
+    <<: *lab-configuration
+    container_name: ${EGRESS_LAB_NAME:?}-overload
+    volumes:
+      - ${EGRESS_LAB_WORK:?}/overload.conf:/etc/squid/squid.conf:ro
+      - ../squid.conf:/etc/squid/production.conf:ro
+      - ./tools/slow_auth.py:/lab/slow_auth:ro
+  egress-overload-die:
+    <<: *lab-configuration
+    container_name: ${EGRESS_LAB_NAME:?}-overload-die
+    volumes:
+      - ${EGRESS_LAB_WORK:?}/overload-die.conf:/etc/squid/squid.conf:ro
+      - ../squid.conf:/etc/squid/production.conf:ro
+      - ./tools/slow_auth.py:/lab/slow_auth:ro
+
+  # Stands in for the plugin node's agent: the only writer of the policy volume, no network.
+  writer:
+    <<: *tools
+    command: ["python", "-u", "/lab/tools/policy_writer.py", "serve"]
+    network_mode: none
+    environment:
+      PYTHONPATH: /opt/es_plugins
+    volumes:
+      - ./tools:/lab/tools:ro
+      - ../../es_plugins/es_plugins:/opt/es_plugins/es_plugins:ro
+      - plugin_egress_policy:/policy
+
+  # Plugin processes: on the internal network only, like es_plugins.
+  plugin-a:
+    <<: *tools
+    command: ["sleep", "infinity"]
+    networks: [plugins-network]
+  plugin-b:
+    <<: *tools
+    command: ["sleep", "infinity"]
+    networks: [plugins-network]
+
+  labdns:
+    <<: *tools
+    command: ["python", "-u", "/lab/tools/labdns.py"]
+    networks: [plugins-egress-network]
+
+  victim:
+    <<: *tools
+    command: ["python", "-u", "/lab/tools/victim.py"]
+    networks: [plugins-egress-network]
+
+volumes:
+  plugin_egress_policy: {}
+
+networks:
+  plugins-network:
+    internal: true
+  plugins-egress-network: {}

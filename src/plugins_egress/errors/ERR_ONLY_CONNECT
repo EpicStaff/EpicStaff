@@ -1,0 +1,1 @@
+<html><body><p>ERR_ONLY_CONNECT: the egress proxy opens HTTPS tunnels only, so %H cannot be reached over plain HTTP.</p></body></html>

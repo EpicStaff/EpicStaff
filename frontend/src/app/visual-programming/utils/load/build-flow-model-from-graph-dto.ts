@@ -1,6 +1,6 @@
 import { NodeType } from '@shared/models';
 
-import { GetGraphLightRequest, GraphDto } from '../../../features/flows/models/graph.model';
+import { GetGraphLightRequest, GraphContentDto, GraphDto } from '../../../features/flows/models/graph.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { createStartNode } from './create-start-node';
 import { hasStartNode } from './has-start-node';
@@ -29,6 +29,14 @@ export function buildFlowModelFromGraphDto(
     const flowWithStartNode = addStartNodeIfNeeded(mappedFlow);
     const validatedFlow = flagBlockedSubgraphNodes(flowWithStartNode, availableFlows);
     return normalizeFlowPorts(validatedFlow);
+}
+
+/**
+ * The canvas model of a partial import's `content`: the same mapping as a load, without adding a
+ * Start node. Its ids are not real (nothing was saved), so the caller inserts it like a paste.
+ */
+export function buildImportedFlowModel(content: GraphContentDto, graphId: number): FlowModel {
+    return normalizeFlowPorts(flagBlockedSubgraphNodes(mapGraphDtoToFlowModel({ ...content, id: graphId })));
 }
 
 function addStartNodeIfNeeded(flowModel: FlowModel): FlowModel {

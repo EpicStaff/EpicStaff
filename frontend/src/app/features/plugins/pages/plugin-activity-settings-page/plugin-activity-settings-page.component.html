@@ -1,0 +1,95 @@
+@if (isForbidden()) {
+    <section
+        class="plugin-activity__forbidden"
+        role="alert"
+    >
+        <h3 class="plugin-activity__title text-h3">No access to plugin activity</h3>
+        <p class="plugin-activity__subtitle text-body">
+            Your role in this organization needs the View permission on Audit to see what plugins do here.
+        </p>
+    </section>
+} @else {
+    <section class="plugin-activity__section">
+        <header class="plugin-activity__header">
+            <h3 class="plugin-activity__title text-h3">Plugins acting in this organization</h3>
+            <p class="plugin-activity__subtitle text-body">
+                Plugins with a backend act here through their own service account, alone or on behalf of a member who
+                uses them. They may do only what they declared and a SuperAdmin approved.
+            </p>
+        </header>
+
+        @if (accountsError(); as message) {
+            <div
+                class="plugin-activity__error text-body"
+                role="alert"
+            >
+                <span>{{ message }}</span>
+                <app-button
+                    type="outline-primary"
+                    mod="small"
+                    (click)="reloadAccounts()"
+                >
+                    Retry
+                </app-button>
+            </div>
+        } @else if (isLoadingAccounts()) {
+            <app-loading-spinner size="sm" />
+        } @else {
+            @for (account of accounts(); track account.plugin.identifier) {
+                <app-plugin-service-account-card [account]="account" />
+            } @empty {
+                <p class="plugin-activity__empty text-body">
+                    No plugin with a backend is granted to this organization.
+                </p>
+            }
+        }
+    </section>
+
+    <section class="plugin-activity__section">
+        <header class="plugin-activity__header plugin-activity__header--row">
+            <div class="plugin-activity__heading">
+                <h3 class="plugin-activity__title text-h3">Activity</h3>
+                <p class="plugin-activity__subtitle text-body">
+                    What plugins changed in this organization, and what SuperAdmins and EpicStaff did to plugins here.
+                </p>
+            </div>
+            <app-select
+                class="plugin-activity__filter"
+                label="Plugin"
+                mod="small"
+                [placeholder]="allPluginsLabel"
+                [items]="pluginItems()"
+                [loading]="isLoadingAccounts()"
+                [selectedValue]="pluginFilter()"
+                (changed)="onPluginChange($event)"
+            />
+        </header>
+
+        @if (eventsError(); as message) {
+            <div
+                class="plugin-activity__error text-body"
+                role="alert"
+            >
+                <span>{{ message }}</span>
+                <app-button
+                    type="outline-primary"
+                    mod="small"
+                    (click)="reloadEvents()"
+                >
+                    Retry
+                </app-button>
+            </div>
+        }
+
+        <app-plugin-activity-list
+            [events]="events()"
+            [showPlugin]="true"
+            [totalCount]="count()"
+            [page]="page()"
+            [pageSize]="pageSize"
+            [isLoading]="isLoadingEvents()"
+            [emptyMessage]="emptyMessage()"
+            (pageChange)="onPageChange($event)"
+        />
+    </section>
+}

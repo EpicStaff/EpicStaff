@@ -443,6 +443,7 @@ dependencies = [
     { name = "djangorestframework" },
     { name = "djangorestframework-simplejwt" },
     { name = "drf-spectacular" },
+    { name = "epicstaff-plugin" },
     { name = "filelock" },
     { name = "foundation" },
     { name = "gunicorn" },
@@ -500,6 +501,7 @@ requires-dist = [
     { name = "djangorestframework", specifier = "==3.17.2" },
     { name = "djangorestframework-simplejwt", specifier = "==5.4.0" },
     { name = "drf-spectacular", specifier = "==0.29.0" },
+    { name = "epicstaff-plugin", editable = "../plugin_sdk" },
     { name = "filelock", specifier = "==3.32.5" },
     { name = "foundation", editable = "../foundation" },
     { name = "gunicorn", specifier = "==23.0.0" },
@@ -677,6 +679,59 @@ wheels = [
 ]
 
 [[package]]
+name = "epicstaff-plugin"
+version = "0.1.0"
+source = { editable = "../plugin_sdk" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "httpx" },
+    { name = "packaging" },
+    { name = "pydantic" },
+    { name = "pyjwt" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=50" },
+    { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "packaging", specifier = ">=24" },
+    { name = "pydantic", specifier = ">=2.13,<3" },
+    { name = "pyjwt", specifier = ">=2.10,<3" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "anyio", specifier = "==4.14.2" },
+    { name = "fastapi", specifier = "==0.141.1" },
+    { name = "h11", specifier = "==0.16.0" },
+    { name = "idna", specifier = "==3.18" },
+    { name = "pip", specifier = "==26.0.1" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.4" },
+    { name = "psycopg-pool", specifier = "==3.3.3" },
+    { name = "pytest", specifier = "==8.4.2" },
+    { name = "starlette", specifier = "==1.6.0" },
+    { name = "uvicorn", specifier = "==0.52.3" },
+]
+django-app-versions = [
+    { name = "annotated-types", specifier = "==0.8.0" },
+    { name = "anyio", specifier = "==4.14.2" },
+    { name = "certifi", specifier = "==2026.7.22" },
+    { name = "cffi", specifier = "==2.1.1" },
+    { name = "cryptography", specifier = "==50.0.1" },
+    { name = "h11", specifier = "==0.16.0" },
+    { name = "httpcore", specifier = "==1.0.9" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "idna", specifier = "==3.18" },
+    { name = "packaging", specifier = "==26.3" },
+    { name = "pycparser", specifier = "==3.0" },
+    { name = "pydantic", specifier = "==2.13.4" },
+    { name = "pydantic-core", specifier = "==2.46.4" },
+    { name = "pyjwt", specifier = "==2.13.0" },
+    { name = "typing-extensions", specifier = "==4.16.0" },
+    { name = "typing-inspection", specifier = "==0.4.4" },
+]
+
+[[package]]
 name = "fakeredis"
 version = "2.32.0"
 source = { registry = "https://pypi.org/simple" }
@@ -729,10 +784,11 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
+    { name = "idna", marker = "extra == 'transitive-pins'", specifier = "==3.18" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = "==2.24.0" },
     { name = "pydantic", specifier = "==2.13.4" },
 ]
-provides-extras = ["litestar"]
+provides-extras = ["litestar", "transitive-pins"]
 
 [[package]]
 name = "frozenlist"

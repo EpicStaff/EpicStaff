@@ -1,0 +1,182 @@
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { DatePipe } from '@angular/common';
+import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
+import { filter, finalize } from 'rxjs';
+
+import { PluginGrant } from '../../models/plugin-admin.model';
+import { PluginPreviewItemView, PluginPreviewListView } from '../../models/plugin-preview-view.model';
+import {
+    PluginDefaultModelReference,
+    PluginPreviewTrigger,
+    PluginSuspendPreview,
+} from '../../models/plugin-suspend-preview.model';
+import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
+import {
+    PLUGIN_DEFAULT_MODEL_SETTINGS_ON_SETTINGS_PAGE,
+    PLUGIN_PREVIEW_TRIGGER_KIND_LABELS,
+} from '../../utils/plugin-display.util';
+import { toPluginErrorView } from '../../utils/plugin-error-message.util';
+import {
+    defaultModelsListView,
+    ownedResourcesListView,
+    previewNamedItem,
+    previewSessionItem,
+    toPreviewListView,
+} from '../../utils/plugin-preview-view.util';
+import { PluginPreviewSectionComponent } from '../plugin-preview-section/plugin-preview-section.component';
+
+export interface PluginSuspendDialogData {
+    identifier: string;
+    pluginName: string;
+    grant: PluginGrant;
+}
+
+/** The dialog's title element; pass it as `ariaLabelledBy` when opening the dialog. */
+export const PLUGIN_SUSPEND_DIALOG_TITLE_ID = 'plugin-suspend-dialog-title';
+
+/** Under the default-model settings that point at the plugin's configs. */
+export const PLUGIN_DEFAULT_MODELS_HINT =
+    'New agents and features outside runs, such as the flow assistant, keep using these settings.';
+
+/** Added to the hint only when a listed setting is one the Default LLMs page can change. */
+export const PLUGIN_DEFAULT_MODELS_REPOINT_HINT = 'Repoint them in Settings → Default LLMs.';
+
+/** The preview as the dialog's sections show it. */
+interface SuspendPreviewView {
+    owned: PluginPreviewListView;
+    organizationFlows: PluginPreviewListView;
+    pluginFlows: PluginPreviewListView;
+    sessions: PluginPreviewListView;
+    triggers: PluginPreviewListView;
+    realtimeAgents: PluginPreviewListView;
+    voiceChannels: PluginPreviewListView;
+    defaultModels: PluginPreviewListView;
+    defaultModelsHint: string;
+    dataKeptUntil: string;
+}
+
+/**
+ * Suspends a plugin in one organization after showing what that stops: what the plugin owns there, the
+ * organization's flows and the plugin's own flows that will stop, their running sessions and triggers, the realtime
+ * agents and voice channels, the default-model settings that point at the plugin's configs, and until when the data is
+ * kept. Suspension is undone by Resume, so no typed phrase is asked for. Closes with the suspended grant. A click
+ * outside does not close it; Escape, Cancel and the close button do, except while the suspension is under way.
+ */
+@Component({
+    selector: 'app-plugin-suspend-dialog',
+    imports: [AppSvgIconComponent, ButtonComponent, DatePipe, LoadingSpinnerComponent, PluginPreviewSectionComponent],
+    templateUrl: './plugin-suspend-dialog.component.html',
+    styleUrl: './plugin-suspend-dialog.component.scss',
+})
+export class PluginSuspendDialogComponent implements OnInit {
+    protected readonly preview = signal<PluginSuspendPreview | null>(null);
+    protected readonly isLoading = signal(true);
+    protected readonly loadError = signal<string | null>(null);
+    protected readonly isSuspending = signal(false);
+    protected readonly suspendError = signal<string | null>(null);
+    protected readonly view = computed(() => {
+        const preview = this.preview();
+        return preview ? toPreviewView(preview) : null;
+    });
+    /**
+     * Neither a preview still loading nor one that failed blocks the suspension: it is the way to stop a plugin, so it
+     * must work when something is wrong.
+     */
+    protected readonly canSuspend = computed(() => !this.isSuspending());
+
+    protected readonly data = inject<PluginSuspendDialogData>(DIALOG_DATA);
+    protected readonly organizationName = this.data.grant.organization.name;
+    protected readonly ownedHeading = `What ${this.data.pluginName} owns in ${this.organizationName}`;
+    protected readonly organizationFlowsEmptyText = `None. No flow of ${this.organizationName} uses anything ${this.data.pluginName} owns.`;
+    protected readonly pluginFlowsHeading = `${this.data.pluginName}'s own flows`;
+    protected readonly defaultModelsHeading = `Default-model settings that use ${this.data.pluginName}'s configs`;
+    protected readonly titleId = PLUGIN_SUSPEND_DIALOG_TITLE_ID;
+
+    private readonly dialogRef = inject<DialogRef<PluginGrant>>(DialogRef);
+    private readonly storage = inject(PluginsAdminStorageService);
+    private readonly destroyRef = inject(DestroyRef);
+
+    ngOnInit(): void {
+        this.dialogRef.keydownEvents
+            .pipe(
+                filter((event) => event.key === 'Escape'),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.close());
+        this.loadPreview();
+    }
+
+    protected loadPreview(): void {
+        this.isLoading.set(true);
+        this.loadError.set(null);
+        this.storage
+            .getSuspendPreview(this.data.identifier, this.data.grant.id)
+            .pipe(
+                finalize(() => this.isLoading.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: (preview) => this.preview.set(preview),
+                error: (error: unknown) =>
+                    this.loadError.set(toPluginErrorView(error, "Couldn't load what suspending would stop.").message),
+            });
+    }
+
+    protected suspend(): void {
+        if (!this.canSuspend()) return;
+        this.isSuspending.set(true);
+        this.suspendError.set(null);
+        this.storage
+            .suspendGrant(this.data.identifier, this.data.grant.id)
+            .pipe(
+                finalize(() => this.isSuspending.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: (grant) => this.dialogRef.close(grant),
+                error: (error: unknown) =>
+                    this.suspendError.set(toPluginErrorView(error, "Couldn't suspend the plugin.").message),
+            });
+    }
+
+    protected close(): void {
+        if (this.isSuspending()) return;
+        this.dialogRef.close();
+    }
+}
+
+function toPreviewView(preview: PluginSuspendPreview): SuspendPreviewView {
+    return {
+        owned: ownedResourcesListView(preview.owned_resources),
+        organizationFlows: toPreviewListView(preview.flows.organization, previewNamedItem),
+        pluginFlows: toPreviewListView(preview.flows.plugin, previewNamedItem),
+        sessions: toPreviewListView(preview.running_sessions, previewSessionItem),
+        triggers: toPreviewListView(preview.triggers, triggerItem),
+        realtimeAgents: toPreviewListView(preview.realtime_agents, previewNamedItem),
+        voiceChannels: toPreviewListView(preview.voice_channels, previewNamedItem),
+        defaultModels: defaultModelsListView(preview.default_models),
+        defaultModelsHint: defaultModelsHint(preview.default_models),
+        dataKeptUntil: preview.data_kept_until,
+    };
+}
+
+/** The pointer to the settings page only when that page can change one of the settings listed. */
+function defaultModelsHint(references: readonly PluginDefaultModelReference[]): string {
+    const canRepoint = references.some((reference) =>
+        PLUGIN_DEFAULT_MODEL_SETTINGS_ON_SETTINGS_PAGE.has(reference.setting)
+    );
+    return canRepoint
+        ? `${PLUGIN_DEFAULT_MODELS_HINT} ${PLUGIN_DEFAULT_MODELS_REPOINT_HINT}`
+        : PLUGIN_DEFAULT_MODELS_HINT;
+}
+
+function triggerItem(trigger: PluginPreviewTrigger): PluginPreviewItemView {
+    const kind = PLUGIN_PREVIEW_TRIGGER_KIND_LABELS[trigger.kind];
+    return {
+        key: `${trigger.kind}-${trigger.node_id}`,
+        name: trigger.flow.name,
+        detail: `${kind}: ${trigger.node_name}`,
+    };
+}

@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { ExcludedExportEntity, ExportResult } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
+import { PartialImportResponse } from '../../features/flows/models/graph.model';
 import { ConfigService } from '../../services/config';
 import { ImportFlowRequestOptions, ImportResult } from '../models/import-result.model';
 import { InspectResult } from '../models/review-item.model';
@@ -66,10 +67,10 @@ export class ImportExportService {
             .pipe(map((response) => this.toExportResult(response)));
     }
 
-    partialImport(graphId: number, file: File): Observable<unknown> {
+    partialImport(graphId: number, file: File): Observable<PartialImportResponse> {
         const formData = new FormData();
         formData.append('file', file);
-        return this.http.post(`${this.apiUrl}${graphId}/partial-import/`, formData);
+        return this.http.post<PartialImportResponse>(`${this.apiUrl}${graphId}/partial-import/`, formData);
     }
 
     cdtExport(nodeId: number, format: ExportFormat): Observable<Blob> {

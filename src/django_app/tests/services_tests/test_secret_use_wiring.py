@@ -22,7 +22,10 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.serializers import BaseSerializer, ListSerializer
 from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
 from tables.services.secrets import secret_use_checks
-from tables.views.secret_use import SecretUseCheckedViewSetMixin
+from tables.views.secret_use import (
+    ModelEndpointsGuardedViewSetMixin,
+    SecretUseCheckedViewSetMixin,
+)
 from tests.services_tests.test_secret_reference_coverage import (
     KNOWN_SKIPS,
     SECRET_USE_CHECK_BY_SERIALIZER,
@@ -66,6 +69,9 @@ DELEGATING_MIXINS_BEFORE_SECRET_CHECK: dict[type, str] = {
     # is a 403 before the secret check counts its configs. It defines no perform_create
     # and its perform_update calls super(), so the secret check still runs.
     BuiltInWriteProtectedMixin: "perform_update calls super(); no perform_create",
+    # On the same two viewsets, first, so a plugin's endpoint change is the 400 validation
+    # gave before the built-in 403. It only raises; both its overrides call super().
+    ModelEndpointsGuardedViewSetMixin: "perform_create and perform_update call super()",
 }
 
 #: The bulk-save check of every node type whose bulk serializer, or a serializer nested

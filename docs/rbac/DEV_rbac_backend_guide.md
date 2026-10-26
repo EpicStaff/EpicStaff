@@ -496,6 +496,31 @@ stored is not denied.
 No actor (no user to resolve), or an actor that is not a member of the org, is denied when a
 change needs `USE` — fail-safe, not fail-open.
 
+**Pinned-org principals (a plugin's service account).** On top of the rules above, a
+principal implementing `PinnedOrgPrincipal` is held to the rules in
+`tables/services/secrets/pinned_principal_rules.py`; people are never limited by them:
+
+- Every secret a row references *after* the write — changed or not, carried by the payload or
+  persisted — must pass `principal.may_reference_secrets` (`SecretUseService.check_references`),
+  and every header marker must name such a secret (`check_markers`, via
+  `may_reference_marker_names`; a name no secret has is refused). So a nested PythonCode is
+  checked on every write of it, even one that leaves `secret_ids` out. The denial is a
+  `SecretUseDeniedError` whose message names no secret.
+- It never sets or changes a model's endpoint fields (`base_url`, `deployment_id` /
+  `deployment`), on create or update: `ModelEndpointsGuardedViewSetMixin` (first in the LLM and
+  embedding model viewsets, so a built-in model answers 400, not its own 403) and the model
+  import strategies call `assert_endpoints_untouched`. Its `ModelEndpointNotSettableError` renders
+  as a 400 keyed by each field; the import strategies re-raise it as a `ValidationError`.
+- A run or indexing job it starts is refused with `409 secret_marker_not_referenceable` when a
+  marker it would resolve names a secret it may not reference (`assert_may_resolve_markers`,
+  called by the plugin run guard and `process-rag-indexing/`).
+- A request authenticated with a plugin credential whose user does not implement the protocol is
+  refused with 403 (`IncompletePluginCredentialError`, a Django `PermissionDenied`) by
+  `actor_from_request` (`pinned_principal_of_request`), never taken for a person.
+
+`actor_from_request` keeps one `SecretActor` per request, so `USE` is resolved at most once per
+request, however many nodes a bulk save checks.
+
 **Concurrent writes.** Rules 3 (model switch) and 4 read another row, so they lock the model
 row (`select_for_update`, two models in ascending pk order) and read `base_url` from the
 locked row; rule 4 locks before it counts configs. The LLM / embedding config and model
@@ -541,6 +566,9 @@ validation, a shape error (an undeclared `get_secret`) wins over a `USE` denial.
    writable serializer field targeting `Secret` and fails on one whose serializer is not
    mapped and not in `EXEMPT` (which needs a written reason). It proves the mapping, not the
    wiring — add an API test for the write point too (`tests/api_tests/test_secret_use_*.py`).
+4. Add the field to `GUARDED_REFERENCES` in
+   `tests/plugins_tests/test_plugin_secret_references.py`, which proves every check refuses a
+   plugin's reference to a secret it did not create.
 
 **Deliberately ungated.**
 

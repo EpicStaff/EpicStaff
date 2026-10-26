@@ -1,0 +1,65 @@
+# The plugin node lab: the es_plugins and plugins_db services exactly as src/docker-compose.yaml
+# defines them (extends), against a stand-in for django_app's node API, with two probe plugins.
+# Run with run.sh, which gives every run a project, container and image names of its own (so runs
+# never collide), exports the variables the extended services need and removes everything
+# afterwards. No host ports.
+name: es-plugins-lab
+
+x-lab-image: &lab-image
+  build:
+    context: ../..
+    dockerfile: es_plugins/lab/Dockerfile
+  image: es-plugins-lab-helper:${ES_PLUGINS_LAB_RUN:?}
+  init: true
+
+services:
+  packer:
+    <<: *lab-image
+    profiles: [pack]
+    command: ["sh", "/lab/pack_probes.sh"]
+    volumes:
+      - packages:/packages
+
+  control:
+    <<: *lab-image
+    command: ["python", "-u", "/lab/control.py"]
+    environment:
+      PLUGINS_NODE_KEY: ${PLUGINS_NODE_KEY:?}
+    volumes:
+      - packages:/packages:ro
+    networks:
+      - plugins-network
+
+  es_plugins:
+    extends:
+      file: ../../docker-compose.yaml
+      service: es_plugins
+    image: es-plugins-lab-node:${ES_PLUGINS_LAB_RUN:?}
+    container_name: ${ES_PLUGINS_LAB_NODE:?}
+    depends_on:
+      - control
+
+  # The backups and the restore of the lab run here, as the node runs them on the stack.
+  plugins_db:
+    extends:
+      file: ../../docker-compose.yaml
+      service: plugins_db
+    container_name: ${ES_PLUGINS_LAB_DATABASE:?}
+
+  tools:
+    <<: *lab-image
+    command: ["sleep", "infinity"]
+    networks:
+      - plugins-network
+
+volumes:
+  packages: {}
+  es_plugins_data: {}
+  plugin_egress_policy: {}
+  plugins_pgdata: {}
+
+networks:
+  plugins-network:
+    internal: true
+  plugins-db-network:
+    internal: true

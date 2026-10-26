@@ -50,6 +50,13 @@ else
   else
     audit_trail_enabled=false
   fi
+  # Read by the same rule as nginx (src/nginx/docker-entrypoint.d/16-normalize-plugins-enabled.envsh),
+  # so the UI offers plugins exactly when nginx serves the plugin hosts and the upload route.
+  if env_bool PLUGINS_ENABLED false; then
+    plugins_enabled=true
+  else
+    plugins_enabled=false
+  fi
   cat <<EOF > $CONFIG_PATH
 {
   "apiUrl": "${API_URL}",
@@ -57,7 +64,8 @@ else
   "auditorUrl": "${AUDITOR_API_URL}",
   "isChatEnabled": ${chat_enabled},
   "chatApiUrl": "${CHAT_API_URL:-/chat/}",
-  "isAuditTrailEnabled": ${audit_trail_enabled}
+  "isAuditTrailEnabled": ${audit_trail_enabled},
+  "isPluginsEnabled": ${plugins_enabled}
 }
 EOF
   echo "Config generated:"

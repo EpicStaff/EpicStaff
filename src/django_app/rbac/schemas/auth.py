@@ -74,7 +74,8 @@ FIRST_SETUP_POST = {
     "description": (
         "Creates the first superadmin, the default organization, and a "
         "membership with the built-in Superadmin role, then returns JWT "
-        "tokens. Available only when this deployment allows HTTP "
+        "tokens. Takes a JSON body only (any other media type gets 415). "
+        "Available only when this deployment allows HTTP "
         "first-setup. See docs/rbac/first_setup_operations.md."
     ),
     "request": FirstSetupRequestSerializer,
@@ -135,6 +136,10 @@ FIRST_SETUP_POST = {
             description=(
                 "HTTP first-setup is disabled on this deployment (code: first_setup_disabled)."
             ),
+        ),
+        415: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="The body is not JSON (code: unsupported_media_type).",
         ),
         409: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -205,9 +210,13 @@ TOKEN_INTROSPECT_POST = {
 LOGIN_POST = {
     "summary": "Log in and obtain JWT tokens",
     "description": (
-        "Accepts `email`, `password`, and optional `remember_me` (bool, default "
+        "Accepts a JSON body (any other media type gets 415) with `email`, "
+        "`password`, and optional `remember_me` (bool, default "
         "false). Returns a short-lived access token; the refresh token is set as "
-        "an HttpOnly cookie (`auth.refresh`, Path=/api/auth/, SameSite=Lax). "
+        "an HttpOnly, SameSite=Lax cookie without a Domain: over HTTPS "
+        "(`DJANGO_REFRESH_COOKIE_SECURE=true`) `__Host-auth.refresh` with Secure and "
+        "Path=/, which also expires a leftover `auth.refresh`; over plain http "
+        "`auth.refresh` with Path=/api/auth/. "
         "`remember_me=true` -> Max-Age = configured refresh lifetime; "
         "`remember_me=false` -> Max-Age = 30 minutes. The intent is embedded as "
         "a claim so it survives rotation. Wrong credentials return a flat 401. "
@@ -245,6 +254,10 @@ LOGIN_POST = {
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+        415: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="The body is not JSON (code: unsupported_media_type).",
+        ),
         429: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Too many login attempts — throttle limit exceeded.",
@@ -255,7 +268,9 @@ LOGIN_POST = {
 LOGOUT_POST = {
     "summary": "Log out (blacklist refresh token)",
     "description": (
-        "Reads the refresh token from the HttpOnly `auth.refresh` cookie, "
+        "Reads the refresh token from the HttpOnly refresh cookie "
+        "(`__Host-auth.refresh` over HTTPS, `auth.refresh` over plain http; "
+        "a request carrying that name twice counts as carrying none), "
         "blacklists it so it can no longer be used to obtain new access "
         "tokens, and clears the cookie. The short-lived access token "
         "continues to work until its own expiry. Ownership is verified — "
@@ -287,7 +302,9 @@ LOGOUT_POST = {
 REFRESH_POST = {
     "summary": "Refresh access token",
     "description": (
-        "Reads the refresh token from the HttpOnly `auth.refresh` cookie. "
+        "Reads the refresh token from the HttpOnly refresh cookie "
+        "(`__Host-auth.refresh` over HTTPS, `auth.refresh` over plain http; "
+        "a request carrying that name twice gets 401). "
         "Returns a fresh short-lived access token in the response body. "
         "When token rotation is enabled, the rotated refresh token is set "
         "as a new HttpOnly cookie. No request body is required."

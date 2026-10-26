@@ -163,9 +163,13 @@ $logo-padding-bottom: 0.75rem;
     align-items: center;
     gap: 0.75rem;
 
+    // The rows between the logo and the bottom block scroll on their own when they don't fit (a long app menu).
     &.main-nav {
-        flex-grow: 1;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
         padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
     }
 
     &.bottom-nav {
@@ -238,9 +242,49 @@ $logo-padding-bottom: 0.75rem;
             }
 
             // The size of the other nav icons (app-svg-icon size="1.25rem"): Tabler's glyph has the same square box.
-            .recycle-bin-icon {
+            .recycle-bin-icon,
+            .sidenav-font-icon {
                 font-size: 1.25rem;
                 line-height: 1;
+            }
+
+            // A row that opens a list (Apps, the app switcher) rather than a page: a button drawn like the links.
+            .sidenav-nav-button {
+                border: 0;
+                background-color: transparent;
+                font: inherit;
+                text-align: left;
+            }
+
+            // The current app's name, framed: it opens the switcher rather than a page.
+            .sidenav-switcher {
+                box-shadow: inset 0 0 0 1px var(--color-border);
+            }
+
+            // Expanded rows end with what the row opens: a chevron, or the switcher's up-and-down arrows (a Tabler
+            // glyph, sized like the 16px sprite chevron).
+            .sidenav-row-trail {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                width: 2rem;
+                margin-left: auto;
+                font-size: 1rem;
+                line-height: 1;
+                color: var(--color-text-secondary);
+            }
+
+            // A new app is in the Apps list: a dot on the icon's top-right corner, ringed in the sidebar colour.
+            .sidenav-new-dot {
+                position: absolute;
+                top: 8px;
+                right: 7px;
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background-color: var(--success-color);
+                box-shadow: 0 0 0 2px var(--color-sidenav-background);
             }
 
             .sidenav-nav-link {
@@ -288,6 +332,57 @@ $logo-padding-bottom: 0.75rem;
                 }
             }
         }
+    }
+}
+
+// An apps list opened inline in the drawer: under its row, as wide as the rows.
+.sidenav-inline-list {
+    align-self: stretch;
+    padding: 0 $nav-padding-inline;
+}
+
+// The popover an apps row opens, to the right of the sidebar; its list scrolls when the window is short.
+.apps-popover {
+    display: flex;
+    flex-direction: column;
+    width: 18.75rem; // 300px
+    max-height: min(30rem, calc(100vh - 1rem));
+    overflow: hidden;
+    background-color: var(--color-sidenav-background);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-panel-elevated);
+}
+
+// Manage apps, Open in a new tab: under the list, quieter than the apps.
+.apps-list-footer-link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+    border-radius: 8px;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: var(--text-body-medium-line-height);
+    transition:
+        background-color 0.2s ease-out,
+        color 0.2s ease-out;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+        color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+
+    // Icons of different sizes in one 16px box, so the labels line up.
+    app-svg-icon {
+        width: 1rem;
     }
 }
 

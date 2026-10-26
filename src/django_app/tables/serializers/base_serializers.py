@@ -265,7 +265,8 @@ class WebhookTriggerNestedSerializer(
         """
         assert source == "auth_secret_id", f"unexpected kept-link field source: {source!r}"
         existing = getattr(self.instance, "auth", None)
-        return existing.secret if existing is not None else None
+        # The id is enough to compare with: loading the secret row would cost a query.
+        return existing.secret_id if existing is not None else None
 
     def validate(self, data):
         data = super().validate(data)

@@ -2,8 +2,40 @@ from contextlib import nullcontext
 
 from django.db import transaction
 from rbac.scoping.mixins import OrgScopedChildViewSetMixin
+from tables.services.secrets.pinned_principal_rules import (
+    assert_endpoints_untouched,
+    pinned_principal_of_request,
+)
 from tables.services.secrets.request_actor import actor_from_request
 from tables.services.secrets.secret_use_checks import SecretUseCheck
+
+
+class ModelEndpointsGuardedViewSetMixin:
+    """Keeps a pinned-org principal (a plugin's service account) from setting a model's endpoint.
+
+    Set `model_endpoint_fields` to the model fields that decide where it sends requests.
+    Runs right after validation, before every other write check: place it FIRST in the
+    base list. A built-in model then refuses a plugin's endpoint change with the same 400
+    as any other model, not the built-in protection's 403.
+    """
+
+    model_endpoint_fields: tuple[str, ...] = ()
+
+    def perform_create(self, serializer):
+        self._assert_endpoints_untouched(None, serializer.validated_data)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._assert_endpoints_untouched(serializer.instance, serializer.validated_data)
+        super().perform_update(serializer)
+
+    def _assert_endpoints_untouched(self, instance, data) -> None:
+        assert_endpoints_untouched(
+            principal=pinned_principal_of_request(self.request),
+            instance=instance,
+            values=data,
+            fields=self.model_endpoint_fields,
+        )
 
 
 class SecretUseCheckedViewSetMixin:

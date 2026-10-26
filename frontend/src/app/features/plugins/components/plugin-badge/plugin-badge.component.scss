@@ -1,0 +1,27 @@
+.plugin-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+
+    &--success {
+        background: var(--transparent-green-8);
+        color: var(--color-ks-status-new);
+    }
+
+    &--warning {
+        background: var(--transparent-orange-8);
+        color: var(--color-warning);
+    }
+
+    &--danger {
+        background: var(--color-status-error-subtle);
+        color: var(--color-status-error);
+    }
+
+    &--neutral {
+        background: var(--transparent-white-8);
+        color: var(--color-text-secondary);
+    }
+}

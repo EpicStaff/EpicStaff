@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { EditorInfo } from '../../../../../../../features/flows/services/graph-collaboration.ws.service';
+import { PresentEditor } from '../../../../../../../features/flows/services/graph-collaboration.ws.service';
 import { ProfileService } from '../../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../../services/config';
 
@@ -22,7 +22,7 @@ export class GraphPresenceIndicatorsComponent {
         return this.configService.apiUrl.replace(/\/api\/$/, '');
     }
 
-    readonly editors = input<EditorInfo[]>([]);
+    readonly editors = input<PresentEditor[]>([]);
 
     private readonly filtered = computed(() => {
         const currentId = this.profileService.currentUserSignal()?.id;
@@ -46,13 +46,13 @@ export class GraphPresenceIndicatorsComponent {
         return AVATAR_COLORS[userId % AVATAR_COLORS.length];
     }
 
-    protected getInitials(editor: EditorInfo): string {
+    protected getInitials(editor: PresentEditor): string {
         if (!editor.display_name) return `U${editor.user_id}`;
         const words = editor.display_name.trim().split(/\s+/);
         return words.length >= 2 ? (words[0][0] + words[1][0]).toUpperCase() : words[0][0].toUpperCase();
     }
 
-    protected getTooltip(editor: EditorInfo): string {
+    protected getTooltip(editor: PresentEditor): string {
         return editor.display_name ?? `User ${editor.user_id}`;
     }
 

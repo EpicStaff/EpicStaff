@@ -1,0 +1,1 @@
+# PLUGINS_DEV_MODE=false: the SPA locations serve the published files without asking Django.

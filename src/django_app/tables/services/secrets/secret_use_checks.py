@@ -3,7 +3,8 @@
 `instance` is the persisted row, or None on create. `data` is the serializer's
 validated data, keyed by model attribute names; a key absent from it is unchanged,
 so the persisted value stands in for it. Each check raises SecretUseDeniedError
-when the write needs secrets:USE and `actor` lacks it.
+when the write needs secrets:USE and `actor` lacks it, or when `actor` is a
+pinned-org principal and the row would reference a secret it may not reference.
 
 The LLM and embedding config and model checks lock the model row they read
 (`select_for_update`), so they must run inside the transaction that saves the write.
@@ -14,8 +15,13 @@ from collections.abc import Callable
 from django.db import models
 from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
 from tables.models.llm_models import LLMConfig, LLMModel
+from tables.services.secrets.linked_ids import linked_ids
 from tables.services.secrets.secret_resolver import extract_secret_marker_names
-from tables.services.secrets.secret_use_service import SecretActor, secret_use_service
+from tables.services.secrets.secret_use_service import (
+    SecretActor,
+    principal_of,
+    secret_use_service,
+)
 
 SecretUseCheck = Callable[[SecretActor | None, object, dict], None]
 
@@ -188,7 +194,9 @@ def check_python_code_write(
     Reported under `attribute` + `secret_ids`. Only the declaration needs
     secrets:USE. Editing the `code` or `venv_id` of a PythonCode that already
     declares secrets is free, even though the new code reads those secrets at run
-    time: the declaration is what grants that access.
+    time: the declaration is what grants that access. A pinned-org principal is the
+    exception: whenever it writes the PythonCode, the persisted declaration is checked
+    against the secrets it may reference, so it cannot rewrite code that reads another's.
 
     Args:
         parent: The persisted row nesting the PythonCode (a node or a tool), or None
@@ -199,16 +207,23 @@ def check_python_code_write(
         attribute: The parent's attribute holding the PythonCode, e.g. `"python_code"`.
     """
     python_code_data = parent_data.get(attribute)
+    if python_code_data is None:
+        return
     # Checked before the persisted PythonCode is read: loading it costs a query per
-    # parent, which a write that leaves the declaration alone does not need.
-    if python_code_data is None or "secrets" not in python_code_data:
+    # parent, which a person's write that leaves the declaration alone does not need.
+    if "secrets" not in python_code_data and principal_of(actor) is None:
         return
     persisted_python_code = _persisted_value(parent, attribute)
+    # Read once: a related manager is read through a query unless the caller prefetched
+    # it (the graph bulk save does).
+    current_secret_ids = (
+        linked_ids(persisted_python_code.secrets) if persisted_python_code is not None else None
+    )
     secret_use_service.check_references(
         actor,
         field_path=(attribute, "secret_ids"),
-        current=persisted_python_code.secrets if persisted_python_code is not None else None,
-        incoming=python_code_data["secrets"],
+        current=current_secret_ids,
+        incoming=python_code_data.get("secrets", current_secret_ids),
     )
 
 

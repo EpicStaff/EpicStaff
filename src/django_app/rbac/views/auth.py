@@ -1,7 +1,8 @@
 from django.conf import settings
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, UnsupportedMediaType
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -61,15 +62,36 @@ from rbac.throttles import (
 )
 from rbac.validation.auth import AuthValidationService
 
+JSON_MEDIA_TYPE = "application/json"
+
+
+def _require_json_body(request) -> None:
+    """Refuse a request whose body is not JSON, before the body is read.
+
+    The anonymous views that start a session take JSON only. A cross-site form, or a
+    `no-cors` fetch from a plugin page on a sibling host, can send only form, multipart or
+    `text/plain` bodies without a CORS preflight; refusing those stops a page from logging the
+    browser in to an account of the page's choosing. Checked explicitly because DRF does not
+    parse, and so never refuses, an empty body.
+
+    Raises:
+        UnsupportedMediaType: The `Content-Type` media type is not `application/json`.
+    """
+    media_type = (request.content_type or "").split(";", 1)[0].strip().lower()
+    if media_type != JSON_MEDIA_TYPE:
+        raise UnsupportedMediaType(request.content_type)
+
 
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
     throttle_classes = [LoginThrottle, LoginIpThrottle]
+    parser_classes = [JSONParser]
 
     _validator = AuthValidationService()
 
     @extend_schema(**LOGIN_POST)
     def post(self, request, *args, **kwargs):
+        _require_json_body(request)
         # Shape-check both fields and aggregate missing/blank errors
         # before delegating to simplejwt. Wrong-credential errors stay a
         # flat 401 to avoid user-enumeration leaks.
@@ -152,6 +174,7 @@ class WsTicketView(APIView):
 class FirstSetupView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
+    parser_classes = [JSONParser]
 
     _service = FirstSetupService()
     _validator = AuthValidationService()
@@ -170,6 +193,7 @@ class FirstSetupView(APIView):
 
     @extend_schema(**FIRST_SETUP_POST)
     def post(self, request):
+        _require_json_body(request)
         if not FirstSetupMode.is_http_allowed(settings.FIRST_SETUP_MODE):
             raise FirstSetupDisabledError()
 

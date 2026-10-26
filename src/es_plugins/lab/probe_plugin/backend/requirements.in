@@ -1,0 +1,9 @@
+# The lab's probe plugin: an ASGI app with no framework, served by epicstaff_plugin.serve.
+# run.sh compiles the lock and packs the plugin with the epicstaff-plugin wheel built from
+# src/plugin_sdk, whose own requirements are listed here so the lock pins them.
+uvicorn
+cryptography>=50
+httpx>=0.28,<1
+packaging>=24
+pydantic>=2.13,<3
+pyjwt>=2.10,<3

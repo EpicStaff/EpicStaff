@@ -1,0 +1,170 @@
+# The plugin gateway lab: EpicStaff's real nginx templates and entrypoint scripts, the pinned
+# nginx image, a stand-in decision service and two plugin backends. Run with run.sh, which
+# uses the project name es-gateway-lab and removes everything afterwards. No fixed host ports:
+# nginx is published on an ephemeral 127.0.0.1 port only.
+#
+# The plugins' SPA files live in a volume, as in the stack: nginx mounts it read-only, and the
+# tools container writes it (run.sh copies spa/ in; checks.sh sets and clears a maintenance flag
+# there, as django_app does).
+name: es-gateway-lab
+
+x-lab-secret: &lab-secret
+  PLUGINS_GATEWAY_SECRET: 5b1d2c9e0f7a48b6a3c1d8e2f4b6a9c05b1d2c9e0f7a48b6a3c1d8e2f4b6a9c0
+
+# The lab's plugins network: fixed, as PLUGINS_NETWORK_SUBNET is in the stack, and apart from the
+# stack's default so the lab runs next to a dev stack.
+x-plugins-subnet: &plugins-subnet 10.235.254.0/24
+
+x-lab-service: &lab-service
+  build:
+    context: .
+  init: true
+  mem_limit: 128m
+  volumes:
+    - ./services:/lab/services:ro
+    - ./scripts:/lab/scripts:ro
+    - evidence:/evidence
+
+services:
+  nginx:
+    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
+    environment:
+      <<: *lab-secret
+      NGINX_ENTRYPOINT_QUIET_LOGS: "1"
+      NGINX_SERVER_NAME: epicstaff.test
+      NGINX_SSL_MODE: "off"
+      # As for a deployment reached over https with TLS ended in front of nginx: EpicStaff's server
+      # and the plugin hosts send Strict-Transport-Security over nginx's plain http.
+      NGINX_HSTS_ENABLED: "true"
+      DJANGO_HOST: decision
+      DJANGO_PORT: "8000"
+      FRONTEND_HOST: frontend
+      FRONTEND_PORT: "80"
+      REALTIME_HOST: realtime
+      REALTIME_PORT: "8050"
+      WEBHOOK_HOST: webhook
+      WEBHOOK_PORT: "8009"
+      AUDITOR_HOST: auditor
+      AUDITOR_PORT: "8010"
+      CHAT_ENABLED: "false"
+      CHAT_UPSTREAM_URL: http://chat:8200
+      PLUGINS_ENABLED: "true"
+      # Without development mode: the development lab (../development) renders it on.
+      PLUGINS_DEV_MODE: "false"
+      PLUGINS_BASE_DOMAIN: plugins.epicstaff.test
+      PLUGINS_MAX_PACKAGE_MB: "300"
+      # Small, so the lab can send a body above it.
+      PLUGINS_MAX_REQUEST_BODY_MB: "1"
+      DJANGO_FRONTEND_BASE_URL: https://epicstaff.test
+      PLUGINS_NETWORK_SUBNET: *plugins-subnet
+    volumes:
+      - ../../templates/:/etc/nginx/templates:ro
+      # Every hook in src/nginx/docker-entrypoint.d, as src/docker-compose.yaml mounts them
+      # (tests/check_templates.sh fails when one is missing): the long syntax, so a missing file
+      # stops `up` instead of becoming an empty folder that nginx skips.
+      - type: bind
+        source: ../../docker-entrypoint.d/15-normalize-chat-enabled.envsh
+        target: /docker-entrypoint.d/15-normalize-chat-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../../docker-entrypoint.d/16-check-ssl-mode.envsh
+        target: /docker-entrypoint.d/16-check-ssl-mode.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../../docker-entrypoint.d/16-normalize-plugins-enabled.envsh
+        target: /docker-entrypoint.d/16-normalize-plugins-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../../docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+        target: /docker-entrypoint.d/17-normalize-hsts-enabled.envsh
+        read_only: true
+        bind:
+          create_host_path: false
+      - plugin_spa:/srv/plugin-spa:ro
+      - ../../plugin-platform:/usr/share/nginx/plugin-platform:ro
+    ports:
+      - "127.0.0.1::80"
+    # As in src/docker-compose.yaml: without it, one busy plugin exhausts the local ports.
+    sysctls:
+      net.ipv4.tcp_tw_reuse: "1"
+    mem_limit: 128m
+    # As in the stack: the public networks, and plugins-network as epicstaff-api.
+    networks:
+      public: {}
+      backend: {}
+      plugins:
+        aliases:
+          - epicstaff-api
+    depends_on: [decision, plugin_alpha, plugin-bravo]
+
+  decision:
+    <<: *lab-service
+    command: ["python", "-u", "/lab/services/decision.py"]
+    environment:
+      <<: *lab-secret
+      PORT: "8000"
+      EVIDENCE_FILE: /evidence/decision.log
+    networks: [backend]
+
+  # The underscore in the name is deliberate: the node's host name, es_plugins, has one too.
+  plugin_alpha:
+    <<: *lab-service
+    command: ["python", "-u", "/lab/services/backend.py"]
+    environment:
+      BACKEND_NAME: alpha
+      PORT: "20001"
+      EVIDENCE_FILE: /evidence/backend.log
+    networks: [plugins]
+
+  plugin-bravo:
+    <<: *lab-service
+    command: ["python", "-u", "/lab/services/backend.py"]
+    environment:
+      BACKEND_NAME: bravo
+      PORT: "20002"
+      EVIDENCE_FILE: /evidence/backend.log
+    networks: [plugins]
+
+  # A browser's or another service's view: not on the plugins network, so every address of
+  # nginx it can reach is outside PLUGINS_NETWORK_SUBNET.
+  tools:
+    <<: *lab-service
+    command: ["sleep", "infinity"]
+    mem_limit: 256m
+    environment:
+      <<: *lab-secret
+    # The lab-service volumes, and what the browser's side compares and writes.
+    volumes:
+      - ./services:/lab/services:ro
+      - ./scripts:/lab/scripts:ro
+      - evidence:/evidence
+      - ./spa:/lab/spa:ro
+      - ../../plugin-platform:/lab/plugin-platform:ro
+      - plugin_spa:/srv/plugin-spa
+    networks: [public, backend]
+
+  # A plugin backend's or the node's view: on the plugins network only.
+  inside:
+    <<: *lab-service
+    command: ["sleep", "infinity"]
+    mem_limit: 256m
+    networks: [plugins]
+
+volumes:
+  evidence: {}
+  plugin_spa: {}
+
+networks:
+  public: {}
+  backend: {}
+  plugins:
+    internal: true
+    ipam:
+      config:
+        - subnet: *plugins-subnet

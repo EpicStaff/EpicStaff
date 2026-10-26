@@ -10,7 +10,7 @@ from domain.models.realtime_tool import RealtimeTool
 from google import genai
 from google.genai import types
 from loguru import logger
-from utils.public_error import (
+from src.shared.public_error import (
     PublicErrorMessage,
     build_public_error_message,
     new_error_correlation_id,

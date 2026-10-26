@@ -102,6 +102,11 @@
         .group-icon {
             color: var(--purple-primary);
             flex-shrink: 0;
+
+            &--font {
+                font-size: 14px;
+                line-height: 1;
+            }
         }
 
         .group-name {
@@ -165,8 +170,18 @@
         justify-content: center;
 
         .resource-name {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
             font-size: 0.875rem;
             color: var(--color-text-primary);
+
+            .resource-icon {
+                width: 14px;
+                height: 14px;
+                flex-shrink: 0;
+                object-fit: contain;
+            }
 
             &.bulk {
                 font-size: 0.625rem;
