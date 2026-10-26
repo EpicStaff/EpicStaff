@@ -158,7 +158,10 @@
                                                                 </span>
                                                             }
                                                             @default {
-                                                                <span class="shortcuts__key">
+                                                                <span
+                                                                    class="shortcuts__key"
+                                                                    [class.shortcuts__key--square]="key.length === 1"
+                                                                >
                                                                     {{ key }}
                                                                 </span>
                                                             }
@@ -239,7 +242,10 @@
                                             <div class="shortcuts__keys">
                                                 @if (row.keys) {
                                                     @for (key of row.keys; track $index) {
-                                                        <span class="shortcuts__key">
+                                                        <span
+                                                            class="shortcuts__key"
+                                                            [class.shortcuts__key--square]="key.length === 1"
+                                                        >
                                                             {{ key }}
                                                         </span>
                                                     }

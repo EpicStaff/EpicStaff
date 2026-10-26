@@ -38,6 +38,11 @@
             <f-circle-pattern></f-circle-pattern>
         </f-background>
         <f-magnetic-lines></f-magnetic-lines>
+        <!-- Dragging a node or a wire near an edge scrolls the canvas. -->
+        <f-auto-pan
+            fEdgeThreshold="40"
+            fAcceleration
+        ></f-auto-pan>
         <f-canvas fZoom>
             <f-snap-connection
                 fBehavior="fixed"
@@ -267,7 +272,7 @@
             <div class="top-left-actions__column">
                 <button
                     class="domain-button"
-                    matTooltip="Configure domain"
+                    [matTooltip]="keymap.withShortcut('Configure domain', 'flow.domain')"
                     matTooltipPosition="right"
                     (click)="onDomainClick()"
                 >
@@ -276,13 +281,11 @@
 
                 <app-flow-shortcuts-button
                     icon="multi-select"
+                    iconSize="16px"
                     iconOffsetY="-2px"
-                    label="Shift"
-                    [textEnd]="true"
                     ariaLabel="Multi-select"
+                    tooltip="Multi-select"
                     [active]="selectionManager.multiSelectActive()"
-                    matTooltip="Multi-select"
-                    matTooltipPosition="right"
                     (clicked)="onToggleMultiSelect()"
                 ></app-flow-shortcuts-button>
 
@@ -291,7 +294,7 @@
                     #shortcutsButton
                 >
                     <app-flow-shortcuts-button
-                        [textEnd]="true"
+                        [tooltip]="keymap.withShortcut('Keyboard shortcuts', 'navigating.shortcuts')"
                         (clicked)="onOpenShortcuts(shortcutsAnchor)"
                     ></app-flow-shortcuts-button>
                 </div>
@@ -313,7 +316,7 @@
                     <button
                         class="arrange-btn extract-subflow-btn"
                         data-hide-on-overflow
-                        matTooltip="Extract to Subflow"
+                        [matTooltip]="keymap.withShortcut('Extract to Subflow', 'flow.extract-subflow')"
                         matTooltipPosition="below"
                         (click)="onExtractToSubflow()"
                     >
@@ -342,8 +345,8 @@
                     <button
                         class="arrange-btn"
                         data-hide-on-overflow
-                        title="Auto arrange"
-                        matTooltip="Auto arrange"
+                        aria-label="Auto arrange"
+                        [matTooltip]="keymap.withShortcut('Auto arrange', 'flow.auto-arrange')"
                         matTooltipPosition="below"
                         [disabled]="isAutoArrangeDisabled()"
                         (click)="onAutoArrange()"
@@ -358,8 +361,8 @@
                     class="arrange-btn settings-icon-btn"
                     data-hide-on-overflow
                     (click)="openSettings()"
-                    title="Flow Settings"
-                    matTooltip="Flow settings"
+                    aria-label="Flow settings"
+                    [matTooltip]="keymap.withShortcut('Flow settings', 'flow.settings')"
                     matTooltipPosition="below"
                 >
                     <i class="ti ti-settings"></i>

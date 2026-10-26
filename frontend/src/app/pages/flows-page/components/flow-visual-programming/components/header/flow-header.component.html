@@ -56,7 +56,9 @@
     <div class="header-actions">
         <span
             class="tooltip-host"
-            [matTooltip]="isPreviewMode() ? previewBlockedMessages.sessions : 'Sessions'"
+            [matTooltip]="
+                isPreviewMode() ? previewBlockedMessages.sessions : keymap.withShortcut('Sessions', 'flow.sessions')
+            "
             matTooltipPosition="below"
         >
             <button
@@ -78,7 +80,9 @@
         @if (canUseFlow()) {
             <span
                 class="tooltip-host"
-                [matTooltip]="isPreviewMode() ? previewBlockedMessages.getCurl : 'Get cURL'"
+                [matTooltip]="
+                    isPreviewMode() ? previewBlockedMessages.getCurl : keymap.withShortcut('Get cURL', 'flow.curl')
+                "
                 matTooltipPosition="below"
             >
                 <button
@@ -100,7 +104,7 @@
             collapseOnOverflowTarget=".btn-label"
             collapseOnOverflowClass="btn--icon-only"
             collapseOnOverflowRequireSelector=".open-chat-button__icon"
-            [matTooltip]="isAssistantOpen ? 'Close chat' : 'Open chat'"
+            [matTooltip]="keymap.withShortcut(isAssistantOpen ? 'Close chat' : 'Open chat', 'flow.chat')"
             matTooltipPosition="below"
             (click)="onToggleAssistant()"
         >
@@ -127,7 +131,9 @@
             >
                 <span
                     class="tooltip-host"
-                    [matTooltip]="isPreviewMode() ? previewBlockedMessages.save : 'Save'"
+                    [matTooltip]="
+                        isPreviewMode() ? previewBlockedMessages.save : keymap.withShortcut('Save', 'editing.save')
+                    "
                     matTooltipPosition="below"
                 >
                     <button
@@ -189,7 +195,7 @@
         @if (canUseFlow()) {
             <span
                 class="tooltip-host"
-                [matTooltip]="isPreviewMode() ? previewBlockedMessages.run : 'Run'"
+                [matTooltip]="isPreviewMode() ? previewBlockedMessages.run : keymap.withShortcut('Run', 'flow.run')"
                 matTooltipPosition="below"
             >
                 <button

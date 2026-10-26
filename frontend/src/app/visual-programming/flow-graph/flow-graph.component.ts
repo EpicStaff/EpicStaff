@@ -121,6 +121,14 @@ const CANVAS_PAN_STEP_PX = 40;
 
 const CANVAS_PAN_FAST_STEP_PX = 200;
 
+// One dot of the canvas background per arrow press, ten with Shift.
+const SELECTION_MOVE_STEP_PX = GRID_CELL_SIZE;
+
+const SELECTION_MOVE_FAST_STEP_PX = 10 * GRID_CELL_SIZE;
+
+// How close to the visible edge a node moved by the arrows may come before the canvas follows it.
+const SELECTION_FOLLOW_MARGIN_PX = 2 * GRID_CELL_SIZE;
+
 @Component({
     selector: 'app-flow-graph',
     templateUrl: './flow-graph.component.html',
@@ -334,7 +342,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly injector = inject(Injector);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
-    private readonly keymap = inject(KeymapService);
+    protected readonly keymap = inject(KeymapService);
     private readonly permissions = inject(PermissionsService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly ngZone = inject(NgZone);
@@ -394,13 +402,24 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
         this.keymap.register('node.subgraph', (_event, { params }) => this.onSubgraphShortcut(params), options);
         this.registerToolbarShortcuts();
+        // The keys zoom around the middle of the visible canvas; the wheel zooms at the pointer.
+        const zoomOptions = { destroyRef: this.destroyRef, when: () => !this.showContextMenu() };
+        this.keymap.register('zoom.in', () => this.fZoomDirective.zoomIn(), zoomOptions);
+        this.keymap.register('zoom.out', () => this.fZoomDirective.zoomOut(), zoomOptions);
         for (const action of EDITOR_ACTIONS) {
             if ('pan' in action) {
                 const pan = action.pan;
-                this.keymap.register(action.id, () => this.onPanShortcut(pan), {
+                this.keymap.register(action.id, (event) => this.onArrowShortcut(event, pan), {
                     ...options,
                     runOutsideAngular: true,
                     when: (event) => this.isCanvasKeyTarget(event.target),
+                });
+            }
+            if ('moveSelection' in action) {
+                const move = action.moveSelection;
+                this.keymap.register(action.id, (event) => this.moveSelectedNodes(event, move), {
+                    ...options,
+                    when: (event) => this.isCanvasKeyTarget(event.target) && this.hasSelectedNodes(),
                 });
             }
         }
@@ -461,6 +480,111 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return false;
         }
         return target === target.ownerDocument?.body || this.flowHost().nativeElement.contains(target);
+    }
+
+    // With nodes selected the plain arrows move them; Ctrl/Cmd + arrow still pans fast.
+    private onArrowShortcut(event: KeyboardEvent, pan: CanvasPan): void {
+        if (!pan.fast && this.hasSelectedNodes()) {
+            this.ngZone.run(() => this.moveSelectedNodes(event, pan));
+            return;
+        }
+        this.onPanShortcut(pan);
+    }
+
+    private hasSelectedNodes(): boolean {
+        return this.selectionManager.selectedNodeIds().length > 0;
+    }
+
+    private moveSelectedNodes(event: KeyboardEvent, move: CanvasPan): void {
+        if (this.isDialogOpen() || this.showContextMenu()) {
+            return;
+        }
+        if (this.flowReadOnly.isReadOnly()) {
+            this.flowReadOnly.notifyBlocked();
+            return;
+        }
+        const selectedIds = new Set(this.selectionManager.selectedNodeIds());
+        const selected = this.flowService.nodes().filter((node) => selectedIds.has(node.id));
+        const movable = selected.filter((node) => !this.isNodeReadOnly(node));
+        // Like a drag, a selection with nodes that cannot move says so; the others still move.
+        const blocked = selected.find((node) => this.isNodeReadOnly(node));
+        if (blocked && !event.repeat) {
+            this.flowReadOnly.notifyNodeTypeBlocked(blocked.type);
+        }
+        if (movable.length === 0) {
+            return;
+        }
+        // A held key is one undo step, like one drag.
+        if (!event.repeat) {
+            this.undoRedoService.stateChanged();
+        }
+        this.arrangeAnimator.markUnarranged();
+        const step = move.fast ? SELECTION_MOVE_FAST_STEP_PX : SELECTION_MOVE_STEP_PX;
+        const moved = movable.map((node) => ({
+            ...node,
+            position: {
+                x: this.snapToGrid(node.position.x) + move.x * step,
+                y: this.snapToGrid(node.position.y) + move.y * step,
+            },
+        }));
+        moved.forEach((node) => this.flowService.updateNode(node));
+        this.routingOrchestrator.rerouteSegmentConnections();
+        this.followMovedNodes(moved, move, step);
+    }
+
+    // The canvas follows nodes moved past the visible edge, in the direction of the move, by how far they went past it
+    // but never more than the step: a selection that was already off screen (Ctrl+A on a large flow) scrolls along
+    // with it step by step instead of jumping to its far edge.
+    private followMovedNodes(nodes: readonly NodeModel[], move: CanvasPan, step: number): void {
+        const canvas = this.fCanvasComponent;
+        const view = this.visibleCanvasRect();
+        if (!canvas?.transform || !view) {
+            return;
+        }
+        const { position, scaledPosition, scale } = canvas.transform;
+        const offset = PointExtensions.sum(position, scaledPosition);
+        const left = Math.min(...nodes.map((node) => node.position.x)) * scale + offset.x;
+        const top = Math.min(...nodes.map((node) => node.position.y)) * scale + offset.y;
+        const right = Math.max(...nodes.map((node) => node.position.x + node.size.width)) * scale + offset.x;
+        const bottom = Math.max(...nodes.map((node) => node.position.y + node.size.height)) * scale + offset.y;
+        const maxShift = step * scale;
+        const shiftX =
+            move.x > 0
+                ? Math.max(-maxShift, Math.min(0, view.right - right))
+                : move.x < 0
+                  ? Math.min(maxShift, Math.max(0, view.left - left))
+                  : 0;
+        const shiftY =
+            move.y > 0
+                ? Math.max(-maxShift, Math.min(0, view.bottom - bottom))
+                : move.y < 0
+                  ? Math.min(maxShift, Math.max(0, view.top - top))
+                  : 0;
+        if (shiftX === 0 && shiftY === 0) {
+            return;
+        }
+        canvas.transform.position = PointExtensions.initialize(position.x + shiftX, position.y + shiftY);
+        canvas.redraw();
+        canvas.emitCanvasChangeEvent();
+    }
+
+    /** The part of the canvas the user sees, in canvas host pixels, inset by the follow margin; null before layout. */
+    private visibleCanvasRect(): { left: number; top: number; right: number; bottom: number } | null {
+        const host = this.flowHost().nativeElement.getBoundingClientRect();
+        if (host.width === 0 || host.height === 0) {
+            return null;
+        }
+        // The side panel covers the right of the canvas.
+        const visibleRight = Math.min(host.right, this.nodePanelShell?.panelLeftEdge() ?? host.right) - host.left;
+        if (visibleRight <= 2 * SELECTION_FOLLOW_MARGIN_PX) {
+            return null;
+        }
+        return {
+            left: SELECTION_FOLLOW_MARGIN_PX,
+            top: SELECTION_FOLLOW_MARGIN_PX,
+            right: visibleRight - SELECTION_FOLLOW_MARGIN_PX,
+            bottom: host.height - SELECTION_FOLLOW_MARGIN_PX,
+        };
     }
 
     private onPanShortcut(pan: CanvasPan): void {
@@ -1184,8 +1308,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.flowService.updateNode(updatedNode);
     }
 
+    // Like the Decision Tree search: a zoomed-out canvas comes back to 100% around the node, otherwise it only centres.
     public onZoomInNode(node: NodeModel): void {
-        this.fCanvasComponent.centerGroupOrNode(node.id, true);
+        if (this.fCanvasComponent.getScale() < 1) {
+            this.fCanvasComponent.resetScaleAndCenterGroupOrNode(node.id, true);
+        } else {
+            this.fCanvasComponent.centerGroupOrNode(node.id, true);
+        }
     }
 
     public onNodeDoubleClickAndZoom(data: { node: NodeModel; event: MouseEvent }): void {

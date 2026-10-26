@@ -26,6 +26,7 @@ import { GraphDto } from '../../../../../../features/flows/models/graph.model';
 import { LabelsStorageService } from '../../../../../../features/flows/services/labels-storage.service';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { FLOW_ACTION_PERMISSIONS } from '../../../../../../visual-programming/core/constants/flow-action-permissions';
+import { KeymapService } from '../../../../../../visual-programming/services/keymap.service';
 import { PREVIEW_BLOCKED_MESSAGES } from './flow-header.constants';
 import { GraphPresenceIndicatorsComponent } from './presence-indicator/graph-presence-indicators.component';
 import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
@@ -78,6 +79,7 @@ export class FlowHeaderComponent {
 
     private readonly dialog = inject(CdkDialog);
     private readonly permissions = inject(PermissionsService);
+    protected readonly keymap = inject(KeymapService);
 
     constructor(private router: Router) {}
 

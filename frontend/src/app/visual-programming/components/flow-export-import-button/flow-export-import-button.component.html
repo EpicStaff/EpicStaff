@@ -5,7 +5,7 @@
         class="feib"
         [class.feib--active]="selectedCount() > 0"
         [class.feib--open]="isOpen()"
-        matTooltip="Export / Import nodes"
+        [matTooltip]="keymap.withShortcut('Export / Import nodes', 'flow.export-import')"
         matTooltipPosition="below"
         (click)="toggle($event)"
     >

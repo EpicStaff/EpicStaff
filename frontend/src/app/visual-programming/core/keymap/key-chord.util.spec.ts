@@ -59,6 +59,34 @@ describe('chordFromEvent', () => {
         expect(chordFromEvent(keydown(init), isMac)).toBe(expected);
     });
 
+    it.each([
+        ['Ctrl+=', { key: '=', code: 'Equal', ctrlKey: true }, false, 'Mod+Equal'],
+        [
+            'Ctrl++ with Shift on a US layout',
+            { key: '+', code: 'Equal', ctrlKey: true, shiftKey: true },
+            false,
+            'Mod+Shift+Equal',
+        ],
+        [
+            'Ctrl++ on a German layout, where + has its own key',
+            { key: '+', code: 'BracketRight', ctrlKey: true },
+            false,
+            'Mod+Equal',
+        ],
+        ['Ctrl and the numpad +', { key: '+', code: 'NumpadAdd', ctrlKey: true }, false, 'Mod+Equal'],
+        ['Cmd+= on a mac', { key: '=', code: 'Equal', metaKey: true }, true, 'Mod+Equal'],
+        ['Ctrl+-', { key: '-', code: 'Minus', ctrlKey: true }, false, 'Mod+Minus'],
+        [
+            'Ctrl+- on a German layout, where - sits on the US / key',
+            { key: '-', code: 'Slash', ctrlKey: true },
+            false,
+            'Mod+Minus',
+        ],
+        ['Ctrl and the numpad -', { key: '-', code: 'NumpadSubtract', ctrlKey: true }, false, 'Mod+Minus'],
+    ] as const)('names a zoom key by what it prints: %s', (_label, init, isMac, expected) => {
+        expect(chordFromEvent(keydown(init), isMac)).toBe(expected);
+    });
+
     it('falls back to the physical key for a mac Alt character', () => {
         expect(chordFromEvent(keydown({ key: 'π', code: 'KeyP', altKey: true }), true)).toBe('Alt+KeyP');
     });

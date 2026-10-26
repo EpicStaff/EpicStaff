@@ -3,7 +3,7 @@
     class="flow-shortcuts-btn"
     [class.flow-shortcuts-btn--active]="active()"
     [attr.aria-label]="ariaLabel()"
-    matTooltip="Keyboard shortcuts"
+    [matTooltip]="tooltip()"
     matTooltipPosition="right"
     (click)="clicked.emit()"
 >
@@ -16,10 +16,4 @@
             [size]="iconSize()"
         ></app-svg-icon>
     </span>
-
-    <span
-        class="flow-shortcuts-btn__text"
-        [class.flow-shortcuts-btn__text--end]="textEnd()"
-        >{{ label() }}</span
-    >
 </button>

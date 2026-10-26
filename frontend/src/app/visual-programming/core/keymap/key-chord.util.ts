@@ -51,6 +51,10 @@ const MODIFIER_LABELS: Readonly<Record<string, string>> = { Mod: 'Ctrl', Ctrl: '
 // character used; elsewhere the physical key wins, so a Russian "." on the US "/" key still means Slash.
 const PUNCTUATION_ON_LETTER_KEYS: Readonly<Record<string, string>> = { ',': 'Comma', '.': 'Period' };
 
+// The zoom keys are read by what they print: "-" sits on the US "/" key on a German layout, and "+" has a key of
+// its own there and on the numpad.
+const ZOOM_KEY_CODES: Readonly<Record<string, string>> = { '+': 'Equal', '=': 'Equal', '-': 'Minus' };
+
 const MAC_KEY_LABELS: Readonly<Record<string, string>> = { Enter: '↩' };
 
 const KEY_LABELS: Readonly<Record<string, string>> = {
@@ -97,6 +101,10 @@ export function mainKeyFromEvent(event: Pick<KeyboardEvent, 'key' | 'code'>): st
     }
     if (event.key === '/') {
         return 'Slash';
+    }
+    const zoomCode = ZOOM_KEY_CODES[event.key];
+    if (zoomCode) {
+        return zoomCode;
     }
     const punctuationCode = PUNCTUATION_ON_LETTER_KEYS[event.key];
     if (punctuationCode && LETTER_CODE.test(event.code)) {

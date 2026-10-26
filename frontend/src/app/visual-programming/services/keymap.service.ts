@@ -8,7 +8,13 @@ import { PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
 import { EDITOR_ACTIONS, EditorAction, EditorActionId } from '../core/keymap/editor-actions';
-import { chordFromEvent, isEditableTarget, isInsideSidePanel, KeyChord } from '../core/keymap/key-chord.util';
+import {
+    chordFromEvent,
+    formatChord,
+    isEditableTarget,
+    isInsideSidePanel,
+    KeyChord,
+} from '../core/keymap/key-chord.util';
 import {
     applyShortcutChange,
     CustomShortcutRow,
@@ -52,8 +58,14 @@ const FLOW_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
     EDITOR_ACTIONS.filter((action) => action.section === 'Flow actions').map((action) => action.id)
 );
 
+const ZOOM_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
+    EDITOR_ACTIONS.filter((action) => action.section === 'Zoom').map((action) => action.id)
+);
+
 const PAN_ACTION_IDS: ReadonlySet<EditorActionId> = new Set(
-    EDITOR_ACTIONS.filter((action: EditorAction) => action.pan !== undefined).map((action) => action.id)
+    EDITOR_ACTIONS.filter((action: EditorAction) => action.pan !== undefined || action.moveSelection !== undefined).map(
+        (action) => action.id
+    )
 );
 
 interface ShortcutState {
@@ -195,6 +207,16 @@ export class KeymapService {
         return unregister;
     }
 
+    /**
+     * A button's tooltip with the key that runs it, e.g. "Auto arrange (Alt + L)". Reads the user's current key, so
+     * a changed key shows here too; with no key set it is the label alone.
+     */
+    withShortcut(label: string, actionId: EditorActionId): string {
+        const [chord] = this.bindings().get(actionId) ?? [];
+        if (!chord) return label;
+        return `${label} (${formatChord(chord, this.isMac).join(this.isMac ? '' : ' + ')})`;
+    }
+
     actionForChord(chord: KeyChord): EditorActionId | null {
         return this.resolved().holders.get(chord)?.action ?? null;
     }
@@ -323,6 +345,10 @@ export class KeymapService {
             // A flow action behind a dialog would act on a flow the user cannot see. Dialogs only shield the keys
             // they know (the Decision Tree dialog stops Ctrl+S, Delete…, not Ctrl+Enter or the Alt keys).
             return event.repeat || this.dialog.openDialogs.length > 0;
+        }
+        if (ZOOM_ACTION_IDS.has(actionId)) {
+            // Over a dialog the key is left to the browser, which zooms the page as usual.
+            return this.dialog.openDialogs.length > 0;
         }
         if (PAN_ACTION_IDS.has(actionId)) {
             return fromSidePanel;

@@ -557,13 +557,13 @@ export class ShortcutsModalComponent {
     }
 
     private displayedChords(action: EditorAction, chords: readonly KeyChord[]): (readonly string[])[] {
-        if (action.displayKeys) {
-            return [formatKeyLabels(action.displayKeys, this.keymap.isMac)];
+        if (action.displayChords) {
+            return action.displayChords.map((keys) => formatKeyLabels(keys, this.keymap.isMac));
         }
         return chords.map((chord) => formatChord(chord, this.keymap.isMac));
     }
 }
 
 function isListed(action: EditorAction): boolean {
-    return action.listed !== false && (action.defaultChords.length > 0 || action.displayKeys !== undefined);
+    return action.listed !== false && (action.defaultChords.length > 0 || action.displayChords !== undefined);
 }

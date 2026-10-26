@@ -433,6 +433,20 @@ describe('ShortcutsModalComponent', () => {
         ]);
     });
 
+    it('draws one-character keys as square keycaps and keeps word keys wide', () => {
+        setUp(true);
+        openModal();
+
+        const searchRow = rowElementsOf('Navigating').find((row) => readRow(row).label === 'Node search')!;
+        const squareKeys = Array.from(searchRow.querySelectorAll('.shortcuts__key'), (key) =>
+            key.classList.contains('shortcuts__key--square')
+        );
+        expect(squareKeys).toEqual([true, true]); // ⌘ and F
+
+        const deleteRow = rowElementsOf('Editing').find((row) => readRow(row).label === 'Delete')!;
+        expect(deleteRow.querySelector('.shortcuts__key--square')).toBeNull();
+    });
+
     it.each([
         ['Windows/Linux', false, [['Ctrl', 'click']], [['Shift', 'drag']]],
         ['macOS', true, [['⌘', 'click']], [['⇧', 'drag']]],
@@ -443,16 +457,18 @@ describe('ShortcutsModalComponent', () => {
         expect(rowsOf('Selection')).toEqual([
             { label: 'Add/remove selection', chords: toggleChords },
             { label: 'Zone selection', chords: zoneChords },
+            { label: 'Move selected nodes', chords: [['Arrow keys']] },
+            { label: 'Move selected nodes faster', chords: [[zoneChords[0][0], 'Arrow keys']] },
         ]);
     });
 
-    it('shows the zoom gestures', () => {
+    it('shows the zoom keys and gestures', () => {
         setUp();
         openModal();
 
         expect(rowsOf('Zoom')).toEqual([
-            { label: 'Zoom in', chords: [['Mouse wheel up']] },
-            { label: 'Zoom out', chords: [['Mouse wheel down']] },
+            { label: 'Zoom in', chords: [['Ctrl', '+'], ['Mouse wheel up']] },
+            { label: 'Zoom out', chords: [['Ctrl', '-'], ['Mouse wheel down']] },
         ]);
     });
 

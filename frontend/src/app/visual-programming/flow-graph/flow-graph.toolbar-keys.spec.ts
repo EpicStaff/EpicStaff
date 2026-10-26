@@ -3,7 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NgZone, NO_ERRORS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
@@ -63,7 +64,6 @@ function pythonNode(id: string, position: { x: number; y: number }): NodeModel {
 
 interface MountOptions {
     readonly isPreview?: boolean;
-    readonly isMac?: boolean;
     readonly flowActions?: ActionCode[];
     readonly fileActions?: ActionCode[];
 }
@@ -95,7 +95,7 @@ describe('FlowGraphComponent canvas toolbar keys', () => {
                 provideHttpClientTesting(),
                 { provide: Dialog, useValue: dialog },
                 { provide: FLOW_EDITOR_PREVIEW, useValue: options.isPreview ?? false },
-                { provide: PLATFORM_IS_MAC, useValue: options.isMac ?? false },
+                { provide: PLATFORM_IS_MAC, useValue: false },
                 ...(options.isPreview
                     ? [
                           VersionPreviewNodeAuthorshipStore,
@@ -488,20 +488,103 @@ describe('FlowGraphComponent canvas toolbar keys', () => {
         });
     });
 
-    describe('Multi-select hint', () => {
-        it.each([
-            ['Windows', false],
-            ['a Mac', true],
-        ])('shows "Shift" in the bottom-right corner on %s', (_platform, isMac) => {
-            mount({ isMac });
+    describe('zoom keys', () => {
+        const ZOOM_IN = { code: 'Equal', key: '=', ctrlKey: true };
+        const ZOOM_IN_WITH_SHIFT = { code: 'Equal', key: '+', ctrlKey: true, shiftKey: true };
+        const ZOOM_OUT = { code: 'Minus', key: '-', ctrlKey: true };
 
-            const multiSelect = host().querySelector('app-flow-shortcuts-button[icon="multi-select"]')!;
-            const hint = multiSelect.querySelector('.flow-shortcuts-btn__text')!;
+        function spyOnZoom(): { zoomIn: ReturnType<typeof vi.spyOn>; zoomOut: ReturnType<typeof vi.spyOn> } {
+            return {
+                zoomIn: vi.spyOn(FZoomDirective.prototype, 'zoomIn').mockImplementation(() => undefined),
+                zoomOut: vi.spyOn(FZoomDirective.prototype, 'zoomOut').mockImplementation(() => undefined),
+            };
+        }
 
-            expect(hint.textContent?.trim()).toBe('Shift');
-            expect(hint.classList).toContain('flow-shortcuts-btn__text--end');
-            // Read out as "Multi-select", not as the key name.
-            expect(multiSelect.querySelector('button')?.getAttribute('aria-label')).toBe('Multi-select');
+        it('Ctrl + and Ctrl - zoom the canvas instead of the page', () => {
+            const zoom = spyOnZoom();
+            mount();
+
+            const zoomIn = press(ZOOM_IN);
+            press(ZOOM_IN_WITH_SHIFT);
+            const zoomOut = press(ZOOM_OUT);
+
+            expect(zoom.zoomIn).toHaveBeenCalledTimes(2);
+            expect(zoom.zoomOut).toHaveBeenCalledTimes(1);
+            expect(zoomIn.defaultPrevented).toBe(true);
+            expect(zoomOut.defaultPrevented).toBe(true);
+        });
+
+        it('keeps zooming while the key is held, and also from the side panel', () => {
+            const zoom = spyOnZoom();
+            mount();
+
+            press({ ...ZOOM_IN, repeat: true });
+            press(ZOOM_OUT, insideSidePanel(document.createElement('button')));
+
+            expect(zoom.zoomIn).toHaveBeenCalledTimes(1);
+            expect(zoom.zoomOut).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves the key to the browser while typing or with a dialog open', () => {
+            const zoom = spyOnZoom();
+            mount();
+
+            const typing = press(ZOOM_IN, attach(document.createElement('input')));
+            dialog.openDialogs.push({});
+            const overDialog = press(ZOOM_OUT);
+
+            expect(zoom.zoomIn).not.toHaveBeenCalled();
+            expect(zoom.zoomOut).not.toHaveBeenCalled();
+            expect(typing.defaultPrevented).toBe(false);
+            expect(overDialog.defaultPrevented).toBe(false);
+        });
+    });
+
+    describe('Multi-select and shortcuts buttons', () => {
+        it('show only their icons, named for screen readers', () => {
+            mount();
+
+            const buttons = Array.from(host().querySelectorAll('app-flow-shortcuts-button button'));
+
+            expect(buttons.map((button) => button.textContent?.trim())).toEqual(['', '']);
+            expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+                'Multi-select',
+                'Keyboard shortcuts',
+            ]);
+        });
+    });
+
+    describe('tooltips', () => {
+        function tooltipsIn(element: HTMLElement = host()): string[] {
+            return fixture.debugElement
+                .queryAll(By.directive(MatTooltip))
+                .filter((debugElement) => element.contains(debugElement.nativeElement))
+                .map((debugElement) => debugElement.injector.get(MatTooltip).message);
+        }
+
+        it('name the key of every toolbar button that has one', () => {
+            mount();
+            selectNodes('python-1');
+
+            expect(tooltipsIn()).toEqual(
+                expect.arrayContaining([
+                    'Configure domain (Alt + M)',
+                    'Keyboard shortcuts (Ctrl + /)',
+                    'Extract to Subflow (Alt + G)',
+                    'Export / Import nodes (Alt + X)',
+                    'Add files to flow (Alt + U)',
+                    'Auto arrange (Alt + L)',
+                    'Flow settings (Alt + ,)',
+                ])
+            );
+        });
+
+        it('give Multi-select one tooltip, without a key', () => {
+            mount();
+
+            const multiSelect = host().querySelector('app-flow-shortcuts-button') as HTMLElement;
+
+            expect(tooltipsIn(multiSelect)).toEqual(['Multi-select']);
         });
     });
 });

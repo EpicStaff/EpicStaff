@@ -17,6 +17,7 @@
         [checked]="checked"
         [disabled]="isDisabled()"
         (click)="$event.preventDefault(); onToggle()"
+        (keydown.enter)="$event.preventDefault(); onToggle()"
     />
     <span class="slider"></span>
 </label>

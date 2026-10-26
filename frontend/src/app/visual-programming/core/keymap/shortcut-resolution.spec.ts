@@ -42,7 +42,8 @@ describe('resolveShortcuts', () => {
 
         expect(resolved.bindings.get('node.python')).toEqual(['Shift+KeyP']);
         expect(resolved.bindings.get('editing.redo')).toEqual(['Mod+Shift+KeyZ', 'Mod+KeyY']);
-        expect(resolved.bindings.get('zoom.in')).toEqual([]);
+        expect(resolved.bindings.get('zoom.in')).toEqual(['Mod+Equal', 'Mod+Shift+Equal']);
+        expect(resolved.bindings.get('navigating.node-menu')).toEqual([]);
         expect(resolved.customShortcuts).toEqual([]);
         expect([...resolved.unboundIds]).toEqual([]);
     });
@@ -131,6 +132,7 @@ describe('resolveShortcuts', () => {
         ['a mac Ctrl chord', rows(['node.agent', 'Ctrl+KeyQ'])],
         ['the sidebar next-page key', rows(['node.agent', 'Alt+ArrowDown'])],
         ['the sidebar previous-page key', rows(['editing.save', 'Alt+ArrowUp'])],
+        ['the zoom out key, saved before zoom had keys', rows(['node.agent', 'Mod+Minus'])],
     ])('keeps a stored row with %s without a key and keeps every default', (_case, value) => {
         const resolved = resolveShortcuts(value);
 

@@ -18,9 +18,11 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { nextListIndex } from '@shared/utils';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { FLOW_ACTION_PERMISSIONS } from '../../core/constants/flow-action-permissions';
+import { KeymapService } from '../../services/keymap.service';
 
 @Component({
     selector: 'app-flow-export-import-button',
@@ -48,6 +50,7 @@ export class FlowExportImportButtonComponent {
     private readonly permissions = inject(PermissionsService);
     private readonly injector = inject(Injector);
     private readonly focusMonitor = inject(FocusMonitor);
+    protected readonly keymap = inject(KeymapService);
     private readonly host: HTMLElement = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
     @HostListener('mousedown', ['$event'])
@@ -80,7 +83,7 @@ export class FlowExportImportButtonComponent {
     protected onMenuKeydown(event: KeyboardEvent): void {
         const items = this.menuItems().map((item) => item.nativeElement);
         const current = items.indexOf(event.target as HTMLButtonElement);
-        const next = nextMenuItemIndex(event.key, current, items.length);
+        const next = nextListIndex(event.key, current, items.length);
         if (next === null) return;
         event.preventDefault();
         this.focusMonitor.focusVia(items[next], 'program');
@@ -122,20 +125,4 @@ export class FlowExportImportButtonComponent {
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
-}
-
-function nextMenuItemIndex(key: string, current: number, count: number): number | null {
-    if (count === 0) return null;
-    switch (key) {
-        case 'ArrowDown':
-            return (current + 1) % count;
-        case 'ArrowUp':
-            return (current - 1 + count) % count;
-        case 'Home':
-            return 0;
-        case 'End':
-            return count - 1;
-        default:
-            return null;
-    }
 }

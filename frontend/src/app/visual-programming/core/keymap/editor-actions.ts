@@ -24,11 +24,14 @@ export interface EditorAction<Id extends string = EditorActionId> {
     readonly label: string;
     readonly section: EditorActionSection;
     readonly defaultChords: readonly KeyChord[];
-    readonly displayKeys?: readonly string[];
+    /** How the shortcuts list shows the keys, one entry per alternative, when the chords alone would not read well. */
+    readonly displayChords?: readonly (readonly string[])[];
     readonly customizable: boolean;
     readonly nodeType?: MenuNodeType | NodeType.SUBGRAPH;
     readonly param?: EditorActionParam;
     readonly pan?: CanvasPan;
+    /** Moves the selected nodes; `fast` is the long step. */
+    readonly moveSelection?: CanvasPan;
     readonly listed?: false;
     /** The permission its button needs; without it the action is left out of the shortcuts list and picker. */
     readonly requires?: PermissionRequirement;
@@ -42,6 +45,18 @@ function panAction<const Id extends `navigating.pan-${string}`>(id: Id, chord: K
         defaultChords: [chord],
         customizable: false,
         pan,
+        listed: false,
+    } as const satisfies EditorAction<Id>;
+}
+
+function moveSelectionAction<const Id extends `selection.move-${string}`>(id: Id, chord: KeyChord, move: CanvasPan) {
+    return {
+        id,
+        label: 'Move selected nodes',
+        section: 'Selection',
+        defaultChords: [chord],
+        customizable: false,
+        moveSelection: move,
         listed: false,
     } as const satisfies EditorAction<Id>;
 }
@@ -175,7 +190,7 @@ export const EDITOR_ACTIONS = [
         label: 'Move canvas',
         section: 'Navigating',
         defaultChords: [],
-        displayKeys: [ARROW_KEYS],
+        displayChords: [[ARROW_KEYS]],
         customizable: false,
     },
     {
@@ -183,7 +198,7 @@ export const EDITOR_ACTIONS = [
         label: 'Move canvas faster',
         section: 'Navigating',
         defaultChords: [],
-        displayKeys: ['Mod', ARROW_KEYS],
+        displayChords: [['Mod', ARROW_KEYS]],
         customizable: false,
     },
     {
@@ -191,7 +206,7 @@ export const EDITOR_ACTIONS = [
         label: 'Previous / next page',
         section: 'Navigating',
         defaultChords: [],
-        displayKeys: ['Alt', UP_DOWN_KEYS],
+        displayChords: [['Alt', UP_DOWN_KEYS]],
         customizable: false,
     },
     panAction('navigating.pan-left', 'ArrowLeft', { x: -1, y: 0, fast: false }),
@@ -207,7 +222,7 @@ export const EDITOR_ACTIONS = [
         label: 'Open node create menu',
         section: 'Navigating',
         defaultChords: [],
-        displayKeys: ['Right click'],
+        displayChords: [['Right click']],
         customizable: false,
     },
     {
@@ -215,7 +230,7 @@ export const EDITOR_ACTIONS = [
         label: 'Add/remove selection',
         section: 'Selection',
         defaultChords: [],
-        displayKeys: ['Mod', 'click'],
+        displayChords: [['Mod', 'click']],
         customizable: false,
     },
     {
@@ -223,23 +238,45 @@ export const EDITOR_ACTIONS = [
         label: 'Zone selection',
         section: 'Selection',
         defaultChords: [],
-        displayKeys: ['Shift', 'drag'],
+        displayChords: [['Shift', 'drag']],
         customizable: false,
     },
+    {
+        id: 'selection.move',
+        label: 'Move selected nodes',
+        section: 'Selection',
+        defaultChords: [],
+        displayChords: [[ARROW_KEYS]],
+        customizable: false,
+    },
+    {
+        id: 'selection.move-fast',
+        label: 'Move selected nodes faster',
+        section: 'Selection',
+        defaultChords: [],
+        displayChords: [['Shift', ARROW_KEYS]],
+        customizable: false,
+    },
+    // The plain arrows belong to the pan actions, which move the selection instead when there is one.
+    moveSelectionAction('selection.move-left-fast', 'Shift+ArrowLeft', { x: -1, y: 0, fast: true }),
+    moveSelectionAction('selection.move-right-fast', 'Shift+ArrowRight', { x: 1, y: 0, fast: true }),
+    moveSelectionAction('selection.move-up-fast', 'Shift+ArrowUp', { x: 0, y: -1, fast: true }),
+    moveSelectionAction('selection.move-down-fast', 'Shift+ArrowDown', { x: 0, y: 1, fast: true }),
     {
         id: 'zoom.in',
         label: 'Zoom in',
         section: 'Zoom',
-        defaultChords: [],
-        displayKeys: ['Mouse wheel up'],
+        // Ctrl + "+" needs Shift on a US keyboard but not on a German one, so both are bound.
+        defaultChords: ['Mod+Equal', 'Mod+Shift+Equal'],
+        displayChords: [['Mod', '+'], ['Mouse wheel up']],
         customizable: false,
     },
     {
         id: 'zoom.out',
         label: 'Zoom out',
         section: 'Zoom',
-        defaultChords: [],
-        displayKeys: ['Mouse wheel down'],
+        defaultChords: ['Mod+Minus'],
+        displayChords: [['Mod', '-'], ['Mouse wheel down']],
         customizable: false,
     },
 ] as const satisfies readonly EditorAction<string>[];

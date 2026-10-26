@@ -911,6 +911,38 @@ describe('KeymapService', () => {
         });
     });
 
+    describe('tooltips', () => {
+        it.each([
+            [false, 'flow.domain', 'Configure domain', 'Configure domain (Alt + M)'],
+            [false, 'flow.run', 'Run', 'Run (Ctrl + Enter)'],
+            [false, 'navigating.shortcuts', 'Keyboard shortcuts', 'Keyboard shortcuts (Ctrl + /)'],
+            [true, 'flow.settings', 'Flow settings', 'Flow settings (⌥,)'],
+            [true, 'flow.run', 'Run', 'Run (⌘↩)'],
+        ] as const)('adds the key to the label (mac: %s, %s)', (isMac, action, label, tooltip) => {
+            setUp(isMac);
+
+            expect(keymap().withShortcut(label, action)).toBe(tooltip);
+        });
+
+        it('shows the key the user gave the action', () => {
+            setUp();
+            loadUser();
+            keymap().setKeyOverride('flow.chat', 'Alt+KeyJ');
+            nextPatch().succeed();
+
+            expect(keymap().withShortcut('Open chat', 'flow.chat')).toBe('Open chat (Alt + J)');
+        });
+
+        it('shows the label alone when the action has no key', () => {
+            setUp();
+            loadUser();
+            keymap().setKeyOverride('flow.chat', null);
+            nextPatch().succeed();
+
+            expect(keymap().withShortcut('Open chat', 'flow.chat')).toBe('Open chat');
+        });
+    });
+
     describe('flow actions behind a dialog', () => {
         @Component({ template: '<button type="button">Inside the dialog</button>' })
         class PlainDialogComponent {}
