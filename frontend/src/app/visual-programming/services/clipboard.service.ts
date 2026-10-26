@@ -139,7 +139,7 @@ export class ClipboardService {
 
             // Deep-clone data so per-paste mutations don't leak into the clipboard
             const newData = oldNode.data ? JSON.parse(JSON.stringify(oldNode.data)) : oldNode.data;
-            // DT next-node refs are repopulated below via FlowService.addConnection's hook
+            // DT and CDT next-node refs are repopulated below via FlowService.addConnection's hook
             this.clearDecisionTableNextNodeRefs(oldNode.type, newData);
             // CDT sections must get fresh ids on paste so they don't collide with the
             // copied node's sections within the same graph.
@@ -235,9 +235,9 @@ export class ClipboardService {
     }
 
     private clearDecisionTableNextNodeRefs(type: NodeType, data: NodeModel['data'] | null): void {
-        if (type !== NodeType.TABLE || !data) return;
+        if ((type !== NodeType.TABLE && type !== NodeType.CLASSIFICATION_TABLE) || !data) return;
 
-        const table = (data as DecisionTableNodeModel['data']).table;
+        const table = (data as DecisionTableNodeModel['data'] | ClassificationDecisionTableNodeModel['data']).table;
         if (!table) return;
 
         table.default_next_node = null;
