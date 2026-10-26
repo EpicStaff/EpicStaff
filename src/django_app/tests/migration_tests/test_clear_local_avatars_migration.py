@@ -12,7 +12,7 @@ from django.apps import apps
 
 from tables.models.user import User
 
-migration = import_module("tables.migrations.0277_clear_local_avatars")
+migration = import_module("tables.migrations.0283_clear_local_avatars")
 
 
 @pytest.fixture
