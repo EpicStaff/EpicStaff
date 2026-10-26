@@ -41,7 +41,7 @@ class SessionTriggerSerializer(serializers.ModelSerializer):
 class SessionPrincipalSerializer(serializers.ModelSerializer):
     class Meta:
         model = SessionPrincipal
-        fields = ["kind", "user", "api_key", "email"]
+        fields = ["kind", "user", "api_key", "email", "plugin_identifier"]
 
 
 class SessionSerializer(serializers.ModelSerializer):

@@ -7,6 +7,7 @@ from typing import Any
 
 import settings
 from loguru import logger
+from src.shared.bench_log import BENCH_LEVEL
 
 from manager.application.holding import JobHoldingRegistry
 from manager.application.ports import (
@@ -18,6 +19,7 @@ from manager.application.ports import (
 from manager.domain.enums import VenvStatus
 from manager.domain.errors import VenvNotFoundError
 from manager.domain.models import Job, Library, StorageCredentials, Venv
+from manager.domain.types import NotRunReason
 
 _VENV_BUILD_FAILED_MESSAGE = "Execution environment failed to build; the job was not run."
 _DISPATCH_FAILED_MESSAGE = "The job could not be handed to the worker and was not run."
@@ -229,12 +231,20 @@ class JobOrchestrator:
 
         if venv.status is VenvStatus.FAILED:
             logger.warning("Execution {} rejected: venv {} failed to build", execution_id, venv.id)
-            await self._fail(job, _VENV_BUILD_FAILED_MESSAGE)
+            await self._fail(job, _VENV_BUILD_FAILED_MESSAGE, not_run_reason="venv_failed")
         elif venv.status is VenvStatus.COMPLETED:
             await self._dispatch(job)
         else:
             logger.info("Execution {} held until venv {} finishes building", execution_id, venv.id)
             self.holding.hold(venv.id, job)
+            logger.log(
+                BENCH_LEVEL,
+                "bench {checkpoint}",
+                checkpoint="exec_held",
+                session_id=session_id,
+                execution_id=execution_id,
+                venv_id=venv.id,
+            )
 
         return job
 
@@ -246,7 +256,7 @@ class JobOrchestrator:
 
             if venv is None or venv.status is VenvStatus.FAILED:
                 for job in self.holding.release(venv_id):
-                    await self._fail(job, _VENV_BUILD_FAILED_MESSAGE)
+                    await self._fail(job, _VENV_BUILD_FAILED_MESSAGE, not_run_reason="venv_failed")
                 continue
 
             if venv.status is VenvStatus.COMPLETED:
@@ -266,12 +276,14 @@ class JobOrchestrator:
             await self.dispatcher.dispatch(job)
         except Exception:
             logger.exception("Failed to dispatch job {}", job.execution_id)
-            await self._fail(job, _DISPATCH_FAILED_MESSAGE)
+            await self._fail(job, _DISPATCH_FAILED_MESSAGE, not_run_reason="dispatch_failed")
 
-    async def _fail(self, job: Job, message: str) -> None:
+    async def _fail(self, job: Job, message: str, *, not_run_reason: NotRunReason) -> None:
         await self.failure_sink.fail(
             job.execution_id,
             message,
+            session_id=job.session_id,
+            not_run_reason=not_run_reason,
             reply_to_crew_channel=job.reply_to_crew_channel,
         )
 

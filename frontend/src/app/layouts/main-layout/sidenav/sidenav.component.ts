@@ -1,26 +1,38 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
-import { OverlayModule } from '@angular/cdk/overlay';
+import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { PortalModule } from '@angular/cdk/portal';
+import { CdkScrollable } from '@angular/cdk/scrolling';
+import { NgTemplateOutlet } from '@angular/common';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
     effect,
     inject,
+    Injector,
     input,
+    linkedSignal,
     output,
     signal,
     untracked,
+    viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AppSvgIconComponent, SidebarToggleButtonComponent, UserAvatarComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { isPlainPrimaryClick } from '@shared/utils';
 import { filter, map } from 'rxjs/operators';
 
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
+import { AppsListComponent } from '../../../features/plugins/components/apps-list/apps-list.component';
+import { PluginIconComponent } from '../../../features/plugins/components/plugin-icon/plugin-icon.component';
+import { PluginMenuIconComponent } from '../../../features/plugins/components/plugin-menu-icon/plugin-menu-icon.component';
+import { AppNavigationService, MANAGE_APPS_URL } from '../../../features/plugins/services/app-navigation.service';
 import { QUICK_START_TOUR_ANCHORS } from '../../../features/quick-start-tour/quick-start-tour-anchors';
 import { visibleRecycleBinTabs } from '../../../features/recycle-bin/utils/visible-recycle-bin-tabs.util';
 import { OrgAvatarComponent } from '../../../features/role-base-access/components/org-avatar/org-avatar.component';
@@ -57,6 +69,18 @@ interface NavItem {
     separatedAbove?: boolean;
 }
 
+/** The two lists of apps the sidebar opens: from the Apps row in EpicStaff, and from the app switcher in an app. */
+type AppsListKind = 'apps' | 'switcher';
+
+// To the right of the sidebar, level with the row (its `<li>` spans the sidebar), or rising from the row's bottom when
+// there is no room below.
+const RIGHT_OF_ROW: ConnectedPosition[] = [
+    { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 8 },
+    { originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'bottom', offsetX: 8 },
+];
+
+const BACK_TO_EPICSTAFF_LABEL = 'Back to EpicStaff';
+
 const PAGE_STEP_BY_CODE: Partial<Record<'ArrowUp' | 'ArrowDown', 1 | -1>> = { ArrowUp: -1, ArrowDown: 1 };
 
 function isPlainAltChord(event: KeyboardEvent): boolean {
@@ -82,6 +106,12 @@ function isEditableTarget(element: Element): boolean {
         OrgAvatarComponent,
         ClickOutsideDirective,
         SidebarToggleButtonComponent,
+        PluginIconComponent,
+        PluginMenuIconComponent,
+        AppsListComponent,
+        CdkTrapFocus,
+        CdkScrollable,
+        NgTemplateOutlet,
     ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
@@ -91,18 +121,56 @@ function isEditableTarget(element: Element): boolean {
 export class LeftSidebarComponent {
     /** Current sidebar width in px, owned by the main layout; collapsed vs expanded is derived from it. */
     public readonly width = input.required<number>();
+    /** The sidebar is the phone drawer, opened over the page: an apps list opens inline, under its row. */
+    public readonly inDrawer = input(false);
     /** The open/close control was used; the owner of the width decides the new one. */
     public readonly expandedToggle = output<void>();
+
+    /** The open apps popover's focus trap. */
+    private readonly appsListFocusTrap = viewChild(CdkTrapFocus);
+
+    // Declared ahead of the state, whose initializers read the apps through it.
+    private readonly appNavigation = inject(AppNavigationService);
 
     /** Expanded rows show their labels, so the hover tooltips (which repeat the label) are suppressed. */
     protected readonly isExpanded = computed(() => isMainSidenavExpanded(this.width()));
     protected readonly sidebarToggleLabel = computed(() => (this.isExpanded() ? 'Close sidebar' : 'Open sidebar'));
 
+    /** The app the address shows (its identifier and page), or `null` on EpicStaff's own pages. */
+    protected readonly appContext = computed(() => {
+        const context = this.appNavigation.context();
+        return context.kind === 'app' ? context : null;
+    });
+    protected readonly apps = this.appNavigation.apps;
+    protected readonly currentApp = this.appNavigation.currentApp;
+    /** An app missing from the list (not granted here, or gone) shows its identifier. */
+    protected readonly currentAppName = computed(() => this.currentApp()?.name ?? this.appContext()?.identifier ?? '');
+    protected readonly switcherLabel = computed(() => `${this.currentAppName()}, switch app`);
+    protected readonly menu = this.appNavigation.menu;
+    protected readonly activeMenuItem = this.appNavigation.activeMenuItem;
+    protected readonly activeMenuItemAriaCurrent = this.appNavigation.activeMenuItemAriaCurrent;
+    protected readonly returnUrl = this.appNavigation.returnUrl;
+    protected readonly currentHref = this.appNavigation.currentHref;
+    protected readonly canManageApps = this.appNavigation.canManageApps;
+    protected readonly hasNewApps = this.appNavigation.hasNewApps;
+    protected readonly appsRowLabel = computed(() => (this.hasNewApps() ? 'Apps, new apps available' : 'Apps'));
+    /** A drawer wide enough for names lists apps under their row; a rail, in or out of the drawer, opens a popover. */
+    protected readonly listsInline = computed(() => this.inDrawer() && this.isExpanded());
+    /** Closed when the page changes, and when the sidebar changes its width or its place. */
+    protected readonly openList = linkedSignal<unknown, AppsListKind | null>({
+        source: () => [this.currentPath(), this.isExpanded(), this.inDrawer()],
+        computation: () => null,
+    });
+    /** The apps that were new when the open list opened: they keep their tag while it stays open. */
+    protected readonly newAppTags = signal<ReadonlySet<string>>(new Set());
+    /** The row under the pointer, for the tooltips of the rows drawn for apps. */
+    protected readonly hoveredRow = signal<string | null>(null);
+
     private currentUserService = inject(ProfileService);
     private destroyRef = inject(DestroyRef);
     private readonly easterEggTrigger = inject(EasterEggTriggerService);
 
-    public topNavItems: NavItem[];
+    public readonly topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
     public recycleBinNavItem: NavItem;
     /** Shown next to the logo when expanded; names the logo image when collapsed. */
@@ -113,6 +181,9 @@ export class LeftSidebarComponent {
     public isUserMenuOpen = signal<boolean>(false);
     public showAccountTooltip = false;
     protected readonly tourAnchors = QUICK_START_TOUR_ANCHORS;
+    protected readonly backToEpicStaffLabel = BACK_TO_EPICSTAFF_LABEL;
+    protected readonly manageAppsUrl = MANAGE_APPS_URL;
+    protected readonly popoverPositions = RIGHT_OF_ROW;
 
     private router = inject(Router);
     private currentPath = toSignal(
@@ -144,6 +215,9 @@ export class LeftSidebarComponent {
         )
     );
 
+    /** Named next to the heading of an apps popover. */
+    protected readonly organizationName = computed(() => this.activeMembership()?.organization.name ?? null);
+
     /** The account row shows the organization the user is working in. */
     protected readonly activeMembership = computed(() => {
         const user = this.user();
@@ -162,6 +236,7 @@ export class LeftSidebarComponent {
     private readonly configService = inject(ConfigService);
     private readonly permissionService = inject(PermissionsService);
     private readonly chatInboxStream = inject(ChatInboxStreamService);
+    private readonly injector = inject(Injector);
     private readonly dialog = inject(Dialog);
     private readonly activatedRoute = inject(ActivatedRoute);
     private readonly workspaceNavItem: NavItem = {
@@ -301,6 +376,39 @@ export class LeftSidebarComponent {
         this.isUserMenuOpen.update((prev) => !prev);
     }
 
+    /** Opens an apps list, or closes it when it is open. Opening it marks every app in it as seen. */
+    protected toggleList(kind: AppsListKind): void {
+        if (this.openList() === kind) {
+            this.closeLists();
+            return;
+        }
+        this.newAppTags.set(this.appNavigation.acknowledgeNewApps());
+        this.openList.set(kind);
+    }
+
+    protected closeLists(): void {
+        this.openList.set(null);
+    }
+
+    /** Escape closes the popover and hands the focus back to the row it opened from. */
+    protected onPopoverKeydown(event: KeyboardEvent, row: HTMLElement): void {
+        if (event.key !== 'Escape') return;
+        this.closeLists();
+        row.focus();
+    }
+
+    /** A popover takes the focus on its search field when it has one, else on its first app. */
+    protected focusOpenedPopover(): void {
+        afterNextRender(() => this.appsListFocusTrap()?.focusTrap.focusFirstTabbableElement(), {
+            injector: this.injector,
+        });
+    }
+
+    /** A link under an apps list closes it, unless it opens elsewhere (a new tab). */
+    protected onListFooterLinkClick(event: MouseEvent): void {
+        if (isPlainPrimaryClick(event)) this.closeLists();
+    }
+
     public handleItemClick(item: NavItem, event: MouseEvent): void {
         if (item.action) {
             event.preventDefault();
@@ -308,8 +416,9 @@ export class LeftSidebarComponent {
         }
     }
 
+    /** Alt+Up/Down steps through EpicStaff's pages; an app's own menu has no such shortcut. */
     protected onDocumentKeydown(event: KeyboardEvent): void {
-        if (event.defaultPrevented) return;
+        if (event.defaultPrevented || this.appContext() !== null) return;
         const step = PAGE_STEP_BY_CODE[event.code as keyof typeof PAGE_STEP_BY_CODE];
         if (step === undefined || !isPlainAltChord(event) || this.dialog.openDialogs.length > 0) return;
         if (event.target instanceof Element && isEditableTarget(event.target)) return;

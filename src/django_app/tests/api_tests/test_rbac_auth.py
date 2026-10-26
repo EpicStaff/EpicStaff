@@ -14,9 +14,11 @@ Integration tests for the Story 2 auth surface:
 """
 
 import hashlib
+import json
 import re
 from datetime import timedelta
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 import pytest
 from django.conf import settings
@@ -42,7 +44,7 @@ from rbac.identity.reset_user import ResetUserService
 from rbac.identity.tickets import sse_ticket_service, ws_ticket_service
 from rbac.identity.refresh_cookie import (
     NON_REMEMBER_REFRESH_LIFETIME,
-    REFRESH_COOKIE_NAME,
+    refresh_cookie_name,
 )
 from rbac.identity.passwords.token_repository import (
     PasswordResetTokenRepository,
@@ -68,6 +70,7 @@ def captured_log_messages():
 # ---------------- First-setup ----------------
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_first_setup_flow_is_idempotent(api_client):
     url = reverse("first_setup")
@@ -88,7 +91,7 @@ def test_first_setup_flow_is_idempotent(api_client):
     # The refresh token is delivered as an HttpOnly cookie, never in the body.
     assert "access" in payload
     assert "refresh" not in payload
-    assert REFRESH_COOKIE_NAME in r.cookies
+    assert refresh_cookie_name() in r.cookies
 
     r = api_client.get(url)
     assert r.json() == {"needs_setup": False, "setup_mode": "open"}
@@ -104,6 +107,7 @@ def test_first_setup_flow_is_idempotent(api_client):
 # ---------------- Login / auth envelope ----------------
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     ("remember_me", "persistent"),
@@ -128,7 +132,7 @@ def test_login_sets_an_httponly_refresh_cookie_whose_lifetime_follows_remember_m
         r = api_client.post(reverse("refresh"))
         assert r.status_code == 200
 
-    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    cookie = r.cookies[refresh_cookie_name()]
     assert cookie["httponly"]
     lifetime = (
         settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"] if persistent else NON_REMEMBER_REFRESH_LIFETIME
@@ -139,12 +143,14 @@ def test_login_sets_an_httponly_refresh_cookie_whose_lifetime_follows_remember_m
     assert 0 < token.payload["exp"] - int(timezone.now().timestamp()) <= int(lifetime.total_seconds())
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_refresh_without_cookie_returns_401(api_client):
     r = api_client.post(reverse("refresh"))
     assert r.status_code == 401
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_refresh_with_expired_non_remember_token_returns_401_and_clears(
     api_client, regular_user
@@ -162,7 +168,7 @@ def test_refresh_with_expired_non_remember_token_returns_401_and_clears(
     assert login.status_code == 200
 
     # Simulate the 30-min window elapsing by re-signing exp into the past.
-    current = api_client.cookies[REFRESH_COOKIE_NAME].value
+    current = api_client.cookies[refresh_cookie_name()].value
     token = RefreshToken(current)
     token.set_exp(
         from_time=timezone.now()
@@ -170,24 +176,25 @@ def test_refresh_with_expired_non_remember_token_returns_401_and_clears(
         - timedelta(seconds=1),
         lifetime=timedelta(seconds=0),
     )
-    api_client.cookies[REFRESH_COOKIE_NAME] = str(token)
+    api_client.cookies[refresh_cookie_name()] = str(token)
 
     r = api_client.post(reverse("refresh"))
     assert r.status_code == 401
-    cleared = r.cookies[REFRESH_COOKIE_NAME]
+    cleared = r.cookies[refresh_cookie_name()]
     assert cleared.value == ""
     assert int(cleared["max-age"]) == 0
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_logout_clears_refresh_cookie(api_client, regular_user, jwt_tokens):
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
-    api_client.cookies[REFRESH_COOKIE_NAME] = jwt_tokens["refresh"]
+    api_client.cookies[refresh_cookie_name()] = jwt_tokens["refresh"]
 
     r = api_client.post(reverse("logout"))
     assert r.status_code == status.HTTP_205_RESET_CONTENT
     # Cookie is cleared: value emptied and Max-Age=0.
-    cleared = r.cookies[REFRESH_COOKIE_NAME]
+    cleared = r.cookies[refresh_cookie_name()]
     assert cleared.value == ""
     assert int(cleared["max-age"]) == 0
 
@@ -221,9 +228,102 @@ def test_protected_route_without_token_returns_401_project_envelope(api_client):
 # replicated; flag a follow-up if regression coverage is desired.
 
 
+# ---------------- Session-starting endpoints take JSON only ----------------
+#
+# A cross-site form, or a `no-cors` fetch from a plugin page, can send only these bodies
+# without a CORS preflight. Taking any of them would let such a page log the browser in to an
+# account of the page's choosing.
+
+
+@pytest.fixture
+def no_login_throttle_counts():
+    cache.delete_pattern("throttle_login*")
+    yield
+    cache.delete_pattern("throttle_login*")
+
+
+@pytest.fixture
+def existing_default_org(db):
+    """The default organization first setup joins, so the setup creates none."""
+    return Organization.objects.create(name="Organization", is_default=True)
+
+
+def _form_encoded(client, url, body):
+    return client.post(url, urlencode(body), content_type="application/x-www-form-urlencoded")
+
+
+def _multipart(client, url, body):
+    return client.post(url, body, format="multipart")
+
+
+def _text_plain(client, url, body):
+    return client.post(url, json.dumps(body), content_type="text/plain")
+
+
+def _empty_text_plain(client, url, body):
+    return client.post(url, "", content_type="text/plain")
+
+
+def _no_content_type(client, url, body):
+    return client.generic("POST", url, json.dumps(body).encode(), content_type="")
+
+
+NON_JSON_BODIES = [_form_encoded, _multipart, _text_plain, _empty_text_plain, _no_content_type]
+NON_JSON_IDS = ["form-encoded", "multipart", "text-plain", "empty-text-plain", "no-content-type"]
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("refresh_cookie_secure", "no_login_throttle_counts")
+@pytest.mark.parametrize("send", NON_JSON_BODIES, ids=NON_JSON_IDS)
+def test_login_refuses_a_body_that_is_not_json_and_sets_no_cookie(api_client, regular_user, send):
+    # The right password, so only the media type can refuse it.
+    response = send(api_client, reverse("login"), {"email": regular_user.email, "password": "UserStrongPass123!"})
+
+    assert response.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert response.json()["code"] == "unsupported_media_type"
+    assert not response.cookies
+    assert "access" not in response.json()
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("refresh_cookie_secure", "existing_default_org")
+@pytest.mark.parametrize("send", NON_JSON_BODIES, ids=NON_JSON_IDS)
+def test_first_setup_refuses_a_body_that_is_not_json_and_creates_nobody(api_client, send):
+    response = send(api_client, reverse("first_setup"), {"email": "first@example.com", "password": "StrongPass123!"})
+
+    assert response.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    assert response.json()["code"] == "unsupported_media_type"
+    assert not response.cookies
+    assert not get_user_model().objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("refresh_cookie_secure", "no_login_throttle_counts")
+@pytest.mark.parametrize("content_type", ["application/json", "application/json; charset=utf-8", "Application/JSON"])
+def test_login_takes_json_with_parameters_and_in_any_case(api_client, regular_user, content_type):
+    body = json.dumps({"email": regular_user.email, "password": "UserStrongPass123!"})
+
+    response = api_client.post(reverse("login"), body, content_type=content_type)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert refresh_cookie_name() in response.cookies
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("refresh_cookie_secure", "existing_default_org")
+def test_first_setup_takes_json(api_client):
+    response = api_client.post(
+        reverse("first_setup"), data={"email": "first@example.com", "password": "StrongPass123!"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert refresh_cookie_name() in response.cookies
+
+
 # ---------------- Refresh rotation / logout / blacklist ----------------
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_refresh_rotation_invalidates_old_refresh(api_client, regular_user):
     r = api_client.post(
@@ -231,40 +331,42 @@ def test_refresh_rotation_invalidates_old_refresh(api_client, regular_user):
         data={"email": regular_user.email, "password": "UserStrongPass123!"},
         format="json",
     )
-    old_refresh = r.cookies[REFRESH_COOKIE_NAME].value
+    old_refresh = r.cookies[refresh_cookie_name()].value
 
     # The test client carries the cookie forward, so no body is needed.
     r1 = api_client.post(reverse("refresh"))
     assert r1.status_code == 200
-    new_refresh = r1.cookies[REFRESH_COOKIE_NAME].value
+    new_refresh = r1.cookies[refresh_cookie_name()].value
     assert new_refresh != old_refresh
 
     # Put the rotated-away token back to prove replaying it is rejected.
-    api_client.cookies[REFRESH_COOKIE_NAME] = old_refresh
+    api_client.cookies[refresh_cookie_name()] = old_refresh
     r2 = api_client.post(reverse("refresh"))
     assert r2.status_code == 401
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_logout_blacklists_refresh_token(api_client, regular_user, jwt_tokens):
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
     # Logout reads the refresh from the cookie; a body would be ignored, which
     # would make this test pass without blacklisting anything.
-    api_client.cookies[REFRESH_COOKIE_NAME] = jwt_tokens["refresh"]
+    api_client.cookies[refresh_cookie_name()] = jwt_tokens["refresh"]
 
     r = api_client.post(reverse("logout"))
     assert r.status_code == status.HTTP_205_RESET_CONTENT
 
     api_client.credentials()
-    api_client.cookies[REFRESH_COOKIE_NAME] = jwt_tokens["refresh"]
+    api_client.cookies[refresh_cookie_name()] = jwt_tokens["refresh"]
     r2 = api_client.post(reverse("refresh"))
     assert r2.status_code == 401
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_logout_rejects_malformed_refresh(api_client, jwt_tokens):
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
-    api_client.cookies[REFRESH_COOKIE_NAME] = "not-a-real-token"
+    api_client.cookies[refresh_cookie_name()] = "not-a-real-token"
     r = api_client.post(reverse("logout"))
     assert r.status_code == 400
     assert r.json()["code"] == "invalid_or_expired_refresh"
@@ -385,6 +487,7 @@ def test_consume_rejects_unknown_and_non_string_tickets(service):
 # ---------------- Logout ownership ----------------
 
 
+@pytest.mark.usefixtures("refresh_cookie_secure")
 @pytest.mark.django_db
 def test_logout_rejects_refresh_owned_by_another_user(
     api_client, regular_user, jwt_tokens
@@ -397,14 +500,14 @@ def test_logout_rejects_refresh_owned_by_another_user(
     other_refresh = str(RefreshToken.for_user(other))
 
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
-    api_client.cookies[REFRESH_COOKIE_NAME] = other_refresh
+    api_client.cookies[refresh_cookie_name()] = other_refresh
     r = api_client.post(reverse("logout"))
     assert r.status_code == 400
     assert r.json()["code"] == "invalid_or_expired_refresh"
 
     # The other user's refresh token must still work afterwards.
     api_client.credentials()
-    api_client.cookies[REFRESH_COOKIE_NAME] = other_refresh
+    api_client.cookies[refresh_cookie_name()] = other_refresh
     r2 = api_client.post(reverse("refresh"))
     assert r2.status_code == 200
 

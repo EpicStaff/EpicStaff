@@ -79,7 +79,11 @@ async def test_the_failure_sink_produces_a_failed_result_message():
     queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
 
     await QueueJobFailureSink(queue).fail(
-        "exec-9", "the venv failed to build", reply_to_crew_channel=False
+        "exec-9",
+        "the venv failed to build",
+        session_id=11,
+        not_run_reason="venv_failed",
+        reply_to_crew_channel=False,
     )
 
     message = queue.get_nowait()
@@ -87,6 +91,21 @@ async def test_the_failure_sink_produces_a_failed_result_message():
     assert message.stderr == "the venv failed to build"
     assert message.returncode == 1
     assert message.result is None
+    assert message.session_id == 11
+    assert message.not_run_reason == "venv_failed"
+
+
+async def test_exec_queued_reports_the_queue_depth_the_job_joined_at(checkpoints):
+    queue: asyncio.Queue[ExecutionJobMessage] = asyncio.Queue()
+    dispatcher = QueueJobDispatcher(queue)
+
+    await dispatcher.dispatch(make_manager_job(execution_id="exec-1", session_id=3))
+    await dispatcher.dispatch(make_manager_job(execution_id="exec-2", session_id=4))
+
+    assert checkpoints == [
+        {"checkpoint": "exec_queued", "session_id": 3, "execution_id": "exec-1", "queued": 1},
+        {"checkpoint": "exec_queued", "session_id": 4, "execution_id": "exec-2", "queued": 2},
+    ]
 
 
 async def test_dispatch_carries_the_crew_reply_flag_to_the_worker():
@@ -101,7 +120,11 @@ async def test_a_job_that_never_ran_keeps_the_crew_reply_flag_on_its_failed_resu
     queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
 
     await QueueJobFailureSink(queue).fail(
-        "exec-9", "the venv failed to build", reply_to_crew_channel=True
+        "exec-9",
+        "the venv failed to build",
+        session_id=11,
+        not_run_reason="venv_failed",
+        reply_to_crew_channel=True,
     )
 
     assert queue.get_nowait().reply_to_crew_channel is True

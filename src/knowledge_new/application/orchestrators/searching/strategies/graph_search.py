@@ -165,6 +165,7 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
                 context=context,
                 config=config,
                 method=command.search_config.method,
+                rag_id=command.rag_id,
             )
 
         return SearchResult(result=result, usage=self._usage(tally, pricing))

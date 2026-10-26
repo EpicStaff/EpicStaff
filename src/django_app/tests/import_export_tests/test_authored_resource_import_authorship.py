@@ -80,11 +80,11 @@ def test_import_by_system_principal_leaves_new_row_unauthored(exported_mcp_tool,
     assert McpTool.objects.get(org=acme, name="exported-tool").created_by_id is None
 
 
-# ---- partial import edits the target graph ----
+# ---- partial import returns nodes unsaved and leaves the target graph alone ----
 
 
 @pytest.mark.django_db
-def test_partial_import_leaves_unauthored_graph_unauthored(
+def test_partial_import_leaves_unauthored_graph_unauthored_and_saves_no_node(
     client_as, admin_acme, acme, exported_note
 ):
     target = Graph.objects.create(name="ownerless-target", org=acme)
@@ -94,8 +94,10 @@ def test_partial_import_leaves_unauthored_graph_unauthored(
     assert response.status_code == status.HTTP_200_OK, response.content
     target.refresh_from_db()
     assert target.created_by_id is None
-    imported_note = GraphNote.objects.get(graph=target)
-    assert imported_note.created_by_id == admin_acme.id
+    assert [note["content"] for note in response.data["content"]["graph_note_list"]] == [
+        "imported note"
+    ]
+    assert not GraphNote.objects.filter(graph=target).exists()
 
 
 @pytest.mark.django_db
