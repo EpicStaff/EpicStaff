@@ -105,15 +105,6 @@ function nameInput(host: HTMLElement): HTMLInputElement {
     return host.querySelector<HTMLInputElement>('input#collection-name')!;
 }
 
-function click(fixture: ComponentFixture<CollectionBasicsComponent>, selector: string): void {
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(selector)!.click();
-    fixture.detectChanges();
-}
-
-const EDIT = '[aria-label="Edit guidance"]';
-const SAVE = 'button[aria-label="Save guidance"]';
-const CANCEL = 'button[aria-label="Cancel"]';
-
 function type(
     fixture: ComponentFixture<CollectionBasicsComponent>,
     field: HTMLInputElement | HTMLTextAreaElement,
@@ -124,12 +115,53 @@ function type(
     fixture.detectChanges();
 }
 
+function blur(fixture: ComponentFixture<CollectionBasicsComponent>, field: HTMLTextAreaElement): void {
+    field.dispatchEvent(new Event('blur'));
+    fixture.detectChanges();
+}
+
 /** CDK menus read the legacy `keyCode`, which a synthetic `KeyboardEvent` cannot be constructed with. */
 function pressEscape(target: HTMLElement): void {
     const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
     Object.defineProperty(event, 'keyCode', { get: () => ESCAPE });
     target.dispatchEvent(event);
 }
+
+/** jsdom has no ResizeObserver; this one reports a width only when a test says the field was resized. */
+class FakeResizeObserver {
+    static instances: FakeResizeObserver[] = [];
+    private readonly observed = new Set<Element>();
+
+    constructor(private readonly callback: ResizeObserverCallback) {
+        FakeResizeObserver.instances.push(this);
+    }
+
+    static resize(target: Element, width: number): void {
+        for (const instance of FakeResizeObserver.instances) {
+            if (!instance.observed.has(target)) continue;
+            const entry = { target, contentRect: { width } } as unknown as ResizeObserverEntry;
+            instance.callback([entry], instance as unknown as ResizeObserver);
+        }
+    }
+
+    observe(target: Element): void {
+        this.observed.add(target);
+    }
+
+    unobserve(target: Element): void {
+        this.observed.delete(target);
+    }
+
+    disconnect(): void {
+        this.observed.clear();
+    }
+}
+
+beforeEach(() => {
+    FakeResizeObserver.instances = [];
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+});
+afterEach(() => vi.unstubAllGlobals());
 
 const EDITOR = [ActionCode.Read, ActionCode.Update, ActionCode.Delete];
 const VIEWER = [ActionCode.Read];
@@ -185,111 +217,218 @@ describe('CollectionBasicsComponent ⋮ menu', () => {
     });
 });
 
-describe('CollectionBasicsComponent guidance for agents', () => {
-    it('shows the stored guidance as text with an Edit button', () => {
-        const { host } = render(EDITOR);
-
-        expect(guidance(host)).toBeNull();
-        expect(host.querySelector('.basics__readonly--guidance')?.textContent?.trim()).toBe('Release notes');
-        expect(host.querySelector(EDIT)).not.toBeNull();
-    });
-
-    it('edits in a textarea and saves the trimmed text only on Save', () => {
+describe('CollectionBasicsComponent guidance for agents autosave', () => {
+    it('saves the trimmed guidance when the field loses focus, not while typing', () => {
         const { fixture, host, update, toast } = render(EDITOR);
-
-        click(fixture, EDIT);
         expect(guidance(host)!.value).toBe('Release notes');
 
         type(fixture, guidance(host)!, '  Release notes for agents  ');
         expect(update).not.toHaveBeenCalled();
-        click(fixture, SAVE);
+        blur(fixture, guidance(host)!);
 
         expect(update).toHaveBeenCalledExactlyOnceWith(7, { description: 'Release notes for agents' });
         expect(toast.success).toHaveBeenCalledWith('Collection Updated');
-        expect(guidance(host)).toBeNull();
     });
 
-    it('discards the edit on Cancel', () => {
+    it('does not save guidance that was not edited or matches the stored one', () => {
         const { fixture, host, update } = render(EDITOR);
 
-        click(fixture, EDIT);
-        type(fixture, guidance(host)!, 'Never mind');
-        click(fixture, CANCEL);
-
-        expect(update).not.toHaveBeenCalled();
-        expect(guidance(host)).toBeNull();
-        expect(host.querySelector('.basics__readonly--guidance')?.textContent?.trim()).toBe('Release notes');
-    });
-
-    it('does not save unchanged guidance', () => {
-        const { fixture, host, update } = render(EDITOR);
-
-        click(fixture, EDIT);
+        blur(fixture, guidance(host)!);
         type(fixture, guidance(host)!, 'Release notes ');
-        click(fixture, SAVE);
+        blur(fixture, guidance(host)!);
 
         expect(update).not.toHaveBeenCalled();
     });
 
-    it('allows guidance up to the backend limit and blocks Save beyond it', () => {
+    it('saves cleared guidance, which unlike the name may be empty', () => {
         const { fixture, host, update } = render(EDITOR);
-        const saveButton = (): HTMLButtonElement => host.querySelector<HTMLButtonElement>(SAVE)!;
 
-        click(fixture, EDIT);
-        type(fixture, guidance(host)!, 'x'.repeat(COLLECTION_DESCRIPTION_MAX_LENGTH + 1));
-        expect(COLLECTION_DESCRIPTION_MAX_LENGTH).toBe(2000);
-        expect(saveButton().disabled).toBe(true);
+        type(fixture, guidance(host)!, '   ');
+        blur(fixture, guidance(host)!);
 
-        type(fixture, guidance(host)!, 'x'.repeat(COLLECTION_DESCRIPTION_MAX_LENGTH));
-        click(fixture, SAVE);
-
-        expect(update).toHaveBeenCalledExactlyOnceWith(7, {
-            description: 'x'.repeat(COLLECTION_DESCRIPTION_MAX_LENGTH),
-        });
+        expect(update).toHaveBeenCalledExactlyOnceWith(7, { description: '' });
     });
 
-    it('reopens the editor with the draft intact when the save fails', () => {
+    it('saves guidance up to the backend limit and keeps longer guidance unsaved with an error', () => {
+        const { fixture, host, update } = render(EDITOR);
+        expect(COLLECTION_DESCRIPTION_MAX_LENGTH).toBe(2000);
+
+        type(fixture, guidance(host)!, 'x'.repeat(2001));
+        blur(fixture, guidance(host)!);
+
+        expect(update).not.toHaveBeenCalled();
+        expect(host.querySelector('.validation-errors')?.textContent).toContain('Max length is 2000');
+
+        type(fixture, guidance(host)!, 'x'.repeat(2000));
+        blur(fixture, guidance(host)!);
+
+        expect(update).toHaveBeenCalledExactlyOnceWith(7, { description: 'x'.repeat(2000) });
+        expect(host.querySelector('.validation-errors')).toBeNull();
+    });
+
+    it('reverts to the stored guidance when the save fails', () => {
         const { fixture, host, toast } = render(EDITOR, () => throwError(() => new Error('500')));
 
-        click(fixture, EDIT);
         type(fixture, guidance(host)!, 'Draft guidance');
-        click(fixture, SAVE);
+        blur(fixture, guidance(host)!);
 
         expect(toast.error).toHaveBeenCalledWith('Collection Update failed');
-        expect(guidance(host)!.value).toBe('Draft guidance');
+        expect(guidance(host)!.value).toBe('Release notes');
     });
 
-    it('closes an open edit when another collection is selected, as the guidance panel did', () => {
+    it('sends nothing on a blur after a failed save', () => {
+        const { fixture, host, update } = render(EDITOR, () => throwError(() => new Error('500')));
+
+        type(fixture, guidance(host)!, 'Draft guidance');
+        blur(fixture, guidance(host)!);
+        blur(fixture, guidance(host)!);
+
+        expect(update).toHaveBeenCalledOnce();
+    });
+
+    it('leaves the guidance being typed alone when a save for the previous collection fails', () => {
+        const response = new Subject<CreateCollectionDtoResponse>();
+        const { fixture, host } = render(EDITOR, () => response);
+
+        type(fixture, guidance(host)!, 'For collection 7');
+        fixture.componentRef.setInput('collection', { ...COLLECTION, collection_id: 8, description: 'Other' });
+        fixture.detectChanges();
+        type(fixture, guidance(host)!, 'For collection 8');
+        response.error(new Error('500'));
+        fixture.detectChanges();
+
+        expect(guidance(host)!.value).toBe('For collection 8');
+    });
+
+    it('follows guidance changed elsewhere once its own save has succeeded', () => {
+        const { fixture, host } = render(EDITOR);
+
+        type(fixture, guidance(host)!, 'Saved here');
+        blur(fixture, guidance(host)!);
+        fixture.componentRef.setInput('collection', { ...COLLECTION, description: 'Edited in wizard' });
+        fixture.detectChanges();
+
+        expect(guidance(host)!.value).toBe('Edited in wizard');
+    });
+
+    it('keeps guidance typed after a rejected save and sends it on the next blur', () => {
+        const response = new Subject<CreateCollectionDtoResponse>();
+        const { fixture, host, update } = render(EDITOR, () => response);
+
+        type(fixture, guidance(host)!, 'First');
+        blur(fixture, guidance(host)!);
+        type(fixture, guidance(host)!, 'First and more');
+        response.error(new Error('500'));
+        fixture.detectChanges();
+
+        expect(guidance(host)!.value).toBe('First and more');
+
+        blur(fixture, guidance(host)!);
+
+        expect(update.mock.calls.map(([, body]) => body)).toEqual([
+            { description: 'First' },
+            { description: 'First and more' },
+        ]);
+    });
+
+    it.each([
+        [
+            'another collection is selected',
+            (fixture: ComponentFixture<CollectionBasicsComponent>): void => {
+                fixture.componentRef.setInput('collection', { ...COLLECTION, collection_id: 8 });
+                fixture.detectChanges();
+            },
+        ],
+        [
+            'the component is destroyed',
+            (fixture: ComponentFixture<CollectionBasicsComponent>): void => fixture.destroy(),
+        ],
+    ])('sends blurred guidance once when %s before the save fails', (_, leave) => {
+        const response = new Subject<CreateCollectionDtoResponse>();
+        const { fixture, host, update, toast } = render(EDITOR, () => response);
+
+        type(fixture, guidance(host)!, 'Sent on blur');
+        blur(fixture, guidance(host)!);
+        leave(fixture);
+        response.error(new Error('500'));
+
+        expect(update).toHaveBeenCalledExactlyOnceWith(7, { description: 'Sent on blur' });
+        expect(toast.error).toHaveBeenCalledOnce();
+    });
+
+    it('saves unsaved guidance to the edited collection when another is selected without a blur', () => {
         const { fixture, host, update } = render(EDITOR);
 
-        click(fixture, EDIT);
-        type(fixture, guidance(host)!, 'Unsaved');
+        type(fixture, guidance(host)!, 'For collection 7');
         fixture.componentRef.setInput('collection', { ...COLLECTION, collection_id: 8, description: 'Other' });
         fixture.detectChanges();
 
-        expect(guidance(host)).toBeNull();
-        expect(update).not.toHaveBeenCalled();
-        expect(host.querySelector('.basics__readonly--guidance')?.textContent?.trim()).toBe('Other');
+        expect(update).toHaveBeenCalledExactlyOnceWith(7, { description: 'For collection 7' });
+        expect(guidance(host)!.value).toBe('Other');
     });
 
-    it('finishes a save already in flight after the component is destroyed', () => {
-        const response = new Subject<CreateCollectionDtoResponse>();
-        const { fixture, host, toast } = render(EDITOR, () => response);
+    it('saves unsaved guidance when the component is destroyed without a blur', () => {
+        const { fixture, host, update } = render(EDITOR);
 
-        click(fixture, EDIT);
-        type(fixture, guidance(host)!, 'In flight');
-        click(fixture, SAVE);
+        type(fixture, guidance(host)!, 'Typed just before leaving');
         fixture.destroy();
-        response.next({ ...COLLECTION, description: 'In flight' });
-        response.complete();
 
-        expect(toast.success).toHaveBeenCalledOnce();
+        expect(update).toHaveBeenCalledExactlyOnceWith(7, { description: 'Typed just before leaving' });
     });
 
-    it('is read-only text without an Edit button for a user who may not update the collection', () => {
+    it('keeps guidance typed while a save is in flight and saves it on the next blur', () => {
+        const response = new Subject<CreateCollectionDtoResponse>();
+        const { fixture, host, update } = render(EDITOR, () => response);
+
+        type(fixture, guidance(host)!, 'First');
+        blur(fixture, guidance(host)!);
+        type(fixture, guidance(host)!, 'First and more');
+        response.next({ ...COLLECTION, description: 'First' });
+        response.complete();
+        fixture.componentRef.setInput('collection', { ...COLLECTION, description: 'First' });
+        fixture.detectChanges();
+
+        expect(guidance(host)!.value).toBe('First and more');
+
+        blur(fixture, guidance(host)!);
+
+        expect(update).toHaveBeenLastCalledWith(7, { description: 'First and more' });
+    });
+
+    it('still saves guidance equal to the stored one while a different guidance is in flight', () => {
+        const responses: Subject<CreateCollectionDtoResponse>[] = [];
+        const { fixture, host, update } = render(EDITOR, () => {
+            const response = new Subject<CreateCollectionDtoResponse>();
+            responses.push(response);
+            return response;
+        });
+
+        type(fixture, guidance(host)!, 'Changed');
+        blur(fixture, guidance(host)!);
+        type(fixture, guidance(host)!, 'Release notes');
+        blur(fixture, guidance(host)!);
+        responses[0].next({ ...COLLECTION, description: 'Changed' });
+        responses[0].complete();
+
+        expect(update.mock.calls.map(([, body]) => body)).toEqual([
+            { description: 'Changed' },
+            { description: 'Release notes' },
+        ]);
+    });
+
+    it('follows guidance changed elsewhere while the field is not being edited', () => {
+        const { fixture, host } = render(EDITOR);
+
+        fixture.componentRef.setInput('collection', { ...COLLECTION, description: 'Edited in wizard' });
+        fixture.detectChanges();
+
+        expect(guidance(host)!.value).toBe('Edited in wizard');
+    });
+
+    it('is read-only text for a user who may not update the collection', () => {
         const { host } = render(VIEWER);
 
-        expect(host.querySelector(EDIT)).toBeNull();
+        expect(guidance(host)).toBeNull();
         expect(host.querySelector('input#collection-name')).toBeNull();
         expect(host.querySelector('.basics__readonly--guidance')?.textContent?.trim()).toBe('Release notes');
     });
@@ -301,6 +440,115 @@ describe('CollectionBasicsComponent guidance for agents', () => {
         fixture.detectChanges();
 
         expect(host.querySelector('.basics__readonly--empty')?.textContent?.trim()).toBe('No guidance provided.');
+    });
+});
+
+// jsdom has no layout, so the textarea's measurements are faked: 20px per line of text plus 18px of padding as the
+// scroll and client height, plus a 2px border as the offset height. Measuring at auto height drops the scroll
+// position, as the browser does when the box is as tall as its text. That checks when the field is fitted, the
+// border, the 400px cap and the kept scroll position, not the browser's measurement itself. `TestBed.tick()`
+// stands in for the application tick that runs render hooks after an event in the app.
+describe('CollectionBasicsComponent guidance field height', () => {
+    const LONG_GUIDANCE = Array.from({ length: 30 }, (_, index) => `Line ${index + 1}`).join('\n');
+    const FAKED = ['scrollHeight', 'clientHeight', 'offsetHeight', 'scrollTop'] as const;
+    let linesPerTextLine = 1;
+    let scrollTops = new WeakMap<HTMLTextAreaElement, number>();
+
+    function textHeight(textarea: HTMLTextAreaElement): number {
+        return textarea.value.split('\n').length * linesPerTextLine * 20 + 18;
+    }
+
+    beforeEach(() => {
+        linesPerTextLine = 1;
+        scrollTops = new WeakMap();
+        const prototype = HTMLTextAreaElement.prototype;
+        Object.defineProperty(prototype, 'scrollHeight', {
+            configurable: true,
+            get(this: HTMLTextAreaElement): number {
+                if (this.style.height === 'auto') scrollTops.set(this, 0);
+                return textHeight(this);
+            },
+        });
+        Object.defineProperty(prototype, 'clientHeight', {
+            configurable: true,
+            get(this: HTMLTextAreaElement): number {
+                return textHeight(this);
+            },
+        });
+        Object.defineProperty(prototype, 'offsetHeight', {
+            configurable: true,
+            get(this: HTMLTextAreaElement): number {
+                return textHeight(this) + 2;
+            },
+        });
+        Object.defineProperty(prototype, 'scrollTop', {
+            configurable: true,
+            get(this: HTMLTextAreaElement): number {
+                return scrollTops.get(this) ?? 0;
+            },
+            set(this: HTMLTextAreaElement, value: number) {
+                scrollTops.set(this, value);
+            },
+        });
+    });
+    afterEach(() => {
+        for (const property of FAKED) {
+            delete (HTMLTextAreaElement.prototype as Partial<Record<(typeof FAKED)[number], number>>)[property];
+        }
+    });
+
+    it('fits the stored guidance when it is loaded and when another collection is selected', () => {
+        const { fixture, host } = render(EDITOR);
+        TestBed.tick();
+
+        expect(guidance(host)!.style.height).toBe('40px');
+
+        fixture.componentRef.setInput('collection', { ...COLLECTION, collection_id: 8, description: LONG_GUIDANCE });
+        TestBed.tick();
+
+        expect(guidance(host)!.style.height).toBe('400px');
+        expect(guidance(host)!.style.overflowY).toBe('auto');
+    });
+
+    it('follows the typed text and fits the stored guidance again after a rejected save', () => {
+        const { fixture, host } = render(EDITOR, () => throwError(() => new Error('500')));
+
+        type(fixture, guidance(host)!, 'One\nTwo\nThree\nFour');
+        expect(guidance(host)!.style.height).toBe('100px');
+        expect(guidance(host)!.style.overflowY).toBe('hidden');
+
+        blur(fixture, guidance(host)!);
+        TestBed.tick();
+
+        expect(guidance(host)!.value).toBe('Release notes');
+        expect(guidance(host)!.style.height).toBe('40px');
+    });
+
+    it('keeps the scroll position of a field past the cap while typing', () => {
+        const { fixture, host } = render(EDITOR);
+        type(fixture, guidance(host)!, LONG_GUIDANCE);
+        guidance(host)!.scrollTop = 120;
+
+        type(fixture, guidance(host)!, `${LONG_GUIDANCE}!`);
+
+        expect(guidance(host)!.style.height).toBe('400px');
+        expect(guidance(host)!.scrollTop).toBe(120);
+    });
+
+    it('fits the field again when its width changes, not when only its height does', () => {
+        const { host } = render(EDITOR);
+        TestBed.tick();
+        expect(guidance(host)!.style.height).toBe('40px');
+
+        linesPerTextLine = 2;
+        FakeResizeObserver.resize(guidance(host)!, 300);
+
+        expect(guidance(host)!.style.height).toBe('60px');
+
+        linesPerTextLine = 1;
+        FakeResizeObserver.resize(guidance(host)!, 300);
+
+        expect(guidance(host)!.style.height).toBe('60px');
     });
 });
 

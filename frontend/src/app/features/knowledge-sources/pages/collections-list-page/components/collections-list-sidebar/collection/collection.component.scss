@@ -52,7 +52,8 @@
         gap: 4px;
         padding: 2px 8px;
         border-radius: 4px;
-        background-color: var(--color-ks-card-tag-background, rgba(255, 255, 255, 0.06));
+        // A faint tint of the status colour the template sets as `color`, so every status gets a matching chip.
+        background-color: color-mix(in srgb, currentColor 12%, transparent);
         font-size: 0.75rem;
         white-space: nowrap;
 

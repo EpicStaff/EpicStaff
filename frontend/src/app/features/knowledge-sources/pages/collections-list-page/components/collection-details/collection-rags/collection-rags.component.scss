@@ -21,8 +21,10 @@
     overflow-y: auto;
     scrollbar-gutter: stable;
 
+    // The header row alone is 40px with the 1px borders, like the inputs above; usage lines below it make the
+    // item grow.
     .item {
-        padding: 0.5rem;
+        padding: 0 0.5rem;
         border-radius: 0.5rem;
         border: 1px solid var(--color-divider-subtle);
         cursor: pointer;
@@ -32,6 +34,7 @@
         display: flex;
         align-items: center;
         column-gap: 0.5rem;
+        min-height: calc(2.5rem - 2px);
     }
 
     .name {
@@ -59,6 +62,11 @@
 
     .usage {
         color: var(--color-ks-transparent-text-60);
+
+        // The item has no vertical padding, so the last usage line keeps the bottom spacing it had.
+        &:last-child {
+            padding-bottom: 0.5rem;
+        }
     }
 
     .nav {
