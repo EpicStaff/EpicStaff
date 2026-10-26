@@ -1,0 +1,111 @@
+$card-padding: 24px;
+// Token gap (docs/design-tokens.md): the design fills the card with Figma "Line" #2B2D30, which has no exact variable;
+// --color-ks-line is the documented closest match (the Quick Start tour card uses it too).
+$card-surface: var(--color-ks-line);
+
+:host {
+    display: block;
+}
+
+.tour-popover {
+    position: relative;
+    box-sizing: border-box;
+    width: 324px;
+    max-width: calc(100vw - 16px);
+    overflow: hidden;
+    background: $card-surface;
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-panel-elevated);
+    outline: none;
+
+    &:focus-visible {
+        box-shadow: var(--focus-ring), var(--shadow-panel-elevated);
+    }
+}
+
+.tour-popover__progress {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+}
+
+.tour-popover__progress-fill {
+    height: 100%;
+    background: var(--accent-color);
+}
+
+.tour-popover__close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+}
+
+.tour-popover__media {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: $card-padding auto 0;
+    user-select: none;
+    pointer-events: none;
+}
+
+.tour-popover__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    // Right padding keeps the title clear of the close button.
+    padding: $card-padding 48px 0 $card-padding;
+    color: var(--accent-color);
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
+    line-height: var(--text-h4-line-height);
+}
+
+.tour-popover__body {
+    padding: 16px $card-padding $card-padding;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+
+    p {
+        margin: 0;
+    }
+
+    p + p {
+        margin-top: 8px;
+    }
+}
+
+// Back and Skip on the left, the primary action on the right (also when there is nothing on the left).
+.tour-popover__footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 $card-padding $card-padding;
+}
+
+.tour-popover__secondary-actions {
+    display: flex;
+    gap: 8px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .tour-popover {
+        animation: tour-popover-enter 150ms ease-out;
+    }
+
+    .tour-popover__progress-fill {
+        transition: width 240ms ease;
+    }
+}
+
+@keyframes tour-popover-enter {
+    from {
+        opacity: 0;
+    }
+}

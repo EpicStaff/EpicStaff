@@ -1,0 +1,28 @@
+// Click-through except the dimmed path, so clicks inside the hole reach the page (or overlay) under it.
+:host {
+    position: fixed;
+    inset: 0;
+    display: block;
+    pointer-events: none;
+}
+
+.tour-spotlight {
+    display: block;
+}
+
+.tour-spotlight__dim {
+    fill: var(--color-backdrop);
+    pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .tour-spotlight {
+        animation: tour-spotlight-enter 200ms ease-out;
+    }
+}
+
+@keyframes tour-spotlight-enter {
+    from {
+        opacity: 0;
+    }
+}

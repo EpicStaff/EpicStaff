@@ -27,7 +27,8 @@
     &:hover {
         background: var(--accent-color-hover);
     }
-    &:active {
+    // A disabled button is never pressed; an aria-disabled one must not look pressed either.
+    &:active:not(:is(:disabled, [aria-disabled='true'])) {
         background: var(--accent-color-active);
     }
 }
@@ -57,7 +58,7 @@
     &:hover {
         background: var(--color-ghost-btn-hover);
     }
-    &:active {
+    &:active:not(:is(:disabled, [aria-disabled='true'])) {
         background: var(--color-ghost-btn-active);
     }
 }
@@ -73,7 +74,7 @@
         color: var(--accent-color-hover);
     }
 
-    &:disabled {
+    &:is(:disabled, [aria-disabled='true']) {
         opacity: 1;
         color: var(--inactive-purple);
         border-color: var(--inactive-purple);
@@ -87,11 +88,11 @@
     color: var(--color-error);
     border: 1px solid var(--color-error);
 
-    &:hover:not(:disabled) {
+    &:hover:not(:is(:disabled, [aria-disabled='true'])) {
         background: var(--transparent-white-8);
     }
 
-    &:disabled {
+    &:is(:disabled, [aria-disabled='true']) {
         opacity: 0.4;
     }
 }
@@ -186,7 +187,7 @@
     pointer-events: none;
 }
 
-button:disabled {
+button:is(:disabled, [aria-disabled='true']) {
     opacity: 0.6;
     cursor: default;
 }

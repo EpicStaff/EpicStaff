@@ -1,3 +1,4 @@
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { ButtonComponent } from './button.component';
@@ -7,6 +8,20 @@ class ResizeObserverStub {
     observe(): void {}
     unobserve(): void {}
     disconnect(): void {}
+}
+
+/** Uses the button as its consumers do: a `(click)` on the host element. */
+@Component({
+    imports: [ButtonComponent],
+    template: `<app-button
+        [ariaDisabled]="isAriaDisabled()"
+        (click)="hostClicks.set(hostClicks() + 1)"
+        >Save</app-button
+    >`,
+})
+class ButtonHostComponent {
+    readonly isAriaDisabled = signal(false);
+    readonly hostClicks = signal(0);
 }
 
 describe('ButtonComponent', () => {
@@ -27,6 +42,39 @@ describe('ButtonComponent', () => {
 
     it('passes a description to its button, which is what gets the focus', () => {
         expect(render({ ariaDescribedby: 'save-warning' }).getAttribute('aria-describedby')).toBe('save-warning');
+    });
+
+    it.each([
+        ['is not marked disabled by default', {}, null],
+        ['marks its button disabled for assistive technology', { ariaDisabled: true }, 'true'],
+    ])('%s, and keeps it focusable', (_case, inputs, ariaDisabled) => {
+        const button = render(inputs);
+
+        expect(button.getAttribute('aria-disabled')).toBe(ariaDisabled);
+        expect(button.disabled).toBe(false);
+    });
+
+    it.each<[description: string, isAriaDisabled: boolean, hostClicks: number, pageClicks: number]>([
+        ['reaches the host and the page while enabled', false, 1, 1],
+        ['reaches neither the host nor the page while aria-disabled, and the button keeps the focus', true, 0, 0],
+    ])('a click %s', (_description, isAriaDisabled, hostClicks, pageClicks) => {
+        const fixture = TestBed.createComponent(ButtonHostComponent);
+        fixture.componentInstance.isAriaDisabled.set(isAriaDisabled);
+        fixture.detectChanges();
+        const button = (fixture.nativeElement as HTMLElement).querySelector('button') as HTMLButtonElement;
+        let pageClickCount = 0;
+        const onPageClick = (): void => {
+            pageClickCount++;
+        };
+        document.addEventListener('click', onPageClick);
+
+        button.focus();
+        button.click();
+
+        document.removeEventListener('click', onPageClick);
+        expect(fixture.componentInstance.hostClicks()).toBe(hostClicks);
+        expect(pageClickCount).toBe(pageClicks);
+        expect(document.activeElement).toBe(button);
     });
 
     it('renders the outline-danger type as its own class', () => {
