@@ -32,6 +32,8 @@ for _name, _value in _TEST_ENVIRONMENT.items():
     os.environ.setdefault(_name, _value)
 
 import pytest  # noqa: E402
+from loguru import logger  # noqa: E402
+from src.shared.bench_log import BENCH_LEVEL  # noqa: E402
 
 from tests.builders import make_venv  # noqa: E402
 from tests.fakes import (  # noqa: E402
@@ -43,6 +45,19 @@ from tests.fakes import (  # noqa: E402
     FakeUVProvider,
     FakeVenvRepository,
 )
+
+
+@pytest.fixture
+def checkpoints():
+    """The BENCH checkpoints logged during the test, as their extra fields, in order."""
+    logged: list[dict] = []
+    sink_id = logger.add(
+        lambda message: logged.append(dict(message.record["extra"])),
+        level=BENCH_LEVEL,
+        filter=lambda record: record["level"].no == BENCH_LEVEL,
+    )
+    yield logged
+    logger.remove(sink_id)
 
 
 @pytest.fixture

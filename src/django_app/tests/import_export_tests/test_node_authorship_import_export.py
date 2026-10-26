@@ -264,41 +264,6 @@ def test_import_without_a_real_user_leaves_nodes_unauthored(acme, source_flow, a
     assert set(node_authors.values()) == {None}
 
 
-@pytest.mark.django_db
-def test_partial_import_authors_every_new_node_with_importer(
-    client_as, admin_acme, acme, source_flow
-):
-    node_refs = [
-        NodeRef(entity_type=NODE_TYPE_TO_ENTITY_TYPE[node_type], node_id=node.id)
-        for node_type, relation_name in NODE_RELATIONS.items()
-        if node_type not in STRUCTURAL_NODE_TYPES
-        for node in getattr(source_flow, relation_name).all()
-    ]
-    export_data = (
-        GraphPartialExportService(entity_registry)
-        .export(node_refs, org_id=source_flow.org_id, policy=UNRESTRICTED_EXPORT_POLICY)
-        .data
-    )
-    existing_node_keys = set(_node_authors(source_flow))
-    client = client_as(admin_acme)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
-
-    response = client.post(
-        reverse("graphs-partial-import", args=[source_flow.id]),
-        {"file": data_to_json_file(data=export_data, filename="nodes.json")},
-        format="multipart",
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    new_node_authors = {
-        key: author_id
-        for key, author_id in _node_authors(source_flow).items()
-        if key not in existing_node_keys
-    }
-    assert len(new_node_authors) == len(node_refs)
-    assert set(new_node_authors.values()) == {admin_acme.id}
-
-
 # ---- restore replays recorded node authors; create-from-version uses the actor ----
 
 

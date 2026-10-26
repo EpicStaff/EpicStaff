@@ -1,0 +1,422 @@
+"""The runtime credentials a node fetches for a placement: the runtime file and its revisions."""
+
+import json
+from datetime import timedelta
+
+import pytest
+from django.utils import timezone
+from epicstaff_plugin.contracts.runtime import RuntimeFile
+from plugins.databases.database_records import app_password_of
+from plugins.identity.service_account_keys import ServiceAccountKeyService
+from plugins.identity.signing_keys import PluginSigningKeyService
+from plugins.lifecycle.grant_service import PluginGrantService
+from plugins.nodes.runtime_credentials_service import RuntimeCredentialsService
+from pydantic import ValidationError
+from plugins.models import GrantState, PluginDatabase, PluginGrant, PluginServiceAccountKey, PluginSigningKey
+from rbac.models import Organization
+from tables.services.secrets import secret_encryption
+
+from src.shared.models.plugin_nodes import RuntimeCredentials
+from tests.plugins_tests.conftest import mark_running, service_account_client
+from tests.plugins_tests.package_builder import TOKEN_SETTING, UNITS_SETTING
+
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
+
+DESIRED_STATE_URL = "/api/plugin-nodes/self/desired-state/"
+SETTINGS_URL = "/api/admin/plugins/weather/settings/"
+NOTE_SETTING = {"key": "note", "type": "string", "label": "Note", "description": "Shown on the page.", "required": False}
+
+
+def _credentials_url(placement_id):
+    return f"/api/plugin-nodes/self/placements/{placement_id}/runtime-credentials/"
+
+
+def _credentials(node_client, plugin):
+    response = node_client.post(_credentials_url(plugin.placement.pk))
+    assert response.status_code == 200
+    return response
+
+
+def _desired_placement(node_client):
+    return node_client.get(DESIRED_STATE_URL).json()["placements"][0]
+
+
+@pytest.fixture
+def weather(backend_plugin):
+    return backend_plugin(settings=[dict(UNITS_SETTING), dict(TOKEN_SETTING), dict(NOTE_SETTING)])
+
+
+def test_the_runtime_file_holds_what_the_plugin_process_needs(weather, node_client, settings):
+    response = _credentials(node_client, weather)
+
+    body = response.json()
+    assert response["Cache-Control"] == "no-store"
+    assert body["placement_id"] == weather.placement.pk
+    assert body["settings_revision"] == 0
+    runtime_file = body["runtime_file"]
+    assert runtime_file["format"] == 1
+    assert runtime_file["plugin"] == {"identifier": "weather", "version": "0.2.0"}
+    assert runtime_file["issuer"] == "http://epicstaff.localhost"
+    assert runtime_file["public_url"] == "http://weather.plugins.epicstaff.localhost"
+    assert runtime_file["epicstaff_public_url"] == "http://epicstaff.localhost"
+    assert runtime_file["epicstaff_api_url"] == settings.PLUGINS_INTERNAL_API_URL
+    assert runtime_file["service_accounts"] == {}
+    assert runtime_file["public_paths"] == [
+        {"path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0}
+    ]
+    assert [key["kid"] for key in runtime_file["jwks"]["keys"]] == [PluginSigningKey.objects.get().kid]
+
+
+def test_the_node_side_reads_the_document_with_the_shared_model(weather, node_client):
+    credentials = RuntimeCredentials.model_validate_json(_credentials(node_client, weather).content, extra="ignore")
+
+    assert credentials.runtime_file.plugin.identifier == "weather"
+
+
+def test_settings_carry_values_or_defaults_and_leave_out_unset_optional_ones(weather, node_client):
+    runtime_file = _credentials(node_client, weather).json()["runtime_file"]
+
+    assert runtime_file["settings"] == {"units": "metric"}
+    assert runtime_file["secret_settings"] == {}
+
+
+def test_stored_values_and_decrypted_secrets_are_handed_over(weather, node_client, superadmin_client):
+    superadmin_client.patch(
+        SETTINGS_URL, {"values": {"units": "imperial", "note": "hello", "forecast_api_token": "token-123456789"}}, format="json"
+    )
+
+    runtime_file = _credentials(node_client, weather).json()["runtime_file"]
+
+    assert runtime_file["settings"] == {"units": "imperial", "note": "hello"}
+    assert runtime_file["secret_settings"] == {"forecast_api_token": "token-123456789"}
+
+
+def test_the_jwks_keeps_a_retired_key_for_24_hours(weather, node_client):
+    first = PluginSigningKeyService().active_key().kid
+    second = PluginSigningKeyService().rotate().kid
+
+    kids_after_rotation = [key["kid"] for key in _credentials(node_client, weather).json()["runtime_file"]["jwks"]["keys"]]
+    PluginSigningKey.objects.filter(kid=first).update(retired_at=timezone.now() - timedelta(hours=24, seconds=1))
+    kids_a_day_later = [key["kid"] for key in _credentials(node_client, weather).json()["runtime_file"]["jwks"]["keys"]]
+
+    assert kids_after_rotation == [second, first]
+    assert kids_a_day_later == [second]
+
+
+def test_a_rotation_changes_the_credentials_revision_but_not_the_settings_revision(weather, node_client):
+    before = _desired_placement(node_client)
+
+    PluginSigningKeyService().rotate()
+    after = _desired_placement(node_client)
+
+    assert after["credentials_revision"] != before["credentials_revision"]
+    assert after["settings_revision"] == before["settings_revision"]
+    assert after["restart_generation"] == before["restart_generation"]
+
+
+def test_a_settings_change_changes_the_settings_revision_but_not_the_credentials_revision(weather, node_client, superadmin_client):
+    before = _desired_placement(node_client)
+
+    superadmin_client.patch(SETTINGS_URL, {"values": {"units": "imperial"}}, format="json")
+    after = _desired_placement(node_client)
+
+    assert after["settings_revision"] == before["settings_revision"] + 1
+    assert after["credentials_revision"] == before["credentials_revision"]
+
+
+def test_nothing_changes_the_revisions_when_nothing_changed(weather, node_client):
+    assert _desired_placement(node_client) == _desired_placement(node_client)
+
+
+def test_the_credentials_and_the_desired_state_agree_on_the_revisions(weather, node_client):
+    desired = _desired_placement(node_client)
+
+    credentials = _credentials(node_client, weather).json()
+
+    assert credentials["credentials_revision"] == desired["credentials_revision"]
+    assert credentials["settings_revision"] == desired["settings_revision"]
+
+
+def test_another_node_s_placement_is_not_found(weather, other_node_client):
+    response = other_node_client.post(_credentials_url(weather.placement.pk))
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "placement_not_found"
+
+
+def test_an_unknown_placement_is_not_found(plugin_node, node_client):
+    response = node_client.post(_credentials_url(999999))
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "placement_not_found"
+
+
+SECRET_VALUE = "s3cret-forecast-token"
+
+
+def test_a_credentials_validation_error_never_shows_a_secret():
+    document = {
+        "placement_id": 1,
+        "credentials_revision": "a" * 64,
+        "settings_revision": 0,
+        "runtime_file": {"secret_settings": {"forecast_api_token": [SECRET_VALUE]}},
+    }
+
+    with pytest.raises(ValidationError) as raised:
+        RuntimeCredentials.model_validate(document)
+
+    assert SECRET_VALUE not in str(raised.value)
+    assert SECRET_VALUE not in repr(raised.value)
+
+
+def test_a_runtime_file_the_service_cannot_build_never_shows_a_secret(weather, plugin_node, monkeypatch):
+    monkeypatch.setattr(
+        "plugins.nodes.runtime_credentials_service.runtime_settings",
+        lambda manifest, stored: ({}, {"forecast_api_token": [SECRET_VALUE]}),
+    )
+
+    with pytest.raises(ValidationError) as raised:
+        RuntimeCredentialsService().credentials_for(plugin_node, weather.placement.pk)
+
+    assert SECRET_VALUE not in str(raised.value)
+
+
+# ---- service accounts ----
+
+ME_URL = "/api/plugin-runtime/me/"
+
+
+@pytest.fixture
+def granted(weather, superadmin):
+    """Factory → `organization` with a grant of Weather made through the grant service, in `state`."""
+
+    mark_running(weather)
+
+    def _make(organization, state=GrantState.ACTIVE):
+        PluginGrantService().grant("weather", organization.pk, superadmin)
+        PluginGrant.objects.filter(plugin=weather, org=organization).update(state=state)
+        return organization
+
+    return _make
+
+
+def _keys():
+    return sorted(PluginServiceAccountKey.objects.values_list("pk", "expires_at", "revoked_at"))
+
+
+@pytest.fixture
+def keys_in_use(weather, plugin_node, granted, acme, beta):
+    """Two organizations whose service accounts hold keys: a current one and a superseded one each."""
+    granted(acme)
+    granted(beta)
+    ServiceAccountKeyService().mint_for_plugin(weather)
+    ServiceAccountKeyService().mint_for_plugin(weather)
+    keys = _keys()
+    assert len(keys) == 4
+    return keys
+
+
+def test_a_document_that_does_not_validate_mints_nothing_and_revokes_nothing(
+    weather, plugin_node, keys_in_use, monkeypatch, log_messages, django_capture_on_commit_callbacks
+):
+    monkeypatch.setattr(
+        "plugins.nodes.runtime_credentials_service.runtime_settings",
+        lambda manifest, stored: ({}, {"forecast_api_token": [SECRET_VALUE]}),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True), pytest.raises(ValidationError) as raised:
+        RuntimeCredentialsService().credentials_for(plugin_node, weather.placement.pk)
+
+    assert SECRET_VALUE not in str(raised.value)
+    assert _keys() == keys_in_use
+    assert not [line for line in log_messages if line.startswith("plugins.service_account.keys_minted")]
+
+
+def test_secret_settings_that_cannot_be_decrypted_mint_nothing(weather, plugin_node, keys_in_use, monkeypatch, log_messages):
+    def undecryptable(manifest, stored):
+        raise RuntimeError("cannot decrypt")
+
+    monkeypatch.setattr("plugins.nodes.runtime_credentials_service.runtime_settings", undecryptable)
+
+    with pytest.raises(RuntimeError):
+        RuntimeCredentialsService().credentials_for(plugin_node, weather.placement.pk)
+
+    assert _keys() == keys_in_use
+    assert not [line for line in log_messages if line.startswith("plugins.service_account.keys_minted")]
+
+
+def test_a_failed_call_leaves_the_keys_working(weather, plugin_node, node_client, keys_in_use, acme, monkeypatch):
+    current = _credentials(node_client, weather).json()["runtime_file"]["service_accounts"][str(acme.pk)]["key"]
+    monkeypatch.setattr(
+        "plugins.nodes.runtime_credentials_service.runtime_settings",
+        lambda manifest, stored: ({}, {"forecast_api_token": [SECRET_VALUE]}),
+    )
+
+    for _ in range(2):
+        with pytest.raises(ValidationError):
+            RuntimeCredentialsService().credentials_for(plugin_node, weather.placement.pk)
+
+    assert PluginServiceAccountKey.objects.get(prefix=current[:12]).expires_at is None
+    assert service_account_client(current, acme).get(ME_URL).status_code == 200
+
+
+def test_service_accounts_list_the_key_holding_grants_each_with_a_working_key(weather, node_client, granted, acme, beta):
+    granted(acme)
+    granted(beta, GrantState.GRANTING)
+    granted(Organization.objects.create(name="failed-install"), GrantState.INSTALL_FAILED)
+    granted(Organization.objects.create(name="suspended"), GrantState.SUSPENDED)
+
+    runtime_file = RuntimeFile.model_validate(_credentials(node_client, weather).json()["runtime_file"])
+
+    assert set(runtime_file.service_accounts) == {str(acme.pk), str(beta.pk)}
+    assert runtime_file.service_accounts[str(acme.pk)].org_name == acme.name
+    assert runtime_file.service_accounts[str(acme.pk)].grant_state == "active"
+    assert runtime_file.service_accounts[str(beta.pk)].grant_state == "granting"
+    for org_id, entry in runtime_file.service_accounts.items():
+        response = service_account_client(entry.key).get(ME_URL)
+        assert response.status_code == 200
+        assert response.json()["organization"]["id"] == int(org_id)
+
+
+def test_an_inactive_organization_gets_no_key(weather, node_client, granted, acme):
+    granted(acme)
+    Organization.objects.filter(pk=acme.pk).update(is_active=False)
+
+    assert _credentials(node_client, weather).json()["runtime_file"]["service_accounts"] == {}
+
+
+def test_every_fetch_mints_new_keys(weather, node_client, granted, acme):
+    granted(acme)
+
+    first = _credentials(node_client, weather).json()["runtime_file"]["service_accounts"][str(acme.pk)]["key"]
+    second = _credentials(node_client, weather).json()["runtime_file"]["service_accounts"][str(acme.pk)]["key"]
+
+    assert first != second
+
+
+def test_the_revision_is_stable_across_fetches_and_never_follows_the_keys(weather, node_client, granted, acme):
+    granted(acme)
+    desired = _desired_placement(node_client)["credentials_revision"]
+
+    first = _credentials(node_client, weather).json()["credentials_revision"]
+    second = _credentials(node_client, weather).json()["credentials_revision"]
+
+    assert first == second == desired == _desired_placement(node_client)["credentials_revision"]
+
+
+def _revision_change(node_client, weather, change):
+    before = _desired_placement(node_client)["credentials_revision"]
+    change()
+    after = _desired_placement(node_client)["credentials_revision"]
+    assert after != before
+    assert _credentials(node_client, weather).json()["credentials_revision"] == after
+
+
+def test_a_new_grant_changes_the_revision(weather, node_client, granted, acme, beta):
+    granted(beta)
+
+    _revision_change(node_client, weather, lambda: granted(acme))
+
+
+@pytest.mark.parametrize("state", [GrantState.ACTIVE, GrantState.INSTALL_FAILED])
+def test_a_grant_changing_state_changes_the_revision(weather, node_client, granted, acme, state):
+    granted(acme, GrantState.GRANTING)
+
+    _revision_change(node_client, weather, lambda: PluginGrant.objects.filter(org=acme).update(state=state))
+
+
+def test_renaming_a_granted_organization_changes_the_revision(weather, node_client, granted, acme):
+    granted(acme)
+
+    _revision_change(node_client, weather, lambda: Organization.objects.filter(pk=acme.pk).update(name="Acme renamed"))
+
+
+# ---- the app password of a plugin's database ----
+
+
+def test_a_plugin_with_a_database_gets_its_app_password(database_plugin, node_client):
+    plugin = database_plugin()
+
+    body = _credentials(node_client, plugin).json()
+
+    assert body["database"] == {"app_password": app_password_of(PluginDatabase.objects.get())}
+    assert "database" not in body["runtime_file"]
+    assert body["database"]["app_password"] not in json.dumps(body["runtime_file"])
+
+
+def test_a_plugin_without_a_database_gets_none(weather, node_client):
+    assert _credentials(node_client, weather).json()["database"] is None
+
+
+def test_the_document_with_a_database_validates_with_the_shared_model(database_plugin, node_client):
+    plugin = database_plugin()
+
+    credentials = RuntimeCredentials.model_validate_json(_credentials(node_client, plugin).content, extra="ignore")
+
+    assert credentials.database.app_password == app_password_of(PluginDatabase.objects.get())
+
+
+def test_another_node_never_gets_a_database_s_password(database_plugin, other_node_client):
+    plugin = database_plugin()
+
+    response = other_node_client.post(_credentials_url(plugin.placement.pk))
+
+    assert (response.status_code, response.json()["code"]) == (404, "placement_not_found")
+    assert app_password_of(PluginDatabase.objects.get()) not in response.content.decode()
+
+
+def test_the_app_password_never_changes_the_credentials_revision(database_plugin, node_client):
+    plugin = database_plugin()
+    first = _credentials(node_client, plugin).json()
+
+    PluginDatabase.objects.update(app_password_encrypted=secret_encryption.encrypt(text="b" * 43).encryptedtext)
+
+    second = _credentials(node_client, plugin).json()
+    assert second["database"]["app_password"] == "b" * 43
+    assert second["credentials_revision"] == first["credentials_revision"]
+
+
+def test_the_app_password_is_in_no_log_line(database_plugin, node_client, log_messages):
+    plugin = database_plugin()
+    password = app_password_of(PluginDatabase.objects.get())
+
+    _credentials(node_client, plugin)
+
+    assert any("plugins.database.record_created" in message for message in log_messages)
+    assert all(password not in message for message in log_messages)
+
+
+# ---- a plugin out of service ----
+
+
+@pytest.mark.parametrize("plugin_state", ["uninstalling", "purging"])
+def test_a_plugin_out_of_service_gets_its_app_password_until_removal_is_requested(
+    database_plugin, plugin_node, node_client, plugin_state
+):
+    from plugins.models import Plugin, PluginPlacement
+
+    weather = mark_running(database_plugin(hooks={"install": False, "org_removed": True}))
+    Plugin.objects.filter(pk=weather.pk).update(state=plugin_state)
+    url = _credentials_url(weather.placement.pk)
+
+    kept = node_client.post(url)
+    PluginPlacement.objects.filter(plugin=weather).update(removal_requested_at=timezone.now())
+    refused = node_client.post(url)
+
+    assert kept.status_code == 200, kept.content
+    assert kept.json()["database"] == {"app_password": app_password_of(PluginDatabase.objects.get(plugin=weather))}
+    assert (refused.status_code, refused.json()["code"]) == (404, "placement_not_found")
+
+
+@pytest.mark.usefixtures("development_mode")
+def test_a_runtime_credentials_call_leaves_development_keys_working(weather, node_client, superadmin, acme):
+    mark_running(weather)
+    PluginGrantService().grant("weather", acme.pk, superadmin)
+    minted = ServiceAccountKeyService().mint_development_keys(weather)
+    development_key = minted[0].raw_key
+
+    for _ in range(3):
+        assert node_client.post(_credentials_url(weather.placement.pk)).status_code == 200
+
+    response = service_account_client(development_key, acme, development_listener="1").get("/api/plugin-runtime/me/")
+    assert response.status_code == 200

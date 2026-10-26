@@ -1,0 +1,8 @@
+@use '../plugin-dialog' as plugin-dialog;
+
+@include plugin-dialog.plugin-dialog(480px);
+
+.grant__hint {
+    margin: 0;
+    color: var(--color-text-secondary);
+}

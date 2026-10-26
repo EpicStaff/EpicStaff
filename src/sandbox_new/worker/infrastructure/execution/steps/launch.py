@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from loguru import logger
+from src.shared.bench_log import BENCH_LEVEL
 
 from worker.application.context import ExecutionContext
 from worker.domain.enums import NetworkPolicy
@@ -77,6 +78,14 @@ class LaunchStep:
             code_path=context.code_path,
         )
 
+        job = context.job
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_launched",
+            session_id=job.session_id,
+            execution_id=job.execution_id,
+        )
         process = await asyncio.create_subprocess_exec(
             *argv,
             stdout=asyncio.subprocess.PIPE,
@@ -90,14 +99,23 @@ class LaunchStep:
         comm_task = asyncio.ensure_future(process.communicate())
         done, _ = await asyncio.wait({comm_task}, timeout=timeout)
 
-        if comm_task not in done:
+        timed_out = comm_task not in done
+        if timed_out:
             await self._capture_timeout(context, process, comm_task, timeout)
-            return
-
-        stdout_bytes, stderr_bytes = comm_task.result()
-        context.stdout = stdout_bytes.decode("utf-8", errors="replace")
-        context.stderr = stderr_bytes.decode("utf-8", errors="replace")
-        context.returncode = process.returncode
+        else:
+            stdout_bytes, stderr_bytes = comm_task.result()
+            context.stdout = stdout_bytes.decode("utf-8", errors="replace")
+            context.stderr = stderr_bytes.decode("utf-8", errors="replace")
+            context.returncode = process.returncode
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_exited",
+            session_id=job.session_id,
+            execution_id=job.execution_id,
+            returncode=context.returncode,
+            timed_out=timed_out,
+        )
 
     @staticmethod
     def _apply_network_marker(env: dict[str, str], isolation: IsolationPlan) -> None:

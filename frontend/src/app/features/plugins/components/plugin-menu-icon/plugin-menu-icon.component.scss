@@ -1,0 +1,21 @@
+:host {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--plugin-menu-icon-size);
+    height: var(--plugin-menu-icon-size);
+}
+
+// The icon's shape, filled with the colour of the text around it.
+:host(.plugin-menu-icon--drawn) {
+    background-color: currentColor;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+}
+
+.plugin-menu-icon__placeholder {
+    font-size: var(--plugin-menu-icon-size);
+    line-height: 1;
+}

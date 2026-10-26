@@ -30,8 +30,10 @@ from tables.services.trigger_spec import TriggerSpec
 SECRET_NAME = "query-count-key"
 
 # Exact budget for representative_graph. If a change raises it, find the new
-# query; if it lowers it, update the number.
-RUN_SESSION_QUERY_COUNT = 63
+# query; if it lowers it, update the number. It includes run admission, asked
+# before anything is written and again just before the publish: one query each
+# while no plugin grant of the organization is inactive.
+RUN_SESSION_QUERY_COUNT = 65
 
 
 def _python_node(graph: Graph, node_name: str, secret=None, use_storage=False) -> PythonNode:

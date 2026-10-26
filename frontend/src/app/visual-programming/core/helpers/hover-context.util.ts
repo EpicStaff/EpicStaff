@@ -192,7 +192,7 @@ export function computeForwardContext(
 /**
  * Builds the index maps needed by the traversal functions.
  */
-function buildConnectionMaps(connections: ConnectionModel[]): {
+export function buildConnectionMaps(connections: ConnectionModel[]): {
     incomingMap: Map<string, ConnectionModel[]>;
     outgoingMap: Map<string, ConnectionModel[]>;
 } {

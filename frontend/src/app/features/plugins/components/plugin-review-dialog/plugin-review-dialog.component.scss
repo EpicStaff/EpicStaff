@@ -1,0 +1,3 @@
+@use '../plugin-dialog' as plugin-dialog;
+
+@include plugin-dialog.plugin-dialog(760px);

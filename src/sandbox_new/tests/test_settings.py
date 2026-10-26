@@ -86,3 +86,21 @@ def test_the_max_result_size_is_read_as_a_byte_size(reload_settings_with_env):
     reloaded = reload_settings_with_env(SANDBOX_MAX_RESULT_SIZE="16mb")
 
     assert reloaded.MAX_RESULT_SIZE == 16 * 1024 * 1024
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [("BENCH", "BENCH"), ("bench", "BENCH"), (" warning ", "WARNING")],
+)
+def test_log_level_accepts_every_loguru_level_and_bench(
+    reload_settings_with_env, configured, expected
+):
+    reloaded = reload_settings_with_env(SANDBOX_LOG_LEVEL=configured)
+
+    assert reloaded.LOG_LEVEL == expected
+
+
+@pytest.mark.parametrize("configured", ["VERBOSE", "none", ""])
+def test_an_unknown_log_level_refuses_startup(reload_settings_with_env, configured):
+    with pytest.raises(ValueError, match="SANDBOX_LOG_LEVEL"):
+        reload_settings_with_env(SANDBOX_LOG_LEVEL=configured)
