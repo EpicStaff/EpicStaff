@@ -10,37 +10,42 @@
                 class="item"
                 (click)="onConfigureRag(config.rag_type)"
             >
-                <app-svg-icon
-                    [icon]="ragTypeConfig[config.rag_type].icon"
-                    size="0.75rem"
-                />
-                <span class="name">{{ ragTypeConfig[config.rag_type].name }}</span>
-                <span
-                    class="model"
-                    [matTooltip]="config.embedder_name"
-                    matTooltipPosition="above"
-                >
-                    {{ config.embedder_name }}
-                </span>
-                <div
-                    class="status"
-                    [style.color]="ragStatusConfig[config.status].color"
-                >
+                <div class="header">
                     <app-svg-icon
-                        [icon]="ragStatusConfig[config.status].icon"
-                        size="1rem"
+                        [icon]="ragTypeConfig[config.rag_type].icon"
+                        size="0.75rem"
                     />
-                    {{ ragStatusConfig[config.status].text }}
+                    <span class="name">{{ ragTypeConfig[config.rag_type].name }}</span>
+                    <span
+                        class="model"
+                        [matTooltip]="config.embedder_name"
+                        matTooltipPosition="above"
+                    >
+                        {{ config.embedder_name }}
+                    </span>
+                    <div
+                        class="status"
+                        [style.color]="ragStatusConfig[config.status].color"
+                    >
+                        <app-svg-icon
+                            [icon]="ragStatusConfig[config.status].icon"
+                            size="1rem"
+                        />
+                        {{ ragStatusConfig[config.status].text }}
+                    </div>
+                    <app-svg-icon
+                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
+                        (click)="$event.stopPropagation(); onDeleteRag(config.rag_type, config.rag_id)"
+                        icon="x"
+                        size="1rem"
+                        class="nav action"
+                        matTooltip="Delete RAG"
+                        matTooltipPosition="above"
+                    />
                 </div>
-                <app-svg-icon
-                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
-                    (click)="$event.stopPropagation(); onDeleteRag(config.rag_type, config.rag_id)"
-                    icon="x"
-                    size="1rem"
-                    class="nav action"
-                    matTooltip="Delete RAG"
-                    matTooltipPosition="above"
-                />
+                @for (line of usageLines()[config.rag_type]; track $index) {
+                    <div class="usage text-body-small">{{ line }}</div>
+                }
             </li>
         }
     </ul>

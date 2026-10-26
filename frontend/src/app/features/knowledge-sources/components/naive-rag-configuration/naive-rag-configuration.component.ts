@@ -32,6 +32,7 @@ import { ToastService } from '../../../../services/notifications';
 import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
 import {
     BulkUpdateNaiveRagDocumentsResponse,
+    EstimateDocumentConfig,
     UpdateNaiveRagDocumentDtoRequest,
 } from '../../models/naive-rag-document.model';
 import { RagConfiguration } from '../../models/rag-configuration';
@@ -240,6 +241,10 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
                 return of(null);
             })
         );
+    }
+
+    getPendingEstimateConfigsForChecked(): EstimateDocumentConfig[] {
+        return this.documentsStorageService.buildPendingEstimateConfigs(this.filteredAndCheckedDocIds());
     }
 
     hasFailedSavesForChecked(): boolean {

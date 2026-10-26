@@ -48,26 +48,47 @@ def get_runnable_graph(
 ) -> Graph:
     """Fetch the graph to run by id (or uuid when no id is given) and authorize `user`.
 
-    Running a flow requires READ on FLOWS within the graph's own org. A missing graph
+    Running a flow requires USE on FLOWS within the graph's own org. A missing graph
     and a graph in an org the caller is not a member of raise the same
     GraphNotFoundError. Superadmin passes unconditionally.
 
     Raises:
         GraphNotFoundError (404): no graph the caller may know about.
-        PermissionDenied (403): a member of the owning org whose role lacks READ on FLOWS.
+        PermissionDenied (403): a member of the owning org whose role lacks USE on FLOWS.
     """
     lookup = {"id": graph_id} if graph_id else {"uuid": graph_uuid}
     graph = Graph.objects.filter(**lookup).first()
     if graph is None:
         raise GraphNotFoundError()
+    _assert_graph_permission(user, graph.org_id, Permission.USE)
+    return graph
+
+
+def assert_graph_readable(user, graph_id: int) -> None:
+    """Authorize `user` to read the graph `graph_id`, taking the org from the graph row.
+
+    For surfaces that carry no active org (the graph co-editing websocket). A missing
+    graph, a graph in the recycle bin and a graph in an org the caller is not a member
+    of raise the same GraphNotFoundError. Superadmin passes unconditionally.
+
+    Raises:
+        GraphNotFoundError (404): no graph the caller may know about.
+        PermissionDenied (403): a member of the owning org whose role lacks READ on FLOWS.
+    """
+    owner_org_id = Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
+    if owner_org_id is None:
+        raise GraphNotFoundError()
+    _assert_graph_permission(user, owner_org_id, Permission.READ)
+
+
+def _assert_graph_permission(user, owner_org_id: int, action: Permission) -> None:
     assert_row_org_permission(
         user,
-        graph.org_id,
+        owner_org_id,
         ResourceType.FLOWS,
-        Permission.READ,
+        action,
         not_found=GraphNotFoundError(),
     )
-    return graph
 
 
 def assert_parent_session_in_org(parent_session_id: int, org_id: int) -> None:

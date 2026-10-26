@@ -24,7 +24,9 @@
 .dur-panel {
     position: absolute;
     top: calc(100% + 8px);
-    left: 0;
+    // opens leftwards: the Duration column sits next to Actions, so a panel opening to the
+    // right is cut off by the table wrapper's horizontal scroll
+    right: 0;
     z-index: 1100;
     background: var(--color-background-body);
     border: 1px solid var(--color-divider-regular);

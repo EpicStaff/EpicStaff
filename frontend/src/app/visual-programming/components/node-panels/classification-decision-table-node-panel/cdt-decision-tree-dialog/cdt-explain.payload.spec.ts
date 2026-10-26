@@ -41,8 +41,6 @@ function input(overrides: Partial<CdtDecisionTreeInput> = {}): CdtDecisionTreeIn
         postCode: '',
         preInputMap: {},
         postInputMap: {},
-        preLibraries: [],
-        postLibraries: [],
         preOutputVariablePath: null,
         postOutputVariablePath: null,
         prompts: {},
@@ -139,6 +137,39 @@ describe('buildCdtExplainBlocks', () => {
         const blocks = buildCdtExplainBlocks(input({ preCode: '  ', postCode: '\n\t' }));
 
         expect(blocks.size).toBe(0);
+    });
+});
+
+describe('node names in the explain request', () => {
+    // Same-named, numbered nodes: the diagram tells them apart by number, the request must not.
+    const nodes = [
+        { id: 'n-approve', node_name: 'Approver', backendId: 2, nodeNumber: 4 },
+        { id: 'n-escalate', node_name: 'Escalate', backendId: 3, nodeNumber: 5 },
+        { id: 'n-fail', node_name: 'Fail', backendId: 4, nodeNumber: 6 },
+    ];
+    const routed = input({
+        nodeNumber: 3,
+        rows: [row({ group_name: 'Approve', route_code: 'approve', order: 1 })],
+        connections: [
+            { sourceNodeId: 'table', sourcePortId: 'table_decision-route-approve', targetNodeId: 'n-approve' },
+        ],
+        defaultNextNode: 'n-escalate',
+        errorNextNode: 'n-fail',
+        nodes,
+    });
+
+    it('sends the plain name of the node a rule goes to, without its number', () => {
+        const block = buildCdtExplainBlocks(routed).get('row-0:decision');
+
+        expect(block?.block === 'condition' && block.on_match.goes_to).toBe('Approver');
+    });
+
+    it('sends the plain names of the table, its default and its error node, without their numbers', () => {
+        expect(buildCdtExplainTable(routed)).toMatchObject({
+            node_name: 'Triage',
+            default_next_node: 'Escalate',
+            error_next_node: 'Fail',
+        });
     });
 });
 

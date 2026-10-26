@@ -4,10 +4,16 @@ import { Subject } from 'rxjs';
 import { WsTicketService } from '../../../services/auth/ws-ticket.service';
 import { ConfigService } from '../../../services/config';
 
+/** Who changed or saved a graph: a person, or a plugin's service account, which is no person (`user_id` `null`). */
 export interface EditorInfo {
-    user_id: number;
+    user_id: number | null;
     display_name: string | null;
     avatar_url?: string | null;
+}
+
+/** A person with the graph open. Only people open the editing socket, so everyone present has a user id. */
+export interface PresentEditor extends EditorInfo {
+    user_id: number;
 }
 
 type ServerMessage =
@@ -19,10 +25,10 @@ type ServerMessage =
     | WsErrorMessage
     | PresenceStateUpdated;
 
-type PresenceStateMessage = { type: 'presence_state'; editors: EditorInfo[] };
-type UserJoinedMessage = { type: 'user_joined'; editor: EditorInfo };
+type PresenceStateMessage = { type: 'presence_state'; editors: PresentEditor[] };
+type UserJoinedMessage = { type: 'user_joined'; editor: PresentEditor };
 type UserLeftMessage = { type: 'user_left'; user_id: number };
-type PresenceStateUpdated = { type: 'presence_state_updated'; editor: EditorInfo };
+type PresenceStateUpdated = { type: 'presence_state_updated'; editor: PresentEditor };
 export type GraphModifiedMessage = {
     type: 'graph_modified';
     graph_id: number;
@@ -32,6 +38,7 @@ export type GraphSavedMessage = {
     type: 'graph_saved';
     graph_id: number;
     new_save_version: number;
+    /** A plugin saving through its service account: `user_id` `null`, its name as "Weather (plugin)". */
     saved_by: EditorInfo;
     saved_at: string;
 };
@@ -54,7 +61,7 @@ export class GraphCollaborationWsService {
     private readonly baseReconnectDelayMs = 1000;
     private readonly maxReconnectDelayMs = 30000;
 
-    public editors = signal<EditorInfo[]>([]);
+    public editors = signal<PresentEditor[]>([]);
     public connectionStatus = signal<ConnectionStatus>('disconnected');
 
     public graphSaved$ = new Subject<GraphSavedMessage>();
@@ -173,12 +180,15 @@ export class GraphCollaborationWsService {
         return Math.min(this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelayMs);
     }
 
+    /** Refreshes a present person's name and avatar; a plugin (no user id) is never among them. */
     private updateEditorInfo(editor: EditorInfo): void {
+        const userId = editor.user_id;
+        if (userId === null) return;
         this.editors.update((list) => {
-            const idx = list.findIndex((e) => e.user_id === editor.user_id);
+            const idx = list.findIndex((e) => e.user_id === userId);
             if (idx === -1) return list;
             const updated = [...list];
-            updated[idx] = editor;
+            updated[idx] = { ...editor, user_id: userId };
             return updated;
         });
     }

@@ -88,6 +88,11 @@ export class SelectComponent implements ControlValueAccessor {
      * labelled by that element and by its own text, so the selected value is still announced.
      */
     ariaLabelledby = input<string | null>(null);
+    /**
+     * Stable `data-tour` anchor for the dropdown panel. The panel renders in a CDK overlay outside this host, so an
+     * attribute on the host cannot reach it.
+     */
+    dropdownDataAnchor = input<string | null>(null);
 
     changed = output<unknown>();
     opened = output<void>();

@@ -6,6 +6,5 @@ export function toNodeMetadata(node: NodeModel): Record<string, unknown> {
         color: node.color,
         icon: node.icon,
         size: node.size,
-        ...(node.nodeNumber != null ? { nodeNumber: node.nodeNumber } : {}),
     };
 }

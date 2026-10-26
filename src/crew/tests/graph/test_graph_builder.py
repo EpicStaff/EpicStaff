@@ -111,10 +111,8 @@ def mock_session_data() -> SessionData:
                 PythonNodeData(
                     node_name="start_node",
                     python_code=PythonCodeData(
-                        venv_name="venv-default",
                         code="def main(): return 'next_node'",
                         entrypoint="main",
-                        libraries=[],
                         global_kwargs={},
                     ),
                     input_map={},
@@ -123,10 +121,8 @@ def mock_session_data() -> SessionData:
                 PythonNodeData(
                     node_name="end_node",
                     python_code=PythonCodeData(
-                        venv_name="venv-default",
                         code="def main(): return 'end'",
                         entrypoint="main",
-                        libraries=["requests"],
                         global_kwargs={},
                     ),
                     input_map={},
@@ -135,10 +131,8 @@ def mock_session_data() -> SessionData:
                 PythonNodeData(
                     node_name="error_node",
                     python_code=PythonCodeData(
-                        venv_name="venv-default",
                         code="def main(): return 'ERROR HANDELED'",
                         entrypoint="main",
-                        libraries=[],
                         global_kwargs={},
                     ),
                     input_map={},
@@ -417,10 +411,8 @@ def _storage_python_node_data(
     return PythonNodeData(
         node_name=node_name,
         python_code=PythonCodeData(
-            venv_name="venv-default",
             code=f"def main(): return read_from_storage('{storage_path}')",
             entrypoint="main",
-            libraries=[],
             global_kwargs={},
             use_storage=True,
             storage_allowed_paths=["org_1/"],
@@ -695,3 +687,36 @@ def test_compile_refuses_a_node_whose_service_was_not_provided(
 
     with pytest.raises(RuntimeError, match=missing):
         _builder(mock_services).compile_from_schema(mock_session_data)
+
+
+def test_compile_passes_knowledge_node_extra_headers(
+    mock_services, mock_session_data, monkeypatch
+):
+    from services.graph import graph_builder
+    from src.shared.models import KnowledgeNodeData
+
+    created_nodes = []
+
+    class RecordingKnowledgeNode(graph_builder.KnowledgeNode):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            created_nodes.append(self)
+
+    monkeypatch.setattr(graph_builder, "KnowledgeNode", RecordingKnowledgeNode)
+    mock_session_data.graph.knowledge_node_list = [
+        KnowledgeNodeData(
+            node_name="knowledge_1",
+            collection_id=5,
+            rag_type_id="naive:2",
+            query="q",
+            input_map={},
+            embedder_extra_headers={"X-Emb": "emb-resolved"},
+            llm_extra_headers={"X-Llm": "llm-resolved"},
+        )
+    ]
+
+    _builder(mock_services, session_id=mock_session_data.id).compile_from_schema(mock_session_data)
+
+    assert len(created_nodes) == 1
+    assert created_nodes[0].embedder_extra_headers == {"X-Emb": "emb-resolved"}
+    assert created_nodes[0].llm_extra_headers == {"X-Llm": "llm-resolved"}

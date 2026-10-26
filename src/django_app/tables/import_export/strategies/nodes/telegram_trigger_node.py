@@ -44,7 +44,10 @@ class TelegramTriggerNodeStrategy(EntityImportExportStrategy):
             }
         )
         serializer.is_valid(raise_exception=True)
-        node = serializer.save(created_by=resolve_author(kwargs.get("user")))
+        node = serializer.save(
+            created_by=resolve_author(kwargs.get("user")),
+            node_number=kwargs.get("node_number"),
+        )
 
         fields_serializer = TelegramTriggerNodeFieldImportSerializer(data=fields_data, many=True)
         fields_serializer.is_valid(raise_exception=True)

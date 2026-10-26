@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.db.models import Prefetch
 from rbac.models.last_edit import LastEditTrackedModel
@@ -27,12 +28,28 @@ def linked_secrets_prefetch(python_code_path: str) -> Prefetch:
     )
 
 
+def default_execution_timeout() -> int:
+    # A callable, so the default follows deployment configuration instead of being frozen
+    # into the migration. NOTE: migrations reference it by import path; never rename or move.
+    return settings.DEFAULT_EXECUTION_TIMEOUT_SECONDS
+
+
 class PythonCode(ContentHashMixin, models.Model):
+    venv = models.ForeignKey(
+        "proxies.SandboxVenvBinding",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="python_codes",
+    )
     code = models.TextField()
     entrypoint = models.TextField(default="main")
-    libraries = models.TextField(default="")  # sep: space
     global_kwargs = models.JSONField(default=dict)
     secrets = models.ManyToManyField("Secret", blank=True, related_name="python_codes")
+    execution_timeout = models.PositiveIntegerField(
+        default=default_execution_timeout,
+        help_text="Seconds a single run of this code may take before it is killed.",
+    )
 
     def linked_secrets(self):
         """Every secret this code links to, binned ones included: they stay linked until purged.
@@ -49,9 +66,6 @@ class PythonCode(ContentHashMixin, models.Model):
     def forget_linked_secrets(self) -> None:
         """Drop the prefetched list after the links change: a plain attribute, so nothing else does."""
         self.__dict__.pop(LINKED_SECRETS_ATTR, None)
-
-    def get_libraries_list(self):
-        return list(filter(None, self.libraries.split(" ")))
 
 
 class PythonCodeTool(

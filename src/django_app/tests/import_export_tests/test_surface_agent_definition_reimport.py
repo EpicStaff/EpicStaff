@@ -28,6 +28,7 @@ from agents.models import (
     SurfacePythonTool,
     ToolMode,
 )
+from tables.import_export.constants import MAX_REUSE_CANDIDATES
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
@@ -45,6 +46,7 @@ from tables.models import (
     StartNode,
 )
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 
 @pytest.fixture
@@ -56,7 +58,7 @@ def agent_flow(default_org):
         name="py",
         description="description",
         python_code=PythonCode.objects.create(
-            code="def main(): return 1", entrypoint="main", libraries=""
+            code="def main(): return 1", entrypoint="main"
         ),
         org=default_org,
     )
@@ -114,7 +116,11 @@ def agent_flow(default_org):
 
 @pytest.fixture
 def export_file(agent_flow, export_service):
-    return json.dumps(export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id]))
+    return json.dumps(
+        export_service.export_entities(
+            EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+        ).data
+    )
 
 
 @pytest.fixture
@@ -385,7 +391,11 @@ class TestLegacyToolEntries:
         agent.description = ""
         agent.save(update_fields=["description"])
         data = json.loads(
-            json.dumps(export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id]))
+            json.dumps(
+                export_service.export_entities(
+                    EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+                ).data
+            )
         )
         for field_name in ("description", "metadata"):
             del data[EntityType.AGENT_DEFINITION][0][field_name]
@@ -443,7 +453,7 @@ class TestBuiltInTool:
             name="built_in_py",
             description="built-in",
             python_code=PythonCode.objects.create(
-                code="def main(): return 'old'", entrypoint="main", libraries=""
+                code="def main(): return 'old'", entrypoint="main"
             ),
             built_in=True,
         )
@@ -451,7 +461,9 @@ class TestBuiltInTool:
             surface=agent_flow["owned_surface"], python_tool=built_in_tool, mode=ToolMode.ALLOW
         )
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         built_in_tool.python_code.code = "def main(): return 'new'"
         built_in_tool.python_code.save(update_fields=["code"])
@@ -463,6 +475,111 @@ class TestBuiltInTool:
         assert {
             id_mapper.get(EntityType.PYTHON_CODE_TOOL, built_in_tool.id) for id_mapper in id_mappers
         } == {org_copies.get().id}
+
+
+@pytest.mark.django_db
+class TestPythonToolDescriptionCleanedOnImport:
+    """Import stores a tool description without control characters and capped, yet
+    the reuse lookup still finds a tool stored with the text as written: a built-in
+    tool keeps upload_tools' text, which can exceed the cap."""
+
+    LONG_BUILT_IN_DESCRIPTION = "first line\n" + "y" * 3000
+
+    def _attach_built_in_tool(self, agent_flow, description):
+        built_in_tool = PythonCodeTool.objects.create(
+            name="built_in_py",
+            description=description,
+            python_code=PythonCode.objects.create(
+                code="def main(): return 'built-in'", entrypoint="main"
+            ),
+            built_in=True,
+        )
+        SurfacePythonTool.objects.create(
+            surface=agent_flow["owned_surface"], python_tool=built_in_tool, mode=ToolMode.ALLOW
+        )
+        return built_in_tool
+
+    def test_hand_edited_description_imports_once_then_is_reused(
+        self, agent_flow, export_file, import_file, default_org
+    ):
+        old_tool_id = agent_flow["python_tool"].id
+        data = json.loads(export_file)
+        for entry in data[EntityType.PYTHON_CODE_TOOL]:
+            if entry["id"] == old_tool_id:
+                entry["description"] = "Line one\x1b[31m\x07\n" + "x" * 2000
+        hand_edited_file = json.dumps(data)
+
+        first_id_mapper = import_file(hand_edited_file)
+        counts_after_first_import = _org_counts(default_org)
+        second_id_mapper = import_file(hand_edited_file)
+
+        assert _org_counts(default_org) == counts_after_first_import
+        assert second_id_mapper.get(EntityType.PYTHON_CODE_TOOL, old_tool_id) == (
+            first_id_mapper.get(EntityType.PYTHON_CODE_TOOL, old_tool_id)
+        )
+
+    def test_built_in_with_a_long_multiline_description_is_reused(
+        self, agent_flow, export_service, import_file, default_org
+    ):
+        built_in_tool = self._attach_built_in_tool(agent_flow, self.LONG_BUILT_IN_DESCRIPTION)
+        export_file = json.dumps(
+            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+        )
+
+        id_mapper = import_file(export_file)
+
+        assert id_mapper.get(EntityType.PYTHON_CODE_TOOL, built_in_tool.id) == built_in_tool.id
+        assert not PythonCodeTool.objects.filter(
+            org=default_org, name__startswith="built_in_py"
+        ).exists()
+
+    def test_tool_stored_with_the_files_text_wins_over_one_matching_only_once_cleaned(
+        self, agent_flow, export_service, import_file, default_org
+    ):
+        built_in_tool = self._attach_built_in_tool(agent_flow, self.LONG_BUILT_IN_DESCRIPTION)
+        export_file = json.dumps(
+            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+        )
+        # Same name and code, newer id, so it sorts before the built-in in the lookup;
+        # its description equals the built-in's only after cleaning.
+        PythonCodeTool.objects.create(
+            name="built_in_py",
+            description="first line" + "y" * 1014,
+            python_code=PythonCode.objects.create(
+                code="def main(): return 'built-in'", entrypoint="main"
+            ),
+            org=default_org,
+        )
+
+        id_mapper = import_file(export_file)
+
+        assert id_mapper.get(EntityType.PYTHON_CODE_TOOL, built_in_tool.id) == built_in_tool.id
+
+    def test_matching_copy_is_found_among_more_copies_than_the_lookup_loads(
+        self, agent_flow, export_file, import_file, default_org
+    ):
+        exported_tool_id = agent_flow["python_tool"].id
+        agent_flow["python_tool"].delete()
+
+        def tool_copy(name, description):
+            return PythonCodeTool.objects.create(
+                name=name,
+                description=description,
+                python_code=PythonCode.objects.create(
+                    code="def main(): return 1", entrypoint="main"
+                ),
+                org=default_org,
+            )
+
+        # The matching copy is the oldest; newer copies that differ only in
+        # description outnumber the lookup's candidate window.
+        matching_copy = tool_copy("py #2", "description")
+        for number in range(3, MAX_REUSE_CANDIDATES + 4):
+            tool_copy(f"py #{number}", f"other description {number}")
+
+        id_mapper = import_file(export_file)
+
+        assert id_mapper.get(EntityType.PYTHON_CODE_TOOL, exported_tool_id) == matching_copy.id
 
 
 @pytest.mark.django_db
@@ -624,7 +741,9 @@ class TestAgentDefinitionSurfacesNeverRewired:
         )
         old_second_surface_id = second_surface.id
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         second_surface.delete()
         agent_state_before = _surface_state(agent)
@@ -678,7 +797,9 @@ class TestAgentDefinitionSurfacesNeverRewired:
             for name in ("surf_two", "surf_three")
         ]
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         extra_surfaces[-1].delete()
         agent_state_before = _surface_state(agent)
@@ -815,6 +936,7 @@ class TestPartialImport:
         export_result = GraphPartialExportService(entity_registry).export(
             [NodeRef(entity_type=EntityType.AGENT_NODE, node_id=agent_flow["agent_node"].id)],
             org_id=default_org.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
         )
         assert not export_result.has_errors, export_result.errors
         partial_file = json.dumps(export_result.data)
@@ -829,7 +951,8 @@ class TestPartialImport:
                 json.loads(partial_file), target_graph, org_id=default_org.id
             )
 
-        id_mapper = _partial_import()
+        result = _partial_import()
+        id_mapper = result.id_mapper
 
         new_agent_id = id_mapper.get(EntityType.AGENT_DEFINITION, agent.id)
         recreated_owned = Surface.objects.get(
@@ -838,12 +961,13 @@ class TestPartialImport:
         assert new_agent_id != agent.id
         assert recreated_owned.owner_agent_id == new_agent_id
         assert _surface_state(agent) == agent_state_before
-        assert set(target_graph.agent_node_list.values_list("agent_definition_id", flat=True)) == {
+        assert [node["agent_definition"] for node in result.content["agent_node_list"]] == [
             new_agent_id
-        }
+        ]
+        assert not target_graph.agent_node_list.exists()
 
         counts_after_first_import = _org_counts(default_org)
-        second_id_mapper = _partial_import()
+        second_id_mapper = _partial_import().id_mapper
         assert _org_counts(default_org) == counts_after_first_import
         assert second_id_mapper.get(EntityType.AGENT_DEFINITION, agent.id) == new_agent_id
 
@@ -871,7 +995,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
     ):
         agent_flow = owned_surface_referenced_everywhere
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         counts_before = _org_counts(default_org)
 
@@ -893,7 +1019,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
     ):
         agent_flow = owned_surface_referenced_everywhere
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         agent = agent_flow["agent"]
         agent.description = "changed after export"
@@ -945,7 +1073,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
             agent_definition=agent, surface=twin, place=SurfacePlace.CHAT
         )
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         counts_before = _org_counts(default_org)
 
@@ -1032,7 +1162,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
     ):
         agent_flow = owned_surface_referenced_everywhere
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         AgentDefaultSurface.objects.filter(
             agent_definition=agent_flow["agent"], surface=agent_flow["owned_surface"]
@@ -1059,7 +1191,9 @@ class TestOwnedSurfacesMatchedWithTheirAgent:
             for name in ("surf #2", "surf #3")
         ]
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         twins[1].instructions = "edited after export"
         twins[1].save(update_fields=["instructions"])
@@ -1121,6 +1255,7 @@ class TestOwnedSurfaceCreatePermission:
         export_result = GraphPartialExportService(entity_registry).export(
             [NodeRef(entity_type=EntityType.AGENT_NODE, node_id=agent_flow["agent_node"].id)],
             org_id=default_org.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
         )
         assert not export_result.has_errors, export_result.errors
         agent_flow["owned_surface"].delete()
@@ -1172,7 +1307,11 @@ class TestOwnedSurfacePairingCost:
     ):
         def _reimport_query_count(agent_name: str, surface_count: int) -> int:
             graph = _flow_with_identical_owned_surfaces(default_org, agent_name, surface_count)
-            export_file = json.dumps(export_service.export_entities(EntityType.GRAPH, [graph.id]))
+            export_file = json.dumps(
+                export_service.export_entities(
+                    EntityType.GRAPH, [graph.id], policy=UNRESTRICTED_EXPORT_POLICY
+                ).data
+            )
             counts_before = _org_counts(default_org)
             with CaptureQueriesContext(connection) as queries:
                 id_mapper = import_file(export_file)
@@ -1265,6 +1404,7 @@ class TestHandEditedSurfaceValues:
         export_result = GraphPartialExportService(entity_registry).export(
             [NodeRef(entity_type=EntityType.AGENT_NODE, node_id=agent_flow["agent_node"].id)],
             org_id=default_org.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
         )
         data = json.loads(json.dumps(export_result.data))
         self._set_mode(agent_flow, data)
@@ -1289,7 +1429,9 @@ class TestReusedAgentSurfaceConflicts:
     ):
         agent_flow = owned_surface_default_flow
         export_file = json.dumps(
-            export_service.export_entities(EntityType.GRAPH, [agent_flow["graph"].id])
+            export_service.export_entities(
+                EntityType.GRAPH, [agent_flow["graph"].id], policy=UNRESTRICTED_EXPORT_POLICY
+            ).data
         )
         other_agent = AgentDefinition.objects.create(org=default_org, name="other agent")
         owned_surface = agent_flow["owned_surface"]

@@ -14,6 +14,7 @@ from app.tools.executors.knowledge_search import (
 from app.tools.executors.mcp_tool import McpToolExecutor
 from app.tools.executors.python_code import PythonCodeToolExecutor
 from app.tools.mcp.gateway import McpToolGateway
+from app.tools.mcp.schema_sanitizer import strip_control_chars
 from app.tools.registry import ToolRegistry, ToolSpec
 from app.tools.system_registry import SystemToolRegistry, get_system_registry
 from shared.knowledge.client import KnowledgeClient
@@ -24,6 +25,7 @@ from shared.models.storage_scope import StorageCredentials
 from shared.models.tools import McpToolData, PythonCodeToolData
 
 _INVALID_TOOL_NAME_CHARS = re.compile(r"[^A-Za-z0-9_-]")
+_WHITESPACE_CONTROL_CHARS_RE = re.compile(r"[\n\t]")
 
 _QUERY_ONLY_SCHEMA = {
     "type": "object",
@@ -35,6 +37,14 @@ _QUERY_ONLY_SCHEMA = {
     },
     "required": ["query"],
 }
+
+
+def _with_collection_description(description: str, collection: CollectionSpec) -> str:
+    # Django cleans on save the same way; this covers rows stored before that.
+    extra = strip_control_chars(
+        _WHITESPACE_CONTROL_CHARS_RE.sub(" ", collection.description or "")
+    ).strip()
+    return f"{description} {extra}" if extra else description
 
 
 def _graph_schema(methods: list[str], default_method: str) -> dict:
@@ -224,8 +234,7 @@ class ToolRegistryBuilder:
             "Best for direct factual lookups; returns most relevant passages."
         )
 
-        if collection.description:
-            description = f"{description} {collection.description}"
+        description = _with_collection_description(description, collection)
 
         target = KnowledgeSearchTarget(
             collection_id=collection.collection_id,
@@ -233,6 +242,7 @@ class ToolRegistryBuilder:
             rag_type=entry.rag_type,
             search_config=entry.search_config,
             embedder_api_key=entry.embedder.config.api_key,
+            embedder_extra_headers=entry.embedder.config.extra_headers,
         )
         spec = ToolSpec(
             name=candidate,
@@ -266,6 +276,8 @@ class ToolRegistryBuilder:
                 search_config=entry.search_config,
                 embedder_api_key=entry.embedder.config.api_key,
                 llm_api_key=entry.llm.config.api_key if entry.llm else None,
+                embedder_extra_headers=entry.embedder.config.extra_headers,
+                llm_extra_headers=entry.llm.config.extra_headers if entry.llm else None,
             )
 
         methods = sorted(targets.keys())
@@ -278,8 +290,7 @@ class ToolRegistryBuilder:
             "'local' for questions about specific entities and their relationships."
         )
 
-        if collection.description:
-            description = f"{description} {collection.description}"
+        description = _with_collection_description(description, collection)
 
         schema = _graph_schema(methods, default_method)
         spec = ToolSpec(name=candidate, description=description, parameters_schema=schema)

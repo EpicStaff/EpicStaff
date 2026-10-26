@@ -27,6 +27,11 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
+from tables.services.secrets.reference_guard import (
+    pinned_principal_of_user,
+    secret_reference_guard,
+)
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 
 
 class BaseConfigStrategy(EntityImportExportStrategy):
@@ -100,7 +105,27 @@ class BaseConfigStrategy(EntityImportExportStrategy):
             data={**data, **resolved_fks, **tag_overrides, "org": org_id}
         )
         serializer.is_valid(raise_exception=True)
+        self._assert_markers_permitted(serializer, user=kwargs.get("user"), org_id=org_id)
         return serializer.save(created_by=resolve_author(kwargs.get("user")))
+
+    def _assert_markers_permitted(self, serializer, *, user, org_id) -> None:
+        """Require secrets:USE to create a config whose headers carry secret markers.
+
+        Import always creates the config, so every marker in it is new to the org's
+        rows; a reused existing config (find_existing) never reaches here. The config
+        is saved past the model serializer's guard, so a pinned-org principal (a
+        plugin) is held here to the secrets it may reference.
+        """
+        principal = pinned_principal_of_user(user)
+        for field_name in self.serializer_class.secret_marker_fields:
+            names = extract_secret_marker_names(serializer.validated_data.get(field_name))
+            if not names:
+                continue
+            secret_reference_guard.assert_may_use(user=user, org_id=org_id, field_name=field_name)
+            if principal is not None:
+                secret_reference_guard.assert_may_reference_markers(
+                    principal=principal, names=names, field_name=field_name
+                )
 
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data

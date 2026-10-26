@@ -7,8 +7,14 @@ from tables.exceptions import GraphNotFoundError, SessionNotFoundError
 from tables.models import Graph
 from tables.models.session_models import Session
 from rbac.models import Organization, OrganizationUser, Role
-from rbac.models.enums import BuiltInRole
-from tables.services.session_access import get_accessible_session, get_runnable_graph
+from rbac.models.enums import BuiltInRole, Permission, ResourceType
+from tables.services.session_access import (
+    assert_graph_readable,
+    get_accessible_session,
+    get_runnable_graph,
+)
+from tests.custom_role_fixtures import *  # noqa: F401,F403
+from tests.rbac_cross_org_fixtures import role_viewer  # noqa: F401
 
 
 @pytest.fixture
@@ -43,6 +49,18 @@ def no_permissions_a(db, django_user_model, org_a):
     )
     OrganizationUser.objects.create(user=user, org=org_a, role=role)
     return user
+
+
+@pytest.fixture
+def flows_reader_a(custom_role_member, org_a):
+    return custom_role_member(org_a, {ResourceType.FLOWS: Permission.READ}, "h-reader")
+
+
+@pytest.fixture
+def flows_runner_a(custom_role_member, org_a):
+    return custom_role_member(
+        org_a, {ResourceType.FLOWS: Permission.READ | Permission.USE}, "h-runner"
+    )
 
 
 @pytest.fixture
@@ -128,3 +146,129 @@ def test_get_runnable_graph(request, lookup, caller, target_org, outcome):
     else:
         with pytest.raises(outcome):
             get_runnable_graph(user, **{lookup: key})
+
+
+# ── flows:USE ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("caller", "target_org", "outcome"),
+    [
+        ("flows_runner_a", "org_a", "granted"),
+        ("flows_reader_a", "org_a", PermissionDenied),
+        # Another org's graph is a 404 whether or not the caller holds USE.
+        ("flows_runner_a", "org_b", GraphNotFoundError),
+        ("flows_reader_a", "org_b", GraphNotFoundError),
+    ],
+    ids=["use", "read-without-use", "use-other-org", "read-other-org"],
+)
+def test_running_a_graph_needs_flows_use(request, caller, target_org, outcome):
+    user = request.getfixturevalue(caller)
+    graph = Graph.objects.create(name="H run flow", org=request.getfixturevalue(target_org))
+
+    if outcome == "granted":
+        assert get_runnable_graph(user, graph_id=graph.pk).pk == graph.pk
+    else:
+        with pytest.raises(outcome):
+            get_runnable_graph(user, graph_id=graph.pk)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("caller", "target_org", "action", "outcome"),
+    [
+        ("flows_reader_a", "org_a", None, "granted"),
+        ("flows_reader_a", "org_a", Permission.USE, PermissionDenied),
+        ("flows_runner_a", "org_a", Permission.USE, "granted"),
+        # Another org's session is a 404 whether or not the caller holds USE.
+        ("flows_runner_a", "org_b", Permission.USE, SessionNotFoundError),
+        ("flows_reader_a", "org_b", Permission.USE, SessionNotFoundError),
+    ],
+    ids=["read-default", "read-for-use", "use-for-use", "use-other-org", "read-other-org"],
+)
+def test_session_access_for_use_needs_flows_use(request, caller, target_org, action, outcome):
+    user = request.getfixturevalue(caller)
+    session_id = _session(request.getfixturevalue(target_org)).pk
+    arguments = (user, session_id) if action is None else (user, session_id, action)
+
+    if outcome == "granted":
+        assert get_accessible_session(*arguments).pk == session_id
+    else:
+        with pytest.raises(outcome):
+            get_accessible_session(*arguments)
+
+
+# ── graph co-editing: flows:READ on the graph's own org ─────────────────────
+
+
+@pytest.fixture
+def viewer_a(db, django_user_model, org_a, role_viewer):
+    user = django_user_model.objects.create_user(
+        email="h_viewer_a@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_a, role=role_viewer)
+    return user
+
+
+@pytest.fixture
+def member_a_without_flows(custom_role_member, org_a):
+    return custom_role_member(org_a, {ResourceType.AGENTS: Permission.READ}, "h-no-flows-a")
+
+
+def _graph_of_a(org_a, org_b):
+    return Graph.objects.create(name="H collab flow", org=org_a).pk
+
+
+def _graph_of_b(org_a, org_b):
+    return Graph.objects.create(name="H collab flow", org=org_b).pk
+
+
+def _missing_graph(org_a, org_b):
+    return 987654321
+
+
+def _binned_graph_of_a(org_a, org_b):
+    graph = Graph.objects.create(name="H binned flow", org=org_a)
+    graph.delete()
+    return graph.pk
+
+
+def _graph_of_deactivated_a(org_a, org_b):
+    graph_id = _graph_of_a(org_a, org_b)
+    Organization.objects.filter(pk=org_a.pk).update(is_active=False)
+    return graph_id
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("caller", "make_graph", "outcome"),
+    [
+        ("viewer_a", _graph_of_a, "granted"),
+        ("viewer_a", _missing_graph, GraphNotFoundError),
+        ("viewer_a", _binned_graph_of_a, GraphNotFoundError),
+        # Another org's graph looks exactly like a missing one.
+        ("viewer_a", _graph_of_b, GraphNotFoundError),
+        ("viewer_a", _graph_of_deactivated_a, GraphNotFoundError),
+        ("member_a_without_flows", _graph_of_a, PermissionDenied),
+        ("superadmin", _graph_of_b, "granted"),
+    ],
+    ids=[
+        "viewer-own-org",
+        "missing",
+        "recycle-binned",
+        "other-org",
+        "inactive-org",
+        "no-flows-read",
+        "superadmin-without-membership",
+    ],
+)
+def test_assert_graph_readable(request, org_a, org_b, caller, make_graph, outcome):
+    user = request.getfixturevalue(caller)
+    graph_id = make_graph(org_a, org_b)
+
+    if outcome == "granted":
+        assert_graph_readable(user, graph_id)
+    else:
+        with pytest.raises(outcome):
+            assert_graph_readable(user, graph_id)

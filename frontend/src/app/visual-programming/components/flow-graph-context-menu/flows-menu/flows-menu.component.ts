@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { NodeType } from '@shared/models';
 
 import { GetGraphLightRequest } from '../../../../features/flows/models/graph.model';
+import { subgraphNodeRequest } from '../../../core/helpers/subgraph-flows.util';
 import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 
 @Component({
@@ -63,13 +63,6 @@ export class FlowsMenuComponent {
     );
 
     public onFlowClicked(flow: GetGraphLightRequest): void {
-        const lightData: GetGraphLightRequest = {
-            id: flow.id,
-            uuid: flow.uuid,
-            name: flow.name,
-            description: flow.description,
-            tags: flow.tags || [],
-        };
-        this.nodeSelected.emit({ type: NodeType.SUBGRAPH, overrides: { data: lightData as never } });
+        this.nodeSelected.emit(subgraphNodeRequest(flow));
     }
 }

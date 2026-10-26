@@ -153,7 +153,6 @@ def python_code():
     return PythonCode.objects.create(
         code="def main(): return 1",
         entrypoint="main",
-        libraries=[],
         global_kwargs={},
     )
 

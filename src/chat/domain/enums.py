@@ -127,6 +127,8 @@ class SubmitState(StrEnum):
     PROCESSING = "processing"
     FORWARDED_TO_OPERATOR = "forwarded_to_operator"
     BUDGET_EXHAUSTED = "budget_exhausted"
+    # The visitor stopped the run before or while it started: the message is stored, no reply comes.
+    STOPPED = "stopped"
 
 
 TERMINAL_RUN_STATUSES = frozenset({"end", "error", "stop", "expired"})

@@ -395,49 +395,6 @@ def test_patch_inline_surface_object_fully_replaces(
 
 
 @pytest.mark.django_db
-def test_idempotent_create_replaces_inline_content(
-    client, api_graph, py_tool, mcp_tool
-):
-    """Same (graph, node_name) POSTed again updates instead of creating —
-    exercises IdempotentNodeCreateMixin with an inline_surface payload change."""
-
-    first = client.post(
-        "/api/tasknodes/",
-        {
-            "graph": api_graph.pk,
-            "node_name": "inline-idempotent",
-            "inline_surface": {
-                "python_tools": [{"python_tool": py_tool.pk, "mode": "allow"}]
-            },
-        },
-        format="json",
-    )
-    assert first.status_code == 201, first.data
-
-    second = client.post(
-        "/api/tasknodes/",
-        {
-            "graph": api_graph.pk,
-            "node_name": "inline-idempotent",
-            "inline_surface": {
-                "mcp_tools": [{"mcp_tool": mcp_tool.pk, "mode": "deny"}]
-            },
-        },
-        format="json",
-    )
-
-    assert second.status_code == 200, second.data
-    assert (
-        TaskNode.objects.filter(graph=api_graph, node_name="inline-idempotent").count()
-        == 1
-    )
-    node = TaskNode.objects.get(graph=api_graph, node_name="inline-idempotent")
-    inline = InlineSurface.objects.get(task_node=node)
-    assert inline.python_tools.count() == 0
-    assert inline.mcp_tools.count() == 1
-
-
-@pytest.mark.django_db
 def test_content_hash_unchanged_across_inline_create_edit_clear_via_api(
     client, api_graph, py_tool
 ):
@@ -568,8 +525,8 @@ def test_invalid_inline_surface_is_refused_under_its_own_key(
 @pytest.mark.parametrize("method", ["patch", "put"])
 @pytest.mark.django_db
 def test_omitting_inline_surface_leaves_it_untouched(client, api_graph, method):
-    """PUT omission is treated like PATCH omission (not an implicit delete) so that
-    IdempotentNodeCreateMixin retry payloads without the key keep the inline surface."""
+    """PUT omission is treated like PATCH omission (not an implicit delete), so a
+    full update from a client that does not send the key keeps the inline surface."""
     node = TaskNode.objects.create(graph=api_graph, node_name="inline-keep")
     InlineSurface.objects.create(task_node=node, instructions="keep me")
 

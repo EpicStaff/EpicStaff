@@ -2,9 +2,10 @@
 
 An infinite loop in user code must not hang the sandbox (and, through the
 crew-side polling loop, the whole flow) forever. ExecuteCodeHandler.handle()
-bounds `process.communicate()` with settings.EXECUTION_TIMEOUT and, on
-timeout, kills the whole process group (the job was started with
-start_new_session=True) so grandchildren the job spawned die with it.
+bounds `process.communicate()` with the effective execution timeout (the
+default, capped at the maximum) and, on timeout, kills the whole process group
+(the job was started with start_new_session=True) so grandchildren the job
+spawned die with it.
 
 These tests drive the real handler and a real subprocess -- the same approach
 as test_execute_code_handler_env.py -- rather than mocking asyncio subprocess
@@ -133,7 +134,7 @@ class TestExecutionTimeout:
     def test_grandchild_process_dies_with_its_parent(self, tmp_path, monkeypatch):
         """start_new_session + killpg must reach children the job itself spawned,
         not just the job's own top-level process."""
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 3)
+        monkeypatch.setattr(settings, "MAX_EXECUTION_TIMEOUT", 3)
         context = _context(tmp_path)
         pid_file = Path(context["work_dir"]) / "grandchild.pid"
 
@@ -171,7 +172,7 @@ class TestExecutionTimeout:
         itself is bounded so a real regression fails loudly instead of
         hanging the suite.
         """
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
+        monkeypatch.setattr(settings, "MAX_EXECUTION_TIMEOUT", 1)
         context = _context(
             tmp_path,
             code=(
@@ -200,7 +201,7 @@ class TestExecutionTimeout:
         waiter forever -- the exact failure mode the drain fix was meant to
         end.
         """
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
+        monkeypatch.setattr(settings, "MAX_EXECUTION_TIMEOUT", 1)
         context = _context(
             tmp_path,
             code="def main(**kwargs):\n    while True:\n        pass",
@@ -243,7 +244,7 @@ class TestExecutionTimeout:
 
     def test_partial_stdout_is_recovered_on_timeout(self, tmp_path, monkeypatch):
         """Proves the drain path works, rather than only returning empty output."""
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
+        monkeypatch.setattr(settings, "MAX_EXECUTION_TIMEOUT", 1)
         marker = "PARTIAL_OUTPUT_MARKER"
         context = _context(
             tmp_path,
@@ -309,7 +310,7 @@ class TestTimeoutOutputIsScrubbed:
     def test_timed_out_job_stdout_does_not_contain_temp_storage_credentials(
         self, tmp_path, monkeypatch
     ):
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
+        monkeypatch.setattr(settings, "MAX_EXECUTION_TIMEOUT", 1)
         monkeypatch.setattr(settings, "MASK_SECRET", True)
         context = self._storage_context(tmp_path, _LEAK_THEN_HANG_CODE)
 
@@ -328,7 +329,7 @@ class TestTimeoutOutputIsScrubbed:
     ):
         """MASK_SECRET=False is a debugging opt-out for the developer's own
         secrets. It must not extend to a live temporary storage credential."""
-        monkeypatch.setattr(settings, "EXECUTION_TIMEOUT", 1)
+        monkeypatch.setattr(settings, "MAX_EXECUTION_TIMEOUT", 1)
         monkeypatch.setattr(settings, "MASK_SECRET", False)
         context = self._storage_context(tmp_path, _LEAK_THEN_HANG_CODE)
 

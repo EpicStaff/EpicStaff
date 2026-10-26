@@ -2,6 +2,7 @@ from dataclasses import replace
 
 from django.db import transaction
 from django.utils import timezone
+from rbac.access.principals import is_pinned_org_principal
 from rbac.governance.organization_retention import effective_retention_days_for_org
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from src.shared.bench_log import BENCH_LEVEL
@@ -53,6 +54,13 @@ from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService, secret_names_prefetch
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import (
+    RunAdmissionRefusedError,
+    RunKind,
+    RunSubject,
+    assert_run_admitted,
+    assert_still_admitted,
+)
 from tables.services.secrets import (
     UndeclaredSecretError,
     secret_declaration_validator,
@@ -68,7 +76,12 @@ from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
-from utils.graph_utils import NodeNameResolver, generate_node_name, resolve_node_names
+from utils.graph_utils import (
+    NodeNameResolver,
+    generate_node_name,
+    resolve_node_names,
+    runtime_node_name,
+)
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -176,7 +189,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
         # node id, so generate_node_name returns None and an explicitly passed
         # entrypoint wins.
-        entrypoint = generate_node_name(trigger.node_id, trigger.node_name) or entrypoint
+        entrypoint = (
+            generate_node_name(trigger.node_id, trigger.node_name, trigger.node_number)
+            or entrypoint
+        )
 
         with transaction.atomic():
             # Passing the instance caches it on session.graph for create_session_data.
@@ -222,23 +238,36 @@ class SessionManagerService(metaclass=SingletonMeta):
             session.graph, unique_subgraphs, session, start_node=start_node
         )
 
-        initial_state = dict(session.variables)
-        if token_budget is not None:
-            # See TOKEN_BUDGET_STATE_KEY in
-            # crew/services/graph/graph_session_manager_service.py -- popped
-            # back out before it becomes a live flow variable.
-            initial_state["__token_budget__"] = token_budget
-
         org_id = session.graph.org_id
         return SessionData(
             id=session.pk,
             org_id=org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
-            initial_state=initial_state,
+            initial_state=dict(session.variables),
             run_type=run_type,
             audit_retention_days=effective_retention_days_for_org(org_id, DataType.AUDIT),
+            token_budget=token_budget,
         )
+
+    def _stop_refused_session(self, session: Session, refusal: RunAdmissionRefusedError) -> None:
+        """End a session that run admission refused after it was created.
+
+        Crew never hears of the session, so nothing else would end it or revoke the
+        storage account issued for it.
+        """
+        now = timezone.now()
+        Session.objects.filter(pk=session.pk).update(
+            status=Session.SessionStatus.STOP,
+            status_data={"reason": str(refusal.detail)},
+            status_updated_at=now,
+            finished_at=now,
+        )
+        from storage_credentials.services.session_credential_service import (
+            session_credential_service,
+        )
+
+        session_credential_service.revoke_for_session(session.pk)
 
     def _mark_session_error(self, session: Session, reason: str) -> None:
         now = timezone.now()
@@ -268,6 +297,11 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         `callback_url` / `callback_secret`: delivered on the terminal status by the
         callback sender; validated by the caller.
+
+        Raises:
+            RunAdmissionRefusedError: The run is refused. Before the session is created,
+                nothing is written; refused again just before the publish, the session
+                is stopped and nothing is published.
         """
         variables = self._get_actual_variables(variables)
         # Keys only: values hold user input and base64-encoded uploads, and the log
@@ -277,6 +311,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         # Nothing on the run path reads the canvas JSON in metadata; org is joined
         # here because issuing session storage credentials reads graph.org.
         graph = Graph.objects.defer("metadata").select_related("org").get(pk=graph_id)
+        # Before anything is written: building the run variables can create
+        # persistent-variable rows.
+        admission = assert_run_admitted(RunSubject(RunKind.FLOW, graph.pk, graph.org_id))
         # The server does not require a start node (the editor only hides its delete
         # button); without one, the run needs an entrypoint from its trigger.
         start_node = StartNode.objects.filter(graph_id=graph_id).first()
@@ -330,6 +367,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 org=graph.org,
             )
 
+            # Again just before crew hears of the session: a suspension that committed
+            # while it was being built must not reach crew.
+            assert_still_admitted(admission)
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
                 org_id=graph.org_id,
@@ -351,6 +391,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
             logger.info("Session data published in Redis for session ID: {}.", session.pk)
 
+        except RunAdmissionRefusedError as refusal:
+            self._stop_refused_session(session=session, refusal=refusal)
+            raise
         except Exception as e:
             msg = f"Error occured running a session: {e}"
             logger.exception(msg)
@@ -422,7 +465,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         python_node_list = (
             PythonNode.objects.filter(graph=graph.pk)
             .defer("test_input")
-            .select_related("python_code")
+            .select_related("python_code__venv")
             .prefetch_related(secret_names_prefetch("python_code__secrets"))
         )
         knowledge_node_list = KnowledgeNode.objects.filter(graph=graph.pk).select_related(
@@ -448,7 +491,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         webhook_trigger_node_list = (
             WebhookTriggerNode.objects.filter(graph=graph.pk)
             .defer("test_payload")
-            .select_related("python_code")
+            .select_related("python_code__venv")
             .prefetch_related(secret_names_prefetch("python_code__secrets"))
         )
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk).defer(
@@ -457,7 +500,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         classification_decision_table_node_list = (
             ClassificationDecisionTableNode.objects.filter(graph=graph.pk)
-            .select_related("pre_python_code", "post_python_code")
+            .select_related("pre_python_code__venv", "post_python_code__venv")
             .prefetch_related(
                 "condition_groups",
                 secret_names_prefetch("pre_python_code__secrets"),
@@ -566,8 +609,10 @@ class SessionManagerService(metaclass=SingletonMeta):
             task_node_list,
             agent_node_list,
         ):
-            for n in node_list:
-                name_cache[n.id] = f"{n.node_name} #{n.id}"
+            for node in node_list:
+                name_cache[node.id] = runtime_node_name(
+                    node_name=node.node_name, node_number=node.node_number, node_id=node.id
+                )
 
         # IDs only referenced by edges/conditions (not node instances)
         # need to be resolved from DB — collect any that are missing
@@ -768,6 +813,16 @@ class SessionManagerService(metaclass=SingletonMeta):
         )
 
     def _resolve_principal_fields(self, user, api_key) -> dict:
+        # First: a plugin credential is not an ApiKey, so the run view passes
+        # api_key=None and the USER branch would otherwise read a missing email.
+        if is_pinned_org_principal(user):
+            person = user.person
+            return {
+                "kind": SessionPrincipal.ActionKind.PLUGIN,
+                "plugin_identifier": user.plugin_identifier,
+                "user": person,
+                "email": person.email if person is not None else None,
+            }
         if user is None:
             return {"kind": SessionPrincipal.ActionKind.TRIGGER}
         if isinstance(user, SystemServicePrincipal):

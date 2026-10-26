@@ -24,10 +24,8 @@ def make_python_code_tool_data() -> PythonCodeToolData:
         description="does a thing",
         variables=[],
         python_code=PythonCodeData(
-            venv_name="default",
             code="def main(**kw): return kw",
             entrypoint="main",
-            libraries=[],
             global_kwargs={},
         ),
     )

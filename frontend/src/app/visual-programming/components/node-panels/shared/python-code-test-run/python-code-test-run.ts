@@ -1,5 +1,7 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { computed, DestroyRef, inject, Signal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { extractHttpErrorMessage } from '@shared/utils';
 import { Subscription, switchMap } from 'rxjs';
 
 import {
@@ -61,9 +63,10 @@ export class PythonCodeTestRun {
 
     /**
      * Runs the code the backend stores for node `request.target` with `request.variables` as its arguments;
-     * ignored while a run is in flight.
+     * ignored while a run is in flight. The wait for the result ends a grace period after the stored code's
+     * `executionTimeoutSeconds`.
      */
-    public run(request: RunPythonCodeRequest): void {
+    public run(request: RunPythonCodeRequest, executionTimeoutSeconds: number): void {
         if (this.isRunning()) return;
         this.isRunningSignal.set(true);
         this.resultSignal.set(null);
@@ -76,13 +79,18 @@ export class PythonCodeTestRun {
         this.currentRun = this.pythonCodeRunService
             .runPythonCode(request)
             .pipe(
-                switchMap(({ execution_id }) => this.pythonCodeRunService.pollResultWithEvents(execution_id)),
+                switchMap(({ execution_id }) =>
+                    this.pythonCodeRunService.pollResultWithEvents(execution_id, executionTimeoutSeconds)
+                ),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
                 next: (event: PollEvent) => this.onPollEvent(event),
                 error: (error: Error) => {
-                    const message = error.message || 'Unknown error';
+                    const message =
+                        error instanceof HttpErrorResponse
+                            ? extractHttpErrorMessage(error)
+                            : error.message || 'Unknown error';
                     this.errorSignal.set(message);
                     this.isRunningSignal.set(false);
                     this.addLog('error', `Error: ${message}`);

@@ -1,0 +1,298 @@
+/*
+ * Every colour comes from EpicStaff's theme tokens. The values below only apply outside EpicStaff: inside its frame
+ * the SDK sets the tokens on <html>, which wins over these defaults.
+ */
+:root {
+    --es-color-background: #1e1f22;
+    --es-color-surface: #27272b;
+    --es-color-text: #d9d9de;
+    --es-color-text-secondary: #9a9aa3;
+    --es-color-accent: #685fff;
+    --es-color-accent-hover: #574fd6;
+    --es-color-text-disabled: #676767;
+    --es-color-input-background: #27272b;
+    --es-color-input-border: #c8ceda24;
+    --es-color-input-placeholder: #c8ceda4d;
+    --es-color-border: #c8ceda24;
+    --es-color-divider-subtle: #c8ceda14;
+    --es-color-warning: #ffcf00;
+    --es-color-error: #dc5b60;
+    --es-focus-ring: 0 0 0 2px #685fff66;
+    --es-font-family: Inter, 'Helvetica Neue', sans-serif;
+    color-scheme: dark;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+/* A class that sets `display` would otherwise win over the browser's own rule for `hidden`. */
+[hidden] {
+    display: none !important;
+}
+
+body {
+    margin: 0;
+    background: var(--es-color-background);
+    color: var(--es-color-text);
+    font-family: var(--es-font-family);
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.app {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 880px;
+    padding: 24px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.title {
+    margin: 0;
+    font-size: 1.375rem;
+    font-weight: 500;
+}
+
+.nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.nav a {
+    padding: 6px 12px;
+    border: 1px solid var(--es-color-border);
+    border-radius: 8px;
+    color: var(--es-color-text);
+    text-decoration: none;
+}
+
+.nav a:hover {
+    border-color: var(--es-color-accent-hover);
+}
+
+.nav a[aria-current='page'] {
+    border-color: var(--es-color-accent);
+    color: var(--es-color-accent);
+}
+
+.muted {
+    color: var(--es-color-text-secondary);
+}
+
+.note {
+    margin: 0;
+    padding: 12px 16px;
+    border-left: 3px solid var(--es-color-warning);
+    border-radius: 4px;
+    background: var(--es-color-surface);
+}
+
+.note--error {
+    border-left-color: var(--es-color-error);
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.button {
+    align-self: flex-start;
+    padding: 6px 12px;
+    border: 1px solid var(--es-color-accent);
+    border-radius: 8px;
+    background: var(--es-color-accent);
+    color: var(--es-color-text);
+    font: inherit;
+    cursor: pointer;
+}
+
+.button:hover {
+    border-color: var(--es-color-accent-hover);
+    background: var(--es-color-accent-hover);
+}
+
+.button:focus-visible {
+    outline: none;
+    box-shadow: var(--es-focus-ring);
+}
+
+.button--secondary {
+    border-color: var(--es-color-border);
+    background: transparent;
+}
+
+.button--secondary:hover {
+    border-color: var(--es-color-accent-hover);
+    background: transparent;
+}
+
+.content,
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.page > p {
+    margin: 0;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 480px;
+}
+
+.form--inline {
+    flex-direction: row;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 220px;
+}
+
+.field-label {
+    color: var(--es-color-text-secondary);
+}
+
+.input {
+    padding: 6px 10px;
+    border: 1px solid var(--es-color-input-border);
+    border-radius: 4px;
+    background: var(--es-color-input-background);
+    color: var(--es-color-text);
+    font: inherit;
+}
+
+.input::placeholder {
+    color: var(--es-color-input-placeholder);
+}
+
+.input:focus-visible {
+    outline: none;
+    border-color: var(--es-color-accent);
+    box-shadow: var(--es-focus-ring);
+}
+
+.input:disabled {
+    color: var(--es-color-text-disabled);
+}
+
+.button:disabled,
+.button[aria-disabled='true'] {
+    border-color: var(--es-color-border);
+    background: transparent;
+    color: var(--es-color-text-disabled);
+    cursor: default;
+}
+
+.table {
+    width: 100%;
+    max-width: 480px;
+    border-collapse: collapse;
+}
+
+.table caption {
+    padding-bottom: 8px;
+    font-size: 1.125rem;
+    font-weight: 500;
+    text-align: left;
+}
+
+.table th {
+    color: var(--es-color-text-secondary);
+    font-weight: 500;
+    text-align: left;
+}
+
+.table th,
+.table td {
+    padding: 6px 8px 6px 0;
+    border-bottom: 1px solid var(--es-color-divider-subtle);
+}
+
+.table .number {
+    font-variant-numeric: tabular-nums;
+}
+
+.facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 16px;
+    margin: 0;
+}
+
+.facts dt {
+    color: var(--es-color-text-secondary);
+}
+
+.facts dd {
+    margin: 0;
+}
+
+.form--inline .button {
+    align-self: flex-end;
+}
+
+a.button {
+    text-decoration: none;
+}
+
+.section-title {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 500;
+}
+
+.places {
+    display: flex;
+    flex-direction: column;
+    max-width: 640px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.place {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--es-color-divider-subtle);
+}
+
+.place__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.place .button {
+    align-self: center;
+}

@@ -57,6 +57,11 @@ export interface GraphDto extends GetGraphLightRequest {
     last_edited_by: UserSummary | null;
     last_edited_at: string | null;
     save_version: number;
+    /**
+     * Read-only: the highest node number the graph has issued. Never lowered, so a deleted node's
+     * number is not given out again (only rebuilding the whole graph content restarts it).
+     */
+    node_number_seq: number;
     start_node_list: StartNode[];
     python_node_list: PythonNode[];
     task_node_list: TaskNode[];
@@ -75,6 +80,19 @@ export interface GraphDto extends GetGraphLightRequest {
     schedule_trigger_node_list: GetScheduleTriggerNodeRequest[];
     knowledge_node_list: GetKnowledgeRetrieverNodeRequest[];
     key_value_node_list: GetKeyValueNodeRequest[];
+}
+
+/** A graph's nodes and edges, in the shape `GET graphs/{id}/` returns them. */
+export type GraphContentDto = Pick<GraphDto, Extract<keyof GraphDto, `${string}_list`>>;
+
+/**
+ * `POST graphs/{id}/partial-import/`: the file's nodes and edges, NOT written to the graph. Every id in
+ * `content` (nodes, edges, nested rows) belongs to a row that was never committed, so all of it is new;
+ * only the dependency refs (LLM configs, agent definitions, webhook triggers...) are real.
+ */
+export interface PartialImportResponse {
+    content: GraphContentDto;
+    summary: Record<string, unknown>;
 }
 
 export interface CreateGraphDtoRequest {

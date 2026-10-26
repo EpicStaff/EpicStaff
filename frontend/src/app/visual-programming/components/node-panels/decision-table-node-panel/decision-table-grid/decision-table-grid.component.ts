@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { ButtonComponent, HelpTooltipComponent } from '@shared/components';
 import { NodeType } from '@shared/models';
+import { formatNodeLabel } from '@shared/utils';
 import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -71,7 +72,7 @@ export class DecisionTableGridComponent implements OnInit {
             )
             .map((node) => ({
                 value: node.id,
-                label: node.node_name || node.id,
+                label: node.node_name ? formatNodeLabel(node) : node.id,
             }));
     });
 

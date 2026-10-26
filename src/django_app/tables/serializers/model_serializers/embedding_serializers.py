@@ -20,13 +20,23 @@ from tables.serializers.model_serializers.tag_serializers import (
     EmbeddingTagSerializer,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
+from tables.serializers.utils.secret_destination_guard_mixin import (
+    EMBEDDING_MODEL_ENDPOINT_FIELDS,
+    SecretDestinationGuardMixin,
+)
 from tables.serializers.utils.secret_reference_guard_mixin import SecretReferenceGuardMixin
 from tables.serializers.utils.soft_delete_fields import KeptLinkPrimaryKeyRelatedField
+from tables.validators.extra_headers_validator import validate_extra_headers
 
 
 class EmbeddingModelSerializer(
-    AuthorSummarySerializerMixin, TagHandlingMixin, serializers.ModelSerializer
+    AuthorSummarySerializerMixin,
+    SecretDestinationGuardMixin,
+    TagHandlingMixin,
+    serializers.ModelSerializer,
 ):
+    secret_destination_fields = EMBEDDING_MODEL_ENDPOINT_FIELDS
+
     tags = EmbeddingTagSerializer(many=True, required=False)
     tag_model = EmbeddingModelTag
 
@@ -63,6 +73,7 @@ class EmbeddingConfigSerializer(
     serializers.ModelSerializer,
 ):
     secret_reference_fields = ("api_key_secret_id",)
+    secret_marker_fields = ("extra_headers",)
 
     api_key_secret_id = KeptLinkPrimaryKeyRelatedField(
         queryset=Secret.all_objects.all(),
@@ -89,3 +100,4 @@ class EmbeddingConfigSerializer(
         model = EmbeddingConfig
         exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by", "created_at"]
+        extra_kwargs = {"extra_headers": {"validators": [validate_extra_headers]}}

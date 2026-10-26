@@ -73,7 +73,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Flows",
         "group": "workspace",
         "description": "Workflow definitions and their nodes",
-        "applicable_actions": ["create", "read", "update", "delete", "export"],
+        "applicable_actions": ["create", "read", "update", "delete", "export", "use"],
         "platform_actions": [],
     },
     {
@@ -173,6 +173,14 @@ RESOURCE_TYPE_METADATA = [
         "platform_actions": [],
     },
     {
+        "code": ResourceType.VENVS.value,
+        "label": "Venvs",
+        "group": "workspace",
+        "description": "Python virtual environments that back code nodes and python tools",
+        "applicable_actions": ["create", "read", "update", "delete"],
+        "platform_actions": [],
+    },
+    {
         "code": ResourceType.CHATS.value,
         "label": "Conversations",
         "group": "workspace",
@@ -221,6 +229,7 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
         "update": (("flows", "read"), ("projects", "read"), ("llm_configs", "read")),
         "delete": (("flows", "read"),),
         "export": (("flows", "read"),),
+        "use": (("flows", "read"),),
     },
     ResourceType.AGENTS.value: {
         "read": (("surfaces", "read"), ("llm_configs", "read")),
@@ -323,7 +332,7 @@ RECOMMENDED_WITH: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
 _ACTION_BIT_BY_CODE = {entry["code"]: entry["bit"] for entry in ACTION_METADATA}
 
 # The bits a role can actually be granted, **per resource**. Grantability is a
-# per-resource property -- `use` is an action of `secrets` and `chats` only --
+# per-resource property -- `use` is an action of `secrets`, `flows` and `chats` only --
 # so a global union over ACTION_METADATA is the wrong granularity: enabling an
 # action for one resource would admit its bit on every other resource, where it
 # is neither applicable nor enforced. A code that is not a rendered action

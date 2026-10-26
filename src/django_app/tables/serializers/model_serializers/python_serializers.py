@@ -1,4 +1,5 @@
 from django.db import transaction
+from proxies.sandbox.models import SandboxVenvBinding
 from rbac.authorship import (
     AuthorStampingSerializerMixin,
     AuthorSummarySerializerMixin,
@@ -26,7 +27,7 @@ from tables.models.python_models import (
 from tables.models.secret_models import Secret
 from tables.serializers.base_serializer import ContentHashWritableMixin
 from tables.serializers.model_serializers.secret_serializers import SecretNameSerializer
-from tables.serializers.utils.description_sanitizer import sanitize_description
+from tables.serializers.utils.description_sanitizer import validate_tool_description
 from tables.serializers.utils.org_scoped_labels import (
     org_scoped_label_ids,
     set_org_scoped_labels,
@@ -41,10 +42,10 @@ from tables.services.copy_services.helpers import (
     create_python_code,
 )
 from tables.services.secrets.parse_code import parse_secret_names
+from tables.validators.execution_timeout_validator import normalize_execution_timeout
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
-from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
 class PythonCodeSerializer(
@@ -52,11 +53,6 @@ class PythonCodeSerializer(
 ):
     secret_reference_fields = ("secret_ids",)
 
-    libraries = serializers.ListField(
-        child=serializers.CharField(validators=[validate_python_library_spec]),
-        write_only=False,
-        help_text="A list of pip requirement specifiers, for example 'requests>=2,<3'.",
-    )
     secrets = SecretNameSerializer(
         many=True,
         read_only=True,
@@ -74,6 +70,13 @@ class PythonCodeSerializer(
         required=False,
         help_text=("Secrets this code is allowed to read."),
     )
+    venv_id = OrgScopedPrimaryKeyRelatedField(
+        source="venv",
+        queryset=SandboxVenvBinding.objects.all(),
+        required=False,
+        allow_null=True,
+        help_text="The virtual environment this code runs in. Null runs it in the default one.",
+    )
 
     class Meta:
         model = PythonCode
@@ -81,10 +84,11 @@ class PythonCodeSerializer(
             "id",
             "code",
             "entrypoint",
-            "libraries",
+            "venv_id",
             "global_kwargs",
             "secrets",
             "secret_ids",
+            "execution_timeout",
         ]
         read_only_fields = ["id"]
         extra_kwargs = {
@@ -92,21 +96,8 @@ class PythonCodeSerializer(
             "entrypoint": {"allow_blank": True},
         }
 
-    def to_representation(self, instance):
-        """Convert 'libraries' string to a list of strings for output."""
-        representation = super().to_representation(instance)
-        representation["libraries"] = (
-            list(filter(None, instance.libraries.split(" "))) if instance.libraries else []
-        )
-        return representation
-
-    def to_internal_value(self, data):
-        """Convert 'libraries' list of strings to a space-separated string for storage."""
-        internal_value = super().to_internal_value(data)
-        libraries = internal_value.get("libraries")
-        if isinstance(libraries, list):
-            internal_value["libraries"] = " ".join(libraries)
-        return internal_value
+    def validate_execution_timeout(self, value: int) -> int:
+        return normalize_execution_timeout(value)
 
     def _current_python_code(self):
         """The persisted PythonCode for this field, resolved through the parent when nested."""
@@ -218,8 +209,8 @@ class PythonCodeToolSerializer(
         read_only_fields = ["id", "built_in", "created_by", "created_at", "updated_at"]
 
     def validate_description(self, value: str) -> str:
-        """Strip control chars / cap length — this reaches the LLM tool schema verbatim."""
-        return sanitize_description(value)
+        """See validate_tool_description: this text reaches the LLM tool schema verbatim."""
+        return validate_tool_description(value)
 
     def to_representation(self, instance):
         """Scope the serialized `labels` to the active org.

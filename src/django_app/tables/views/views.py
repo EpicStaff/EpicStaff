@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -16,6 +17,7 @@ from drf_spectacular.utils import (
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
+    DenyPluginCredential,
     HasOrgPermission,
 )
 from rbac.access.org_context import OrgContextService
@@ -30,11 +32,16 @@ from rest_framework import filters, mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.settings import api_settings
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError, ClientResourceNotFoundError
-from tables.exceptions import CodeRunTargetNotFoundError
+from tables.exceptions import (
+    CodeRunTargetNotFoundError,
+    DocumentConfigNotFoundException,
+    InvalidChunkParametersException,
+)
 from tables.filters import SessionFilter, filter_sessions_by_id_search
 from tables.import_export.enums import EntityType
 from tables.import_export.export_format_strategies import (
@@ -70,6 +77,7 @@ from tables.serializers.serializers import (
     BulkExportSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
+    ProcessRagIndexingEstimateSerializer,
     ProcessRagIndexingSerializer,
     RunPythonCodeSerializer,
     RunSessionSerializer,
@@ -77,21 +85,35 @@ from tables.serializers.serializers import (
     SessionTestRunSerializer,
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
+from tables.services.code_run_targets import CODE_RUN_TARGETS
 from tables.services.converter_service import ConverterService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.knowledge_services.indexing_service import IndexingService
+from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.notification_email_sender import NotificationEmailSender
 from tables.services.quickstart_service import QuickstartService
 from tables.services.realtime_service import RealtimeService
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import (
+    RunAdmissionRefusedError,
+    RunKind,
+    RunSubject,
+    assert_run_admitted,
+)
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.secrets import SecretResolver
+from tables.services.secrets.reference_guard import (
+    pinned_principal_of_user,
+    secret_reference_guard,
+)
+from tables.services.secrets.secret_resolver import extract_secret_marker_names
 from tables.services.session_access import (
     assert_parent_session_in_org,
     get_accessible_session,
     get_runnable_graph,
 )
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_nodes import trigger_node_owns_python_code
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.trigger_test_run.registry import TEST_RUN_STRATEGIES
 from tables.services.trigger_test_run.service import SessionTestRunService
@@ -127,6 +149,7 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.throttles import NotifyEmailThrottle
 from tables.utils.telegram_fields import load_telegram_trigger_fields
+from utils.graph_utils import runtime_node_name
 from utils.logger import logger
 
 from .default_config import *
@@ -249,7 +272,9 @@ class SessionViewSet(
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         fmt = request.query_params.get("export_format", "json")
-        return self.import_export_service.export_entity(self.get_object(), fmt=fmt)
+        return self.import_export_service.export_entity(
+            self.get_object(), fmt=fmt, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(
         description="Export messages from multiple sessions as a single downloadable file. "
@@ -279,7 +304,9 @@ class SessionViewSet(
             )
 
         fmt = request.query_params.get("export_format", "json")
-        return self.import_export_service.bulk_export(entity_ids, fmt=fmt)
+        return self.import_export_service.bulk_export(
+            entity_ids, fmt=fmt, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(
         description="Export messages from top-level sessions matching the given filters as a single downloadable file. "
@@ -345,7 +372,9 @@ class SessionViewSet(
             )
 
         fmt = request.query_params.get("export_format", "json")
-        return self.import_export_service.bulk_export(session_ids, fmt=fmt)
+        return self.import_export_service.bulk_export(
+            session_ids, fmt=fmt, org_id=self.get_active_org_id(), user=request.user
+        )
 
     @extend_schema(**SESSION_STATUSES_GET)
     @action(detail=False, methods=["GET"])
@@ -497,6 +526,9 @@ class RunSession(APIView):
                 session_id=session_id,
                 arrival_ts=request_received_ts,
             )
+        except RunAdmissionRefusedError:
+            # A refusal is the caller's answer (409), not a failure to start.
+            raise
         except Exception as e:
             logger.exception(f"Error occurred while starting session for graph_id {graph_id}")
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
@@ -523,17 +555,21 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
 
     @extend_schema(**RUN_SESSION_TEST_POST)
     def post(self, request):
-        # Running a flow executes its stored code, a contributor-level action
-        # gated on FLOWS.UPDATE like RunPythonCodeAPIView. The gate runs before
-        # body validation and the node lookup, so a caller without it always
-        # gets the same 403 — whatever the body and whether or not the node
-        # exists — and never costs the payload size check.
-        assert_org_permission(
-            user=request.user,
-            org_id=self.get_active_org_id(),
-            resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
-        )
+        # A test run starts a session, so it needs FLOWS.USE; it also executes the
+        # node's stored code with a payload the caller wrote, a contributor-level
+        # action gated on FLOWS.UPDATE like RunPythonCodeAPIView. Each bit is
+        # asserted on its own because a permission check passes on any one bit.
+        # Both gates run before body validation and the node lookup, so a caller
+        # lacking either always gets the same 403 — whatever the body and whether
+        # or not the node exists — and never costs the payload size check.
+        org_id = self.get_active_org_id()
+        for required_action in (Permission.UPDATE, Permission.USE):
+            assert_org_permission(
+                user=request.user,
+                org_id=org_id,
+                resource_type=ResourceType.FLOWS,
+                action=required_action,
+            )
         serializer = SessionTestRunSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
@@ -570,7 +606,7 @@ class GetUpdates(APIView):
 class StopSession(APIView):
     @extend_schema(**STOP_SESSION_POST)
     def post(self, request, *args, **kwargs):
-        session = get_accessible_session(request.user, kwargs["session_id"])
+        session = get_accessible_session(request.user, kwargs["session_id"], Permission.USE)
         session_manager_service.stop_running_session(session=session)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -584,9 +620,15 @@ class NotifyEmailView(APIView):
     does not prevent abuse: this is driven by notification_tool (LLM output),
     so a prompt-injected agent or a leaked API key could otherwise send
     unlimited mail to arbitrary external addresses from our domain.
-    NotifyEmailThrottle caps that per authenticated user."""
+    NotifyEmailThrottle caps that per authenticated user.
 
-    throttle_classes = [NotifyEmailThrottle]
+    Plugin service accounts are refused: no resource type governs mail, so a
+    plugin's declared access could not cap it."""
+
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
+    # Extends the defaults rather than replacing them, so a default throttle
+    # (such as the per-plugin request rate) still applies here.
+    throttle_classes = [*api_settings.DEFAULT_THROTTLE_CLASSES, NotifyEmailThrottle]
 
     @extend_schema(
         summary="Send a notification email",
@@ -621,18 +663,19 @@ class RunPythonCodeAPIView(APIView):
         variables = serializer.validated_data["variables"]
 
         # Executing stored code is a contributor-level action, gated on
-        # FLOWS.UPDATE. The code must also be visible to the active org, so a
-        # caller cannot run another org's code by passing its id (rejected like
-        # a non-existent pk — existence never leaks).
+        # FLOWS.UPDATE; code a trigger node owns also needs FLOWS.USE, as testing
+        # the trigger itself does, whichever way the request names the code. The
+        # code must also be visible to the active org, so a caller cannot run
+        # another org's code by passing its id (rejected like a non-existent pk —
+        # existence never leaks).
         org_id = self._org_context.resolve(request=request, view_kwargs=getattr(self, "kwargs", {}))
-        assert_org_permission(
-            user=request.user,
-            org_id=org_id,
-            resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
-        )
-        if "target" in serializer.validated_data:
-            target = serializer.validated_data["target"]
+        self._assert_flows_permission(request.user, org_id, Permission.UPDATE)
+        target = serializer.validated_data.get("target")
+        if target is not None:
+            # The slot type alone says whether a trigger owns the code, so this gate
+            # runs before the lookup and a 403 says nothing about the target.
+            if CODE_RUN_TARGETS[target["type"]].owner_is_trigger_node:
+                self._assert_flows_permission(request.user, org_id, Permission.USE)
             try:
                 execution_id = run_python_code_service.run_target(
                     target_type=target["type"],
@@ -654,6 +697,10 @@ class RunPythonCodeAPIView(APIView):
             raise ValidationError(
                 {"python_code_id": [f'Invalid pk "{python_code.pk}" - object does not exist.']}
             )
+        # After the visibility check, so the USE gate only ever speaks about code the
+        # caller's org can already see.
+        if trigger_node_owns_python_code(python_code.pk, org_id):
+            self._assert_flows_permission(request.user, org_id, Permission.USE)
 
         execution_id = run_python_code_service.run_code(
             python_code_id=python_code.id,
@@ -662,6 +709,12 @@ class RunPythonCodeAPIView(APIView):
             user=request.user,
         )
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _assert_flows_permission(user, org_id: int, action: Permission) -> None:
+        assert_org_permission(
+            user=user, org_id=org_id, resource_type=ResourceType.FLOWS, action=action
+        )
 
     @staticmethod
     def _python_code_visible_q(org_id: int) -> Q:
@@ -680,6 +733,8 @@ class RunPythonCodeAPIView(APIView):
 
 
 class InitRealtimeAPIView(APIView):
+    # A realtime session is a person's voice conversation; plugins have no part in it.
+    permission_classes = [IsAuthenticated, DenyPluginCredential]
     _org_context = OrgContextService()
 
     @extend_schema(**INIT_REALTIME_POST)
@@ -764,6 +819,8 @@ class InitRealtimeAPIView(APIView):
                     "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
                 }
             )
+        # Outside the try below, whose generic handler would turn the 409 into a 400.
+        assert_run_admitted(RunSubject(RunKind.REALTIME, agent_definition_id, org_id))
 
         try:
             connection_key = realtime_service.init_realtime_agent_definition(
@@ -919,14 +976,18 @@ class QuickstartApplyView(APIView):
         )
 
 
-class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
+class RagOrgLookupMixin:
+    """The RAG models by `rag_type` and the path to their owning org, for org-scoped lookups."""
+
+    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
+
+
+class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, APIView):
     """
     View for triggering RAG indexing (chunking + embedding).
     All business logic is handled by IndexingService.
     """
-
-    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
-    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
 
     @extend_schema(**PROCESS_RAG_INDEXING_POST)
     def post(self, request):
@@ -953,6 +1014,14 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         )
 
         indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type)
+        principal = pinned_principal_of_user(request.user)
+        if principal is not None:
+            # The headers' markers resolve below by name, as a run's do when it starts.
+            secret_reference_guard.assert_may_resolve_markers(
+                principal=principal,
+                names=extract_secret_marker_names(indexing_data["embedder_extra_headers"])
+                | extract_secret_marker_names(indexing_data["llm_extra_headers"]),
+            )
         secret_resolver = SecretResolver()
 
         embedding_api_key_secret_id = indexing_data["embedder_api_key_secret_id"]
@@ -970,6 +1039,17 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         else:
             llm_api_key = None
 
+        embedding_extra_headers = secret_resolver.resolve_header_markers(
+            headers=indexing_data["embedder_extra_headers"],
+            org_id=org_id,
+            context="EmbeddingConfig.extra_headers",
+        )
+        llm_extra_headers = secret_resolver.resolve_header_markers(
+            headers=indexing_data["llm_extra_headers"],
+            org_id=org_id,
+            context="LLMConfig.extra_headers",
+        )
+
         try:
             with KnowledgeClient() as client:
                 client.index(
@@ -978,6 +1058,8 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                     document_ids=frozenset(document_config_ids),
                     embedding_api_key=embedding_api_key,
                     llm_api_key=llm_api_key,
+                    embedding_extra_headers=embedding_extra_headers,
+                    llm_extra_headers=llm_extra_headers,
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)
@@ -990,6 +1072,72 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, APIView):
+    """Read-only token and cost estimate for an indexing run, computed by knowledge_new.
+
+    Takes the same body and needs the same permission as `ProcessRagIndexingView`, so
+    the estimate is available to exactly the users who can start the indexing. A naive
+    body may add `document_configs`: chunking settings the user has not saved yet, which
+    are merged into the stored configs and validated, but never persisted.
+    """
+
+    # Chunking whole documents in memory is slower than the indexing hand-off call.
+    _KNOWLEDGE_TIMEOUT_SECONDS = 60.0
+
+    @extend_schema(
+        request=ProcessRagIndexingEstimateSerializer, responses={200: OpenApiTypes.OBJECT}
+    )
+    def post(self, request):
+        serializer = ProcessRagIndexingEstimateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        rag_id = serializer.validated_data["rag_id"]
+        rag_type = serializer.validated_data["rag_type"]
+        document_config_ids = serializer.validated_data["document_config_ids"]
+        document_configs = serializer.validated_data["document_configs"]
+
+        model = self._RAG_MODELS[rag_type]
+        # Enforces org scoping before the GraphRAG 400, so another org's RAG returns 404.
+        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
+
+        if rag_type == "graph":
+            return Response(
+                {"error": "Estimate is not available for GraphRAG."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            chunking_overrides = NaiveRagService.resolve_effective_document_configs(
+                rag_id, document_configs
+            )
+        except DocumentConfigNotFoundException as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except InvalidChunkParametersException as e:
+            return Response(
+                {"error": e.errors[0]["reason"], "errors": e.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
+                estimate = client.index_estimate(
+                    strategy=RAGStrategy(rag_type),
+                    rag_id=rag_id,
+                    document_ids=frozenset(document_config_ids),
+                    chunking_overrides=chunking_overrides,
+                )
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
+
+        return Response(estimate, status=status.HTTP_200_OK)
 
 
 class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
@@ -1069,7 +1217,11 @@ class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):
             PythonNode, pk, org_path=self._PYTHONNODE_ORG_PATH
         )
 
-        python_node_name = f"{python_node.node_name} #{python_node.pk}"
+        python_node_name = runtime_node_name(
+            node_name=python_node.node_name,
+            node_number=python_node.node_number,
+            node_id=python_node.pk,
+        )
         found_input = (
             GraphSessionMessage.objects.filter(
                 session__graph_id=python_node.graph_id,

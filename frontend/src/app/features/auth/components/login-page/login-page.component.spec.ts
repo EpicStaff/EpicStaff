@@ -1,4 +1,5 @@
 import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import { Provider } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import { NEVER, of, throwError } from 'rxjs';
@@ -6,6 +7,7 @@ import { NEVER, of, throwError } from 'rxjs';
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ToastService } from '../../../../services/notifications';
 import { LoginPageComponent } from './login-page.component';
+import { POST_LOGIN_STEP, PostLoginStep } from './post-login-step';
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
 class ResizeObserverStub {
@@ -130,5 +132,77 @@ describe('LoginPageComponent throttled login', () => {
 
         expect(login).toHaveBeenCalledTimes(1);
         expect(fixture.componentInstance.loading()).toBe(true);
+    });
+});
+
+describe('LoginPageComponent after a successful login', () => {
+    const navigateByUrl = vi.fn();
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    function setup(providers: Provider[] = []): ComponentFixture<LoginPageComponent> {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        navigateByUrl.mockClear();
+        TestBed.configureTestingModule({
+            imports: [LoginPageComponent],
+            providers: [
+                { provide: Router, useValue: { navigate: vi.fn(), navigateByUrl } as unknown as Router },
+                {
+                    provide: ActivatedRoute,
+                    useValue: {
+                        snapshot: { queryParamMap: convertToParamMap({ returnUrl: '/flows' }) },
+                    } as unknown as ActivatedRoute,
+                },
+                {
+                    provide: AuthService,
+                    useValue: {
+                        getStatus: () => of({ needs_setup: false }),
+                        login: () => of(true),
+                    } as unknown as AuthService,
+                },
+                { provide: ToastService, useValue: { info: vi.fn() } as unknown as ToastService },
+                ...providers,
+            ],
+        });
+        const fixture = TestBed.createComponent(LoginPageComponent);
+        fixture.detectChanges();
+        fixture.componentInstance.form.setValue({
+            email: 'user@example.com',
+            password: 'password-123',
+            rememberMe: false,
+        });
+        return fixture;
+    }
+
+    function accountLinks(fixture: ComponentFixture<LoginPageComponent>): string[] {
+        const element: HTMLElement = fixture.nativeElement;
+        return Array.from(element.querySelectorAll('.forgot-label, .prompt')).map(
+            (link) => link.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+        );
+    }
+
+    it('goes to the returnUrl', () => {
+        setup().componentInstance.onSubmit();
+
+        expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/flows');
+    });
+
+    it('offers the Forgot and Sign Up links on its own', () => {
+        expect(accountLinks(setup())).toEqual(['Forgot?', "Don't have an account yet? Sign Up"]);
+    });
+
+    it('hides the Forgot and Sign Up links when a hosting page continues after the login', () => {
+        const fixture = setup([{ provide: POST_LOGIN_STEP, useValue: { continueAfterLogin: vi.fn() } }]);
+
+        expect(accountLinks(fixture)).toEqual([]);
+    });
+
+    it('runs the post-login step a hosting page provides, instead of navigating', () => {
+        const step: PostLoginStep = { continueAfterLogin: vi.fn() };
+
+        setup([{ provide: POST_LOGIN_STEP, useValue: step }]).componentInstance.onSubmit();
+
+        expect(step.continueAfterLogin).toHaveBeenCalledTimes(1);
+        expect(navigateByUrl).not.toHaveBeenCalled();
     });
 });

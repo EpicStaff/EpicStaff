@@ -8,6 +8,9 @@ factory and stamps `created_by` on the rows it creates. Not walked here:
   `test_node_authorship_import_export.py`, which builds one node of every type in
   `NODE_RELATIONS`;
 - `Session`: its strategy is export-only (`create_entity` raises);
+- `Venv`: the environment itself lives in the sandbox service, so this walk cannot
+  export or import one without it; its binding's authorship is covered in
+  `test_venv_import_export.py`, where that service is faked;
 - tag strategies: tag models record no author.
 
 Each case exports a source authored in `beta` and imports it into `acme`; org-scoped
@@ -51,10 +54,13 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
     OpenAIRealtimeConfig,
 )
+from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 NODE_ENTITY_TYPES = frozenset(NODE_TYPE_TO_ENTITY_TYPE.values())
 EXPORT_ONLY_ENTITY_TYPES = frozenset({EntityType.SESSION})
+# Needs the sandbox service to export or import at all; covered separately.
+OUT_OF_PROCESS_ENTITY_TYPES = frozenset({EntityType.VENV})
 
 # Source factories take (org, author, provider) and return the row to export.
 SourceFactory = Callable[..., Model]
@@ -254,6 +260,7 @@ def _authored_top_level_entity_types() -> list[EntityType]:
         if entity_registry.has_strategy(entity_type)
         and entity_type not in NODE_ENTITY_TYPES
         and entity_type not in EXPORT_ONLY_ENTITY_TYPES
+        and entity_type not in OUT_OF_PROCESS_ENTITY_TYPES
         and (
             _strategy_model(entity_type) is None
             or has_author_field(_strategy_model(entity_type))
@@ -281,7 +288,11 @@ def _import(export_data, entity_type, org, user):
 
 
 def _export(entity_type, source):
-    return ExportService(entity_registry).export_entities(entity_type, [source.id])
+    return (
+        ExportService(entity_registry)
+        .export_entities(entity_type, [source.id], policy=UNRESTRICTED_EXPORT_POLICY)
+        .data
+    )
 
 
 def test_authored_strategies_have_source_factories():
@@ -320,8 +331,15 @@ def test_import_authors_python_tool_configs_with_the_importing_user(
 ):
     source = _python_code_tool(beta, beta_author, openai_provider)
     # Tool configs are only exported org-scoped: an unscoped export cannot tell whose they are.
-    export_data = ExportService(entity_registry).export_entities(
-        EntityType.PYTHON_CODE_TOOL, [source.id], org_id=beta.id
+    export_data = (
+        ExportService(entity_registry)
+        .export_entities(
+            EntityType.PYTHON_CODE_TOOL,
+            [source.id],
+            org_id=beta.id,
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        )
+        .data
     )
 
     _import(export_data, EntityType.PYTHON_CODE_TOOL, acme, admin_acme)

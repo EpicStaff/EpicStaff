@@ -3,6 +3,7 @@
         [routerLink]="tab.routerLink"
         routerLinkActive="active"
         class="route-tab"
+        [attr.data-tour]="tab.tourAnchor ?? null"
     >
         @if (tab.icon) {
             <app-svg-icon

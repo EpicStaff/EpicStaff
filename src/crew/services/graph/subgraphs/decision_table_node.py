@@ -110,10 +110,8 @@ def main(**kwargs) -> bool:
     return variables
 """
         python_code_data = PythonCodeData(
-            venv_name="default",
             code=code,
             entrypoint="main",
-            libraries=[],
         )
         python_code_execution_data: dict = await self.run_code_execution_service.run_code(
             python_code_data=python_code_data,
@@ -148,10 +146,8 @@ def main(variables: dict) -> bool:
 """
 
         python_code_data = PythonCodeData(
-            venv_name="default",
             code=code,
             entrypoint="main",
-            libraries=[],
         )
 
         python_code_execution_data: dict = await self.run_code_execution_service.run_code(
@@ -332,10 +328,10 @@ def main(variables: dict) -> bool:
                     msg = self.custom_session_message_writer.add_error_message(
                         session_id=self.session_id,
                         node_name=self.node_name,
-                        error=error,
                         writer=writer,
                         execution_order=self.execution_order(state),
                         node_type=self.TYPE,
+                        public_details=error,
                     )
                     await self._publish_message(msg)
 

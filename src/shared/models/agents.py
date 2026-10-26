@@ -53,6 +53,8 @@ class RealtimeAgentChatData(BaseModel):
     rag_embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
     rag_llm_api_key: str | None = None
     rag_llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    rag_embedder_extra_headers: dict[str, str] | None = None
+    rag_llm_extra_headers: dict[str, str] | None = None
     llm: LLMData | None = None
     rt_model_name: str
     rt_api_key: str | None = None

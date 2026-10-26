@@ -25,6 +25,7 @@ import {
 } from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
+import { showExportExclusionWarning } from '@shared/utils';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications';
@@ -33,6 +34,7 @@ import { FlowCardAction, FlowCardComponent } from '../../../../components/flow-c
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { FlowSessionsListComponent } from '../../../../components/flow-sessions-dialog/flow-sessions-list.component';
 import { GetGraphLightRequest, GraphDto } from '../../../../models/graph.model';
+import { FlowCopyImportFacadeService } from '../../../../services/flow-copy-import-facade.service';
 import { FlowsApiService } from '../../../../services/flows-api.service';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService } from '../../../../services/labels-storage.service';
@@ -54,6 +56,7 @@ import { RunGraphService } from '../../../../services/run-graph-session.service'
 })
 export class MyFlowsComponent implements AfterViewChecked {
     private readonly flowsService = inject(FlowsStorageService);
+    private readonly flowCopyImport = inject(FlowCopyImportFacadeService);
     private readonly runGraphService = inject(RunGraphService);
     private readonly router = inject(Router);
     private readonly dialog = inject(Dialog);
@@ -282,7 +285,7 @@ export class MyFlowsComponent implements AfterViewChecked {
 
         dialogRef.closed.subscribe((newName) => {
             if (newName && newName.trim().length > 0) {
-                this.flowsService.copyFlow(flow.id, newName.trim()).subscribe({
+                this.flowCopyImport.copyFlow(flow.id, newName.trim()).subscribe({
                     next: (graph) => {
                         this.toastService.success(`Flow copied and saved as "${graph.name}"`);
                         this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()).subscribe();
@@ -362,7 +365,7 @@ export class MyFlowsComponent implements AfterViewChecked {
 
     private exportFlow(flow: GetGraphLightRequest): void {
         this.importExportService.exportFlow(flow.id.toString()).subscribe({
-            next: (blob) => {
+            next: ({ blob, excluded }) => {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -371,6 +374,8 @@ export class MyFlowsComponent implements AfterViewChecked {
                 window.URL.revokeObjectURL(url);
 
                 this.toastService.success(`Flow "${flow.name}" exported successfully`);
+
+                showExportExclusionWarning(this.toastService, excluded);
             },
             error: (error) => {
                 console.error('Export failed:', error);

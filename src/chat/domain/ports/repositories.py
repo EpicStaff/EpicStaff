@@ -282,7 +282,11 @@ class AbstractMessageRepository(abc.ABC):
 
     @abc.abstractmethod
     async def history(self, conversation_id: UUID, window: int) -> list[dict]:
-        """The last `window` user/assistant/operator messages as `[{role, content}]`, oldest first."""
+        """The last `window` user/assistant/operator messages as `[{role, content}]`, oldest first.
+
+        A visitor message that answered an action adds `action`, cut to its `type`, `action`
+        and `text`: the history goes into every later run, the whole action only into its own.
+        """
 
 
 class AbstractEventRepository(abc.ABC):

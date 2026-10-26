@@ -35,7 +35,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code='def main(): return get_secret("STRIPE_KEY")',
             entrypoint="main",
-            libraries=[],
             secret_names=["STRIPE_KEY"],
         )
 
@@ -57,7 +56,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code="def main(): return 1",
             entrypoint="main",
-            libraries=[],
             secret_names=["STRIPE_KEY"],
         )
         data.secrets = {"STRIPE_KEY": "sk-live-for-the-sandbox"}
@@ -75,7 +73,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code="def main(): return 1",
             entrypoint="main",
-            libraries=[],
             secret_names=["STRIPE_KEY"],
         )
         data.secrets = {"A": "b"}
@@ -88,7 +85,6 @@ class TestPythonCodeDataIsCarrierOnly:
             venv_name="default",
             code="def main(): return 1",
             entrypoint="main",
-            libraries=[],
         )
 
         assert data.secret_names == []
@@ -99,7 +95,6 @@ class TestCodeTaskDataSerializesSecrets:
     def test_secrets_reach_the_wire(self):
         task = CodeTaskData(
             venv_name="default",
-            libraries=[],
             code="def main(): return 1",
             execution_id="exec-1",
             entrypoint="main",
@@ -113,7 +108,6 @@ class TestCodeTaskDataSerializesSecrets:
     def test_defaults_to_empty(self):
         task = CodeTaskData(
             venv_name="default",
-            libraries=[],
             code="def main(): return 1",
             execution_id="exec-1",
             entrypoint="main",
@@ -129,8 +123,7 @@ class TestLogSummaryIsSafe:
 
     def _task(self):
         return CodeTaskData(
-            venv_name="venv_9",
-            libraries=["requests"],
+            venv_id=9,
             code="def main(): return 1",
             execution_id="exec-42",
             entrypoint="main",
@@ -150,7 +143,7 @@ class TestLogSummaryIsSafe:
         summary = self._task().log_summary()
 
         assert "exec-42" in summary
-        assert "venv_9" in summary
+        assert "venv_id=9" in summary
         assert "main" in summary
         # "Did the node receive its declarations?" answered without disclosure.
         assert "secrets=1" in summary
@@ -158,7 +151,6 @@ class TestLogSummaryIsSafe:
     def test_summary_of_a_task_with_no_secrets(self):
         task = CodeTaskData(
             venv_name="default",
-            libraries=[],
             code="def main(): return 1",
             execution_id="exec-0",
             entrypoint="main",

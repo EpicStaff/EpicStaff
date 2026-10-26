@@ -5,13 +5,19 @@ import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    ExecutionTimeoutFieldComponent,
+    ExecutionTimeoutFormField,
+    SelectComponent,
+    SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { ResourceCode, toSecretIds } from '@shared/models';
-import { SecretsStorageService } from '@shared/services';
+import { ExecutionTimeoutLimitsStorageService, SecretsStorageService } from '@shared/services';
 import { merge, Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
+import { Venv } from '../../../../features/virtual-environments/models/venv.model';
+import { VenvsApiService } from '../../../../features/virtual-environments/services/venvs-api.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
@@ -22,12 +28,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
-import {
-    createInputMapFromPairs,
-    getValidInputPairs,
-    initializeInputMap,
-    parseCommaSeparatedList,
-} from '../node-panel-form.utils';
+import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { parseTestInputValues, PythonCodeTestRun } from '../shared/python-code-test-run/python-code-test-run';
 import {
     NODE_SAVING_MESSAGE,
@@ -62,6 +63,8 @@ import { PythonTerminalComponent } from './python-terminal/python-terminal.compo
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
         ValidationErrorsComponent,
+        SelectComponent,
+        ExecutionTimeoutFieldComponent,
     ],
     templateUrl: './python-node-panel.component.html',
     styleUrls: ['./python-node-panel.component.scss'],
@@ -91,6 +94,13 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             ? this.secretsStorageService.namesForIds(this.selectedSecretIds())
             : (this.node().data.secret_names ?? [])
     );
+    public readonly venvs = signal<Venv[]>([]);
+    public readonly loadingVenvs = signal<boolean>(false);
+    public readonly venvItems = computed<SelectItem[]>(() => [
+        { name: 'No venv', value: null },
+        ...this.venvs().map((venv) => ({ name: venv.name, value: venv.id })),
+    ]);
+
     public readonly inputMapKeys = computed(() => {
         this.formDirtyTick();
         if (!this.form) return [];
@@ -105,9 +115,11 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     pythonCode: string = '';
     initialPythonCode: string = '';
+    protected executionTimeout!: ExecutionTimeoutFormField;
     private initialFormSignatureExceptTestValues: string = '';
     private initialTestInputValuesSignature: string = '';
     codeEditorHasError: boolean = false;
+    private readonly venvsApiService = inject(VenvsApiService);
     private readonly pythonCodeChange$ = new Subject<string>();
     /**
      * The signature and Input List names last seen in step: each side applies to the other only how its own
@@ -135,7 +147,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
     public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
     private wasSaving = false;
-    /** How the panel's code, libraries, secrets and storage flag relate to the ones the backend stores for the node. */
+    /** How the panel's code, secrets and storage flag relate to the ones the backend stores for the node. */
     private readonly storedCodeState = computed<StoredCodeState>(() =>
         resolveStoredCodeState(
             this.flowService.hasSavedGraph(),
@@ -179,6 +191,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly permissionsService = inject(PermissionsService);
     private readonly flowService = inject(FlowService);
+    private readonly executionTimeoutLimits = inject(ExecutionTimeoutLimitsStorageService);
 
     constructor() {
         super();
@@ -204,6 +217,18 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             this.wasSaving = saving;
         });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
+
+        this.loadingVenvs.set(true);
+        this.venvsApiService
+            .getVenvs()
+            .pipe(takeUntilDestroyed())
+            .subscribe({
+                next: (list) => {
+                    this.venvs.set(list);
+                    this.loadingVenvs.set(false);
+                },
+                error: () => this.loadingVenvs.set(false),
+            });
     }
 
     private resetDirtyAfterSave(): void {
@@ -296,11 +321,16 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.useStorage.set(this.node().data.use_storage ?? false);
         this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
 
+        this.executionTimeout = new ExecutionTimeoutFormField(
+            this.node().data.execution_timeout,
+            this.executionTimeoutLimits.limits()
+        );
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
-            libraries: [this.node().data.libraries?.join(', ') || ''],
+            venv: [this.node().data.venv_id ?? null],
+            execution_timeout: this.executionTimeout.control,
             test_input: this.fb.array([]),
         });
 
@@ -347,8 +377,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 }
             }
         }
-        const librariesArray = parseCommaSeparatedList(this.form.value.libraries);
-
         return {
             ...this.node(),
             node_name: this.form.value.node_name,
@@ -359,10 +387,11 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 name: this.form.value.node_name || 'Python Code',
                 code: this.pythonCode,
                 entrypoint: 'main',
-                libraries: librariesArray,
+                venv_id: this.form.value.venv ?? null,
                 use_storage: this.useStorage(),
                 secret_ids: this.selectedSecretIds(),
                 secret_names: this.secretNames(),
+                execution_timeout: this.executionTimeout.value,
             },
             test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
         };
@@ -457,23 +486,29 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     onRunTest(variables: Record<string, string>): void {
         const backendId = this.node().backendId;
         if (this.runTestBlocker() !== null || backendId == null) return;
-        this.codeTestRun.run({
-            target: { type: 'python_node', id: backendId },
-            variables: parseTestInputValues(variables),
-        });
+        this.codeTestRun.run(
+            {
+                target: { type: 'python_node', id: backendId },
+                variables: parseTestInputValues(variables),
+            },
+            this.executionTimeoutLimits.secondsToRun(
+                this.flowService.savedPythonNode(backendId)?.python_code.execution_timeout
+            )
+        );
     }
 
-    /** The code, libraries, secrets or storage flag in the panel are not the ones the backend stores. */
+    /** The code, secrets, storage flag or execution timeout in the panel are not the ones the backend stores. */
     private differsFromSaved(savedNode: PythonNode): boolean {
         this.formDirtyTick();
         if (!this.form) return true;
         const savedCode = savedNode.python_code;
-        const saved = pythonCodeSignature(savedCode.code, savedCode.libraries, toSecretIds(savedCode.secrets));
-        const current = pythonCodeSignature(
-            this.pythonCode,
-            parseCommaSeparatedList(this.form.value.libraries),
-            this.selectedSecretIds()
+        const saved = pythonCodeSignature(savedCode.code, toSecretIds(savedCode.secrets));
+        const current = pythonCodeSignature(this.pythonCode, this.selectedSecretIds());
+        return (
+            saved !== current ||
+            (savedNode.use_storage ?? false) !== this.useStorage() ||
+            this.executionTimeoutLimits.secondsToRun(savedCode.execution_timeout) !==
+                this.executionTimeoutLimits.secondsToRun(this.executionTimeout.value)
         );
-        return saved !== current || (savedNode.use_storage ?? false) !== this.useStorage();
     }
 }

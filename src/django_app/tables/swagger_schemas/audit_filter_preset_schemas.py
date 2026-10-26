@@ -6,7 +6,10 @@ from tables.serializers.model_serializers.audit_filter_preset_serializers import
     AuditFilterPresetCopySerializer,
 )
 from tables.serializers.serializers import BulkExportSerializer
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import (
+    FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
+    UNAUTHORIZED_401_RESPONSE,
+)
 
 _PRESET_EXAMPLE = {
     "id": 1,
@@ -176,5 +179,7 @@ AUDIT_FILTER_PRESET_IMPORT = {
             description="Invalid file, wrong main entity, or a validation error on an item (e.g. missing `name`)."
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+        # Refused when the file carries a flow with trigger nodes and the caller lacks Use.
+        403: FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
     },
 }

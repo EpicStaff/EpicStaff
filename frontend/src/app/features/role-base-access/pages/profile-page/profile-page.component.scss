@@ -18,7 +18,9 @@
         align-items: center;
         justify-content: space-between;
         border-bottom: 1px solid var(--color-divider-subtle);
-        padding: 28px 60px 16px 40px;
+        flex-shrink: 0;
+        height: header.$page-header-height;
+        padding: header.$page-header-padding;
 
         .header-titles {
             .title {
@@ -42,7 +44,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 16px;
-        padding: 20px 60px 12px 40px;
+        padding: 20px 60px 12px header.$page-inset-left;
 
         .user-identity {
             display: flex;
@@ -83,16 +85,34 @@
             }
         }
 
+        // Shrinks first: each app-button collapses to its icon once its label no longer fits, then holds that width
+        // so the name truncates instead of the icon being clipped. The high shrink factor takes the width from the
+        // buttons ahead of the name; the name keeps a factor of 1 so it absorbs all the remaining shortfall (a
+        // factor sum below 1 would absorb only that fraction and push the icons out of view).
         .user-actions {
             display: flex;
             align-items: center;
             gap: 8px;
-            flex-shrink: 0;
+            min-width: 0;
+            flex-shrink: 1000;
+
+            &:not(:has(.btn:not(.btn--only-icon))) {
+                flex-shrink: 0;
+            }
+
+            > app-button {
+                min-width: 0;
+                flex: 0 1 auto;
+
+                &:has(.btn--only-icon) {
+                    flex-shrink: 0;
+                }
+            }
         }
     }
 
     .profile-tabs {
-        margin: 4px 60px 0 40px;
+        margin: 4px 24px 0 header.$page-inset-left;
     }
 
     .tab-content {

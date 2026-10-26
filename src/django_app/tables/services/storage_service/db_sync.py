@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from django.db import transaction
 from django.db.models import Exists, OuterRef, QuerySet, Value
+from django.db.models.constants import OnConflict
 from django.db.models.functions import Concat, Substr
 from django.utils import timezone
 from rbac.authorship import record_last_edits, resolve_author
@@ -11,6 +12,7 @@ from rbac.models import Organization
 from tables.models import StorageFile, User
 from tables.services.recycle_bin.deleting import record_deleter
 from tables.services.storage_service.path_utils import is_trash_path
+from tables.signals import rows_bulk_created
 
 
 def _name_of(path: str) -> str:
@@ -162,6 +164,9 @@ class StorageFileSync:
     ) -> None:
         """on_upload for many files [(path, size)] and empty folders at once, in two INSERTs.
 
+        Sends `rows_bulk_created` for exactly the file rows its own INSERT created, the bulk
+        counterpart of the `post_save` that `on_upload` fires.
+
         Args:
             authors_by_path: Author id of each inserted row whose path it names, overriding
                 `user`; a cross-org move uses it so moved rows keep their own authors. It
@@ -225,7 +230,7 @@ class StorageFileSync:
             ["name", "item_type", "parent_path", "size", "updated_at"],
             batch_size=_BULK_BATCH,
         )
-        StorageFile.objects.bulk_create(
+        inserted_ids = _insert_skipping_live_paths(
             [
                 StorageFile(
                     org_id=org_id,
@@ -236,14 +241,16 @@ class StorageFileSync:
                     size=size,
                     created_by_id=author_id_of(path),
                 )
+                # NOTE: never add created_by to an update: an existing file keeps its author.
+                # Every path, not only the new ones: a row binned since the read
+                # above needs a new live row. Live rows conflict and are skipped.
                 for path, size in files
-            ],
-            # NOTE: never add created_by to an update: an existing file keeps its author.
-            # Every path, not only the new ones: a row binned since the read
-            # above needs a new live row. Live rows conflict and are skipped.
-            ignore_conflicts=True,
-            batch_size=_BULK_BATCH,
+            ]
         )
+        if inserted_ids:
+            rows_bulk_created.send(
+                sender=StorageFile, queryset=StorageFile.objects.filter(pk__in=inserted_ids)
+            )
         if user is not None:
             edited_paths = [*(path for path, _ in files), *(folder_paths - existing_folder_paths)]
             record_last_edits(
@@ -345,6 +352,35 @@ class StorageFileSync:
 
                 StorageFile.objects.bulk_update(moved_rows, ["parent_path", "name"])
                 record_last_edits([row for row in moved_rows if row.path == dst_prefix], user)
+
+
+def _insert_skipping_live_paths(rows: list[StorageFile]) -> list[int]:
+    """Insert `rows`, skipping each path a live row already holds; return the ids inserted.
+
+    The insert `bulk_create(ignore_conflicts=True)` makes, plus the ids it discards:
+    `INSERT ... VALUES ... ON CONFLICT DO NOTHING RETURNING id`, one statement per batch.
+    Postgres returns only the rows that statement inserted, so a path a concurrent writer
+    took after the caller's read is never counted as inserted here.
+    """
+    opts = StorageFile._meta
+    fields = [
+        field for field in opts.concrete_fields if not field.primary_key and not field.generated
+    ]
+    inserted_ids = []
+    # All batches or none, as bulk_create does.
+    with transaction.atomic(savepoint=False):
+        for start in range(0, len(rows), _BULK_BATCH):
+            # bulk_create refuses to return ids with ignore_conflicts, so this calls the
+            # insert it is built on.
+            returned = StorageFile.objects._insert(
+                rows[start : start + _BULK_BATCH],
+                fields=fields,
+                returning_fields=[opts.pk],
+                on_conflict=OnConflict.IGNORE,
+            )
+            # A one-row batch that conflicts comes back as [None], not [].
+            inserted_ids.extend(row[0] for row in returned if row is not None)
+    return inserted_ids
 
 
 def _bin_entries_of(batch_rows: QuerySet) -> list[StorageFile]:

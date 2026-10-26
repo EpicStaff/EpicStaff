@@ -5,6 +5,14 @@
     height: 100%;
 }
 
+// Rendered in the panel shell's header (headerActionsTpl), outside :host.
+// The 8px-wide icon sits 12px from the left edge (app-button's own offset) and 8px before the label.
+// The weight turns the small button's 12px body-small label into body-small-large (12px / 500).
+.decision-tree-btn {
+    --button-small-font-weight: var(--text-body-small-large-weight);
+    --button-small-icon-left-padding: 28px;
+}
+
 .panel-container {
     display: flex;
     flex-direction: column;

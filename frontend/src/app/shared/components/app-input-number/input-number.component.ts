@@ -1,6 +1,24 @@
 import { NgClass } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
-import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    ElementRef,
+    forwardRef,
+    input,
+    model,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
+import {
+    ControlValueAccessor,
+    FormsModule,
+    NG_VALIDATORS,
+    NG_VALUE_ACCESSOR,
+    ValidationErrors,
+    Validator,
+} from '@angular/forms';
 import { generateUuid } from '@shared/utils';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -17,9 +35,14 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
             useExisting: forwardRef(() => InputNumberComponent),
             multi: true,
         },
+        {
+            provide: NG_VALIDATORS,
+            useExisting: forwardRef(() => InputNumberComponent),
+            multi: true,
+        },
     ],
 })
-export class InputNumberComponent implements ControlValueAccessor {
+export class InputNumberComponent implements ControlValueAccessor, Validator {
     icon = input<string>('help_outline');
     label = input<string>('');
     required = input<boolean>(false);
@@ -38,10 +61,16 @@ export class InputNumberComponent implements ControlValueAccessor {
     warningMessage = input<string>('');
     errorMessage = input<string>('');
     stepSize = input<number>(1);
+    /** Lets the user type a decimal point; by default only whole numbers can be typed. */
+    allowDecimal = input<boolean>(false);
     value = model<number | null>(null);
     changed = output<number | null>();
 
+    readonly nativeInput = viewChild<ElementRef<HTMLInputElement>>('nativeInput');
+
     hovered = signal<boolean>(false);
+    // The browser holds text it cannot parse as a number (e.g. "1.2.3" or a pasted "1,5") and reports it as empty.
+    private readonly hasBadInput = signal(false);
 
     isOutOfRange = computed(() => {
         const value = this.value();
@@ -56,7 +85,7 @@ export class InputNumberComponent implements ControlValueAccessor {
     });
 
     isInvalid = computed(() => {
-        return this.invalid() || this.isOutOfRange();
+        return this.invalid() || this.isOutOfRange() || this.hasBadInput();
     });
 
     isAboveWarning = computed(() => {
@@ -78,10 +107,20 @@ export class InputNumberComponent implements ControlValueAccessor {
 
     onChange: (value: number | null) => void = () => {};
     onTouched: () => void = () => {};
+    private onValidatorChange: () => void = () => {};
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
     onInputChange(value: number) {
+        // Only decimal fields accept typed separators, so only they can end up with malformed text.
+        // Report it as an error instead of passing the empty value on, which would silently clear the field.
+        if (this.allowDecimal() && this.nativeInput()?.nativeElement.validity.badInput) {
+            this.hasBadInput.set(true);
+            this.onValidatorChange();
+            return;
+        }
+        this.hasBadInput.set(false);
+
         if (value === null || value === undefined) {
             this.updateValue(null);
             return;
@@ -131,6 +170,7 @@ export class InputNumberComponent implements ControlValueAccessor {
     onKeyDown(event: KeyboardEvent) {
         const allowedKeys = ['Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'];
         if (allowedKeys.includes(event.key)) return;
+        if (this.allowDecimal() && event.key === '.') return;
 
         if (!/^\d$/.test(event.key)) {
             event.preventDefault();
@@ -144,7 +184,16 @@ export class InputNumberComponent implements ControlValueAccessor {
     }
 
     writeValue(value: number | null): void {
+        this.hasBadInput.set(false);
         this.value.set(value);
+    }
+
+    validate(): ValidationErrors | null {
+        return this.hasBadInput() ? { invalidNumber: true } : null;
+    }
+
+    registerOnValidatorChange(fn: () => void): void {
+        this.onValidatorChange = fn;
     }
 
     registerOnChange(fn: (value: number | null) => void): void {

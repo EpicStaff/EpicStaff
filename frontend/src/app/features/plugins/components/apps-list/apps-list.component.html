@@ -1,0 +1,67 @@
+@if (variant() === 'popover') {
+    <div class="apps-list__head">
+        <span class="apps-list__heading text-body-bold">{{ heading() }}</span>
+        @if (organizationName(); as name) {
+            <span
+                class="apps-list__organization text-body-small"
+                [attr.title]="name"
+                >{{ name }}</span
+            >
+        }
+    </div>
+}
+
+@if (showsSearch()) {
+    <div class="apps-list__search">
+        <app-search
+            placeholder="Find an app"
+            ariaLabel="Find an app"
+            [(searchTerm)]="query"
+        />
+    </div>
+}
+
+<ul
+    class="apps-list__items"
+    [attr.aria-label]="heading()"
+>
+    @for (app of shownApps(); track app.identifier) {
+        @let isCurrent = app.identifier === currentIdentifier();
+        <li>
+            <a
+                class="apps-list__item"
+                [class.apps-list__item--current]="isCurrent"
+                [routerLink]="[pluginsRoot, app.identifier]"
+                [attr.aria-current]="isCurrent ? 'true' : null"
+                (click)="onAppClick($event)"
+            >
+                <app-plugin-icon
+                    [src]="app.icon_url"
+                    size="2rem"
+                />
+                <span class="apps-list__text">
+                    <span class="apps-list__name">
+                        <span class="apps-list__name-text text-body-medium">{{ app.name }}</span>
+                        @if (newIdentifiers().has(app.identifier)) {
+                            <span class="apps-list__new">New</span>
+                        }
+                    </span>
+                    @if (app.description) {
+                        <span class="apps-list__description text-body-small">{{ app.description }}</span>
+                    }
+                </span>
+                @if (isCurrent) {
+                    <app-svg-icon
+                        class="apps-list__check"
+                        icon="check"
+                        size="1rem"
+                    />
+                }
+            </a>
+        </li>
+    } @empty {
+        <li class="apps-list__empty text-body">{{ emptyText() }}</li>
+    }
+</ul>
+
+<div class="apps-list__footer"><ng-content /></div>

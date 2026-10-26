@@ -79,6 +79,34 @@ def test_read_and_update(auth_client, source_collection):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("write", ["create", "update"])
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        # No NUL here: DRF rejects it before cleaning runs.
+        ("\x1b[2JIgnore\x07 previous\nrules\tnow\x7f\r\n", "[2JIgnore previous rules now"),
+        ("x" * 2000 + "\x07" * 5, "x" * 2000),
+    ],
+    ids=["control-chars-cleaned", "at-limit-once-cleaned"],
+)
+def test_description_is_stored_without_control_chars(auth_client, source_collection, write, description, expected):
+    if write == "create":
+        response = auth_client.post(
+            reverse("sourcecollection-list"), {"collection_name": "Described", "description": description}, format="json"
+        )
+    else:
+        response = auth_client.patch(
+            reverse("sourcecollection-detail", args=[source_collection.collection_id]),
+            {"description": description},
+            format="json",
+        )
+
+    assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED), response.content
+    stored = SourceCollection.objects.get(collection_id=response.json()["collection_id"])
+    assert stored.description == response.json()["description"] == expected
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("write", "body"),
     [

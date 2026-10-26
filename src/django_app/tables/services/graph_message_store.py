@@ -350,7 +350,7 @@ class GraphMessageStore:
             ]
         )
         root_principal_fields = SessionPrincipal.objects.filter(session_id=root_session_id).values(
-            "kind", "user_id", "api_key_id", "email"
+            "kind", "user_id", "api_key_id", "email", "plugin_identifier"
         ).first() or {"kind": SessionPrincipal.ActionKind.UNKNOWN}
         SessionPrincipal.objects.bulk_create(
             [SessionPrincipal(session=session, **root_principal_fields) for session in sessions]

@@ -107,6 +107,7 @@ class Permission(IntFlag):
     EXPORT = 16  # 32 retired (was DOWNLOAD, folded into EXPORT)
     USE = 64  # catalog action of `secrets` only; enforced by SecretReferenceGuard
     LIST = 128  # reserved — not in the catalog, checked nowhere
+    RUN = 256  # catalog action of `flows` only; start/stop runs and write trigger nodes
 ```
 
 ### 2.2 Built-in roles (declared in `rbac/access/builtin_roles.json`)
@@ -120,7 +121,7 @@ after `migrate`) makes the database match it exactly.
 "Member": {
   "description": "Builds and edits workspace resources; no organization administration.",
   "permissions": {
-    "flows": ["create", "read", "update"],
+    "flows": ["create", "read", "update", "run"],
     "knowledge_sources": ["read"]
   }
 }
@@ -321,14 +322,59 @@ assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.CREAT
 
 The quickstart endpoint (`tables/views/views.py`) is the reference example.
 
-### 5.3 Session / SSE surfaces — `assert_session_org_access`
+### 5.3 Session / SSE surfaces — `get_accessible_session`
 
 Sessions have no org column; they are children of their graph. Non-ViewSet session
 surfaces (SSE stream, get-updates, stop) authorize via
-`assert_session_org_access(user, session, action)`
+`get_accessible_session(user, session_id, action)`
 (`tables/services/session_access.py`): 404 when the session has no graph, then
 membership + FLOWS bit check against `session.graph.org_id`. SSE resolves the user from
-the single-use ticket first, then calls this.
+the single-use ticket first, then calls this. Reading a session (SSE, get-updates) needs
+`READ`; stopping one needs `RUN`, as starting one does (`get_runnable_graph`).
+
+The graph co-editing WebSocket (`ws/graphs/<id>/edit/`, `tables/graph_collab/consumers.py`)
+follows the same pattern: the ticket carries only the user, so `connect()` calls
+`assert_graph_readable(user, graph_id)` from the same module, which takes the org from the
+graph row and needs FLOWS `READ` — the same bit that opens the graph over HTTP. A missing
+graph, a binned one and another org's graph all close with `4404`; a member without the bit
+closes with `4403`. The check runs before the socket joins the graph's group or presence,
+so a refused caller never sees the editors and is never announced to them. Access is
+checked at connect only: an open socket is not closed when the membership is revoked.
+
+`RUN` also gates writing a trigger node (webhook, Telegram, schedule), because one starts
+runs by itself. Which node types are triggers is declared once, by `starts_runs=True` on
+their `NodeTypeConfig` in `tables/services/graph_bulk_save_service/registry.py`
+(`TRIGGER_NODE_LIST_KEYS`, `TRIGGER_NODE_MODELS`); `tables/services/trigger_nodes.py`
+derives everything else from them:
+
+- Writing one trigger node — the bulk save and `TriggerNodeRunPermissionMixin`
+  (`tables/views/mixins.py`) — calls `trigger_node_access.assert_may_write`, which raises
+  `TriggerNodesRequireRunPermissionError` (403 `trigger_nodes_require_run_permission`).
+  `trigger_node_access` is the shared `TriggerNodeAccess` instance.
+  Updating a `WebhookTrigger` that a live trigger node is attached to
+  (`TriggerNodeInspector.has_any_attached_to_webhook_trigger`) goes through the same
+  check in `WebhookTriggerViewSet.update`, since re-keying, re-pathing or re-tunnelling
+  it can bring those nodes live. `GET /api/webhook-triggers/{id}/flows/`
+  (`flows_using_trigger`, webhooks READ) names those flows in advance, from
+  `TriggerNodeInspector.graphs_attached_to_webhook_trigger`; it lists their names only
+  when the caller also holds READ on flows, and always returns the count.
+- Recreating trigger nodes by copy, import, partial import or version create-graph /
+  restore raises `FlowWithTriggerNodesRequiresRunPermissionError`
+  (403 `flow_with_trigger_nodes_requires_run_permission`) through
+  `trigger_node_access.assert_user_may_recreate` (views) or `assert_may_recreate` (the
+  import services, with the `effective_permissions` the caller passes in). One "holds a
+  trigger node" decision per source shape, on `TriggerNodeInspector`:
+  `has_any_in_graph` (stored flow, copy), `has_any_in_export` (full import file),
+  `has_any_in_node_entries` (the nodes a partial import creates) and
+  `has_any_in_flow_entry` (version snapshot). The views check after the org-scoped
+  fetch, so another org's id stays a 404; the import services check before their
+  transaction opens.
+- `run-python-code` needs RUN for code a trigger node owns, named by target
+  (`CodeRunTarget.owner_is_trigger_node`) or by `python_code_id`
+  (`trigger_node_owns_python_code`).
+
+A new trigger node type only needs the flag.
+See `roles_and_permissions.md` → "Running flows: the `run` action" for the endpoint list.
 
 ### 5.4 Superadmin-only and global surfaces
 
@@ -624,7 +670,8 @@ service, and never trust ids in the payload without an org-scoped fetch.
 2. Your consumer/view consumes it (`sse_ticket_service.consume(ticket)`) → user or 401
    `invalid_sse_ticket`.
 3. Authorize against the org that owns the streamed object (for sessions:
-   `assert_session_org_access`). Never trust an org id supplied in the query string.
+   `get_accessible_session`; for a graph: `assert_graph_readable`). Never trust an org
+   id supplied in the query string. Authorize before joining any channel group.
 
 ### 8.6 Global (non-org) resource
 
@@ -688,7 +735,7 @@ path — the default org is only for bootstrap and data migrations.
 | API key management (cross-org, API_KEYS-gated: list/revoke/delete members' keys) | `rbac/governance/api_keys.py`, `rbac/views/api_keys_admin.py` |
 | Permission gate (ViewSet) | `rbac/access/gates.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `rbac/access/asserts.py` |
-| Session/SSE authorization | `tables/services/session_access.py`, `tables/views/sse_views.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |
+| Session/SSE and graph co-editing WS authorization | `tables/services/session_access.py`, `tables/views/sse_views.py`, `tables/graph_collab/consumers.py` (stays in `tables` — sessions are children of the graph, not an RBAC concept) |
 | Org resolution | `rbac/access/org_context.py` |
 | Effective permissions + resolver | `rbac/access/effective.py`, `rbac/access/resolver.py` |
 | Action maps & catalog | `rbac/access/action_map.py`, `rbac/access/catalog.py` |

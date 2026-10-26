@@ -50,11 +50,15 @@ class McpToolData(BaseModel):
 
 
 class PythonCodeData(StorageScopedData):
-    venv_name: str
     code: str
     entrypoint: str
-    libraries: list[str]
+    # The venv this code runs in; None means the sandbox's default venv. The venv
+    # is the only place libraries come from, so there is nothing else to declare.
+    venv_id: int | None = None
     global_kwargs: dict[str, Any] | None = None
+    execution_timeout: int | None = None
+    """Seconds a single run of this code may take. None makes the sandbox apply
+    SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
 
     secret_names: list[str] = Field(default_factory=list, exclude=True)
     """Names this code is *allowed* to read — its declared allow-list.
@@ -154,13 +158,17 @@ class CodeResultData(BaseModel):
 
 
 class CodeTaskData(StorageScopedData):
-    venv_name: str
-    libraries: list[str]
+    # The venv this code runs in; None means the sandbox's default venv.
+    venv_id: int | None = None
     code: str
     execution_id: str
     entrypoint: str
     func_kwargs: dict | None = None
     global_kwargs: dict[str, Any] | None = None
+    execution_timeout: float | None = Field(default=None, gt=0)
+    """Requested execution timeout in seconds. Untrusted: the sandbox caps it at
+    SANDBOX_MAX_EXECUTION_TIMEOUT. None makes the sandbox apply
+    SANDBOX_DEFAULT_EXECUTION_TIMEOUT."""
 
     storage_credentials: StorageCredentials | None = None
     """Ephemeral temporary storage credentials for sandbox execution.
@@ -211,8 +219,9 @@ class CodeTaskData(StorageScopedData):
         """
         creds_summary = "present" if self.storage_credentials else "none"
         return (
-            f"execution_id={self.execution_id} venv={self.venv_name} "
-            f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
+            f"execution_id={self.execution_id} venv_id={self.venv_id} "
+            f"entrypoint={self.entrypoint} "
+            f"execution_timeout={self.execution_timeout} "
             f"secrets={len(self.secrets)} storage_credentials={creds_summary}"
         )
 

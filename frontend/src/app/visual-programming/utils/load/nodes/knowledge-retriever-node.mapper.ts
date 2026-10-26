@@ -15,7 +15,7 @@ export function mapKnowledgeRetrieverNodeToModel(kr: GetKnowledgeRetrieverNodeRe
         backendId: kr.id,
         type: NodeType.KNOWLEDGE_RETRIEVER,
         node_name: kr.node_name,
-        nodeNumber: ui.nodeNumber,
+        nodeNumber: kr.node_number ?? undefined,
         data: kr,
         position: ui.position,
         ports: null,

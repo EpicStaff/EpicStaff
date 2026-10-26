@@ -80,6 +80,14 @@ from infrastructure.database.models import (
 )
 
 HISTORY_ROLES = (Role.USER.value, Role.ASSISTANT.value, Role.OPERATOR.value)
+# What a past action keeps in a run's `chat_history`: which button, and what it said. An action
+# may carry up to CHAT_ACTION_MAX_BYTES (edited tables), and every later run repeats the history,
+# so its `params`, `tables` and anything else stay only in the run it started.
+HISTORY_ACTION_KEYS = ("type", "action", "text")
+
+
+def _history_action(action: dict) -> dict:
+    return {key: action[key] for key in HISTORY_ACTION_KEYS if key in action}
 
 
 @dataclass(frozen=True)
@@ -741,7 +749,11 @@ class MessageRepository(_Repository, AbstractMessageRepository):
             )
         ).all()
         return [
-            {"role": role, "content": content, **({"action": action} if action is not None else {})}
+            {
+                "role": role,
+                "content": content,
+                **({"action": _history_action(action)} if action is not None else {}),
+            }
             for role, content, action in reversed(rows)
         ]
 

@@ -16,9 +16,30 @@ if [[ "$1" = "healthcheck-users" ]]; then
     fi
 fi
 
+# Without ON_ERROR_STOP psql exits 0 after a failed statement, so a role that was
+# never created would still let setup finish and report healthy.
+setup_psql() {
+    psql -X -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" "$@"
+}
+
+# Role, schema and database names are spliced into the SQL below as both literals
+# and quoted identifiers, so only plain names are accepted. An empty value passes
+# here: an unset role is skipped, and any other empty name fails in its statement.
+require_plain_name() {
+    local variable_name="$1"
+    local value="${!variable_name:-}"
+    if [[ -n "$value" && ! "$value" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,62}$ ]]; then
+        echo "[setup] ERROR: ${variable_name} must be 1-63 letters, digits, '_', '.' or '-', starting with a letter or '_'" >&2
+        return 1
+    fi
+}
+
 # USER CREATION FUNCTIONS
 # These only create the DB roles — no table grants.
 # Safe to run as soon as postgres is up.
+# Passwords are read by psql (\getenv) and quoted by format(); the shell never splices
+# them into SQL. A failing statement may carry one, so its text is kept out of the
+# server log and psql prints only the error message.
 
 create_manager_user() {
     local manager_user="${MANAGER_DB_USER}"
@@ -30,17 +51,14 @@ create_manager_user() {
     fi
 
     echo "[manager] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${manager_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${manager_user}', '${manager_password}');
-        RAISE NOTICE '[manager] Created user ${manager_user}';
-    ELSE
-        RAISE NOTICE '[manager] User ${manager_user} already exists, skipping';
-    END IF;
-END
-\$\$;
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password MANAGER_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${manager_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${manager_user}')
+\gexec
 
 GRANT USAGE ON SCHEMA public TO "${manager_user}";
 
@@ -60,17 +78,14 @@ create_knowledge_user() {
     fi
 
     echo "[knowledge] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${knowledge_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${knowledge_user}', '${knowledge_password}');
-        RAISE NOTICE '[knowledge] Created user ${knowledge_user}';
-    ELSE
-        RAISE NOTICE '[knowledge] User ${knowledge_user} already exists, skipping';
-    END IF;
-END
-\$\$;
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password KNOWLEDGE_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${knowledge_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${knowledge_user}')
+\gexec
 
 GRANT USAGE ON SCHEMA public TO "${knowledge_user}";
 ALTER USER "${knowledge_user}" CREATEDB;
@@ -93,17 +108,14 @@ create_realtime_user() {
     fi
 
     echo "[realtime] Creating role if not exists..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${realtime_user}') THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${realtime_user}', '${realtime_password}');
-        RAISE NOTICE '[realtime] Created user ${realtime_user}';
-    ELSE
-        RAISE NOTICE '[realtime] User ${realtime_user} already exists, skipping';
-    END IF;
-END
-\$\$;
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password REALTIME_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${realtime_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${realtime_user}')
+\gexec
 
 GRANT USAGE ON SCHEMA public TO "${realtime_user}";
 
@@ -111,6 +123,35 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
     REVOKE ALL ON TABLES FROM "${realtime_user}";
 EOF
     echo "[realtime] Role ready: ${realtime_user}"
+}
+
+create_sandbox_user() {
+    local sandbox_user="${SANDBOX_DB_USER}"
+    local sandbox_password="${SANDBOX_DB_PASSWORD}"
+    local sandbox_schema="${SANDBOX_DB_SCHEMA}"
+
+    if [[ -z "$sandbox_user" || -z "$sandbox_password" ]]; then
+        echo "[sandbox] WARNING: SANDBOX_DB_USER or SANDBOX_DB_PASSWORD not set, skipping"
+        return 0
+    fi
+
+    echo "[sandbox] Creating role and owned schema if not exists..."
+    setup_psql <<EOF
+\set VERBOSITY terse
+\getenv password SANDBOX_DB_PASSWORD
+SET log_min_error_statement = panic;
+SET log_statement = 'none';
+SELECT format('CREATE USER %I WITH PASSWORD %L', '${sandbox_user}', :'password')
+WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${sandbox_user}')
+\gexec
+
+-- The sandbox role owns its own schema and everything it creates there (its venv
+-- table and Piccolo's own migration table). Default the role's search_path to it so
+-- every sandbox connection and migration targets this namespace. No public grants.
+CREATE SCHEMA IF NOT EXISTS "${sandbox_schema}" AUTHORIZATION "${sandbox_user}";
+ALTER ROLE "${sandbox_user}" SET search_path = "${sandbox_schema}";
+EOF
+    echo "[sandbox] Role and schema ready: ${sandbox_user} owns schema ${sandbox_schema}"
 }
 
 # TABLE PERMISSION GRANT FUNCTIONS
@@ -122,7 +163,7 @@ grant_manager_permissions() {
     [[ -z "$manager_user" ]] && return 0
 
     echo "[manager] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
+    setup_psql <<EOF || return 1
 DO \$\$
 BEGIN
     IF EXISTS (
@@ -335,7 +376,7 @@ grant_knowledge_permissions() {
     [[ -z "$knowledge_user" ]] && return 0
 
     echo "[knowledge] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
+    setup_psql <<EOF || return 1
 DO \$\$
 DECLARE
     tbl  text;
@@ -428,7 +469,7 @@ grant_realtime_permissions() {
     [[ -z "$realtime_user" ]] && return 0
 
     echo "[realtime] Granting table permissions..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
+    setup_psql <<EOF || return 1
 DO \$\$
 BEGIN
     IF EXISTS (
@@ -509,7 +550,7 @@ install_event_triggers() {
     local realtime_user="${REALTIME_DB_USER}"
 
     echo "[triggers] Installing event triggers for auto-grant..."
-    psql -U "${POSTGRES_USER}" -d "$TARGET_DB" -p "${POSTGRES_PORT}" <<EOF
+    setup_psql <<EOF
 -- Auto-grant table permissions on CREATE TABLE
 CREATE OR REPLACE FUNCTION auto_grant_table_permissions()
 RETURNS event_trigger
@@ -717,6 +758,15 @@ background_setup() {
     (
         export TARGET_DB="${POSTGRES_DB}"
 
+        # set -e ends setup on the first failure, before the healthcheck flag is
+        # written; -E lets this trap fire for failures inside the functions too.
+        set -E
+        trap 'echo "=== [setup] ERROR: setup stopped on the error above; crewdb will not report healthy ===" >&2' ERR
+
+        for name_variable in POSTGRES_DB MANAGER_DB_USER KNOWLEDGE_DB_USER REALTIME_DB_USER SANDBOX_DB_USER SANDBOX_DB_SCHEMA; do
+            require_plain_name "$name_variable"
+        done
+
         echo "=== [setup] Phase 1: Waiting for PostgreSQL and target database to be ready ==="
         # pg_isready only checks if postgres accepts connections — it returns true
         # even during the initdb temp-server phase, before POSTGRES_DB is created.
@@ -731,6 +781,7 @@ background_setup() {
         create_manager_user
         create_knowledge_user
         create_realtime_user
+        create_sandbox_user
         install_event_triggers
         echo "=== [setup] Phase 1 complete: all roles created, event triggers installed ==="
 
@@ -742,15 +793,18 @@ background_setup() {
         while [[ $attempt -lt $max_attempts ]]; do
             if all_tables_exist; then
                 echo "=== [setup] All required tables found. Granting permissions... ==="
-                grant_manager_permissions
-                grant_knowledge_permissions
-                grant_realtime_permissions
-                touch "$USERS_CREATED_FLAG"
-                echo "=== [setup] Phase 2 complete: all permissions granted. crewdb is FULLY READY ==="
-                exit 0
+                # Django migrates while this runs, so a grant can hit a table a migration is
+                # altering. The grants are idempotent: retry on the next attempt instead of
+                # stopping setup for good.
+                if grant_manager_permissions && grant_knowledge_permissions && grant_realtime_permissions; then
+                    touch "$USERS_CREATED_FLAG"
+                    echo "=== [setup] Phase 2 complete: all permissions granted. crewdb is FULLY READY ==="
+                    exit 0
+                fi
+                echo "[setup] Granting permissions failed (see the error above); retrying"
             fi
             attempt=$(( attempt + 1 ))
-            echo "[setup] Attempt ${attempt}/${max_attempts} — tables not ready yet, retrying in 10s..."
+            echo "[setup] Attempt ${attempt}/${max_attempts} — not ready yet, retrying in 10s..."
             sleep 10
         done
 
@@ -761,6 +815,9 @@ background_setup() {
 
 if [[ "$1" = 'postgres' ]] || [[ "$1" = 'docker-entrypoint.sh' && "$2" = 'postgres' ]]; then
     echo "=== Starting Custom PostgreSQL Entrypoint ==="
+    # /tmp survives a container restart; a flag left by the previous run would report
+    # healthy before this run's setup has succeeded.
+    rm -f "$USERS_CREATED_FLAG"
     background_setup
 fi
 

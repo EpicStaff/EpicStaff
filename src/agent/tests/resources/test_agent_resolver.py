@@ -7,6 +7,7 @@ collection/s3 carried-not-resolved semantics, and multi-agent pool sharing.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -18,6 +19,7 @@ from app.exceptions import (
     UnknownToolRefError,
 )
 from app.resources.resolver import AgentResolver
+from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolDescription, McpToolGateway
 from shared.models.agent_service import (
     AgentRequest,
@@ -88,10 +90,8 @@ def _python_tool_data(name: str = "my_tool") -> PythonCodeToolData:
         description="A tool.",
         args_schema=ArgsSchema(properties={}),
         python_code=PythonCodeData(
-            venv_name="venv_test",
             code="def run(): return 'ok'",
             entrypoint="run",
-            libraries=[],
         ),
     )
 
@@ -225,6 +225,44 @@ async def test_mcp_tool_ref_resolves_to_registry():
 
     names = {spec.name for spec in resolved.tools.tool_specs()}
     assert "mcp_tool" in names
+
+
+async def test_mcp_tool_schema_reaches_the_model_cleaned():
+    """The registered spec, which is what the model receives, carries the external
+    server's input schema without control characters and with free text capped."""
+    server_tool = SimpleNamespace(
+        name="mcp_tool",
+        description="Searches the web.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search\x1b[31m\x07 the web" + "x" * 2000,
+                }
+            },
+        },
+    )
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.list_tools = AsyncMock(return_value=[server_tool])
+    factory = MagicMock(spec=FastMCPClientFactory)
+    factory.create.return_value = client
+    gateway = McpToolGateway(factory, describe_cache_ttl_s=300)
+    agent = _agent_spec(tool_refs=["mcp-tool:4"])
+    request = _request([agent], tools=[_base_tool("mcp-tool:4", _mcp_tool_data("mcp_tool"))])
+
+    resolved = await _resolver(gateway).resolve(agent, request, is_cancelled=never_cancelled)
+
+    spec = next(spec for spec in resolved.tools.tool_specs() if spec.name == "mcp_tool")
+    assert spec.parameters_schema == {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search[31m the web" + "x" * 1006},
+        },
+    }
+    assert spec.description == "[external MCP tool description] Searches the web."
 
 
 async def test_unknown_tool_ref_raises():

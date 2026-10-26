@@ -20,10 +20,9 @@ from shared.models.tools import (
 
 def _make_tool_data(**overrides) -> PythonCodeToolData:
     code_defaults = dict(
-        venv_name="venv_pyt_42",
+        venv_id=42,
         code="def run(x): return x",
         entrypoint="run",
-        libraries=["requests"],
         global_kwargs=None,
         use_storage=False,
     )
@@ -84,7 +83,7 @@ CREDENTIALS = StorageCredentials(access_key="test-access", secret_key="test-secr
     [
         pytest.param(
             {}, None,
-            {"venv_name": "venv_pyt_42", "libraries": ["requests"], "code": "def run(x): return x",
+            {"venv_id": 42, "code": "def run(x): return x",
              "entrypoint": "run", "func_kwargs": {"x": "hello"}, "global_kwargs": None, "use_storage": False,
              "storage_allowed_paths": None, "storage_org_prefix": None, "session_id": None, "org_id": None},
             id="defaults-and-llm-args-only",
@@ -107,6 +106,8 @@ CREDENTIALS = StorageCredentials(access_key="test-access", secret_key="test-secr
             id="org-id-wins-over-global",
         ),
         pytest.param({"org_id": 77}, None, {"global_kwargs": {"org_id": 77}, "org_id": 77}, id="org-id-injected"),
+        # The sandbox enforces the tool's own timeout instead of its default.
+        pytest.param({"execution_timeout": 42}, None, {"execution_timeout": 42}, id="execution-timeout"),
     ],
 )
 async def test_sandbox_task_carries_the_tool_configuration(python_code_overrides, credentials, expected_task):

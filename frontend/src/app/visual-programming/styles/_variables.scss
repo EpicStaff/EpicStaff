@@ -10,10 +10,15 @@
     --vp-minimap-node-color: #384152;
     --vp-minimap-selected-node-color: #4d7cfe;
     --vp-minimap-view-color: rgba(255, 255, 255, 0.1);
+    --vp-minimap-node-radius: 24px;
 
     --vp-node-color: #242424;
     --vp-node-border-color: #333;
     --vp-node-selected-color: hsl(0, 0%, 57%);
+
+    // "Highlight unused nodes" flow setting
+    --vp-unused-node-opacity: 0.6;
+    --vp-unused-minimap-node-outline-color: var(--color-ks-transparent-text-60);
 
     // nodes
     --agent-node-accent-color: #8e5cd9;

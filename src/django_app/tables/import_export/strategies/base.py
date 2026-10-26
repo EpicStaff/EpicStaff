@@ -41,6 +41,10 @@ class EntityImportExportStrategy(ABC):
         `created_by=resolve_author(kwargs.get("user"))` to the write that creates it. A
         row it updates in place (a flow replaced by uuid) or reuses keeps its author, or
         the lack of one.
+
+        A graph node that shows a "#N" badge takes `kwargs["node_number"]` when it is
+        given, else the next number from the graph's counter: pass
+        `node_number=kwargs.get("node_number")` to the write that creates it.
         """
 
     def import_entity(

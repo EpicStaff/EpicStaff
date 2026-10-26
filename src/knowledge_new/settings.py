@@ -15,6 +15,9 @@ LOG_LEVEL = env.log_level("KNOWLEDGE_LOG_LEVEL")
 
 MAX_PROCESS_WORKERS = env.int("KNOWLEDGE_MAX_PROCESS_WORKERS")
 
+# Wall-clock bound per call offloaded to the process pool; None means unbounded.
+PROCESS_TIMEOUT = env.time("KNOWLEDGE_PROCESS_TIMEOUT")
+
 DATABASE_DNS = env.dns(
     "postgresql+psycopg",
     "DB_HOST",
@@ -37,7 +40,6 @@ GRAPHRAG_ENCODING = "utf-8"
 # Deployment-wide overrides for the embedding endpoint. Unset in every standard
 # install; set only where embeddings are routed through an API gateway.
 CUSTOM_EMBED_BASE_URL = env.str("KNOWLEDGE_CUSTOM_EMBED_BASE_URL", None)
-EMBEDDING_HEADERS = env.dict("KNOWLEDGE_EMBEDDING_HEADERS", None)
 
 # Path of the gpt2 tokenizer file the image bakes at build time (Dockerfile); the
 # token chunker loads it instead of fetching from huggingface.co. None (the

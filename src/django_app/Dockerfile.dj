@@ -3,9 +3,13 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 
 # Wheels only. UV_NO_BUILD=1 refuses to build source distributions, so no
 # sdist's setup.py / PEP 517 backend runs at install time, meaning resolving
-# never executes arbitrary Python code. A service that gains a dependency with
-# no Linux wheel will fail the build rather than silently regain source
-# execution. That is also why the builder installs no compiler or libpq-dev.
+# never executes arbitrary Python code. foundation and epicstaff-plugin
+# (src/plugin_sdk) are the audited exceptions: first-party local path
+# dependencies with no wheel of their own, carved out via `no-binary-package`
+# in django_app's pyproject.toml [tool.uv]. Both are pure Python, so they still
+# need no compiler. A service that gains a dependency with no Linux wheel will
+# fail the build rather than silently regain source execution. That is also
+# why the builder installs no compiler or libpq-dev.
 #
 # UV_PYTHON_DOWNLOADS=never is load-bearing: without it uv may fetch its own
 # interpreter instead of using the digest-pinned base image above, silently
@@ -24,8 +28,17 @@ ENV UV_NO_BUILD=1 \
 
 WORKDIR /app/src
 
-# Copy only dependency descriptors first (better layer caching)
+# Copy only dependency descriptors first (better layer caching).
+# foundation and epicstaff-plugin are local path dependencies, so their source
+# must exist in the image before `uv sync` runs. pyproject.toml/uv.lock land
+# flattened at /app/src, so "../foundation" and "../plugin_sdk" in
+# [tool.uv.sources] resolve to /app/foundation and /app/plugin_sdk -- one level
+# above WORKDIR. Both are installed editable, so the runtime stage keeps those
+# directories (it copies all of /app).
 COPY ./django_app/pyproject.toml ./django_app/uv.lock ./
+COPY ./foundation /app/foundation
+COPY ./plugin_sdk/pyproject.toml ./plugin_sdk/uv.lock /app/plugin_sdk/
+COPY ./plugin_sdk/epicstaff_plugin /app/plugin_sdk/epicstaff_plugin
 
 # Install dependencies into /app/src/.venv.
 # --all-groups is required: transitive-pins (and any other non-dev group) is

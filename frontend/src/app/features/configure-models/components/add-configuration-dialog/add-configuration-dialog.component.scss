@@ -169,3 +169,9 @@
         flex-shrink: 0;
     }
 }
+
+// A lone stepper in a small dialog takes at most half its width
+app-input-number {
+    display: block;
+    max-width: 50%;
+}

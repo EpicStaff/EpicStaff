@@ -30,15 +30,12 @@ from src.crew.services.graph.session_audit_provider import (
 )
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import SessionData, StopSessionMessage
+from src.shared.public_error import (
+    PublicErrorMessage,
+    build_public_error_message,
+    new_error_correlation_id,
+)
 from utils.singleton_meta import SingletonMeta
-
-# Reserved key smuggled through SessionData.initial_state (a pre-existing
-# free-form dict[str, Any] field) to carry an optional per-run token-budget
-# override from Django's RunSession request without adding a new typed field
-# to the SessionData pydantic contract. Popped out of initial_state before it
-# becomes part of the graph's live "variables" state, so it never leaks to
-# user-visible flow variables/templates.
-TOKEN_BUDGET_STATE_KEY = "__token_budget__"
 
 
 def _extract_finish_token_total(message_data: dict) -> int:
@@ -178,17 +175,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     retention_days=audit_context.audit_retention_days,
                 )
             )
-            # Copy so popping the reserved budget key never mutates the
-            # pydantic SessionData model itself.
-            initial_state = dict(session_data.initial_state)
-
-            # optional run-level token budget hard stop.
-            # Per-run override (if Django threaded one through the request)
-            # takes precedence over the global env/settings default. Both
-            # default to None ("no limit"), so this is fully inert unless
-            # explicitly configured -- byte-for-byte unchanged behavior for
-            # existing runs.
-            token_budget = initial_state.pop(TOKEN_BUDGET_STATE_KEY, None)
+            # Run-level token hard stop: the run's typed budget, else the global
+            # default. Both None means no limit.
+            token_budget = session_data.token_budget
             if token_budget is None:
                 token_budget = DEFAULT_TOKEN_BUDGET
             # Local to this call -- NOT stored on `self` -- so concurrent
@@ -213,7 +202,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             state = {
                 "state_history": [],
-                "variables": DotDict(initial_state),
+                "variables": DotDict(session_data.initial_state),
                 "system_variables": {"nodes": {}},
                 "execution_counts": {},
             }
@@ -370,7 +359,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 )
 
         except Exception as e:
-            logger.exception(f"Failed to start session: {e}")
+            correlation_id = new_error_correlation_id()
+            logger.opt(exception=e).error(
+                "Failed to start session {session_id}: {error} (correlation_id={correlation_id})",
+                session_id=session_id,
+                error=str(e),
+                correlation_id=correlation_id,
+            )
             logger.log(
                 BENCH_LEVEL,
                 "bench {checkpoint}",
@@ -380,11 +375,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 reason=type(e).__name__,
             )
 
+            public_error = build_public_error_message(
+                PublicErrorMessage.SESSION_EXECUTION_FAILED, correlation_id
+            )
             await self.redis_service.aupdate_session_status(
-                session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
+                session_id=session_id, status="error", error=public_error
             )
             audit_context = get_session_audit_context(session_id)
-            failure_details = {"error": str(e)}
+            failure_details = {"error": public_error}
             if audit_context is not None:
                 _dispatch_session_audit(
                     lambda: get_session_audit_writer().add_session_end(

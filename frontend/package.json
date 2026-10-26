@@ -49,8 +49,10 @@
         "@fontsource/inter": "5.2.8",
         "ag-grid-angular": "36.1.0",
         "ag-grid-community": "36.1.0",
+        "canvas-confetti": "1.9.4",
         "docx-preview": "^0.3.7",
         "dompurify": "^3.4.14",
+        "driver.js": "1.8.0",
         "jsonc-parser": "3.3.1",
         "marked": "18.0.10",
         "monaco-editor": "0.55.1",
@@ -66,11 +68,13 @@
     },
     "devDependencies": {
         "@angular-eslint/eslint-plugin": "^22.1.0",
-        "@angular/build": "22.2.1",
-        "@angular/cli": "22.2.1",
+        "@angular/build": "^22.2.3",
+        "@angular/cli": "^22.2.3",
         "@angular/compiler-cli": "22.2.1",
         "@tabler/icons-webfont": "3.36.1",
+        "@types/canvas-confetti": "1.9.0",
         "@types/json-schema": "^7.0.15",
+        "@types/node": "^24.19.2",
         "@types/papaparse": "^5.5.2",
         "eslint": "^9.39.4",
         "eslint-plugin-simple-import-sort": "^12.1.1",
@@ -86,6 +90,7 @@
         "dompurify": "$dompurify",
         "@xmldom/xmldom": "^0.9.12",
         "fast-uri": "^4.1.4",
-        "qs": "^6.16.0"
+        "qs": "^6.16.0",
+        "vite": "8.3.5"
     }
 }

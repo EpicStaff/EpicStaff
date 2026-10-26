@@ -120,12 +120,26 @@ export class PermissionsService implements StorageService {
         );
     }
 
+    /** Whether any Settings tab is open to the caller in the active org. */
     canOpenConfigureModelsDialog(): boolean {
         return (
             this.can(ResourceCode.LlmConfigs, ActionCode.Read) ||
             this.can(ResourceCode.Voice, ActionCode.Read) ||
             this.can(ResourceCode.Webhooks, ActionCode.Read) ||
-            this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create])
+            this.canAny(ResourceCode.Secrets, [ActionCode.Read, ActionCode.Create]) ||
+            this.canSeePluginActivity()
+        );
+    }
+
+    /** Plugin activity is audit data: whoever may read the org's audit trail sees what plugins do in it. */
+    canSeePluginActivity(): boolean {
+        return this.configService.isPluginsEnabled && this.can(ResourceCode.Audit, ActionCode.Read);
+    }
+
+    /** Quickstart creates LLM configs and then updates the defaults, so it needs both. */
+    canApplyQuickstart(): boolean {
+        return (
+            this.can(ResourceCode.LlmConfigs, ActionCode.Create) && this.can(ResourceCode.LlmConfigs, ActionCode.Update)
         );
     }
 
