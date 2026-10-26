@@ -11,6 +11,7 @@ import asyncio
 import shutil
 
 from loguru import logger
+from src.shared.bench_log import BENCH_LEVEL
 
 from worker.application.context import ExecutionContext
 from worker.application.pipeline import Pipeline
@@ -41,6 +42,14 @@ class ExecutionOrchestrator:
             await self._finalize(context)
 
         result = self._build_result(context)
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_end",
+            session_id=job.session_id,
+            execution_id=job.execution_id,
+            returncode=result.returncode,
+        )
         await self._result_sink.send(result, mutations=context.storage_mutations)
 
     async def fail(self, execution_id: str, message: str, *, reply_to_crew_channel: bool) -> None:
@@ -86,6 +95,7 @@ class ExecutionOrchestrator:
             returncode=context.returncode if context.returncode is not None else 1,
             reply_to_crew_channel=context.job.reply_to_crew_channel,
             ran=True,
+            session_id=context.job.session_id,
         )
 
     async def _finalize(self, context: ExecutionContext) -> None:

@@ -1,0 +1,72 @@
+@switch (plugin().state) {
+    @case ('uninstalling') {
+        <p
+            class="banner banner--uninstalled text-body"
+            role="status"
+        >
+            @if (plugin().uninstall_requested_at; as uninstalledAt) {
+                Uninstalled on {{ uninstalledAt | date: 'mediumDate' }}.
+            } @else {
+                Uninstalled.
+            }
+            @if (plugin().purge_after; as purgeAfter) {
+                Its data is kept until <strong>{{ purgeAfter | date: 'mediumDate' }}</strong> ({{ daysLeft() }}).
+            }
+        </p>
+    }
+    @case ('purging') {
+        <p
+            class="banner banner--deleting text-body"
+            role="status"
+            aria-live="polite"
+        >
+            <app-spinner2 [size]="16" />
+            <span>{{ progressText() }}</span>
+        </p>
+    }
+}
+@if (upgradeLines().length > 0) {
+    <div
+        class="banner-group"
+        role="status"
+        aria-live="polite"
+    >
+        @for (line of upgradeLines(); track $index) {
+            <p
+                class="banner text-body"
+                [class.banner--progress]="line.tone === 'progress' || line.tone === 'done'"
+                [class.banner--offline]="line.tone === 'offline'"
+                [class.banner--failed]="line.tone === 'failed'"
+            >
+                @if (line.working) {
+                    <app-spinner2 [size]="16" />
+                }
+                <span>
+                    {{ line.text }}
+                    @if (line.parenthesis; as parenthesis) {
+                        <span class="banner__detail"
+                            >{{ parenthesis.announced }}<span aria-hidden="true">{{ parenthesis.unannounced }}</span
+                            >{{ parenthesis.closing }}</span
+                        >
+                    }
+                </span>
+            </p>
+        }
+    </div>
+}
+@if (hooksText(); as hooks) {
+    <p
+        class="banner banner--progress text-body"
+        role="status"
+    >
+        {{ hooks }}
+    </p>
+}
+@if (staleText(); as stale) {
+    <p
+        class="banner banner--stale text-body-small"
+        role="status"
+    >
+        {{ stale }}
+    </p>
+}

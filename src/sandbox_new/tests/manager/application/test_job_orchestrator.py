@@ -20,6 +20,7 @@ from manager.application.registry import ExecutionRegistry
 from manager.domain.enums import ExecutionStatus, VenvStatus
 from manager.domain.errors import SandboxOverloadedError, VenvNotFoundError
 from manager.domain.models import StorageCredentials
+from manager.infrastructure.transport.queue_job_dispatcher import QueueJobDispatcher
 from manager.infrastructure.transport.queue_job_failure_sink import QueueJobFailureSink
 from manager.infrastructure.transport.result_consumer import ResultConsumer
 from tests.builders import make_venv
@@ -176,9 +177,10 @@ async def test_submit_against_a_failed_venv_reports_a_failure(
 
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
-    execution_id, message, _ = failure_sink.failures[0]
-    assert execution_id == "exec-1"
-    assert "failed to build" in message
+    [failure] = failure_sink.failures
+    assert failure.execution_id == "exec-1"
+    assert "failed to build" in failure.message
+    assert (failure.session_id, failure.not_run_reason) == (7, "venv_failed")
 
 
 async def test_submit_without_a_venv_id_uses_the_default_venv(uow, orchestrator, dispatcher):
@@ -220,9 +222,10 @@ async def test_a_dispatch_failure_is_reported_as_a_failed_run(
 
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
 
-    [(execution_id, message, _)] = failure_sink.failures
-    assert execution_id == "exec-1"
-    assert message == "The job could not be handed to the worker and was not run."
+    [failure] = failure_sink.failures
+    assert failure.execution_id == "exec-1"
+    assert failure.message == "The job could not be handed to the worker and was not run."
+    assert (failure.session_id, failure.not_run_reason) == (7, "dispatch_failed")
 
 
 async def test_flush_pending_dispatches_jobs_whose_venv_finished_building(
@@ -293,7 +296,35 @@ async def test_flush_pending_fails_jobs_whose_venv_failed_to_build(
 
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
-    assert failure_sink.failures[0][0] == "exec-1"
+    assert failure_sink.failures[0].execution_id == "exec-1"
+    assert failure_sink.failures[0].not_run_reason == "venv_failed"
+
+
+async def test_a_held_job_logs_exec_held_then_exec_queued_when_released(
+    uow, holding, failure_sink, registry, clock, checkpoints
+):
+    """The real dispatcher, because exec_queued is logged where the queue is."""
+    orchestrator = build_orchestrator(
+        uow, QueueJobDispatcher(asyncio.Queue()), holding, failure_sink, registry, clock
+    )
+    venv = uow.venv_repo.seed(make_venv(status=VenvStatus.PROCESSING))[0]
+    await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
+    built = (await uow.venv_repo.retrieve(venv.id)).model_copy(
+        update={"status": VenvStatus.COMPLETED, "hash": "1built"}
+    )
+    await uow.venv_repo.update(built)
+
+    await orchestrator.flush_pending()
+
+    assert checkpoints == [
+        {
+            "checkpoint": "exec_held",
+            "session_id": 7,
+            "execution_id": "exec-1",
+            "venv_id": venv.id,
+        },
+        {"checkpoint": "exec_queued", "session_id": 7, "execution_id": "exec-1", "queued": 1},
+    ]
 
 
 async def test_flush_pending_fails_jobs_whose_venv_disappeared(
@@ -307,7 +338,7 @@ async def test_flush_pending_fails_jobs_whose_venv_disappeared(
 
     assert dispatcher.dispatched == []
     assert holding.pending_venv_ids() == []
-    assert failure_sink.failures[0][0] == "exec-1"
+    assert failure_sink.failures[0].execution_id == "exec-1"
 
 
 async def test_a_resubmitted_id_is_not_dispatched_again(uow, orchestrator, dispatcher):
@@ -446,7 +477,7 @@ async def test_only_the_jobs_past_their_hold_deadline_are_failed(
     clock.advance(1)
     await orchestrator.flush_pending()
 
-    assert failure_sink.failures == [("exec-1", HOLD_TIMED_OUT_MESSAGE, False)]
+    assert failure_sink.failures == [("exec-1", HOLD_TIMED_OUT_MESSAGE, 7, "venv_failed", False)]
     assert registry.status("exec-2") is ExecutionStatus.HELD
     assert [job.execution_id for job in holding.release(venv.id)] == ["exec-2"]
 
@@ -463,7 +494,7 @@ async def test_a_job_past_its_hold_deadline_is_failed_even_if_its_venv_just_fini
     await orchestrator.flush_pending()
 
     assert dispatcher.dispatched == []
-    assert [failure[1] for failure in failure_sink.failures] == [HOLD_TIMED_OUT_MESSAGE]
+    assert [failure.message for failure in failure_sink.failures] == [HOLD_TIMED_OUT_MESSAGE]
 
 
 async def test_a_failed_venv_is_reported_even_at_the_cap(
@@ -476,7 +507,7 @@ async def test_a_failed_venv_is_reported_even_at_the_cap(
 
     await orchestrator.submit(venv_id=venv.id, **SUBMISSION)
 
-    assert [failure[0] for failure in failure_sink.failures] == ["exec-1"]
+    assert [failure.execution_id for failure in failure_sink.failures] == ["exec-1"]
 
 
 async def test_the_queue_deadline_starts_at_dispatch(uow, orchestrator, dispatcher, clock):

@@ -176,6 +176,7 @@ async def test_a_submission_runs_and_its_result_comes_back(uow, runtime):
     assert message.execution_id == EXECUTION_ID
     assert message.returncode == 0
     assert message.ran is True
+    assert message.session_id == 7
     assert json.loads(message.result) == {"echo": "x", "limit": 3}
     assert "token=[REDACTED]" in message.stdout
     assert "s3cret" not in message.stdout
@@ -208,6 +209,7 @@ async def test_a_job_whose_venv_failed_to_build_reaches_the_same_result_queue(uo
     assert message.returncode == 1
     assert message.ran is False
     assert "failed to build" in message.stderr
+    assert (message.session_id, message.not_run_reason) == (7, "venv_failed")
 
 
 async def test_storage_credentials_reach_the_worker_unchanged(uow, runtime):

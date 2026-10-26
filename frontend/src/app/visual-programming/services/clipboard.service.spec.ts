@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NodeType } from '@shared/models';
 
-import { NodeModel } from '../core/models/node.model';
+import { AgentNodeModel, NodeModel } from '../core/models/node.model';
 import { ClipboardService } from './clipboard.service';
 import { FlowService } from './flow.service';
 
@@ -115,5 +115,32 @@ describe('ClipboardService paste', () => {
             ['Five', 12],
             ['Seven', 13],
         ]);
+    });
+
+    it("gives a copied agent's tasks no ids of the source's tasks, keeping their context by temp id", () => {
+        const task = { name: 'Draft', instructions: '', output_schema: {} };
+        const agent = canvasNode('agent-1', NodeType.AGENT, {
+            data: {
+                tasks: [
+                    { ...task, id: 900, tempId: 'source-draft', contextRefs: [] },
+                    { ...task, name: 'Review', id: 901, tempId: 'source-review', contextRefs: [{ id: 900 }] },
+                    // Added since the last save: no id yet, and its context names the others by temp id.
+                    {
+                        ...task,
+                        name: 'Publish',
+                        tempId: 'source-publish',
+                        contextRefs: [{ tempId: 'source-review' }],
+                    },
+                ],
+            },
+        } as Partial<NodeModel>);
+
+        const [copy] = copyAndPaste(agent);
+
+        const [draft, review, publish] = (copy as AgentNodeModel).data.tasks;
+        expect([draft.id, review.id, publish.id]).toEqual([undefined, undefined, undefined]);
+        expect([draft.tempId, review.tempId, publish.tempId]).not.toContain('source-draft');
+        expect(review.contextRefs).toEqual([{ tempId: draft.tempId }]);
+        expect(publish.contextRefs).toEqual([{ tempId: review.tempId }]);
     });
 });

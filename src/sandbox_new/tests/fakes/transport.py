@@ -5,10 +5,12 @@ cover the "transport broke" branches without a real queue or broker.
 """
 
 import asyncio
+from typing import NamedTuple
 
 from common.contracts import ExecutionResultMessage
 from manager.application.ports import AbstractJobDispatcher, AbstractJobFailureSink
 from manager.domain.models import Job as ManagerJob
+from manager.domain.types import NotRunReason
 from manager.infrastructure.transport.result_publisher import AbstractResultPublisher
 from worker.application.ports import AbstractJobSource, AbstractResultSink, UndecodableJobError
 from worker.domain.models import ExecutionResult, Job as WorkerJob, StorageMutations
@@ -34,14 +36,30 @@ class FakeJobDispatcher(AbstractJobDispatcher):
         self.dispatched.append(job)
 
 
+class Failure(NamedTuple):
+    execution_id: str
+    message: str
+    session_id: int | None
+    not_run_reason: NotRunReason
+    reply_to_crew_channel: bool
+
+
 class FakeJobFailureSink(AbstractJobFailureSink):
     def __init__(self) -> None:
-        self.failures: list[tuple[str, str, bool]] = []
+        self.failures: list[Failure] = []
 
     async def fail(
-        self, execution_id: str, message: str, *, reply_to_crew_channel: bool
+        self,
+        execution_id: str,
+        message: str,
+        *,
+        session_id: int | None,
+        not_run_reason: NotRunReason,
+        reply_to_crew_channel: bool,
     ) -> None:
-        self.failures.append((execution_id, message, reply_to_crew_channel))
+        self.failures.append(
+            Failure(execution_id, message, session_id, not_run_reason, reply_to_crew_channel)
+        )
 
 
 class FakeJobSource(AbstractJobSource):

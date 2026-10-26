@@ -86,6 +86,8 @@ class ExecutionResult(ValueObject):
     reply_to_crew_channel: bool = False
     # The job was really executed, as opposed to failed without running.
     ran: bool = False
+    # Echoed from the job so the manager's BENCH checkpoint can name the session.
+    session_id: int | None = None
 
 
 class StorageMutations(ValueObject):

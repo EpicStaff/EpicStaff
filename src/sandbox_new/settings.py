@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from foundation.utils.env import Env
+from src.shared.envtools import Env as SharedEnv
 from src.shared.redis_keys import crew_code_result_channel
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -12,7 +13,14 @@ if not env.bool("RUN_IN_DOCKER", False):
 DEBUG = env.bool("SANDBOX_DEBUG", False)
 
 # Independent of DEBUG: that one only switches Litestar's debug responses.
-LOG_LEVEL = env.str("SANDBOX_LOG_LEVEL", "INFO")
+LOG_LEVEL = env.get_value("SANDBOX_LOG_LEVEL", "INFO", lambda value: value.strip().upper())
+# Checked here so a typo (or "none") fails at startup, not inside loguru on the first sink.
+# foundation's Env has no log_level(); the accepted names come from the shared one.
+if LOG_LEVEL not in SharedEnv.LOG_LEVELS_WITH_BENCH:
+    raise ValueError(
+        f"SANDBOX_LOG_LEVEL={LOG_LEVEL!r} is not a log level; "
+        f"use one of {', '.join(SharedEnv.LOG_LEVELS_WITH_BENCH)}."
+    )
 
 # Read from env so the code and the mounted volume agree on one path.
 VENVS_DIR = env.path("SANDBOX_VENVS_DIR", BASE_DIR / "venvs")

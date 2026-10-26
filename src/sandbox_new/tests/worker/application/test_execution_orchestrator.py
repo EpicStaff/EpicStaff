@@ -4,6 +4,8 @@ It owns what the pipeline steps must not: the per-execution directory is removed
 whatever the run did, secrets are scrubbed on the way out, and a result is always sent.
 """
 
+import pytest
+
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
 from worker.domain.models import StorageMutations
@@ -164,3 +166,42 @@ async def test_failing_a_job_sends_a_failed_result_without_running_it(result_sin
     assert result.ran is False
     assert result.reply_to_crew_channel is True
     assert mutations is None
+
+
+async def failing_step(context):
+    raise RuntimeError("resolve venv blew up")
+
+
+@pytest.mark.parametrize(
+    ("pipeline", "returncode"),
+    [
+        (pipeline_that(returncode=0), 0),
+        (pipeline_that(returncode=3, stderr="Traceback"), 3),
+        (Pipeline().register(failing_step), 1),
+    ],
+    ids=["success", "code-failed", "step-raised"],
+)
+async def test_every_run_logs_exec_end_with_the_return_code_it_sends(
+    checkpoints, result_sink, pipeline, returncode
+):
+    orchestrator = build(pipeline, result_sink)
+
+    await orchestrator.execute(make_worker_job(execution_id="exec-9", session_id=4))
+
+    assert checkpoints == [
+        {
+            "checkpoint": "exec_end",
+            "session_id": 4,
+            "execution_id": "exec-9",
+            "returncode": returncode,
+        },
+    ]
+    assert result_sink.sent[0][0].returncode == returncode
+
+
+async def test_the_result_carries_the_jobs_session_id(result_sink):
+    orchestrator = build(pipeline_that(returncode=0), result_sink)
+
+    await orchestrator.execute(make_worker_job(session_id=4))
+
+    assert result_sink.sent[0][0].session_id == 4

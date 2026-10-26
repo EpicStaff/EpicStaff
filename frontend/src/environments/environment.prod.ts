@@ -6,4 +6,5 @@ export const environment = {
     isChatEnabled: false,
     chatApiUrl: '/chat/',
     isAuditTrailEnabled: false,
+    isPluginsEnabled: false,
 };

@@ -1,0 +1,20 @@
+[project]
+name = "plugins_egress"
+version = "0.1.0"
+description = "EpicStaff egress proxy for plugin backends: Squid's configuration, its host helper and their tests"
+authors = [{ name = "EpicStaff" }]
+requires-python = "==3.12.10"
+# The host helper is standard library only: the image runs it on Alpine's python3, and the plugin
+# node's tests run it on theirs.
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

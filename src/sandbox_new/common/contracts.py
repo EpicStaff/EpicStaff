@@ -7,7 +7,7 @@ emits an ``ExecutionResultMessage`` when it is done. Neither type may appear in
 any domain or application module -- those layers work with their own models.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from foundation.schemas import Schema
 from pydantic import Field
@@ -80,3 +80,8 @@ class ExecutionResultMessage(Schema):
     # (venv failed, dispatch failed, expired in the queue) keeps False, so it does not
     # count towards the drain rate admission control predicts queue waits from.
     ran: bool = False
+    # The next two only feed the publisher's BENCH checkpoint; neither is published.
+    session_id: int | None = None
+    # Set only on a result for a job that never ran. Spelled out rather than imported from
+    # manager.domain.types: this module must not depend on either side of the seam.
+    not_run_reason: Literal["venv_failed", "dispatch_failed"] | None = None

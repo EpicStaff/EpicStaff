@@ -46,6 +46,16 @@ def test_submit_against_a_completed_venv_is_accepted_and_dispatched(
     assert dispatcher.dispatched[0].venv_hash == "1abc"
 
 
+def test_an_accepted_submission_logs_exec_received(client, venv_repository, checkpoints):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    client.post("/executions", json={**SUBMISSION, "venv_id": venv.id})
+
+    assert checkpoints == [
+        {"checkpoint": "exec_received", "session_id": 7, "execution_id": "exec-1"}
+    ]
+
+
 def test_submit_against_a_building_venv_is_accepted_and_held(
     client, venv_repository, dispatcher, holding
 ):

@@ -1,0 +1,355 @@
+# PLUGINS_ENABLED=true: the server for every plugin host, <identifier>.<PLUGINS_BASE_DOMAIN>.
+# Included at http level, after EpicStaff's own server (see default.conf.template).
+#
+# It serves each plugin's published SPA from the plugin_spa volume, which django_app writes and
+# this container mounts read-only, and the platform config the SPA loads at start-up. /api/ is
+# the plugin's own backend, behind the gateway: every request is first checked by django_app
+# (auth_request), which names the upstream and signs the context the plugin verifies. The
+# platform's login callback pages and its maintenance page are the same static files on every
+# host; the platform's other paths answer 404.
+
+# Authorization reaches a plugin only on one of its declared public paths, where the token is
+# the plugin's own (the gateway check answers X-Plugin-Forward-Authorization: 1). On every other
+# path the header was meant for EpicStaff, and it stops here.
+map $plugin_forward_authorization $plugin_authorization {
+    "1"     $http_authorization;
+    default "";
+}
+
+# The headers of a refusal: an empty value sends none. Anything the check did not name is
+# refused as unavailable (fail closed), so it gets the unavailable answer's Retry-After.
+map $plugin_deny $plugin_deny_retry_after {
+    login        "";
+    not_found    "";
+    too_large    "";
+    forbidden    "";
+    rate_limited 60;
+    maintenance  30;
+    default      30;
+}
+
+map $plugin_deny $plugin_deny_www_authenticate {
+    login   Bearer;
+    default "";
+}
+
+# X-EpicStaff-Gateway-Deny, on every answer the gateway gives itself instead of the plugin's: its
+# reason. A plugin's page tells the gateway's 401 (sign in again) and 403 (access lost) from the
+# plugin's own by it; a plugin can never send it (/api/ hides it from the plugin's answers). A
+# reason nobody named is refused as unavailable, as its status is.
+map $plugin_deny $plugin_gateway_deny {
+    login        login;
+    not_found    not_found;
+    rate_limited rate_limited;
+    too_large    too_large;
+    forbidden    forbidden;
+    maintenance  maintenance;
+    default      unavailable;
+}
+
+# 1 for a caller on the plugins network: a plugin backend or the node. It may use EpicStaff only
+# through the internal API listener (plugins-internal-api-true.snippet); EpicStaff's own server
+# and the plugin hosts refuse it before choosing a location, so no location's error page can
+# turn the refusal into anything else. Also used by plugins-main-true.snippet.
+geo $plugin_network_caller {
+    default                    0;
+    ${PLUGINS_NETWORK_SUBNET}  1;
+}
+
+# PLUGINS_DEV_MODE (16-normalize-plugins-enabled.envsh): the Host header a frontend development
+# server gets, or nothing.
+include /etc/nginx/conf.d/plugins-development-page-host-${PLUGINS_DEV_MODE}.snippet;
+
+server {
+    include /etc/nginx/conf.d/plugins-ssl-${NGINX_SSL_MODE}.snippet;
+
+    # Quoted: unquoted, nginx reads the "{" of the regex as the start of a block. The identifier
+    # pattern is the manifest's id rule, so $plugin_identifier is always a safe path segment.
+    # A host name that does not match falls through to EpicStaff's server, the default one.
+    server_name "~^(?<plugin_identifier>[a-z][a-z0-9-]{0,30}[a-z0-9])\.${PLUGINS_BASE_DOMAIN_REGEX}$";
+
+    # The largest body a plugin's API takes; a public path's own cap is applied by the check.
+    client_max_body_size ${PLUGINS_MAX_REQUEST_BODY_MB}m;
+
+    # A plugin backend never goes through a plugin host, its own or another's: it would call
+    # other plugins' APIs from the node's own network as if it were a browser.
+    if ($plugin_network_caller) {
+        return 403;
+    }
+
+    # Also at server level, for the responses nginx gives before choosing a location (the
+    # http-to-https redirect, a malformed request).
+    include /etc/nginx/conf.d/plugins-security-headers.snippet;
+
+    # The platform config the SPA loads at start-up, served by Django's public endpoint for this
+    # plugin. Django gets only the headers set here: nothing a plugin page sends to its own host
+    # (its cookies, an Authorization or API key header, an organization header) reaches EpicStaff,
+    # and without an Accept header the response is always JSON.
+    location = /.well-known/epicstaff/config.json {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        proxy_pass http://backend_server/api/plugin-public/$plugin_identifier/config/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        proxy_pass_request_headers off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # No Set-Cookie or Clear-Site-Data from a plugin host, even Django's, and no
+        # X-Frame-Options: Django's DENY would stop EpicStaff from framing the response. The
+        # snippet's Cookie line changes nothing here: no request header is passed on.
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
+    }
+
+    # The login callback pages, the same files on every plugin host (src/nginx/plugin-platform,
+    # mounted read-only). EpicStaff's authorize endpoint sends the browser here with its answer in
+    # the URL fragment, which callback.js hands to the plugin's page on this origin. Static
+    # files, never proxied: nothing sent here reaches Django or a plugin. Each page's own policy
+    # runs only this host's callback.js; the frame-ancestors of the security headers lets the
+    # silent page load in the plugin's hidden frame inside EpicStaff. Revalidated on every load,
+    # so an EpicStaff upgrade reaches every browser at once.
+    location = /.well-known/epicstaff/callback.html {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; base-uri 'none'; form-action 'none'" always;
+        add_header Cache-Control no-cache always;
+        limit_except GET HEAD {
+            deny all;
+        }
+        types { }
+        default_type text/html;
+        alias /usr/share/nginx/plugin-platform/callback.html;
+    }
+
+    location = /.well-known/epicstaff/silent-callback.html {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Content-Security-Policy "default-src 'none'; script-src 'self'; base-uri 'none'; form-action 'none'" always;
+        add_header Cache-Control no-cache always;
+        limit_except GET HEAD {
+            deny all;
+        }
+        types { }
+        default_type text/html;
+        alias /usr/share/nginx/plugin-platform/silent-callback.html;
+    }
+
+    location = /.well-known/epicstaff/callback.js {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Cache-Control no-cache always;
+        limit_except GET HEAD {
+            deny all;
+        }
+        types { }
+        default_type application/javascript;
+        alias /usr/share/nginx/plugin-platform/callback.js;
+    }
+
+    # The platform's other paths on every plugin host: refused here rather than left to the SPA
+    # fallback below, which would answer them with the plugin's index.html.
+    location ^~ /.well-known/epicstaff/ {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        return 404;
+    }
+
+    location ^~ /_epicstaff/ {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        return 404;
+    }
+
+    # A plugin's own API, behind the gateway check. The check decides from what nginx tells it
+    # (never from the client's headers) and answers 200 with the upstream and a signed context,
+    # or 401/403 with a reason, which @plugin_denied turns into EpicStaff's JSON error shape.
+    location ^~ /api/ {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        # nginx routes on the normalised path but passes the raw one on; the check compares the
+        # two. Captured here: inside the check's subrequest $uri is the subrequest's own.
+        set $plugin_normalized_path $uri;
+        auth_request /_plugin_gateway_check;
+        auth_request_set $plugin_upstream $upstream_http_x_plugin_upstream;
+        auth_request_set $plugin_context $upstream_http_x_plugin_context;
+        auth_request_set $plugin_forward_authorization $upstream_http_x_plugin_forward_authorization;
+        auth_request_set $plugin_deny $upstream_http_x_plugin_deny;
+        error_page 401 403 = @plugin_denied;
+        error_page 413 = @plugin_request_too_large;
+        # The plugin's process cannot be reached or does not answer (nginx's own 502 and 504;
+        # the plugin's own error responses pass through unchanged, proxy_intercept_errors off).
+        error_page 502 504 = @plugin_unavailable;
+        # auth_request turns a check it could not complete (django_app down, or a 200 with no
+        # upstream) into 500; fail closed with the same JSON, not a bare nginx 500 page.
+        error_page 500 = @plugin_unavailable;
+        # Here, not only in @plugin_denied: nginx decides at the first error_page hop whether
+        # another may follow.
+        recursive_error_pages on;
+
+        # A 200 without X-Plugin-Upstream leaves this empty and nginx answers 500: fail closed.
+        proxy_pass http://$plugin_upstream;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-underscore-plugin-context.snippet;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        # "upgrade" for WebSocket, "close" otherwise; never '' (keep-alive): a proxy_pass through
+        # a variable has no connection pool, so nginx would close every connection itself.
+        proxy_set_header Connection $connection_upgrade;
+        # Plugins use tokens, never cookies: EpicStaff's cookies must not reach them, and a plugin
+        # must not set a cookie for the parent domain, clear EpicStaff's (Clear-Site-Data) or
+        # forbid its framing.
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
+        # EpicStaff's API key is for EpicStaff's API, never a plugin (the underscore spelling
+        # too, since underscores_in_headers is on at http level).
+        proxy_set_header X-API-Key "";
+        proxy_set_header X_API_Key "";
+        proxy_set_header Authorization $plugin_authorization;
+        # Replaces any spelling of the header a client sent (the underscore ones are blanked by
+        # the snippet above): the plugin trusts only the gateway's signed context.
+        proxy_set_header X-EpicStaff-Plugin-Context $plugin_context;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        # A plugin must not route nginx internally (into /_plugin_gateway_check, which would hand
+        # it the gateway's headers).
+        proxy_ignore_headers X-Accel-Redirect;
+        # Only the gateway's own refusals carry it, so a page can trust it.
+        proxy_hide_header X-EpicStaff-Gateway-Deny;
+        proxy_connect_timeout 5s;
+        # SSE and WebSocket: no buffering, long reads (as /api/run-session/subscribe/).
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
+    # The gateway check, django_app's decision for one request. `internal`: only auth_request
+    # reaches it. Django gets only what nginx sets here, of the client's headers only
+    # Authorization (where a person's login travels), and never the body.
+    location = /_plugin_gateway_check {
+        internal;
+        # No body limit here. The subrequest carries the request's Content-Length, and nginx
+        # compares it with this location's limit although no body is read here: a limit below
+        # /api/'s would turn every larger request into a 500 (auth_request gets the 413). /api/
+        # applies its own limit when nginx picks it, before the access phase runs this check.
+        client_max_body_size 0;
+        proxy_pass http://backend_server/api/plugin-gateway/check/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        proxy_method GET;
+        proxy_pass_request_body off;
+        proxy_pass_request_headers off;
+        proxy_set_header Content-Length "";
+        # A name DJANGO_ALLOWED_HOSTS accepts (as for the chat service's calls): the plugin hosts
+        # need not be listed there.
+        proxy_set_header Host localhost;
+        proxy_set_header X-Plugin-Gateway-Secret "${PLUGINS_GATEWAY_SECRET}";
+        proxy_set_header X-Plugin-Identifier $plugin_identifier;
+        proxy_set_header X-Original-Method $request_method;
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Original-Normalized-Path $plugin_normalized_path;
+        proxy_set_header X-Original-Content-Length $content_length;
+        # A chunked body has no length; the check refuses it on a public path with a body cap.
+        proxy_set_header X-Original-Transfer-Encoding $http_transfer_encoding;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Authorization $http_authorization;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 15s;
+    }
+
+    # A refusal by the check, in EpicStaff's JSON error shape. `return` cannot take a variable
+    # status, so it is a chain of ifs; a reason nobody named is refused as unavailable.
+    location @plugin_denied {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header WWW-Authenticate $plugin_deny_www_authenticate always;
+        add_header Retry-After $plugin_deny_retry_after always;
+        add_header X-EpicStaff-Gateway-Deny $plugin_gateway_deny always;
+        default_type application/json;
+        if ($plugin_deny = login) {
+            return 401 '{"status_code":401,"code":"login_required","message":"Log in through EpicStaff to use this plugin."}';
+        }
+        if ($plugin_deny = not_found) {
+            return 404 '{"status_code":404,"code":"not_found","message":"Not found."}';
+        }
+        if ($plugin_deny = rate_limited) {
+            return 429 '{"status_code":429,"code":"rate_limited","message":"Too many requests."}';
+        }
+        if ($plugin_deny = too_large) {
+            return 413 '{"status_code":413,"code":"request_too_large","message":"The request body is too large."}';
+        }
+        if ($plugin_deny = forbidden) {
+            return 403 '{"status_code":403,"code":"forbidden","message":"You do not have access to this plugin."}';
+        }
+        # The plugin is being upgraded, or the caller's organization still is: every path, public
+        # ones included, until it is back.
+        if ($plugin_deny = maintenance) {
+            return 503 '{"status_code":503,"code":"plugin_maintenance","message":"The plugin is being updated. Try again in a few minutes."}';
+        }
+        return 503 '{"status_code":503,"code":"plugin_unavailable","message":"The plugin is not available right now."}';
+    }
+
+    location @plugin_request_too_large {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header X-EpicStaff-Gateway-Deny too_large always;
+        default_type application/json;
+        return 413 '{"status_code":413,"code":"request_too_large","message":"The request body is too large."}';
+    }
+
+    location @plugin_unavailable {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Retry-After 30 always;
+        add_header X-EpicStaff-Gateway-Deny unavailable always;
+        default_type application/json;
+        return 503 '{"status_code":503,"code":"plugin_unavailable","message":"The plugin is not available right now."}';
+    }
+
+    # The SPA's entry page is revalidated on every load, so a newly approved version is picked up
+    # at once. "current" is a symlink django_app switches atomically to the published version.
+    #
+    # While a plugin is being upgraded, django_app keeps an empty file "maintenance" next to
+    # "current" (outside what is served), and every SPA path answers with the platform's
+    # maintenance page instead. It is tested on every request (nginx keeps no open_file_cache;
+    # tests/check_templates.sh fails if one is added), so it takes effect at once, without a reload.
+    # /api/ does not look at it: the gateway check decides each of its requests fresh.
+    #
+    # With PLUGINS_DEV_MODE on, both locations first ask whether a frontend development server
+    # serves this plugin's page (plugins-development-page-${PLUGINS_DEV_MODE}.snippet).
+    location = /index.html {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Cache-Control no-cache always;
+        root /srv/plugin-spa/$plugin_identifier/current;
+        # No "=": the answer keeps its 503 while the named location serves the page.
+        error_page 503 @plugin_maintenance_page;
+        if (-f /srv/plugin-spa/$plugin_identifier/maintenance) {
+            return 503;
+        }
+        include /etc/nginx/conf.d/plugins-development-page-${PLUGINS_DEV_MODE}.snippet;
+    }
+
+    # The SPA's files, and its index.html for any other path (client-side routes). The fallback is
+    # an internal redirect to the location above, so every index.html response gets no-cache; a
+    # plugin that is not published answers 404 there.
+    location / {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        root /srv/plugin-spa/$plugin_identifier/current;
+        try_files $uri /index.html;
+        error_page 503 @plugin_maintenance_page;
+        if (-f /srv/plugin-spa/$plugin_identifier/maintenance) {
+            return 503;
+        }
+        include /etc/nginx/conf.d/plugins-development-page-${PLUGINS_DEV_MODE}.snippet;
+    }
+
+    # The page decision and the development server's locations, or nothing.
+    include /etc/nginx/conf.d/plugins-development-server-${PLUGINS_DEV_MODE}.snippet;
+
+    # The platform's maintenance page (src/nginx/plugin-platform, mounted read-only), the same
+    # static file for every plugin: no script, nothing loaded from anywhere, nothing about the
+    # plugin. It reloads itself every 30 s; never stored, so the SPA is back on the first load
+    # after the upgrade. Frameable like the SPA it stands in for. A missing file still answers 503.
+    location @plugin_maintenance_page {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" always;
+        add_header Cache-Control no-store always;
+        add_header Retry-After 30 always;
+        add_header X-EpicStaff-Gateway-Deny maintenance always;
+        types { }
+        default_type text/html;
+        root /usr/share/nginx/plugin-platform;
+        try_files /maintenance.html =503;
+    }
+}

@@ -1,0 +1,13 @@
+# With underscores_in_headers on (http level), a client can send the plugin context header with
+# underscores in place of any of its dashes (X_EpicStaff_Plugin_Context, ...). nginx treats each
+# spelling as a different header from the dash spelling the gateway sets, and passes it on; a
+# plugin's server may then merge it with the real one (WSGI maps "_" and "-" to the same key).
+# An empty value makes nginx drop the header. Included in the plugin server's /api/ location,
+# next to strip-underscore-forwarding-headers.snippet.
+proxy_set_header X_EpicStaff_Plugin_Context "";
+proxy_set_header X_EpicStaff_Plugin-Context "";
+proxy_set_header X_EpicStaff-Plugin_Context "";
+proxy_set_header X_EpicStaff-Plugin-Context "";
+proxy_set_header X-EpicStaff_Plugin_Context "";
+proxy_set_header X-EpicStaff_Plugin-Context "";
+proxy_set_header X-EpicStaff-Plugin_Context "";

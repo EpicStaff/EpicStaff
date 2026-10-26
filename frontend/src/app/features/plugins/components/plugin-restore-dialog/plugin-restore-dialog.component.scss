@@ -1,0 +1,14 @@
+@use '../plugin-dialog' as plugin-dialog;
+
+@include plugin-dialog.plugin-dialog(560px);
+@include plugin-dialog.plugin-phrase-confirmation(restore);
+
+.restore__question {
+    margin: 0;
+}
+
+.restore__facts {
+    margin: 0;
+    color: var(--color-text-secondary);
+    overflow-wrap: anywhere;
+}

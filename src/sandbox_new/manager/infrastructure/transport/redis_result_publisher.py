@@ -12,7 +12,9 @@ event the storage consumer expects, whichever result channel was used.
 import json
 
 from common.contracts import ExecutionResultMessage
+from loguru import logger
 from redis.asyncio import Redis
+from src.shared.bench_log import BENCH_LEVEL
 
 from manager.infrastructure.transport.result_publisher import AbstractResultPublisher
 
@@ -45,6 +47,14 @@ class RedisResultPublisher(AbstractResultPublisher):
             self._crew_result_channel if result.reply_to_crew_channel else self._result_channel
         )
         await self._redis.publish(channel, json.dumps(payload))
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_published",
+            session_id=result.session_id,
+            execution_id=result.execution_id,
+            outcome=result.not_run_reason or ("ok" if result.returncode == 0 else "failed"),
+        )
 
         if result.mutations is not None and result.mutations.mutations:
             event = {

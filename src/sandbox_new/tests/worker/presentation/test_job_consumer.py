@@ -90,6 +90,11 @@ def queued_job(clock, execution_id: str, *, seconds_left: float = QUEUE_TIMEOUT,
     )
 
 
+def exec_starts(checkpoints: list[dict]) -> list[dict]:
+    """The exec_start checkpoints only: the real orchestrator also logs exec_end."""
+    return [item for item in checkpoints if item["checkpoint"] == "exec_start"]
+
+
 async def test_queued_jobs_run_and_their_results_are_sent(result_sink, clock):
     source = FakeJobSource(queued_job(clock, "exec-1"), queued_job(clock, "exec-2"))
     runtime = Runtime(source, result_sink, build_gate(2), clock)
@@ -117,7 +122,7 @@ async def test_a_single_slot_runs_one_job_at_a_time(result_sink, clock):
     assert runtime.executed == ["exec-1", "exec-2"]
 
 
-async def test_an_expired_job_is_failed_without_waiting_for_a_slot(result_sink, clock):
+async def test_an_expired_job_is_failed_without_waiting_for_a_slot(result_sink, clock, checkpoints):
     gate = build_gate(1)
     await gate.acquire()
     source = FakeJobSource(
@@ -135,6 +140,7 @@ async def test_an_expired_job_is_failed_without_waiting_for_a_slot(result_sink, 
     assert result.ran is False
     assert result.reply_to_crew_channel is True
     assert runtime.executed == []
+    assert exec_starts(checkpoints) == []
 
 
 async def test_a_job_that_expires_while_waiting_for_a_slot_is_failed_not_run(
@@ -221,3 +227,36 @@ async def test_a_turn_that_fails_does_not_end_the_loop(result_sink, clock):
     await runtime.run_until(lambda: result_sink.sent)
 
     assert list(runtime.results()) == ["exec-2"]
+
+
+async def test_exec_start_counts_the_executions_running_including_its_own(
+    result_sink, clock, checkpoints
+):
+    blocker = asyncio.Event()
+    source = FakeJobSource(
+        queued_job(clock, "exec-1", session_id=3), queued_job(clock, "exec-2", session_id=4)
+    )
+    runtime = Runtime(source, result_sink, build_gate(2), clock, blocker=blocker)
+
+    async with runtime.running():
+        await wait_until(lambda: len(runtime.executed) == 2)
+        blocker.set()
+        await wait_until(lambda: len(result_sink.sent) == 2)
+
+    assert exec_starts(checkpoints) == [
+        {"checkpoint": "exec_start", "session_id": 3, "execution_id": "exec-1", "running": 1},
+        {"checkpoint": "exec_start", "session_id": 4, "execution_id": "exec-2", "running": 2},
+    ]
+
+
+async def test_a_finished_execution_no_longer_counts_as_running(result_sink, clock, checkpoints):
+    source = FakeJobSource(queued_job(clock, "exec-1"), queued_job(clock, "exec-2"))
+    runtime = Runtime(source, result_sink, build_gate(1), clock)
+
+    await runtime.run_until(lambda: len(result_sink.sent) == 2)
+
+    assert runtime.executed == ["exec-1", "exec-2"]
+    assert [(item["execution_id"], item["running"]) for item in exec_starts(checkpoints)] == [
+        ("exec-1", 1),
+        ("exec-2", 1),
+    ]

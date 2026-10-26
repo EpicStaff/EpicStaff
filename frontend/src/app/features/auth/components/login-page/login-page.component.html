@@ -40,11 +40,13 @@
             <div class="remember-row">
                 <app-checkbox formControlName="rememberMe" />
                 <span class="remember-label">Remember me</span>
-                <span
-                    class="forgot-label"
-                    (mousedown)="navToForgotPassword()"
-                    >Forgot?</span
-                >
+                @if (showAccountLinks) {
+                    <span
+                        class="forgot-label"
+                        (mousedown)="navToForgotPassword()"
+                        >Forgot?</span
+                    >
+                }
             </div>
         </form>
 
@@ -69,5 +71,7 @@
         </app-button>
     </div>
 
-    <p class="prompt">Don't have an account yet? <span (click)="navToSignUp()">Sign Up</span></p>
+    @if (showAccountLinks) {
+        <p class="prompt">Don't have an account yet? <span (click)="navToSignUp()">Sign Up</span></p>
+    }
 </div>

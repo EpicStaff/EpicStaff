@@ -1,0 +1,105 @@
+@use '../plugin-dialog' as plugin-dialog;
+
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+}
+
+.grants__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.grants__count {
+    color: var(--color-text-secondary);
+}
+
+.grants__error {
+    @include plugin-dialog.plugin-load-error;
+}
+
+.grants__cell {
+    color: var(--color-text-primary);
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-line-height);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.grants__empty-title {
+    margin: 0;
+    color: var(--color-text-primary);
+}
+
+.grants__empty-subtitle {
+    margin: 0;
+    color: var(--color-text-secondary);
+}
+
+.grants__installing,
+.grants__upgrading,
+.grants__deleting {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-secondary);
+}
+
+.grants__stacked {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 6px 0;
+    min-width: 0;
+}
+
+.grants__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+// Errors can be long: two lines, the whole text in the tooltip.
+.grants__hook-error,
+.grants__data-removal-last-error {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-wrap: anywhere;
+}
+
+.grants__hook-error {
+    color: var(--color-status-error);
+}
+
+.grants__data-removal {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.grants__stack {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.grants__primary {
+    color: var(--color-text-primary);
+}
+
+.grants__muted {
+    color: var(--color-text-secondary);
+}

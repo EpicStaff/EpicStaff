@@ -5,11 +5,17 @@ orchestrator has already gated to COMPLETED; this only encodes it into the wire
 ``ExecutionJobMessage`` (carrying the built ``venv_hash``, not the id -- the worker
 knows nothing about the database) and enqueues it. The readiness decision lives in
 ``JobOrchestrator``; it must not be duplicated here.
+
+It also logs the ``exec_queued`` BENCH checkpoint: only the queue's owner can read the
+depth the job joined at, and every dispatch -- direct or released from holding -- ends
+here.
 """
 
 import asyncio
 
 from common.contracts import ExecutionJobMessage, StorageCredentialsMessage
+from loguru import logger
+from src.shared.bench_log import BENCH_LEVEL
 
 from manager.application.ports import AbstractJobDispatcher
 from manager.domain.models import Job
@@ -47,3 +53,11 @@ class QueueJobDispatcher(AbstractJobDispatcher):
             queue_deadline=job.queue_deadline,
         )
         await self._queue.put(message)
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_queued",
+            session_id=job.session_id,
+            execution_id=job.execution_id,
+            queued=self._queue.qsize(),
+        )

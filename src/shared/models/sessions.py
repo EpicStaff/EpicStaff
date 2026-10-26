@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .graph_nodes import GraphData, SubGraphData
 from .storage_scope import StorageCredentials
@@ -15,6 +15,8 @@ class SessionData(BaseModel):
     output_state: dict[str, Any] = {}
     storage_credentials: StorageCredentials | None = None
     run_type: str = ""
+    # Per-run token hard stop from the run-session API; None falls back to crew's CREW_TOKEN_BUDGET.
+    token_budget: int | None = Field(default=None, gt=0)
 
 
 class TokenUsage(BaseModel):

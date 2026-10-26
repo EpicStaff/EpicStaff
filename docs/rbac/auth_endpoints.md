@@ -184,6 +184,8 @@ create_superadmin` workflow).
 ### POST `/api/auth/first-setup/`
 
 - **Auth:** none, but refused unless `FIRST_SETUP_MODE=open` (see Errors).
+- **Body:** JSON only (`Content-Type: application/json`); any other media type
+  gets `415 unsupported_media_type` before the mode check.
 - **Purpose:** bootstrap the very first Superadmin, their default
   Organization, and an `OrganizationUser` membership with the built-in
   Superadmin role. Also returns JWT tokens so the frontend can drop the user
@@ -303,6 +305,10 @@ Response:
 { "access": "<jwt>", "refresh": "<jwt>" }
 ```
 
+- The body must be JSON (`Content-Type: application/json`). Form-encoded,
+  multipart and `text/plain` bodies get `415 unsupported_media_type` and no
+  cookie, so a page on another site cannot sign a visitor in to an account of
+  its choosing.
 - `400` with a structured `errors` list when `email` or `password` is missing
   or the wrong type. Missing/blank/bad-type failures for both fields are
   aggregated in one response; password values are redacted as `"***"`.

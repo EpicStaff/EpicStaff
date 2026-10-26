@@ -125,3 +125,21 @@ def test_the_admission_settings_have_their_defaults(reload_settings_with_env):
 )
 def test_an_admission_setting_at_its_bound_is_accepted(reload_settings_with_env, name, value):
     reload_settings_with_env(**{name: value})
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [("BENCH", "BENCH"), ("bench", "BENCH"), (" warning ", "WARNING")],
+)
+def test_log_level_accepts_every_loguru_level_and_bench(
+    reload_settings_with_env, configured, expected
+):
+    reloaded = reload_settings_with_env(SANDBOX_LOG_LEVEL=configured)
+
+    assert reloaded.LOG_LEVEL == expected
+
+
+@pytest.mark.parametrize("configured", ["VERBOSE", "none", ""])
+def test_an_unknown_log_level_refuses_startup(reload_settings_with_env, configured):
+    with pytest.raises(ValueError, match="SANDBOX_LOG_LEVEL"):
+        reload_settings_with_env(SANDBOX_LOG_LEVEL=configured)

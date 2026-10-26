@@ -3,6 +3,8 @@ from litestar import Controller, delete, get, patch, post, status_codes
 from litestar.datastructures import State
 from litestar.openapi.datastructures import ResponseSpec
 from litestar.params import Parameter
+from loguru import logger
+from src.shared.bench_log import BENCH_LEVEL
 
 from manager.application.orchestrators import JobOrchestrator, VenvCRUDOrchestrator
 from manager.application.ports import AbstractUnitOfWork
@@ -219,6 +221,13 @@ class ExecutionController(Controller):
                 default venv. Rendered as 404.
             SandboxOverloadedError: The sandbox cannot take the job now. Rendered as 503.
         """
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_received",
+            session_id=data.session_id,
+            execution_id=data.execution_id,
+        )
         intake = state.job_intake
         orchestrator = JobOrchestrator(
             uow,

@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable
 
 from loguru import logger
+from src.shared.bench_log import BENCH_LEVEL
 
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.ports import AbstractAdmissionGate, AbstractJobSource, UndecodableJobError
@@ -51,6 +52,7 @@ class JobConsumer:
         self._queue_timeout = queue_timeout
         self._clock = clock
         self._running: set[asyncio.Task] = set()
+        self._executing = 0
 
     async def run(self) -> None:
         while True:
@@ -93,6 +95,17 @@ class JobConsumer:
         task.add_done_callback(self._running.discard)
 
     async def _run(self, job: Job) -> None:
+        # Counted here, not from `_running`: a burst of jobs creates every task before
+        # the first one starts, so the set already holds jobs that are not running yet.
+        self._executing += 1
+        logger.log(
+            BENCH_LEVEL,
+            "bench {checkpoint}",
+            checkpoint="exec_start",
+            session_id=job.session_id,
+            execution_id=job.execution_id,
+            running=self._executing,
+        )
         try:
             await self._orchestrator.execute(job)
         except Exception as error:
@@ -110,6 +123,7 @@ class JobConsumer:
                     type(fail_error).__name__,
                 )
         finally:
+            self._executing -= 1
             self._gate.release()
 
     def _has_expired(self, job: Job) -> bool:
