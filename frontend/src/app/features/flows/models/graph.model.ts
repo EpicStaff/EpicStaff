@@ -82,6 +82,19 @@ export interface GraphDto extends GetGraphLightRequest {
     key_value_node_list: GetKeyValueNodeRequest[];
 }
 
+/** A graph's nodes and edges, in the shape `GET graphs/{id}/` returns them. */
+export type GraphContentDto = Pick<GraphDto, Extract<keyof GraphDto, `${string}_list`>>;
+
+/**
+ * `POST graphs/{id}/partial-import/`: the file's nodes and edges, NOT written to the graph. Every id in
+ * `content` (nodes, edges, nested rows) belongs to a row that was never committed, so all of it is new;
+ * only the dependency refs (LLM configs, agent definitions, webhook triggers...) are real.
+ */
+export interface PartialImportResponse {
+    content: GraphContentDto;
+    summary: Record<string, unknown>;
+}
+
 export interface CreateGraphDtoRequest {
     name: string;
 

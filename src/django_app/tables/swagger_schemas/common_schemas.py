@@ -23,6 +23,25 @@ UNAUTHORIZED_401_RESPONSE = OpenApiResponse(
     ],
 )
 
+# What `custom_exception_handler` renders for an exception it does not
+# recognise. The exception's text is never part of it -- it is logged instead.
+INTERNAL_SERVER_ERROR_500_RESPONSE = OpenApiResponse(
+    response=OpenApiTypes.OBJECT,
+    description="Unexpected server error. The cause is logged server-side, never returned.",
+    examples=[
+        OpenApiExample(
+            "Server error",
+            value={
+                "status_code": 500,
+                "code": "OperationalError",
+                "message": "Unpredictable error",
+            },
+            response_only=True,
+            status_codes=["500"],
+        ),
+    ],
+)
+
 TRIGGER_NODES_REQUIRE_USE_403_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
     description=(

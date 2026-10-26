@@ -137,6 +137,9 @@ celerybeat.pid
 *.env
 !tests/e2e/e2e.env
 .env
+# Local copies such as .env.backup-<date> or .env.before-golden
+.env.*
+!.env.example
 .venv
 src/ENV/
 venv/
@@ -209,6 +212,7 @@ make_scripts/backups
 
 # Local frontend environment overrides
 frontend/src/environments/environment.local.ts
+frontend/src/environments/environment.local.ts.*
 
 # Compiled output
 frontend/dist

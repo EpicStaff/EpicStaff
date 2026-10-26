@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404
@@ -46,3 +48,19 @@ def test_unknown_exception_still_renders_as_500(monkeypatch):
     assert response.status_code == 500
     assert b'"code": "RuntimeError"' in response.content
     assert b'"message": "Unpredictable error"' in response.content
+
+
+def test_unknown_exception_text_is_logged_not_returned(monkeypatch, caplog):
+    monkeypatch.setattr("utils.exception_handler.DEBUG", False)
+    error = RuntimeError('relation "tables_secret" does not exist at character 15')
+
+    with caplog.at_level(logging.ERROR, logger="django.request"):
+        response = custom_exception_handler(error, {})
+
+    assert response.status_code == 500
+    assert b"tables_secret" not in response.content
+    assert [
+        (record.getMessage(), record.exc_info[1])
+        for record in caplog.records
+        if record.name == "django.request"
+    ] == [("Internal Server Error: unknown path", error)]

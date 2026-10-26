@@ -24,6 +24,7 @@ from es_plugins.launcher.plugin_seccomp import (
     SECCOMP_RET_ALLOW,
     plugin_filter,
 )
+from tests.helpers import SYSTEM_PYTHON
 
 ES_PLUGINS = Path(__file__).resolve().parents[1]
 
@@ -296,7 +297,7 @@ def test_a_spawned_plugin_process_cannot_make_system_v_ipc_objects(layout, tmp_p
             SpawnSpec(
                 uid=20031,
                 gid=20031,
-                argv=[sys.executable, "-I", "-c", SYSTEM_V_AND_OTHERS],
+                argv=[SYSTEM_PYTHON, "-I", "-c", SYSTEM_V_AND_OTHERS],
                 environment={"PATH": "/usr/bin:/bin"},
                 working_directory=Path("/"),
                 output_descriptor=descriptor.fileno(),
