@@ -102,6 +102,7 @@ import {
     VariablePathPicker,
     withoutUsedPaths,
 } from '../../input-map/variable-path-picker';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { highlightVariablesHtml } from '../shared/variable-highlight-textarea/highlight-variables';
 import { VariableDropdownOverlayComponent } from '../shared/variable-highlight-textarea/variable-dropdown-overlay/variable-dropdown-overlay.component';
 
@@ -169,6 +170,7 @@ interface EntryFormValue {
         AppSvgIconComponent,
         TooltipComponent,
         NgTemplateOutlet,
+        MissingReferenceNoteComponent,
     ],
     templateUrl: './key-value-node-panel.component.html',
     styleUrls: ['./key-value-node-panel.component.scss'],

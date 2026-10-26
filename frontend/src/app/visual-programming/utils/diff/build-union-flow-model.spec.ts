@@ -390,16 +390,35 @@ describe('buildUnionFlowModel', () => {
         it('marks each node with what a restore does to it; a missing reference leaves its status alone', () => {
             const model = unionOf(version, live, new Map([[versionPythonId, [missingAgent]]]));
 
-            const states = Object.fromEntries(
-                model.flow.nodes.map((node) => [node.node_name, model.diffState.nodes.get(node.id)])
+            const statuses = Object.fromEntries(
+                model.flow.nodes.map((node) => [node.node_name, model.diffState.nodes.get(node.id)?.status])
             );
-            expect(states).toEqual({
-                __start__: { status: 'unchanged' },
-                Python: { status: 'unchanged' },
-                'Task v2': { status: 'changed' },
-                Agent: { status: 'added' },
-                __end_node__: { status: 'deleted' },
+            expect(statuses).toEqual({
+                __start__: 'unchanged',
+                Python: 'unchanged',
+                'Task v2': 'changed',
+                Agent: 'added',
+                __end_node__: 'deleted',
             });
+        });
+
+        it('keeps the field changes and missing references of each node for its panel', () => {
+            const model = unionOf(version, live, new Map([[versionPythonId, [missingAgent]]]));
+            const stateOf = (name: string) =>
+                model.diffState.nodes.get(model.flow.nodes.find((node) => node.node_name === name)!.id)!;
+
+            expect(stateOf('Task v2').fields).toEqual([
+                { path: 'node_name', field: 'node_name', status: 'changed', current: 'Task', version: 'Task v2' },
+            ]);
+            expect(stateOf('Python')).toMatchObject({ fields: [], missingReferences: [missingAgent] });
+            expect(stateOf('Task v2').missingReferences).toEqual([]);
+        });
+
+        it('gives a node only on the canvas neither field changes nor missing references', () => {
+            const model = unionOf(version, live, new Map([[versionPythonId, [missingAgent]]]));
+
+            const end = model.diffState.nodes.get(model.flow.nodes.find((node) => node.type === NodeType.END)!.id);
+            expect(end).toEqual({ status: 'deleted', fields: [], missingReferences: [] });
         });
 
         it('draws every edge of both sides once, between the union nodes, with its status', () => {

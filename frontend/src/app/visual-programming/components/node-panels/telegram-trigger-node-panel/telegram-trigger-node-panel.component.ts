@@ -44,6 +44,7 @@ import {
     TestPayloadValidator,
     validateTelegramTestPayload,
 } from '../../../utils/test-run';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { RunTestPayloadButtonComponent } from '../shared/run-test-payload-button/run-test-payload-button.component';
 import { TestPayloadSectionComponent } from '../shared/test-payload-section/test-payload-section.component';
@@ -75,6 +76,7 @@ export const INSERT_EXAMPLE_NO_FIELDS_REASON = 'Select fields first';
         TelegramWebhookRegistrationComponent,
         TestPayloadSectionComponent,
         RunTestPayloadButtonComponent,
+        MissingReferenceNoteComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

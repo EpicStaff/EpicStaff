@@ -56,6 +56,10 @@
                         [disabled]="!selectedFlowExists()"
                     ></app-go-to-button>
                 </div>
+                <app-missing-reference-note
+                    class="missing-reference-note"
+                    [fields]="['subgraph']"
+                />
             </div>
         </form>
     </div>

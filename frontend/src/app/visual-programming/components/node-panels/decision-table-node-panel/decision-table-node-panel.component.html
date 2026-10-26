@@ -55,6 +55,11 @@
                         title="Condition groups define branching paths evaluated in order"
                         (conditionGroupsChange)="onConditionGroupsChange($event)"
                     />
+                    <!-- The default and error routes too: a note in the header row would break its columns. -->
+                    <app-missing-reference-note
+                        class="routes-missing-reference-note"
+                        [fields]="routeDiffFields"
+                    />
                 </div>
             </form>
         }

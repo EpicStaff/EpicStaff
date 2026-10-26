@@ -15,6 +15,7 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 import { SubGraphNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 
 interface InputMapPair {
     key: string;
@@ -31,6 +32,7 @@ interface InputMapPair {
         HelpTooltipComponent,
         SelectComponent,
         ValidationErrorsComponent,
+        MissingReferenceNoteComponent,
     ],
     templateUrl: './subgraph-node-panel.component.html',
     styleUrls: ['./subgraph-node-panel.component.scss'],

@@ -160,6 +160,12 @@
         flex: 1;
         min-height: 0;
     }
+
+    // Lined up with the tabs row above the grid.
+    .routes-missing-reference-note {
+        flex-shrink: 0;
+        margin: 0.5rem 1rem 1rem;
+    }
 }
 
 .computation-section {

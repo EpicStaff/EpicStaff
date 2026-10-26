@@ -85,6 +85,11 @@
                         [readonly]="isReadOnly()"
                     />
                 </div>
+                <!-- Under the whole row: the table column is too narrow for the note. -->
+                <app-missing-reference-note
+                    class="missing-reference-note"
+                    [fields]="['key_value_table']"
+                />
             </div>
 
             <div class="entries">

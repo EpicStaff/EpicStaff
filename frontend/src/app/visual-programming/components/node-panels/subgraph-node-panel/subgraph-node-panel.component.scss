@@ -51,3 +51,8 @@ app-go-to-button.is-disabled {
     pointer-events: none;
     opacity: 0.5;
 }
+
+// Spaced off the field above it, like the recycle-bin note.
+.missing-reference-note {
+    margin-top: 0.5rem;
+}

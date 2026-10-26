@@ -37,7 +37,7 @@ describe('DecisionTableNodeComponent', () => {
         });
         TestBed.inject(FlowDiffStateService).setState(
             diffCanvas && {
-                nodes: new Map([[UNION_TABLE.id, { status: 'changed' }]]),
+                nodes: new Map([[UNION_TABLE.id, { status: 'changed', fields: [], missingReferences: [] }]]),
                 connections: new Map(),
                 versionOnlyPortIds: new Set(diffCanvas.versionOnlyPortIds),
             }

@@ -55,6 +55,7 @@
                         [readonly]="!canEditSecrets()"
                         [names]="secretNames()"
                         [tooltipText]="secretsTooltip()"
+                        [diffField]="'python_code.secret_names'"
                         (valueChange)="onSecretsChange($event)"
                     />
 

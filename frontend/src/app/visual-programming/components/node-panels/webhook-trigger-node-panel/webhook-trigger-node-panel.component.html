@@ -96,6 +96,7 @@
                         disallowedProviderMessage="This trigger is not supported for Webhook nodes. Use a trigger with webhook auth."
                         (triggerResolved)="onTriggerResolved($event)"
                     ></app-webhook-trigger-select>
+                    <app-missing-reference-note [fields]="['webhook_trigger']" />
 
                     @if (fullUrl(); as url) {
                         <div class="webhook-url-display">
@@ -129,6 +130,7 @@
                         [readonly]="!canEditSecrets()"
                         [names]="secretNames()"
                         [tooltipText]="secretsTooltip()"
+                        [diffField]="'python_code.secret_names'"
                         (valueChange)="onSecretsChange($event)"
                     />
 

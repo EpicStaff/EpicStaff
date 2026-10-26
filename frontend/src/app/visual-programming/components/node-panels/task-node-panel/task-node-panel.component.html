@@ -70,6 +70,7 @@
                                 </button>
                             </app-select-dropdown>
                             <app-validation-errors [control]="form.get('agent_definition')!" />
+                            <app-missing-reference-note [fields]="['agent_definition']" />
                         </div>
 
                         <div class="field">
@@ -116,6 +117,7 @@
                                     View Summary
                                 </button>
                             </div>
+                            <app-missing-reference-note [fields]="['surface_list', 'inline_surface']" />
                         </div>
 
                         <div class="input-map">
@@ -377,6 +379,7 @@
                             </button>
                         </app-select-dropdown>
                         <app-validation-errors [control]="form.get('agent_definition')!" />
+                        <app-missing-reference-note [fields]="['agent_definition']" />
                     </div>
 
                     <div class="field">
@@ -423,6 +426,7 @@
                                 View Summary
                             </button>
                         </div>
+                        <app-missing-reference-note [fields]="['surface_list', 'inline_surface']" />
                     </div>
 
                     <div class="input-map">

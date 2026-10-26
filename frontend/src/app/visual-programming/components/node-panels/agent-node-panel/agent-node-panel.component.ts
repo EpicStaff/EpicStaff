@@ -65,6 +65,7 @@ import {
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { InputsYouCanUseComponent } from '../shared/inputs-you-can-use/inputs-you-can-use.component';
 import {
@@ -99,6 +100,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         ColumnResizeDividerComponent,
         InputsYouCanUseComponent,
         IfFlowEditableDirective,
+        MissingReferenceNoteComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],

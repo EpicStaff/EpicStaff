@@ -335,7 +335,7 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
         TestBed.inject(FlowDiffStateService).setMissingReferenceNodeIds(new Set(hasMissingReferences ? [node.id] : []));
         TestBed.inject(FlowDiffStateService).setState(
             state && {
-                nodes: new Map([[node.id, state]]),
+                nodes: new Map([[node.id, { ...state, fields: [], missingReferences: [] }]]),
                 connections: new Map(),
                 versionOnlyPortIds: new Set(),
             }
@@ -394,6 +394,33 @@ describe('FlowBaseNodeComponent on a version diff canvas', () => {
         expect(missingReferencesMarker()!.getAttribute('aria-label')).toBe(
             'This version uses items that no longer exist'
         );
+    });
+
+    // jsdom has no layout: the classes pick the spot, the positions are checked by eye.
+    it.each([
+        { kind: 'an added node', state: { status: 'added' as const }, besideBadge: true },
+        { kind: 'a changed node', state: { status: 'changed' as const }, besideBadge: true },
+        { kind: 'an unchanged node', state: { status: 'unchanged' as const }, besideBadge: false },
+        { kind: 'a node on the Preview tab', state: null, besideBadge: false },
+    ])('puts the missing-reference marker beside the badge only when $kind has one', ({ state, besideBadge }) => {
+        render({ ...mapGraphNoteToModel(liveNote), ports: null }, state, true);
+
+        expect(missingReferencesMarker()!.classList.contains('missing-references-marker--beside-badge')).toBe(
+            besideBadge
+        );
+    });
+
+    it('lets the marker give way to the summary tab of a Key-Value node, as the badge does', () => {
+        render(NUMBERED_NODE, { status: 'changed' }, true);
+
+        expect(missingReferencesMarker()!.classList).toContain('missing-references-marker--yields-to-tab');
+        expect(badge()!.classList).toContain('diff-badge--yields-to-tab');
+    });
+
+    it('keeps the marker of a node without a summary tab always shown', () => {
+        render({ ...mapGraphNoteToModel(liveNote), ports: null }, null, true);
+
+        expect(missingReferencesMarker()!.classList).not.toContain('missing-references-marker--yields-to-tab');
     });
 
     it('flags missing references on a plain version canvas, with no status mark', () => {

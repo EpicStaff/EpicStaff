@@ -19,6 +19,10 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
+import {
+    MissingReferenceNoteComponent,
+    ROUTE_DIFF_FIELDS,
+} from '../../missing-reference-note/missing-reference-note.component';
 import { DecisionTableGridComponent } from './decision-table-grid/decision-table-grid.component';
 
 @Component({
@@ -28,6 +32,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
         CustomInputComponent,
         DecisionTableGridComponent,
         MatTooltipModule,
+        MissingReferenceNoteComponent,
         SelectComponent,
         ButtonComponent,
     ],
@@ -46,6 +51,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
     private cdr = inject(ChangeDetectorRef);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
+    protected readonly routeDiffFields = ROUTE_DIFF_FIELDS;
 
     public availableNodeItems = computed<SelectItem[]>(() => {
         const nodes = this.flowService.nodes();

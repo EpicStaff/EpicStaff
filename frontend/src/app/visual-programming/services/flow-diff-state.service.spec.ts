@@ -1,12 +1,27 @@
 import { TestBed } from '@angular/core/testing';
 
-import { FlowDiffCanvasState } from '../utils/diff';
+import { FieldChange, FlowDiffCanvasState, MissingReference } from '../utils/diff';
 import { FlowDiffStateService } from './flow-diff-state.service';
+
+const RENAMED: FieldChange = {
+    path: 'node_name',
+    field: 'node_name',
+    status: 'changed',
+    current: 'Old',
+    version: 'New',
+};
+const MISSING_AGENT: MissingReference = {
+    path: 'agent_definition',
+    field: 'agent_definition',
+    missing: 41,
+    source: 'warning',
+};
 
 const DIFF_CANVAS: FlowDiffCanvasState = {
     nodes: new Map([
-        ['node-added', { status: 'added' }],
-        ['node-unchanged', { status: 'unchanged' }],
+        ['node-added', { status: 'added', fields: [], missingReferences: [MISSING_AGENT] }],
+        ['node-changed', { status: 'changed', fields: [RENAMED], missingReferences: [] }],
+        ['node-unchanged', { status: 'unchanged', fields: [], missingReferences: [] }],
     ]),
     connections: new Map([['connection-deleted', 'deleted']]),
     versionOnlyPortIds: new Set(['table_decision-out-yes']),
@@ -35,6 +50,22 @@ describe('FlowDiffStateService', () => {
         expect(service.nodeStatus('node-unchanged')).toBe('unchanged');
         expect(service.connectionStatus('connection-deleted')).toBe('deleted');
         expect(service.isVersionOnlyPort('table_decision-out-yes')).toBe(true);
+    });
+
+    it("gives a node's whole diff for its panel only while a diff canvas is shown", () => {
+        expect(service.nodeDiff('node-changed')).toBeNull();
+
+        service.setState(DIFF_CANVAS);
+        expect(service.nodeDiff('node-changed')).toEqual({
+            status: 'changed',
+            fields: [RENAMED],
+            missingReferences: [],
+        });
+        expect(service.nodeDiff('node-added')?.missingReferences).toEqual([MISSING_AGENT]);
+        expect(service.nodeDiff('other-node')).toBeNull();
+
+        service.setState(null);
+        expect(service.nodeDiff('node-changed')).toBeNull();
     });
 
     it('has no status for an id that is not on the diff canvas', () => {

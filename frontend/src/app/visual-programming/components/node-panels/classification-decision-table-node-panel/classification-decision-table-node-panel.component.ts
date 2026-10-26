@@ -68,6 +68,10 @@ import {
     OUTPUT_SCHEMA_RULE_ERROR,
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import {
+    MissingReferenceNoteComponent,
+    ROUTE_DIFF_FIELDS,
+} from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
@@ -112,6 +116,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         IfFlowEditableDirective,
         ExecutionTimeoutFieldComponent,
         MatTooltipModule,
+        MissingReferenceNoteComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -121,6 +126,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
     public readonly headerActionsTemplate = viewChild<TemplateRef<unknown>>('headerActionsTpl');
+
+    protected readonly routeDiffFields = ROUTE_DIFF_FIELDS;
 
     private flowService = inject(FlowService);
     private undoRedoService = inject(UndoRedoService);

@@ -16,14 +16,27 @@ import { NodeModel } from '../../core/models/node.model';
 import { CustomPortId, ViewPort } from '../../core/models/port.model';
 import { createFlowConnection } from '../connection.factory';
 import { getInputPortRole, getOutputPortRole } from '../node-port-roles';
-import { EdgeDiffEntry, EdgeDiffStatus, FlowDiff, NodeDiffEntry, NodeDiffStatus } from './types';
+import {
+    EdgeDiffEntry,
+    EdgeDiffStatus,
+    FieldChange,
+    FlowDiff,
+    MissingReference,
+    NodeDiffEntry,
+    NodeDiffStatus,
+} from './types';
 
 /**
- * The diff state of one union node. Missing references are not here: they belong to the version side and are
- * marked on the plain preview too (`buildVersionMissingReferences`, mapped through `unionIdByVersionId`).
+ * The diff state of one union node, as its `NodeDiffEntry` has it: what the node panel shows on the Changes tab.
+ * The canvas marker for missing references does not read `missingReferences` here: the plain preview marks them
+ * too, without a diff (`buildVersionMissingReferences`, mapped through `unionIdByVersionId`).
  */
 export interface UnionNodeDiffState {
     status: NodeDiffStatus;
+    /** Empty for added and deleted nodes. */
+    fields: readonly FieldChange[];
+    /** Empty for deleted (canvas-only) nodes. */
+    missingReferences: readonly MissingReference[];
 }
 
 /** The diff status of every node and connection of a union canvas, by its canvas id. */
@@ -104,7 +117,10 @@ export function buildUnionFlowModel(diff: FlowDiff, createId: () => string = gen
     clearGrownTables(placedNodes, extraRowsByUnionId, boundsOf);
 
     const nodeStates = new Map<string, UnionNodeDiffState>(
-        diff.nodes.map((entry) => [unionIdByKey.get(entry.key)!, { status: entry.status }])
+        diff.nodes.map((entry) => [
+            unionIdByKey.get(entry.key)!,
+            { status: entry.status, fields: entry.fields, missingReferences: entry.missingReferences },
+        ])
     );
 
     const entryByKey = new Map(diff.nodes.map((entry) => [entry.key, entry]));

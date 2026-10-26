@@ -217,6 +217,43 @@ header.dialog-header--compact {
     }
 }
 
+// A strip in the status colour of the canvas badge, with the badge itself in front of the words.
+.diff-banner {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+    background: color-mix(in srgb, var(--diff-banner-color) 12%, transparent);
+    // Not the status colour: small status-coloured text on its own tint is too faint in the light theme.
+    color: var(--color-text-primary);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+
+    &--added {
+        --diff-banner-color: var(--color-diff-added);
+    }
+
+    &--deleted {
+        --diff-banner-color: var(--color-diff-deleted);
+    }
+
+    &__icon {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background-color: var(--diff-banner-color);
+        color: var(--color-text-on-bright);
+        font-size: 0.75rem;
+    }
+}
+
 main {
     flex: 1;
     overflow-y: auto;

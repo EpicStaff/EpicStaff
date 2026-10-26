@@ -25,6 +25,7 @@ import { flowUrl } from '@shared/utils';
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
 import { CAPTION_TABLE_NAME_LIMIT, keyValueSummaryParts } from '../../core/constants/key-value-mode-visuals';
+import { NODE_DIFF_BADGES } from '../../core/constants/node-diff-badges';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { showsNodeNumber } from '../../core/helpers/node-number.util';
@@ -52,12 +53,6 @@ import { NodeDiffStatus } from '../../utils/diff';
 import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
-
-const DIFF_BADGES: Record<Exclude<NodeDiffStatus, 'unchanged'>, { icon: string; label: string }> = {
-    added: { icon: 'ti ti-plus', label: 'Restore adds this node' },
-    deleted: { icon: 'ti ti-trash', label: 'Restore removes this node' },
-    changed: { icon: 'ti ti-pencil', label: 'Restore changes this node' },
-};
 
 @Component({
     selector: 'app-flow-base-node',
@@ -178,7 +173,7 @@ export class FlowBaseNodeComponent implements OnInit {
     /** The status badge: none for an unchanged node, or off a diff canvas. */
     protected get diffBadge(): { status: NodeDiffStatus; icon: string; label: string } | null {
         const status = this.diffStatus;
-        return status && status !== 'unchanged' ? { status, ...DIFF_BADGES[status] } : null;
+        return status && status !== 'unchanged' ? { status, ...NODE_DIFF_BADGES[status] } : null;
     }
 
     protected get hasMissingReferences(): boolean {

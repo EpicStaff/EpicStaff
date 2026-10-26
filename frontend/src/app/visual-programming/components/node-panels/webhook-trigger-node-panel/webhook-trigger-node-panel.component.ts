@@ -33,6 +33,7 @@ import { GetWebhookTriggerNodeRequest } from '../../../core/models/webhook-trigg
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { describeTestRunBlocker, formatTestPayload } from '../../../utils/test-run';
+import { MissingReferenceNoteComponent } from '../../missing-reference-note/missing-reference-note.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { parseCommaSeparatedList } from '../node-panel-form.utils';
@@ -74,6 +75,7 @@ export const RUN_PYTHON_CODE_LABEL = 'Run python code';
         PythonTerminalComponent,
         NgTemplateOutlet,
         ExecutionTimeoutFieldComponent,
+        MissingReferenceNoteComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],

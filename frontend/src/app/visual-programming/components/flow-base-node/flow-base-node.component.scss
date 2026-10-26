@@ -482,8 +482,11 @@
 
 // Overlay visuals moved to app-flow-node-variables-overlay component
 
-// Above the node's own action bars (`.actions`, z-index 11), so a badge is never covered.
-$diff-marker-z-index: 12;
+// Both marks sit above the node's own action bars (`.actions`, z-index 11), so neither is ever covered. The
+// missing-reference marker is under the status badge it touches, and above it while hovered.
+$missing-references-marker-z-index: 12;
+$diff-marker-z-index: 13;
+$missing-references-marker-hover-z-index: 14;
 
 // Version diff canvas. Added and deleted nodes get a status border, which also wraps a Key-Value node's
 // summary tab while it shows (the badge then yields to the tab); a changed node only has its badge.
@@ -520,6 +523,7 @@ $diff-marker-z-index: 12;
 .missing-references-marker {
     position: absolute;
     top: -10px;
+    left: -10px;
     z-index: $diff-marker-z-index;
     display: flex;
     align-items: center;
@@ -529,13 +533,12 @@ $diff-marker-z-index: 12;
     border-radius: 50%;
     color: var(--color-text-on-bright);
     pointer-events: auto;
+    // Comes back only once the summary tab has faded out.
+    transition: opacity mixins.$node-actions-fade-duration ease mixins.$node-actions-hide-delay;
 }
 
 .diff-badge {
-    left: -10px;
     font-size: 0.75rem;
-    // Comes back only once the summary tab has faded out.
-    transition: opacity mixins.$node-actions-fade-duration ease mixins.$node-actions-hide-delay;
 
     &--added {
         background-color: var(--color-diff-added);
@@ -552,13 +555,23 @@ $diff-marker-z-index: 12;
 
 :host(:hover),
 :host(.f-selected) {
-    .diff-badge--yields-to-tab {
+    .diff-badge--yields-to-tab,
+    .missing-references-marker--yields-to-tab {
         opacity: 0;
         transition-delay: 0s;
     }
 }
 
 .missing-references-marker {
-    right: -10px;
+    z-index: $missing-references-marker-z-index;
     background-color: var(--color-diff-missing-reference);
+
+    // Right of the badge (x -10 to 10), overlapping it by 2px.
+    &--beside-badge {
+        left: 8px;
+    }
+
+    &:hover {
+        z-index: $missing-references-marker-hover-z-index;
+    }
 }

@@ -62,6 +62,10 @@
                                 [selected]="form.get('telegram_bot_api_key_secret_id')?.value"
                                 [readonly]="isReadOnly()"
                             />
+                            <app-missing-reference-note
+                                class="missing-reference-note"
+                                [fields]="['telegram_bot_api_key_secret_id']"
+                            />
                             <app-validation-errors [control]="form.get('telegram_bot_api_key_secret_id')!" />
                         </div>
                     </div>
@@ -75,6 +79,7 @@
                             disallowedProviderMessage="This trigger is not supported for Telegram. Use an ngrok trigger with Telegram auth."
                             (triggerResolved)="onTriggerResolved($event)"
                         ></app-webhook-trigger-select>
+                        <app-missing-reference-note [fields]="['webhook_trigger']" />
 
                         <!-- No box without a live trigger: an empty status would still show its padding. -->
                         @if (webhookStatusDisplay()) {

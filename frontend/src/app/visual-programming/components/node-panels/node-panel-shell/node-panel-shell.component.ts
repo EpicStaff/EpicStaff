@@ -6,6 +6,7 @@ import {
     DestroyRef,
     effect,
     inject,
+    Injector,
     input,
     output,
     Signal,
@@ -18,11 +19,14 @@ import { AppSvgIconComponent, AuthorshipDetailsDialogService } from '@shared/com
 import { NodeType } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications';
+import { NODE_DIFF_BADGES } from '../../../core/constants/node-diff-badges';
 import { COMPACT_HEADER_NODE_TYPES, PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { hasNodeDetails } from '../../../core/helpers/node-details.util';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { NodeModel } from '../../../core/models/node.model';
 import { NodePanel } from '../../../core/models/node-panel.interface';
+import { NODE_PANEL_DIFF, NodePanelDiff } from '../../../core/providers/node-panel-diff.token';
+import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { KeymapService } from '../../../services/keymap.service';
 import { NodeAuthorshipStore } from '../../../services/node-authorship.store';
@@ -150,10 +154,27 @@ interface PanelInstanceView {
                     }
                 </ng-template>
 
+                <!-- Changes tab of a version preview: what a restore does to an added or removed node. -->
+                @if (diffBanner(); as banner) {
+                    <div
+                        class="diff-banner diff-banner--{{ banner.status }}"
+                        role="status"
+                    >
+                        <span class="diff-banner__icon">
+                            <i
+                                [class]="banner.icon"
+                                aria-hidden="true"
+                            ></i>
+                        </span>
+                        <span class="diff-banner__text">{{ banner.text }}</span>
+                    </div>
+                }
+
                 <main>
                     <ng-container
                         [ngComponentOutlet]="panelComponent()"
                         [ngComponentOutletInputs]="componentInputs()"
+                        [ngComponentOutletInjector]="outletInjector"
                         #outlet="ngComponentOutlet"
                     ></ng-container>
                 </main>
@@ -226,6 +247,24 @@ export class NodePanelShellComponent {
         };
     });
 
+    /** The open node's diff on the Changes tab of a version preview; `null` elsewhere. */
+    private readonly panelDiff = computed<NodePanelDiff | null>(() => {
+        const node = this.node();
+        return node ? this.flowDiffState.nodeDiff(node.id) : null;
+    });
+    /** Changed and unchanged nodes get no banner: only a node a restore adds or removes as a whole. */
+    protected readonly diffBanner = computed(() => {
+        const status = this.panelDiff()?.status;
+        if (status !== 'added' && status !== 'deleted') return null;
+        const badge = NODE_DIFF_BADGES[status];
+        return { status, icon: badge.icon, text: `${badge.label}.` };
+    });
+    /** Gives the panel, and the notes inside it, the open node's diff without a new input on every panel. */
+    protected readonly outletInjector = Injector.create({
+        providers: [{ provide: NODE_PANEL_DIFF, useValue: this.panelDiff }],
+        parent: inject(Injector),
+    });
+
     protected readonly isShaking = signal(false);
     protected readonly isExpanded = signal(false);
     private panelInstance:
@@ -262,6 +301,7 @@ export class NodePanelShellComponent {
     private readonly sidePanelService = inject(SidePanelService);
     private readonly toastService = inject(ToastService);
     private readonly flowReadOnly = inject(FlowReadOnlyService);
+    private readonly flowDiffState = inject(FlowDiffStateService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly nodeAuthorshipStore = inject(NodeAuthorshipStore);
     private readonly keymap = inject(KeymapService);

@@ -139,6 +139,11 @@
                             (openPromptLibrary)="onOpenPromptLibrary($event)"
                             (gridVerticalScroll)="onGridVerticalScroll($event)"
                         />
+                        <!-- Under the grid, not in a cell: a note in a cell would break the grid's rows. -->
+                        <app-missing-reference-note
+                            class="routes-missing-reference-note"
+                            [fields]="routeDiffFields"
+                        />
                     </div>
                 }
 
@@ -168,6 +173,7 @@
                                 [names]="preSecretNames()"
                                 [tooltipText]="preSecretsTooltip()"
                                 panelWidth="346px"
+                                [diffField]="'pre_computation.secret_names'"
                                 (valueChange)="onPreSecretsChange($event)"
                             />
                             <app-custom-input
@@ -249,6 +255,7 @@
                                 [names]="postSecretNames()"
                                 [tooltipText]="postSecretsTooltip()"
                                 panelWidth="346px"
+                                [diffField]="'post_computation.secret_names'"
                                 (valueChange)="onPostSecretsChange($event)"
                             />
                             <app-custom-input

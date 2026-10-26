@@ -1,6 +1,6 @@
 import { computed, Injectable, signal } from '@angular/core';
 
-import { EdgeDiffStatus, FlowDiffCanvasState, NodeDiffStatus } from '../utils/diff';
+import { EdgeDiffStatus, FlowDiffCanvasState, NodeDiffStatus, UnionNodeDiffState } from '../utils/diff';
 
 /**
  * The diff status of each node and connection on a version diff canvas, by canvas id, and the nodes whose
@@ -30,6 +30,15 @@ export class FlowDiffStateService {
     /** `null` for a node that is not on a diff canvas. */
     public nodeStatus(nodeId: string): NodeDiffStatus | null {
         return this.state()?.nodes.get(nodeId)?.status ?? null;
+    }
+
+    /**
+     * The node's whole diff (status, field changes, missing references) for its panel; `null` off a diff canvas
+     * (the Preview tab, the live editor). The Preview tab only marks nodes with missing references
+     * (`hasMissingReferences`); its warnings dialog lists the references.
+     */
+    public nodeDiff(nodeId: string): UnionNodeDiffState | null {
+        return this.state()?.nodes.get(nodeId) ?? null;
     }
 
     /** Marks the nodes whose version referenced something that no longer exists (none in the live editor). */
