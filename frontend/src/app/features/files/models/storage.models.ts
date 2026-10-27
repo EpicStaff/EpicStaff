@@ -107,6 +107,27 @@ export interface StorageWriteResponse {
 /** Response of POST storage/copy/. */
 export type StorageCopyResponse = StorageWriteResponse;
 
+export interface StorageUsageItem {
+    id: number;
+    name: string;
+}
+
+/**
+ * Where storage items are linked, for one kind of resource. `used` is always accurate; `items` is
+ * empty when the user may not read that kind, so it cannot tell "unused" from "hidden".
+ */
+export interface StorageUsageGroup {
+    used: boolean;
+    items: StorageUsageItem[];
+}
+
+/** Response of POST storage/usage/: links to flows, surfaces and agents under the given paths. */
+export interface StorageUsage {
+    flows: StorageUsageGroup;
+    surfaces: StorageUsageGroup;
+    agents: StorageUsageGroup;
+}
+
 /** Response of POST storage/upload/stream: `size` for a file, `extracted` for an unpacked archive. */
 export interface StorageStreamUploadResponse extends StorageWriteResponse {
     status: 'DONE';

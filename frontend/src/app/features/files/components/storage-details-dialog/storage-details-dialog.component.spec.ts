@@ -4,7 +4,7 @@ import { ConfirmationDialogService } from '@shared/components';
 import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { StorageItemInfo } from '../../models/storage.models';
+import { StorageGraph, StorageItemInfo } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { StorageDetailsDialogComponent } from './storage-details-dialog.component';
 
@@ -55,14 +55,15 @@ interface RenderedDialog {
 
 const ALL_PERMISSIONS = (): boolean => true;
 
-function render(
+function mount(
     data: StorageItemInfo,
-    can: (resource: ResourceCode, action: ActionCode) => boolean = ALL_PERMISSIONS
-): RenderedDialog {
+    can: (resource: ResourceCode, action: ActionCode) => boolean = ALL_PERMISSIONS,
+    usedIn: StorageGraph[] = []
+): HTMLElement {
     TestBed.configureTestingModule({
         providers: [
             { provide: PermissionsService, useValue: { can } },
-            { provide: DIALOG_DATA, useValue: { ...data, usedIn: [] } },
+            { provide: DIALOG_DATA, useValue: { ...data, usedIn } },
             { provide: DialogRef, useValue: { close: vi.fn() } },
             { provide: StorageApiService, useValue: {} },
             { provide: ConfirmationDialogService, useValue: {} },
@@ -70,7 +71,14 @@ function render(
     });
     const fixture = TestBed.createComponent(StorageDetailsDialogComponent);
     fixture.detectChanges();
-    const host = fixture.nativeElement as HTMLElement;
+    return fixture.nativeElement as HTMLElement;
+}
+
+function render(
+    data: StorageItemInfo,
+    can: (resource: ResourceCode, action: ActionCode) => boolean = ALL_PERMISSIONS
+): RenderedDialog {
+    const host = mount(data, can);
     const sections = Array.from(
         host.querySelectorAll<HTMLElement>('.storage-details-dialog__content > .storage-details-dialog__section')
     ).map((section) =>
@@ -116,4 +124,32 @@ describe('StorageDetailsDialogComponent used in flows', () => {
 
         expect(render(AUTHORED_FILE, canAllButReadFlows).sections).toEqual(['authorship', 'DATA', 'STORAGE PATH']);
     });
+
+    // Removing a file from a flow edits the flow, so the server asks for UPDATE on flows, not DELETE on files.
+    it.each([
+        {
+            granted: 'read and update flows',
+            grants: [`${ResourceCode.Flows}:${ActionCode.Read}`, `${ResourceCode.Flows}:${ActionCode.Update}`],
+            expectedButtons: 2,
+        },
+        {
+            granted: 'read flows and delete files',
+            grants: [`${ResourceCode.Flows}:${ActionCode.Read}`, `${ResourceCode.Files}:${ActionCode.Delete}`],
+            expectedButtons: 0,
+        },
+    ])(
+        'offers to remove the item from each flow only to a user who can update flows ($granted)',
+        ({ grants, expectedButtons }) => {
+            const can = (resource: ResourceCode, action: ActionCode): boolean =>
+                grants.includes(`${resource}:${action}`);
+            const usedIn: StorageGraph[] = [
+                { id: 1, name: 'Sales' },
+                { id: 2, name: 'Support' },
+            ];
+
+            const host = mount(AUTHORED_FILE, can, usedIn);
+
+            expect(host.querySelectorAll('.storage-details-dialog__chip-remove').length).toBe(expectedButtons);
+        }
+    );
 });

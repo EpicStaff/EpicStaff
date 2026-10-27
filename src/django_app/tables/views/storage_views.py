@@ -46,11 +46,13 @@ from tables.serializers.storage_serializers import (
     StorageSearchQuerySerializer,
     StorageTreeQuerySerializer,
     StorageUploadLimitsResponseSerializer,
+    StorageUsageRequestSerializer,
 )
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service import upload as upload_service
 from tables.services.storage_service.dataclasses import FolderInfo
 from tables.services.storage_service.recycle_bin import ENTRY_ORDERINGS, StorageRecycleBinService
+from tables.services.storage_service.usage import find_storage_usage
 from tables.swagger_schemas.storage_schema import (
     STORAGE_ADD_TO_GRAPH_SWAGGER,
     STORAGE_COPY_SWAGGER,
@@ -68,6 +70,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_SEARCH_SWAGGER,
     STORAGE_TREE_SWAGGER,
     STORAGE_UPLOAD_LIMITS_SWAGGER,
+    STORAGE_USAGE_SWAGGER,
 )
 from tables.views.recycle_bin_mixins import (
     PURGE_ACTIONS,
@@ -136,6 +139,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "move": Permission.UPDATE,
         "copy": Permission.UPDATE,
         "delete_file": Permission.DELETE,
+        "usage": Permission.READ,
         "remove_from_graph": Permission.READ,
         **RECYCLE_BIN_ACTION_MAP,
     }
@@ -291,6 +295,30 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 raise ValidationError({"detail": str(e)}) from e
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(**STORAGE_USAGE_SWAGGER)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        """Report what deleting the paths would unlink; `used` is always true, `items` only with READ on that type."""
+        org_id = self.get_active_org_id()
+        serializer = StorageUsageRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        usage = find_storage_usage(org_id, serializer.validated_data["paths"])
+        effective_permissions = PermissionResolver().resolve(user=request.user, org_id=org_id)
+
+        def _report(entries: list[dict], resource_type: ResourceType) -> dict:
+            # `used` is the truth for everyone; names only for callers who could list them anyway.
+            can_read = effective_permissions.can(resource_type, Permission.READ)
+            return {"used": bool(entries), "items": entries if can_read else []}
+
+        return Response(
+            {
+                "flows": _report(usage.flows, ResourceType.FLOWS),
+                "surfaces": _report(usage.surfaces, ResourceType.SURFACES),
+                "agents": _report(usage.agents, ResourceType.AGENTS),
+            }
+        )
 
     @extend_schema(**STORAGE_RENAME_SWAGGER)
     @action(detail=False, methods=["post"], url_path="rename")
@@ -474,6 +502,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["get"], url_path="graph-files")
     def graph_files(self, request):
         org_id = self.get_active_org_id()
+        # Checked before the graph lookup: otherwise a caller who cannot read flows
+        # could tell existing graph ids (200) from missing ones (404).
+        assert_org_permission(request.user, org_id, ResourceType.FLOWS, Permission.READ)
         params = StorageGraphFilesQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
         graph_id = params.validated_data["graph_id"]

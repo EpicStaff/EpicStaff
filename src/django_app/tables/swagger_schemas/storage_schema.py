@@ -20,6 +20,8 @@ from tables.serializers.storage_serializers import (
     StorageTransferResponseSerializer,
     StorageTreeResponseSerializer,
     StorageUploadLimitsResponseSerializer,
+    StorageUsageRequestSerializer,
+    StorageUsageResponseSerializer,
 )
 
 _STORAGE_PATH_PARAM = OpenApiParameter(
@@ -99,6 +101,27 @@ STORAGE_DELETE_SWAGGER = {
     "responses": {204: OpenApiResponse(description="Deleted successfully")},
 }
 
+STORAGE_USAGE_SWAGGER = {
+    "summary": "Preview what deleting files or folders would unlink",
+    "description": (
+        "Read-only check to call before a delete. Deleting a file or folder permanently "
+        "removes the links pointing at it, and a restore does not bring them back. For the "
+        "given paths this reports the live flows, surfaces and agents that hold such a link, "
+        "using the same lookup as the delete: a path naming a live file means that file, any "
+        "other path means the folder and everything under it. A path with nothing live at it "
+        "contributes nothing, so it is not an error. Flows are those attached to the files "
+        "and those with a live node whose inline surface is linked to them; agents are those "
+        "running such a node. "
+        "For each kind, `used` is always true when a link exists, whatever the caller may "
+        "read, so nobody destroys links unwarned. `items` lists the distinct entries "
+        "ordered by name, then id, only when the caller holds READ on that resource type "
+        "(flows, surfaces or agents) in the active organization; otherwise it is empty. "
+        "Needs FILES:READ."
+    ),
+    "request": StorageUsageRequestSerializer,
+    "responses": {200: StorageUsageResponseSerializer},
+}
+
 STORAGE_RENAME_SWAGGER = {
     "summary": "Rename a file or folder",
     "description": ("Renames a file or folder from one path to another within the same directory."),
@@ -171,7 +194,10 @@ STORAGE_REMOVE_FROM_GRAPH_SWAGGER = {
 
 STORAGE_GRAPH_FILES_SWAGGER = {
     "summary": "List storage files attached to a graph",
-    "description": "Returns all storage paths that have been linked to the given graph.",
+    "description": (
+        "Returns all storage paths that have been linked to the given graph. "
+        "Requires READ on flows as well as on files."
+    ),
     "parameters": [
         OpenApiParameter(
             name="graph_id",
@@ -183,6 +209,7 @@ STORAGE_GRAPH_FILES_SWAGGER = {
     ],
     "responses": {
         200: GraphStorageFileSerializer(many=True),
+        403: OpenApiResponse(description="The caller lacks read permission on flows."),
         404: OpenApiResponse(description="Graph not found"),
     },
 }
