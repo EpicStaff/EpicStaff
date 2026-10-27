@@ -86,15 +86,15 @@ describe('describeRetentionLowerings', () => {
         [
             'names the single lowered type',
             [{ type: 'sessions', newEffectiveDays: 30 }],
-            'Sessions older than 30 days will be removed tonight. This cannot be undone.',
+            'Sessions older than 30 days will be removed in the next nightly cleanup. This cannot be undone.',
         ],
         [
-            'names both lowered types',
+            'names both lowered types, in the days format the select uses',
             [
                 { type: 'sessions', newEffectiveDays: 30 },
-                { type: 'conversations', newEffectiveDays: 90 },
+                { type: 'conversations', newEffectiveDays: 365 },
             ],
-            'Sessions older than 30 days and conversations older than 90 days will be removed tonight. This cannot be undone.',
+            'Sessions older than 30 days and conversations older than 1 year will be removed in the next nightly cleanup. This cannot be undone.',
         ],
     ])('%s', (_case, lowerings, expected) => {
         expect(describeRetentionLowerings(lowerings)).toBe(expected);

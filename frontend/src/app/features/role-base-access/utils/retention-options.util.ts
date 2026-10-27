@@ -8,6 +8,12 @@ const RETENTION_DATA_TYPES: RetentionDataType[] = ['sessions', 'conversations', 
 // Lowering these removes stored data in the nightly purge; audit retention only applies to new events.
 const PURGED_RETENTION_TYPES: RetentionDataType[] = ['sessions', 'conversations'];
 
+const RETENTION_DATA_NAMES: Record<RetentionDataType, string> = {
+    sessions: 'sessions',
+    conversations: 'conversations',
+    audit: 'audit events',
+};
+
 /** The select value for "use the instance default"; app-select shows a null value as an empty placeholder. */
 export const USE_DEFAULT_RETENTION = 'default';
 
@@ -73,7 +79,7 @@ export function buildRetentionItems(
         const isBelowMinimum = rule.min_days !== null && stored > 0 && stored < rule.min_days;
         const bound = isBelowMinimum ? 'below minimum' : 'above limit';
         items.push({
-            name: `${formatRetentionDays(stored)} (${bound}, ${applied} days applied)`,
+            name: `${formatRetentionDays(stored)} (${bound}, ${formatRetentionDays(applied)} applied)`,
             value: stored,
         });
     }
@@ -123,10 +129,13 @@ export function findRetentionLowerings(
     return lowerings;
 }
 
-/** "Sessions older than 30 days and conversations older than 90 days will be removed tonight. …" */
+/** "Sessions older than 30 days and conversations older than 1 year will be removed in the next nightly cleanup. …" */
 export function describeRetentionLowerings(lowerings: RetentionLowering[]): string {
     const sentence = lowerings
-        .map((lowering) => `${lowering.type} older than ${lowering.newEffectiveDays} days`)
+        .map(
+            (lowering) =>
+                `${RETENTION_DATA_NAMES[lowering.type]} older than ${formatRetentionDays(lowering.newEffectiveDays)}`
+        )
         .join(' and ');
-    return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} will be removed tonight. This cannot be undone.`;
+    return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} will be removed in the next nightly cleanup. This cannot be undone.`;
 }

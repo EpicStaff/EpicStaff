@@ -349,8 +349,10 @@ BEGIN
         WHERE table_schema = 'public' AND table_name = 'tables_sessiontrigger'
     ) THEN
         REVOKE ALL ON TABLE tables_sessiontrigger FROM "${manager_user}";
-        GRANT SELECT, UPDATE, DELETE ON TABLE tables_sessiontrigger TO "${manager_user}";
-        RAISE NOTICE '[manager] Granted SELECT, UPDATE, DELETE on tables_sessiontrigger';
+        GRANT SELECT, DELETE ON TABLE tables_sessiontrigger TO "${manager_user}";
+        -- Retention only clears the link to a deleted parent session.
+        GRANT UPDATE (triggered_by_session_id) ON TABLE tables_sessiontrigger TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, DELETE, UPDATE (triggered_by_session_id) on tables_sessiontrigger';
     ELSE
         RAISE NOTICE '[manager] tables_sessiontrigger not found, skipping';
     END IF;
@@ -360,8 +362,10 @@ BEGIN
         WHERE table_schema = 'public' AND table_name = 'tables_keyvaluetableentry'
     ) THEN
         REVOKE ALL ON TABLE tables_keyvaluetableentry FROM "${manager_user}";
-        GRANT SELECT, UPDATE ON TABLE tables_keyvaluetableentry TO "${manager_user}";
-        RAISE NOTICE '[manager] Granted SELECT, UPDATE on tables_keyvaluetableentry';
+        GRANT SELECT ON TABLE tables_keyvaluetableentry TO "${manager_user}";
+        -- Retention only clears the link to a deleted session.
+        GRANT UPDATE (updated_by_session_id) ON TABLE tables_keyvaluetableentry TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT, UPDATE (updated_by_session_id) on tables_keyvaluetableentry';
     ELSE
         RAISE NOTICE '[manager] tables_keyvaluetableentry not found, skipping';
     END IF;
@@ -662,16 +666,18 @@ BEGIN
             RAISE NOTICE '[auto-grant] SELECT,DELETE on % to ${manager_user}', tbl_name;
         END IF;
 
-        -- manager: SELECT, UPDATE, DELETE for the retention job
+        -- manager: SELECT, DELETE, UPDATE of the session link for the retention job
         IF tbl_name = 'tables_sessiontrigger' THEN
-            EXECUTE format('GRANT SELECT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
-            RAISE NOTICE '[auto-grant] SELECT,UPDATE,DELETE on % to ${manager_user}', tbl_name;
+            EXECUTE format('GRANT SELECT, DELETE ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            EXECUTE format('GRANT UPDATE (triggered_by_session_id) ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,DELETE,UPDATE (triggered_by_session_id) on % to ${manager_user}', tbl_name;
         END IF;
 
-        -- manager: SELECT, UPDATE for the retention job
+        -- manager: SELECT, UPDATE of the session link for the retention job
         IF tbl_name = 'tables_keyvaluetableentry' THEN
-            EXECUTE format('GRANT SELECT, UPDATE ON TABLE %I TO %I', tbl_name, '${manager_user}');
-            RAISE NOTICE '[auto-grant] SELECT,UPDATE on % to ${manager_user}', tbl_name;
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            EXECUTE format('GRANT UPDATE (updated_by_session_id) ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT,UPDATE (updated_by_session_id) on % to ${manager_user}', tbl_name;
         END IF;
 
         -- knowledge: read-only tables

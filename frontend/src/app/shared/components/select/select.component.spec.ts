@@ -37,4 +37,27 @@ describe('SelectComponent', () => {
 
         expect(tip?.textContent?.trim()).toBe(expectedTip);
     });
+
+    // The trigger names itself after the external label, then its own text, so the selected value is read too.
+    it('labels the trigger by the given label and its own text', () => {
+        const fixture = TestBed.createComponent(SelectComponent);
+        fixture.componentRef.setInput('items', [{ name: 'One', value: 1 }]);
+        fixture.componentRef.setInput('ariaLabelledby', 'retention-label');
+        fixture.detectChanges();
+
+        const trigger = (fixture.nativeElement as HTMLElement).querySelector('.selector__btn') as HTMLButtonElement;
+
+        expect(trigger.getAttribute('aria-labelledby')).toBe(`retention-label ${trigger.id}`);
+        expect(trigger.id).not.toBe('');
+    });
+
+    it('leaves aria-labelledby off when no label is given', () => {
+        const fixture = TestBed.createComponent(SelectComponent);
+        fixture.componentRef.setInput('items', [{ name: 'One', value: 1 }]);
+        fixture.detectChanges();
+
+        const trigger = (fixture.nativeElement as HTMLElement).querySelector('.selector__btn') as HTMLButtonElement;
+
+        expect(trigger.hasAttribute('aria-labelledby')).toBe(false);
+    });
 });

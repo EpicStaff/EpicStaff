@@ -95,6 +95,7 @@ export class CreateOrganizationDialogComponent implements OnInit {
     private dialogRef = inject(DialogRef);
     private confirmation = inject(ConfirmationDialogService);
     private organizationStorage = inject(OrganizationsStorageService);
+    // retention is per-organization dialog state, not part of the organization list the storage caches
     private organizationsApi = inject(AdminOrganizationsService);
     private profileService = inject(ProfileService);
     private dialogData = inject<GetOrganizationResponse>(DIALOG_DATA, { optional: true });
@@ -118,7 +119,7 @@ export class CreateOrganizationDialogComponent implements OnInit {
     private readonly savedRetentionDays = this.dialogData?.config?.audit_retention_days ?? 0;
     readonly retentionUnit = signal<RetentionUnit>(splitRetentionDays(this.savedRetentionDays).unit);
     readonly retentionAmount = signal(splitRetentionDays(this.savedRetentionDays).amount);
-    readonly auditVisibilityLabelId = `${this.retentionLabelIdPrefix}-audit-visibility`;
+    protected readonly auditVisibilityLabelId = `${this.retentionLabelIdPrefix}-audit-visibility`;
     readonly retentionUnitItems: SelectItem<RetentionUnit>[] = [
         { name: 'Unlimited', value: 'unlimited' },
         { name: 'Years', value: 'years' },
@@ -135,15 +136,15 @@ export class CreateOrganizationDialogComponent implements OnInit {
 
     // Retention has its own endpoint and its policy can only be read through an existing organization,
     // so the row is edit-only; a new organization starts on the instance defaults.
-    readonly retentionForm = new FormGroup<Record<RetentionField, FormControl<RetentionChoice>>>({
+    protected readonly retentionForm = new FormGroup<Record<RetentionField, FormControl<RetentionChoice>>>({
         sessions_days: new FormControl<RetentionChoice>(USE_DEFAULT_RETENTION, { nonNullable: true }),
         audit_days: new FormControl<RetentionChoice>(USE_DEFAULT_RETENTION, { nonNullable: true }),
         conversations_days: new FormControl<RetentionChoice>(USE_DEFAULT_RETENTION, { nonNullable: true }),
     });
-    readonly retentionErrorsRef = new ServerErrorsRef();
-    readonly retention = signal<OrganizationRetention | null>(null);
-    readonly isRetentionLoading = signal(false);
-    readonly retentionColumns = computed(() => {
+    protected readonly retentionErrorsRef = new ServerErrorsRef();
+    protected readonly retention = signal<OrganizationRetention | null>(null);
+    protected readonly isRetentionLoading = signal(false);
+    protected readonly retentionColumns = computed(() => {
         const retention = this.retention();
         if (!retention) return [];
         return RETENTION_COLUMNS.map((column) => ({

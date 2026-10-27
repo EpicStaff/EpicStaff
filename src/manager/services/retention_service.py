@@ -127,8 +127,9 @@ class RetentionService:
             return error.deleted
         except Exception as error:
             # One organization's failure must not keep the others' data past its retention.
+            # The chat commits in batches before it answers, so some rows may be gone already.
             logger.opt(exception=error).error(
-                "Retention {} org={} days={}: deleted 0, failed: {}",
+                "Retention {} org={} days={}: deleted count unknown, failed: {}",
                 data_type.value,
                 org_id,
                 days,
