@@ -120,7 +120,7 @@ All are set in `src/env.yaml`, which generates `src/.env.example`.
 | Setting | Default | Read by | Meaning |
 | --- | --- | --- | --- |
 | `SANDBOX_QUEUE_TIMEOUT` | 120s | sandbox_new, crew, agent, realtime | How long a job may wait in the run queue; the intake prediction limit; the producers' 503 retry budget |
-| `SANDBOX_MAX_ACCEPTED_EXECUTIONS` | 300 | sandbox_new | Queued or running executions accepted at once (set from the benchmark) |
+| `SANDBOX_MAX_ACCEPTED_EXECUTIONS` | 1000 | sandbox_new | Queued or running executions accepted at once (set from the benchmark) |
 | `SANDBOX_MAX_HELD_EXECUTIONS` | 100 | sandbox_new | Executions waiting for a venv build |
 | `SANDBOX_HOLD_TIMEOUT` | 30m | sandbox_new | How long an execution may wait for its venv build |
 | `SANDBOX_MIN_CONCURRENT_EXECUTIONS` | 0 | sandbox_new | Run floor; 0 means the CPUs the container may use |

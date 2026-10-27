@@ -52,7 +52,7 @@ QUEUE_TIMEOUT = env.time("SANDBOX_QUEUE_TIMEOUT")
 HOLD_TIMEOUT = env.time("SANDBOX_HOLD_TIMEOUT")
 # Executions accepted and not yet finished (queued or running) before intake answers 503.
 # Bounds the memory accepted jobs can hold. Held jobs are capped apart, below.
-MAX_ACCEPTED_EXECUTIONS = env.int("SANDBOX_MAX_ACCEPTED_EXECUTIONS", 300)
+MAX_ACCEPTED_EXECUTIONS = env.int("SANDBOX_MAX_ACCEPTED_EXECUTIONS", 1000)
 # Executions waiting for their venv to finish building before intake answers 503 to
 # another one that would wait.
 MAX_HELD_EXECUTIONS = env.int("SANDBOX_MAX_HELD_EXECUTIONS", 100)

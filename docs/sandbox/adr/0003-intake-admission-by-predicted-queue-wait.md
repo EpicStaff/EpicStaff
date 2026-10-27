@@ -51,7 +51,7 @@ Jobs that will wait for a venv build are not judged by this rule; see [0006](000
 - Good, because a full sandbox rejects without decoding the request body.
 - Bad, because `queued` includes running jobs (there is no `running` state), so the prediction is high by about one average run time. Accepted: about 2 s of 120 s for short jobs.
 - Bad, because the estimate lags sudden changes and averages mixed job lengths. The queue-deadline skip ([0005](0005-queue-deadlines-owned-by-the-sandbox.md)) is the backstop.
-- Bad, because `SANDBOX_MAX_ACCEPTED_EXECUTIONS` (300) is a placeholder. It has to come from the measured memory per queued job.
+- Bad, because `SANDBOX_MAX_ACCEPTED_EXECUTIONS` (1000) is a placeholder. It has to come from the measured memory per queued job.
 
 ### Validation
 
