@@ -17,6 +17,25 @@ export const VENV_LIBRARY_SPECIFICATION_PATTERN =
 // The sandbox_new venv lifecycle, mirrored from the service's VenvStatus enum.
 export type VenvStatus = 'declared' | 'processing' | 'completed' | 'failed';
 
+export interface VenvStatusView {
+    label: string;
+    icon: string;
+    cssClass: string;
+}
+
+/** How each status is shown, wherever it is shown: the card's badge and the picker's label
+ *  read the same wording. `completed` has nothing to say, so it has no view. */
+export const VENV_STATUS_VIEWS: Record<VenvStatus, VenvStatusView | null> = {
+    processing: { label: 'Building', icon: 'loader', cssClass: 'venv-status--processing' },
+    failed: { label: 'Failed', icon: 'alert-triangle', cssClass: 'venv-status--failed' },
+    declared: { label: 'Queued', icon: 'edit-pencil', cssClass: 'venv-status--declared' },
+    completed: null,
+};
+
+/** The statuses a venv is in while its build is still ahead of it or under way. Code that
+ *  runs in it waits for the build to finish rather than failing. */
+export const BUILDING_STATUSES: ReadonlySet<VenvStatus> = new Set<VenvStatus>(['declared', 'processing']);
+
 // `version` is the installed version: the user may pin it, and a successful build writes back
 // what it installed. `specification` is the specifier set the version is validated against, and
 // what the resolver picks from when `version` is empty.

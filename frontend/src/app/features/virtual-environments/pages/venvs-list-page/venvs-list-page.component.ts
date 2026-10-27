@@ -34,13 +34,12 @@ import { PermissionsService } from '../../../../services/auth/permissions.servic
 import { ToastService } from '../../../../services/notifications';
 import { VenvCardComponent } from '../../components/venv-card/venv-card.component';
 import { VenvDialogComponent, VenvDialogData } from '../../components/venv-dialog/venv-dialog.component';
-import { Venv, VenvListQuery, VenvSortOrder, VenvStatus } from '../../models/venv.model';
+import { BUILDING_STATUSES, Venv, VenvListQuery, VenvSortOrder } from '../../models/venv.model';
 import { VenvsApiService } from '../../services/venvs-api.service';
 
 const POLL_INTERVAL_MS = 2_000;
 // Long enough that typing a word is one request, short enough to feel immediate.
 const SEARCH_DEBOUNCE_MS = 300;
-const BUILDING_STATUSES: ReadonlySet<VenvStatus> = new Set(['declared', 'processing']);
 
 @Component({
     selector: 'app-venvs-list-page',
