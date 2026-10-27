@@ -11,8 +11,6 @@ from tables.services.delete_services.usage import (
     build_reports,
 )
 
-_AGENT_FIELDS = ("llm_config_id", "fcm_llm_config_id")
-
 
 class LLMConfigDeleteService(BaseDeleteService):
     """Delete service for LLMConfig entities.
@@ -33,6 +31,7 @@ class LLMConfigDeleteService(BaseDeleteService):
     """
 
     model = LLMConfig
+    agent_fields = ("llm_config_id", "fcm_llm_config_id")
 
     def collect_usage(self, ids: list[int]) -> dict[int, UsageReport]:
         """Agents, flows and collections referencing each config."""
@@ -47,10 +46,10 @@ class LLMConfigDeleteService(BaseDeleteService):
 
         return build_reports(ids, [agents, flows, collections])
 
-    @staticmethod
-    def _collect_agents(bucket: BucketCollector, ids: list[int], org_id: int) -> None:
+    @classmethod
+    def _collect_agents(cls, bucket: BucketCollector, ids: list[int], org_id: int) -> None:
         """`AgentDefinition`, via both of its LLM-config FKs."""
-        for field in _AGENT_FIELDS:
+        for field in cls.agent_fields:
             bucket.add_rows(
                 AgentDefinition.objects.filter(org_id=org_id, **{f"{field}__in": ids}).values_list(
                     field, "id", "name"

@@ -5,8 +5,8 @@ triples, so the dedup rules can be pinned without fixtures.
 """
 
 from tables.services.delete_services.usage import (
-    SAMPLE_LIMIT,
     BucketCollector,
+    UsageBucket,
     build_reports,
 )
 
@@ -40,13 +40,13 @@ def test_invisible_bucket_counts_hidden_refs_without_disclosing_them():
 def test_sample_is_capped_and_marked_truncated():
     collector = BucketCollector("flows", visible=True)
     collector.add_rows(
-        ((1, ref_id, f"flow {ref_id}") for ref_id in range(SAMPLE_LIMIT + 1)),
+        ((1, ref_id, f"flow {ref_id}") for ref_id in range(UsageBucket.SAMPLE_LIMIT + 1)),
     )
 
     bucket = collector.bucket_for(1)
 
-    assert bucket.visible_count == SAMPLE_LIMIT + 1
-    assert len(bucket.visible_sample) == SAMPLE_LIMIT
+    assert bucket.visible_count == UsageBucket.SAMPLE_LIMIT + 1
+    assert len(bucket.visible_sample) == UsageBucket.SAMPLE_LIMIT
     assert bucket.truncated is True
 
 

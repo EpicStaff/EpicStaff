@@ -13,12 +13,11 @@ maps that to 207 on a real delete; see BulkDeleteActionMixin.
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from django.db import models
 from rbac.access.effective import EffectivePermissions
 from rbac.models.enums import Permission, ResourceType
-
-SAMPLE_LIMIT = 5
 
 
 class SkipReason(models.TextChoices):
@@ -53,6 +52,8 @@ class UsageBucket:
     `visible_count` and `visible_sample` are serialised.
     """
 
+    SAMPLE_LIMIT: ClassVar[int] = 5
+
     resource_type: str
     total_count: int
     visible_refs: list[UsageRef]
@@ -67,11 +68,11 @@ class UsageBucket:
 
     @property
     def truncated(self) -> bool:
-        return self.visible_count > SAMPLE_LIMIT
+        return self.visible_count > self.SAMPLE_LIMIT
 
     @property
     def visible_sample(self) -> list[UsageRef]:
-        return self.visible_refs[:SAMPLE_LIMIT]
+        return self.visible_refs[: self.SAMPLE_LIMIT]
 
 
 @dataclass(frozen=True)

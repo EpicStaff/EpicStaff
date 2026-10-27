@@ -9,9 +9,6 @@ from tables.services.delete_services.usage import (
     build_reports,
 )
 
-# Both RAG kinds reach their SourceCollection and embedder by the same paths.
-_RAG_MODELS = (GraphRag, NaiveRag)
-
 
 class EmbeddingConfigDeleteService(BaseDeleteService):
     """Delete service for EmbeddingConfig entities.
@@ -27,13 +24,15 @@ class EmbeddingConfigDeleteService(BaseDeleteService):
     """
 
     model = EmbeddingConfig
+    # Both RAG kinds reach their SourceCollection and embedder by the same paths.
+    rag_models = (GraphRag, NaiveRag)
 
     def collect_usage(self, ids: list[int]) -> dict[int, UsageReport]:
         """Collections referencing each config."""
         collections = BucketCollector.for_resource(ResourceType.KNOWLEDGE_SOURCES, self.effective)
 
         if ids:
-            for rag_model in _RAG_MODELS:
+            for rag_model in self.rag_models:
                 collections.add_rows(
                     rag_model.objects.filter(
                         base_rag_type__source_collection__org_id=self.org_id,
