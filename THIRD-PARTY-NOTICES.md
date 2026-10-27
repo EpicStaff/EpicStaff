@@ -3766,9 +3766,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-10-27T11:48:21Z UTC -->
-<!-- commit: cac3c17ae79c4df85cd70a5ae1a704df5b628d5c -->
-<!-- lock-hashes: agent:de39a27d41cdbcae, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:471a63516f8d8acd, django_app:b48e52055b8e0b94, es_plugins:5e7ac6170ce852de, foundation:632b32a6555e62cf, knowledge_new:d1d991c84d05eedb, manager:b4bef382144a5a4a, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:48de6057d569740f, sandbox:6db6900f51e81e02, sandbox_new:ec15c779b40f29c4, webhook:6e6a68286cd96f18 -->
+<!-- generated: 2026-10-27T15:04:09Z UTC -->
+<!-- commit: a19971fe099170ac9402f473e66131256ced1635 -->
+<!-- lock-hashes: agent:47ff16c8b4a53b51, auditor:ab29af7159bba6e8, chat:f8f821d4ffd0b6f9, crew:cb31b612b0594f97, django_app:b48e52055b8e0b94, es_plugins:5e7ac6170ce852de, foundation:da2ef7a6b1550191, knowledge_new:d1d991c84d05eedb, manager:b4bef382144a5a4a, plugin_sdk:2953f4103d269142, plugins_egress:9a5691273399ac26, realtime:4591bd5ddaa041e1, sandbox:6db6900f51e81e02, sandbox_new:4f72dd1328a09f2c, webhook:6e6a68286cd96f18 -->
 
 ## Backend (Python)
 
