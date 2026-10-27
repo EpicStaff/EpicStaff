@@ -39,8 +39,8 @@ from manager.presentation.result_consumer import ResultConsumer
 from redis.asyncio import Redis
 from worker.bootstrap.di import build_admission_gate, build_job_consumer
 
-from common.bootstrap.gate_sampler import GateSampler
 from common.contracts import ExecutionJobMessage, ExecutionResultMessage
+from common.observability.gate_sampler import GateSampler
 from common.runner import Runner
 
 __all__ = ["JobIntake", "supervise"]

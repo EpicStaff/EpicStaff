@@ -9,7 +9,7 @@ import asyncio
 
 import pytest
 
-from common.bootstrap.gate_sampler import GateSampler
+from common.observability.gate_sampler import GateSampler
 from manager.application.registry import ExecutionRegistry
 from worker.application.resource_gate import ResourceAdmissionGate
 from tests.fakes import FakeHostMetrics
